@@ -1,0 +1,523 @@
+{
+  "kt_sessions": [
+    {
+      "id": 1776382291062,
+      "date": "2026-04-16",
+      "type": "Pull",
+      "week": 2,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "sets": 4,
+          "reps": [
+            5,
+            5,
+            5,
+            5
+          ],
+          "weight": 0,
+          "rpe": 7.5,
+          "note": ""
+        },
+        {
+          "name": "Cable Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 60,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Chest Supported Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 45,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Incline DB Curl",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 20,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Hammer Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 30,
+          "rpe": 9,
+          "note": ""
+        },
+        {
+          "name": "Face Pull",
+          "sets": 3,
+          "reps": [
+            15,
+            15,
+            15
+          ],
+          "weight": 17.5,
+          "rpe": 7.5,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Cable Row",
+        "Lat Pulldown (neutral)",
+        "Incline DB Curl"
+      ]
+    },
+    {
+      "id": 1776292845955,
+      "date": "2026-04-14",
+      "type": "Push",
+      "week": 2,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 155,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Incline DB Press",
+          "sets": 3,
+          "reps": [
+            8,
+            8,
+            8
+          ],
+          "weight": 65,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 90,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Cable Fly",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 100,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "DB Lateral Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 25,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Tricep Pushdown",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 55,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "OH Cable Tri Ext",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 40,
+          "rpe": 8,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Incline DB Press",
+        "Machine Shoulder Press",
+        "Cable Fly",
+        "DB Lateral Raise",
+        "Tricep Pushdown",
+        "OH Cable Tri Ext"
+      ]
+    },
+    {
+      "id": 1775858200585,
+      "date": "2026-04-10",
+      "type": "Legs",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Back Squat",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 75,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Romanian Deadlift",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 95,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Press",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 90,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Extension",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 25,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Calf Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            12
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Cable Crunch",
+          "sets": 3,
+          "reps": [
+            6,
+            6,
+            6
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Back Squat",
+        "Romanian Deadlift",
+        "Leg Press",
+        "Leg Extension",
+        "Leg Curl"
+      ]
+    },
+    {
+      "id": 1775691103251,
+      "date": "2026-04-08",
+      "type": "Pull",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "sets": 4,
+          "reps": 5,
+          "weight": 0,
+          "rpe": 7.5
+        },
+        {
+          "name": "Cable Row",
+          "sets": 3,
+          "reps": 10,
+          "weight": 50,
+          "rpe": 6
+        },
+        {
+          "name": "Lat Pulldown",
+          "sets": 3,
+          "reps": 10,
+          "weight": 70,
+          "rpe": 8.5
+        },
+        {
+          "name": "Chest Supported Row",
+          "sets": 3,
+          "reps": 10,
+          "weight": 90,
+          "rpe": 8.5
+        },
+        {
+          "name": "Hammer Curl",
+          "sets": 3,
+          "reps": 12,
+          "weight": 30,
+          "rpe": 8
+        },
+        {
+          "name": "21s (Barbell Curl)",
+          "sets": 3,
+          "reps": 13,
+          "weight": 40,
+          "rpe": 7
+        },
+        {
+          "name": "Face Pull",
+          "sets": 3,
+          "reps": 10,
+          "weight": 17.5,
+          "rpe": 7
+        }
+      ],
+      "note": "Been feeling energized since i started on monday, haven’t slept that well but im motivated. Maybe its the creatine i started on monday.\n\nFirst time doing Face pulls so i cut back a bit and studied it online to make sure i was doing it right",
+      "prs": [
+        "Cable Row",
+        "Lat Pulldown",
+        "Chest Supported Row",
+        "Hammer Curl",
+        "21s (Barbell Curl)",
+        "Face Pull"
+      ]
+    },
+    {
+      "id": 1775620520847,
+      "date": "2026-04-06",
+      "type": "Push",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": 8,
+          "weight": 155,
+          "rpe": 7
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 3,
+          "reps": 10,
+          "weight": 65,
+          "rpe": 8
+        },
+        {
+          "name": "Cable Fly",
+          "sets": 3,
+          "reps": 15,
+          "weight": 40,
+          "rpe": 7
+        },
+        {
+          "name": "Lateral Raise",
+          "sets": 4,
+          "reps": 15,
+          "weight": 25,
+          "rpe": 8
+        },
+        {
+          "name": "Tricep Pushdown",
+          "sets": 3,
+          "reps": 12,
+          "weight": 50,
+          "rpe": 8
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "sets": 3,
+          "reps": 12,
+          "weight": 40,
+          "rpe": 7
+        },
+        {
+          "name": "Close Grip Bench Press",
+          "sets": 3,
+          "reps": 10,
+          "weight": 115,
+          "rpe": 8
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Barbell Bench Press",
+        "Incline Dumbbell Press",
+        "Cable Fly",
+        "Lateral Raise",
+        "Tricep Pushdown",
+        "Overhead Tricep Ext",
+        "Close Grip Bench Press"
+      ]
+    }
+  ],
+  "kt_runs": [
+    {
+      "id": 1776295870757,
+      "distance": 3,
+      "time": "28:20",
+      "date": "2026-04-15",
+      "week": 2,
+      "note": "Felt easy"
+    },
+    {
+      "id": 1775949258886,
+      "distance": 3,
+      "time": "29:41",
+      "date": "2026-04-11",
+      "week": 1,
+      "note": "149 avg hr, 300 calories burned"
+    },
+    {
+      "id": 1775620622989,
+      "distance": 3,
+      "time": "24:27",
+      "date": "2026-04-07",
+      "week": 1,
+      "note": "165 bpm, moderate, avg pace of 8.08 km"
+    }
+  ],
+  "kt_weights": {
+    "Barbell Bench Press": 155,
+    "Incline Dumbbell Press": 65,
+    "Cable Fly": 100,
+    "Lateral Raise": 25,
+    "Tricep Pushdown": 55,
+    "Overhead Tricep Ext": 40,
+    "Close Grip Bench Press": 115,
+    "Pull Up": 0,
+    "Cable Row": 60,
+    "Lat Pulldown": 70,
+    "Chest Supported Row": 45,
+    "Hammer Curl": 30,
+    "21s (Barbell Curl)": 40,
+    "Face Pull": 17.5,
+    "Back Squat": 75,
+    "Romanian Deadlift": 95,
+    "Leg Press": 90,
+    "Leg Extension": 50,
+    "Leg Curl": 25,
+    "Calf Raise": 100,
+    "Cable Crunch": 50,
+    "Incline DB Press": 65,
+    "Machine Shoulder Press": 90,
+    "DB Lateral Raise": 25,
+    "OH Cable Tri Ext": 40,
+    "Lat Pulldown (neutral)": 70,
+    "Incline DB Curl": 20
+  },
+  "kt_prs": {
+    "Barbell Bench Press": 155,
+    "Incline Dumbbell Press": 65,
+    "Cable Fly": 100,
+    "Lateral Raise": 25,
+    "Tricep Pushdown": 55,
+    "Overhead Tricep Ext": 40,
+    "Close Grip Bench Press": 115,
+    "Cable Row": 60,
+    "Lat Pulldown": 70,
+    "Chest Supported Row": 90,
+    "Hammer Curl": 30,
+    "21s (Barbell Curl)": 40,
+    "Face Pull": 17.5,
+    "Back Squat": 75,
+    "Romanian Deadlift": 95,
+    "Leg Press": 90,
+    "Leg Extension": 50,
+    "Leg Curl": 25,
+    "Incline DB Press": 65,
+    "Machine Shoulder Press": 90,
+    "DB Lateral Raise": 25,
+    "OH Cable Tri Ext": 40,
+    "Lat Pulldown (neutral)": 70,
+    "Incline DB Curl": 20
+  },
+  "kt_week": 2
+}
