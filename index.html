@@ -1895,6 +1895,89 @@ function closeExEdit() {
   render();
 }
 
+// ── Programme Overview Modal ──────────────────────────────────────────────────
+function openProgrammeModal(){
+  var el=document.getElementById('prog-modal'); if(el) el.remove();
+  var cr=getCustomRoutine();
+  var weeks=cr&&cr.weeks?cr.weeks:WEEK_DATA.slice(1);
+  var progName=cr&&cr.name?cr.name:'12-Week Programme';
+
+  // Group weeks by block
+  var blocks=[];
+  var lastBlock=null;
+  weeks.forEach(function(wd){
+    if(!wd) return;
+    if(!lastBlock||lastBlock.bName!==wd.bName){
+      lastBlock={bName:wd.bName,bColor:wd.bColor||'var(--accent)',weeks:[]};
+      blocks.push(lastBlock);
+    }
+    lastBlock.weeks.push(wd);
+  });
+
+  function mainLift(session){
+    if(!session||!session.length) return null;
+    var m=session.find(function(e){return e.isMain;});
+    return m||session[0];
+  }
+
+  var blocksHTML=blocks.map(function(bl){
+    var wkRows=bl.weeks.map(function(wd){
+      var isCurrent=wd.wk===currentWeek;
+      var push=mainLift(wd.push);
+      var pull=mainLift(wd.pull);
+      var legs=mainLift(wd.legs);
+      var lifts=[push,pull,legs].filter(Boolean).map(function(ex){
+        var r=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+        var w=parseFloat(ex.weight)>0?'@'+ex.weight+'lb':'BW';
+        return '<span>'+ex.name.split(' ').slice(0,2).join(' ')+' '+ex.sets+'×'+r+' '+w+'</span>';
+      }).join('<span style="color:var(--border);padding:0 4px;">·</span>');
+      var runLine='';
+      if(wd.runTue||wd.runSat){
+        var parts=[];
+        if(wd.runTue) parts.push('Tue '+wd.runTue.km+'km');
+        if(wd.runSat) parts.push('Sat '+wd.runSat.km+'km');
+        runLine='<div style="font-size:11px;color:var(--lite);margin-top:2px;">'+parts.join(' · ')+'</div>';
+      }
+      var note=wd.wkNote?'<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">'+
+        (wd.wkNote.length>80?wd.wkNote.slice(0,80)+'…':wd.wkNote)+'</div>':'';
+      return '<div style="padding:12px 16px;border-bottom:1px solid var(--border);'+(isCurrent?'background:rgba(200,255,0,.04);':'')+'">'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'+
+          '<span style="font-size:12px;font-weight:700;color:'+(isCurrent?'var(--accent)':'var(--lite)')+';">Wk '+wd.wk+'</span>'+
+          (isCurrent?'<span style="background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;">NOW</span>':'')+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text);line-height:1.6;display:flex;flex-wrap:wrap;gap:2px;">'+lifts+'</div>'+
+        runLine+note+
+      '</div>';
+    }).join('');
+    return '<div style="margin-bottom:16px;">'+
+      '<div style="display:flex;align-items:center;gap:8px;padding:10px 16px 0;">'+
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+bl.bColor+';flex-shrink:0;"></span>'+
+        '<span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--lite);">'+bl.bName+'</span>'+
+      '</div>'+
+      '<div style="margin-top:8px;background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;">'+wkRows+'</div>'+
+    '</div>';
+  }).join('');
+
+  var overlay=document.createElement('div');
+  overlay.id='prog-modal'; overlay.className='ex-modal-bg';
+  overlay.innerHTML=
+    '<div class="ex-modal-sheet" style="max-height:88vh;">'+
+      '<div class="ex-modal-head">'+
+        '<div>'+
+          '<div style="font-size:17px;font-weight:800;letter-spacing:-.3px;">Programme</div>'+
+          '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+progName+'</div>'+
+        '</div>'+
+        '<button class="ex-modal-close" onclick="closeProgrammeModal()">✕</button>'+
+      '</div>'+
+      blocksHTML+
+    '</div>';
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeProgrammeModal();});
+  document.body.appendChild(overlay);
+}
+function closeProgrammeModal(){
+  var el=document.getElementById('prog-modal'); if(el) el.remove();
+}
+
 function pickSession(key){
   logSession=key;
   logWeights = {}; logRPEs = {}; logSets = {}; logReps = {}; logExNotes = {}; logExpanded = {};
@@ -3328,7 +3411,7 @@ function renderSettings() {
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">Programme</div>'+
-    '<div class="settings-row">'+
+    '<div class="settings-row" onclick="openProgrammeModal()">'+
       '<div class="settings-row-ic" style="background:#1a2e1a;">'+
         '<svg viewBox="0 0 24 24" fill="none" stroke="#c8ff00" stroke-width="2" stroke-linecap="round" width="17" height="17">'+
           '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'+
