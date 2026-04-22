@@ -86,12 +86,11 @@ select option{background:var(--bg);}
 .sess-grid{display:flex;gap:8px;margin-bottom:20px;}
 .sess-btn{flex:1;background:var(--card);border:1px solid var(--border);
   border-radius:999px;padding:14px 10px;
-  display:flex;align-items:center;justify-content:center;gap:8px;
+  display:flex;align-items:center;justify-content:center;
   cursor:pointer;transition:all .2s;font-size:14px;font-weight:600;color:var(--lite);
   -webkit-tap-highlight-color:transparent;font-family:inherit;}
 .sess-btn.active{background:var(--text);color:#000;border-color:var(--text);}
 .sess-btn:active{opacity:.85;}
-.sess-icon{font-size:16px;}
 .sess-label{font-size:14px;font-weight:600;}
 .sess-sub{display:none;}
 
@@ -225,9 +224,8 @@ select option{background:var(--bg);}
 .rt-note{font-size:12px;color:var(--lite);line-height:1.4;}
 
 /* ── Today card ──────────────────────────────────────────────────────────── */
-.today-card{display:flex;align-items:center;gap:14px;background:var(--card);
+.today-card{background:var(--card);
   border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:12px;}
-.today-icon{font-size:26px;flex-shrink:0;}
 .today-label{font-size:15px;font-weight:600;letter-spacing:-.2px;}
 .today-detail{font-size:12px;color:var(--lite);margin-top:3px;line-height:1.4;}
 
@@ -306,7 +304,6 @@ select option{background:var(--bg);}
 
 /* ── Empty states ────────────────────────────────────────────────────────── */
 .empty{text-align:center;padding:52px 20px;color:var(--muted);}
-.empty-icon{font-size:40px;margin-bottom:10px;}
 .empty p{font-size:14px;line-height:1.5;}
 
 /* ── Rest timer ──────────────────────────────────────────────────────────── */
@@ -493,7 +490,7 @@ var restInterval  = null;
 var WEEK_DATA = [null,
 // ── Week 1 — BASE ────────────────────────────────────────────────────────────
 {wk:1,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Week 1 done ✅ — calibration complete. Right shoulder: no dips, monitor close grip bench. Cable Row was easy at 50 lb → bump to 60 lb Wk2.',
+ wkNote:'Week 1 done — calibration complete. Bench 155 lb, Squat 95 lb (too light). Right shoulder felt fine. Cable Row easy at 50 lb.',
  push:[
    {name:'Barbell Bench Press',isMain:true,sets:4,reps:8,weight:155,rpe:7},
    {name:'Incline Dumbbell Press',sets:3,reps:10,weight:65,rpe:8},
@@ -519,13 +516,13 @@ var WEEK_DATA = [null,
    {name:'Leg Extension',sets:3,reps:10,weight:50,rpe:8},
    {name:'Lying Leg Curl',sets:3,reps:12,weight:25,rpe:8},
    {name:'Standing Calf Raise',sets:4,reps:15,weight:0,rpe:7},
-   {name:'Cable Crunch',sets:3,reps:6,weight:0,rpe:7}
+   {name:'Hanging Leg Raise',sets:3,reps:6,weight:0,rpe:7}
  ],
- runTue:{km:3,hr:150,type:'easy',note:'Week 1 run done ✅ — 29:41 / 149bpm ✓'},
+ runTue:{km:3,hr:150,type:'easy',note:'Week 1 run done — 29:41 / 149bpm'},
  runSat:{km:3,hr:150,type:'easy',note:'HR cap <150 the whole way'}},
 // ── Week 2 — BASE ────────────────────────────────────────────────────────────
 {wk:2,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Week 2 done ✅ — squat moving well. RPE 8 across the board. Right shoulder: still no dips.',
+ wkNote:'Week 2 done — Bench held 155 lb, RPE climbed 7→8. Squat 95 still too light, ramp activated. Hammer Curl topped at 30 lb.',
  push:[
    {name:'Barbell Bench Press',isMain:true,sets:4,reps:8,weight:155,rpe:8},
    {name:'Incline Dumbbell Press',sets:3,reps:8,weight:65,rpe:8},
@@ -555,351 +552,352 @@ var WEEK_DATA = [null,
  ],
  runTue:{km:3,hr:150,type:'easy',note:'HR cap <150'},
  runSat:{km:3.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 3 — BASE ────────────────────────────────────────────────────────────
+// ── Week 3 — BASE (in progress) ──────────────────────────────────────────────
 {wk:3,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Small load bumps across the board. Hold RPE 8 — form over weight. Squat jumps to 135 lb.',
+ wkNote:'Bench PR 165 x 4x6 @ RPE 7.5. OH Tri Ext rebaselined to 27.5 — tris moved last. Z2 cap raised 150 → 165. Tue 5 km @ 9m47s/km, avg 160 bpm — felt easy.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:162.5,rpe:8},
-   {name:'Incline Dumbbell Press',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Machine Shoulder Press',sets:3,reps:10,weight:95,rpe:8},
-   {name:'Cable Fly',sets:3,reps:12,weight:42.5,rpe:7.5},
-   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8.5},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:165,rpe:7.5,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:10,weight:90,rpe:8},
+   {name:'Cable Fly',sets:3,reps:10,weight:42.5,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
    {name:'Tricep Pushdown',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:42.5,rpe:8}
+   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:27.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:8,weight:115,rpe:8}
  ],
  pull:[
    {name:'Pull Up',isMain:true,sets:4,reps:6,weight:0,rpe:8},
-   {name:'Seated Cable Row',sets:3,reps:10,weight:65,rpe:8},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Chest Supported Row',sets:3,reps:10,weight:92.5,rpe:8},
+   {name:'Cable Row',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:10,weight:50,rpe:8},
    {name:'Incline DB Curl',sets:3,reps:10,weight:20,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:7}
+   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:8.5},
+   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:6,weight:135,rpe:7.5},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:8,weight:135,rpe:7},
    {name:'Romanian Deadlift',sets:3,reps:10,weight:115,rpe:8},
    {name:'Leg Press',sets:3,reps:12,weight:130,rpe:8},
-   {name:'Leg Extension',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:15,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:45,rpe:8}
- ],
- runTue:{km:3.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 4 — BASE (end of Block 1) ───────────────────────────────────────────
-{wk:4,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'End of Block 1 — reps drop, load goes up. Weighted pull-ups start! 🔥',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:5,weight:165,rpe:8.5,pr:true},
-   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:10,weight:100,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:42.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:60,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:42.5,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:7.5,rpe:8.5,pr:true},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:75,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:95,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:5,weight:155,rpe:8,pr:true},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:125,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:10,weight:150,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:12,weight:60,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:57.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:55,rpe:8.5},
+   {name:'Lying Leg Curl',sets:3,reps:12,weight:60,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:15,weight:25,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:4,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 5 — BUILD ───────────────────────────────────────────────────────────
-{wk:5,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'BUILD block — strength bias, RPE 8-9. Reps drop, load climbs. Pull-ups now +10 lb.',
+ runTue:{km:5,hr:165,type:'easy',note:'5 km @ 9m47s/km, avg 160 bpm — felt easy'},
+ runSat:{km:6,hr:165,type:'easy',note:'6 km steady. HR cap 165 avg. No sprint finish.'}},
+// ── Week 4 — BASE (Test Week, end of Block 1) ─────────────────────────────────
+{wk:4,block:1,bName:'BASE',bColor:'#06b6d4',
+ wkNote:'End of Block 1 test week — assess Bench, Squat, Pull Up. Tris stay last.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:5,weight:167.5,rpe:8},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:165,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:10,weight:90,rpe:8},
+   {name:'Cable Fly',sets:3,reps:10,weight:45,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:35,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:12,weight:55,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:8,weight:115,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:4,reps:6,weight:5,rpe:8},
+   {name:'Cable Row',sets:4,reps:8,weight:80,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:80,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:10,weight:55,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:9},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:6,weight:155,rpe:8},
+   {name:'Romanian Deadlift',sets:3,reps:8,weight:125,rpe:8},
+   {name:'Leg Press',sets:3,reps:12,weight:145,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:60,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:12,weight:65,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:15,weight:30,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo: 1 km easy + 3 km @ 8:30/km + 1 km easy. Total 5 km.'},
+ runSat:{km:6.5,hr:165,type:'easy',note:'6-7 km easy. HR cap 165.'}},
+// ── Week 5 — BUILD ────────────────────────────────────────────────────────────
+{wk:5,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'BUILD block — heavier compounds, intensity climbs. RPE 8-9 on top sets. Reps drop, load goes up.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:170,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:8,weight:95,rpe:8},
+   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:40,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:60,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:120,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:10,rpe:8},
+   {name:'Cable Row',sets:4,reps:6,weight:90,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:90,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:60,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:25,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:165,rpe:8},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:135,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:160,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:65,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:35,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 6 — BUILD ────────────────────────────────────────────────────────────
+{wk:6,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'Same scheme — add weight where last week hit RPE 8 for both sessions. Upper +2.5 lb, lower +5 lb.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:172.5,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:70,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:8,weight:100,rpe:8},
+   {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:42.5,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:62.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:122.5,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:12.5,rpe:8},
+   {name:'Cable Row',sets:4,reps:6,weight:92.5,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:92.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:62.5,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:170,rpe:8},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:140,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:165,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:67.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:37.5,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 7 — BUILD ────────────────────────────────────────────────────────────
+{wk:7,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'Heaviest BUILD week. Sleep 7+ hrs before legs. Add weight only where RPE was under 8 last week.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:175,rpe:8.5},
    {name:'Incline Dumbbell Press',sets:3,reps:8,weight:72.5,rpe:8},
    {name:'Machine Shoulder Press',sets:3,reps:8,weight:105,rpe:8},
-   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:62.5,rpe:8},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:45,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:10,rpe:8},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:75,rpe:8},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:77.5,rpe:8},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:100,rpe:8},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:5,weight:165,rpe:8},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:135,rpe:8},
-   {name:'Leg Press',sets:3,reps:10,weight:170,rpe:8},
-   {name:'Leg Extension',sets:3,reps:12,weight:62.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:60,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:50,rpe:8}
- ],
- runTue:{km:4,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 6 — BUILD ───────────────────────────────────────────────────────────
-{wk:6,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'Reps drop to 4 on compounds. Pull-ups +15 lb. Add weight only if RPE felt easy last week.',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:170,rpe:8},
-   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:75,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:8,weight:110,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:65,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:45,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:15,rpe:8.5},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:80,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:80,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:105,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:25,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:175,rpe:8},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:145,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:10,weight:190,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:12,weight:65,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:62.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
-   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
- ],
- runTue:{km:4.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 7 — BUILD ───────────────────────────────────────────────────────────
-{wk:7,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'Heaviest BUILD week. Pull-ups +20 lb. Sleep 7+ hrs Thursday before legs. 💪',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:175,rpe:8.5},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:77.5,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:8,weight:115,rpe:8.5},
    {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8.5},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:67.5,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:47.5,rpe:8}
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:45,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:65,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:125,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:20,rpe:8.5},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:85,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:82.5,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:110,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:25,rpe:8},
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:15,rpe:8.5},
+   {name:'Cable Row',sets:4,reps:6,weight:95,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:95,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:65,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
    {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:185,rpe:8.5},
-   {name:'Romanian Deadlift',sets:3,reps:6,weight:155,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:8,weight:210,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:65,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:55,rpe:8}
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:175,rpe:8.5},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:145,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:170,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:70,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:75,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:40,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:4.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 8 — BUILD (PR push, end of Block 2) ─────────────────────────────────
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 8 — BUILD (PR test week, end of Block 2) ─────────────────────────────
 {wk:8,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'End of BUILD — PR week! 4x3 compounds. Pull-ups +25 lb. PEAK block next. 🔥',
+ wkNote:'End of Block 2 test week — Bench top set of 3 @ RPE 9. Squat top set of 3 @ RPE 9. Pull Up AMRAP @ BW. Run: 5 km time trial.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:3,weight:180,rpe:8.5,pr:true},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:80,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:120,rpe:8.5},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:3,weight:182.5,rpe:9,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:75,rpe:8.5},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:110,rpe:8.5},
    {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8.5}
+   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:47.5,rpe:8.5},
+   {name:'Tricep Pushdown',sets:3,reps:8,weight:67.5,rpe:8.5},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:127.5,rpe:8.5}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:25,rpe:9,pr:true},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:90,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:85,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:115,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
+   {name:'Pull Up',isMain:true,sets:1,reps:15,weight:0,rpe:10,pr:true},
+   {name:'Cable Row',sets:4,reps:5,weight:100,rpe:8.5},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:97.5,rpe:8.5},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:67.5,rpe:8.5},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:8},
    {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:3,weight:195,rpe:8.5,pr:true},
-   {name:'Romanian Deadlift',sets:3,reps:6,weight:165,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:8,weight:230,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:10,weight:70,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:3,weight:185,rpe:9,pr:true},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:150,rpe:8.5},
+   {name:'Leg Press',sets:3,reps:8,weight:175,rpe:8.5},
+   {name:'Leg Extension',sets:3,reps:12,weight:72.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:77.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:42.5,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 9 — PEAK ────────────────────────────────────────────────────────────
+ runTue:{km:5,hr:165,type:'tempo',note:'5 km time trial — go for it.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km easy. HR cap 165. Recovery after test week.'}},
+// ── Week 9 — PEAK ─────────────────────────────────────────────────────────────
 {wk:9,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'PEAK block — heavy singles/doubles/triples, RPE 9. Lower volume, max intensity. 🔥',
+ wkNote:'PEAK block — top-end strength. Volume down, intensity peaks. RPE 8-9 on compounds. Accessories pruned.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:3,weight:185,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:82.5,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:120,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:72.5,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:187.5,rpe:9},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:80,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:115,rpe:8},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:52.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:132.5,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:3,weight:25,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:87.5,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:117.5,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:20,rpe:9},
+   {name:'Cable Row',sets:4,reps:5,weight:110,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:107.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:72.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:8,weight:40,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:3,weight:205,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:175,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:250,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:70,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:60,rpe:8}
- ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 10 — PEAK ───────────────────────────────────────────────────────────
-{wk:10,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'3×2 on main compounds. Pull-ups +30 lb. Protect sleep — every rep counts.',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:2,weight:190,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:125,rpe:9},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:75,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:3,weight:30,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:95,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:120,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:8.5},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:9},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:2,weight:215,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:185,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:260,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:75,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:195,rpe:9},
+   {name:'Romanian Deadlift',sets:3,reps:6,weight:160,rpe:8},
+   {name:'Leg Press',sets:3,reps:8,weight:190,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:82.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:47.5,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 11 — PEAK ───────────────────────────────────────────────────────────
-{wk:11,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'Final heavy week — 3×2 at RPE 9. Max effort. Sleep 7+ hrs. Deload next. 💪',
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:7.5,hr:165,type:'easy',note:'7-8 km steady. HR cap 165.'}},
+// ── Week 10 — PEAK ────────────────────────────────────────────────────────────
+{wk:10,block:3,bName:'PEAK',bColor:'#f97316',
+ wkNote:'PEAK Week 10 — push for PRs. Sleep 7+ hrs. Every rep counts.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:2,weight:195,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:5,weight:125,rpe:9},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:6,weight:77.5,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:190,rpe:9},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:82.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:117.5,rpe:8},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:55,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:135,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:2,weight:30,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:95,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:120,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:9},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:9},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:22.5,rpe:9},
+   {name:'Cable Row',sets:4,reps:5,weight:112.5,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:110,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:75,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:8,weight:42.5,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:2,weight:220,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:190,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:270,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:75,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:60,rpe:8}
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:200,rpe:9},
+   {name:'Romanian Deadlift',sets:3,reps:6,weight:165,rpe:8},
+   {name:'Leg Press',sets:3,reps:8,weight:197.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:85,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:50,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 12 — DELOAD + TEST DAY ──────────────────────────────────────────────
-{wk:12,block:4,bName:'DELOAD',bColor:'#22c55e',
- wkNote:'DELOAD — go easy Mon/Wed. TEST DAY Friday Jun 27: squat 225 lb, bench max single, deadlift max. 🏆',
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:8,hr:165,type:'easy',note:'7-8 km steady. HR cap 165.'}},
+// ── Week 11 — PEAK (Final Heavy Week) ─────────────────────────────────────────
+{wk:11,block:3,bName:'PEAK',bColor:'#f97316',
+ wkNote:'Final heavy week — top set of 1-2 reps @ RPE 9 on Bench, Squat, Weighted Pull Up. Max effort. Sleep 7+ hrs. Deload next.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:5,weight:155,rpe:6},
-   {name:'Incline Dumbbell Press',sets:2,reps:8,weight:65,rpe:6},
-   {name:'Machine Shoulder Press',sets:2,reps:8,weight:90,rpe:6},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:25,rpe:6},
-   {name:'Tricep Pushdown',sets:2,reps:10,weight:50,rpe:6}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:2,weight:192.5,rpe:9,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
+   {name:'Machine Shoulder Press',sets:3,reps:5,weight:120,rpe:9},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:6,weight:57.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:4,weight:137.5,rpe:9}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:4,reps:2,weight:25,rpe:9,pr:true},
+   {name:'Cable Row',sets:4,reps:4,weight:115,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:5,weight:112.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:5,weight:77.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:6,weight:45,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:2,weight:205,rpe:9,pr:true},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:170,rpe:8},
+   {name:'Leg Press',sets:3,reps:6,weight:205,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:87.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:52.5,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:8,hr:165,type:'easy',note:'8 km steady. HR cap 165.'}},
+// ── Week 12 — DELOAD + REASSESS ───────────────────────────────────────────────
+{wk:12,block:4,bName:'DELOAD',bColor:'#22c55e',
+ wkNote:'DELOAD — all lifts at 60% working weight, 3x5, RPE 5-6. Runs: 2 x 4 km easy. End of week: full programme review, plan next cycle.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:3,reps:5,weight:115,rpe:6},
+   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:50,rpe:6},
+   {name:'Machine Shoulder Press',sets:3,reps:5,weight:72.5,rpe:6},
+   {name:'DB Lateral Raise',sets:3,reps:12,weight:15,rpe:6},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:35,rpe:6}
  ],
  pull:[
    {name:'Pull Up',isMain:true,sets:3,reps:5,weight:0,rpe:6},
-   {name:'Seated Cable Row',sets:2,reps:8,weight:60,rpe:6},
-   {name:'Lat Pulldown (neutral)',sets:2,reps:8,weight:70,rpe:6},
-   {name:'Chest Supported Row',sets:2,reps:8,weight:90,rpe:6},
-   {name:'Hammer Curl',sets:2,reps:10,weight:25,rpe:6}
+   {name:'Cable Row',sets:3,reps:5,weight:70,rpe:6},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:5,weight:67.5,rpe:6},
+   {name:'Chest Supported Row',sets:3,reps:5,weight:47.5,rpe:6},
+   {name:'Hammer Curl',sets:3,reps:8,weight:27.5,rpe:6}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:1,reps:1,weight:225,rpe:10,pr:true},
-   {name:'Barbell Bench Press',isMain:true,sets:1,reps:1,weight:0,rpe:10,pr:true},
-   {name:'Deadlift',sets:1,reps:1,weight:0,rpe:10,pr:true}
+   {name:'Barbell Back Squat',isMain:true,sets:3,reps:5,weight:122.5,rpe:6},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:102.5,rpe:6},
+   {name:'Leg Press',sets:3,reps:5,weight:122.5,rpe:6},
+   {name:'Lying Leg Curl',sets:3,reps:8,weight:52.5,rpe:6},
+   {name:'Standing Calf Raise',sets:3,reps:10,weight:30,rpe:6},
+   {name:'Hanging Leg Raise',sets:3,reps:10,weight:0,rpe:6}
  ],
- runTue:{km:3,hr:140,type:'easy',note:'Easy shakeout — HR <140, keep it short'},
- runSat:{km:3,hr:140,type:'easy',note:'Easy deload run — save everything for TEST DAY 🏋️'}}
+ runTue:{km:4,hr:150,type:'easy',note:'Easy shakeout. HR <150. Short and relaxed.'},
+ runSat:{km:4,hr:150,type:'easy',note:'Easy deload run. HR <150. Save energy for programme review.'}}
 ];
 
 // ── Workout Definitions ───────────────────────────────────────────────────────
 var SESS = {
-  Push:{label:'Push',icon:'💪',color:'#7c6bff',focus:'Chest · Shoulders · Triceps',
+  Push:{label:'Push',icon:'',color:'#7c6bff',focus:'Chest · Shoulders · Triceps',
     exercises:[
-      {name:'Barbell Bench Press',isMain:true,sets:4,reps:'5-6',rpe:'8'},
-      {name:'Incline Dumbbell Press',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Cable Fly',sets:3,reps:'12',rpe:'7-8'},
-      {name:'DB Lateral Raise',sets:3,reps:'12-15',rpe:'7-8'},
-      {name:'Tricep Pushdown',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Overhead Tricep Ext',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Close Grip Bench Press',sets:3,reps:'8-10',rpe:'7-8'}
+      {name:'Barbell Bench Press',isMain:true,sets:4,reps:'4-6',rpe:'8-9'},
+      {name:'Incline Dumbbell Press',sets:3,reps:'6-8',rpe:'8'},
+      {name:'Machine Shoulder Press',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Cable Fly',sets:3,reps:'10-12',rpe:'8'},
+      {name:'DB Lateral Raise',sets:4,reps:'12-15',rpe:'8'},
+      {name:'Overhead Tricep Ext',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Tricep Pushdown',sets:3,reps:'10-12',rpe:'8'},
+      {name:'Close Grip Bench Press',sets:3,reps:'5-8',rpe:'8'}
     ]},
-  Pull:{label:'Pull',icon:'🔙',color:'#22c55e',focus:'Back · Biceps',
+  Pull:{label:'Pull',icon:'',color:'#22c55e',focus:'Back · Biceps',
     exercises:[
-      {name:'Pull Up',isMain:true,sets:4,reps:'5-8',rpe:'7-8'},
-      {name:'Seated Cable Row',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Lat Pulldown (neutral)',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Chest Supported Row',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Hammer Curl',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Barbell Curl (21s)',sets:2,reps:'21',rpe:'7-8'},
-      {name:'Face Pull',sets:3,reps:'15',rpe:'7'}
+      {name:'Pull Up',isMain:true,sets:4,reps:'4-6',rpe:'8'},
+      {name:'Cable Row',sets:4,reps:'6-10',rpe:'8'},
+      {name:'Lat Pulldown (neutral)',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Chest Supported Row',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Incline DB Curl',sets:3,reps:'8-10',rpe:'8'},
+      {name:'Hammer Curl',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Face Pull',sets:3,reps:'15',rpe:'8'}
     ]},
-  Legs:{label:'Legs',icon:'🦵',color:'#f97316',focus:'Quads · Hamstrings · Core',
+  Legs:{label:'Legs',icon:'',color:'#f97316',focus:'Quads · Hamstrings · Glutes',
     exercises:[
-      {name:'Barbell Back Squat',isMain:true,sets:4,reps:'5-8',rpe:'8'},
-      {name:'Romanian Deadlift',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Leg Press',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Leg Extension',sets:3,reps:'12',rpe:'7-8'},
-      {name:'Seated Leg Curl',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Standing Calf Raise',sets:4,reps:'12-15',rpe:'7'},
-      {name:'Cable Crunch',sets:3,reps:'12',rpe:'7-8'}
+      {name:'Barbell Back Squat',isMain:true,sets:4,reps:'4-8',rpe:'8'},
+      {name:'Romanian Deadlift',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Leg Press',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Leg Extension',sets:3,reps:'12',rpe:'8'},
+      {name:'Lying Leg Curl',sets:3,reps:'10-12',rpe:'8'},
+      {name:'Standing Calf Raise',sets:4,reps:'10-15',rpe:'8'},
+      {name:'Hanging Leg Raise',sets:3,reps:'12',rpe:'8'}
     ]}
 };
 
@@ -928,15 +926,14 @@ function getWeek() { return lsGet('kt_week')||1; }
 
 function defaultWeights() {
   return {
-    'Barbell Bench Press':155,'Incline Dumbbell Press':65,'Cable Fly':100,
-    'DB Lateral Raise':25,'Tricep Pushdown':55,'Overhead Tricep Ext':25,
-    'Close Grip Bench Press':95,'Machine Shoulder Press':0,'OH Cable Tri Ext':40,
-    'Pull Up':0,'Seated Cable Row':65,'Lat Pulldown (neutral)':70,'Chest Supported Row':45,
-    'Hammer Curl':30,'Barbell Curl (21s)':45,'Face Pull':17.5,
-    'Cable Row':60,'Incline DB Curl':20,
-    'Barbell Back Squat':95,'Romanian Deadlift':105,'Leg Press':130,'Leg Extension':60,
-    'Seated Leg Curl':35,'Standing Calf Raise':25,'Cable Crunch':30,
-    'Lying Leg Curl':30,'Hanging Leg Raise':0,'Back Squat':85,'RDL':105
+    'Barbell Bench Press':165,'Incline Dumbbell Press':67.5,'Cable Fly':42.5,
+    'DB Lateral Raise':25,'Tricep Pushdown':55,'Overhead Tricep Ext':27.5,
+    'Close Grip Bench Press':115,'Machine Shoulder Press':90,'OH Cable Tri Ext':40,
+    'Pull Up':0,'Cable Row':70,'Seated Cable Row':60,'Lat Pulldown (neutral)':70,'Chest Supported Row':50,
+    'Hammer Curl':30,'Barbell Curl (21s)':40,'Face Pull':20,'Incline DB Curl':20,
+    'Barbell Back Squat':135,'Romanian Deadlift':115,'Leg Press':130,'Leg Extension':55,
+    'Lying Leg Curl':60,'Standing Calf Raise':25,'Hanging Leg Raise':0,
+    'Seated Leg Curl':35,'Cable Crunch':30,'Back Squat':85,'RDL':105
   };
 }
 
@@ -1135,13 +1132,13 @@ function render() {
 // ── Weekly Schedule ───────────────────────────────────────────────────────────
 // Mon=0 … Sun=6
 var WEEK_PLAN = [
-  {type:'Push', icon:'💪', color:'var(--accent)',  isRest:false, isRun:false},
-  {type:'Run',  icon:'🏃', color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Pull', icon:'🔄', color:'var(--cyan)',    isRest:false, isRun:false},
-  {type:'Rest', icon:'😴', color:'var(--muted)',   isRest:true,  isRun:false},
-  {type:'Legs', icon:'🦵', color:'var(--orange)',  isRest:false, isRun:false},
-  {type:'Run',  icon:'🏃', color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Rest', icon:'😴', color:'var(--muted)',   isRest:true,  isRun:false},
+  {type:'Push', icon:'', color:'var(--accent)',  isRest:false, isRun:false},
+  {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
+  {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
+  {type:'Pull', icon:'', color:'var(--cyan)',    isRest:false, isRun:false},
+  {type:'Legs', icon:'', color:'var(--orange)',  isRest:false, isRun:false},
+  {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
+  {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
 ];
 
 function getMondayISO() {
@@ -1310,7 +1307,7 @@ function renderWeekHeader() {
       '<button class="wk-btn" onclick="adjustWeek(-1)">−</button>'+
       '<span style="font-size:12px;font-weight:600;padding:0 12px;color:var(--lite);">Week '+currentWeek+' of '+totalWks+'</span>'+
       '<button class="wk-btn" onclick="adjustWeek(1)">+</button>'+
-      '<button onclick="exportData()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;" title="Quick backup">💾</button>'+
+      '<button onclick="exportData()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;" title="Quick backup">Backup</button>'+
     '</div>'+
     '</div>';
 }
@@ -1336,9 +1333,9 @@ function renderLog() {
   '</div>';
 
   var subBar = '<div class="log-subtabs">'+
-    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">💪 Workout</button>'+
-    '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">🏃 Run</button>'+
-    '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">⚖️ Body</button>'+
+    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
+    '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">Run</button>'+
+    '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">Body</button>'+
     '</div>';
 
   if (logSubTab === 'run') {
@@ -1355,14 +1352,14 @@ function renderLog() {
     });
     var bwGoal=getBWGoal();
     return header + renderWeekHeader() + subBar +
-      '<div class="card"><h2>⚖️ Body Weight</h2>'+
+      '<div class="card"><h2>Body Weight</h2>'+
       '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
       '<div class="field" style="margin:0;flex:1"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0"/></div>'+
       '<div class="field" style="margin:0;flex:1"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
       '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;">Log</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding-top:10px;border-top:1px solid var(--border);">'+
-      '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">🎯 Goal lb</div>'+
+      '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">Goal lb</div>'+
       '<input type="number" id="bwGoalInput" placeholder="e.g. 175" step="0.1" min="0" value="'+(bwGoal||'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:14px;font-weight:600;"/>'+
       '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
@@ -1374,7 +1371,6 @@ function renderLog() {
   if (currentWeek===getTotalWeeks() && logSession==='Legs') {
     return header + renderWeekHeader() + subBar +
       '<div class="card" style="text-align:center;padding:36px 16px;">'+
-      '<div style="font-size:36px;margin-bottom:12px;">😴</div>'+
       '<div style="font-size:17px;font-weight:600;margin-bottom:8px;">Rest — Week 12 Friday</div>'+
       '<div style="font-size:14px;color:var(--lite);line-height:1.6;">Save your legs for Saturday\'s 5k time trial.<br>No lifting today. That\'s the programme.</div>'+
       '</div>';
@@ -1385,7 +1381,6 @@ function renderLog() {
   ['Push','Pull','Legs'].forEach(function(key) {
     var d = SESS[key];
     picker += '<button class="sess-btn '+(logSession===key?'active':'')+'" onclick="pickSession(\''+key+'\')">'+
-      '<span class="sess-icon">'+d.icon+'</span>'+
       '<span class="sess-label">'+d.label+'</span>'+
       '</button>';
   });
@@ -1398,7 +1393,7 @@ function renderLog() {
   var mainDataPR = null;
   if (wdArrPR) { for(var p=0;p<wdArrPR.length;p++){if(wdArrPR[p].isMain){mainDataPR=wdArrPR[p];break;}} }
   var prBanner = (mainDataPR && mainDataPR.pr) ?
-    '<div style="background:rgba(200,255,0,.08);border-left:3px solid var(--accent);border-radius:0 12px 12px 0;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--accent);font-weight:600;">🔥 PR attempt this week — go for it on the main lift</div>' : '';
+    '<div style="background:rgba(200,255,0,.08);border-left:3px solid var(--accent);border-radius:0 12px 12px 0;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--accent);font-weight:600;"> PR attempt this week — go for it on the main lift</div>' : '';
 
   return header + renderWeekHeader() + subBar +
     renderTodayCard()+
@@ -1407,7 +1402,7 @@ function renderLog() {
       '<div class="field" style="margin:0;"><input type="date" id="logDate" value="'+logDate+'" onchange="logDate=this.value" style="background:none;border:none;color:var(--lite);font-size:13px;font-weight:500;padding:0;width:auto;cursor:pointer;"/></div>'+
     '</div>'+
     '<div class="sess-grid">'+picker+'</div>'+
-    '<div class="sect"><span class="sect-title">'+def.icon+' '+def.label+'</span>'+
+    '<div class="sect"><span class="sect-title">'+def.label+'</span>'+
       '<span style="font-size:12px;color:var(--lite);">'+def.focus.split('·')[0].trim()+'</span>'+
     '</div>'+
     prBanner+exRows+
@@ -1415,7 +1410,7 @@ function renderLog() {
     '<div class="field"><label>Session notes</label>'+
     '<textarea id="sessNote" rows="2" class="ex-note-input" placeholder="Energy, sleep, shoulder, anything notable...">'+sessionNote+'</textarea>'+
     '</div>'+
-    '<button class="log-save-btn" onclick="saveAndCopy()">💾 Save session</button>'+
+    '<button class="log-save-btn" onclick="saveAndCopy()">Save session</button>'+
     '</div>';
 }
 
@@ -1486,7 +1481,7 @@ function toggleExHist(name){
   var el=document.getElementById('exhist-'+name.replace(/[^a-z0-9]/gi,'-'));
   if(el) el.style.display=logHistExpanded[name]?'block':'none';
   var btn=document.getElementById('exhistbtn-'+name.replace(/[^a-z0-9]/gi,'-'));
-  if(btn) btn.textContent=logHistExpanded[name]?'▲ Hide history':'📊 History';
+  if(btn) btn.textContent=logHistExpanded[name]?'▲ Hide history':'History';
 }
 // Skips — intentionally skipped sessions
 function getSkips(){return lsGet('kt_skips')||[];}
@@ -1526,7 +1521,7 @@ function renderQuickExRow(ex, slotIdx) {
   var wdEx = null;
   if (wdArr) { for(var r=0;r<wdArr.length;r++){if(wdArr[r].name===exName){wdEx=wdArr[r];break;}} }
   var targetStr = wdEx
-    ? (ex.isMain&&!isSwapped?'Target: ':'')+wdEx.sets+'×'+wdEx.reps+' @ RPE '+wdEx.rpe+(wdEx.pr?' 🔥':'')
+    ? (ex.isMain&&!isSwapped?'Target: ':'')+wdEx.sets+'×'+wdEx.reps+' @ RPE '+wdEx.rpe
     : ex.sets+'×'+ex.reps+' · RPE '+ex.rpe;
 
   var rpeOpts = [6,7,7.5,8,8.5,9,9.5,10];
@@ -1561,7 +1556,7 @@ function renderQuickExRow(ex, slotIdx) {
       histRows+'</div>'
     :'';
   var histBtn=hist.length
-    ?'<button id="exhistbtn-'+histSid+'" onclick="toggleExHist(\''+nameEsc+'\')" style="background:none;border:none;color:var(--muted);font-size:10px;font-weight:800;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:8px;text-transform:uppercase;letter-spacing:.04em;">'+(logHistExpanded[exName]?'▲ Hide':'📊 Hist')+'</button>'
+    ?'<button id="exhistbtn-'+histSid+'" onclick="toggleExHist(\''+nameEsc+'\')" style="background:none;border:none;color:var(--muted);font-size:10px;font-weight:800;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:8px;text-transform:uppercase;letter-spacing:.04em;">'+(logHistExpanded[exName]?'▲ Hide':'Hist')+'</button>'
     :'';
 
   var curReps = repsArr[0] || 8;
@@ -1615,7 +1610,7 @@ function renderQuickExRow(ex, slotIdx) {
       'onchange="logExNotes[\''+nameEsc+'\']=this.value">'+
       (logExNotes[exName]||'')+
     '</textarea>'+
-    '<button onclick="showRestTimer()" style="display:block;margin-top:12px;background:none;border:none;color:var(--muted);font-size:12px;font-weight:500;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;">⏱ Rest Timer</button>'+
+    '<button onclick="showRestTimer()" style="display:block;margin-top:12px;background:none;border:none;color:var(--muted);font-size:12px;font-weight:500;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;"> Rest Timer</button>'+
   '</div>';
 }
 
@@ -1740,7 +1735,7 @@ function toggleRestTimer(){
         var t=document.getElementById('rest-timer');
         if(t) t.classList.remove('urgent');
         playTimerDoneSound();
-        showToast('⏱ Rest done — next set!');
+        showToast('Rest done — next set!');
         setTimeout(hideRestTimer,2200);
       }
     },1000);
@@ -1917,7 +1912,6 @@ function saveAndCopy() {
       var b=document.createElement('div');
       b.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;';
       b.innerHTML='<div style="background:var(--card);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;">'+
-        '<div style="font-size:36px;margin-bottom:10px;">🎉</div>'+
         '<div style="font-size:17px;font-weight:800;margin-bottom:8px;">Week '+currentWeek+' complete!</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">All 3 sessions done. Ready to move on to Week '+nextWk+'?</div>'+
         '<button onclick="currentWeek='+nextWk+';lsSet(\'kt_week\','+nextWk+');this.closest(\'div\').parentElement.remove();render();" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">→ Advance to Week '+nextWk+'</button>'+
@@ -1931,10 +1925,9 @@ function saveAndCopy() {
       var b=document.createElement('div');
       b.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
       b.innerHTML='<div style="background:var(--card);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;">'+
-        '<div style="font-size:32px;margin-bottom:10px;">💾</div>'+
         '<div style="font-size:17px;font-weight:800;margin-bottom:8px;">'+sessions.length+' sessions logged!</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">Great consistency. Export a backup now so you never lose your data.</div>'+
-        '<button onclick="exportData();this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">⬇ Export Backup</button>'+
+        '<button onclick="exportData();this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">Export Backup</button>'+
         '<button onclick="this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--border);color:var(--text);border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;">Skip for now</button>'+
         '</div>';
       document.body.appendChild(b);
@@ -1970,7 +1963,7 @@ function selectManual(){var ta=document.getElementById('manualCopyTxt');if(ta){t
 
 function showCompletionSummary(exs,date,newPRs){
   var vol=calcVolume(exs);
-  var def=SESS[logSession]||{icon:'💪',label:logSession};
+  var def=SESS[logSession]||{icon:'',label:logSession};
   var mainEx=exs.find(function(e){return getSessionExercises(logSession).find(function(x){return x.isMain&&x.name===e.name;});});
   var msgs=['Solid session. Keep stacking.','Every rep counts. Well done.','Consistency beats intensity. Keep showing up.','That\'s another session in the books.','Progress is progress. Nice work.'];
   var msg=msgs[Math.floor(Math.random()*msgs.length)];
@@ -1978,7 +1971,7 @@ function showCompletionSummary(exs,date,newPRs){
   var prHTML='';
   if(newPRs.length){
     prHTML='<div style="background:#ca8a0420;border:1px solid #eab30855;border-radius:10px;padding:10px 12px;margin-bottom:14px;">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:4px;">🏆 NEW PR'+(newPRs.length>1?'s':'')+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:4px;">NEW PR'+(newPRs.length>1?'s':'')+'</div>'+
       newPRs.map(function(n){return '<div style="font-size:13px;color:var(--text);">'+n+'</div>';}).join('')+
     '</div>';
   }
@@ -2000,7 +1993,6 @@ function showCompletionSummary(exs,date,newPRs){
   overlay.innerHTML=
     '<div style="background:var(--card);border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;border-top:1px solid var(--border);">'+
       '<div style="text-align:center;margin-bottom:20px;">'+
-        '<div style="font-size:36px;margin-bottom:6px;">'+def.icon+'</div>'+
         '<div style="font-size:20px;font-weight:800;">Session done</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+def.label+' · '+fmtDate(date)+'</div>'+
       '</div>'+
@@ -2048,7 +2040,7 @@ function renderRunsSection() {
   var runs = getRuns();
   var runItems = '';
   if (!runs.length) {
-    runItems = '<div class="empty"><div class="empty-icon">🏃</div><p>No runs logged yet</p></div>';
+    runItems = '<div class="empty"><p>No runs logged yet</p></div>';
   } else {
     runs.slice(0,10).forEach(function(r) {
       var dist=parseFloat(r.distance||r.dist||0);
@@ -2065,7 +2057,7 @@ function renderRunsSection() {
   }
 
   var runGoal=getRunGoal();
-  return '<div class="card"><h2>🏃 Week '+currentWeek+' Run Targets</h2>'+runCards+'</div>'+
+  return '<div class="card"><h2>Week '+currentWeek+' Run Targets</h2>'+runCards+'</div>'+
     '<div class="card"><h2>Log Run</h2>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+
     '<div class="field" style="margin:0"><label>Distance (km)</label><input type="number" id="runDist" placeholder="5.0" step="0.1" min="0" oninput="updateRunPacePreview()"/></div>'+
@@ -2086,7 +2078,7 @@ function renderRunsSection() {
     '<div class="field"><label>Notes (optional)</label><input type="text" id="runNote" placeholder="How it felt, course, conditions..."/></div>'+
     '<button class="btn btn-green btn-full" onclick="saveRun()">Save & Copy Run</button>'+
     '<div style="display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">'+
-    '<div style="font-size:10px;color:var(--muted);font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:.06em;">🎯 Goal</div>'+
+    '<div style="font-size:10px;color:var(--muted);font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:.06em;">Goal</div>'+
     '<input type="text" id="runGoalInput" placeholder="e.g. 5:30" value="'+(runGoal||'')+'" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:8px 10px;color:var(--text);font-size:14px;font-weight:700;"/>'+
     '<span style="font-size:11px;color:var(--muted);white-space:nowrap;font-weight:700;">/km</span>'+
     '<button class="btn btn-ghost" onclick="saveRunGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
@@ -2107,7 +2099,7 @@ function saveRunGoal(){
   var el=document.getElementById('runGoalInput');
   var v=el?el.value.trim():'';
   setRunGoal(v);
-  showToast(v?'🎯 Pace goal: '+v+'/km':'Goal cleared');
+  showToast(v?'Pace goal: '+v+'/km':'Goal cleared');
   render();
 }
 
@@ -2147,7 +2139,7 @@ function saveRun() {
   txt+='\n';
   if(type&&type!=='easy') txt+='Type: '+type.charAt(0).toUpperCase()+type.slice(1)+'\n';
   if(note) txt+='Notes: '+note+'\n';
-  function afterCopy(){showToast('Run saved & copied! 🏃');}
+  function afterCopy(){showToast('Run saved & copied!');}
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(afterCopy).catch(function(){showManualCopy(txt);afterCopy();});
   } else {showManualCopy(txt);afterCopy();}
@@ -2165,7 +2157,7 @@ function renderWeights() {
       '</div>';
   });
 
-  return '<div class="card"><h2>⚖️ Body Weight</h2>'+
+  return '<div class="card"><h2>Body Weight</h2>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'+
       '<div class="field" style="margin:0"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0"/></div>'+
       '<div class="field" style="margin:0"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
@@ -2177,13 +2169,13 @@ function renderWeights() {
 
 function renderData() {
   return '<div class="card">'+
-    '<h2>💾 Backup & Restore</h2>'+
+    '<h2>Backup & Restore</h2>'+
     '<p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;">Export saves everything — sessions, runs, PRs, and weights — to a JSON file. Import restores from that file.</p>'+
-    '<button class="btn btn-green btn-full" style="margin-bottom:10px;padding:14px;font-size:15px;" onclick="exportData()">⬇ Export Backup</button>'+
-    '<button class="btn btn-ghost btn-full" style="padding:14px;font-size:15px;" onclick="importData()">⬆ Import Backup</button>'+
+    '<button class="btn btn-green btn-full" style="margin-bottom:10px;padding:14px;font-size:15px;" onclick="exportData()">Export Backup</button>'+
+    '<button class="btn btn-ghost btn-full" style="padding:14px;font-size:15px;" onclick="importData()">Import Backup</button>'+
     '</div>'+
     '<div class="card">'+
-    '<h2>ℹ️ About Your Data</h2>'+
+    '<h2>About Your Data</h2>'+
     '<p style="font-size:13px;color:var(--muted);line-height:1.6;">All data lives in this browser\'s local storage, tied to this URL. If you ever deploy to a new URL, import your last backup first. Export regularly as a safety net.</p>'+
     '</div>';
 }
@@ -2202,7 +2194,7 @@ function saveBWGoal(){
   var el=document.getElementById('bwGoalInput');
   var v=el?parseFloat(el.value):0;
   setBWGoal(v);
-  showToast(v>0?'🎯 Goal set: '+v+' lb':'Goal cleared');
+  showToast(v>0?'Goal set: '+v+' lb':'Goal cleared');
   render();
 }
 
@@ -2249,10 +2241,10 @@ function renderProgress() {
   }
 
   var run5kGoalSec=40*60;
-  var goals='<div class="chart-card"><h2 style="margin-bottom:14px;">🎯 Goals</h2>'+
-    goalBar('🏋️ Bench Press',bestBench,175,'lb',false)+
-    goalBar('🦵 Back Squat',bestSquat,150,'lb',false)+
-    (bestRun5kSec>0?goalBar('⏱ 5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">⏱ 5k — log a ~5 km run to track pace</div>')+
+  var goals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
+    goalBar('Bench Press',bestBench,175,'lb',false)+
+    goalBar('Back Squat',bestSquat,150,'lb',false)+
+    (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
     '</div>';
 
   var streak=calcStreak(sessions);
@@ -2371,9 +2363,9 @@ function renderProgress() {
   var volCharts='';
   if(pushVol.length>=2||pullVol.length>=2||legsVol.length>=2){
     volCharts='<div class="chart-card"><div class="chart-lbl" style="margin-bottom:14px;">Volume · total lb per session</div>';
-    if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px;">💪 Push</div>'+svgChart(pushVol,'#c8ff00')+'</div>';
-    if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:6px;">🔄 Pull</div>'+svgChart(pullVol,'#60a5fa')+'</div>';
-    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">🦵 Legs</div>'+svgChart(legsVol,'#fb923c')+'</div>';
+    if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px;">Push</div>'+svgChart(pushVol,'#c8ff00')+'</div>';
+    if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:6px;">Pull</div>'+svgChart(pullVol,'#60a5fa')+'</div>';
+    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs</div>'+svgChart(legsVol,'#fb923c')+'</div>';
     volCharts+='</div>';
   }
 
@@ -2386,7 +2378,7 @@ function renderProgress() {
         (bwGoal?'<div class="chart-delta">Goal: '+bwGoal+' lb</div>':'')+
       '</div></div>'+
       svgChart(bwData,'#60a5fa',bwGoal)+'</div>'
-    :(bws.length?'':'<div class="chart-card"><div class="empty"><div class="empty-icon">⚖️</div><p>Log weigh-ins in the Log tab</p></div></div>');
+    :(bws.length?'':'<div class="chart-card"><div class="empty"><p>Log weigh-ins in the Log tab</p></div></div>');
 
   var calHTML=renderCalendar(sessions,runs);
 
@@ -2504,10 +2496,10 @@ function renderCalDetail(sessions,runs){
   if(!calSelectedDate) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Tap a day to see what you did</div>';
   var daySessions=sessions.filter(function(s){return s.date===calSelectedDate;});
   var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
-  if(!daySessions.length&&!dayRuns.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day 😴</div>';
+  if(!daySessions.length&&!dayRuns.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
   var html='';
   daySessions.forEach(function(s){
-    var def=SESS[s.type]||{icon:'💪',label:s.type};
+    var def=SESS[s.type]||{icon:'',label:s.type};
     var sessionPRs=s.prs||[];
     var exRows='';
     (s.exercises||[]).forEach(function(ex){
@@ -2515,23 +2507,23 @@ function renderCalDetail(sessions,runs){
       var repsDisplay=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
       var wStr=parseFloat(ex.weight)>0?ex.weight+' lb':'BW';
       exRows+='<div class="hist-ex-row">'+
-        '<div class="hist-ex-top"><span class="hist-ex-name">'+(isPR?'🏆 ':'')+ex.name+'</span>'+
+        '<div class="hist-ex-top"><span class="hist-ex-name">'+ex.name+'</span>'+
         '<span class="hist-ex-weight">'+wStr+'</span></div>'+
         '<div class="hist-ex-detail">'+ex.sets+'×('+repsDisplay+') · RPE '+ex.rpe+'</div>'+
         (ex.note?'<div class="hist-ex-note">'+ex.note+'</div>':'')+
       '</div>';
     });
     html+='<div style="margin-bottom:10px;">'+
-      '<div style="font-size:14px;font-weight:800;margin-bottom:8px;letter-spacing:-.2px;">'+def.icon+' '+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
+      '<div style="font-size:14px;font-weight:800;margin-bottom:8px;letter-spacing:-.2px;">'+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
       exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">📝 '+s.note+'</div>':'')+
+      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
     '</div>';
   });
   dayRuns.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
     var p=calcPace(dist,r.time);
     html+='<div style="margin-bottom:10px;">'+
-      '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">🏃 Run'+(r.week?' · Week '+r.week:'')+'</div>'+
+      '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Run'+(r.week?' · Week '+r.week:'')+'</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+dist+'km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.time+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">time</div></div>'+
@@ -2592,16 +2584,16 @@ function renderCalendar(sessions,runs){
   '</div>';
   var detail='<div id="cal-detail" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">'+renderCalDetail(sessions,runs)+'</div>';
 
-  return '<div class="card"><h2>📅 Activity Calendar</h2>'+header+grid+legend+detail+'</div>';
+  return '<div class="card"><h2>Activity Calendar</h2>'+header+grid+legend+detail+'</div>';
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
 function renderHistory() {
   var sessions=getSessions();
-  if(!sessions.length) return '<div class="card"><div class="empty"><div class="empty-icon">📓</div><p>No sessions yet. Hit Log to get started!</p></div></div>';
+  if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
   var items='';
   sessions.slice(0,30).forEach(function(s) {
-    var def=SESS[s.type]||{icon:'💪',label:s.type,color:'var(--accent)'};
+    var def=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'};
     var sessionPRs=s.prs||[];
     var exRows='';
     (s.exercises||[]).forEach(function(ex){
@@ -2610,7 +2602,7 @@ function renderHistory() {
       var wStr=parseFloat(ex.weight)>0?ex.weight+' lb':'BW';
       exRows+='<div class="hist-ex-row">'+
         '<div class="hist-ex-top">'+
-          '<span class="hist-ex-name">'+(isPR?'🏆 ':'')+ex.name+'</span>'+
+          '<span class="hist-ex-name">'+ex.name+'</span>'+
           '<span class="hist-ex-weight">'+wStr+'</span>'+
         '</div>'+
         '<div class="hist-ex-detail">'+ex.sets+'×('+repsDisplay+') &nbsp;·&nbsp; RPE '+ex.rpe+'</div>'+
@@ -2620,13 +2612,13 @@ function renderHistory() {
     items+='<div class="hist-item">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
         '<div>'+
-          '<div style="font-size:15px;font-weight:700;">'+def.icon+' '+def.label+'</div>'+
+          '<div style="font-size:15px;font-weight:700;">'+def.label+'</div>'+
           '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+fmtDate(s.date)+(s.week?' · Week '+s.week:'')+'</div>'+
         '</div>'+
-        (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">🏆 '+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
+        (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
       '</div>'+
       exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">📝 '+s.note+'</div>':'')+
+      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
     '</div>';
   });
   return '<div class="card"><h2>Session History</h2></div>'+items;
@@ -2636,10 +2628,10 @@ function renderHistory() {
 function showToast(msg){
   var t=document.getElementById('toast');
   t.textContent=msg;
-  t.style.background = msg.indexOf('🏆')>-1 ? 'var(--yellow)' : 'var(--green)';
-  t.style.color = msg.indexOf('🏆')>-1 ? '#000' : '#fff';
+  t.style.background = 'var(--green)';
+  t.style.color = '#fff';
   t.classList.add('show');
-  setTimeout(function(){t.classList.remove('show');},msg.indexOf('🏆')>-1?3500:2200);
+  setTimeout(function(){t.classList.remove('show');},2200);
 }
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
@@ -2709,7 +2701,7 @@ function startRoutineIntake(){
       checkForRoutineJSON(data.content[0].text);
     }
   }).catch(function(){
-    coachMessages.push({role:'assistant',content:'⚠️ Could not connect. Check your API key and internet connection.'});
+    coachMessages.push({role:'assistant',content:'Could not connect. Check your API key and internet connection.'});
   }).finally(function(){
     coachLoading=false;
     render();
@@ -2739,7 +2731,7 @@ function confirmLoadRoutine(){
   intakeMode=false;
   pendingRoutine=null;
   coachMessages=[];
-  showToast('Programme loaded! Week 1 is ready 🎉');
+  showToast('Programme loaded! Week 1 is ready');
   render();
 }
 
@@ -2857,10 +2849,10 @@ async function sendCoachMessage(){
       if(intakeMode) checkForRoutineJSON(replyText);
     }else{
       var errMsg=data.error?data.error.message:'Unknown error. Check your API key.';
-      coachMessages.push({role:'assistant',content:'⚠️ '+errMsg});
+      coachMessages.push({role:'assistant',content:' '+errMsg});
     }
   }catch(e){
-    coachMessages.push({role:'assistant',content:'⚠️ Could not connect. Check your internet connection.'});
+    coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
   }
   coachLoading=false;
   render();
@@ -2900,7 +2892,6 @@ function renderCoach(){
   if(!apiKey){
     return '<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>'+
       '<div class="card" style="text-align:center;padding:36px 20px;">'+
-      '<div style="font-size:48px;margin-bottom:14px;">🤖</div>'+
       '<div style="font-size:20px;font-weight:600;margin-bottom:8px;letter-spacing:-.3px;">AI Coach</div>'+
       '<p style="color:var(--lite);font-size:14px;line-height:1.6;margin-bottom:22px;">'+
         'Connect the Claude API to get personalised coaching, chat about sessions, and get a custom programme built for you.'+
@@ -2919,7 +2910,6 @@ function renderCoach(){
     return '<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>'+
       coachHead+
       '<div class="card" style="text-align:center;padding:32px 20px;">'+
-      '<div style="font-size:44px;margin-bottom:14px;">📋</div>'+
       '<div style="font-size:19px;font-weight:600;margin-bottom:8px;letter-spacing:-.3px;">Build Your Programme</div>'+
       '<p style="color:var(--lite);font-size:14px;line-height:1.6;margin-bottom:20px;">'+
         'The AI Coach will ask you a few questions about your goals, schedule, and fitness level, then generate a personalised 12-week programme.'+
@@ -2941,13 +2931,12 @@ function renderCoach(){
   var msgsHTML='';
   if(!coachMessages.length&&!intakeMode){
     msgsHTML='<div style="text-align:center;padding:24px 0 8px;">'+
-      '<div style="font-size:36px;margin-bottom:10px;">💬</div>'+
       '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">Ask anything</div>'+
       '<div style="font-size:13px;color:var(--lite);margin-bottom:20px;">Your training, your recovery, your goals</div>'+
     '</div>'+
     (hasCustomRoutine()?
       '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">'+
-        '<span style="font-size:13px;font-weight:600;color:var(--accent);">📋 Custom Programme Active</span>'+
+        '<span style="font-size:13px;font-weight:600;color:var(--accent);">Custom Programme Active</span>'+
         '<button onclick="resetCustomRoutine()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Regenerate</button>'+
       '</div>'
     :'')+
@@ -2968,11 +2957,11 @@ function renderCoach(){
           bubbles+='<div class="coach-bubble assistant">'+safe+'</div>';
         }
         bubbles+='<div class="card" style="margin:4px 0;border-color:var(--accent);padding:18px;">'+
-          '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">✅ Programme Ready</div>'+
+          '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">Programme Ready</div>'+
           '<p style="font-size:13px;color:var(--lite);line-height:1.5;margin-bottom:14px;">Your personalised 12-week programme has been generated. Tap below to load it and start training.</p>'+
           (pendingRoutine?
-            '<button class="btn btn-primary btn-full" onclick="confirmLoadRoutine()">🚀 Load My Programme</button>':
-            '<p style="font-size:12px;color:var(--red);">⚠️ Could not parse the programme. Ask the coach to regenerate it.</p>'
+            '<button class="btn btn-primary btn-full" onclick="confirmLoadRoutine()">Load My Programme</button>':
+            '<p style="font-size:12px;color:var(--red);">Could not parse the programme. Ask the coach to regenerate it.</p>'
           )+
         '</div>';
       }else{
@@ -3079,7 +3068,7 @@ function renderSettings() {
     '<div class="settings-group">'+
     '<div class="settings-group-hd">Programme</div>'+
     '<div class="settings-row">'+
-      '<div class="settings-row-ic">📋</div>'+
+      '<div class="settings-row-ic"></div>'+
       '<div class="settings-row-body">'+
         '<div class="settings-row-title">12-week plan</div>'+
         '<div class="settings-row-sub">Week '+currentWeek+' of '+totalWks+'</div>'+
@@ -3111,12 +3100,12 @@ function renderSettings() {
     '<div class="settings-group">'+
     '<div class="settings-group-hd">Data</div>'+
     '<div class="settings-row" onclick="exportData()">'+
-      '<div class="settings-row-ic">📤</div>'+
+      '<div class="settings-row-ic"></div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Export session log</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
     '<div class="settings-row" onclick="importData()">'+
-      '<div class="settings-row-ic">📥</div>'+
+      '<div class="settings-row-ic"></div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Import backup</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
