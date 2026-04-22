@@ -1200,28 +1200,35 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var wd = getWkData();
   var sessions = getSessions();
 
-  var cardBorder = isToday ? 'border-color:rgba(200,255,0,.35);' : '';
-  var badge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--card2);color:var(--lite);">'+labelTop+'</span>';
+  var cardStyle = isToday
+    ? 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
+    : 'opacity:.75;';
+
+  var badge = isToday
+    ? '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>'
+    : '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
 
   if (type === 'Run') {
     var runData = wd ? (wd.runTue || wd.runSat) : null;
     var runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
     if (runData && runData.hr) runNote += ' · HR <'+runData.hr;
-    return '<div class="today-card" style="'+cardBorder+'">'+
-      '<div style="display:flex;align-items:center;gap:8px;">'+
-        '<div class="today-label">Run</div>'+badge+
+    return '<div class="today-card" style="'+cardStyle+'">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<div class="today-label">Run</div>'+badge+
+        '</div>'+
+        '<div class="today-detail">'+runNote+'</div>'+
       '</div>'+
-      '<div class="today-detail">'+runNote+'</div>'+
-      '<div style="font-size:11px;margin-top:3px;">&nbsp;</div>'+
     '</div>';
   }
   if (type === 'Rest') {
-    return '<div class="today-card" style="'+cardBorder+'">'+
-      '<div style="display:flex;align-items:center;gap:8px;">'+
-        '<div class="today-label">Rest</div>'+badge+
+    return '<div class="today-card" style="opacity:.35;">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<div class="today-label">Rest</div>'+badge+
+        '</div>'+
+        '<div class="today-detail">Recovery</div>'+
       '</div>'+
-      '<div class="today-detail">Recovery</div>'+
-      '<div style="font-size:11px;margin-top:3px;">&nbsp;</div>'+
     '</div>';
   }
   var def = SESS[type];
@@ -1237,12 +1244,14 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var lastLabel = lastDone.length
     ? '<span style="color:var(--muted);">Last: '+fmtDate(lastDone[0].date)+'</span>'
     : '<span style="color:var(--accent);font-weight:600;">First time!</span>';
-  return '<div class="today-card" style="'+cardBorder+'">'+
-    '<div style="display:flex;align-items:center;gap:8px;">'+
-      '<div class="today-label">'+def.label+'</div>'+badge+
+  return '<div class="today-card" style="'+cardStyle+'">'+
+    '<div style="flex:1;min-width:0;">'+
+      '<div style="display:flex;align-items:center;gap:8px;">'+
+        '<div class="today-label">'+def.label+'</div>'+badge+
+      '</div>'+
+      '<div class="today-detail">'+detail+'</div>'+
+      '<div style="font-size:11px;margin-top:3px;font-weight:500;">'+lastLabel+'</div>'+
     '</div>'+
-    '<div class="today-detail">'+detail+'</div>'+
-    '<div style="font-size:11px;margin-top:3px;font-weight:500;">'+lastLabel+'</div>'+
   '</div>';
 }
 function renderTodayCard() {
