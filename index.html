@@ -490,7 +490,7 @@ var restInterval  = null;
 var WEEK_DATA = [null,
 // ── Week 1 — BASE ────────────────────────────────────────────────────────────
 {wk:1,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Week 1 done  — calibration complete. Right shoulder: no dips, monitor close grip bench. Cable Row was easy at 50 lb → bump to 60 lb Wk2.',
+ wkNote:'Week 1 done — calibration complete. Bench 155 lb, Squat 95 lb (too light). Right shoulder felt fine. Cable Row easy at 50 lb.',
  push:[
    {name:'Barbell Bench Press',isMain:true,sets:4,reps:8,weight:155,rpe:7},
    {name:'Incline Dumbbell Press',sets:3,reps:10,weight:65,rpe:8},
@@ -516,13 +516,13 @@ var WEEK_DATA = [null,
    {name:'Leg Extension',sets:3,reps:10,weight:50,rpe:8},
    {name:'Lying Leg Curl',sets:3,reps:12,weight:25,rpe:8},
    {name:'Standing Calf Raise',sets:4,reps:15,weight:0,rpe:7},
-   {name:'Cable Crunch',sets:3,reps:6,weight:0,rpe:7}
+   {name:'Hanging Leg Raise',sets:3,reps:6,weight:0,rpe:7}
  ],
- runTue:{km:3,hr:150,type:'easy',note:'Week 1 run done  — 29:41 / 149bpm ✓'},
+ runTue:{km:3,hr:150,type:'easy',note:'Week 1 run done — 29:41 / 149bpm'},
  runSat:{km:3,hr:150,type:'easy',note:'HR cap <150 the whole way'}},
 // ── Week 2 — BASE ────────────────────────────────────────────────────────────
 {wk:2,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Week 2 done  — squat moving well. RPE 8 across the board. Right shoulder: still no dips.',
+ wkNote:'Week 2 done — Bench held 155 lb, RPE climbed 7→8. Squat 95 still too light, ramp activated. Hammer Curl topped at 30 lb.',
  push:[
    {name:'Barbell Bench Press',isMain:true,sets:4,reps:8,weight:155,rpe:8},
    {name:'Incline Dumbbell Press',sets:3,reps:8,weight:65,rpe:8},
@@ -552,351 +552,352 @@ var WEEK_DATA = [null,
  ],
  runTue:{km:3,hr:150,type:'easy',note:'HR cap <150'},
  runSat:{km:3.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 3 — BASE ────────────────────────────────────────────────────────────
+// ── Week 3 — BASE (in progress) ──────────────────────────────────────────────
 {wk:3,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'Small load bumps across the board. Hold RPE 8 — form over weight. Squat jumps to 135 lb.',
+ wkNote:'Bench PR 165 x 4x6 @ RPE 7.5. OH Tri Ext rebaselined to 27.5 — tris moved last. Z2 cap raised 150 → 165. Tue 5 km @ 9'47"/km, avg 160 bpm — felt easy.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:162.5,rpe:8},
-   {name:'Incline Dumbbell Press',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Machine Shoulder Press',sets:3,reps:10,weight:95,rpe:8},
-   {name:'Cable Fly',sets:3,reps:12,weight:42.5,rpe:7.5},
-   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8.5},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:165,rpe:7.5,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:10,weight:90,rpe:8},
+   {name:'Cable Fly',sets:3,reps:10,weight:42.5,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
    {name:'Tricep Pushdown',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:42.5,rpe:8}
+   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:27.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:8,weight:115,rpe:8}
  ],
  pull:[
    {name:'Pull Up',isMain:true,sets:4,reps:6,weight:0,rpe:8},
-   {name:'Seated Cable Row',sets:3,reps:10,weight:65,rpe:8},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Chest Supported Row',sets:3,reps:10,weight:92.5,rpe:8},
+   {name:'Cable Row',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:10,weight:50,rpe:8},
    {name:'Incline DB Curl',sets:3,reps:10,weight:20,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:7}
+   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:8.5},
+   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:6,weight:135,rpe:7.5},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:8,weight:135,rpe:7},
    {name:'Romanian Deadlift',sets:3,reps:10,weight:115,rpe:8},
    {name:'Leg Press',sets:3,reps:12,weight:130,rpe:8},
-   {name:'Leg Extension',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:55,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:15,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:45,rpe:8}
- ],
- runTue:{km:3.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 4 — BASE (end of Block 1) ───────────────────────────────────────────
-{wk:4,block:1,bName:'BASE',bColor:'#06b6d4',
- wkNote:'End of Block 1 — reps drop, load goes up. Weighted pull-ups start! ',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:5,weight:165,rpe:8.5,pr:true},
-   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:10,weight:100,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:42.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:60,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:42.5,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:7.5,rpe:8.5,pr:true},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:75,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:95,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:20,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:5,weight:155,rpe:8,pr:true},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:125,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:10,weight:150,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:12,weight:60,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:57.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:55,rpe:8.5},
+   {name:'Lying Leg Curl',sets:3,reps:12,weight:60,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:15,weight:25,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:4,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 5 — BUILD ───────────────────────────────────────────────────────────
-{wk:5,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'BUILD block — strength bias, RPE 8-9. Reps drop, load climbs. Pull-ups now +10 lb.',
+ runTue:{km:5,hr:165,type:'easy',note:'5 km @ 9'47"/km, avg 160 bpm — felt easy'},
+ runSat:{km:6,hr:165,type:'easy',note:'6 km steady. HR cap 165 avg. No sprint finish.'}},
+// ── Week 4 — BASE (Test Week, end of Block 1) ─────────────────────────────────
+{wk:4,block:1,bName:'BASE',bColor:'#06b6d4',
+ wkNote:'End of Block 1 test week — assess Bench, Squat, Pull Up. Tris stay last.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:5,weight:167.5,rpe:8},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:6,weight:165,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:10,weight:90,rpe:8},
+   {name:'Cable Fly',sets:3,reps:10,weight:45,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:35,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:12,weight:55,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:8,weight:115,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:4,reps:6,weight:5,rpe:8},
+   {name:'Cable Row',sets:4,reps:8,weight:80,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:10,weight:80,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:10,weight:55,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:12,weight:30,rpe:9},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:6,weight:155,rpe:8},
+   {name:'Romanian Deadlift',sets:3,reps:8,weight:125,rpe:8},
+   {name:'Leg Press',sets:3,reps:12,weight:145,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:60,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:12,weight:65,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:15,weight:30,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo: 1 km easy + 3 km @ 8:30/km + 1 km easy. Total 5 km.'},
+ runSat:{km:6.5,hr:165,type:'easy',note:'6-7 km easy. HR cap 165.'}},
+// ── Week 5 — BUILD ────────────────────────────────────────────────────────────
+{wk:5,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'BUILD block — heavier compounds, intensity climbs. RPE 8-9 on top sets. Reps drop, load goes up.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:170,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:67.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:8,weight:95,rpe:8},
+   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:25,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:40,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:60,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:120,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:10,rpe:8},
+   {name:'Cable Row',sets:4,reps:6,weight:90,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:90,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:60,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:25,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:165,rpe:8},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:135,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:160,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:65,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:70,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:35,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 6 — BUILD ────────────────────────────────────────────────────────────
+{wk:6,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'Same scheme — add weight where last week hit RPE 8 for both sessions. Upper +2.5 lb, lower +5 lb.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:172.5,rpe:8},
+   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:70,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:8,weight:100,rpe:8},
+   {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:42.5,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:62.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:122.5,rpe:8}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:12.5,rpe:8},
+   {name:'Cable Row',sets:4,reps:6,weight:92.5,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:92.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:62.5,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:170,rpe:8},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:140,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:165,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:67.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:37.5,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 7 — BUILD ────────────────────────────────────────────────────────────
+{wk:7,block:2,bName:'BUILD',bColor:'#7c6bff',
+ wkNote:'Heaviest BUILD week. Sleep 7+ hrs before legs. Add weight only where RPE was under 8 last week.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:5,reps:5,weight:175,rpe:8.5},
    {name:'Incline Dumbbell Press',sets:3,reps:8,weight:72.5,rpe:8},
    {name:'Machine Shoulder Press',sets:3,reps:8,weight:105,rpe:8},
-   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:62.5,rpe:8},
-   {name:'Overhead Tricep Ext',sets:3,reps:12,weight:45,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:10,rpe:8},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:75,rpe:8},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:77.5,rpe:8},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:100,rpe:8},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:22.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:30,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:5,weight:165,rpe:8},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:135,rpe:8},
-   {name:'Leg Press',sets:3,reps:10,weight:170,rpe:8},
-   {name:'Leg Extension',sets:3,reps:12,weight:62.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:60,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:50,rpe:8}
- ],
- runTue:{km:4,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 6 — BUILD ───────────────────────────────────────────────────────────
-{wk:6,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'Reps drop to 4 on compounds. Pull-ups +15 lb. Add weight only if RPE felt easy last week.',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:170,rpe:8},
-   {name:'Incline Dumbbell Press',sets:3,reps:8,weight:75,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:8,weight:110,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:45,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:10,weight:65,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:45,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:5,weight:15,rpe:8.5},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:80,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:80,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:105,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:10,weight:25,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8},
-   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:175,rpe:8},
-   {name:'Romanian Deadlift',sets:3,reps:8,weight:145,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:10,weight:190,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:12,weight:65,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:12,weight:62.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:12,weight:0,rpe:8},
-   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
- ],
- runTue:{km:4.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:4.5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 7 — BUILD ───────────────────────────────────────────────────────────
-{wk:7,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'Heaviest BUILD week. Pull-ups +20 lb. Sleep 7+ hrs Thursday before legs. ',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:175,rpe:8.5},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:77.5,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:8,weight:115,rpe:8.5},
    {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8.5},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:67.5,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:47.5,rpe:8}
+   {name:'DB Lateral Raise',sets:4,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:45,rpe:8},
+   {name:'Tricep Pushdown',sets:3,reps:10,weight:65,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:6,weight:125,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:20,rpe:8.5},
-   {name:'Seated Cable Row',sets:3,reps:8,weight:85,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:82.5,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:8,weight:110,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:25,rpe:8},
+   {name:'Pull Up',isMain:true,sets:5,reps:5,weight:15,rpe:8.5},
+   {name:'Cable Row',sets:4,reps:6,weight:95,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:8,weight:95,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:8,weight:65,rpe:8},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
    {name:'Hammer Curl',sets:3,reps:10,weight:32.5,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:185,rpe:8.5},
-   {name:'Romanian Deadlift',sets:3,reps:6,weight:155,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:8,weight:210,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:65,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:55,rpe:8}
+   {name:'Barbell Back Squat',isMain:true,sets:5,reps:5,weight:175,rpe:8.5},
+   {name:'Romanian Deadlift',sets:4,reps:6,weight:145,rpe:8},
+   {name:'Leg Press',sets:3,reps:10,weight:170,rpe:8},
+   {name:'Leg Extension',sets:3,reps:12,weight:70,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:75,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:40,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:4.5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 8 — BUILD (PR push, end of Block 2) ─────────────────────────────────
+ runTue:{km:5,hr:165,type:'easy',note:'5 km easy. HR cap 165.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km steady. HR cap 165.'}},
+// ── Week 8 — BUILD (PR test week, end of Block 2) ─────────────────────────────
 {wk:8,block:2,bName:'BUILD',bColor:'#7c6bff',
- wkNote:'End of BUILD — PR week! 4x3 compounds. Pull-ups +25 lb. PEAK block next. ',
+ wkNote:'End of Block 2 test week — Bench top set of 3 @ RPE 9. Squat top set of 3 @ RPE 9. Pull Up AMRAP @ BW. Run: 5 km time trial.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:4,reps:3,weight:180,rpe:8.5,pr:true},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:80,rpe:8.5},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:120,rpe:8.5},
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:3,weight:182.5,rpe:9,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:75,rpe:8.5},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:110,rpe:8.5},
    {name:'Cable Fly',sets:3,reps:12,weight:47.5,rpe:8},
-   {name:'DB Lateral Raise',sets:4,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:70,rpe:8.5},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8.5}
+   {name:'DB Lateral Raise',sets:4,reps:12,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:47.5,rpe:8.5},
+   {name:'Tricep Pushdown',sets:3,reps:8,weight:67.5,rpe:8.5},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:127.5,rpe:8.5}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:25,rpe:9,pr:true},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:90,rpe:8.5},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:85,rpe:8.5},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:115,rpe:8.5},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
+   {name:'Pull Up',isMain:true,sets:1,reps:15,weight:0,rpe:10,pr:true},
+   {name:'Cable Row',sets:4,reps:5,weight:100,rpe:8.5},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:97.5,rpe:8.5},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:67.5,rpe:8.5},
+   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:8},
    {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:4,reps:3,weight:195,rpe:8.5,pr:true},
-   {name:'Romanian Deadlift',sets:3,reps:6,weight:165,rpe:8.5},
-   {name:'Leg Press',sets:3,reps:8,weight:230,rpe:8.5},
-   {name:'Leg Extension',sets:3,reps:10,weight:70,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:67.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:3,weight:185,rpe:9,pr:true},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:150,rpe:8.5},
+   {name:'Leg Press',sets:3,reps:8,weight:175,rpe:8.5},
+   {name:'Leg Extension',sets:3,reps:12,weight:72.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:77.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:12,weight:42.5,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 9 — PEAK ────────────────────────────────────────────────────────────
+ runTue:{km:5,hr:165,type:'tempo',note:'5 km time trial — go for it.'},
+ runSat:{km:7,hr:165,type:'easy',note:'7 km easy. HR cap 165. Recovery after test week.'}},
+// ── Week 9 — PEAK ─────────────────────────────────────────────────────────────
 {wk:9,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'PEAK block — heavy singles/doubles/triples, RPE 9. Lower volume, max intensity. ',
+ wkNote:'PEAK block — top-end strength. Volume down, intensity peaks. RPE 8-9 on compounds. Accessories pruned.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:3,weight:185,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:82.5,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:120,rpe:8.5},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:72.5,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:187.5,rpe:9},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:80,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:115,rpe:8},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:52.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:132.5,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:3,weight:25,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:87.5,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:117.5,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:27.5,rpe:8},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:8.5},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:20,rpe:9},
+   {name:'Cable Row',sets:4,reps:5,weight:110,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:107.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:72.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:8,weight:40,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:3,weight:205,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:175,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:250,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:70,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:60,rpe:8}
- ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 10 — PEAK ───────────────────────────────────────────────────────────
-{wk:10,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'3×2 on main compounds. Pull-ups +30 lb. Protect sleep — every rep counts.',
- push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:2,weight:190,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:6,weight:125,rpe:9},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:8,weight:75,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
- ],
- pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:3,weight:30,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:95,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:120,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:8.5},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:9},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
- ],
- legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:2,weight:215,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:185,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:260,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:75,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:195,rpe:9},
+   {name:'Romanian Deadlift',sets:3,reps:6,weight:160,rpe:8},
+   {name:'Leg Press',sets:3,reps:8,weight:190,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:82.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:47.5,rpe:8},
    {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 11 — PEAK ───────────────────────────────────────────────────────────
-{wk:11,block:3,bName:'PEAK',bColor:'#f97316',
- wkNote:'Final heavy week — 3×2 at RPE 9. Max effort. Sleep 7+ hrs. Deload next. ',
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:7.5,hr:165,type:'easy',note:'7-8 km steady. HR cap 165.'}},
+// ── Week 10 — PEAK ────────────────────────────────────────────────────────────
+{wk:10,block:3,bName:'PEAK',bColor:'#f97316',
+ wkNote:'PEAK Week 10 — push for PRs. Sleep 7+ hrs. Every rep counts.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:2,weight:195,rpe:9},
-   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
-   {name:'Machine Shoulder Press',sets:3,reps:5,weight:125,rpe:9},
-   {name:'Cable Fly',sets:3,reps:12,weight:50,rpe:8},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:30,rpe:8},
-   {name:'Tricep Pushdown',sets:3,reps:6,weight:77.5,rpe:9},
-   {name:'Overhead Tricep Ext',sets:3,reps:10,weight:50,rpe:8}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:4,weight:190,rpe:9},
+   {name:'Incline Dumbbell Press',sets:3,reps:6,weight:82.5,rpe:8},
+   {name:'Machine Shoulder Press',sets:3,reps:6,weight:117.5,rpe:8},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:55,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:5,weight:135,rpe:8}
  ],
  pull:[
-   {name:'Pull Up',isMain:true,sets:3,reps:2,weight:30,rpe:9},
-   {name:'Seated Cable Row',sets:3,reps:6,weight:95,rpe:9},
-   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:90,rpe:9},
-   {name:'Chest Supported Row',sets:3,reps:6,weight:120,rpe:9},
-   {name:'Incline DB Curl',sets:3,reps:8,weight:30,rpe:9},
-   {name:'Hammer Curl',sets:3,reps:8,weight:35,rpe:9},
-   {name:'Face Pull',sets:3,reps:15,weight:25,rpe:7}
+   {name:'Pull Up',isMain:true,sets:4,reps:4,weight:22.5,rpe:9},
+   {name:'Cable Row',sets:4,reps:5,weight:112.5,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:6,weight:110,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:6,weight:75,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:8,weight:42.5,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:3,reps:2,weight:220,rpe:9},
-   {name:'Romanian Deadlift',sets:3,reps:5,weight:190,rpe:9},
-   {name:'Leg Press',sets:3,reps:6,weight:270,rpe:9},
-   {name:'Leg Extension',sets:3,reps:10,weight:75,rpe:8},
-   {name:'Lying Leg Curl',sets:3,reps:10,weight:72.5,rpe:8},
-   {name:'Standing Calf Raise',sets:4,reps:10,weight:0,rpe:8},
-   {name:'Cable Crunch',sets:3,reps:12,weight:60,rpe:8}
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:4,weight:200,rpe:9},
+   {name:'Romanian Deadlift',sets:3,reps:6,weight:165,rpe:8},
+   {name:'Leg Press',sets:3,reps:8,weight:197.5,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:85,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:50,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
  ],
- runTue:{km:5,hr:150,type:'easy',note:'HR cap <150'},
- runSat:{km:5,hr:150,type:'easy',note:'HR cap <150'}},
-// ── Week 12 — DELOAD + TEST DAY ──────────────────────────────────────────────
-{wk:12,block:4,bName:'DELOAD',bColor:'#22c55e',
- wkNote:'DELOAD — go easy Mon/Wed. TEST DAY Friday Jun 27: squat 225 lb, bench max single, deadlift max. ',
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:8,hr:165,type:'easy',note:'7-8 km steady. HR cap 165.'}},
+// ── Week 11 — PEAK (Final Heavy Week) ─────────────────────────────────────────
+{wk:11,block:3,bName:'PEAK',bColor:'#f97316',
+ wkNote:'Final heavy week — top set of 1-2 reps @ RPE 9 on Bench, Squat, Weighted Pull Up. Max effort. Sleep 7+ hrs. Deload next.',
  push:[
-   {name:'Barbell Bench Press',isMain:true,sets:3,reps:5,weight:155,rpe:6},
-   {name:'Incline Dumbbell Press',sets:2,reps:8,weight:65,rpe:6},
-   {name:'Machine Shoulder Press',sets:2,reps:8,weight:90,rpe:6},
-   {name:'DB Lateral Raise',sets:3,reps:12,weight:25,rpe:6},
-   {name:'Tricep Pushdown',sets:2,reps:10,weight:50,rpe:6}
+   {name:'Barbell Bench Press',isMain:true,sets:4,reps:2,weight:192.5,rpe:9,pr:true},
+   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:85,rpe:9},
+   {name:'Machine Shoulder Press',sets:3,reps:5,weight:120,rpe:9},
+   {name:'DB Lateral Raise',sets:3,reps:15,weight:27.5,rpe:8},
+   {name:'Overhead Tricep Ext',sets:3,reps:6,weight:57.5,rpe:8},
+   {name:'Close Grip Bench Press',sets:3,reps:4,weight:137.5,rpe:9}
+ ],
+ pull:[
+   {name:'Pull Up',isMain:true,sets:4,reps:2,weight:25,rpe:9,pr:true},
+   {name:'Cable Row',sets:4,reps:4,weight:115,rpe:8},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:5,weight:112.5,rpe:8},
+   {name:'Chest Supported Row',sets:3,reps:5,weight:77.5,rpe:8},
+   {name:'Hammer Curl',sets:3,reps:6,weight:45,rpe:8},
+   {name:'Face Pull',sets:3,reps:15,weight:22.5,rpe:8}
+ ],
+ legs:[
+   {name:'Barbell Back Squat',isMain:true,sets:4,reps:2,weight:205,rpe:9,pr:true},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:170,rpe:8},
+   {name:'Leg Press',sets:3,reps:6,weight:205,rpe:8},
+   {name:'Lying Leg Curl',sets:3,reps:10,weight:87.5,rpe:8},
+   {name:'Standing Calf Raise',sets:4,reps:10,weight:52.5,rpe:8},
+   {name:'Hanging Leg Raise',sets:3,reps:12,weight:0,rpe:8}
+ ],
+ runTue:{km:5,hr:165,type:'tempo',note:'Tempo 5 km. HR cap 165.'},
+ runSat:{km:8,hr:165,type:'easy',note:'8 km steady. HR cap 165.'}},
+// ── Week 12 — DELOAD + REASSESS ───────────────────────────────────────────────
+{wk:12,block:4,bName:'DELOAD',bColor:'#22c55e',
+ wkNote:'DELOAD — all lifts at 60% working weight, 3x5, RPE 5-6. Runs: 2 x 4 km easy. End of week: full programme review, plan next cycle.',
+ push:[
+   {name:'Barbell Bench Press',isMain:true,sets:3,reps:5,weight:115,rpe:6},
+   {name:'Incline Dumbbell Press',sets:3,reps:5,weight:50,rpe:6},
+   {name:'Machine Shoulder Press',sets:3,reps:5,weight:72.5,rpe:6},
+   {name:'DB Lateral Raise',sets:3,reps:12,weight:15,rpe:6},
+   {name:'Overhead Tricep Ext',sets:3,reps:8,weight:35,rpe:6}
  ],
  pull:[
    {name:'Pull Up',isMain:true,sets:3,reps:5,weight:0,rpe:6},
-   {name:'Seated Cable Row',sets:2,reps:8,weight:60,rpe:6},
-   {name:'Lat Pulldown (neutral)',sets:2,reps:8,weight:70,rpe:6},
-   {name:'Chest Supported Row',sets:2,reps:8,weight:90,rpe:6},
-   {name:'Hammer Curl',sets:2,reps:10,weight:25,rpe:6}
+   {name:'Cable Row',sets:3,reps:5,weight:70,rpe:6},
+   {name:'Lat Pulldown (neutral)',sets:3,reps:5,weight:67.5,rpe:6},
+   {name:'Chest Supported Row',sets:3,reps:5,weight:47.5,rpe:6},
+   {name:'Hammer Curl',sets:3,reps:8,weight:27.5,rpe:6}
  ],
  legs:[
-   {name:'Barbell Back Squat',isMain:true,sets:1,reps:1,weight:225,rpe:10,pr:true},
-   {name:'Barbell Bench Press',isMain:true,sets:1,reps:1,weight:0,rpe:10,pr:true},
-   {name:'Deadlift',sets:1,reps:1,weight:0,rpe:10,pr:true}
+   {name:'Barbell Back Squat',isMain:true,sets:3,reps:5,weight:122.5,rpe:6},
+   {name:'Romanian Deadlift',sets:3,reps:5,weight:102.5,rpe:6},
+   {name:'Leg Press',sets:3,reps:5,weight:122.5,rpe:6},
+   {name:'Lying Leg Curl',sets:3,reps:8,weight:52.5,rpe:6},
+   {name:'Standing Calf Raise',sets:3,reps:10,weight:30,rpe:6},
+   {name:'Hanging Leg Raise',sets:3,reps:10,weight:0,rpe:6}
  ],
- runTue:{km:3,hr:140,type:'easy',note:'Easy shakeout — HR <140, keep it short'},
- runSat:{km:3,hr:140,type:'easy',note:'Easy deload run — save everything for TEST DAY '}}
+ runTue:{km:4,hr:150,type:'easy',note:'Easy shakeout. HR <150. Short and relaxed.'},
+ runSat:{km:4,hr:150,type:'easy',note:'Easy deload run. HR <150. Save energy for programme review.'}}
 ];
 
 // ── Workout Definitions ───────────────────────────────────────────────────────
 var SESS = {
   Push:{label:'Push',icon:'',color:'#7c6bff',focus:'Chest · Shoulders · Triceps',
     exercises:[
-      {name:'Barbell Bench Press',isMain:true,sets:4,reps:'5-6',rpe:'8'},
-      {name:'Incline Dumbbell Press',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Cable Fly',sets:3,reps:'12',rpe:'7-8'},
-      {name:'DB Lateral Raise',sets:3,reps:'12-15',rpe:'7-8'},
-      {name:'Tricep Pushdown',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Overhead Tricep Ext',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Close Grip Bench Press',sets:3,reps:'8-10',rpe:'7-8'}
+      {name:'Barbell Bench Press',isMain:true,sets:4,reps:'4-6',rpe:'8-9'},
+      {name:'Incline Dumbbell Press',sets:3,reps:'6-8',rpe:'8'},
+      {name:'Machine Shoulder Press',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Cable Fly',sets:3,reps:'10-12',rpe:'8'},
+      {name:'DB Lateral Raise',sets:4,reps:'12-15',rpe:'8'},
+      {name:'Overhead Tricep Ext',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Tricep Pushdown',sets:3,reps:'10-12',rpe:'8'},
+      {name:'Close Grip Bench Press',sets:3,reps:'5-8',rpe:'8'}
     ]},
   Pull:{label:'Pull',icon:'',color:'#22c55e',focus:'Back · Biceps',
     exercises:[
-      {name:'Pull Up',isMain:true,sets:4,reps:'5-8',rpe:'7-8'},
-      {name:'Seated Cable Row',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Lat Pulldown (neutral)',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Chest Supported Row',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Hammer Curl',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Barbell Curl (21s)',sets:2,reps:'21',rpe:'7-8'},
-      {name:'Face Pull',sets:3,reps:'15',rpe:'7'}
+      {name:'Pull Up',isMain:true,sets:4,reps:'4-6',rpe:'8'},
+      {name:'Cable Row',sets:4,reps:'6-10',rpe:'8'},
+      {name:'Lat Pulldown (neutral)',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Chest Supported Row',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Incline DB Curl',sets:3,reps:'8-10',rpe:'8'},
+      {name:'Hammer Curl',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Face Pull',sets:3,reps:'15',rpe:'8'}
     ]},
-  Legs:{label:'Legs',icon:'',color:'#f97316',focus:'Quads · Hamstrings · Core',
+  Legs:{label:'Legs',icon:'',color:'#f97316',focus:'Quads · Hamstrings · Glutes',
     exercises:[
-      {name:'Barbell Back Squat',isMain:true,sets:4,reps:'5-8',rpe:'8'},
-      {name:'Romanian Deadlift',sets:3,reps:'8-10',rpe:'7-8'},
-      {name:'Leg Press',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Leg Extension',sets:3,reps:'12',rpe:'7-8'},
-      {name:'Seated Leg Curl',sets:3,reps:'10-12',rpe:'7-8'},
-      {name:'Standing Calf Raise',sets:4,reps:'12-15',rpe:'7'},
-      {name:'Cable Crunch',sets:3,reps:'12',rpe:'7-8'}
+      {name:'Barbell Back Squat',isMain:true,sets:4,reps:'4-8',rpe:'8'},
+      {name:'Romanian Deadlift',sets:3,reps:'6-10',rpe:'8'},
+      {name:'Leg Press',sets:3,reps:'8-12',rpe:'8'},
+      {name:'Leg Extension',sets:3,reps:'12',rpe:'8'},
+      {name:'Lying Leg Curl',sets:3,reps:'10-12',rpe:'8'},
+      {name:'Standing Calf Raise',sets:4,reps:'10-15',rpe:'8'},
+      {name:'Hanging Leg Raise',sets:3,reps:'12',rpe:'8'}
     ]}
 };
 
@@ -925,15 +926,14 @@ function getWeek() { return lsGet('kt_week')||1; }
 
 function defaultWeights() {
   return {
-    'Barbell Bench Press':155,'Incline Dumbbell Press':65,'Cable Fly':100,
-    'DB Lateral Raise':25,'Tricep Pushdown':55,'Overhead Tricep Ext':25,
-    'Close Grip Bench Press':95,'Machine Shoulder Press':0,'OH Cable Tri Ext':40,
-    'Pull Up':0,'Seated Cable Row':65,'Lat Pulldown (neutral)':70,'Chest Supported Row':45,
-    'Hammer Curl':30,'Barbell Curl (21s)':45,'Face Pull':17.5,
-    'Cable Row':60,'Incline DB Curl':20,
-    'Barbell Back Squat':95,'Romanian Deadlift':105,'Leg Press':130,'Leg Extension':60,
-    'Seated Leg Curl':35,'Standing Calf Raise':25,'Cable Crunch':30,
-    'Lying Leg Curl':30,'Hanging Leg Raise':0,'Back Squat':85,'RDL':105
+    'Barbell Bench Press':165,'Incline Dumbbell Press':67.5,'Cable Fly':42.5,
+    'DB Lateral Raise':25,'Tricep Pushdown':55,'Overhead Tricep Ext':27.5,
+    'Close Grip Bench Press':115,'Machine Shoulder Press':90,'OH Cable Tri Ext':40,
+    'Pull Up':0,'Cable Row':70,'Seated Cable Row':60,'Lat Pulldown (neutral)':70,'Chest Supported Row':50,
+    'Hammer Curl':30,'Barbell Curl (21s)':40,'Face Pull':20,'Incline DB Curl':20,
+    'Barbell Back Squat':135,'Romanian Deadlift':115,'Leg Press':130,'Leg Extension':55,
+    'Lying Leg Curl':60,'Standing Calf Raise':25,'Hanging Leg Raise':0,
+    'Seated Leg Curl':35,'Cable Crunch':30,'Back Squat':85,'RDL':105
   };
 }
 
@@ -1134,8 +1134,8 @@ function render() {
 var WEEK_PLAN = [
   {type:'Push', icon:'', color:'var(--accent)',  isRest:false, isRun:false},
   {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Pull', icon:'', color:'var(--cyan)',    isRest:false, isRun:false},
   {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
+  {type:'Pull', icon:'', color:'var(--cyan)',    isRest:false, isRun:false},
   {type:'Legs', icon:'', color:'var(--orange)',  isRest:false, isRun:false},
   {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
   {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
