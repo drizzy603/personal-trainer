@@ -1202,27 +1202,44 @@ function getDayName(dow) { // dow: 0=Mon … 6=Sun
 function buildSessionMiniCard(type, labelTop, isToday) {
   var wd = getWkData();
   var sessions = getSessions();
-  var accentBorder = isToday ? 'border-color:var(--accent);' : '';
+
+  var cardStyle = isToday
+    ? 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
+    : 'opacity:.75;';
+
+  var badge = isToday
+    ? '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>'
+    : '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
+
+  function iconTile(emoji) {
+    var tileBg = isToday ? 'rgba(200,255,0,.12)' : 'var(--card2)';
+    return '<div style="width:42px;height:42px;border-radius:12px;background:'+tileBg+';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">'+emoji+'</div>';
+  }
+
   if (type === 'Run') {
     var runData = wd ? (wd.runTue || wd.runSat) : null;
-    var runNote = runData ? (runData.km ? runData.km+' km' : 'Intervals/Tempo') : '—';
+    var runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
     if (runData && runData.hr) runNote += ' · HR <'+runData.hr;
-    return '<div class="today-card" style="'+accentBorder+'">'+
-      '<div class="today-icon">🏃</div>'+
-      '<div><div class="today-label">Run'+
-        (isToday?'<span style="font-size:11px;font-weight:500;color:var(--lite);margin-left:8px;">Today</span>':'')+
+    return '<div class="today-card" style="'+cardStyle+'">'+
+      iconTile('🏃')+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<div class="today-label">Run</div>'+badge+
+        '</div>'+
+        '<div class="today-detail">'+runNote+'</div>'+
       '</div>'+
-      '<div class="today-detail">'+runNote+'</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+labelTop+'</div>'+
-      '</div></div>';
+    '</div>';
   }
   if (type === 'Rest') {
-    return '<div class="today-card" style="opacity:.5;">'+
-      '<div class="today-icon">😴</div>'+
-      '<div><div class="today-label">Rest day</div>'+
-      '<div class="today-detail">Recovery</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+labelTop+'</div>'+
-      '</div></div>';
+    return '<div class="today-card" style="opacity:.35;">'+
+      iconTile('😴')+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<div class="today-label">Rest</div>'+badge+
+        '</div>'+
+        '<div class="today-detail">Recovery</div>'+
+      '</div>'+
+    '</div>';
   }
   var def = SESS[type];
   if (!def) return '';
@@ -1231,18 +1248,22 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var mainEx = null;
   if (wdArr) { for (var k=0;k<wdArr.length;k++){if(wdArr[k].isMain){mainEx=wdArr[k];break;}} }
   var detail = mainEx
-    ? mainEx.sets+'×'+mainEx.reps+' @ '+mainEx.weight+' lb'+(mainEx.pr?' 🔥':'')
+    ? mainEx.sets+'×'+mainEx.reps+' @ '+(mainEx.weight||'BW')+' lb'+(mainEx.pr?' 🔥':'')
     : def.focus.split('·')[0].trim();
   var lastDone = sessions.filter(function(s){return s.type===type;});
-  var lastLabel = lastDone.length ? 'Last: '+fmtDate(lastDone[0].date) : 'First time!';
-  return '<div class="today-card" style="'+accentBorder+'">'+
-    '<div class="today-icon">'+def.icon+'</div>'+
-    '<div><div class="today-label">'+def.label+
-      (isToday?'<span style="font-size:11px;font-weight:500;color:var(--lite);margin-left:8px;">Today</span>':'')+
+  var lastLabel = lastDone.length
+    ? '<span style="color:var(--muted);">Last: '+fmtDate(lastDone[0].date)+'</span>'
+    : '<span style="color:var(--accent);font-weight:600;">First time!</span>';
+  return '<div class="today-card" style="'+cardStyle+'">'+
+    iconTile(def.icon)+
+    '<div style="flex:1;min-width:0;">'+
+      '<div style="display:flex;align-items:center;gap:8px;">'+
+        '<div class="today-label">'+def.label+'</div>'+badge+
+      '</div>'+
+      '<div class="today-detail">'+detail+'</div>'+
+      '<div style="font-size:11px;margin-top:3px;font-weight:500;">'+lastLabel+'</div>'+
     '</div>'+
-    '<div class="today-detail">'+detail+'</div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+lastLabel+'</div>'+
-    '</div></div>';
+  '</div>';
 }
 function renderTodayCard() {
   var d = new Date();
@@ -2007,15 +2028,19 @@ function renderRunsSection() {
 
   function runCard(run, label) {
     if (!run) return '';
-    var typeColor = run.type==='race'?'var(--orange)':run.type==='intervals'?'var(--cyan)':run.type==='tempo'?'var(--green)':'var(--accent)';
-    var typeLabel = run.type==='race'?'TIME TRIAL':run.type==='intervals'?'INTERVALS':run.type==='tempo'?'TEMPO RUN':'EASY RUN';
-    var mainLine = run.km ? run.km+'km' : 'Structured';
+    var dotClass = run.type==='race'?'orange':run.type==='intervals'?'cyan':'';
+    var typeLabel = run.type==='race'?'Time Trial':run.type==='intervals'?'Intervals':run.type==='tempo'?'Tempo Run':'Easy Run';
+    var mainLine = run.km ? run.km+' km' : 'Structured';
     if (run.hr) mainLine += ' · HR <'+run.hr+' bpm';
-    return '<div class="run-target '+(run.type||'easy')+'" style="border-color:'+typeColor+'55;">'+
-      '<div class="rt-label" style="color:'+typeColor+'">'+label+' — '+typeLabel+'</div>'+
-      '<div class="rt-main">'+mainLine+'</div>'+
-      (run.note?'<div class="rt-note">'+run.note+'</div>':'')+
-      '</div>';
+    return '<div class="run-card '+(dotClass)+'">'+
+      '<div class="run-dot"></div>'+
+      '<div class="run-card-body">'+
+        '<div class="run-card-day">'+label+' · '+typeLabel+'</div>'+
+        '<div class="run-card-main">'+mainLine+'</div>'+
+        (run.note?'<div class="run-card-note">'+run.note+'</div>':'')+
+      '</div>'+
+      (run.km?'<div class="run-card-pace"><div class="run-card-pace-val">'+run.km+'</div>km</div>':'')+
+    '</div>';
   }
 
   var runCards = runCard(wd?wd.runTue:null,'Tuesday') + runCard(wd?wd.runSat:null,'Saturday');
@@ -2374,7 +2399,58 @@ function renderProgress() {
     '<div class="screen-avatar">K</div>'+
   '</div>';
 
-  return progressHeader+stats+goals+rmSection+bwChart+benchChart+squatChart+runChart+volCharts+calHTML;
+  // ── Lifts this block ──────────────────────────────────────────────────────
+  var wd2b = getWkData();
+  var blockNum = wd2b ? wd2b.block : 1;
+  // Find first week of current block
+  var blockStartWk = 1;
+  for (var bw = 1; bw < WEEK_DATA.length; bw++) {
+    if (WEEK_DATA[bw] && WEEK_DATA[bw].block === blockNum) { blockStartWk = bw; break; }
+  }
+  var wdStart = WEEK_DATA[blockStartWk];
+
+  var liftDefs = [
+    { label:'Bench Press', sessKey:'push', dataName:'Barbell Bench Press' },
+    { label:'Back Squat',  sessKey:'legs', dataName:'Barbell Back Squat'  },
+    { label:'Pull-ups',    sessKey:'pull', dataName:'Pull Up'             },
+  ];
+
+  var liftRows = '';
+  liftDefs.forEach(function(lift) {
+    var startArr = wdStart ? wdStart[lift.sessKey] : null;
+    var curArr   = wd2b   ? wd2b[lift.sessKey]    : null;
+    var startMain = null, curMain = null;
+    if (startArr) { for (var li=0;li<startArr.length;li++){if(startArr[li].isMain){startMain=startArr[li];break;}} }
+    if (curArr)   { for (var li=0;li<curArr.length;li++){if(curArr[li].isMain){curMain=curArr[li];break;}}   }
+    if (!startMain && !curMain) return;
+    var startW = startMain ? startMain.weight : 0;
+    var curW   = curMain   ? curMain.weight   : startW;
+    // Boost curW with best logged weight
+    sessions.forEach(function(s) {
+      if (s.type !== (lift.sessKey.charAt(0).toUpperCase()+lift.sessKey.slice(1))) return;
+      (s.exercises||[]).forEach(function(ex) {
+        if (ex.name === lift.dataName) { var w=parseFloat(ex.weight)||0; if(w>curW) curW=w; }
+      });
+    });
+    var delta = curW - startW;
+    var maxExpectedGain = 30; // lb per block for display purposes
+    var pct = startW > 0 ? Math.min(100, Math.max(4, Math.round((delta / maxExpectedGain) * 100))) : 0;
+    var wLabel = curMain && curMain.weight === 0 ? 'Bodyweight' : curW+' lb';
+    liftRows += '<div class="lift-row">'+
+      '<div class="lift-head">'+
+        '<span class="lift-name">'+lift.label+'</span>'+
+        (delta > 0 ? '<span class="lift-delta">+'+delta+' lb</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+delta+' lb</span>' : ''))+
+      '</div>'+
+      '<div class="lift-bar"><div class="lift-fill" style="width:'+(delta>0?pct:4)+'%"></div></div>'+
+      '<div class="lift-meta"><span>'+startW+(startMain&&startMain.weight===0?'BW':' lb')+' start</span><span>'+wLabel+' now</span></div>'+
+    '</div>';
+  });
+
+  var liftsBlock = liftRows
+    ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
+    : '';
+
+  return progressHeader+stats+goals+liftsBlock+rmSection+bwChart+benchChart+squatChart+runChart+volCharts+calHTML;
 }
 
 function svgChart(data,color,goalVal) {
