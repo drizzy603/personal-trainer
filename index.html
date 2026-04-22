@@ -454,6 +454,7 @@ select option{background:var(--bg);}
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
 var currentTab = 'log';
+var coachView = 'home'; // 'home' | 'chat'
 var logSession = 'Push';
 var logDate = todayISO();
 var sessionNote = '';
@@ -1049,6 +1050,7 @@ function importData() {
 // ── Tab & Week ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
+  if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
     t.classList.toggle('active', t.getAttribute('data-tab')===tab);
   });
@@ -2919,28 +2921,16 @@ function scrollChatBottom(){
   },80);
 }
 
+function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
+
 function renderCoach(){
   var apiKey=getApiKey();
   var wd3=getWkData();
-
-  var coachHead='<div class="coach-head">'+
-    '<div class="coach-ava">C</div>'+
-    '<div>'+
-      '<div class="coach-name">Coach</div>'+
-      '<div class="coach-status">'+(wd3?'Week '+currentWeek+' · '+wd3.bName:'Online')+'</div>'+
-    '</div>'+
-    '<div style="margin-left:auto;display:flex;gap:12px;align-items:center;">'+
-      (intakeMode
-        ? '<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">← Cancel</button>'
-        : (coachMessages.length ? '<button onclick="(function(){if(confirm(\'Clear chat history?\'))clearCoachHistory();render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Clear</button>' : '')
-      )+
-      '<button onclick="clearApiKey()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Disconnect</button>'+
-    '</div>'+
-  '</div>';
+  var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>';
 
   // ── No API key: setup screen ─────────────────────────────────────────────
   if(!apiKey){
-    return '<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>'+
+    return header+
       '<div class="card" style="text-align:center;padding:36px 20px;">'+
       '<div style="font-size:20px;font-weight:600;margin-bottom:8px;letter-spacing:-.3px;">AI Coach</div>'+
       '<p style="color:var(--lite);font-size:14px;line-height:1.6;margin-bottom:22px;">'+
@@ -2955,23 +2945,96 @@ function renderCoach(){
     '</div>';
   }
 
-  // ── No routine set: onboarding prompt ────────────────────────────────────
-  if(!hasCustomRoutine()&&!intakeMode&&!coachMessages.length){
-    return '<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>'+
-      coachHead+
-      '<div class="card" style="text-align:center;padding:32px 20px;">'+
-      '<div style="font-size:19px;font-weight:600;margin-bottom:8px;letter-spacing:-.3px;">Build Your Programme</div>'+
-      '<p style="color:var(--lite);font-size:14px;line-height:1.6;margin-bottom:20px;">'+
-        'The AI Coach will ask you a few questions about your goals, schedule, and fitness level, then generate a personalised 12-week programme.'+
-      '</p>'+
-      '<button class="btn btn-primary btn-full" onclick="startRoutineIntake()" style="margin-bottom:10px;">Generate My Programme</button>'+
-    '</div>'+
-    '<div class="card">'+
-      '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">Already have a programme?</div>'+
-      '<p style="font-size:13px;color:var(--lite);line-height:1.6;margin-bottom:12px;">You can still chat about training, recovery, and technique.</p>'+
-      '<button class="btn btn-secondary btn-full" onclick="(function(){intakeMode=false;render();})()">Go to Chat</button>'+
-    '</div>';
+  // ── Home menu ─────────────────────────────────────────────────────────────
+  if(coachView==='home'&&!intakeMode){
+    var msgCount=coachMessages.length;
+    var lastMsg=msgCount?coachMessages[msgCount-1]:null;
+    var lastPreview='';
+    if(lastMsg){
+      var raw=lastMsg.content.replace(/\n/g,' ');
+      lastPreview=raw.length>65?raw.slice(0,65)+'…':raw;
+    }
+    var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
+
+    return header+
+      '<div style="padding:8px 0 20px;">'+
+        '<div style="display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--card);border:1px solid var(--border);border-radius:20px;">'+
+          '<div class="coach-ava">C</div>'+
+          '<div>'+
+            '<div style="font-size:17px;font-weight:600;letter-spacing:-.2px;">Coach</div>'+
+            '<div style="font-size:12px;color:var(--lite);font-weight:500;margin-top:2px;">'+statusLine+'</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="settings-group">'+
+        '<div class="settings-group-hd">Conversation</div>'+
+        '<div class="settings-row" onclick="openCoachChat()">'+
+          '<div class="settings-row-ic" style="background:#1a2a1f;">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="#c8ff00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+              '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
+            '</svg>'+
+          '</div>'+
+          '<div class="settings-row-body">'+
+            '<div class="settings-row-title">Open Chat</div>'+
+            '<div class="settings-row-sub">'+(msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+lastPreview:'No messages yet — tap to start')+'</div>'+
+          '</div>'+
+          '<span class="settings-row-chev">›</span>'+
+        '</div>'+
+      '</div>'+
+
+      (!hasCustomRoutine()?
+        '<div class="settings-group">'+
+          '<div class="settings-group-hd">Programme</div>'+
+          '<div class="settings-row" onclick="startRoutineIntake()">'+
+            '<div class="settings-row-ic" style="background:#1e1a0d;">'+
+              '<svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+                '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'+
+              '</svg>'+
+            '</div>'+
+            '<div class="settings-row-body">'+
+              '<div class="settings-row-title">Build My Programme</div>'+
+              '<div class="settings-row-sub">Generate a custom 12-week plan</div>'+
+            '</div>'+
+            '<span class="settings-row-chev">›</span>'+
+          '</div>'+
+        '</div>'
+      :'')+
+
+      '<div class="settings-group">'+
+        '<div class="settings-group-hd">Account</div>'+
+        (msgCount?
+          '<div class="settings-row" onclick="if(confirm(\'Clear all chat history?\')){clearCoachHistory();render();}">'+
+            '<div class="settings-row-ic" style="background:#2a1a1a;">'+
+              '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+                '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'+
+              '</svg>'+
+            '</div>'+
+            '<div class="settings-row-body"><div class="settings-row-title">Clear Chat History</div></div>'+
+          '</div>'
+        :'')+
+        '<div class="settings-row" onclick="clearApiKey()">'+
+          '<div class="settings-row-ic" style="background:#1a1a2e;">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+              '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'+
+            '</svg>'+
+          '</div>'+
+          '<div class="settings-row-body"><div class="settings-row-title">Disconnect</div></div>'+
+        '</div>'+
+      '</div>';
   }
+
+  // ── Chat view ─────────────────────────────────────────────────────────────
+  var coachHead='<div class="coach-head">'+
+    '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit;padding:0;margin-right:4px;">← Back</button>'+
+    '<div class="coach-ava" style="width:34px;height:34px;">C</div>'+
+    '<div>'+
+      '<div class="coach-name" style="font-size:15px;">Coach</div>'+
+      '<div class="coach-status">'+(wd3?'Week '+currentWeek+' · '+wd3.bName:'Online')+'</div>'+
+    '</div>'+
+    '<div style="margin-left:auto;">'+
+      (intakeMode?'<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>':'')+'</div>'+
+  '</div>';
 
   var CHIPS=intakeMode
     ?[]
