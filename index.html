@@ -1280,18 +1280,40 @@ function renderTodayCard() {
 }
 
 // ── Week Header ───────────────────────────────────────────────────────────────
+function buildWeekSummary(wd) {
+  if (!wd) return '';
+  var parts = [];
+  // Main lift weights
+  function mainOf(arr) {
+    if (!arr) return null;
+    for (var i=0;i<arr.length;i++) { if (arr[i].isMain) return arr[i]; }
+    return null;
+  }
+  var bench = mainOf(wd.push), squat = mainOf(wd.legs), pull = mainOf(wd.pull);
+  if (bench) parts.push('Bench '+bench.sets+'×'+bench.reps+' @ '+bench.weight+' lb');
+  if (squat) parts.push('Squat '+squat.sets+'×'+squat.reps+' @ '+squat.weight+' lb');
+  if (pull)  parts.push('Pull-ups '+(pull.weight?'+'+pull.weight+' lb':'BW'));
+  // Runs
+  var runs = [];
+  if (wd.runTue && wd.runTue.km) runs.push(wd.runTue.km+' km');
+  if (wd.runSat && wd.runSat.km) runs.push(wd.runSat.km+' km');
+  if (runs.length) parts.push('Runs: '+runs.join(' + '));
+  return parts.join(' · ');
+}
+
 function renderWeekHeader() {
   var wd = getWkData();
   var bColor = wd ? wd.bColor : '#7c6bff';
   var bName = wd ? wd.bName : '';
-  var wkNote = wd ? wd.wkNote : '';
   var totalWks = getTotalWeeks();
   var pct = Math.round((currentWeek / totalWks) * 100);
   var wkStr = currentWeek < 10 ? '0' + currentWeek : '' + currentWeek;
+  var summary = buildWeekSummary(wd);
   return '<div class="hero-card">'+
     '<div class="hero-label">Current week</div>'+
     '<div><span class="hero-num">'+wkStr+'</span><span class="hero-of">/ '+totalWks+'</span></div>'+
     '<div class="hero-block">● '+(bName||'Block')+'</div>'+
+    (summary ? '<div class="hero-focus">'+summary+'</div>' : '')+
     '<div class="hero-bar"><div class="hero-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="hero-meta"><span>Programme progress</span><span style="color:var(--text);font-weight:600">'+pct+'%</span></div>'+
     '<div class="week-stepper">'+
