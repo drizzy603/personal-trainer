@@ -1914,39 +1914,15 @@ function openProgrammeModal(){
     lastBlock.weeks.push(wd);
   });
 
-  function mainLift(session){
-    if(!session||!session.length) return null;
-    var m=session.find(function(e){return e.isMain;});
-    return m||session[0];
-  }
-
   var blocksHTML=blocks.map(function(bl){
     var wkRows=bl.weeks.map(function(wd){
       var isCurrent=wd.wk===currentWeek;
-      var push=mainLift(wd.push);
-      var pull=mainLift(wd.pull);
-      var legs=mainLift(wd.legs);
-      var lifts=[push,pull,legs].filter(Boolean).map(function(ex){
-        var r=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
-        var w=parseFloat(ex.weight)>0?'@'+ex.weight+'lb':'BW';
-        return '<span>'+ex.name.split(' ').slice(0,2).join(' ')+' '+ex.sets+'×'+r+' '+w+'</span>';
-      }).join('<span style="color:var(--border);padding:0 4px;">·</span>');
-      var runLine='';
-      if(wd.runTue||wd.runSat){
-        var parts=[];
-        if(wd.runTue) parts.push('Tue '+wd.runTue.km+'km');
-        if(wd.runSat) parts.push('Sat '+wd.runSat.km+'km');
-        runLine='<div style="font-size:11px;color:var(--lite);margin-top:2px;">'+parts.join(' · ')+'</div>';
-      }
-      var note=wd.wkNote?'<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4;">'+
-        (wd.wkNote.length>80?wd.wkNote.slice(0,80)+'…':wd.wkNote)+'</div>':'';
-      return '<div style="padding:12px 16px;border-bottom:1px solid var(--border);'+(isCurrent?'background:rgba(200,255,0,.04);':'')+'">'+
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'+
-          '<span style="font-size:12px;font-weight:700;color:'+(isCurrent?'var(--accent)':'var(--lite)')+';">Wk '+wd.wk+'</span>'+
-          (isCurrent?'<span style="background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;">NOW</span>':'')+
-        '</div>'+
-        '<div style="font-size:12px;color:var(--text);line-height:1.6;display:flex;flex-wrap:wrap;gap:2px;">'+lifts+'</div>'+
-        runLine+note+
+      var note=wd.wkNote||'';
+      if(note.length>72) note=note.slice(0,72)+'…';
+      return '<div style="padding:12px 16px;border-bottom:1px solid var(--border);'+(isCurrent?'background:rgba(200,255,0,.04);':'')+'display:flex;align-items:baseline;gap:10px;">'+
+        '<span style="font-size:12px;font-weight:700;color:'+(isCurrent?'var(--accent)':'var(--muted)')+'flex-shrink:0;">Wk '+wd.wk+'</span>'+
+        (isCurrent?'<span style="background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;">NOW</span>':'')+
+        '<span style="font-size:13px;color:var(--lite);line-height:1.5;">'+note+'</span>'+
       '</div>';
     }).join('');
     return '<div style="margin-bottom:16px;">'+
