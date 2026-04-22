@@ -3045,19 +3045,25 @@ function renderCoach(){
   // ── Build messages HTML ───────────────────────────────────────────────────
   var msgsHTML='';
   if(!coachMessages.length&&!intakeMode){
-    msgsHTML='<div style="padding:28px 0 16px;">'+
-      '<div style="font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-.3px;">Ask anything</div>'+
-      '<div style="font-size:13px;color:var(--lite);margin-bottom:20px;">Your training, recovery, and goals</div>'+
+    msgsHTML='<div style="padding:20px 0 12px;">'+
+      '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.4px;">Ask anything</div>'+
+      '<div style="font-size:14px;color:var(--lite);">Your training, recovery, and goals</div>'+
     '</div>'+
     (hasCustomRoutine()?
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'+
         '<span style="font-size:13px;font-weight:600;color:var(--accent);">Custom Programme Active</span>'+
         '<button onclick="resetCustomRoutine()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Regenerate</button>'+
       '</div>'
     :'')+
-    '<div class="coach-suggest">'+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">'+
     CHIPS.map(function(c){
-      return '<span class="coach-chip" onclick="sendCoachChip(\''+c.replace(/'/g,"&#39;")+'\')">' + c + '</span>';
+      return '<button onclick="sendCoachChip(\''+c.replace(/'/g,"&#39;")+'\')" '+
+        'style="width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-radius:14px;'+
+        'padding:14px 16px;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;'+
+        'display:flex;align-items:center;justify-content:space-between;-webkit-tap-highlight-color:transparent;">'+
+        '<span>'+c+'</span>'+
+        '<span style="color:var(--muted);font-size:16px;">›</span>'+
+      '</button>';
     }).join('')+
     '</div>';
   }else{
