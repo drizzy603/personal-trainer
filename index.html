@@ -422,6 +422,7 @@ select option{background:var(--bg);}
 .typing-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:tdot 1.2s infinite;}
 .typing-dot:nth-child(2){animation-delay:.2s;}.typing-dot:nth-child(3){animation-delay:.4s;}
 @keyframes tdot{0%,80%,100%{opacity:.15;transform:scale(.8);}40%{opacity:1;transform:scale(1);}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar{width:2px;}
@@ -482,6 +483,8 @@ var calSelectedDate = null;
 var _editSlotKey='', _editOrigName='', _editExName='', _editSlotIdx=0, _editSets=0, _editReps=[];
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
+var streamingContent = '';
+var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
 var pendingRoutine = null;   // parsed routine JSON waiting for user to confirm
 // Rest timer state
@@ -2674,6 +2677,69 @@ function showToast(msg){
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
 function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
+function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();}
+
+function saveCoachHistory(){
+  try{localStorage.setItem('kt_coach_msgs',JSON.stringify(coachMessages));}catch(e){}
+}
+function loadCoachHistory(){
+  try{
+    var s=localStorage.getItem('kt_coach_msgs');
+    if(s){
+      coachMessages=JSON.parse(s);
+      for(var i=coachMessages.length-1;i>=0;i--){
+        if(coachMessages[i].role==='assistant'){checkForRoutineJSON(coachMessages[i].content);break;}
+      }
+    }
+  }catch(e){}
+}
+function clearCoachHistory(){
+  coachMessages=[];streamingContent='';
+  localStorage.removeItem('kt_coach_msgs');
+  render();
+}
+
+function md(text){
+  text=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  text=text.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  text=text.replace(/`([^`\n]+)`/g,'<code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
+  var lines=text.split('\n');
+  var out=[];var inList=false;
+  lines.forEach(function(line){
+    if(/^[-•]\s/.test(line)){
+      if(!inList){out.push('<ul style="margin:5px 0 5px 14px;padding:0;">');inList=true;}
+      out.push('<li>'+line.replace(/^[-•]\s/,'')+'</li>');
+    }else{
+      if(inList){out.push('</ul>');inList=false;}
+      out.push(line);
+    }
+  });
+  if(inList)out.push('</ul>');
+  var result='';
+  out.forEach(function(item,i){
+    if(/^<[ul\/li]/.test(item)){result+=item;}
+    else{if(i>0&&!/^<[ul\/li]/.test(out[i-1]))result+='<br>';result+=item;}
+  });
+  return result;
+}
+
+function getCoachChips(){
+  var sessions=getSessions();
+  var chips=[];
+  if(sessions.length){
+    var last=sessions[0];
+    var daysSince=Math.floor((Date.now()-new Date(last.date))/86400000);
+    if(daysSince===0)chips.push('How did my '+last.type+' session look?');
+    else if(daysSince===1)chips.push('Recovery tips after yesterday\'s '+last.type+'?');
+  }
+  var wd=getWkData();
+  if(wd)chips.push('What should I focus on this week?');
+  chips.push('Am I progressing on track?');
+  chips.push('How is my recovery looking?');
+  if(sessions.length>3)chips.push('Any trends in my training data?');
+  chips.push('Tips for my main lift today?');
+  return chips.slice(0,4);
+}
 
 function buildIntakeSystemPrompt(){
   return 'You are a world-class personal trainer conducting an intake assessment to build a personalised 12-week training programme.\n\n'+
@@ -2710,50 +2776,66 @@ function buildIntakeSystemPrompt(){
 '- Start with the first question now.';
 }
 
-function startRoutineIntake(){
+async function startRoutineIntake(){
   intakeMode=true;
   pendingRoutine=null;
   clearCoachHistory();
   coachMessages.push({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
+  streamingContent='';
   render();
   scrollChatBottom();
-  var controller=new AbortController();
-  var timeoutId=setTimeout(function(){controller.abort();},30000);
-  fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    signal:controller.signal,
-    headers:{
-      'content-type':'application/json',
-      'x-api-key':getApiKey(),
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true'
-    },
-    body:JSON.stringify({
-      model:'claude-haiku-4-5-20251001',
-      max_tokens:512,
-      system:buildIntakeSystemPrompt(),
-      messages:coachMessages
-    })
-  }).then(function(res){
-    clearTimeout(timeoutId);
-    if(!res.ok) return res.json().then(function(d){throw new Error(d.error&&d.error.message?d.error.message:'API error '+res.status);});
-    return res.json();
-  }).then(function(data){
-    if(data.content&&data.content[0]){
-      coachMessages.push({role:'assistant',content:data.content[0].text});
-      checkForRoutineJSON(data.content[0].text);
+  try{
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key':getApiKey(),
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1024,
+        stream:true,
+        system:buildIntakeSystemPrompt(),
+        messages:coachMessages
+      })
+    });
+    if(!res.ok){
+      var ed=await res.json();
+      coachMessages.push({role:'assistant',content:' '+(ed.error?ed.error.message:'API error '+res.status)});
+    }else{
+      var reader=res.body.getReader();var dec=new TextDecoder();var buf='';
+      while(true){
+        var ch=await reader.read();if(ch.done)break;
+        buf+=dec.decode(ch.value,{stream:true});
+        var lines=buf.split('\n');buf=lines.pop();
+        for(var i=0;i<lines.length;i++){
+          var line=lines[i];
+          if(!line.startsWith('data: '))continue;
+          var dat=line.slice(6);if(dat==='[DONE]')continue;
+          try{var ev=JSON.parse(dat);
+            if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){
+              streamingContent+=ev.delta.text;render();scrollChatBottom();
+            }
+          }catch(e){}
+        }
+      }
+      if(streamingContent){
+        coachMessages.push({role:'assistant',content:streamingContent});
+        checkForRoutineJSON(streamingContent);
+        saveCoachHistory();
+        streamingContent='';
+      }
     }
-  }).catch(function(e){
-    clearTimeout(timeoutId);
-    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':(e.message||'Could not connect. Check your API key and internet connection.');
-    coachMessages.push({role:'assistant',content:msg});
-  }).finally(function(){
-    saveCoachHistory();
-    coachLoading=false;
-    render();
-    scrollChatBottom();
-  });
+  }catch(e){
+    coachMessages.push({role:'assistant',content:'Could not connect. Check your API key and internet connection.'});
+    streamingContent='';
+  }
+  coachLoading=false;
+  render();
+  scrollChatBottom();
 }
 
 function checkForRoutineJSON(text){
@@ -2825,49 +2907,70 @@ function clearCoachHistory(){
 
 function buildSystemPrompt(){
   var wd=getWkData();
-  var sessions=getSessions().slice(0,8);
-  var runs=getRuns().slice(0,5);
+  var sessions=getSessions().slice(0,10);
+  var runs=getRuns().slice(0,6);
   var prs=getPRs();
-  var bws=getBWs();
+  var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
-  var userName=cr&&cr.name?'the user ('+cr.name+')':'the user';
-  var p='You are an expert personal trainer and strength coach assistant for '+userName+'. ';
-  p+='Give concise, specific, data-driven feedback. Be encouraging but honest. ';
-  p+='Keep responses under 150 words unless more detail is explicitly requested. Use actual numbers from their logs.\n\n';
+  var userName=cr&&cr.name?cr.name:'Kalani';
+  var today=new Date().toISOString().slice(0,10);
   var totalWks=getTotalWeeks();
-  p+='CURRENT WEEK: '+currentWeek+' of '+totalWks+'\n';
+
+  var p='You are an expert personal trainer and strength coach for '+userName+'. ';
+  p+='Give concise, specific, actionable advice. Be encouraging but honest. ';
+  p+='Format responses with **bold** for key points and - bullet points for lists. ';
+  p+='Keep responses under 200 words unless detail is explicitly requested. Always use actual numbers from the logs.\n\n';
+
+  p+='TODAY: '+today+'\n';
+  p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
+  if(cr&&cr.name)p+=' ('+cr.name+')';
+  p+='\n';
+
   if(wd){
-    p+='BLOCK: '+wd.bName+'\n';
-    p+='WEEK GOAL: '+wd.wkNote+'\n\n';
-    p+='THIS WEEK\'S TARGETS:\n';
+    p+='BLOCK: '+wd.bName+' — '+wd.wkNote+'\n\n';
+    var thisWeekSessions=sessions.filter(function(s){return s.week===currentWeek;});
+    var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
+    p+='THIS WEEK\'S PLAN:\n';
     ['push','pull','legs'].forEach(function(sess){
       if(wd[sess]){
-        p+=sess.toUpperCase()+':\n';
-        wd[sess].forEach(function(ex){p+='  '+ex.name+': '+ex.sets+'x'+ex.reps+' @ '+ex.weight+'lb RPE'+ex.rpe+'\n';});
+        var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
+        p+=sess.toUpperCase()+done+':\n';
+        wd[sess].forEach(function(ex){
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+ex.weight+'lb RPE'+ex.rpe+'\n';
+        });
       }
     });
+    if(wd.runTue)p+='RUN (Tue): '+wd.runTue.km+'km '+wd.runTue.type+'\n';
+    if(wd.runSat)p+='RUN (Sat): '+wd.runSat.km+'km '+wd.runSat.type+'\n';
     p+='\n';
   }
+
   if(sessions.length){
     p+='RECENT SESSIONS:\n';
     sessions.forEach(function(s){
       p+=s.type+' '+s.date+' (Wk'+s.week+'): ';
       var exStrs=(s.exercises||[]).map(function(ex){
         var r=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
-        return ex.name+' '+ex.sets+'x('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+ex.rpe;
+        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+ex.rpe;
       });
       p+=exStrs.join(' | ')+'\n';
     });
     p+='\n';
   }
+
   if(runs.length){
     p+='RECENT RUNS: '+runs.map(function(r){return (r.distance||r.dist)+'km '+r.time;}).join(', ')+'\n\n';
   }
+
   var prKeys=Object.keys(prs);
   if(prKeys.length){
     p+='PRs: '+prKeys.map(function(k){return k+' '+prs[k]+'lb';}).join(', ')+'\n';
   }
-  if(bws.length){p+='\nBODY WEIGHT: '+bws[0].weight+'lb ('+bws[0].date+')\n';}
+
+  if(bws.length){
+    p+='\nBODY WEIGHT: '+bws.map(function(b){return b.weight+'lb ('+b.date+')';}).join(' → ')+'\n';
+  }
+
   return p;
 }
 
@@ -2876,52 +2979,60 @@ async function sendCoachMessage(){
   if(!inp)return;
   var msg=inp.value.trim();
   if(!msg||coachLoading)return;
-  inp.value='';
-  inp.style.height='';
+  inp.value='';inp.style.height='';
   coachMessages.push({role:'user',content:msg});
   saveCoachHistory();
   coachLoading=true;
+  streamingContent='';
   render();
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var maxTok=intakeMode?2048:512;
+  var maxTok=intakeMode?8192:768;
+  var model=intakeMode?'claude-sonnet-4-6':coachModel;
   var msgs=coachMessages.slice(-20);
-  var controller=new AbortController();
-  var timeoutId=setTimeout(function(){controller.abort();},30000);
   try{
     var res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      signal:controller.signal,
       headers:{
         'content-type':'application/json',
         'x-api-key':getApiKey(),
         'anthropic-version':'2023-06-01',
         'anthropic-dangerous-direct-browser-access':'true'
       },
-      body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:maxTok,
-        system:systemPrompt,
-        messages:msgs
-      })
+      body:JSON.stringify({model:model,max_tokens:maxTok,stream:true,system:systemPrompt,messages:msgs})
     });
-    clearTimeout(timeoutId);
     if(!res.ok){
-      var errData=await res.json().catch(function(){return {};});
-      throw new Error(errData.error&&errData.error.message?errData.error.message:'API error '+res.status);
-    }
-    var data=await res.json();
-    if(data.content&&data.content[0]){
-      var replyText=data.content[0].text;
-      coachMessages.push({role:'assistant',content:replyText});
-      if(intakeMode) checkForRoutineJSON(replyText);
+      var ed=await res.json();
+      coachMessages.push({role:'assistant',content:' '+(ed.error?ed.error.message:'API error '+res.status)});
+      saveCoachHistory();
     }else{
-      throw new Error('Empty response from API.');
+      var reader=res.body.getReader();var dec=new TextDecoder();var buf='';
+      while(true){
+        var ch=await reader.read();if(ch.done)break;
+        buf+=dec.decode(ch.value,{stream:true});
+        var lines=buf.split('\n');buf=lines.pop();
+        for(var i=0;i<lines.length;i++){
+          var line=lines[i];
+          if(!line.startsWith('data: '))continue;
+          var dat=line.slice(6);if(dat==='[DONE]')continue;
+          try{var ev=JSON.parse(dat);
+            if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){
+              streamingContent+=ev.delta.text;render();scrollChatBottom();
+            }
+          }catch(e){}
+        }
+      }
+      if(streamingContent){
+        coachMessages.push({role:'assistant',content:streamingContent});
+        if(intakeMode)checkForRoutineJSON(streamingContent);
+        saveCoachHistory();
+        streamingContent='';
+      }
     }
   }catch(e){
-    clearTimeout(timeoutId);
-    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':(e.message||'Could not connect. Check your internet connection.');
-    coachMessages.push({role:'assistant',content:msg});
+    coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
+    saveCoachHistory();
+    streamingContent='';
   }
   saveCoachHistory();
   coachLoading=false;
@@ -2947,6 +3058,9 @@ function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
 function renderCoach(){
   var apiKey=getApiKey();
   var wd3=getWkData();
+  var isHaiku=coachModel.indexOf('haiku')!==-1;
+  var modelLabel=isHaiku?'Haiku':'Sonnet';
+  var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
   var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>';
 
   // ── No API key: setup screen ─────────────────────────────────────────────
@@ -3052,17 +3166,19 @@ function renderCoach(){
       '<div class="coach-name" style="font-size:15px;">Coach</div>'+
       '<div class="coach-status">'+(wd3?'Week '+currentWeek+' · '+wd3.bName:'Online')+'</div>'+
     '</div>'+
-    '<div style="margin-left:auto;">'+
-      (intakeMode?'<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>':'')+'</div>'+
+    '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;">'+
+      (intakeMode
+        ?'<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        :'<button onclick="setCoachModel(\''+modelNext+'\')" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;">'+modelLabel+'</button>'
+      )+
+    '</div>'+
   '</div>';
 
-  var CHIPS=intakeMode
-    ?[]
-    :['How did my last session look?','Am I progressing on track?','How is my recovery looking?','What should I focus on this week?'];
+  var CHIPS=intakeMode?[]:getCoachChips();
 
   // ── Build messages HTML ───────────────────────────────────────────────────
   var msgsHTML='';
-  if(!coachMessages.length&&!intakeMode){
+  if(!coachMessages.length&&!streamingContent&&!intakeMode){
     msgsHTML='<div style="padding:20px 0 12px;">'+
       '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.4px;">Ask anything</div>'+
       '<div style="font-size:14px;color:var(--lite);">Your training, recovery, and goals</div>'+
@@ -3086,14 +3202,13 @@ function renderCoach(){
     '</div>';
   }else{
     var bubbles='';
-    coachMessages.forEach(function(m,idx){
+    coachMessages.forEach(function(m){
       var text=m.content;
       var hasRoutine=text.indexOf('ROUTINE_START')!==-1&&text.indexOf('ROUTINE_END')!==-1;
       if(hasRoutine){
         var beforeJSON=text.slice(0,text.indexOf('ROUTINE_START')).trim();
         if(beforeJSON){
-          var safe=beforeJSON.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-          bubbles+='<div class="coach-bubble assistant">'+safe+'</div>';
+          bubbles+='<div class="coach-bubble assistant">'+md(beforeJSON)+'</div>';
         }
         bubbles+='<div class="card" style="margin:4px 0;border-color:var(--accent);padding:18px;">'+
           '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">Programme Ready</div>'+
@@ -3104,11 +3219,14 @@ function renderCoach(){
           )+
         '</div>';
       }else{
-        var safe=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-        bubbles+='<div class="coach-bubble '+m.role+'">'+safe+'</div>';
+        var rendered=m.role==='assistant'?md(text):text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        bubbles+='<div class="coach-bubble '+m.role+'">'+rendered+'</div>';
       }
     });
-    if(coachLoading){
+    // Streaming bubble — live text as it arrives
+    if(streamingContent){
+      bubbles+='<div class="coach-bubble assistant">'+md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span></div>';
+    }else if(coachLoading){
       var loadMsg=intakeMode?'Building your programme…':'';
       bubbles+='<div class="typing-wrap">'+
         (loadMsg?'<span style="font-size:12px;color:var(--lite);margin-right:8px;">'+loadMsg+'</span>':'')+
@@ -3324,6 +3442,7 @@ try{
   });
 }catch(ex){}
 currentWeek = getWeek();
+loadCoachHistory();
 var _next = getNextSession();
 logSession = (_next === 'Run') ? 'Push' : _next;
 initLogState();
