@@ -1282,23 +1282,43 @@ function renderTodayCard() {
 // ── Week Header ───────────────────────────────────────────────────────────────
 function buildWeekSummary(wd) {
   if (!wd) return '';
-  var parts = [];
-  // Main lift weights
-  function mainOf(arr) {
-    if (!arr) return null;
-    for (var i=0;i<arr.length;i++) { if (arr[i].isMain) return arr[i]; }
-    return null;
+  var blockNum = wd.block;
+  var wk = wd.wk;
+  var blockWeeks = [];
+  for (var i = 1; i < WEEK_DATA.length; i++) {
+    if (WEEK_DATA[i] && WEEK_DATA[i].block === blockNum) blockWeeks.push(i);
   }
-  var bench = mainOf(wd.push), squat = mainOf(wd.legs), pull = mainOf(wd.pull);
-  if (bench) parts.push('Bench '+bench.sets+'×'+bench.reps+' @ '+bench.weight+' lb');
-  if (squat) parts.push('Squat '+squat.sets+'×'+squat.reps+' @ '+squat.weight+' lb');
-  if (pull)  parts.push('Pull-ups '+(pull.weight?'+'+pull.weight+' lb':'BW'));
-  // Runs
-  var runs = [];
-  if (wd.runTue && wd.runTue.km) runs.push(wd.runTue.km+' km');
-  if (wd.runSat && wd.runSat.km) runs.push(wd.runSat.km+' km');
-  if (runs.length) parts.push('Runs: '+runs.join(' + '));
-  return parts.join(' · ');
+  var posInBlock = blockWeeks.indexOf(wk);
+  var isFirst = posInBlock === 0;
+  var isLast  = posInBlock === blockWeeks.length - 1;
+  var hasPR = false;
+  ['push','pull','legs'].forEach(function(s){
+    if (wd[s]) wd[s].forEach(function(ex){ if (ex.pr) hasPR = true; });
+  });
+  var msgs = {
+    1: {
+      first: 'First week — find your weights and lock in your form. Nothing heroic yet.',
+      mid:   'Loads nudging up each session. Stay within RPE targets and keep form sharp.',
+      last:  'Last BASE week. Reps drop, weight goes up. See what the foundation built.'
+    },
+    2: {
+      first: 'BUILD block. Load is climbing — push the compounds and trust the plan.',
+      mid:   'Deep in the build. Volume is stacking up. Sleep and food matter this week.',
+      last:  'Heaviest BUILD week. Go after the main lifts — you\'re ready for it.'
+    },
+    3: {
+      first: 'PEAK phase. Fewer reps, more weight, full focus every single set.',
+      mid:   'Peak week. Hit your numbers. No junk sets, no wasted energy.',
+      last:  hasPR ? 'PR week. Eleven weeks of work leads here — go get it.' : 'Final peak week. Leave everything on the platform.'
+    },
+    4: {
+      first: 'Deload. Light loads, full range of motion. Let the work sink in — you\'ve earned it.',
+      mid:   'Deload. Light loads, full range of motion. Let the work sink in — you\'ve earned it.',
+      last:  'Deload. Light loads, full range of motion. Let the work sink in — you\'ve earned it.'
+    }
+  };
+  var set = msgs[blockNum] || msgs[1];
+  return isFirst ? set.first : isLast ? set.last : set.mid;
 }
 
 function renderWeekHeader() {
