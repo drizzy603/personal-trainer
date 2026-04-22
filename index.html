@@ -2877,9 +2877,12 @@ async function sendCoachMessage(){
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var maxTok=intakeMode?2048:512;
+  var controller=new AbortController();
+  var timeoutId=setTimeout(function(){controller.abort();},30000);
   try{
     var res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
+      signal:controller.signal,
       headers:{
         'content-type':'application/json',
         'x-api-key':getApiKey(),
@@ -2893,6 +2896,7 @@ async function sendCoachMessage(){
         messages:coachMessages
       })
     });
+    clearTimeout(timeoutId);
     var data=await res.json();
     if(data.content&&data.content[0]){
       var replyText=data.content[0].text;
@@ -2903,7 +2907,9 @@ async function sendCoachMessage(){
       coachMessages.push({role:'assistant',content:errMsg});
     }
   }catch(e){
-    coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
+    clearTimeout(timeoutId);
+    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':'Could not connect. Check your internet connection.';
+    coachMessages.push({role:'assistant',content:msg});
   }
   saveCoachHistory();
   coachLoading=false;
