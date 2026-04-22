@@ -2288,7 +2288,6 @@ function renderProgress() {
     (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
     '</div>';
 
-  var streak=calcStreak(sessions);
   var lastVol=sessions.length?calcVolume(sessions[0].exercises||[]):0;
   var bws=getBodyWeights();
   var latestBW = bws.length ? bws[0].weight : null;
@@ -2296,14 +2295,10 @@ function renderProgress() {
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
 
   var stats='<div class="stat-row">'+
-    '<div class="stat">'+
+    '<div class="stat" style="grid-column:1/-1;">'+
       '<div class="stat-lbl">Sessions</div>'+
       '<div class="stat-val">'+sessions.length+'</div>'+
       (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'')+
-    '</div>'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Streak</div>'+
-      '<div class="stat-val" style="color:var(--orange)">'+streak+'</div>'+
     '</div>'+
     '</div>'+
     '<div class="stat-row">'+
