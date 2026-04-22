@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalani Trainer — How It Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0b0b0d;
+    --surface: #111116;
+    --surface2: #18181f;
+    --border: rgba(255,255,255,0.08);
+    --accent: #c8ff00;
+    --accent-dim: rgba(200,255,0,0.12);
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --base: #06b6d4;
+    --build: #7c6bff;
+    --peak: #f97316;
+    --deload: #22c55e;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(11,11,13,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: 56px;
+  }
+
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 8px 16px;
+    border: 1px solid rgba(200,255,0,0.3);
+    border-radius: 8px;
+    transition: background 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+  .back-btn:hover {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+  }
+  .back-btn svg { flex-shrink: 0; }
+
+  .nav-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    opacity: 0.7;
+  }
+
+  /* HERO */
+  .hero {
+    padding: 80px 24px 60px;
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  .hero-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .hero h1 {
+    font-size: clamp(32px, 6vw, 56px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+  }
+
+  .hero h1 span { color: var(--accent); }
+
+  .hero p {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  /* CONTENT */
+  .content {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 24px 100px;
+  }
+
+  /* SECTION */
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border: 1px solid rgba(200,255,0,0.25);
+    border-radius: 6px;
+    padding: 4px 10px;
+    white-space: nowrap;
+  }
+
+  .section h2 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .section p {
+    color: #a0a0b8;
+    margin-bottom: 20px;
+    font-size: 15px;
+  }
+
+  /* CARDS */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-icon {
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+
+  .card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .card p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 0;
+    line-height: 1.5;
+  }
+
+  /* BLOCKS */
+  .blocks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .block-card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 18px;
+    border-left: 3px solid;
+  }
+
+  .block-card.base { border-color: var(--base); }
+  .block-card.build { border-color: var(--build); }
+  .block-card.peak { border-color: var(--peak); }
+  .block-card.deload { border-color: var(--deload); }
+
+  .block-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .base .block-label { color: var(--base); }
+  .build .block-label { color: var(--build); }
+  .peak .block-label { color: var(--peak); }
+  .deload .block-label { color: var(--deload); }
+
+  .block-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .block-card p {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 0;
+    line-height: 1.5;
+  }
+
+  /* STEPS */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  .step {
+    display: flex;
+    gap: 20px;
+    padding-bottom: 28px;
+    position: relative;
+  }
+
+  .step:last-child { padding-bottom: 0; }
+
+  .step-line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    width: 36px;
+  }
+
+  .step-dot {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .step-connector {
+    width: 2px;
+    flex: 1;
+    background: var(--border);
+    margin-top: 4px;
+  }
+
+  .step:last-child .step-connector { display: none; }
+
+  .step-body {
+    padding-top: 6px;
+    padding-bottom: 8px;
+  }
+
+  .step-body h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .step-body p {
+    font-size: 14px;
+    color: #a0a0b8;
+    margin-bottom: 0;
+  }
+
+  /* CODE PILL */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: rgba(200,255,0,0.08);
+    border: 1px solid rgba(200,255,0,0.2);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* DATA TABLE */
+  .data-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+
+  .data-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-row:last-child { border-bottom: none; }
+
+  .data-key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    padding: 14px 16px;
+    background: rgba(200,255,0,0.04);
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--border);
+  }
+
+  .data-val {
+    font-size: 13px;
+    color: #a0a0b8;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* HIGHLIGHT BOX */
+  .highlight {
+    background: var(--accent-dim);
+    border: 1px solid rgba(200,255,0,0.25);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+
+  .highlight h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .highlight p {
+    font-size: 14px;
+    color: #b0b0c8;
+    margin-bottom: 0;
+  }
+
+  /* FOOTER */
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  @media (max-width: 600px) {
+    .card-grid { grid-template-columns: 1fr 1fr; }
+    .blocks { grid-template-columns: 1fr 1fr; }
+    .data-row { grid-template-columns: 1fr; }
+    .data-key { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="back-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    Back to App
+  </a>
+  <span class="nav-title">How It Works</span>
+</nav>
+
+<div class="hero">
+  <div class="hero-label">Documentation</div>
+  <h1>Kalani <span>Trainer</span><br>How It Works</h1>
+  <p>A 12-week progressive training programme — built as a single HTML file, deployed instantly, zero accounts required.</p>
+</div>
+
+<div class="content">
+
+  <!-- 1. FOUR SCREENS -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <h2>Four Screens</h2>
+    </div>
+    <p>The app has four tabs, each serving a distinct purpose in the training workflow.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🏋️</div>
+        <h3>Today</h3>
+        <p>Today's session — exercises, sets, reps, weight and RPE fields ready to log.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <h3>Progress</h3>
+        <p>Charts and PRs across all exercises. See your strength curve over 12 weeks.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>Programme</h3>
+        <p>Full 12-week plan — every session, every exercise, every target weight.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤖</div>
+        <h3>AI Coach</h3>
+        <p>Claude-powered chat that reads your actual training data to give relevant advice.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 12-WEEK BLOCKS -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <h2>12-Week Training Blocks</h2>
+    </div>
+    <p>The programme is divided into four periodisation blocks. Each has a distinct colour and training focus.</p>
+    <div class="blocks">
+      <div class="block-card base">
+        <div class="block-label">Weeks 1–4</div>
+        <h3>Base</h3>
+        <p>Build the foundation. Moderate loads, technique focus, establish consistency.</p>
+      </div>
+      <div class="block-card build">
+        <div class="block-label">Weeks 5–8</div>
+        <h3>Build</h3>
+        <p>Progressive overload. Weights increase weekly, RPE climbs toward 8–9.</p>
+      </div>
+      <div class="block-card peak">
+        <div class="block-label">Weeks 9–11</div>
+        <h3>Peak</h3>
+        <p>Near-maximal effort. Heaviest loads of the cycle, high intensity.</p>
+      </div>
+      <div class="block-card deload">
+        <div class="block-label">Week 12</div>
+        <h3>Deload + Test</h3>
+        <p>Recovery week, then 1-rep max tests on Squat, Bench and Deadlift.</p>
+      </div>
+    </div>
+    <p>Each week has three sessions — <strong>Push</strong>, <strong>Pull</strong>, <strong>Legs</strong> — plus two runs (Tuesday 3 km / Saturday 5 km).</p>
+  </div>
+
+  <!-- 3. LOGGING WORKFLOW -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <h2>Logging a Session</h2>
+    </div>
+    <p>Tap through each exercise on the Today screen. When you're done, the session saves automatically.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">1</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Open Today tab</h3>
+          <p>The app shows the correct session for today — Push, Pull, or Legs — based on the current week.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">2</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Log each set</h3>
+          <p>Enter weight, reps and RPE for each exercise. Tap the checkmark when a set is complete.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">3</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>PRs detected automatically</h3>
+          <p>If you lift more than your previous best, the app flags it as a PR in real time.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">4</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Finish session</h3>
+          <p>Tap <strong>Complete</strong>. The session is saved to <code>localStorage</code> and the week advances.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">5</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Log your run</h3>
+          <p>On run days, enter distance, time, heart rate and run type. Saved the same way.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. DATA STORAGE -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <h2>Data Storage</h2>
+    </div>
+    <p>Everything lives in your browser's <code>localStorage</code> — no server, no account, no sync. Export a JSON backup any time.</p>
+    <div class="data-table">
+      <div class="data-row">
+        <div class="data-key">kt_sessions</div>
+        <div class="data-val">Array of all logged gym sessions with exercises, sets, reps, weights and RPE</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_runs</div>
+        <div class="data-val">Array of run logs — distance, time, heart rate, type, date</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_weights</div>
+        <div class="data-val">Bodyweight log — date → weight (kg) entries</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_prs</div>
+        <div class="data-val">Personal records — exercise name → max weight lifted</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_week</div>
+        <div class="data-val">Current week number (1–12)</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_bw</div>
+        <div class="data-val">Most recent bodyweight entry</div>
+      </div>
+    </div>
+    <div class="highlight">
+      <h3>💾 Backup tip</h3>
+      <p>Use the Export button in Settings to download a JSON file. If you ever clear your browser data or switch devices, import the file to restore everything.</p>
+    </div>
+  </div>
+
+  <!-- 5. PROGRESS TAB -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <h2>Progress Tab</h2>
+    </div>
+    <p>The Progress screen turns your logged data into charts — no setup required.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <h3>Strength Charts</h3>
+        <p>Weight over time for each exercise. See your progression week by week.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🏆</div>
+        <h3>PR Board</h3>
+        <p>Your all-time best weight for every exercise, updated automatically when you hit a new high.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🏃</div>
+        <h3>Run Stats</h3>
+        <p>Pace, time and heart rate trends across all logged runs.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚖️</div>
+        <h3>Bodyweight</h3>
+        <p>Track your weight over the programme with a simple line chart.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. AI COACH -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <h2>AI Coach</h2>
+    </div>
+    <p>The AI Coach tab connects to Claude (via your API key) and automatically injects your real training data into every message — so the advice is always about <em>your</em> actual sessions, not generic advice.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">1</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>You type a question</h3>
+          <p>Anything training-related — "Why am I stalling on squat?", "Is my RPE too high this week?"</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">2</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>App builds context</h3>
+          <p>Your session history, PRs, current week and run data are bundled into the system prompt automatically.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">3</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Claude responds</h3>
+          <p>The reply is specific to your numbers — not a generic answer. Streamed in real time.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. DELIVERY / PWA -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <h2>Delivery &amp; PWA</h2>
+    </div>
+    <p>The app is a single <code>index.html</code> file deployed on Vercel via a GitHub push. No build step, no framework, no dependencies.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📄</div>
+        <h3>Single File</h3>
+        <p>All HTML, CSS and JavaScript in one file. Open it directly or serve it from anywhere.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>Instant Deploy</h3>
+        <p>Push to GitHub → Vercel auto-deploys in seconds. No CI, no config.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📱</div>
+        <h3>Add to Home Screen</h3>
+        <p>Works as a PWA. Add it to your iPhone home screen and it opens full-screen like a native app.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h3>Offline Ready</h3>
+        <p>Once loaded, it works without internet. Data stays on-device.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. RENDER LOOP -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <h2>Render Loop</h2>
+    </div>
+    <p>The app uses a minimal reactive pattern — no framework required.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">1</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>State lives in <code>localStorage</code></h3>
+          <p>Sessions, runs, PRs and week number are read from localStorage on every render.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">2</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>User action triggers <code>save()</code></h3>
+          <p>Any input — logging a set, completing a session — writes to localStorage immediately.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">3</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3><code>render()</code> redraws the screen</h3>
+          <p>The active tab re-renders from scratch using the latest state. Fast, simple, no virtual DOM.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">4</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>WEEK_DATA drives everything</h3>
+          <p>The full 12-week programme is a JavaScript object. Changing a weight or exercise only requires editing that one constant.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Built with Claude · <a href="/">Back to the app</a>
+</footer>
+
+</body>
+</html>
