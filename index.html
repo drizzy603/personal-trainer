@@ -476,7 +476,7 @@ var calMonth = new Date().getMonth(); // 0-indexed
 var calSelectedDate = null;
 // Edit modal state
 var _editSlotKey='', _editOrigName='', _editExName='', _editSlotIdx=0, _editSets=0, _editReps=[];
-var coachMessages    = [];
+var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
 var intakeMode    = false;   // true when generating a new routine
 var pendingRoutine = null;   // parsed routine JSON waiting for user to confirm
@@ -2708,7 +2708,7 @@ function buildIntakeSystemPrompt(){
 function startRoutineIntake(){
   intakeMode=true;
   pendingRoutine=null;
-  coachMessages=[];
+  clearCoachHistory();
   // Seed the conversation with the opening question
   coachMessages.push({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
@@ -2736,6 +2736,7 @@ function startRoutineIntake(){
   }).catch(function(){
     coachMessages.push({role:'assistant',content:'Could not connect. Check your API key and internet connection.'});
   }).finally(function(){
+    saveCoachHistory();
     coachLoading=false;
     render();
     scrollChatBottom();
@@ -2763,7 +2764,7 @@ function confirmLoadRoutine(){
   lsSet('kt_week',1);
   intakeMode=false;
   pendingRoutine=null;
-  coachMessages=[];
+  clearCoachHistory();
   showToast('Programme loaded! Week 1 is ready');
   render();
 }
@@ -2775,7 +2776,7 @@ function resetCustomRoutine(){
   lsSet('kt_week',1);
   intakeMode=false;
   pendingRoutine=null;
-  coachMessages=[];
+  clearCoachHistory();
   render();
   showToast('Programme reset. You can generate a new one anytime.');
 }
@@ -2787,15 +2788,26 @@ function saveApiKey(){
   var k=inp.value.trim();
   if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
   setApiKey(k);
-  coachMessages=[];
+  clearCoachHistory();
   render();
 }
 
 function clearApiKey(){
   if(!confirm('Disconnect API key?'))return;
   setApiKey('');
-  coachMessages=[];
+  clearCoachHistory();
   render();
+}
+function saveCoachHistory(){
+  try{
+    var msgs=coachMessages.slice(-60); // keep last 60 messages (~30 exchanges)
+    localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
+    coachMessages=msgs;
+  }catch(e){}
+}
+function clearCoachHistory(){
+  coachMessages=[];
+  localStorage.removeItem('kt_coach_msgs');
 }
 
 function buildSystemPrompt(){
@@ -2854,6 +2866,7 @@ async function sendCoachMessage(){
   inp.value='';
   inp.style.height='';
   coachMessages.push({role:'user',content:msg});
+  saveCoachHistory();
   coachLoading=true;
   render();
   scrollChatBottom();
@@ -2882,11 +2895,12 @@ async function sendCoachMessage(){
       if(intakeMode) checkForRoutineJSON(replyText);
     }else{
       var errMsg=data.error?data.error.message:'Unknown error. Check your API key.';
-      coachMessages.push({role:'assistant',content:' '+errMsg});
+      coachMessages.push({role:'assistant',content:errMsg});
     }
   }catch(e){
     coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
   }
+  saveCoachHistory();
   coachLoading=false;
   render();
   scrollChatBottom();
@@ -2915,8 +2929,11 @@ function renderCoach(){
       '<div class="coach-name">Coach</div>'+
       '<div class="coach-status">'+(wd3?'Week '+currentWeek+' · '+wd3.bName:'Online')+'</div>'+
     '</div>'+
-    '<div style="margin-left:auto;display:flex;gap:8px;">'+
-      (intakeMode?'<button onclick="(function(){intakeMode=false;coachMessages=[];pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">← Cancel</button>':'')+
+    '<div style="margin-left:auto;display:flex;gap:12px;align-items:center;">'+
+      (intakeMode
+        ? '<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">← Cancel</button>'
+        : (coachMessages.length ? '<button onclick="(function(){if(confirm(\'Clear chat history?\'))clearCoachHistory();render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Clear</button>' : '')
+      )+
       '<button onclick="clearApiKey()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Disconnect</button>'+
     '</div>'+
   '</div>';
