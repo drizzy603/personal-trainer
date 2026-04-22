@@ -2714,13 +2714,15 @@ function startRoutineIntake(){
   intakeMode=true;
   pendingRoutine=null;
   clearCoachHistory();
-  // Seed the conversation with the opening question
   coachMessages.push({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
   render();
   scrollChatBottom();
+  var controller=new AbortController();
+  var timeoutId=setTimeout(function(){controller.abort();},30000);
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
+    signal:controller.signal,
     headers:{
       'content-type':'application/json',
       'x-api-key':getApiKey(),
@@ -2733,13 +2735,19 @@ function startRoutineIntake(){
       system:buildIntakeSystemPrompt(),
       messages:coachMessages
     })
-  }).then(function(res){return res.json();}).then(function(data){
+  }).then(function(res){
+    clearTimeout(timeoutId);
+    if(!res.ok) return res.json().then(function(d){throw new Error(d.error&&d.error.message?d.error.message:'API error '+res.status);});
+    return res.json();
+  }).then(function(data){
     if(data.content&&data.content[0]){
       coachMessages.push({role:'assistant',content:data.content[0].text});
       checkForRoutineJSON(data.content[0].text);
     }
-  }).catch(function(){
-    coachMessages.push({role:'assistant',content:'Could not connect. Check your API key and internet connection.'});
+  }).catch(function(e){
+    clearTimeout(timeoutId);
+    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':(e.message||'Could not connect. Check your API key and internet connection.');
+    coachMessages.push({role:'assistant',content:msg});
   }).finally(function(){
     saveCoachHistory();
     coachLoading=false;
@@ -2877,6 +2885,7 @@ async function sendCoachMessage(){
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var maxTok=intakeMode?2048:512;
+  var msgs=coachMessages.slice(-20);
   var controller=new AbortController();
   var timeoutId=setTimeout(function(){controller.abort();},30000);
   try{
@@ -2893,22 +2902,25 @@ async function sendCoachMessage(){
         model:'claude-haiku-4-5-20251001',
         max_tokens:maxTok,
         system:systemPrompt,
-        messages:coachMessages
+        messages:msgs
       })
     });
     clearTimeout(timeoutId);
+    if(!res.ok){
+      var errData=await res.json().catch(function(){return {};});
+      throw new Error(errData.error&&errData.error.message?errData.error.message:'API error '+res.status);
+    }
     var data=await res.json();
     if(data.content&&data.content[0]){
       var replyText=data.content[0].text;
       coachMessages.push({role:'assistant',content:replyText});
       if(intakeMode) checkForRoutineJSON(replyText);
     }else{
-      var errMsg=data.error?data.error.message:'Unknown error. Check your API key.';
-      coachMessages.push({role:'assistant',content:errMsg});
+      throw new Error('Empty response from API.');
     }
   }catch(e){
     clearTimeout(timeoutId);
-    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':'Could not connect. Check your internet connection.';
+    var msg=e.name==='AbortError'?'Request timed out — check your connection and try again.':(e.message||'Could not connect. Check your internet connection.');
     coachMessages.push({role:'assistant',content:msg});
   }
   saveCoachHistory();
