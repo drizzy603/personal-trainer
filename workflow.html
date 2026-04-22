@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalani's Trainer — App Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --card: #131316;
+    --card2: #1c1c21;
+    --border: rgba(255,255,255,.08);
+    --accent: #c8ff00;
+    --accent2: #a8d900;
+    --muted: #6b6b7a;
+    --lite: #a0a0b0;
+    --text: #f0f0f5;
+    --cyan: #00e5ff;
+    --orange: #ff7a00;
+    --purple: #a855f7;
+    --red: #ff4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 48px 24px 80px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  .page-header {
+    text-align: center;
+    margin-bottom: 64px;
+  }
+  .page-header h1 {
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: -.8px;
+    color: var(--text);
+  }
+  .page-header h1 span { color: var(--accent); }
+  .page-header p {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── Section titles ── */
+  .section {
+    margin-bottom: 56px;
+  }
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+  }
+  .card-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .card-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -.3px;
+  }
+  .card-desc {
+    font-size: 12px;
+    color: var(--lite);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* ── Tab bar overview ── */
+  .tab-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+  .tab-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 14px;
+    text-align: center;
+    transition: border-color .2s;
+  }
+  .tab-card.active {
+    border-color: rgba(200,255,0,.4);
+    background: linear-gradient(135deg,rgba(200,255,0,.06),transparent 60%),var(--card);
+  }
+  .tab-icon {
+    font-size: 22px;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .tab-name {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -.1px;
+  }
+  .tab-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Flow arrows ── */
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 20px;
+    padding: 4px 0;
+  }
+  .flow-arrow.right { flex-direction: row; }
+  .arrow-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 8px;
+  }
+
+  /* ── User journey flows ── */
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 20px;
+  }
+  .flow-step {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+  }
+  .flow-step.accent {
+    border-color: rgba(200,255,0,.3);
+    background: linear-gradient(135deg,rgba(200,255,0,.05),transparent 60%),var(--card);
+  }
+  .flow-step.cyan {
+    border-color: rgba(0,229,255,.2);
+    background: linear-gradient(135deg,rgba(0,229,255,.04),transparent 60%),var(--card);
+  }
+  .flow-step.purple {
+    border-color: rgba(168,85,247,.2);
+    background: linear-gradient(135deg,rgba(168,85,247,.04),transparent 60%),var(--card);
+  }
+  .flow-step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .flow-step.accent .flow-step-num {
+    background: var(--accent);
+    color: #000;
+    border-color: transparent;
+  }
+  .flow-step-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -.1px;
+    margin-bottom: 4px;
+  }
+  .flow-step-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .flow-connector {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  /* ── Data store grid ── */
+  .data-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .data-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .data-key {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .data-desc {
+    font-size: 11px;
+    color: var(--lite);
+    line-height: 1.4;
+  }
+  .data-icon {
+    font-size: 16px;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  /* ── AI Flow ── */
+  .ai-flow {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr 80px 1fr;
+    align-items: center;
+    gap: 0;
+  }
+  .ai-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+  }
+  .ai-box.api {
+    border-color: rgba(168,85,247,.35);
+    background: linear-gradient(135deg,rgba(168,85,247,.08),transparent 60%),var(--card);
+  }
+  .ai-box-icon { font-size: 24px; margin-bottom: 8px; display: block; }
+  .ai-box-title { font-size: 13px; font-weight: 700; }
+  .ai-box-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .ai-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 18px;
+  }
+  .ai-arrow-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  /* ── Programme structure ── */
+  .prog-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .block-card {
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid transparent;
+  }
+  .block-card.base   { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); }
+  .block-card.build  { background: rgba(200,255,0,.05);   border-color: rgba(200,255,0,.2); }
+  .block-card.peak   { background: rgba(0,229,255,.04);   border-color: rgba(0,229,255,.2); }
+  .block-card.deload { background: rgba(255,122,0,.04);   border-color: rgba(255,122,0,.2); }
+  .block-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .block-card.base   .block-label { color: var(--lite); }
+  .block-card.build  .block-label { color: var(--accent); }
+  .block-card.peak   .block-label { color: var(--cyan); }
+  .block-card.deload .block-label { color: var(--orange); }
+  .block-weeks { font-size: 17px; font-weight: 800; letter-spacing: -.5px; }
+  .block-desc  { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+  .session-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 10px;
+  }
+  .chip {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--card2);
+    color: var(--muted);
+  }
+  .chip.push  { background: rgba(200,255,0,.12); color: var(--accent); }
+  .chip.pull  { background: rgba(0,229,255,.1);  color: var(--cyan); }
+  .chip.legs  { background: rgba(168,85,247,.1); color: var(--purple); }
+  .chip.run   { background: rgba(255,122,0,.1);  color: var(--orange); }
+
+  /* ── State diagram ── */
+  .state-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 12px;
+  }
+  .state-box {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .state-box-title { font-size: 12px; font-weight: 700; }
+  .state-box-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .state-connector { padding: 0 8px; color: var(--muted); font-size: 14px; flex-shrink: 0; }
+
+  /* ── Log flow specific ── */
+  .log-flow {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .log-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .log-mini {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+  }
+  .log-mini-title { font-weight: 700; margin-bottom: 3px; }
+  .log-mini-sub { color: var(--muted); font-size: 11px; }
+
+  .badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #000;
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .badge.muted { background: var(--card2); color: var(--muted); }
+  .badge.cyan  { background: rgba(0,229,255,.15); color: var(--cyan); }
+  .badge.purple { background: rgba(168,85,247,.15); color: var(--purple); }
+
+  /* ── offline / PWA ── */
+  .feature-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .feature-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .feature-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .feature-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+  /* ── divider ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 48px 0;
+  }
+
+  /* ── highlight box ── */
+  .highlight {
+    background: linear-gradient(135deg,rgba(200,255,0,.06),transparent 60%),var(--card);
+    border: 1px solid rgba(200,255,0,.25);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-top: 12px;
+  }
+  .highlight-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .highlight-body {
+    font-size: 12px;
+    color: var(--lite);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ Header ═══ -->
+<div class="page-header">
+  <h1>Kalani's Trainer <span>— App Workflow</span></h1>
+  <p>How the app is structured, what it stores, and how each feature flows</p>
+</div>
+
+<!-- ═══ 1. Four Tabs ═══ -->
+<div class="section">
+  <div class="section-title">1 — The four screens</div>
+  <div class="tab-row">
+    <div class="tab-card active">
+      <span class="tab-icon">📋</span>
+      <div class="tab-name">Log</div>
+      <div class="tab-sub">Track today's session</div>
+    </div>
+    <div class="tab-card">
+      <span class="tab-icon">📈</span>
+      <div class="tab-name">Progress</div>
+      <div class="tab-sub">Charts · PRs · history</div>
+    </div>
+    <div class="tab-card">
+      <span class="tab-icon">🤖</span>
+      <div class="tab-name">Coach</div>
+      <div class="tab-sub">AI programme + chat</div>
+    </div>
+    <div class="tab-card">
+      <span class="tab-icon">⚙️</span>
+      <div class="tab-name">Settings</div>
+      <div class="tab-sub">Theme · key · backup</div>
+    </div>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-title">How navigation works</div>
+    <div class="highlight-body">
+      Tapping a tab icon calls <code>render()</code>, which reads the global <code>currentTab</code> variable and calls the matching renderer (<code>renderLog()</code>, <code>renderProgress()</code>, <code>renderCoach()</code>, <code>renderSettings()</code>). No routing library — one function, one switch.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 2. Programme Structure ═══ -->
+<div class="section">
+  <div class="section-title">2 — 12-week programme structure</div>
+  <div class="prog-grid">
+    <div class="block-card base">
+      <div class="block-label">Block 1 — Base</div>
+      <div class="block-weeks">Weeks 1–3</div>
+      <div class="block-desc">Learn the movement patterns. RPE stays low, volume moderate.</div>
+      <div class="session-chips">
+        <span class="chip push">Push</span>
+        <span class="chip pull">Pull</span>
+        <span class="chip legs">Legs</span>
+        <span class="chip run">2× Run</span>
+      </div>
+    </div>
+    <div class="block-card build">
+      <div class="block-label">Block 2 — Build</div>
+      <div class="block-weeks">Weeks 4–6</div>
+      <div class="block-desc">Load climbs every session. Main compound lifts take priority.</div>
+      <div class="session-chips">
+        <span class="chip push">Push</span>
+        <span class="chip pull">Pull</span>
+        <span class="chip legs">Legs</span>
+        <span class="chip run">2× Run</span>
+      </div>
+    </div>
+    <div class="block-card peak">
+      <div class="block-label">Block 3 — Peak</div>
+      <div class="block-weeks">Weeks 7–9</div>
+      <div class="block-desc">Fewer reps, heavier weight. Week 9 has PR attempts on main lifts.</div>
+      <div class="session-chips">
+        <span class="chip push">Push</span>
+        <span class="chip pull">Pull</span>
+        <span class="chip legs">Legs</span>
+        <span class="chip run">2× Run</span>
+      </div>
+    </div>
+    <div class="block-card deload">
+      <div class="block-label">Block 4 — Deload</div>
+      <div class="block-weeks">Weeks 10–12</div>
+      <div class="block-desc">Light loads, full range. Let the adaptation happen before the next cycle.</div>
+      <div class="session-chips">
+        <span class="chip push">Push</span>
+        <span class="chip pull">Pull</span>
+        <span class="chip legs">Legs</span>
+        <span class="chip run">2× Run</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="highlight" style="margin-top:12px;">
+    <div class="highlight-title">Default vs custom programme</div>
+    <div class="highlight-body">
+      The built-in <code>WEEK_DATA</code> array is always present. If the AI Coach generates a custom plan and the user confirms it, it's saved to <code>kt_routine</code> in localStorage. After that <code>getWkData()</code> returns data from the custom plan instead of the default array — until the user resets it in Settings.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 3. Log tab flow ═══ -->
+<div class="section">
+  <div class="section-title">3 — Logging a workout</div>
+
+  <div class="flow-row">
+    <div class="flow-step accent">
+      <div class="flow-step-num">1</div>
+      <div class="flow-step-title">Open Log tab</div>
+      <div class="flow-step-desc">App reads current week + day. Picks today's session type (push / pull / legs / run / rest).</div>
+    </div>
+    <div class="flow-connector">→</div>
+    <div class="flow-step">
+      <div class="flow-step-num">2</div>
+      <div class="flow-step-title">Hero card shown</div>
+      <div class="flow-step-desc">Week number, block name, and a short coaching description. "Today" card + "Next" card below it.</div>
+    </div>
+    <div class="flow-connector">→</div>
+    <div class="flow-step">
+      <div class="flow-step-num">3</div>
+      <div class="flow-step-title">Exercise cards load</div>
+      <div class="flow-step-desc">One card per exercise. Shows prescribed sets × reps and target RPE. Previous logged weight pre-filled if available.</div>
+    </div>
+    <div class="flow-connector">→</div>
+    <div class="flow-step">
+      <div class="flow-step-num">4</div>
+      <div class="flow-step-title">Log each set</div>
+      <div class="flow-step-desc">Tap a dot to mark a set done. Enter weight + reps. Optional RPE slider. Rest timer starts automatically.</div>
+    </div>
+    <div class="flow-connector">→</div>
+    <div class="flow-step cyan">
+      <div class="flow-step-num">5</div>
+      <div class="flow-step-title">Finish session</div>
+      <div class="flow-step-desc">Tapping "Finish" saves to <code>kt_sessions</code>. PRs detected automatically and saved to <code>kt_prs</code>.</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+    <div class="card">
+      <div class="card-label">Gym session</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+        <div class="log-mini"><div class="log-mini-title">Exercise card <span class="badge">per exercise</span></div><div class="log-mini-sub">Name · prescribed sets×reps · set dots · weight + reps inputs</div></div>
+        <div class="log-mini"><div class="log-mini-title">Set dot</div><div class="log-mini-sub">Tap to mark complete → rest timer activates</div></div>
+        <div class="log-mini"><div class="log-mini-title">RPE row</div><div class="log-mini-sub">Optional Rate of Perceived Exertion (1–10) slider per set</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Run session</div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+        <div class="log-mini"><div class="log-mini-title">Run card <span class="badge cyan">type dot</span></div><div class="log-mini-sub">Easy / Tempo / Intervals / Time Trial — color coded</div></div>
+        <div class="log-mini"><div class="log-mini-title">Distance + time</div><div class="log-mini-sub">Log km and duration. Pace is calculated automatically.</div></div>
+        <div class="log-mini"><div class="log-mini-title">Save</div><div class="log-mini-sub">Stored in <code>kt_runs</code>. Appears in Progress pace chart.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 4. Data storage ═══ -->
+<div class="section">
+  <div class="section-title">4 — What's stored in the browser</div>
+  <div class="data-grid">
+    <div class="data-item">
+      <span class="data-icon">🏋️</span>
+      <div class="data-key">kt_sessions</div>
+      <div class="data-desc">Every logged gym session: date, exercises, sets, reps, weights, RPEs</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">🏃</span>
+      <div class="data-key">kt_runs</div>
+      <div class="data-desc">Logged run sessions: date, type, distance, time, calculated pace</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">⚖️</span>
+      <div class="data-key">kt_weights</div>
+      <div class="data-desc">Body weight entries over time. Shown as a trend line in Progress tab.</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">🏆</span>
+      <div class="data-key">kt_prs</div>
+      <div class="data-desc">Personal record per exercise name. Updated automatically when a new max is logged.</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">🤖</span>
+      <div class="data-key">kt_routine</div>
+      <div class="data-desc">AI-generated custom programme JSON. Overrides the built-in WEEK_DATA when present.</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">🔑</span>
+      <div class="data-key">kt_apikey</div>
+      <div class="data-desc">Anthropic API key. Used by the Coach tab to call Claude directly from the browser.</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">🎨</span>
+      <div class="data-key">kt_theme</div>
+      <div class="data-desc">Active color theme name (lime, cyan, violet, rose, amber). Applied on startup.</div>
+    </div>
+    <div class="data-item">
+      <span class="data-icon">📅</span>
+      <div class="data-key">kt_week</div>
+      <div class="data-desc">Current week number (1–12). Determines which WEEK_DATA row loads.</div>
+    </div>
+    <div class="data-item" style="border-color:rgba(200,255,0,.2);background:linear-gradient(135deg,rgba(200,255,0,.04),transparent 60%),var(--card);">
+      <span class="data-icon">💾</span>
+      <div class="data-key" style="color:var(--lite);">All data = localStorage</div>
+      <div class="data-desc">No server. No account. Everything lives in the browser. Export JSON from Settings as backup.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 5. Progress tab ═══ -->
+<div class="section">
+  <div class="section-title">5 — What the Progress tab shows</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">📊</span>
+      <div class="card-label">Volume chart</div>
+      <div class="card-desc">Weekly training volume (sets × reps × weight) visualised as bars per muscle group.</div>
+    </div>
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">🏆</span>
+      <div class="card-label">Personal records</div>
+      <div class="card-desc">Best weight ever lifted per exercise. Updated automatically, displayed as lift-bar indicators.</div>
+    </div>
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">⚖️</span>
+      <div class="card-label">Bodyweight trend</div>
+      <div class="card-desc">Daily weight entries plotted over time. Log new entries directly from this screen.</div>
+    </div>
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">🏃</span>
+      <div class="card-label">Run pace chart</div>
+      <div class="card-desc">Pace per km over time. Easy, tempo, and interval runs shown in distinct colours.</div>
+    </div>
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">📋</span>
+      <div class="card-label">Session history</div>
+      <div class="card-desc">Scrollable list of past sessions with mini cards showing volume and top lifts.</div>
+    </div>
+    <div class="card">
+      <span style="font-size:20px;display:block;margin-bottom:8px;">💪</span>
+      <div class="card-label">Lifts this block</div>
+      <div class="card-desc">Shows lift-bar progress for each exercise in the current 3-week training block.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 6. AI Coach flow ═══ -->
+<div class="section">
+  <div class="section-title">6 — AI Coach flow</div>
+  <div class="ai-flow">
+    <div class="ai-box">
+      <span class="ai-box-icon">🧑</span>
+      <div class="ai-box-title">You</div>
+      <div class="ai-box-sub">Answer intake questions about goals, equipment, experience</div>
+    </div>
+    <div class="ai-arrow">
+      <span>→</span>
+      <div class="ai-arrow-label">HTTPS<br>API call</div>
+    </div>
+    <div class="ai-box api">
+      <span class="ai-box-icon">🤖</span>
+      <div class="ai-box-title">Claude Haiku</div>
+      <div class="ai-box-sub">claude-haiku-4-5<br>Anthropic API</div>
+    </div>
+    <div class="ai-arrow">
+      <span>→</span>
+      <div class="ai-arrow-label">JSON<br>programme</div>
+    </div>
+    <div class="ai-box">
+      <span class="ai-box-icon">📋</span>
+      <div class="ai-box-title">Your Plan</div>
+      <div class="ai-box-sub">Saved to kt_routine, replaces built-in programme</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+    <div class="card">
+      <div class="card-label">Generate new programme</div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+        <div class="state-row">
+          <div class="state-box"><div class="state-box-title">Intake form</div><div class="state-box-sub">Goals, injuries, schedule, equipment</div></div>
+          <div class="state-connector">→</div>
+          <div class="state-box"><div class="state-box-title">AI generates plan</div><div class="state-box-sub">Returns JSON between ROUTINE_START / ROUTINE_END markers</div></div>
+        </div>
+        <div class="state-row">
+          <div class="state-box"><div class="state-box-title">Preview shown</div><div class="state-box-sub">User confirms or rejects</div></div>
+          <div class="state-connector">→</div>
+          <div class="state-box" style="border-color:rgba(200,255,0,.25)"><div class="state-box-title">Saved to localStorage</div><div class="state-box-sub">kt_routine overwrites default WEEK_DATA</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Ongoing training chat</div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+        <div class="state-row">
+          <div class="state-box"><div class="state-box-title">Ask a question</div><div class="state-box-sub">Form, nutrition, sleep, programming…</div></div>
+          <div class="state-connector">→</div>
+          <div class="state-box"><div class="state-box-title">Context injected</div><div class="state-box-sub">Current week, session history, PRs added to system prompt</div></div>
+        </div>
+        <div class="state-row">
+          <div class="state-box" style="border-color:rgba(168,85,247,.2)"><div class="state-box-title">Streaming response</div><div class="state-box-sub">Claude replies with personalised coaching advice</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 7. PWA features ═══ -->
+<div class="section">
+  <div class="section-title">7 — How it's delivered</div>
+  <div class="feature-row">
+    <div class="feature-card">
+      <div class="feature-icon">📱</div>
+      <div>
+        <div class="feature-title">Installable PWA</div>
+        <div class="feature-desc">Can be added to home screen on iOS and Android. Opens full-screen with no browser chrome.</div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✈️</div>
+      <div>
+        <div class="feature-title">Works offline</div>
+        <div class="feature-desc">Service worker (sw.js) caches the app shell. Log workouts without a network — only AI Coach needs internet.</div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🚀</div>
+      <div>
+        <div class="feature-title">Auto-deploy on Vercel</div>
+        <div class="feature-desc">Any push to the <code>main</code> git branch triggers a new deploy. No build step — just static HTML.</div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎨</div>
+      <div>
+        <div class="feature-title">5 color themes</div>
+        <div class="feature-desc">Lime, Cyan, Violet, Rose, Amber. Change in Settings — saved to localStorage instantly.</div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📤</div>
+      <div>
+        <div class="feature-title">Data export / import</div>
+        <div class="feature-desc">Settings tab lets you download a full JSON backup of all localStorage data and re-import it on any device.</div>
+      </div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <div>
+        <div class="feature-title">No account needed</div>
+        <div class="feature-desc">Zero sign-up, zero server. Your API key and training data never leave your device — except for the direct API call to Anthropic.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 8. Full app state machine ═══ -->
+<div class="section">
+  <div class="section-title">8 — Full render loop</div>
+
+  <div style="display:flex;flex-direction:column;gap:8px;">
+    <div class="state-row">
+      <div class="state-box" style="border-color:rgba(200,255,0,.25);text-align:center;flex:0 0 160px;">
+        <div class="state-box-title">App loads</div>
+        <div class="state-box-sub">index.html parsed</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;flex:0 0 200px;">
+        <div class="state-box-title">localStorage read</div>
+        <div class="state-box-sub">theme, week, sessions, key…</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;flex:0 0 160px;">
+        <div class="state-box-title">Theme applied</div>
+        <div class="state-box-sub">CSS vars set on :root</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="border-color:rgba(200,255,0,.25);text-align:center;">
+        <div class="state-box-title">render() called</div>
+        <div class="state-box-sub">Default tab = Log</div>
+      </div>
+    </div>
+
+    <div style="padding-left:40px;color:var(--muted);font-size:18px;">↓</div>
+
+    <div class="state-row">
+      <div class="state-box" style="border-color:rgba(0,229,255,.2);text-align:center;">
+        <div class="state-box-title">User taps tab</div>
+        <div class="state-box-sub">currentTab updated</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;">
+        <div class="state-box-title">render() called</div>
+        <div class="state-box-sub">Correct renderer invoked</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;">
+        <div class="state-box-title">#screen innerHTML set</div>
+        <div class="state-box-sub">Pure HTML string injected</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;">
+        <div class="state-box-title">Event listeners attached</div>
+        <div class="state-box-sub">Buttons, inputs, swipes</div>
+      </div>
+    </div>
+
+    <div style="padding-left:40px;color:var(--muted);font-size:18px;">↓</div>
+
+    <div class="state-row">
+      <div class="state-box" style="border-color:rgba(200,255,0,.25);text-align:center;">
+        <div class="state-box-title">User logs data</div>
+        <div class="state-box-sub">Sets, weight, run, bodyweight</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;">
+        <div class="state-box-title">localStorage.setItem()</div>
+        <div class="state-box-sub">JSON stringified + saved</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="text-align:center;">
+        <div class="state-box-title">render() called again</div>
+        <div class="state-box-sub">UI reflects new state</div>
+      </div>
+      <div class="state-connector">→</div>
+      <div class="state-box" style="border-color:rgba(200,255,0,.25);text-align:center;">
+        <div class="state-box-title">Repeat</div>
+        <div class="state-box-sub">No virtual DOM needed</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
