@@ -3515,7 +3515,7 @@ if('serviceWorker' in navigator) {
   });
 }
 // ── Start ─────────────────────────────────────────────────────────────────────
-currentTheme = localStorage.getItem('kt_theme') || 'auto';
+currentTheme = localStorage.getItem('kt_theme') || 'dark';
 if(currentTheme==='auto'){
   applyTheme(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   currentTheme='auto';
