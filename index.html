@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
 <meta name="build" content="20260422-1"/>
-<title>Kalani's Trainer</title>
+<title>Personal Trainer</title>
 <link rel="manifest" href="manifest.json"/>
 <style>
 /* ── PREMIUM DESIGN SYSTEM — v3 ─────────────────────────────────────────── */
@@ -1024,7 +1024,7 @@ function exportData() {
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  a.href = url; a.download = 'kalani-trainer-backup-'+todayISO()+'.json';
+  a.href = url; a.download = 'trainer-backup-'+todayISO()+'.json';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
   showToast('Backup downloaded!');
@@ -3022,7 +3022,7 @@ function buildSystemPrompt(){
   var prs=getPRs();
   var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
-  var userName=cr&&cr.name?cr.name:'Kalani';
+  var userName=cr&&cr.name?cr.name:'there';
   var today=new Date().toISOString().slice(0,10);
   var totalWks=getTotalWeeks();
 
@@ -3450,12 +3450,15 @@ function renderSettings() {
   var maskedKey=apiKey?apiKey.slice(0,8)+'••••••••••••••••':'';
   var wd4=getWkData();
   var totalWks=getTotalWeeks();
+  var cr=getCustomRoutine();
+  var userName=cr&&cr.name?cr.name:'You';
+  var userInitial=userName&&userName!=='You'?userName[0].toUpperCase():'?';
 
   var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
     '<div class="profile-row">'+
-      '<div class="profile-ava">K</div>'+
+      '<div class="profile-ava">'+userInitial+'</div>'+
       '<div>'+
-        '<div class="profile-name">Kalani</div>'+
+        '<div class="profile-name">'+userName+'</div>'+
         '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+'</div>'+
       '</div>'+
     '</div>';
@@ -3538,7 +3541,7 @@ function renderSettings() {
     '</div>'+
     '</div>'+
 
-    '<div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 32px;font-weight:500;">Kalani\'s Trainer · All data stored locally</div>';
+    '<div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 32px;font-weight:500;">Personal Trainer · All data stored locally</div>';
 }
 function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kalani Trainer — How It Works</title>
+<title>Personal Trainer — How It Works</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -407,9 +407,9 @@
 </nav>
 
 <div class="hero">
-  <div class="hero-label">Documentation</div>
-  <h1>Kalani <span>Trainer</span><br>How It Works</h1>
-  <p>A 12-week progressive training programme — built as a single HTML file, deployed instantly, zero accounts required.</p>
+  <div class="hero-label">Overview</div>
+  <h1>Personal <span>Trainer</span><br>How It Works</h1>
+  <p>A progressive training programme with an AI coach — built as a single file, zero accounts required.</p>
 </div>
 
 <div class="content">
@@ -430,54 +430,54 @@
       <div class="card">
         <div class="card-icon">📈</div>
         <h3>Progress</h3>
-        <p>Charts and PRs across all exercises. See your strength curve over 12 weeks.</p>
+        <p>Charts and PRs across all exercises. See your strength curve over the programme.</p>
       </div>
       <div class="card">
         <div class="card-icon">📋</div>
         <h3>Programme</h3>
-        <p>Full 12-week plan — every session, every exercise, every target weight.</p>
+        <p>Full plan — every session, every exercise, every target weight. Tap any week for an overview.</p>
       </div>
       <div class="card">
         <div class="card-icon">🤖</div>
         <h3>AI Coach</h3>
-        <p>Claude-powered chat that reads your actual training data to give relevant advice.</p>
+        <p>Claude-powered chat that reads your actual training data to give personalised advice.</p>
       </div>
     </div>
   </div>
 
-  <!-- 2. 12-WEEK BLOCKS -->
+  <!-- 2. TRAINING BLOCKS -->
   <div class="section">
     <div class="section-header">
       <span class="section-num">02</span>
-      <h2>12-Week Training Blocks</h2>
+      <h2>Training Blocks</h2>
     </div>
     <p>The programme is divided into four periodisation blocks. Each has a distinct colour and training focus.</p>
     <div class="blocks">
       <div class="block-card base">
-        <div class="block-label">Weeks 1–4</div>
-        <h3>Base</h3>
-        <p>Build the foundation. Moderate loads, technique focus, establish consistency.</p>
+        <div class="block-label">Base</div>
+        <h3>Foundation</h3>
+        <p>Moderate loads, technique focus, establish consistency.</p>
       </div>
       <div class="block-card build">
-        <div class="block-label">Weeks 5–8</div>
-        <h3>Build</h3>
-        <p>Progressive overload. Weights increase weekly, RPE climbs toward 8–9.</p>
+        <div class="block-label">Build</div>
+        <h3>Overload</h3>
+        <p>Weights increase weekly, RPE climbs toward 8–9.</p>
       </div>
       <div class="block-card peak">
-        <div class="block-label">Weeks 9–11</div>
-        <h3>Peak</h3>
-        <p>Near-maximal effort. Heaviest loads of the cycle, high intensity.</p>
+        <div class="block-label">Peak</div>
+        <h3>Intensity</h3>
+        <p>Heaviest loads of the cycle, near-maximal effort.</p>
       </div>
       <div class="block-card deload">
-        <div class="block-label">Week 12</div>
-        <h3>Deload + Test</h3>
-        <p>Recovery week, then 1-rep max tests on Squat, Bench and Deadlift.</p>
+        <div class="block-label">Deload</div>
+        <h3>Recovery</h3>
+        <p>Light loads, full range of motion. Let the work sink in.</p>
       </div>
     </div>
-    <p>Each week has three sessions — <strong>Push</strong>, <strong>Pull</strong>, <strong>Legs</strong> — plus two runs (Tuesday 3 km / Saturday 5 km).</p>
+    <p>Each week has three sessions — <strong>Push</strong>, <strong>Pull</strong>, <strong>Legs</strong> — plus run days.</p>
   </div>
 
-  <!-- 3. LOGGING WORKFLOW -->
+  <!-- 3. LOGGING A SESSION -->
   <div class="section">
     <div class="section-header">
       <span class="section-num">03</span>
@@ -522,7 +522,7 @@
         </div>
         <div class="step-body">
           <h3>Finish session</h3>
-          <p>Tap <strong>Complete</strong>. The session is saved to <code>localStorage</code> and the week advances.</p>
+          <p>Tap <strong>Complete</strong>. The session is saved and the week advances.</p>
         </div>
       </div>
       <div class="step">
@@ -544,35 +544,31 @@
       <span class="section-num">04</span>
       <h2>Data Storage</h2>
     </div>
-    <p>Everything lives in your browser's <code>localStorage</code> — no server, no account, no sync. Export a JSON backup any time.</p>
+    <p>Everything lives in your browser — no server, no account, no sync. Export a JSON backup any time from Settings.</p>
     <div class="data-table">
       <div class="data-row">
-        <div class="data-key">kt_sessions</div>
-        <div class="data-val">Array of all logged gym sessions with exercises, sets, reps, weights and RPE</div>
+        <div class="data-key">Sessions</div>
+        <div class="data-val">All logged gym sessions with exercises, sets, reps, weights and RPE</div>
       </div>
       <div class="data-row">
-        <div class="data-key">kt_runs</div>
-        <div class="data-val">Array of run logs — distance, time, heart rate, type, date</div>
+        <div class="data-key">Runs</div>
+        <div class="data-val">Run logs — distance, time, heart rate, type, date</div>
       </div>
       <div class="data-row">
-        <div class="data-key">kt_weights</div>
-        <div class="data-val">Bodyweight log — date → weight (kg) entries</div>
+        <div class="data-key">Bodyweight</div>
+        <div class="data-val">Daily weight entries</div>
       </div>
       <div class="data-row">
-        <div class="data-key">kt_prs</div>
-        <div class="data-val">Personal records — exercise name → max weight lifted</div>
+        <div class="data-key">PRs</div>
+        <div class="data-val">Personal records — max weight lifted per exercise</div>
       </div>
       <div class="data-row">
-        <div class="data-key">kt_week</div>
-        <div class="data-val">Current week number (1–12)</div>
-      </div>
-      <div class="data-row">
-        <div class="data-key">kt_bw</div>
-        <div class="data-val">Most recent bodyweight entry</div>
+        <div class="data-key">Programme</div>
+        <div class="data-val">Your custom AI-built routine, including all weeks and exercises</div>
       </div>
     </div>
     <div class="highlight">
-      <h3>💾 Backup tip</h3>
+      <h3>Backup tip</h3>
       <p>Use the Export button in Settings to download a JSON file. If you ever clear your browser data or switch devices, import the file to restore everything.</p>
     </div>
   </div>
@@ -614,7 +610,7 @@
       <span class="section-num">06</span>
       <h2>AI Coach</h2>
     </div>
-    <p>The AI Coach tab connects to Claude (via your API key) and automatically injects your real training data into every message — so the advice is always about <em>your</em> actual sessions, not generic advice.</p>
+    <p>The AI Coach connects to Claude and automatically injects your real training data into every conversation — so the advice is always about <em>your</em> actual sessions, not generic tips.</p>
     <div class="steps">
       <div class="step">
         <div class="step-line">
@@ -622,8 +618,8 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>You type a question</h3>
-          <p>Anything training-related — "Why am I stalling on squat?", "Is my RPE too high this week?"</p>
+          <h3>Build your programme</h3>
+          <p>First time? The coach runs an intake — asking about your goals, experience and schedule — then generates a fully personalised programme for you.</p>
         </div>
       </div>
       <div class="step">
@@ -632,8 +628,8 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>App builds context</h3>
-          <p>Your session history, PRs, current week and run data are bundled into the system prompt automatically.</p>
+          <h3>Ask anything</h3>
+          <p>Use the quick-start cards or type freely — "Why am I stalling on squat?", "Is my RPE too high this week?", "What should I focus on today?"</p>
         </div>
       </div>
       <div class="step">
@@ -642,80 +638,8 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>Claude responds</h3>
-          <p>The reply is specific to your numbers — not a generic answer. Streamed in real time.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 7. DELIVERY / PWA -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-num">07</span>
-      <h2>Delivery &amp; PWA</h2>
-    </div>
-    <p>The app is a single <code>index.html</code> file deployed on Vercel via a GitHub push. No build step, no framework, no dependencies.</p>
-    <div class="card-grid">
-      <div class="card">
-        <div class="card-icon">📄</div>
-        <h3>Single File</h3>
-        <p>All HTML, CSS and JavaScript in one file. Open it directly or serve it from anywhere.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">⚡</div>
-        <h3>Instant Deploy</h3>
-        <p>Push to GitHub → Vercel auto-deploys in seconds. No CI, no config.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">📱</div>
-        <h3>Add to Home Screen</h3>
-        <p>Works as a PWA. Add it to your iPhone home screen and it opens full-screen like a native app.</p>
-      </div>
-      <div class="card">
-        <div class="card-icon">🔒</div>
-        <h3>Offline Ready</h3>
-        <p>Once loaded, it works without internet. Data stays on-device.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- 8. RENDER LOOP -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-num">08</span>
-      <h2>Render Loop</h2>
-    </div>
-    <p>The app uses a minimal reactive pattern — no framework required.</p>
-    <div class="steps">
-      <div class="step">
-        <div class="step-line">
-          <div class="step-dot">1</div>
-          <div class="step-connector"></div>
-        </div>
-        <div class="step-body">
-          <h3>State lives in <code>localStorage</code></h3>
-          <p>Sessions, runs, PRs and week number are read from localStorage on every render.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-line">
-          <div class="step-dot">2</div>
-          <div class="step-connector"></div>
-        </div>
-        <div class="step-body">
-          <h3>User action triggers <code>save()</code></h3>
-          <p>Any input — logging a set, completing a session — writes to localStorage immediately.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-line">
-          <div class="step-dot">3</div>
-          <div class="step-connector"></div>
-        </div>
-        <div class="step-body">
-          <h3><code>render()</code> redraws the screen</h3>
-          <p>The active tab re-renders from scratch using the latest state. Fast, simple, no virtual DOM.</p>
+          <h3>Context is built automatically</h3>
+          <p>Your session history, PRs, current week, bodyweight and run data are all bundled into every message behind the scenes.</p>
         </div>
       </div>
       <div class="step">
@@ -724,9 +648,39 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>WEEK_DATA drives everything</h3>
-          <p>The full 12-week programme is a JavaScript object. Changing a weight or exercise only requires editing that one constant.</p>
+          <h3>Streamed responses</h3>
+          <p>Replies appear word by word in real time. The conversation is saved so you can pick up where you left off.</p>
         </div>
+      </div>
+    </div>
+    <div class="highlight">
+      <h3>API key required</h3>
+      <p>The AI Coach needs an Anthropic API key to work. Add yours in Settings — it's stored only on your device and never sent anywhere except directly to Claude.</p>
+    </div>
+  </div>
+
+  <!-- 7. PWA -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <h2>Add to Home Screen</h2>
+    </div>
+    <p>The app works as a PWA — add it to your home screen for a full-screen, app-like experience.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📱</div>
+        <h3>iPhone</h3>
+        <p>Open in Safari → Share → Add to Home Screen. Opens full-screen like a native app.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤖</div>
+        <h3>Android</h3>
+        <p>Open in Chrome → menu → Add to Home Screen.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h3>Offline Ready</h3>
+        <p>Once loaded, the app works without internet. All data stays on your device.</p>
       </div>
     </div>
   </div>
