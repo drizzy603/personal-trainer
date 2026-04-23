@@ -2906,6 +2906,26 @@ function checkForRoutineJSON(text){
   }catch(e){ /* bad JSON — ignore */ }
 }
 
+function checkForCoachActions(text){
+  if(!text) return;
+  var start=text.indexOf('ACTION_START');
+  var end=text.indexOf('ACTION_END');
+  if(start===-1||end===-1||end<=start) return;
+  try{
+    var obj=JSON.parse(text.slice(start+12,end).trim());
+    if(!obj||!obj.type) return;
+    if(obj.type==='SET_RUN_GOAL'&&obj.value){
+      setRunGoal(obj.value);
+      showToast('Run goal updated: '+obj.value+'/km');
+      render();
+    } else if(obj.type==='SET_BW_GOAL'&&obj.value){
+      setBWGoal(parseFloat(obj.value));
+      showToast('Body weight goal updated: '+obj.value+' lb');
+      render();
+    }
+  }catch(e){}
+}
+
 function confirmLoadRoutine(){
   if(!pendingRoutine) return;
   setCustomRoutine(pendingRoutine);
@@ -3020,11 +3040,20 @@ function buildSystemPrompt(){
   if(prKeys.length){
     p+='PRs: '+prKeys.map(function(k){return k+' '+prs[k]+'lb';}).join(', ')+'\n';
   }
-
   if(bws.length){
     p+='\nBODY WEIGHT: '+bws.map(function(b){return b.weight+'lb ('+b.date+')';}).join(' → ')+'\n';
   }
 
+  var runGoal=getRunGoal();
+  var bwGoal=getBWGoal();
+  if(runGoal){p+='RUN PACE GOAL: '+runGoal+'/km\n';}
+  if(bwGoal){p+='BODY WEIGHT GOAL: '+bwGoal+'lb\n';}
+  p+='\nAPP ACTIONS — you can update the user\'s app data directly. When the user asks to change a goal or target, include an action block AFTER your reply text:\n';
+  p+='ACTION_START\n{"type":"SET_RUN_GOAL","value":"6:00"}\nACTION_END\n';
+  p+='Supported action types:\n';
+  p+='  SET_RUN_GOAL  — value = pace per km as "mm:ss" (e.g. "6:00" for 30-min 5k)\n';
+  p+='  SET_BW_GOAL   — value = target body weight in lbs as a number string (e.g. "175")\n';
+  p+='Only emit one ACTION block per reply. Omit it entirely if no data change is needed.\n';
   return p;
 }
 
@@ -3056,8 +3085,8 @@ async function sendCoachMessage(){
       body:JSON.stringify({model:model,max_tokens:maxTok,stream:true,system:systemPrompt,messages:msgs})
     });
     if(!res.ok){
-      var ed=await res.json();
-      coachMessages.push({role:'assistant',content:' '+(ed.error?ed.error.message:'API error '+res.status)});
+      var ed=await res.json().catch(function(){return {};});
+      coachMessages.push({role:'assistant',content:ed.error&&ed.error.message?ed.error.message:'API error '+res.status});
       saveCoachHistory();
     }else{
       var reader=res.body.getReader();var dec=new TextDecoder();var buf='';
@@ -3079,6 +3108,7 @@ async function sendCoachMessage(){
       if(streamingContent){
         coachMessages.push({role:'assistant',content:streamingContent});
         if(intakeMode)checkForRoutineJSON(streamingContent);
+        checkForCoachActions(streamingContent);
         saveCoachHistory();
         streamingContent='';
       }
@@ -3258,9 +3288,11 @@ function renderCoach(){
     var bubbles='';
     coachMessages.forEach(function(m){
       var text=m.content;
-      var hasRoutine=text.indexOf('ROUTINE_START')!==-1&&text.indexOf('ROUTINE_END')!==-1;
+      // Strip ACTION blocks before display
+      var displayText=text.replace(/ACTION_START[\s\S]*?ACTION_END/g,'').trim();
+      var hasRoutine=displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')!==-1;
       if(hasRoutine){
-        var beforeJSON=text.slice(0,text.indexOf('ROUTINE_START')).trim();
+        var beforeJSON=displayText.slice(0,displayText.indexOf('ROUTINE_START')).trim();
         if(beforeJSON){
           bubbles+='<div class="coach-bubble assistant">'+md(beforeJSON)+'</div>';
         }
@@ -3273,7 +3305,7 @@ function renderCoach(){
           )+
         '</div>';
       }else{
-        var rendered=m.role==='assistant'?md(text):text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         bubbles+='<div class="coach-bubble '+m.role+'">'+rendered+'</div>';
       }
     });
