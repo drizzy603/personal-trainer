@@ -961,6 +961,8 @@ function getBodyWeights() { return lsGet('kt_bw')||[]; }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) localStorage.setItem('kt_bw_goal',v); else localStorage.removeItem('kt_bw_goal'); }
 function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // format "mm:ss" per km
+function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
+function set5kGoal(secs) { if(secs>0) localStorage.setItem('kt_5k_goal',secs); else localStorage.removeItem('kt_5k_goal'); }
 function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else localStorage.removeItem('kt_run_goal'); }
 function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
 function secToPace(s){ return Math.floor(s/60)+':'+(s%60<10?'0':'')+Math.round(s%60); }
@@ -2340,7 +2342,7 @@ function renderProgress() {
     '</div>';
   }
 
-  var run5kGoalSec=40*60;
+  var run5kGoalSec=get5kGoal()||40*60;
   var goals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
     goalBar('Bench Press',bestBench,175,'lb',false)+
     goalBar('Back Squat',bestSquat,150,'lb',false)+
@@ -2922,6 +2924,10 @@ function checkForCoachActions(text){
       setBWGoal(parseFloat(obj.value));
       showToast('Body weight goal updated: '+obj.value+' lb');
       render();
+    } else if(obj.type==='SET_5K_GOAL'&&obj.value){
+      var parts=String(obj.value).split(':').map(Number);
+      var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
+      if(secs>0){set5kGoal(secs);showToast('5k goal updated: '+obj.value);render();}
     }
   }catch(e){}
 }
@@ -3047,11 +3053,14 @@ function buildSystemPrompt(){
   var runGoal=getRunGoal();
   var bwGoal=getBWGoal();
   if(runGoal){p+='RUN PACE GOAL: '+runGoal+'/km\n';}
+  var goal5k=get5kGoal();
+  if(goal5k){var g5m=Math.floor(goal5k/60),g5s=goal5k%60;p+='5K TIME GOAL: '+(g5m+':'+(g5s<10?'0':'')+g5s)+'\n';}
   if(bwGoal){p+='BODY WEIGHT GOAL: '+bwGoal+'lb\n';}
   p+='\nAPP ACTIONS — you can update the user\'s app data directly. When the user asks to change a goal or target, include an action block AFTER your reply text:\n';
   p+='ACTION_START\n{"type":"SET_RUN_GOAL","value":"6:00"}\nACTION_END\n';
   p+='Supported action types:\n';
   p+='  SET_RUN_GOAL  — value = pace per km as "mm:ss" (e.g. "6:00" for 30-min 5k)\n';
+  p+='  SET_5K_GOAL   — value = total 5k target time as "mm:ss" (e.g. "30:00" for a 30-min 5k)\n';
   p+='  SET_BW_GOAL   — value = target body weight in lbs as a number string (e.g. "175")\n';
   p+='Only emit one ACTION block per reply. Omit it entirely if no data change is needed.\n';
   return p;
