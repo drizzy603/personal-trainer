@@ -2928,6 +2928,36 @@ function checkForCoachActions(text){
       var parts=String(obj.value).split(':').map(Number);
       var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
       if(secs>0){set5kGoal(secs);showToast('5k goal updated: '+obj.value);render();}
+    } else if(obj.type==='SET_EXERCISE_WEIGHT'&&obj.name&&obj.value){
+      var weights=getWeights();
+      var newW=parseFloat(obj.value);
+      if(newW>0){
+        // case-insensitive match against existing keys
+        var key=Object.keys(weights).find(function(k){return k.toLowerCase()===obj.name.toLowerCase();});
+        if(!key) key=obj.name; // create new key if not found
+        weights[key]=newW;
+        lsSet('kt_weights',weights);
+        showToast(key+' updated to '+newW+' lb');
+        render();
+      }
+    } else if(obj.type==='SET_WEEK'&&obj.value){
+      var wk=parseInt(obj.value);
+      var total=getTotalWeeks();
+      if(wk>=1&&wk<=total){
+        currentWeek=wk;
+        lsSet('kt_week',wk);
+        showToast('Week set to '+wk);
+        render();
+      }
+    } else if(obj.type==='LOG_BW'&&obj.value){
+      var bwVal=parseFloat(obj.value);
+      if(bwVal>0){
+        var bws=getBodyWeights();
+        bws.unshift({date:todayISO(),weight:bwVal});
+        lsSet('kt_bw',bws);
+        showToast('Weight logged: '+bwVal+' lb');
+        render();
+      }
     }
   }catch(e){}
 }
@@ -3056,12 +3086,18 @@ function buildSystemPrompt(){
   var goal5k=get5kGoal();
   if(goal5k){var g5m=Math.floor(goal5k/60),g5s=goal5k%60;p+='5K TIME GOAL: '+(g5m+':'+(g5s<10?'0':'')+g5s)+'\n';}
   if(bwGoal){p+='BODY WEIGHT GOAL: '+bwGoal+'lb\n';}
-  p+='\nAPP ACTIONS — you can update the user\'s app data directly. When the user asks to change a goal or target, include an action block AFTER your reply text:\n';
+  var allWeights=getWeights();
+  var wKeys=Object.keys(allWeights);
+  if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS (lb):\n'+wKeys.map(function(k){return '  '+k+': '+allWeights[k];}).join('\n')+'\n';}
+  p+='\nAPP ACTIONS — you can update the user\'s app data directly. When the user asks to change a goal, weight, or week, include an action block AFTER your reply text:\n';
   p+='ACTION_START\n{"type":"SET_RUN_GOAL","value":"6:00"}\nACTION_END\n';
   p+='Supported action types:\n';
-  p+='  SET_RUN_GOAL  — value = pace per km as "mm:ss" (e.g. "6:00" for 30-min 5k)\n';
-  p+='  SET_5K_GOAL   — value = total 5k target time as "mm:ss" (e.g. "30:00" for a 30-min 5k)\n';
-  p+='  SET_BW_GOAL   — value = target body weight in lbs as a number string (e.g. "175")\n';
+  p+='  SET_RUN_GOAL       — value = pace per km as "mm:ss" (e.g. "6:00")\n';
+  p+='  SET_5K_GOAL        — value = total 5k time as "mm:ss" (e.g. "30:00")\n';
+  p+='  SET_BW_GOAL        — value = target body weight in lbs (e.g. "175")\n';
+  p+='  SET_EXERCISE_WEIGHT — name = exact exercise name from list above, value = new weight in lbs\n';
+  p+='  SET_WEEK           — value = week number 1-'+getTotalWeeks()+' (e.g. "4")\n';
+  p+='  LOG_BW             — value = today\'s body weight in lbs (e.g. "178")\n';
   p+='Only emit one ACTION block per reply. Omit it entirely if no data change is needed.\n';
   return p;
 }
