@@ -1659,13 +1659,14 @@ function renderLog() {
   var wd = getWkData();
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var todayName = days[new Date().getDay()];
+  var _crL=getCustomRoutine(); var _avL=_crL&&_crL.name?_crL.name[0].toUpperCase():'?';
 
   var header = '<div class="screen-hd">'+
     '<div>'+
       '<div class="screen-eyebrow">'+todayName+'</div>'+
       '<div class="screen-title">Training</div>'+
     '</div>'+
-    '<div class="screen-avatar">K</div>'+
+    '<div class="screen-avatar">'+_avL+'</div>'+
   '</div>';
 
   var subBar = '<div class="log-subtabs">'+
@@ -3154,12 +3155,13 @@ function renderProgress() {
   var calHTML=renderCalendar(sessions,runs);
 
   var wd2=getWkData();
+  var _crP=getCustomRoutine(); var _avP=_crP&&_crP.name?_crP.name[0].toUpperCase():'?';
   var progressHeader='<div class="screen-hd">'+
     '<div>'+
       '<div class="screen-eyebrow">'+(wd2?'Week '+currentWeek+' · '+wd2.bName:'')+'</div>'+
       '<div class="screen-title">Progress</div>'+
     '</div>'+
-    '<div class="screen-avatar">K</div>'+
+    '<div class="screen-avatar">'+_avP+'</div>'+
   '</div>';
 
   // ── Lifts this block ──────────────────────────────────────────────────────
@@ -3905,7 +3907,8 @@ function renderCoach(){
   var isHaiku=coachModel.indexOf('haiku')!==-1;
   var modelLabel=isHaiku?'Haiku':'Sonnet';
   var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
-  var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">K</div></div>';
+  var _crC=getCustomRoutine(); var _avC=_crC&&_crC.name?_crC.name[0].toUpperCase():'?';
+  var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">'+_avC+'</div></div>';
 
   // ── No API key: setup screen ─────────────────────────────────────────────
   if(!apiKey){
@@ -4117,11 +4120,12 @@ function renderCoach(){
     '</button>'+
   '</div>';
 
+  var _crCh=getCustomRoutine(); var _avCh=_crCh&&_crCh.name?_crCh.name[0].toUpperCase():'?';
   return '<div class="screen-hd">'+
     '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
     '</button>'+
-    '<div class="screen-avatar">K</div>'+
+    '<div class="screen-avatar">'+_avCh+'</div>'+
   '</div>'+
     coachHead+
     '<div class="coach-chat-body">'+
