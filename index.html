@@ -492,6 +492,9 @@ var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
 var _libFilter   = 'All';
 var _libSearch   = '';
 var _libExpanded = '';
+var _libAddOpen  = false;
+var _libAddLoading = false;
+var _libAddCat   = 'Push';
 // Rest timer state
 var restDuration  = 90;
 var restRemaining = 90;
@@ -1148,7 +1151,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1171,7 +1174,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
@@ -3882,8 +3885,13 @@ function clearApiKeyFromSettings(){
 }
 
 // ── Exercise Library Modal ────────────────────────────────────────────────────
+function getCustomExercises(){ return lsGet('kt_custom_ex')||[]; }
+function saveCustomExercise(ex){ var a=getCustomExercises();a.push(ex);lsSet('kt_custom_ex',a); }
+function deleteCustomExercise(name){ lsSet('kt_custom_ex',getCustomExercises().filter(function(e){return e.name!==name;})); }
+function getAllExercises(){ return EXERCISE_DB.concat(getCustomExercises()); }
+
 function openExLib(){
-  _libFilter='All';_libSearch='';_libExpanded='';
+  _libFilter='All';_libSearch='';_libExpanded='';_libAddOpen=false;_libAddLoading=false;_libAddCat='Push';
   var existing=document.getElementById('exlibOverlay');
   if(existing)existing.remove();
   var overlay=document.createElement('div');
@@ -3920,7 +3928,8 @@ function _updateExLibList(){
 }
 function _renderExLibList(){
   var q=_libSearch.trim().toLowerCase();
-  var filtered=EXERCISE_DB.filter(function(ex){
+  var all=getAllExercises();
+  var filtered=all.filter(function(ex){
     var catMatch=_libFilter==='All'||ex.cat===_libFilter;
     var searchMatch=!q||ex.name.toLowerCase().indexOf(q)>-1||ex.muscles.toLowerCase().indexOf(q)>-1;
     return catMatch&&searchMatch;
@@ -3931,19 +3940,22 @@ function _renderExLibList(){
     var expanded=_libExpanded===ex.name;
     var color=catColors[ex.cat]||'var(--accent)';
     var safeN=ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var isCustom=!!ex._custom;
     var html='<div onclick="toggleLibEx(\''+safeN+'\')" style="padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;'+(expanded?'background:var(--card2);':'')+'">';
-    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    html+='<div style="display:flex;align-items:center;gap:8px;">';
     html+='<div style="flex:1;min-width:0;">';
     html+='<div style="font-size:15px;font-weight:700;color:var(--text);">'+ex.name+'</div>';
     html+='<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+ex.muscles+'</div>';
     html+='</div>';
     html+='<span style="flex-shrink:0;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:'+color+'22;color:'+color+';">'+ex.cat+'</span>';
-    html+='<span style="flex-shrink:0;color:var(--muted);font-size:13px;margin-left:2px;">'+(expanded?'▲':'▼')+'</span>';
+    if(isCustom)html+='<button onclick="event.stopPropagation();deleteCustomEx(\''+safeN+'\')" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>';
+    html+='<span style="flex-shrink:0;color:var(--muted);font-size:13px;">'+(expanded?'▲':'▼')+'</span>';
     html+='</div>';
     if(expanded){
       html+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">';
+      if(isCustom)html+='<div style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:20px;background:var(--accent)22;color:var(--accent);margin-bottom:8px;">Your exercise</div>';
       html+='<div style="font-size:12px;color:var(--muted);margin-bottom:8px;"><span style="color:var(--text);font-weight:600;">Equipment:</span> '+ex.equip+'</div>';
-      html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+ex.desc+'</p>';
+      if(ex.desc)html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+ex.desc+'</p>';
       if(ex.tips&&ex.tips.length){
         html+='<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Coaching Cues</div>';
         html+='<div style="display:flex;flex-direction:column;gap:6px;">';
@@ -3975,6 +3987,7 @@ function _buildExLibHTML(){
         '<div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Reference</div>'+
         '<div style="font-size:20px;font-weight:800;letter-spacing:-.4px;">Exercise Library</div>'+
       '</div>'+
+      '<button id="exlibAddBtn" onclick="toggleLibAdd()" style="border:none;background:transparent;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;padding:6px 10px;border-radius:10px;">+ Add</button>'+
       '<button class="ex-modal-close" onclick="closeExLib()">✕</button>'+
     '</div>'+
     '<div style="padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;">'+
@@ -3982,8 +3995,106 @@ function _buildExLibHTML(){
         'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;"/>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+pillsHTML+'</div>'+
     '</div>'+
+    '<div id="exlibAddSection"></div>'+
     '<div id="exlibList" style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;">'+_renderExLibList()+'</div>'+
   '</div>';
+}
+
+function toggleLibAdd(){
+  _libAddOpen=!_libAddOpen;_libAddLoading=false;
+  var el=document.getElementById('exlibAddSection');
+  if(el)el.innerHTML=_renderExLibAddForm();
+  var btn=document.getElementById('exlibAddBtn');
+  if(btn){btn.textContent=_libAddOpen?'✕':' + Add';btn.style.color=_libAddOpen?'var(--muted)':'var(--accent)';}
+}
+function setLibAddCat(c){
+  _libAddCat=c;
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  document.querySelectorAll('.exadd-pill').forEach(function(p){
+    var active=p.dataset.cat===c;
+    p.style.background=active?(catColors[p.dataset.cat]||'#888'):'var(--card)';
+    p.style.color=active?'#000':'var(--muted)';
+  });
+}
+function _renderExLibAddForm(){
+  if(!_libAddOpen)return '';
+  var cats=['Push','Pull','Legs','Core'];
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  var pillsHTML=cats.map(function(c){
+    var active=_libAddCat===c;
+    return '<button class="exadd-pill" data-cat="'+c+'" onclick="setLibAddCat(\''+c+'\')" style="border:none;outline:none;cursor:pointer;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;'+
+      'background:'+(active?catColors[c]:'var(--card)')+';color:'+(active?'#000':'var(--muted)')+';transition:all .15s;">'+c+'</button>';
+  }).join('');
+  var inp='width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 13px;color:var(--text);font-size:16px;box-sizing:border-box;margin-top:8px;';
+  var hasKey=!!getApiKey();
+  return '<div style="padding:16px 18px;border-bottom:1px solid var(--border);background:var(--card2);">'+
+    '<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">New Exercise</div>'+
+    '<input id="exAddName" type="text" placeholder="Exercise name *" autocomplete="off" style="'+inp+'"/>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">'+pillsHTML+'</div>'+
+    '<input id="exAddMuscles" type="text" placeholder="Primary muscles (e.g. Quads, Glutes)" autocomplete="off" style="'+inp+'"/>'+
+    '<input id="exAddEquip" type="text" placeholder="Equipment" autocomplete="off" style="'+inp+'"/>'+
+    '<textarea id="exAddDesc" placeholder="Description (optional)" rows="2" style="'+inp+';resize:vertical;font-family:inherit;"></textarea>'+
+    '<textarea id="exAddTips" placeholder="Coaching cues — one per line (optional)" rows="3" style="'+inp+';resize:vertical;font-family:inherit;margin-bottom:12px;"></textarea>'+
+    '<div style="display:flex;gap:8px;">'+
+      (hasKey?'<button id="exlibAIBtn" onclick="fillExWithAI()" style="flex:1;padding:11px;border:1.5px solid var(--accent);background:transparent;color:var(--accent);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">Fill with AI</button>':'')+
+      '<button onclick="saveCustomEx()" style="flex:1;padding:11px;border:none;background:var(--accent);color:#000;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">Save</button>'+
+    '</div>'+
+  '</div>';
+}
+function fillExWithAI(){
+  var nameEl=document.getElementById('exAddName');
+  var name=nameEl?nameEl.value.trim():'';
+  if(!name){showToast('Enter an exercise name first');return;}
+  var key=getApiKey();
+  if(!key){showToast('Add your API key in Settings first');return;}
+  var btn=document.getElementById('exlibAIBtn');
+  if(btn){btn.disabled=true;btn.textContent='Generating…';}
+  var prompt='Return ONLY a raw JSON object — no markdown, no code fences, no explanation. Fill in these fields for the exercise named "'+name+'":\n'+
+    '{"cat":"Push","muscles":"Primary muscles, comma separated","equip":"Equipment needed","desc":"One to two sentence description.","tips":["Coaching cue 1","Coaching cue 2","Coaching cue 3","Coaching cue 4"]}\n'+
+    'cat MUST be exactly one of: Push, Pull, Legs, Core. Use "'+_libAddCat+'" unless clearly wrong.';
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();}).then(function(data){
+    var text=data&&data.content&&data.content[0]?data.content[0].text:'';
+    text=text.replace(/```json?\s*/gi,'').replace(/```\s*/g,'').trim();
+    var ex;
+    try{ex=JSON.parse(text);}catch(e){showToast('AI returned unexpected format — fill manually');_refreshAIBtn();return;}
+    var map={exAddMuscles:ex.muscles,exAddEquip:ex.equip,exAddDesc:ex.desc};
+    Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el&&map[id])el.value=map[id];});
+    if(ex.tips&&ex.tips.length){var t=document.getElementById('exAddTips');if(t)t.value=ex.tips.join('\n');}
+    if(ex.cat&&['Push','Pull','Legs','Core'].indexOf(ex.cat)>-1){_libAddCat=ex.cat;setLibAddCat(_libAddCat);}
+    _refreshAIBtn();
+    showToast('Details filled — review and save');
+  }).catch(function(){_refreshAIBtn();showToast('Request failed — check your connection');});
+}
+function _refreshAIBtn(){
+  var btn=document.getElementById('exlibAIBtn');
+  if(btn){btn.disabled=false;btn.textContent='Fill with AI';}
+}
+function saveCustomEx(){
+  var nameEl=document.getElementById('exAddName');
+  var name=nameEl?nameEl.value.trim():'';
+  if(!name){showToast('Exercise name is required');return;}
+  if(getAllExercises().some(function(e){return e.name.toLowerCase()===name.toLowerCase();})){
+    showToast('An exercise with that name already exists');return;
+  }
+  var g=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
+  var tips=g('exAddTips').split('\n').map(function(t){return t.trim();}).filter(Boolean);
+  saveCustomExercise({name:name,cat:_libAddCat,muscles:g('exAddMuscles')||'Not specified',equip:g('exAddEquip')||'Not specified',desc:g('exAddDesc'),tips:tips,_custom:true});
+  _libAddOpen=false;_libExpanded=name;
+  var s=document.getElementById('exlibAddSection');if(s)s.innerHTML='';
+  var b=document.getElementById('exlibAddBtn');if(b){b.textContent='+ Add';b.style.color='var(--accent)';}
+  _updateExLibList();
+  showToast('Exercise saved to your library');
+}
+function deleteCustomEx(name){
+  if(!confirm('Remove "'+name+'" from your library?'))return;
+  deleteCustomExercise(name);
+  if(_libExpanded===name)_libExpanded='';
+  _updateExLibList();
+  showToast('Removed');
 }
 
 // ── Service Worker ────────────────────────────────────────────────────────────
