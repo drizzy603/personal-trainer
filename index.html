@@ -3873,6 +3873,23 @@ function resetCustomRoutine(){
   render();
   showToast('Programme reset. You can generate a new one anytime.');
 }
+
+// Drop any custom routine and fall back to the baked-in 12-week plan.
+// Keeps current week and chat history — used to recover from a truncated
+// or otherwise broken custom programme.
+function restoreBuiltinRoutine(){
+  if(!confirm('Use the built-in 12-week plan? Your current custom programme will be replaced. Logged sessions and chat history are kept.')) return;
+  try{
+    var cur=getCustomRoutine();
+    if(cur) lsSet('kt_routine_backup',cur);
+  }catch(e){}
+  clearCustomRoutine();
+  if(currentWeek<1||currentWeek>12){ currentWeek=1; lsSet('kt_week',1); }
+  intakeMode=false;
+  pendingRoutine=null;
+  render();
+  showToast('Restored built-in 12-week plan — Week '+currentWeek);
+}
 function setApiKey(k){if(k)localStorage.setItem('kt_apikey',k.trim());else localStorage.removeItem('kt_apikey');}
 
 function saveApiKey(){
@@ -4537,6 +4554,15 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Import backup</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>'+
+    '<div class="settings-row" onclick="restoreBuiltinRoutine()">'+
+      '<div class="settings-row-ic" style="background:#0d2a1a;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Restore built-in 12-week plan</div><div class="settings-row-sub" style="font-size:12px;color:var(--muted);">Discards any custom programme and uses the default 12-week plan</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
     '</div>'+
