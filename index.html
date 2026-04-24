@@ -1662,7 +1662,7 @@ function renderLog() {
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
     '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">Run</button>'+
-    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')">Sport</button>'+
+    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
     '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">Body</button>'+
     '</div>';
 
@@ -2761,6 +2761,46 @@ function renderRecentSportLogs(){
   '</div>';
 }
 
+function renderActivityCards(){
+  var logs=getSportLogs();
+  if(!logs.length) return '';
+  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
+  var map={};
+  logs.forEach(function(log){if(!map[log.type])map[log.type]=[];map[log.type].push(log);});
+  var types=Object.keys(map).sort(function(a,b){return new Date(map[b][0].date)-new Date(map[a][0].date);});
+  var now=new Date();
+  var cards=types.map(function(type){
+    var tl=map[type],s=sMap[type]||{icon:'⚡',color:'#888'},last=tl[0],count=tl.length;
+    var daysAgo=Math.round((now-new Date(last.date+'T00:00:00'))/86400000);
+    var when=daysAgo===0?'Today':daysAgo===1?'Yesterday':daysAgo+' days ago';
+    var sum=buildSportSummary(last);
+    var active=logSportType===type;
+    // weekly frequency: sessions in last 14 days
+    var recent14=tl.filter(function(l){return Math.round((now-new Date(l.date+'T00:00:00'))/86400000)<=14;}).length;
+    var freqStr=recent14>0?recent14+'× last 2 wks':'';
+    return '<div onclick="pickSport(\''+type+'\')" style="flex-shrink:0;width:148px;cursor:pointer;'+
+      'background:'+(active?s.color+'1a':'var(--card2)')+';border:2px solid '+(active?s.color:'var(--border)')+';'+
+      'border-radius:20px;padding:16px 14px;transition:all .15s;-webkit-tap-highlight-color:transparent;">'+
+      '<div style="font-size:30px;line-height:1;margin-bottom:10px;">'+s.icon+'</div>'+
+      '<div style="font-size:13px;font-weight:800;margin-bottom:3px;color:var(--text);">'+type+'</div>'+
+      '<div style="font-size:11px;font-weight:700;color:'+s.color+';margin-bottom:6px;">'+when+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);line-height:1.7;">'+
+        count+' session'+(count===1?'':'s')+
+        (freqStr?'<br>'+freqStr:'')+
+        (last.duration&&last.duration>0?'<br>Last: '+last.duration+'min':'')+
+        (sum?'<br>'+sum:'')+
+      '</div>'+
+      '<div style="margin-top:10px;padding:6px 0;border-radius:10px;background:'+s.color+';text-align:center;'+
+        'font-size:11px;font-weight:800;color:#000;">Log '+(active?'✓':'+')+'</div>'+
+    '</div>';
+  }).join('');
+  return '<div style="margin-bottom:4px;"><span class="sect-title">My Activities</span></div>'+
+    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;'+
+      '-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:4px;">'+
+      cards+
+    '</div>';
+}
+
 function renderSportSection(){
   var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
   var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
@@ -2768,7 +2808,10 @@ function renderSportSection(){
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
     'letter-spacing:.05em;text-transform:uppercase;';
 
-  var picker='<div style="display:flex;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
+  var hasPrior=getSportLogs().length>0;
+  var pickerLabel=hasPrior?'Log a session':'Choose activity';
+  var picker='<div style="margin-bottom:4px;"><span class="sect-title">'+pickerLabel+'</span></div>'+
+  '<div style="display:flex;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
     SPORTS.map(function(s){
       var act=s.id===logSportType;
       return '<button onclick="pickSport(\''+s.id+'\')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;'+
@@ -2814,7 +2857,7 @@ function renderSportSection(){
     '</button>'+
   '</div>';
 
-  return picker+form+renderRecentSportLogs();
+  return renderActivityCards()+picker+form+renderRecentSportLogs();
 }
 
 function fillSportWithAI(){
