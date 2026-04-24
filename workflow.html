@@ -424,23 +424,23 @@
     <div class="card-grid">
       <div class="card">
         <div class="card-icon">🏋️</div>
-        <h3>Today</h3>
-        <p>Today's session — exercises, sets, reps, weight and RPE fields ready to log.</p>
+        <h3>Log</h3>
+        <p>Today's session — exercises, sets, reps, weight and RPE fields ready to log. Run days included.</p>
       </div>
       <div class="card">
         <div class="card-icon">📈</div>
         <h3>Progress</h3>
-        <p>Charts and PRs across all exercises. See your strength curve over the programme.</p>
+        <p>Charts and PRs across all exercises. See your strength curve, run pace, and bodyweight over 12 weeks.</p>
       </div>
       <div class="card">
-        <div class="card-icon">📋</div>
-        <h3>Programme</h3>
-        <p>Full plan — every session, every exercise, every target weight. Tap any week for an overview.</p>
+        <div class="card-icon">💬</div>
+        <h3>Coach</h3>
+        <p>Claude-powered chat that reads your actual training data — and can update the app directly from conversation.</p>
       </div>
       <div class="card">
-        <div class="card-icon">🤖</div>
-        <h3>AI Coach</h3>
-        <p>Claude-powered chat that reads your actual training data to give personalised advice.</p>
+        <div class="card-icon">⚙️</div>
+        <h3>Settings</h3>
+        <p>API key, week controls, export/import backup, and this walkthrough.</p>
       </div>
     </div>
   </div>
@@ -474,7 +474,7 @@
         <p>Light loads, full range of motion. Let the work sink in.</p>
       </div>
     </div>
-    <p>Each week has three sessions — <strong>Push</strong>, <strong>Pull</strong>, <strong>Legs</strong> — plus run days.</p>
+    <p>Each week has three gym sessions — <strong>Push</strong> (Mon), <strong>Pull</strong> (Thu), <strong>Legs</strong> (Fri) — plus two runs (Tue easy / Sat long). Wednesday and Sunday are rest days.</p>
   </div>
 
   <!-- 3. LOGGING A SESSION -->
@@ -555,16 +555,36 @@
         <div class="data-val">Run logs — distance, time, heart rate, type, date</div>
       </div>
       <div class="data-row">
-        <div class="data-key">Bodyweight</div>
-        <div class="data-val">Daily weight entries</div>
+        <div class="data-key">kt_weights</div>
+        <div class="data-val">Working weights map — exercise name → current target weight in lb</div>
       </div>
       <div class="data-row">
-        <div class="data-key">PRs</div>
-        <div class="data-val">Personal records — max weight lifted per exercise</div>
+        <div class="data-key">kt_prs</div>
+        <div class="data-val">Personal records — exercise name → max weight ever lifted</div>
       </div>
       <div class="data-row">
-        <div class="data-key">Programme</div>
-        <div class="data-val">Your custom AI-built routine, including all weeks and exercises</div>
+        <div class="data-key">kt_week</div>
+        <div class="data-val">Current week number (1–12)</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_bw</div>
+        <div class="data-val">Array of bodyweight entries — {date, weight} — most recent first</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_run_goal</div>
+        <div class="data-val">Target pace per km as "mm:ss" (e.g. "6:00")</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_5k_goal</div>
+        <div class="data-val">Target 5k finish time in seconds</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_bw_goal</div>
+        <div class="data-val">Target bodyweight in lb</div>
+      </div>
+      <div class="data-row">
+        <div class="data-key">kt_coach_msgs</div>
+        <div class="data-val">Coach chat history — persists across sessions, last 60 messages kept</div>
       </div>
     </div>
     <div class="highlight">
@@ -610,7 +630,7 @@
       <span class="section-num">06</span>
       <h2>AI Coach</h2>
     </div>
-    <p>The AI Coach connects to Claude and automatically injects your real training data into every conversation — so the advice is always about <em>your</em> actual sessions, not generic tips.</p>
+    <p>The Coach tab connects to Claude via your Anthropic API key. Every message automatically includes your real training data — so advice is always about <em>your</em> actual sessions, not generic tips. Conversation history persists across sessions.</p>
     <div class="steps">
       <div class="step">
         <div class="step-line">
@@ -618,8 +638,8 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>Build your programme</h3>
-          <p>First time? The coach runs an intake — asking about your goals, experience and schedule — then generates a fully personalised programme for you.</p>
+          <h3>Coach home menu</h3>
+          <p>Tapping the Coach tab shows a landing menu — open the chat, view conversation count, or disconnect. You're never dropped straight into the last message.</p>
         </div>
       </div>
       <div class="step">
@@ -628,8 +648,8 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>Ask anything</h3>
-          <p>Use the quick-start cards or type freely — "Why am I stalling on squat?", "Is my RPE too high this week?", "What should I focus on today?"</p>
+          <h3>App builds context automatically</h3>
+          <p>Your session history, PRs, current week, run data, exercise weights, and goals are injected into the system prompt on every message.</p>
         </div>
       </div>
       <div class="step">
@@ -638,8 +658,102 @@
           <div class="step-connector"></div>
         </div>
         <div class="step-body">
-          <h3>Context is built automatically</h3>
-          <p>Your session history, PRs, current week, bodyweight and run data are all bundled into every message behind the scenes.</p>
+          <h3>Claude streams a response</h3>
+          <p>The reply is specific to your numbers, streamed word-by-word in real time. Responses time out after 30 seconds if the connection drops.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">4</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>Coach can update the app directly</h3>
+          <p>Ask the coach to change something and it will update the app without you leaving the chat. Supported actions:</p>
+          <ul style="margin-top:10px;padding-left:18px;font-size:14px;color:#a0a0b8;line-height:2;">
+            <li><strong style="color:var(--text);">Exercise weights</strong> — "bump my bench to 172.5 lb"</li>
+            <li><strong style="color:var(--text);">Current week</strong> — "move me to week 4"</li>
+            <li><strong style="color:var(--text);">Log bodyweight</strong> — "I'm 181 lb today"</li>
+            <li><strong style="color:var(--text);">Run pace goal</strong> — "set my pace goal to 6:00/km"</li>
+            <li><strong style="color:var(--text);">5k time goal</strong> — "update my 5k target to 30:00"</li>
+            <li><strong style="color:var(--text);">Bodyweight goal</strong> — "my target weight is 175 lb"</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="highlight">
+      <h3>How coach actions work</h3>
+      <p>When you ask for a change, Claude embeds a hidden action block in its reply. The app parses it, updates localStorage, and re-renders the relevant screen — all before you finish reading the response. The action block is stripped from the chat bubble so you only see clean text.</p>
+    </div>
+  </div>
+
+  <!-- 7. DELIVERY / PWA -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <h2>Delivery &amp; PWA</h2>
+    </div>
+    <p>The app is a single <code>index.html</code> file deployed on Vercel via a GitHub push. No build step, no framework, no dependencies.</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📄</div>
+        <h3>Single File</h3>
+        <p>All HTML, CSS and JavaScript in one file. Open it directly or serve it from anywhere.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>Instant Deploy</h3>
+        <p>Push to GitHub → Vercel auto-deploys in seconds. No CI, no config.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📱</div>
+        <h3>Add to Home Screen</h3>
+        <p>Works as a PWA. Add it to your iPhone home screen and it opens full-screen like a native app.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h3>Offline Ready</h3>
+        <p>Once loaded, it works without internet. Data stays on-device.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. RENDER LOOP -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <h2>Render Loop</h2>
+    </div>
+    <p>The app uses a minimal reactive pattern — no framework required.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">1</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>State lives in <code>localStorage</code></h3>
+          <p>Sessions, runs, PRs and week number are read from localStorage on every render.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">2</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3>User action triggers <code>save()</code></h3>
+          <p>Any input — logging a set, completing a session — writes to localStorage immediately.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-line">
+          <div class="step-dot">3</div>
+          <div class="step-connector"></div>
+        </div>
+        <div class="step-body">
+          <h3><code>render()</code> redraws the screen</h3>
+          <p>The active tab re-renders from scratch using the latest state. Fast, simple, no virtual DOM.</p>
         </div>
       </div>
       <div class="step">
