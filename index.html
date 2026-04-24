@@ -2780,11 +2780,25 @@ function renderSportSection(){
     }).join('')+
   '</div>';
 
+  var hasKey=!!getApiKey();
+  var aiBlock=hasKey
+    ? '<div style="margin-bottom:16px;padding:14px;background:var(--bg);border-radius:14px;border:1px solid var(--border);">'+
+        '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Describe with AI</div>'+
+        '<textarea id="spAIDesc" rows="2" autocomplete="off" placeholder="e.g. 45min road ride, 22km, avg 30 km/h, HR 148, 200m of climbing" '+
+          'style="'+inp+';resize:vertical;margin-bottom:8px;background:var(--card2);"></textarea>'+
+        '<button id="spAIBtn" onclick="fillSportWithAI()" style="width:100%;padding:9px;border:1.5px solid var(--accent);'+
+          'background:transparent;color:var(--accent);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'+
+          'Fill fields with AI'+
+        '</button>'+
+      '</div>'
+    : '';
+
   var form='<div class="card" style="margin-top:4px;">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">'+
       '<span style="font-size:22px;">'+sport.icon+'</span>'+
       '<div style="font-size:16px;font-weight:800;letter-spacing:-.3px;">Log '+sport.id+'</div>'+
     '</div>'+
+    aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Date</label>'+
         '<input type="date" id="spDate" value="'+logDate+'" style="'+inp+'"/></div>'+
@@ -2801,6 +2815,50 @@ function renderSportSection(){
   '</div>';
 
   return picker+form+renderRecentSportLogs();
+}
+
+function fillSportWithAI(){
+  var descEl=document.getElementById('spAIDesc');
+  var text=descEl?descEl.value.trim():'';
+  if(!text){showToast('Describe your session first');return;}
+  var key=getApiKey();
+  if(!key){showToast('Add your API key in Settings first');return;}
+  var btn=document.getElementById('spAIBtn');
+  if(btn){btn.disabled=true;btn.textContent='Analysing…';}
+  var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
+  var fieldDesc='duration (minutes, integer)\n';
+  sport.fields.forEach(function(f){
+    if(f.type==='select') fieldDesc+=f.id+' (one of: '+f.opts.join(', ')+')\n';
+    else fieldDesc+=f.id+(f.unit?' ('+f.unit+', number)':' (string or number as appropriate)')+'\n';
+  });
+  fieldDesc+='notes (any extra context worth recording)\n';
+  fieldDesc+='date (YYYY-MM-DD, only if a specific date is mentioned)\n';
+  var prompt='Parse this '+sport.id+' session and return ONLY raw JSON — no markdown, no explanation.\n'+
+    'Include only fields you can confidently extract. Use numbers (not strings) for numeric values.\n\n'+
+    'Possible fields:\n'+fieldDesc+'\n'+
+    'Session description: "'+text+'"';
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:256,messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();}).then(function(data){
+    var txt=data&&data.content&&data.content[0]?data.content[0].text:'';
+    txt=txt.replace(/```json?\s*/gi,'').replace(/```\s*/g,'').trim();
+    var parsed;
+    try{parsed=JSON.parse(txt);}catch(e){showToast('Could not parse AI response — fill manually');_refreshSportAIBtn();return;}
+    if(parsed.duration!=null){var d=document.getElementById('spDuration');if(d)d.value=parsed.duration;}
+    if(parsed.date){var dd=document.getElementById('spDate');if(dd)dd.value=parsed.date;}
+    if(parsed.notes){var nn=document.getElementById('spNotes');if(nn)nn.value=parsed.notes;}
+    sport.fields.forEach(function(f){
+      if(parsed[f.id]!=null){var el=document.getElementById('sp_'+f.id);if(el)el.value=parsed[f.id];}
+    });
+    _refreshSportAIBtn();
+    showToast('Fields filled — review and log');
+  }).catch(function(){_refreshSportAIBtn();showToast('Request failed — check your connection');});
+}
+function _refreshSportAIBtn(){
+  var btn=document.getElementById('spAIBtn');
+  if(btn){btn.disabled=false;btn.textContent='Fill fields with AI';}
 }
 
 // ── WEIGHTS ───────────────────────────────────────────────────────────────────
