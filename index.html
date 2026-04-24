@@ -1426,6 +1426,11 @@ function initLogState() {
       logReps[ex.name] = Array(ex.sets).fill(defRep);
       logRPEs[ex.name] = defRpe;
     }
+    // Auto-fill from session history if weight is still 0
+    if (!logWeights[ex.name]) {
+      var hist = getLastExData(logSession, ex.name);
+      if (hist && hist.weight > 0) logWeights[ex.name] = hist.weight;
+    }
   }
 }
 
@@ -1527,9 +1532,21 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var badge = !isToday ? otherBadge : (doneToday || runDoneToday) ? doneBadge : todayBadge;
 
   if (type === 'Run') {
-    var runData = wd ? (wd.runTue || wd.runSat) : null;
-    var runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
-    if (runData && runData.hr) runNote += ' · HR <'+runData.hr;
+    var runNote;
+    if (runDoneToday) {
+      var todayRun = getRuns().find(function(r){return r.date===today;});
+      if (todayRun) {
+        var pace = calcPace(todayRun.distance, todayRun.time);
+        runNote = todayRun.distance+' km · '+todayRun.time+(pace!=='-'?' · '+pace+'/km':'');
+        if (todayRun.hr) runNote += ' · '+todayRun.hr+' bpm';
+      } else {
+        runNote = 'Logged';
+      }
+    } else {
+      var runData = wd ? (wd.runTue || wd.runSat) : null;
+      runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
+      if (runData && runData.hr) runNote += ' · HR <'+runData.hr;
+    }
     return '<div class="today-card" style="'+cardStyle+'">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="display:flex;align-items:center;gap:8px;">'+
@@ -2011,7 +2028,13 @@ function swapExercise(slotKey, origName, newName, slotIdx) {
   logExSwap[slotKey] = (newName===origName) ? undefined : newName;
   // seed state for new exercise if not already set
   var weights = getWeights();
-  if (logWeights[newName]===undefined) logWeights[newName] = weights[newName]||0;
+  if (logWeights[newName]===undefined) {
+    logWeights[newName] = weights[newName]||0;
+    if (!logWeights[newName]) {
+      var swapHist = getLastExData(logSession, newName);
+      if (swapHist && swapHist.weight > 0) logWeights[newName] = swapHist.weight;
+    }
+  }
   if (logSets[newName]===undefined) {
     var srcName = logExSwap[slotKey] ? origName : newName;
     logSets[newName] = logSets[origName]||3;
@@ -3155,7 +3178,11 @@ function renderProgress() {
       '</div>':'')+
     '<div class="stat">'+
       '<div class="stat-lbl">Week</div>'+
-      '<div class="stat-val" style="color:var(--accent)">W'+currentWeek+'</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;">'+
+        '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;font-weight:700;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">−</button>'+
+        '<span class="stat-val" style="color:var(--accent);">'+currentWeek+'</span>'+
+        '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;font-weight:700;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>'+
+      '</div>'+
     '</div>'+
     '</div>';
 
