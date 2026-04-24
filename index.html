@@ -3627,7 +3627,7 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
 '9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN VIA TOOL CALLS: call update_routine_week once for each of weeks 1 through 12 (12 calls total). Do NOT write the plan as JSON in your text reply — that is not how the app receives it. Each tool call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN VIA ONE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks. Do NOT write the plan as JSON in your text reply — that is not how the app receives it. If you genuinely cannot fit 12 weeks in one response, split into two calls of 6 weeks each (weeks 1-6, then 7-12). The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure to follow:\n'+
 '- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
 '- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
@@ -3685,22 +3685,28 @@ var _runSchema={
   },
   required:['km','type']
 };
+var _weekSchema={type:'object',
+  properties:{
+    wk:{type:'integer',minimum:1,maximum:12,description:'Week number 1–12'},
+    bName:{type:'string',description:'Block name: BASE, HYPERTROPHY, STRENGTH, PEAK, or DELOAD'},
+    bColor:{type:'string',description:'Hex block color — BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e'},
+    wkNote:{type:'string',description:'Brief 1–2 sentence focus note for the week'},
+    push:{type:'array',items:_exerciseSchema,description:'Push session exercises'},
+    pull:{type:'array',items:_exerciseSchema,description:'Pull session exercises'},
+    legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
+    runTue:_runSchema,
+    runSat:_runSchema
+  },
+  required:['wk','bName','bColor','push','pull','legs']
+};
 var COACH_TOOLS=[
-  {name:'update_routine_week',
-   description:'Replace the contents of one week in the user\'s 12-week programme. Call this once per week to build a full plan (12 calls total for a full rewrite). For a single-week tweak call it once. Commits immediately — the user sees the update live.',
+  {name:'update_routine_weeks',
+   description:'Replace one or more weeks in the user\'s 12-week programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass all 12 in a single call — this is much faster than splitting up the work. If the response would be too long, split into two calls of 6 weeks each. Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
-       wk:{type:'integer',minimum:1,maximum:12,description:'Week number 1–12'},
-       bName:{type:'string',description:'Block name: BASE, HYPERTROPHY, STRENGTH, PEAK, or DELOAD'},
-       bColor:{type:'string',description:'Hex block color — BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e'},
-       wkNote:{type:'string',description:'Brief 1–2 sentence focus note for the week'},
-       push:{type:'array',items:_exerciseSchema,description:'Push session exercises'},
-       pull:{type:'array',items:_exerciseSchema,description:'Pull session exercises'},
-       legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
-       runTue:_runSchema,
-       runSat:_runSchema
+       weeks:{type:'array',minItems:1,maxItems:12,items:_weekSchema,description:'Array of 1–12 week objects, each keyed by wk (1–12).'}
      },
-     required:['wk','bName','bColor','push','pull','legs']}},
+     required:['weeks']}},
   {name:'set_current_week',
    description:'Set which week of the programme the user is currently on.',
    input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:12}},required:['week']}},
@@ -3728,17 +3734,16 @@ var COACH_TOOLS=[
 ];
 
 // Session-level flag — we back up kt_routine exactly once per page session, on
-// the first update_routine_week call, so the Restore Previous button rolls back
-// to the state before this conversation's edits (not to an intermediate week).
+// the first update_routine_weeks call, so the Restore Previous button rolls back
+// to the state before this conversation's edits.
 var _routineBackedUp=false;
 
 function executeCoachTool(name,input){
   input=input||{};
   try{
-    if(name==='update_routine_week'){
-      var wk=parseInt(input.wk);
-      if(!(wk>=1&&wk<=12)) return {ok:false,error:'wk must be 1-12'};
-      if(!input.bName||!input.bColor) return {ok:false,error:'bName and bColor are required'};
+    if(name==='update_routine_weeks'){
+      var weeksIn=Array.isArray(input.weeks)?input.weeks:null;
+      if(!weeksIn||!weeksIn.length) return {ok:false,error:'weeks array required'};
       var cr=getCustomRoutine();
       if(!cr){
         // Seed from the baked-in 12-week plan so any weeks the coach doesn't
@@ -3755,22 +3760,31 @@ function executeCoachTool(name,input){
         }catch(e){}
         _routineBackedUp=true;
       }
-      while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
-      var weekObj={
-        wk:wk,
-        block:parseInt(input.block)||Math.ceil(wk/4),
-        bName:String(input.bName),
-        bColor:String(input.bColor),
-        wkNote:input.wkNote?String(input.wkNote):'',
-        push:Array.isArray(input.push)?input.push:[],
-        pull:Array.isArray(input.pull)?input.pull:[],
-        legs:Array.isArray(input.legs)?input.legs:[]
-      };
-      if(input.runTue&&typeof input.runTue==='object') weekObj.runTue=input.runTue;
-      if(input.runSat&&typeof input.runSat==='object') weekObj.runSat=input.runSat;
-      cr.weeks[wk-1]=weekObj;
+      var written=[];
+      for(var wi=0;wi<weeksIn.length;wi++){
+        var w=weeksIn[wi]||{};
+        var wk=parseInt(w.wk);
+        if(!(wk>=1&&wk<=12)) return {ok:false,error:'each week needs wk 1-12 (got '+w.wk+')',written:written};
+        if(!w.bName||!w.bColor) return {ok:false,error:'week '+wk+' missing bName or bColor',written:written};
+        while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
+        var weekObj={
+          wk:wk,
+          block:parseInt(w.block)||Math.ceil(wk/4),
+          bName:String(w.bName),
+          bColor:String(w.bColor),
+          wkNote:w.wkNote?String(w.wkNote):'',
+          push:Array.isArray(w.push)?w.push:[],
+          pull:Array.isArray(w.pull)?w.pull:[],
+          legs:Array.isArray(w.legs)?w.legs:[]
+        };
+        if(w.runTue&&typeof w.runTue==='object') weekObj.runTue=w.runTue;
+        if(w.runSat&&typeof w.runSat==='object') weekObj.runSat=w.runSat;
+        cr.weeks[wk-1]=weekObj;
+        written.push(wk);
+      }
       setCustomRoutine(cr);
-      return {ok:true,message:'Week '+wk+' updated',wk:wk};
+      var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+written[0]+'–'+written[written.length-1]+' updated ('+written.length+')');
+      return {ok:true,message:label,weeks:written};
     }
     if(name==='set_current_week'){
       var w=parseInt(input.week);
@@ -3997,7 +4011,12 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 // Friendly label for a tool call, shown as a pill in the chat UI.
 function toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
-  if(n==='update_routine_week') return 'Week '+i.wk+' updated';
+  if(n==='update_routine_weeks'){
+    var ws=Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[];
+    if(!ws.length) return 'Routine updated';
+    if(ws.length===1) return 'Week '+ws[0]+' updated';
+    return 'Weeks '+ws[0]+'–'+ws[ws.length-1]+' updated';
+  }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='set_exercise_weight') return i.name+' → '+i.weight+' lb';
   if(n==='set_bench_goal') return 'Bench goal '+i.weight+' lb';
@@ -4183,8 +4202,8 @@ function buildSystemPrompt(){
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
-  p+='  - Tweak one week of the plan → one update_routine_week call.\n';
-  p+='  - Rewrite / regenerate the full programme → call update_routine_week 12 times (once per week), ordered 1 → 12. The app backs up the previous routine before the first write so the user can roll back.\n';
+  p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
+  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call with all 12 weeks in the array (or two calls of 6 weeks if the response would otherwise be too long). The app backs up the previous routine before the first write so the user can roll back. Do NOT make 12 separate calls — it hits rate limits.\n';
   p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
   p+='  - Weeks 1-3: BASE #06b6d4 (volume + technique)\n';
   p+='  - Week 4: DELOAD #22c55e (end of Base — sets to 2-3, weight ~60%)\n';
