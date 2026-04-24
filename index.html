@@ -1018,7 +1018,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1041,7 +1041,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
@@ -2493,12 +2493,13 @@ function renderProgress() {
   // ── Lifts this block ──────────────────────────────────────────────────────
   var wd2b = getWkData();
   var blockNum = wd2b ? wd2b.block : 1;
-  // Find first week of current block
-  var blockStartWk = 1;
-  for (var bw = 1; bw < WEEK_DATA.length; bw++) {
-    if (WEEK_DATA[bw] && WEEK_DATA[bw].block === blockNum) { blockStartWk = bw; break; }
+  // Find first week of current block — use custom routine if active
+  var cr2 = getCustomRoutine();
+  var allWeeks = cr2 && cr2.weeks ? cr2.weeks : WEEK_DATA.slice(1);
+  var wdStart = null;
+  for (var bw = 0; bw < allWeeks.length; bw++) {
+    if (allWeeks[bw] && allWeeks[bw].block === blockNum) { wdStart = allWeeks[bw]; break; }
   }
-  var wdStart = WEEK_DATA[blockStartWk];
 
   var liftDefs = [
     { label:'Bench Press', sessKey:'push', dataName:'Barbell Bench Press' },
@@ -2728,7 +2729,7 @@ function showToast(msg){
   var t=document.getElementById('toast');
   t.textContent=msg;
   t.style.background = 'var(--green)';
-  t.style.color = '#fff';
+  t.style.color = '#000';
   t.classList.add('show');
   setTimeout(function(){t.classList.remove('show');},2200);
 }
