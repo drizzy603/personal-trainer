@@ -3941,8 +3941,10 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // Record tool calls for pill UI
     var toolUses=finishedBlocks.filter(function(b){return b.type==='tool_use';});
 
-    // Append the assistant's raw blocks to the in-flight API conversation
-    apiMsgs.push({role:'assistant',content:finishedBlocks});
+    // Append the assistant's raw blocks to the in-flight API conversation.
+    // Skip if the stream produced nothing — an empty assistant content array
+    // is rejected by the API.
+    if(finishedBlocks.length) apiMsgs.push({role:'assistant',content:finishedBlocks});
 
     if(!toolUses.length||stopReason!=='tool_use'){
       streamingContent='';
@@ -3975,6 +3977,19 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       content:totalText.trim(),
       _tools:allToolCalls.length?allToolCalls:null
     });
+  }
+  // Auto-exit intake mode once a full 12-week plan exists — the old code did
+  // this inside confirmLoadRoutine; with tool-use there's no explicit confirm
+  // step, so we check post-turn.
+  if(intakeMode){
+    var _cr=getCustomRoutine();
+    var _complete=!!(_cr&&_cr.weeks&&_cr.weeks.length>=12&&_cr.weeks.every(function(w){return w&&w.bName;}));
+    if(_complete){
+      intakeMode=false;
+      currentWeek=1;
+      lsSet('kt_week',1);
+      showToast('Programme loaded — Week 1 is ready');
+    }
   }
   saveCoachHistory();
 }
@@ -4054,24 +4069,28 @@ function clearApiKey(){
 }
 function saveCoachHistory(){
   try{
-    var msgs=coachMessages.slice(-60).map(function(m){
-      // Skip transient tool_result payloads — they're conversation-local only.
+    // Cap in-memory history, but do NOT flatten rich content — that would
+    // strip base64 images from user messages before runCoachTurn sends them,
+    // and lose tool_use/tool_result context mid-loop.
+    if(coachMessages.length>60) coachMessages=coachMessages.slice(-60);
+    var msgs=coachMessages.map(function(m){
       if(m._toolResults) return null;
-      var out={role:m.role,content:m.content,_hadImage:m._hadImage||false};
+      var out={role:m.role};
+      if(m._hadImage) out._hadImage=true;
       if(m._tools) out._tools=m._tools;
       if(Array.isArray(m.content)){
-        // Keep image user-messages; collapse everything else to its text.
+        // Storage projection: collapse multimodal/tool-use content to text +
+        // a _hadImage flag. The rich in-memory version is preserved.
         var hasImage=m.content.some(function(p){return p.type==='image';});
-        if(hasImage){
-          out._hadImage=true;
-        }
+        if(hasImage) out._hadImage=true;
         var text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
         out.content=text||(hasImage?'[Image]':'');
+      }else{
+        out.content=m.content;
       }
       return out;
     }).filter(function(m){return m;});
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
-    coachMessages=msgs;
   }catch(e){}
 }
 
