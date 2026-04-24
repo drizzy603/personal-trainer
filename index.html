@@ -1240,7 +1240,7 @@ function defaultWeights() {
   };
 }
 
-function getCustomRoutine(){ var r=lsGet('kt_routine'); return r&&r.weeks?r:null; }
+function getCustomRoutine(){ var r=lsGet('kt_routine'); return r&&r.weeks&&r.weeks.length?r:null; }
 function setCustomRoutine(r){ lsSet('kt_routine',r); }
 function clearCustomRoutine(){ localStorage.removeItem('kt_routine'); }
 function getWkData(){
@@ -1265,7 +1265,7 @@ function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; }
 function set5kGoal(secs) { if(secs>0) localStorage.setItem('kt_5k_goal',secs); else localStorage.removeItem('kt_5k_goal'); }
 function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else localStorage.removeItem('kt_run_goal'); }
 function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
-function secToPace(s){ return Math.floor(s/60)+':'+(s%60<10?'0':'')+Math.round(s%60); }
+function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'); }
 
 function calcVolume(exercises) {
   var vol=0;
@@ -1305,7 +1305,7 @@ function checkAndUpdatePRs(exercises) {
   var newPRs = [];
   exercises.forEach(function(ex) {
     var w = parseFloat(ex.weight);
-    if (w <= 0) return; // bodyweight doesn't count
+    if (!(w > 0)) return; // bodyweight or missing weight — NaN <= 0 is false, so use positive guard
     if (!prs[ex.name] || w > prs[ex.name]) {
       prs[ex.name] = w;
       newPRs.push(ex.name);
@@ -1316,10 +1316,16 @@ function checkAndUpdatePRs(exercises) {
 }
 
 // Export all app data as JSON file download
+// Keys stored as raw strings (not JSON) — lsGet can't read them because
+// JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
+var RAW_STRING_KEYS = ['kt_run_goal'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
+  });
+  RAW_STRING_KEYS.forEach(function(k){
+    var v = localStorage.getItem(k); if (v) data[k] = v;
   });
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
@@ -1341,8 +1347,11 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
+        });
+        RAW_STRING_KEYS.forEach(function(k){
+          if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
         initLogState();
