@@ -1,5 +1,5 @@
-var CACHE = 'kt-v1';
-var FILES = ['/'];
+var CACHE = 'kt-v2';
+var FILES = ['./', './sw.js', './manifest.json'];
 
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE).then(function(c) { return c.addAll(FILES); }));
@@ -15,6 +15,23 @@ self.addEventListener('activate', function(e) {
 
 self.addEventListener('fetch', function(e) {
   if(e.request.method!=='GET') return;
+  var url = e.request.url;
+  // Network-first for HTML navigation requests so updates are seen immediately
+  if(e.request.mode==='navigate' || url.endsWith('.html') || url.endsWith('/')) {
+    e.respondWith(
+      fetch(e.request).then(function(res) {
+        if(res&&res.status===200) {
+          var clone = res.clone();
+          caches.open(CACHE).then(function(c){c.put(e.request,clone);});
+        }
+        return res;
+      }).catch(function(){
+        return caches.match(e.request);
+      })
+    );
+    return;
+  }
+  // Cache-first for everything else
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       var network = fetch(e.request).then(function(res) {

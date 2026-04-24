@@ -3559,7 +3559,14 @@ function clearApiKeyFromSettings(){
 // ── Service Worker ────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('/sw.js').catch(function(){});
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.addEventListener('updatefound', function(){
+        var newSW = reg.installing;
+        newSW.addEventListener('statechange', function(){
+          if(newSW.state==='activated') window.location.reload();
+        });
+      });
+    }).catch(function(){});
   });
 }
 // ── Start ─────────────────────────────────────────────────────────────────────
