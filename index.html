@@ -488,6 +488,10 @@ var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
 var pendingRoutine = null;   // parsed routine JSON waiting for user to confirm
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
+// Exercise library state
+var _libFilter   = 'All';
+var _libSearch   = '';
+var _libExpanded = '';
 // Rest timer state
 var restDuration  = 90;
 var restRemaining = 90;
@@ -915,6 +919,131 @@ var EXERCISE_LIBRARY = {
   Pull:['Pull Up','Seated Cable Row','Lat Pulldown (neutral)','Chest Supported Row','Hammer Curl','Barbell Curl (21s)','Face Pull','Barbell Curl','Incline DB Curl','Cable Row','Single Arm Row','Preacher Curl'],
   Legs:['Barbell Back Squat','Romanian Deadlift','Leg Press','Leg Extension','Seated Leg Curl','Standing Calf Raise','Cable Crunch','Lying Leg Curl','Hanging Leg Raise','Hip Thrust','Leg Curl','RDL']
 };
+
+// ── Exercise Database ─────────────────────────────────────────────────────────
+var EXERCISE_DB = [
+  // Push
+  {name:'Barbell Bench Press',cat:'Push',muscles:'Chest, Anterior Deltoid, Triceps',equip:'Barbell, Bench',
+   desc:'The king of horizontal pressing. Lie flat, grip ~1.5x shoulder width, lower bar to lower chest with controlled descent, drive up.',
+   tips:['Retract scapula and press chest up before unracking','Lower to nipple line — not neck or belly','Keep feet flat and drive through the floor','Touch-and-go or 1-second pause are both valid']},
+  {name:'Incline Dumbbell Press',cat:'Push',muscles:'Upper Chest, Anterior Deltoid, Triceps',equip:'Dumbbells, Incline Bench',
+   desc:'Targets the clavicular (upper) head of the chest. Bench at 30-45°. Press dumbbells from shoulder height to lockout.',
+   tips:['30° angle hits upper chest hardest; steeper shifts to shoulders','Keep elbows ~60° from torso — not flared wide','Get a full stretch at the bottom','Neutral grip is joint-friendly']},
+  {name:'Cable Fly',cat:'Push',muscles:'Chest (stretch emphasis)',equip:'Cable Machine',
+   desc:'High-tension isolation for the chest through a full range of motion. Set cables level with your chest or slightly above.',
+   tips:['Slight bend in elbows throughout — never straighten fully','Squeeze at the midline like you\'re hugging a tree','Slow eccentric to maximise stretch','Cable keeps tension at peak contraction, unlike dumbbells']},
+  {name:'DB Lateral Raise',cat:'Push',muscles:'Lateral Deltoid',equip:'Dumbbells',
+   desc:'The primary movement for shoulder width. Raise dumbbells to shoulder height with a slight forward lean.',
+   tips:['Lead with your elbows, not your wrists','Slight forward tilt lets you stay in the scapular plane','Go lighter than you think — cheat reps waste tension','Control the down — the eccentric builds the muscle']},
+  {name:'Tricep Pushdown',cat:'Push',muscles:'Triceps (all 3 heads)',equip:'Cable Machine',
+   desc:'Cable pushdown with a rope or bar. Lock elbows at your sides and extend fully to isolate the triceps.',
+   tips:['Elbows stay pinned — no swinging','Flare the rope at the bottom for peak contraction','Full extension to fully shorten the tricep','Keep torso upright or slightly forward-leaning']},
+  {name:'Overhead Tricep Extension',cat:'Push',muscles:'Triceps (long head emphasis)',equip:'Cable or Dumbbell',
+   desc:'Overhead position stretches the long head of the tricep, making this the best move for total tricep mass.',
+   tips:['Keep elbows narrow — don\'t let them flare','Lower behind head until you feel a deep stretch','The long head only fully lengthens when the arm is overhead','Rope cable or single dumbbell both work well']},
+  {name:'Close Grip Bench Press',cat:'Push',muscles:'Triceps, Inner Chest',equip:'Barbell, Bench',
+   desc:'Standard bench press with a narrow grip (~shoulder-width). Shifts load from chest to triceps without wrist stress.',
+   tips:['Grip just inside shoulder width — don\'t go too narrow','Elbows stay tucked at ~45° from torso','Touch low on the chest for full ROM','Great strength builder for lockout strength']},
+  {name:'Overhead Press',cat:'Push',muscles:'Anterior Deltoid, Lateral Deltoid, Triceps, Upper Chest',equip:'Barbell or Dumbbells',
+   desc:'The foundational vertical pressing movement. Press the bar from collarbone height to full lockout overhead.',
+   tips:['Squeeze glutes and brace core — it\'s a full-body lift','Bar travels in a slight S-curve — not perfectly vertical','Avoid hyperextending the lower back','Dumbbell version allows more natural wrist rotation']},
+  {name:'Dips',cat:'Push',muscles:'Chest, Triceps, Anterior Deltoid',equip:'Dip Bars or Assisted Machine',
+   desc:'Forward lean emphasises chest; upright torso hits triceps more. A versatile compound pushing movement.',
+   tips:['Lean forward and flare elbows slightly for chest bias','Stay upright and tuck elbows for tricep focus','Full depth — upper arm parallel to floor','Add weight via belt once bodyweight feels easy']},
+  {name:'Machine Shoulder Press',cat:'Push',muscles:'Deltoids, Triceps',equip:'Machine',
+   desc:'Provides a fixed path for safer high-volume shoulder pressing. Great for hypertrophy with controlled movement.',
+   tips:['Adjust seat so handles are at shoulder height','Don\'t lock out fully — keep tension on the delts','Slow the eccentric for more time under tension','Machine is great for drop sets at the end of a session']},
+  {name:'Cable Lateral Raise',cat:'Push',muscles:'Lateral Deltoid',equip:'Cable Machine',
+   desc:'Lateral raise with a low cable pulley. Cable maintains constant tension through the full arc, unlike dumbbells.',
+   tips:['Set cable to ankle height on the opposite side of your body','Cross body to pull — creates a longer lever arm','Same cues as dumbbell version apply','Can superset immediately with DB raises for a vicious pump']},
+  // Pull
+  {name:'Pull Up',cat:'Pull',muscles:'Lats, Biceps, Rear Delt, Core',equip:'Pull Up Bar',
+   desc:'The ultimate upper-body pulling movement. Overhand grip, pull chin over bar. Scale with bands or go weighted.',
+   tips:['Start from a dead hang — full scapular depression and retraction','Lead with your elbows, not your hands','Avoid kipping unless training for it specifically','Add weight on a belt when 8+ reps feel easy']},
+  {name:'Seated Cable Row',cat:'Pull',muscles:'Mid-Back, Lats, Rhomboids, Biceps',equip:'Cable Machine',
+   desc:'Horizontal pulling movement that builds mid-back thickness. Use a neutral grip handle for best lat activation.',
+   tips:['Initiate with the elbows — not a bicep curl','Pull to lower sternum, not belly button','Avoid rounding or jerking the torso','Pause at full contraction for 1 second']},
+  {name:'Lat Pulldown',cat:'Pull',muscles:'Lats, Biceps, Teres Major',equip:'Cable Machine',
+   desc:'Vertical pull that builds lat width. Neutral or overhand grip. Pull bar to upper chest.',
+   tips:['Lean back slightly (~10-15°) — not 45°','Pull to the top of the chest, not your chin','Feel the lats lengthen at the top — don\'t rush back down','Neutral grip is easier on the shoulders than overhand']},
+  {name:'Chest Supported Row',cat:'Pull',muscles:'Rhomboids, Mid-Traps, Rear Delt, Biceps',equip:'Incline Bench, Dumbbells',
+   desc:'Eliminates lower-back involvement by bracing your chest on an incline bench. Pure mid-back isolation.',
+   tips:['Set bench to ~45° and keep chest in contact throughout','Pull elbows back and up — squeeze the shoulder blades together','No momentum — the bench removes that option','Great for high rep ranges with a slow tempo']},
+  {name:'Hammer Curl',cat:'Pull',muscles:'Brachialis, Brachioradialis, Biceps',equip:'Dumbbells',
+   desc:'Neutral (hammer) grip curl that targets the brachialis and forearm. Excellent for overall arm thickness.',
+   tips:['Keep palms facing each other throughout','Elbows pinned to your sides','Can be done alternating or simultaneously','Brachialis sits under the bicep — building it adds peak']},
+  {name:'Barbell Curl',cat:'Pull',muscles:'Biceps Brachii',equip:'Barbell or EZ Bar',
+   desc:'Classic barbell curl. EZ bar reduces wrist strain. Full-range, strict form for maximum bicep development.',
+   tips:['Stand with elbows slightly forward of your torso','Don\'t swing — if you have to, go lighter','Full supination at the top — rotate the wrists','Slow 3-second eccentric for maximum hypertrophy']},
+  {name:'Face Pull',cat:'Pull',muscles:'Rear Delt, External Rotators, Mid-Traps',equip:'Cable Machine, Rope',
+   desc:'Crucial for shoulder health and rear delt development. Pull a rope to your face with elbows flared high.',
+   tips:['Set cable at or above head height','Elbows go wide and high — level with your ears','Pull apart as you pull toward you — external rotation','High reps (15-25) work well for shoulder health']},
+  {name:'Incline DB Curl',cat:'Pull',muscles:'Biceps Long Head',equip:'Dumbbells, Incline Bench',
+   desc:'Lying on an incline bench lets the arm hang behind the body, putting the long head of the bicep on full stretch.',
+   tips:['Set bench to ~45-60°, arms hang freely behind body','Don\'t rush the bottom — that\'s where the stretch is','Supinate at the top — pinky up','Keep elbows stable — don\'t swing them forward']},
+  {name:'Single Arm DB Row',cat:'Pull',muscles:'Lats, Rhomboids, Rear Delt, Biceps',equip:'Dumbbell, Bench',
+   desc:'Unilateral row that allows a fuller range of motion than barbell rows and corrects left/right imbalances.',
+   tips:['Brace on the bench with same-side hand and knee','Row to your hip — elbow drives back and up','Let the shoulder blade travel — don\'t lock it','Can go heavy with good form — this is a strength move']},
+  {name:'Barbell Row',cat:'Pull',muscles:'Lats, Mid-Back, Biceps, Rear Delt',equip:'Barbell',
+   desc:'Overhand or underhand bent-over row. Underhand hits biceps and lower lats more; overhand focuses on mid-back.',
+   tips:['Hinge to ~45° and maintain that angle throughout','Bar path is to the lower sternum / belly button','Brace core hard — heavy rows are a spinal erector workout too','Overhand = more upper back; Underhand = more lats']},
+  {name:'Preacher Curl',cat:'Pull',muscles:'Biceps (short head, peak)',equip:'Preacher Bench, Barbell or Dumbbell',
+   desc:'Arm is braced against a pad, removing momentum and isolating the bicep. Builds the peak of the muscle.',
+   tips:['Don\'t let the wrist bend — keep it neutral','Stop just before lockout at the bottom — don\'t hyperextend','Squeeze hard at the top','Slow eccentric is critical here — the pad makes cheating impossible']},
+  // Legs
+  {name:'Barbell Back Squat',cat:'Legs',muscles:'Quads, Glutes, Hamstrings, Core',equip:'Barbell, Squat Rack',
+   desc:'The foundational lower-body compound movement. High bar sits on traps; low bar sits on rear delts.',
+   tips:['Brace like you\'re about to take a punch to the gut','Knees track over toes — don\'t cave inward','Break parallel — upper thigh below knee crease','Elbows up (high bar) or back (low bar) to keep the bar stable']},
+  {name:'Romanian Deadlift',cat:'Legs',muscles:'Hamstrings, Glutes, Spinal Erectors',equip:'Barbell or Dumbbells',
+   desc:'Hip-hinge movement that stretches and loads the hamstrings. Start standing, push hips back, lower the bar.',
+   tips:['Slight knee bend — don\'t squat or fully lock the knee','Push hips back first — the bar follows your legs down','Feel a deep hamstring stretch before reversing','Keep the bar close to the body throughout']},
+  {name:'Leg Press',cat:'Legs',muscles:'Quads, Glutes, Hamstrings',equip:'Leg Press Machine',
+   desc:'Machine-based compound leg push. Foot placement changes the emphasis — higher hits glutes more, lower hits quads.',
+   tips:['Don\'t lock knees out at the top — keep slight bend','Lower until hips start to tuck — stop there','Feet shoulder-width, toes turned out slightly','Breathing: inhale going down, exhale pressing up']},
+  {name:'Leg Extension',cat:'Legs',muscles:'Quadriceps (isolation)',equip:'Leg Extension Machine',
+   desc:'The only pure quad isolation exercise. Sits at end of a leg session for quad finisher or as a pre-exhaust.',
+   tips:['Full extension at the top — squeeze hard for 1 second','Don\'t use momentum — slow and controlled','Toes slightly inward can increase vastus medialis (VMO) activation','Keep hips flat on the seat throughout']},
+  {name:'Seated Leg Curl',cat:'Legs',muscles:'Hamstrings',equip:'Seated Leg Curl Machine',
+   desc:'Seated position keeps the hip flexed, putting the hamstring on pre-stretch for a more complete contraction.',
+   tips:['Curl to full flexion — heel to glute','Pause at full contraction for 1 second','Slow eccentric — fight the weight back up','Seated is generally superior to lying for hamstring hypertrophy']},
+  {name:'Lying Leg Curl',cat:'Legs',muscles:'Hamstrings, Gastrocnemius',equip:'Lying Leg Curl Machine',
+   desc:'Prone position isolates the hamstrings. Gastrocnemius (calf) assists more here than in seated version.',
+   tips:['Hips stay flat — avoid lifting them off the pad','Full contraction — heels to glutes','Don\'t let the weight stack crash down','Plantar-flex (point toes) for more calf contribution']},
+  {name:'Standing Calf Raise',cat:'Legs',muscles:'Gastrocnemius, Soleus',equip:'Calf Raise Machine or Step',
+   desc:'Gastrocnemius is maximally loaded with a straight knee. Go through full range — deep stretch to full rise.',
+   tips:['Full stretch at the bottom — don\'t bounce','Pause at the top — calves respond to peak contraction','Slow down — calves are used to quick contractions from walking','High volume (15-25 reps) is generally more effective']},
+  {name:'Hip Thrust',cat:'Legs',muscles:'Glutes, Hamstrings',equip:'Barbell, Bench',
+   desc:'The most direct glute loading exercise. Shoulders on bench, barbell across hips, drive hips to ceiling.',
+   tips:['Chin tucked — don\'t look up, look at your lap','Drive through the whole foot — heels and toes','Squeeze glutes hard at the top for 1-2 seconds','Use a barbell pad — this gets heavy fast']},
+  {name:'Bulgarian Split Squat',cat:'Legs',muscles:'Quads, Glutes, Hamstrings, Hip Flexors',equip:'Bench, Dumbbells or Barbell',
+   desc:'Rear foot elevated split squat. One of the most effective (and brutal) unilateral leg exercises.',
+   tips:['Front foot far enough forward that shin stays vertical','Drive through the heel of the front foot','Control the descent — 3-second lower','Great for correcting left/right strength imbalances']},
+  {name:'Goblet Squat',cat:'Legs',muscles:'Quads, Glutes, Core',equip:'Dumbbell or Kettlebell',
+   desc:'Beginner-friendly and mobility-improving squat variation. Hold weight at chest and squat deep.',
+   tips:['Elbows track inside knees at the bottom — push them out','Chest up — the counterbalance of the weight helps','Squat as deep as mobility allows','Excellent for warming up before barbell squats']},
+  {name:'Hack Squat',cat:'Legs',muscles:'Quads, Glutes',equip:'Hack Squat Machine',
+   desc:'Machine-based squat with a more upright torso. Places huge quad demand with less spinal loading than free bar.',
+   tips:['Feet low on platform = more quad; high = more glute','Go deep — this machine allows excellent depth safely','Slow and controlled on the way down','Don\'t lock knees at the top']},
+  // Core
+  {name:'Hanging Leg Raise',cat:'Core',muscles:'Lower Abs, Hip Flexors, Core',equip:'Pull Up Bar',
+   desc:'Hang from a bar and raise legs to 90° or beyond. Demands core strength and hip flexor power.',
+   tips:['Avoid swinging — engage the core before lifting','Posterior tilt the pelvis at the top — curls the lower spine','Bent knees is easier; straight legs and toes-to-bar are harder','Control the descent — don\'t just drop']},
+  {name:'Cable Crunch',cat:'Core',muscles:'Rectus Abdominis (upper/mid)',equip:'Cable Machine, Rope',
+   desc:'Weighted crunch with a cable rope overhead. One of the few weighted ab exercises with a full ROM.',
+   tips:['Hips stay back and fixed — don\'t sit into the movement','Round the spine — curl ribs toward hips','Heavy enough to challenge you in the 10-15 rep range','Exhale forcefully at full contraction']},
+  {name:'Plank',cat:'Core',muscles:'Transverse Abdominis, Obliques, Glutes, Shoulders',equip:'None',
+   desc:'Isometric core stability exercise. The goal is a rigid, level body position held for time.',
+   tips:['Elbows under shoulders, toes tucked','Squeeze everything — glutes, core, quads — all at once','Avoid letting hips drop or pike up','Progress by extending holds or elevating feet']},
+  {name:'Ab Wheel Rollout',cat:'Core',muscles:'Entire Core, Lats, Shoulders',equip:'Ab Wheel',
+   desc:'Extends the abs through a massive range under load. One of the most challenging core exercises.',
+   tips:['Start from knees before attempting standing rollouts','Brace hard before rolling out — don\'t let the back arch','Roll out only as far as you can control','Lat engagement is key — think of pulling the wheel back with your lats']},
+  {name:'Russian Twist',cat:'Core',muscles:'Obliques, Rectus Abdominis',equip:'None or Plate/Dumbbell',
+   desc:'Seated rotation movement targeting the obliques. Add load to progress.',
+   tips:['Lean back slightly to increase core tension','Rotate from the ribcage — not just the arms','Keep feet elevated for more difficulty','Weight plate or medicine ball for progressive overload']},
+  {name:'Dead Bug',cat:'Core',muscles:'Transverse Abdominis, Core Stability',equip:'None',
+   desc:'Lying on your back, extend opposite arm and leg while maintaining a pressed-down lower back.',
+   tips:['Lower back must stay flat against the floor throughout','Move slowly and with full control','Breathe out on each extension','Fantastic for spine stability and anti-extension strength']}
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -3663,6 +3792,18 @@ function renderSettings() {
       '</div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    '<div class="settings-row" onclick="openExLib()">'+
+      '<div class="settings-row-ic" style="background:#1a1a2e;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body">'+
+        '<div class="settings-row-title">Exercise Library</div>'+
+        '<div class="settings-row-sub">'+EXERCISE_DB.length+' exercises — muscles, tips & cues</div>'+
+      '</div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>'+
     '</div>'+
 
     '<div class="settings-group">'+
@@ -3738,6 +3879,111 @@ function clearApiKeyFromSettings(){
   setApiKey('');
   showToast('Key removed');
   render();
+}
+
+// ── Exercise Library Modal ────────────────────────────────────────────────────
+function openExLib(){
+  _libFilter='All';_libSearch='';_libExpanded='';
+  var existing=document.getElementById('exlibOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='exlibOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML=_buildExLibHTML();
+  document.body.appendChild(overlay);
+  var searchEl=document.getElementById('exlibSearch');
+  if(searchEl)searchEl.addEventListener('input',function(){_libSearch=this.value;_updateExLibList();});
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeExLib();});
+}
+function closeExLib(){
+  var el=document.getElementById('exlibOverlay');
+  if(el)el.remove();
+}
+function setLibFilter(f){
+  _libFilter=f;_updateExLibList();
+  var pills=document.querySelectorAll('.exlib-pill');
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',All:'var(--accent)'};
+  pills.forEach(function(p){
+    var active=p.dataset.cat===f;
+    var color=catColors[p.dataset.cat]||'var(--accent)';
+    p.style.background=active?color:'var(--card2)';
+    p.style.color=active?'#000':'var(--muted)';
+  });
+}
+function toggleLibEx(name){
+  _libExpanded=_libExpanded===name?'':name;
+  _updateExLibList();
+}
+function _updateExLibList(){
+  var el=document.getElementById('exlibList');
+  if(el)el.innerHTML=_renderExLibList();
+}
+function _renderExLibList(){
+  var q=_libSearch.trim().toLowerCase();
+  var filtered=EXERCISE_DB.filter(function(ex){
+    var catMatch=_libFilter==='All'||ex.cat===_libFilter;
+    var searchMatch=!q||ex.name.toLowerCase().indexOf(q)>-1||ex.muscles.toLowerCase().indexOf(q)>-1;
+    return catMatch&&searchMatch;
+  });
+  if(!filtered.length)return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:14px;">No exercises found</div>';
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  return filtered.map(function(ex){
+    var expanded=_libExpanded===ex.name;
+    var color=catColors[ex.cat]||'var(--accent)';
+    var safeN=ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var html='<div onclick="toggleLibEx(\''+safeN+'\')" style="padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;'+(expanded?'background:var(--card2);':'')+'">';
+    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    html+='<div style="flex:1;min-width:0;">';
+    html+='<div style="font-size:15px;font-weight:700;color:var(--text);">'+ex.name+'</div>';
+    html+='<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+ex.muscles+'</div>';
+    html+='</div>';
+    html+='<span style="flex-shrink:0;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:'+color+'22;color:'+color+';">'+ex.cat+'</span>';
+    html+='<span style="flex-shrink:0;color:var(--muted);font-size:13px;margin-left:2px;">'+(expanded?'▲':'▼')+'</span>';
+    html+='</div>';
+    if(expanded){
+      html+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">';
+      html+='<div style="font-size:12px;color:var(--muted);margin-bottom:8px;"><span style="color:var(--text);font-weight:600;">Equipment:</span> '+ex.equip+'</div>';
+      html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+ex.desc+'</p>';
+      if(ex.tips&&ex.tips.length){
+        html+='<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Coaching Cues</div>';
+        html+='<div style="display:flex;flex-direction:column;gap:6px;">';
+        ex.tips.forEach(function(tip){
+          html+='<div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--lite);line-height:1.5;">'+
+            '<span style="flex-shrink:0;color:var(--accent);margin-top:1px;">▸</span>'+tip+'</div>';
+        });
+        html+='</div>';
+      }
+      html+='</div>';
+    }
+    html+='</div>';
+    return html;
+  }).join('');
+}
+function _buildExLibHTML(){
+  var cats=['All','Push','Pull','Legs','Core'];
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',All:'var(--accent)'};
+  var pillsHTML=cats.map(function(c){
+    var active=_libFilter===c;
+    var color=catColors[c]||'var(--accent)';
+    return '<button class="exlib-pill" data-cat="'+c+'" onclick="setLibFilter(\''+c+'\')" style="'+
+      'border:none;outline:none;cursor:pointer;padding:7px 16px;border-radius:20px;font-size:13px;font-weight:700;'+
+      'background:'+(active?color:'var(--card2)')+';color:'+(active?'#000':'var(--muted)')+';transition:all .15s;">'+c+'</button>';
+  }).join('');
+  return '<div style="background:var(--card);border-radius:24px 24px 0 0;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;">'+
+    '<div style="display:flex;align-items:center;padding:20px 20px 16px;gap:12px;border-bottom:1px solid var(--border);">'+
+      '<div style="flex:1;">'+
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Reference</div>'+
+        '<div style="font-size:20px;font-weight:800;letter-spacing:-.4px;">Exercise Library</div>'+
+      '</div>'+
+      '<button class="ex-modal-close" onclick="closeExLib()">✕</button>'+
+    '</div>'+
+    '<div style="padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;">'+
+      '<input id="exlibSearch" type="text" placeholder="Search exercises or muscles…" autocomplete="off" '+
+        'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;"/>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+pillsHTML+'</div>'+
+    '</div>'+
+    '<div id="exlibList" style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;">'+_renderExLibList()+'</div>'+
+  '</div>';
 }
 
 // ── Service Worker ────────────────────────────────────────────────────────────
