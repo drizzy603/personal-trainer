@@ -3627,7 +3627,7 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
 '9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN VIA ONE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks. Do NOT write the plan as JSON in your text reply — that is not how the app receives it. If you genuinely cannot fit 12 weeks in one response, split into two calls of 6 weeks each (weeks 1-6, then 7-12). The call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure to follow:\n'+
 '- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
 '- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
@@ -3761,11 +3761,12 @@ function executeCoachTool(name,input){
         _routineBackedUp=true;
       }
       var written=[];
+      var errored=null;
       for(var wi=0;wi<weeksIn.length;wi++){
         var w=weeksIn[wi]||{};
         var wk=parseInt(w.wk);
-        if(!(wk>=1&&wk<=12)) return {ok:false,error:'each week needs wk 1-12 (got '+w.wk+')',written:written};
-        if(!w.bName||!w.bColor) return {ok:false,error:'week '+wk+' missing bName or bColor',written:written};
+        if(!(wk>=1&&wk<=12)){ errored='each week needs wk 1-12 (got '+w.wk+')'; break; }
+        if(!w.bName||!w.bColor){ errored='week '+wk+' missing bName or bColor'; break; }
         while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
         var weekObj={
           wk:wk,
@@ -3782,8 +3783,13 @@ function executeCoachTool(name,input){
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
-      setCustomRoutine(cr);
-      var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+written[0]+'–'+written[written.length-1]+' updated ('+written.length+')');
+      // Persist whatever we got through — atomicity isn't required here and
+      // keeping the partial writes means the user doesn't lose good data if
+      // the model malforms a later week.
+      if(written.length) setCustomRoutine(cr);
+      if(errored) return {ok:false,error:errored,written:written};
+      var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
+      var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
       return {ok:true,message:label,weeks:written};
     }
     if(name==='set_current_week'){
@@ -4015,7 +4021,7 @@ function toolCallLabel(tc){
     var ws=Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[];
     if(!ws.length) return 'Routine updated';
     if(ws.length===1) return 'Week '+ws[0]+' updated';
-    return 'Weeks '+ws[0]+'–'+ws[ws.length-1]+' updated';
+    return 'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws)+' updated';
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='set_exercise_weight') return i.name+' → '+i.weight+' lb';
@@ -4203,7 +4209,7 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
-  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call with all 12 weeks in the array (or two calls of 6 weeks if the response would otherwise be too long). The app backs up the previous routine before the first write so the user can roll back. Do NOT make 12 separate calls — it hits rate limits.\n';
+  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call with ALL 12 weeks in a single array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short so 12 weeks fit in the response. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
   p+='  - Weeks 1-3: BASE #06b6d4 (volume + technique)\n';
   p+='  - Week 4: DELOAD #22c55e (end of Base — sets to 2-3, weight ~60%)\n';
