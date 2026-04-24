@@ -3,8 +3,7 @@
 A single-file progressive training app with an AI coach. No framework, no build step.
 
 ## Files
-- `index.html` — the entire app (HTML + CSS + JS in one file)
-- `workflow.html` — "How It Works" page linked from Settings
+- `index.html` — the entire app (HTML + CSS + JS in one file, including the inlined "How It Works" overlay opened from Settings)
 - `sw.js` — service worker for offline/PWA support
 - `manifest.json` — PWA manifest
 
