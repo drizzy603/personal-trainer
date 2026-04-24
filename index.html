@@ -487,6 +487,7 @@ var streamingContent = '';
 var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
 var pendingRoutine = null;   // parsed routine JSON waiting for user to confirm
+var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
 // Rest timer state
 var restDuration  = 90;
 var restRemaining = 90;
@@ -3008,7 +3009,14 @@ function clearApiKey(){
 }
 function saveCoachHistory(){
   try{
-    var msgs=coachMessages.slice(-60); // keep last 60 messages (~30 exchanges)
+    var msgs=coachMessages.slice(-60).map(function(m){
+      if(Array.isArray(m.content)){
+        // Strip image data — too large for localStorage; keep text only
+        var text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
+        return {role:m.role,content:text||'[Image]',_hadImage:true};
+      }
+      return {role:m.role,content:m.content,_hadImage:m._hadImage||false};
+    });
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
     coachMessages=msgs;
   }catch(e){}
@@ -3105,22 +3113,55 @@ function buildSystemPrompt(){
   return p;
 }
 
+function triggerImagePicker(){
+  var inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.onchange=function(e){
+    var file=e.target.files[0];if(!file)return;
+    if(file.size>4*1024*1024){showToast('Image too large — keep it under 4 MB');return;}
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      var dataUrl=ev.target.result;
+      var comma=dataUrl.indexOf(',');
+      pendingImage={data:dataUrl.slice(comma+1),mediaType:file.type||'image/jpeg',previewUrl:dataUrl};
+      render();scrollChatBottom();
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+function clearPendingImage(){pendingImage=null;render();}
+
 async function sendCoachMessage(){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
   var msg=inp.value.trim();
-  if(!msg||coachLoading)return;
+  if((!msg&&!pendingImage)||coachLoading)return;
   inp.value='';inp.style.height='';
-  coachMessages.push({role:'user',content:msg});
+
+  var content, preview=null;
+  if(pendingImage){
+    content=[
+      {type:'image',source:{type:'base64',media_type:pendingImage.mediaType,data:pendingImage.data}},
+      {type:'text',text:msg||'Please look at this image and give me relevant training or nutrition feedback.'}
+    ];
+    preview=pendingImage.previewUrl;
+    pendingImage=null;
+  }else{
+    content=msg;
+  }
+
+  coachMessages.push({role:'user',content:content,_preview:preview});
   saveCoachHistory();
   coachLoading=true;
   streamingContent='';
   render();
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var maxTok=intakeMode?8192:768;
+  var maxTok=intakeMode?8192:1024;
   var model=intakeMode?'claude-sonnet-4-6':coachModel;
-  var msgs=coachMessages.slice(-20);
+  // Strip _preview before sending — it's display-only, not part of the API schema
+  var msgs=coachMessages.slice(-20).map(function(m){return {role:m.role,content:m.content};});
   try{
     var res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -3335,9 +3376,19 @@ function renderCoach(){
   }else{
     var bubbles='';
     coachMessages.forEach(function(m){
+      // Resolve text and image from content (may be string or array)
       var text=m.content;
+      var imgHTML='';
+      if(Array.isArray(m.content)){
+        text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
+      }
+      if(m._preview){
+        imgHTML='<img src="'+m._preview+'" style="max-width:200px;max-height:150px;border-radius:10px;display:block;margin-bottom:6px;">';
+      }else if(m._hadImage){
+        imgHTML='<div style="font-size:11px;color:rgba(0,0,0,.5);margin-bottom:4px;">📷 Image</div>';
+      }
       // Strip ACTION blocks before display
-      var displayText=text.replace(/ACTION_START[\s\S]*?ACTION_END/g,'').trim();
+      var displayText=(typeof text==='string'?text:'').replace(/ACTION_START[\s\S]*?ACTION_END/g,'').trim();
       var hasRoutine=displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')!==-1;
       if(hasRoutine){
         var beforeJSON=displayText.slice(0,displayText.indexOf('ROUTINE_START')).trim();
@@ -3354,7 +3405,7 @@ function renderCoach(){
         '</div>';
       }else{
         var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        bubbles+='<div class="coach-bubble '+m.role+'">'+rendered+'</div>';
+        bubbles+='<div class="coach-bubble '+m.role+'">'+imgHTML+rendered+'</div>';
       }
     });
     // Streaming bubble — live text as it arrives
@@ -3371,7 +3422,22 @@ function renderCoach(){
   }
 
   var inputPlaceholder=intakeMode?'Answer the trainer\'s question…':'Message Coach…';
-  var inputRow='<div class="coach-input-row">'+
+  var imgPreviewHTML=pendingImage
+    ?'<div style="position:relative;display:inline-block;margin-bottom:8px;">'+
+        '<img src="'+pendingImage.previewUrl+'" style="max-height:80px;max-width:160px;border-radius:10px;display:block;">'+
+        '<button onclick="clearPendingImage()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#333;border:none;color:#fff;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>'+
+      '</div>'
+    :'';
+  var inputRow=(imgPreviewHTML?'<div style="padding:0 6px 0 14px;">'+imgPreviewHTML+'</div>':'')+
+    '<div class="coach-input-row">'+
+    (!intakeMode
+      ?'<button onclick="triggerImagePicker()" style="background:none;border:none;padding:6px;cursor:pointer;flex-shrink:0;opacity:'+(pendingImage?'1':'.45')+';-webkit-tap-highlight-color:transparent;" title="Attach photo">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" style="color:var(--accent)">'+
+            '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'+
+            '<polyline points="21 15 16 10 5 21"/>'+
+          '</svg>'+
+        '</button>'
+      :'')+
     '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" rows="1" '+
       'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendCoachMessage();}" '+
       'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>'+
