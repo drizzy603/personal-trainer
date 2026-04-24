@@ -3728,75 +3728,101 @@ function checkForRoutineJSON(text){
   }catch(e){ /* bad JSON — ignore */ }
 }
 
+function applyCoachAction(obj){
+  if(!obj||!obj.type) return false;
+  if(obj.type==='SET_RUN_GOAL'&&obj.value){
+    setRunGoal(obj.value);
+    showToast('Run goal updated: '+obj.value+'/km');
+    return true;
+  } else if(obj.type==='SET_BW_GOAL'&&obj.value){
+    setBWGoal(parseFloat(obj.value));
+    showToast('Body weight goal updated: '+obj.value+' lb');
+    return true;
+  } else if(obj.type==='SET_5K_GOAL'&&obj.value){
+    var parts=String(obj.value).split(':').map(Number);
+    var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
+    if(secs>0){set5kGoal(secs);showToast('5k goal updated: '+obj.value);return true;}
+  } else if(obj.type==='SET_EXERCISE_WEIGHT'&&obj.name&&obj.value){
+    var weights=getWeights();
+    var newW=parseFloat(obj.value);
+    if(newW>0){
+      var key=Object.keys(weights).find(function(k){return k.toLowerCase()===obj.name.toLowerCase();});
+      if(!key) key=obj.name;
+      weights[key]=newW;
+      lsSet('kt_weights',weights);
+      showToast(key+' updated to '+newW+' lb');
+      return true;
+    }
+  } else if(obj.type==='SET_WEEK'&&obj.value){
+    var wk=parseInt(obj.value);
+    var total=getTotalWeeks();
+    if(wk>=1&&wk<=total){
+      currentWeek=wk;
+      lsSet('kt_week',wk);
+      showToast('Week set to '+wk);
+      return true;
+    }
+  } else if(obj.type==='LOG_BW'&&obj.value){
+    var bwVal=parseFloat(obj.value);
+    if(bwVal>0){
+      var bws=getBodyWeights();
+      bws.unshift({date:todayISO(),weight:bwVal});
+      lsSet('kt_bw',bws);
+      showToast('Weight logged: '+bwVal+' lb');
+      return true;
+    }
+  } else if(obj.type==='SET_BENCH_GOAL'&&obj.value){
+    var bg=parseFloat(obj.value);
+    if(bg>0){setBenchGoal(bg);showToast('Bench goal set: '+bg+' lb');return true;}
+  } else if(obj.type==='SET_SQUAT_GOAL'&&obj.value){
+    var sg=parseFloat(obj.value);
+    if(sg>0){setSquatGoal(sg);showToast('Squat goal set: '+sg+' lb');return true;}
+  } else if(obj.type==='UPDATE_WEEK'&&obj.week){
+    // Patch a single week in the custom routine without replacing the whole programme.
+    // obj.week can carry any subset of { wk, bName, bColor, wkNote, push, pull, legs, runTue, runSat }.
+    var cr=getCustomRoutine();
+    if(!cr||!Array.isArray(cr.weeks)) return false;
+    var targetWk=parseInt(obj.week.wk);
+    if(!(targetWk>=1&&targetWk<=cr.weeks.length)) return false;
+    var cur=cr.weeks[targetWk-1]||{};
+    var merged={};
+    Object.keys(cur).forEach(function(k){merged[k]=cur[k];});
+    Object.keys(obj.week).forEach(function(k){merged[k]=obj.week[k];});
+    merged.wk=targetWk;
+    cr.weeks[targetWk-1]=merged;
+    setCustomRoutine(cr);
+    showToast('Week '+targetWk+' updated');
+    return true;
+  }
+  return false;
+}
+
 function checkForCoachActions(text){
   if(!text) return;
-  var start=text.indexOf('ACTION_START');
-  var end=text.indexOf('ACTION_END');
-  if(start===-1||end===-1||end<=start) return;
-  try{
-    var obj=JSON.parse(text.slice(start+12,end).trim());
-    if(!obj||!obj.type) return;
-    if(obj.type==='SET_RUN_GOAL'&&obj.value){
-      setRunGoal(obj.value);
-      showToast('Run goal updated: '+obj.value+'/km');
-      render();
-    } else if(obj.type==='SET_BW_GOAL'&&obj.value){
-      setBWGoal(parseFloat(obj.value));
-      showToast('Body weight goal updated: '+obj.value+' lb');
-      render();
-    } else if(obj.type==='SET_5K_GOAL'&&obj.value){
-      var parts=String(obj.value).split(':').map(Number);
-      var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
-      if(secs>0){set5kGoal(secs);showToast('5k goal updated: '+obj.value);render();}
-    } else if(obj.type==='SET_EXERCISE_WEIGHT'&&obj.name&&obj.value){
-      var weights=getWeights();
-      var newW=parseFloat(obj.value);
-      if(newW>0){
-        // case-insensitive match against existing keys
-        var key=Object.keys(weights).find(function(k){return k.toLowerCase()===obj.name.toLowerCase();});
-        if(!key) key=obj.name; // create new key if not found
-        weights[key]=newW;
-        lsSet('kt_weights',weights);
-        showToast(key+' updated to '+newW+' lb');
-        render();
-      }
-    } else if(obj.type==='SET_WEEK'&&obj.value){
-      var wk=parseInt(obj.value);
-      var total=getTotalWeeks();
-      if(wk>=1&&wk<=total){
-        currentWeek=wk;
-        lsSet('kt_week',wk);
-        showToast('Week set to '+wk);
-        render();
-      }
-    } else if(obj.type==='LOG_BW'&&obj.value){
-      var bwVal=parseFloat(obj.value);
-      if(bwVal>0){
-        var bws=getBodyWeights();
-        bws.unshift({date:todayISO(),weight:bwVal});
-        lsSet('kt_bw',bws);
-        showToast('Weight logged: '+bwVal+' lb');
-        render();
-      }
-    } else if(obj.type==='SET_BENCH_GOAL'&&obj.value){
-      var bg=parseFloat(obj.value);
-      if(bg>0){setBenchGoal(bg);showToast('Bench goal set: '+bg+' lb');render();}
-    } else if(obj.type==='SET_SQUAT_GOAL'&&obj.value){
-      var sg=parseFloat(obj.value);
-      if(sg>0){setSquatGoal(sg);showToast('Squat goal set: '+sg+' lb');render();}
-    }
-  }catch(e){}
+  var re=/ACTION_START([\s\S]*?)ACTION_END/g;
+  var m, applied=0;
+  while((m=re.exec(text))!==null){
+    try{
+      var obj=JSON.parse(m[1].trim());
+      if(applyCoachAction(obj)) applied++;
+    }catch(e){}
+  }
+  if(applied) render();
 }
 
 function confirmLoadRoutine(){
   if(!pendingRoutine) return;
+  var hadRoutine=hasCustomRoutine();
   setCustomRoutine(pendingRoutine);
-  currentWeek=1;
-  lsSet('kt_week',1);
+  var total=(pendingRoutine.weeks||[]).length||1;
+  if(!hadRoutine||currentWeek<1||currentWeek>total){
+    currentWeek=1;
+    lsSet('kt_week',1);
+  }
   intakeMode=false;
   pendingRoutine=null;
-  clearCoachHistory();
-  showToast('Programme loaded! Week 1 is ready');
+  if(!hadRoutine) clearCoachHistory();
+  showToast(hadRoutine?('Programme updated — Week '+currentWeek):('Programme loaded! Week '+currentWeek+' is ready'));
   render();
 }
 
@@ -3940,7 +3966,14 @@ function buildSystemPrompt(){
   p+='  SET_SQUAT_GOAL     — value = back squat target in lbs (e.g. "185")\n';
   p+='  SET_WEEK           — value = week number 1-'+getTotalWeeks()+' (e.g. "4")\n';
   p+='  LOG_BW             — value = today\'s body weight in lbs (e.g. "178")\n';
-  p+='Only emit one ACTION block per reply. Omit it entirely if no data change is needed.\n';
+  p+='  UPDATE_WEEK        — week = { wk:N, bName, bColor, wkNote, push:[...], pull:[...], legs:[...], runTue, runSat } (patch one week of the stored programme; include only the fields you want to change)\n';
+  p+='You may emit MULTIPLE ACTION blocks per reply — one per change. Omit entirely if no data change is needed.\n\n';
+  p+='FULL-PROGRAMME UPDATES — the app stores a complete multi-week periodised plan in kt_routine.weeks[]. You can replace or regenerate the entire plan in one message. When the user asks for a full programme update, progression plan, periodisation, deload/peak scheduling, or "update the whole workout", output the complete programme as valid JSON wrapped EXACTLY like this:\n';
+  p+='ROUTINE_START\n{"name":"Programme Name","weeks":[...]}\nROUTINE_END\n';
+  p+='Week object schema:\n';
+  p+='{"wk":1,"block":1,"bName":"BASE","bColor":"#06b6d4","wkNote":"Brief week focus","push":[...],"pull":[...],"legs":[...],"runTue":{"km":3,"type":"easy","note":"Easy pace"},"runSat":{"km":5,"type":"easy","note":"Long run"}}\n';
+  p+='Each exercise: {"name":"Exercise Name","isMain":true,"sets":4,"reps":6,"weight":135,"rpe":7}\n';
+  p+='Rules when emitting a full programme: include ALL weeks (typically 12), keep exercise names consistent week-to-week so progression tracks, mark the primary compound per session with isMain:true, set weights in lbs, and set block names/colors appropriately (e.g., BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e). Drop weight ~40% and sets to 2-3 on deload weeks. After loading, the user stays on their current week — do NOT assume they restart at week 1.\n';
   return p;
 }
 
@@ -3989,7 +4022,7 @@ async function sendCoachMessage(){
   render();
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var maxTok=intakeMode?8192:1024;
+  var maxTok=intakeMode?8192:8192;
   var model=intakeMode?'claude-sonnet-4-6':coachModel;
   // Strip _preview before sending — it's display-only, not part of the API schema
   var msgs=coachMessages.slice(-20).map(function(m){return {role:m.role,content:m.content};});
@@ -4027,7 +4060,7 @@ async function sendCoachMessage(){
       }
       if(streamingContent){
         coachMessages.push({role:'assistant',content:streamingContent});
-        if(intakeMode)checkForRoutineJSON(streamingContent);
+        checkForRoutineJSON(streamingContent);
         checkForCoachActions(streamingContent);
         saveCoachHistory();
         streamingContent='';
@@ -4227,11 +4260,18 @@ function renderCoach(){
         if(beforeJSON){
           bubbles+='<div class="coach-bubble assistant">'+md(beforeJSON)+'</div>';
         }
+        var _already=hasCustomRoutine();
+        var _wkCount=pendingRoutine&&pendingRoutine.weeks?pendingRoutine.weeks.length:12;
+        var _title=_already?'Updated Programme Ready':'Programme Ready';
+        var _blurb=_already
+          ?'Your refreshed '+_wkCount+'-week plan is ready. Tap below to replace your current programme — you\'ll stay on Week '+currentWeek+'.'
+          :'Your personalised '+_wkCount+'-week programme has been generated. Tap below to load it and start training.';
+        var _btn=_already?'Update My Programme':'Load My Programme';
         bubbles+='<div class="card" style="margin:4px 0;border-color:var(--accent);padding:18px;">'+
-          '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">Programme Ready</div>'+
-          '<p style="font-size:13px;color:var(--lite);line-height:1.5;margin-bottom:14px;">Your personalised 12-week programme has been generated. Tap below to load it and start training.</p>'+
+          '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">'+_title+'</div>'+
+          '<p style="font-size:13px;color:var(--lite);line-height:1.5;margin-bottom:14px;">'+_blurb+'</p>'+
           (pendingRoutine?
-            '<button class="btn btn-primary btn-full" onclick="confirmLoadRoutine()">Load My Programme</button>':
+            '<button class="btn btn-primary btn-full" onclick="confirmLoadRoutine()">'+_btn+'</button>':
             '<p style="font-size:12px;color:var(--red);">Could not parse the programme. Ask the coach to regenerate it.</p>'
           )+
         '</div>';
