@@ -470,6 +470,7 @@ var logExNotes    = {}; // {exName: ''}
 var logExpanded   = {}; // {exName: bool}
 var logExSwap     = {}; // {'Push-0':'alt exercise name',...}
 var logHistExpanded = {}; // {exName: bool} — exercise history panel open
+var logSupersets    = {}; // {idx: true} = exercises[idx] and exercises[idx+1] are a superset pair
 var currentWeek   = 1;
 var logSubTab        = 'workout';
 var logCompletedSets = {};
@@ -1759,7 +1760,11 @@ function renderLog() {
   });
 
   var exRows = '';
-  getSessionExercises(logSession).forEach(function(ex, idx) { exRows += renderQuickExRow(ex, idx); });
+  var _logExs = getSessionExercises(logSession);
+  _logExs.forEach(function(ex, idx) {
+    exRows += renderQuickExRow(ex, idx);
+    if (idx < _logExs.length - 1) exRows += renderSupersetConnector(idx);
+  });
 
   var sessKeyPR = logSession.toLowerCase();
   var wdArrPR = wd ? wd[sessKeyPR] : null;
@@ -1849,6 +1854,23 @@ function getExHistory(sessionType, exName, n) {
   }
   return results;
 }
+function toggleSuperset(idx){
+  if(logSupersets[idx]) delete logSupersets[idx]; else logSupersets[idx]=true;
+  render();
+}
+function renderSupersetConnector(idx){
+  var linked=!!logSupersets[idx];
+  if(linked){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:0 22px;height:30px;margin:-1px 0;">'+
+      '<div style="width:3px;align-self:stretch;background:var(--accent);border-radius:0;margin-left:8px;flex-shrink:0;"></div>'+
+      '<div style="background:var(--accent);color:#000;font-size:10px;font-weight:900;letter-spacing:.08em;padding:3px 10px;border-radius:20px;white-space:nowrap;">SUPERSET</div>'+
+      '<button onclick="toggleSuperset('+idx+')" style="background:none;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;white-space:nowrap;">Unlink</button>'+
+    '</div>';
+  }
+  return '<div style="display:flex;justify-content:center;align-items:center;height:26px;margin:-2px 0 2px;">'+
+    '<button onclick="toggleSuperset('+idx+')" style="background:none;border:1px dashed var(--border);border-radius:20px;color:var(--muted);font-size:11px;font-weight:700;padding:3px 16px;cursor:pointer;font-family:inherit;letter-spacing:.02em;">+ Superset</button>'+
+  '</div>';
+}
 function toggleExHist(name){
   logHistExpanded[name]=!logHistExpanded[name];
   var el=document.getElementById('exhist-'+name.replace(/[^a-z0-9]/gi,'-'));
@@ -1888,6 +1910,13 @@ function renderQuickExRow(ex, slotIdx) {
   var slotKeyEsc   = slotKey.replace(/'/g,"\\'");
   var origNameEsc  = ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   var isSwapped = !!(logExSwap[slotKey] && logExSwap[slotKey]!==ex.name);
+  // Superset state for this slot
+  var isSSFirst  = !!logSupersets[slotIdx];
+  var isSSSecond = !!logSupersets[slotIdx-1];
+  var inSS = isSSFirst || isSSSecond;
+  var cardStyle = inSS ? 'border-left:3px solid var(--accent);' : '';
+  if (isSSFirst)  cardStyle += 'border-bottom-left-radius:5px;border-bottom-right-radius:5px;margin-bottom:0;';
+  if (isSSSecond) cardStyle += 'border-top-left-radius:5px;border-top-right-radius:5px;';
 
   var wd = getWkData();
   var wdArr = wd ? wd[logSession.toLowerCase()] : null;
@@ -1934,12 +1963,13 @@ function renderQuickExRow(ex, slotIdx) {
 
   var curReps = repsArr[0] || 8;
 
-  return '<div class="ex-card">'+
+  return '<div class="ex-card"'+(cardStyle?' style="'+cardStyle+'"':'')+'>'+
     '<div class="ex-card-head">'+
       '<div style="flex:1;min-width:0;">'+
         '<div class="ex-card-name">'+exName+
           (ex.isMain&&!isSwapped?'<span class="main-badge">Main lift</span>':'')+
           (isSwapped?'<span style="font-size:11px;color:var(--cyan);margin-left:8px;font-weight:500;">swapped</span>':'')+
+          (inSS?'<span style="font-size:10px;font-weight:900;background:var(--accent);color:#000;border-radius:4px;padding:1px 6px;margin-left:6px;letter-spacing:.04em;vertical-align:middle;">SS</span>':'')+
         '</div>'+
         '<div class="ex-card-target">'+targetStr+'</div>'+
         lastStr+
@@ -2289,7 +2319,7 @@ function closeProgrammeModal(){
 function pickSession(key){
   logSession=key;
   logWeights = {}; logRPEs = {}; logSets = {}; logReps = {}; logExNotes = {}; logExpanded = {};
-  logExSwap = {}; logCompletedSets = {};
+  logExSwap = {}; logCompletedSets = {}; logSupersets = {};
   initLogState();
   render();
 }
@@ -2335,7 +2365,8 @@ function saveAndCopy() {
   lsSet('kt_weights',weights);
   var newPRs = checkAndUpdatePRs(exs);
   var sessions=getSessions();
-  sessions.unshift({id:Date.now(),date:date,type:logSession,week:currentWeek,exercises:exs,note:note,prs:newPRs});
+  var ssLinks=Object.keys(logSupersets).map(Number).filter(function(k){return logSupersets[k];});
+  sessions.unshift({id:Date.now(),date:date,type:logSession,week:currentWeek,exercises:exs,note:note,prs:newPRs,supersets:ssLinks.length?ssLinks:undefined});
   lsSet('kt_sessions',sessions);
   // Auto-advance check — all 3 types logged for current week?
   var weekSess=sessions.filter(function(s){return s.week===currentWeek;});
