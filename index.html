@@ -3627,7 +3627,7 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
 '9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks (wk 1 through 12). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure to follow:\n'+
 '- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
 '- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
@@ -3753,20 +3753,17 @@ function executeCoachTool(name,input){
           :[];
         cr={name:'Custom Programme',weeks:baked.length?baked:[]};
       }
-      if(!_routineBackedUp){
-        try{
-          var prev=lsGet('kt_routine');
-          if(prev&&prev.weeks) lsSet('kt_routine_backup',prev);
-        }catch(e){}
-        _routineBackedUp=true;
-      }
       var written=[];
+      var skipped=[];
       var errored=null;
       for(var wi=0;wi<weeksIn.length;wi++){
         var w=weeksIn[wi]||{};
         var wk=parseInt(w.wk);
         if(!(wk>=1&&wk<=12)){ errored='each week needs wk 1-12 (got '+w.wk+')'; break; }
         if(!w.bName||!w.bColor){ errored='week '+wk+' missing bName or bColor'; break; }
+        // Past weeks are history — the user has already lived them, so silently
+        // drop any attempt to rewrite weeks before currentWeek.
+        if(wk<currentWeek){ skipped.push(wk); continue; }
         while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
         var weekObj={
           wk:wk,
@@ -3783,14 +3780,23 @@ function executeCoachTool(name,input){
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
-      // Persist whatever we got through — atomicity isn't required here and
-      // keeping the partial writes means the user doesn't lose good data if
-      // the model malforms a later week.
+      // Back up the pre-edit routine once per session, but only if we're
+      // actually about to write something.
+      if(written.length&&!_routineBackedUp){
+        try{
+          var prev=lsGet('kt_routine');
+          if(prev&&prev.weeks) lsSet('kt_routine_backup',prev);
+        }catch(e){}
+        _routineBackedUp=true;
+      }
       if(written.length) setCustomRoutine(cr);
-      if(errored) return {ok:false,error:errored,written:written};
+      if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
+      if(!written.length){
+        return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-12 can be changed.',skipped:skipped};
+      }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
-      return {ok:true,message:label,weeks:written};
+      return {ok:true,message:label,weeks:written,skipped:skipped};
     }
     if(name==='set_current_week'){
       var w=parseInt(input.week);
@@ -4018,8 +4024,12 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 function toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
-    var ws=Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[];
-    if(!ws.length) return 'Routine updated';
+    // Prefer what was actually written (result.weeks) over what was requested —
+    // past weeks get silently skipped and shouldn't appear in the pill.
+    var ws=(tc.result&&Array.isArray(tc.result.weeks))
+      ?tc.result.weeks
+      :(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+    if(!ws.length) return 'No weeks changed';
     if(ws.length===1) return 'Week '+ws[0]+' updated';
     return 'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws)+' updated';
   }
@@ -4209,7 +4219,8 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
-  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call with ALL 12 weeks in a single array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short so 12 weeks fit in the response. The app backs up the previous routine before the first write so the user can roll back.\n';
+  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through 12 (the user is on week '+currentWeek+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
+  p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
   p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
   p+='  - Weeks 1-3: BASE #06b6d4 (volume + technique)\n';
   p+='  - Week 4: DELOAD #22c55e (end of Base — sets to 2-3, weight ~60%)\n';
