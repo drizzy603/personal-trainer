@@ -488,8 +488,8 @@ var coachLoading  = false;
 var streamingContent = '';
 var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
-var pendingRoutine = null;   // parsed routine JSON waiting for user to confirm
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
+var _runningTools = [];      // transient pills while a multi-round tool-use turn is in progress
 // Exercise library state
 var _libFilter   = 'All';
 var _libSearch   = '';
@@ -3563,9 +3563,6 @@ function loadCoachHistory(){
     var s=localStorage.getItem('kt_coach_msgs');
     if(s){
       coachMessages=JSON.parse(s);
-      for(var i=coachMessages.length-1;i>=0;i--){
-        if(coachMessages[i].role==='assistant'){checkForRoutineJSON(coachMessages[i].content);break;}
-      }
     }
   }catch(e){}
 }
@@ -3630,222 +3627,371 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
 '9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, say something like "Perfect — building your 12-week programme now..." then output the complete programme as valid JSON wrapped EXACTLY like this:\n\n'+
-'ROUTINE_START\n'+
-'{"name":"Programme Name","weeks":[...]}\n'+
-'ROUTINE_END\n\n'+
-'JSON structure for each week object:\n'+
-'{"wk":1,"block":1,"bName":"BASE","bColor":"#06b6d4","wkNote":"Brief week focus","push":[...],"pull":[...],"legs":[...],"runTue":{"km":3,"type":"easy","note":"Easy pace"},"runSat":{"km":5,"type":"easy","note":"Long run"}}\n\n'+
-'Each exercise: {"name":"Exercise Name","isMain":true,"sets":4,"reps":6,"weight":135,"rpe":7}\n'+
-'(isMain only on the primary compound lift per session. weight in lbs. rpe 7-8 for most sets. reps can be a number or string like "8-10")\n\n'+
-'Programme structure rules:\n'+
-'- Always output all 12 weeks\n'+
-'- Each session has 6-7 exercises\n'+
-'- Block 1 (weeks 1-4): bName="BASE", bColor="#06b6d4" — establish technique, moderate volume\n'+
-'- Block 2 (weeks 5-8): bName="BUILD", bColor="#7c6bff" — increase weight/intensity\n'+
-'- Block 3 (weeks 9-11): bName="SPEED", bColor="#f97316" — peak performance, heavier loads\n'+
-'- Week 12: bName="DELOAD", bColor="#22c55e" — drop sets to 2-3 and weight by 40%, full recovery\n'+
-'- If no running desired, omit runTue and runSat entirely\n'+
-'- Set starting weights based on what the user told you; conservative is better than too heavy\n'+
-'- Progress weight by ~2.5-5lb per week across the blocks\n'+
-'- Use appropriate exercises for their equipment and experience\n'+
-'- Start with the first question now.';
+'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN VIA TOOL CALLS: call update_routine_week once for each of weeks 1 through 12 (12 calls total). Do NOT write the plan as JSON in your text reply — that is not how the app receives it. Each tool call applies immediately and the user sees a live progress pill.\n\n'+
+'Block structure to follow:\n'+
+'- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
+'- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
+'- Weeks 5-7: HYPERTROPHY (#7c6bff) — increased load, muscle building\n'+
+'- Week 8: DELOAD (#22c55e) — end of Hypertrophy, sets to 2-3, weight ~65%\n'+
+'- Weeks 9-11: STRENGTH (#f97316) — heavy, low rep, peaking\n'+
+'- Week 12: PEAK (#22c55e) — PR attempts / max testing\n\n'+
+'Rules:\n'+
+'- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
+'- Keep exercise names consistent across weeks so progression tracks.\n'+
+'- Use weight=0 for bodyweight exercises. Weights in lb.\n'+
+'- If the user does not want running, omit runTue and runSat from each week.\n'+
+'- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
+'- Progress weight ~2.5-5 lb per week across the hypertrophy/strength blocks.\n\n'+
+'Start with the first question now.';
 }
 
 async function startRoutineIntake(){
   intakeMode=true;
-  pendingRoutine=null;
   clearCoachHistory();
   coachMessages.push({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
   streamingContent='';
   render();
   scrollChatBottom();
-  try{
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'content-type':'application/json',
-        'x-api-key':getApiKey(),
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1024,
-        stream:true,
-        system:buildIntakeSystemPrompt(),
-        messages:coachMessages
-      })
-    });
-    if(!res.ok){
-      var ed=await res.json();
-      coachMessages.push({role:'assistant',content:' '+(ed.error?ed.error.message:'API error '+res.status)});
-    }else{
-      var reader=res.body.getReader();var dec=new TextDecoder();var buf='';
-      while(true){
-        var ch=await reader.read();if(ch.done)break;
-        buf+=dec.decode(ch.value,{stream:true});
-        var lines=buf.split('\n');buf=lines.pop();
-        for(var i=0;i<lines.length;i++){
-          var line=lines[i];
-          if(!line.startsWith('data: '))continue;
-          var dat=line.slice(6);if(dat==='[DONE]')continue;
-          try{var ev=JSON.parse(dat);
-            if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){
-              streamingContent+=ev.delta.text;render();scrollChatBottom();
-            }
-          }catch(e){}
-        }
-      }
-      if(streamingContent){
-        var _finalizedIntake=sanitizeTruncatedRoutine(streamingContent);
-        coachMessages.push({role:'assistant',content:_finalizedIntake});
-        checkForRoutineJSON(_finalizedIntake);
-        saveCoachHistory();
-        streamingContent='';
-      }
-    }
-  }catch(e){
-    coachMessages.push({role:'assistant',content:'Could not connect. Check your API key and internet connection.'});
-    streamingContent='';
-  }
+  await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-4-6',16384);
   coachLoading=false;
+  streamingContent='';
   render();
   scrollChatBottom();
 }
 
-function checkForRoutineJSON(text){
-  if(!text) return;
-  var start=text.indexOf('ROUTINE_START');
-  var end=text.indexOf('ROUTINE_END');
-  if(start===-1||end===-1||end<=start) return;
-  var jsonStr=text.slice(start+13,end).trim();
+// ─── Coach tools ────────────────────────────────────────────────────────────
+// The coach interacts with the app exclusively through these tools. Each call
+// is a structured, validated payload — no regex-parsed ACTION or ROUTINE text.
+var _exerciseSchema={
+  type:'object',
+  properties:{
+    name:{type:'string'},
+    isMain:{type:'boolean',description:'True on the primary compound of the session'},
+    sets:{type:'integer',minimum:1},
+    reps:{description:'Integer reps (e.g. 8) or string range (e.g. "8-10" or "Max")'},
+    weight:{type:'number',description:'Weight in lb — use 0 for bodyweight'},
+    rpe:{type:'number',description:'Rating of perceived exertion, typically 6–10'}
+  },
+  required:['name','sets','reps','weight','rpe']
+};
+var _runSchema={
+  type:'object',
+  properties:{
+    km:{type:'number'},
+    type:{type:'string',description:'easy / Z2 / tempo / intervals / race effort'},
+    hr:{type:'number',description:'HR cap in bpm'},
+    note:{type:'string'}
+  },
+  required:['km','type']
+};
+var COACH_TOOLS=[
+  {name:'update_routine_week',
+   description:'Replace the contents of one week in the user\'s 12-week programme. Call this once per week to build a full plan (12 calls total for a full rewrite). For a single-week tweak call it once. Commits immediately — the user sees the update live.',
+   input_schema:{type:'object',
+     properties:{
+       wk:{type:'integer',minimum:1,maximum:12,description:'Week number 1–12'},
+       bName:{type:'string',description:'Block name: BASE, HYPERTROPHY, STRENGTH, PEAK, or DELOAD'},
+       bColor:{type:'string',description:'Hex block color — BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e'},
+       wkNote:{type:'string',description:'Brief 1–2 sentence focus note for the week'},
+       push:{type:'array',items:_exerciseSchema,description:'Push session exercises'},
+       pull:{type:'array',items:_exerciseSchema,description:'Pull session exercises'},
+       legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
+       runTue:_runSchema,
+       runSat:_runSchema
+     },
+     required:['wk','bName','bColor','push','pull','legs']}},
+  {name:'set_current_week',
+   description:'Set which week of the programme the user is currently on.',
+   input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:12}},required:['week']}},
+  {name:'set_exercise_weight',
+   description:'Update the working weight for a named exercise (case-insensitive match).',
+   input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
+  {name:'set_bench_goal',
+   description:'Set the bench press target weight in lb.',
+   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
+  {name:'set_squat_goal',
+   description:'Set the back squat target weight in lb.',
+   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
+  {name:'set_run_goal',
+   description:'Set target running pace per km as "mm:ss" (e.g. "6:00").',
+   input_schema:{type:'object',properties:{pace:{type:'string'}},required:['pace']}},
+  {name:'set_5k_goal',
+   description:'Set target 5 km time as "mm:ss" (e.g. "30:00").',
+   input_schema:{type:'object',properties:{time:{type:'string'}},required:['time']}},
+  {name:'set_bw_goal',
+   description:'Set target body weight in lb.',
+   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
+  {name:'log_bodyweight',
+   description:'Log today\'s body weight in lb.',
+   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}}
+];
+
+// Session-level flag — we back up kt_routine exactly once per page session, on
+// the first update_routine_week call, so the Restore Previous button rolls back
+// to the state before this conversation's edits (not to an intermediate week).
+var _routineBackedUp=false;
+
+function executeCoachTool(name,input){
+  input=input||{};
   try{
-    var obj=JSON.parse(jsonStr);
-    if(obj&&Array.isArray(obj.weeks)&&obj.weeks.length>0){
-      pendingRoutine=obj;
+    if(name==='update_routine_week'){
+      var wk=parseInt(input.wk);
+      if(!(wk>=1&&wk<=12)) return {ok:false,error:'wk must be 1-12'};
+      if(!input.bName||!input.bColor) return {ok:false,error:'bName and bColor are required'};
+      var cr=getCustomRoutine();
+      if(!cr){
+        // Seed from the baked-in 12-week plan so any weeks the coach doesn't
+        // touch remain valid.
+        var baked=(typeof WEEK_DATA!=='undefined'&&WEEK_DATA.length>1)
+          ?WEEK_DATA.slice(1).map(function(w){return JSON.parse(JSON.stringify(w));})
+          :[];
+        cr={name:'Custom Programme',weeks:baked.length?baked:[]};
+      }
+      if(!_routineBackedUp){
+        try{
+          var prev=lsGet('kt_routine');
+          if(prev&&prev.weeks) lsSet('kt_routine_backup',prev);
+        }catch(e){}
+        _routineBackedUp=true;
+      }
+      while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
+      var weekObj={
+        wk:wk,
+        block:parseInt(input.block)||Math.ceil(wk/4),
+        bName:String(input.bName),
+        bColor:String(input.bColor),
+        wkNote:input.wkNote?String(input.wkNote):'',
+        push:Array.isArray(input.push)?input.push:[],
+        pull:Array.isArray(input.pull)?input.pull:[],
+        legs:Array.isArray(input.legs)?input.legs:[]
+      };
+      if(input.runTue&&typeof input.runTue==='object') weekObj.runTue=input.runTue;
+      if(input.runSat&&typeof input.runSat==='object') weekObj.runSat=input.runSat;
+      cr.weeks[wk-1]=weekObj;
+      setCustomRoutine(cr);
+      return {ok:true,message:'Week '+wk+' updated',wk:wk};
     }
-  }catch(e){ /* bad JSON — ignore */ }
-}
-
-// Replace a truncated ROUTINE_START/… message with a clean retry hint so
-// chat history isn't permanently polluted with half a JSON blob.
-function sanitizeTruncatedRoutine(text){
-  if(!text) return text;
-  var hasStart=text.indexOf('ROUTINE_START')!==-1;
-  var hasEnd=text.indexOf('ROUTINE_END')!==-1;
-  if(hasStart&&!hasEnd){
-    var prefix=text.slice(0,text.indexOf('ROUTINE_START')).trim();
-    var intro=prefix||'Got it — drafting your programme.';
-    return intro+'\n\n⚠️ Programme generation ran out of space and was cut off. Ask me to try again — I\'ll be more compact.';
-  }
-  return text;
-}
-
-function applyCoachAction(obj){
-  if(!obj||!obj.type) return false;
-  if(obj.type==='SET_RUN_GOAL'&&obj.value){
-    setRunGoal(obj.value);
-    showToast('Run goal updated: '+obj.value+'/km');
-    return true;
-  } else if(obj.type==='SET_BW_GOAL'&&obj.value){
-    setBWGoal(parseFloat(obj.value));
-    showToast('Body weight goal updated: '+obj.value+' lb');
-    return true;
-  } else if(obj.type==='SET_5K_GOAL'&&obj.value){
-    var parts=String(obj.value).split(':').map(Number);
-    var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
-    if(secs>0){set5kGoal(secs);showToast('5k goal updated: '+obj.value);return true;}
-  } else if(obj.type==='SET_EXERCISE_WEIGHT'&&obj.name&&obj.value){
-    var weights=getWeights();
-    var newW=parseFloat(obj.value);
-    if(newW>0){
-      var key=Object.keys(weights).find(function(k){return k.toLowerCase()===obj.name.toLowerCase();});
-      if(!key) key=obj.name;
+    if(name==='set_current_week'){
+      var w=parseInt(input.week);
+      var total=getTotalWeeks();
+      if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
+      currentWeek=w; lsSet('kt_week',w);
+      return {ok:true,message:'current week set to '+w};
+    }
+    if(name==='set_exercise_weight'){
+      var weights=getWeights();
+      var newW=parseFloat(input.weight);
+      if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
+      if(!input.name) return {ok:false,error:'name required'};
+      var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
+      if(!key) key=String(input.name);
       weights[key]=newW;
       lsSet('kt_weights',weights);
-      showToast(key+' updated to '+newW+' lb');
-      return true;
+      return {ok:true,message:key+' = '+newW+' lb'};
     }
-  } else if(obj.type==='SET_WEEK'&&obj.value){
-    var wk=parseInt(obj.value);
-    var total=getTotalWeeks();
-    if(wk>=1&&wk<=total){
-      currentWeek=wk;
-      lsSet('kt_week',wk);
-      showToast('Week set to '+wk);
-      return true;
+    if(name==='set_bench_goal'){
+      var bg=parseFloat(input.weight);
+      if(!(bg>0)) return {ok:false,error:'weight must be > 0'};
+      setBenchGoal(bg);
+      return {ok:true,message:'bench goal = '+bg+' lb'};
     }
-  } else if(obj.type==='LOG_BW'&&obj.value){
-    var bwVal=parseFloat(obj.value);
-    if(bwVal>0){
+    if(name==='set_squat_goal'){
+      var sg=parseFloat(input.weight);
+      if(!(sg>0)) return {ok:false,error:'weight must be > 0'};
+      setSquatGoal(sg);
+      return {ok:true,message:'squat goal = '+sg+' lb'};
+    }
+    if(name==='set_run_goal'){
+      if(!input.pace) return {ok:false,error:'pace required as "mm:ss"'};
+      setRunGoal(String(input.pace));
+      return {ok:true,message:'run pace goal = '+input.pace+'/km'};
+    }
+    if(name==='set_5k_goal'){
+      var parts=String(input.time||'').split(':').map(Number);
+      var secs=parts.length===2?parts[0]*60+(parts[1]||0):0;
+      if(!(secs>0)) return {ok:false,error:'invalid time — use "mm:ss"'};
+      set5kGoal(secs);
+      return {ok:true,message:'5k goal = '+input.time};
+    }
+    if(name==='set_bw_goal'){
+      var bw=parseFloat(input.weight);
+      if(!(bw>0)) return {ok:false,error:'weight must be > 0'};
+      setBWGoal(bw);
+      return {ok:true,message:'body weight goal = '+bw+' lb'};
+    }
+    if(name==='log_bodyweight'){
+      var bwVal=parseFloat(input.weight);
+      if(!(bwVal>0)) return {ok:false,error:'weight must be > 0'};
       var bws=getBodyWeights();
       bws.unshift({date:todayISO(),weight:bwVal});
       lsSet('kt_bw',bws);
-      showToast('Weight logged: '+bwVal+' lb');
-      return true;
+      return {ok:true,message:'logged '+bwVal+' lb today'};
     }
-  } else if(obj.type==='SET_BENCH_GOAL'&&obj.value){
-    var bg=parseFloat(obj.value);
-    if(bg>0){setBenchGoal(bg);showToast('Bench goal set: '+bg+' lb');return true;}
-  } else if(obj.type==='SET_SQUAT_GOAL'&&obj.value){
-    var sg=parseFloat(obj.value);
-    if(sg>0){setSquatGoal(sg);showToast('Squat goal set: '+sg+' lb');return true;}
-  } else if(obj.type==='UPDATE_WEEK'&&obj.week){
-    // Patch a single week in the custom routine without replacing the whole programme.
-    // obj.week can carry any subset of { wk, bName, bColor, wkNote, push, pull, legs, runTue, runSat }.
-    var cr=getCustomRoutine();
-    if(!cr||!Array.isArray(cr.weeks)) return false;
-    var targetWk=parseInt(obj.week.wk);
-    if(!(targetWk>=1&&targetWk<=cr.weeks.length)) return false;
-    var cur=cr.weeks[targetWk-1]||{};
-    var merged={};
-    Object.keys(cur).forEach(function(k){merged[k]=cur[k];});
-    Object.keys(obj.week).forEach(function(k){merged[k]=obj.week[k];});
-    merged.wk=targetWk;
-    cr.weeks[targetWk-1]=merged;
-    setCustomRoutine(cr);
-    showToast('Week '+targetWk+' updated');
-    return true;
+    return {ok:false,error:'unknown tool: '+name};
+  }catch(e){
+    return {ok:false,error:(e&&e.message)||'execution failed'};
   }
-  return false;
 }
 
-function checkForCoachActions(text){
-  if(!text) return;
-  var re=/ACTION_START([\s\S]*?)ACTION_END/g;
-  var m, applied=0;
-  while((m=re.exec(text))!==null){
+// Convert a message from our in-memory format to Anthropic API form.
+// Strips internal-only fields (_preview, _tools, _hadImage) but preserves
+// array-content messages (images + tool_result blocks).
+function _toApiMsg(m){
+  return {role:m.role, content:m.content};
+}
+
+// One full coach turn: may loop through multiple tool_use rounds.
+async function runCoachTurn(systemPrompt,model,maxTok){
+  var apiMsgs=coachMessages.slice(-30).filter(function(m){
+    // Exclude transient tool_result turns from older history when rebuilding;
+    // we only carry forward within a single runCoachTurn.
+    return !m._toolResults;
+  }).map(_toApiMsg);
+  var MAX_TURNS=15;
+  var totalText='';
+  var allToolCalls=[];
+  var hadError=false;
+
+  for(var t=0;t<MAX_TURNS;t++){
+    streamingContent='';
+    var blockBuf={};       // index -> {type, text | {id,name,partialJson}}
+    var finishedBlocks=[]; // order-preserving list of completed blocks
+    var stopReason='';
+    var res;
     try{
-      var obj=JSON.parse(m[1].trim());
-      if(applyCoachAction(obj)) applied++;
-    }catch(e){}
+      res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{
+          'content-type':'application/json',
+          'x-api-key':getApiKey(),
+          'anthropic-version':'2023-06-01',
+          'anthropic-dangerous-direct-browser-access':'true'
+        },
+        body:JSON.stringify({
+          model:model,
+          max_tokens:maxTok,
+          stream:true,
+          system:systemPrompt,
+          messages:apiMsgs,
+          tools:COACH_TOOLS
+        })
+      });
+    }catch(e){
+      hadError=true;
+      coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
+      break;
+    }
+    if(!res.ok){
+      var ed=await res.json().catch(function(){return {};});
+      coachMessages.push({role:'assistant',content:(ed.error&&ed.error.message)?ed.error.message:'API error '+res.status});
+      hadError=true;
+      break;
+    }
+
+    var reader=res.body.getReader();
+    var dec=new TextDecoder();
+    var buf='';
+    while(true){
+      var ch=await reader.read();
+      if(ch.done) break;
+      buf+=dec.decode(ch.value,{stream:true});
+      var lines=buf.split('\n');
+      buf=lines.pop();
+      for(var i=0;i<lines.length;i++){
+        var line=lines[i];
+        if(!line.startsWith('data: ')) continue;
+        var dat=line.slice(6);
+        if(dat==='[DONE]') continue;
+        var ev;
+        try{ ev=JSON.parse(dat); }catch(e){ continue; }
+        if(ev.type==='content_block_start'){
+          var cb=ev.content_block||{};
+          blockBuf[ev.index]=cb.type==='tool_use'
+            ?{type:'tool_use',id:cb.id,name:cb.name,partialJson:''}
+            :{type:'text',text:''};
+        } else if(ev.type==='content_block_delta'){
+          var b=blockBuf[ev.index]; if(!b) continue;
+          if(ev.delta.type==='text_delta'&&b.type==='text'){
+            b.text+=ev.delta.text;
+            streamingContent+=ev.delta.text;
+            render(); scrollChatBottom();
+          } else if(ev.delta.type==='input_json_delta'&&b.type==='tool_use'){
+            b.partialJson+=ev.delta.partial_json||'';
+          }
+        } else if(ev.type==='content_block_stop'){
+          var fin=blockBuf[ev.index];
+          if(!fin) continue;
+          if(fin.type==='tool_use'){
+            try{ fin.input=JSON.parse(fin.partialJson||'{}'); }catch(e){ fin.input={}; }
+            finishedBlocks.push({type:'tool_use',id:fin.id,name:fin.name,input:fin.input});
+          } else {
+            finishedBlocks.push({type:'text',text:fin.text});
+          }
+          delete blockBuf[ev.index];
+        } else if(ev.type==='message_delta'){
+          if(ev.delta&&ev.delta.stop_reason) stopReason=ev.delta.stop_reason;
+        }
+      }
+    }
+
+    // Accumulate text across all turns for final display
+    finishedBlocks.forEach(function(b){ if(b.type==='text') totalText+=b.text; });
+
+    // Record tool calls for pill UI
+    var toolUses=finishedBlocks.filter(function(b){return b.type==='tool_use';});
+
+    // Append the assistant's raw blocks to the in-flight API conversation
+    apiMsgs.push({role:'assistant',content:finishedBlocks});
+
+    if(!toolUses.length||stopReason!=='tool_use'){
+      streamingContent='';
+      break;
+    }
+
+    // Execute each tool and build tool_result blocks
+    var toolResultBlocks=toolUses.map(function(tu){
+      var out=executeCoachTool(tu.name,tu.input);
+      var call={name:tu.name,input:tu.input,result:out};
+      allToolCalls.push(call);
+      _runningTools.push(call);
+      return {
+        type:'tool_result',
+        tool_use_id:tu.id,
+        content:JSON.stringify(out),
+        is_error:!out.ok
+      };
+    });
+    apiMsgs.push({role:'user',content:toolResultBlocks});
+    streamingContent='';
+    render(); scrollChatBottom();
   }
-  if(applied) render();
+
+  _runningTools=[];
+  // Commit the final combined assistant message (text + tool summary metadata)
+  if(!hadError){
+    coachMessages.push({
+      role:'assistant',
+      content:totalText.trim(),
+      _tools:allToolCalls.length?allToolCalls:null
+    });
+  }
+  saveCoachHistory();
 }
 
-function confirmLoadRoutine(){
-  if(!pendingRoutine) return;
-  var wkCount=(pendingRoutine.weeks||[]).length||0;
-  var hadRoutine=hasCustomRoutine();
-  if(hadRoutine&&wkCount<12){
-    if(!confirm('This plan only has '+wkCount+' week'+(wkCount===1?'':'s')+'. Loading it will replace your current '+getTotalWeeks()+'-week programme. Continue anyway?')) return;
-  }
-  if(hadRoutine){
-    try{ lsSet('kt_routine_backup',getCustomRoutine()); }catch(e){}
-  }
-  setCustomRoutine(pendingRoutine);
-  var total=wkCount||1;
-  if(!hadRoutine||currentWeek<1||currentWeek>total){
-    currentWeek=1;
-    lsSet('kt_week',1);
-  }
-  intakeMode=false;
-  pendingRoutine=null;
-  if(!hadRoutine) clearCoachHistory();
-  showToast(hadRoutine?('Programme updated — Week '+currentWeek):('Programme loaded! Week '+currentWeek+' is ready'));
-  render();
+// Friendly label for a tool call, shown as a pill in the chat UI.
+function toolCallLabel(tc){
+  var n=tc.name,i=tc.input||{};
+  if(n==='update_routine_week') return 'Week '+i.wk+' updated';
+  if(n==='set_current_week') return 'Week set to '+i.week;
+  if(n==='set_exercise_weight') return i.name+' → '+i.weight+' lb';
+  if(n==='set_bench_goal') return 'Bench goal '+i.weight+' lb';
+  if(n==='set_squat_goal') return 'Squat goal '+i.weight+' lb';
+  if(n==='set_run_goal') return 'Pace goal '+i.pace+'/km';
+  if(n==='set_5k_goal') return '5k goal '+i.time;
+  if(n==='set_bw_goal') return 'BW goal '+i.weight+' lb';
+  if(n==='log_bodyweight') return 'Logged '+i.weight+' lb';
+  return n;
 }
 
 function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.weeks); }
@@ -3868,7 +4014,6 @@ function resetCustomRoutine(){
   currentWeek=1;
   lsSet('kt_week',1);
   intakeMode=false;
-  pendingRoutine=null;
   clearCoachHistory();
   render();
   showToast('Programme reset. You can generate a new one anytime.');
@@ -3886,7 +4031,6 @@ function restoreBuiltinRoutine(){
   clearCustomRoutine();
   if(currentWeek<1||currentWeek>12){ currentWeek=1; lsSet('kt_week',1); }
   intakeMode=false;
-  pendingRoutine=null;
   render();
   showToast('Restored built-in 12-week plan — Week '+currentWeek);
 }
@@ -3911,12 +4055,21 @@ function clearApiKey(){
 function saveCoachHistory(){
   try{
     var msgs=coachMessages.slice(-60).map(function(m){
+      // Skip transient tool_result payloads — they're conversation-local only.
+      if(m._toolResults) return null;
+      var out={role:m.role,content:m.content,_hadImage:m._hadImage||false};
+      if(m._tools) out._tools=m._tools;
       if(Array.isArray(m.content)){
+        // Keep image user-messages; collapse everything else to its text.
+        var hasImage=m.content.some(function(p){return p.type==='image';});
+        if(hasImage){
+          out._hadImage=true;
+        }
         var text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
-        return {role:m.role,content:text||'[Image]',_hadImage:true};
+        out.content=text||(hasImage?'[Image]':'');
       }
-      return {role:m.role,content:m.content,_hadImage:m._hadImage||false};
-    });
+      return out;
+    }).filter(function(m){return m;});
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
     coachMessages=msgs;
   }catch(e){}
@@ -4008,32 +4161,20 @@ function buildSystemPrompt(){
   var allWeights=getWeights();
   var wKeys=Object.keys(allWeights);
   if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS (lb):\n'+wKeys.map(function(k){return '  '+k+': '+allWeights[k];}).join('\n')+'\n';}
-  p+='\nAPP ACTIONS — you can update the user\'s app data directly. When the user asks to change a goal, weight, or week, include an action block AFTER your reply text:\n';
-  p+='ACTION_START\n{"type":"SET_RUN_GOAL","value":"6:00"}\nACTION_END\n';
-  p+='Supported action types:\n';
-  p+='  SET_RUN_GOAL       — value = pace per km as "mm:ss" (e.g. "6:00")\n';
-  p+='  SET_5K_GOAL        — value = total 5k time as "mm:ss" (e.g. "30:00")\n';
-  p+='  SET_BW_GOAL        — value = target body weight in lbs (e.g. "175")\n';
-  p+='  SET_EXERCISE_WEIGHT — name = exact exercise name from list above, value = new weight in lbs\n';
-  p+='  SET_BENCH_GOAL     — value = bench press target in lbs (e.g. "200")\n';
-  p+='  SET_SQUAT_GOAL     — value = back squat target in lbs (e.g. "185")\n';
-  p+='  SET_WEEK           — value = week number 1-'+getTotalWeeks()+' (e.g. "4")\n';
-  p+='  LOG_BW             — value = today\'s body weight in lbs (e.g. "178")\n';
-  p+='  UPDATE_WEEK        — week = { wk:N, bName, bColor, wkNote, push:[...], pull:[...], legs:[...], runTue, runSat } (patch one week of the stored programme; include only the fields you want to change)\n';
-  p+='You may emit MULTIPLE ACTION blocks per reply — one per change. Omit entirely if no data change is needed.\n\n';
-  p+='FULL-PROGRAMME UPDATES — the app stores a complete multi-week periodised plan in kt_routine.weeks[]. You can replace or regenerate the entire plan in one message. When the user asks for a full programme update, progression plan, periodisation, deload/peak scheduling, or "update the whole workout", output the complete programme as valid JSON wrapped EXACTLY like this:\n';
-  p+='ROUTINE_START\n{"name":"Programme Name","weeks":[...]}\nROUTINE_END\n';
-  p+='Week object schema:\n';
-  p+='{"wk":1,"block":1,"bName":"BASE","bColor":"#06b6d4","wkNote":"Brief week focus","push":[...],"pull":[...],"legs":[...],"runTue":{"km":3,"type":"easy","note":"Easy pace"},"runSat":{"km":5,"type":"easy","note":"Long run"}}\n';
-  p+='Each exercise: {"name":"Exercise Name","isMain":true,"sets":4,"reps":6,"weight":135,"rpe":7}\n';
-  p+='Rules when emitting a full programme:\n';
-  p+='  - Include EXACTLY 12 weeks in weeks[] — anything shorter will be rejected by the app.\n';
-  p+='  - Keep exercise names consistent week-to-week so progression tracks.\n';
-  p+='  - Mark the primary compound per session with isMain:true. Weights in lbs.\n';
-  p+='  - Block names/colors: BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e.\n';
-  p+='  - Deload weeks: drop weight ~40% and sets to 2-3.\n';
-  p+='  - After loading, the user stays on their current week — do NOT assume they restart at week 1.\n';
-  p+='  - TOKEN BUDGET: the JSON must be COMPACT — no indentation, no newlines inside the JSON, no trailing spaces. One big single-line JSON object between ROUTINE_START and ROUTINE_END. Precede it with at most a one-sentence intro. If you run out of space, the plan will be truncated and lost — compact JSON is mandatory.\n';
+  p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
+  p+='Quick guide:\n';
+  p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
+  p+='  - Tweak one week of the plan → one update_routine_week call.\n';
+  p+='  - Rewrite / regenerate the full programme → call update_routine_week 12 times (once per week), ordered 1 → 12. The app backs up the previous routine before the first write so the user can roll back.\n';
+  p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
+  p+='  - Weeks 1-3: BASE #06b6d4 (volume + technique)\n';
+  p+='  - Week 4: DELOAD #22c55e (end of Base — sets to 2-3, weight ~60%)\n';
+  p+='  - Weeks 5-7: HYPERTROPHY #7c6bff (increased load)\n';
+  p+='  - Week 8: DELOAD #22c55e (end of Hypertrophy — sets to 2-3, weight ~65%)\n';
+  p+='  - Weeks 9-11: STRENGTH #f97316 (heavy, low rep)\n';
+  p+='  - Week 12: PEAK #22c55e (PR attempts / max testing)\n';
+  p+='Keep exercise names consistent across weeks so progression tracks. Mark the primary compound per session with isMain:true. Use weight=0 for bodyweight exercises.\n';
+  p+='Keep your text reply short — the user sees the effect of the tool calls directly. No need to restate the plan in prose.\n';
   return p;
 }
 
@@ -4081,59 +4222,14 @@ async function sendCoachMessage(){
   streamingContent='';
   render();
   scrollChatBottom();
+
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var maxTok=32000;
   var model=intakeMode?'claude-sonnet-4-6':coachModel;
-  // Strip _preview before sending — it's display-only, not part of the API schema
-  var msgs=coachMessages.slice(-20).map(function(m){return {role:m.role,content:m.content};});
-  try{
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'content-type':'application/json',
-        'x-api-key':getApiKey(),
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({model:model,max_tokens:maxTok,stream:true,system:systemPrompt,messages:msgs})
-    });
-    if(!res.ok){
-      var ed=await res.json().catch(function(){return {};});
-      coachMessages.push({role:'assistant',content:ed.error&&ed.error.message?ed.error.message:'API error '+res.status});
-      saveCoachHistory();
-    }else{
-      var reader=res.body.getReader();var dec=new TextDecoder();var buf='';
-      while(true){
-        var ch=await reader.read();if(ch.done)break;
-        buf+=dec.decode(ch.value,{stream:true});
-        var lines=buf.split('\n');buf=lines.pop();
-        for(var i=0;i<lines.length;i++){
-          var line=lines[i];
-          if(!line.startsWith('data: '))continue;
-          var dat=line.slice(6);if(dat==='[DONE]')continue;
-          try{var ev=JSON.parse(dat);
-            if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){
-              streamingContent+=ev.delta.text;render();scrollChatBottom();
-            }
-          }catch(e){}
-        }
-      }
-      if(streamingContent){
-        var _finalized=sanitizeTruncatedRoutine(streamingContent);
-        coachMessages.push({role:'assistant',content:_finalized});
-        checkForRoutineJSON(_finalized);
-        checkForCoachActions(_finalized);
-        saveCoachHistory();
-        streamingContent='';
-      }
-    }
-  }catch(e){
-    coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
-    saveCoachHistory();
-    streamingContent='';
-  }
-  saveCoachHistory();
+  var maxTok=16384;
+  await runCoachTurn(systemPrompt,model,maxTok);
+
   coachLoading=false;
+  streamingContent='';
   render();
   scrollChatBottom();
 }
@@ -4267,7 +4363,7 @@ function renderCoach(){
     '</div>'+
     '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;">'+
       (intakeMode
-        ?'<button onclick="(function(){intakeMode=false;clearCoachHistory();pendingRoutine=null;render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        ?'<button onclick="(function(){intakeMode=false;clearCoachHistory();render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
         :'<button onclick="setCoachModel(\''+modelNext+'\')" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;">'+modelLabel+'</button>'
       )+
     '</div>'+
@@ -4305,7 +4401,7 @@ function renderCoach(){
   }else{
     var bubbles='';
     coachMessages.forEach(function(m){
-      // Resolve text and image from content (may be string or array)
+      if(m._toolResults) return; // never render tool_result payloads
       var text=m.content;
       var imgHTML='';
       if(Array.isArray(m.content)){
@@ -4316,63 +4412,41 @@ function renderCoach(){
       }else if(m._hadImage){
         imgHTML='<div style="font-size:11px;color:rgba(0,0,0,.5);margin-bottom:4px;">📷 Image</div>';
       }
-      // Strip ACTION blocks before display
-      var displayText=(typeof text==='string'?text:'').replace(/ACTION_START[\s\S]*?ACTION_END/g,'').trim();
-      // If an old message still has a truncated ROUTINE_START with no ROUTINE_END,
-      // clean it inline so the chat doesn't show raw JSON forever.
-      if(displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')===-1){
-        displayText=sanitizeTruncatedRoutine(displayText);
-      }
-      var hasRoutine=displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')!==-1;
-      if(hasRoutine){
-        var beforeJSON=displayText.slice(0,displayText.indexOf('ROUTINE_START')).trim();
-        if(beforeJSON){
-          bubbles+='<div class="coach-bubble assistant">'+md(beforeJSON)+'</div>';
-        }
-        var _already=hasCustomRoutine();
-        var _wkCount=pendingRoutine&&pendingRoutine.weeks?pendingRoutine.weeks.length:12;
-        var _title=_already?'Updated Programme Ready':'Programme Ready';
-        var _blurb=_already
-          ?'Your refreshed '+_wkCount+'-week plan is ready. Tap below to replace your current programme — you\'ll stay on Week '+currentWeek+'.'
-          :'Your personalised '+_wkCount+'-week programme has been generated. Tap below to load it and start training.';
-        var _btn=_already?'Update My Programme':'Load My Programme';
-        bubbles+='<div class="card" style="margin:4px 0;border-color:var(--accent);padding:18px;">'+
-          '<div style="font-size:16px;font-weight:600;margin-bottom:6px;color:var(--accent);">'+_title+'</div>'+
-          '<p style="font-size:13px;color:var(--lite);line-height:1.5;margin-bottom:14px;">'+_blurb+'</p>'+
-          (pendingRoutine?
-            '<button class="btn btn-primary btn-full" onclick="confirmLoadRoutine()">'+_btn+'</button>':
-            '<p style="font-size:12px;color:var(--red);">Could not parse the programme. Ask the coach to regenerate it.</p>'
-          )+
-        '</div>';
-      }else{
+      var displayText=(typeof text==='string'?text:'').trim();
+      if(displayText||imgHTML){
         var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         bubbles+='<div class="coach-bubble '+m.role+'">'+imgHTML+rendered+'</div>';
       }
+      // Tool-call pills under the assistant bubble
+      if(m.role==='assistant'&&Array.isArray(m._tools)&&m._tools.length){
+        var pills=m._tools.map(function(tc){
+          var label=toolCallLabel(tc);
+          var ok=tc.result&&tc.result.ok!==false;
+          var bg=ok?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';
+          var col=ok?'#22c55e':'#ef4444';
+          var icon=ok?'✓':'✕';
+          return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
+        }).join(' ');
+        bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+pills+'</div>';
+      }
     });
+    // Live pills for tools executed mid-turn (before the final message commits)
+    if(_runningTools.length){
+      var livePills=_runningTools.map(function(tc){
+        var label=toolCallLabel(tc);
+        var ok=tc.result&&tc.result.ok!==false;
+        var bg=ok?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';
+        var col=ok?'#22c55e':'#ef4444';
+        var icon=ok?'✓':'✕';
+        return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
+      }).join(' ');
+      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+livePills+'</div>';
+    }
     // Streaming bubble — live text as it arrives
     if(streamingContent){
-      var _srIdx=streamingContent.indexOf('ROUTINE_START');
-      var _seIdx=streamingContent.indexOf('ROUTINE_END');
-      var _streamOpen=_srIdx!==-1&&_seIdx===-1;
-      var _streamClosed=_srIdx!==-1&&_seIdx!==-1;
-      var _streamDisplay;
-      if(_streamOpen){
-        var _prefix=streamingContent.slice(0,_srIdx).trim();
-        _streamDisplay=(_prefix?md(_prefix)+'<hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">':'')+
-          '<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--lite);">'+
-            '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
-            '<span>Building your programme…</span>'+
-          '</div>';
-      }else if(_streamClosed){
-        var _prefix2=streamingContent.slice(0,_srIdx).trim();
-        _streamDisplay=(_prefix2?md(_prefix2):'')+
-          '<div style="font-size:13px;color:var(--accent);margin-top:6px;">Programme generated — finalizing…</div>';
-      }else{
-        _streamDisplay=md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span>';
-      }
-      bubbles+='<div class="coach-bubble assistant">'+_streamDisplay+'</div>';
+      bubbles+='<div class="coach-bubble assistant">'+md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span></div>';
     }else if(coachLoading){
-      var loadMsg=intakeMode?'Building your programme…':'';
+      var loadMsg=intakeMode?'Thinking…':'';
       bubbles+='<div class="typing-wrap">'+
         (loadMsg?'<span style="font-size:12px;color:var(--lite);margin-right:8px;">'+loadMsg+'</span>':'')+
         '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
