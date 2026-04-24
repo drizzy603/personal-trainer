@@ -2748,7 +2748,7 @@ function renderSportSection(){
     aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Date</label>'+
-        '<input type="date" id="spDate" value="'+logDate+'" style="'+inp+'"/></div>'+
+        '<input type="date" id="spDate" value="'+logDate+'" onchange="logDate=this.value" style="'+inp+'"/></div>'+
       '<div><label style="'+lbl+'">Duration (min)</label>'+
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
@@ -3499,9 +3499,6 @@ function showToast(msg){
 function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
 function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();}
 
-function saveCoachHistory(){
-  try{localStorage.setItem('kt_coach_msgs',JSON.stringify(coachMessages));}catch(e){}
-}
 function loadCoachHistory(){
   try{
     var s=localStorage.getItem('kt_coach_msgs');
@@ -3771,7 +3768,6 @@ function saveCoachHistory(){
   try{
     var msgs=coachMessages.slice(-60).map(function(m){
       if(Array.isArray(m.content)){
-        // Strip image data — too large for localStorage; keep text only
         var text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
         return {role:m.role,content:text||'[Image]',_hadImage:true};
       }
@@ -3780,10 +3776,6 @@ function saveCoachHistory(){
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
     coachMessages=msgs;
   }catch(e){}
-}
-function clearCoachHistory(){
-  coachMessages=[];
-  localStorage.removeItem('kt_coach_msgs');
 }
 
 function buildSystemPrompt(){
