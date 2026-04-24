@@ -473,6 +473,7 @@ var logHistExpanded = {}; // {exName: bool} — exercise history panel open
 var logSupersets    = {}; // {idx: true} = exercises[idx] and exercises[idx+1] are a superset pair
 var currentWeek   = 1;
 var logSubTab        = 'workout';
+var logSportType     = 'Cycling';
 var logCompletedSets = {};
 var currentTheme     = 'dark';
 var wakeLock         = null;
@@ -917,6 +918,46 @@ var SESS = {
     ]}
 };
 
+// ── Sports config ─────────────────────────────────────────────────────────────
+var SPORTS = [
+  {id:'Cycling',    icon:'🚴', color:'#f97316', fields:[
+    {id:'distance',  label:'Distance',   unit:'km',  type:'number', step:'.1', ph:'25'},
+    {id:'avgSpeed',  label:'Avg speed',  unit:'km/h',type:'number', step:'.1', ph:'25'},
+    {id:'avgHR',     label:'Avg HR',     unit:'bpm', type:'number', ph:'145'},
+    {id:'elevation', label:'Elevation',  unit:'m',   type:'number', ph:'300'},
+    {id:'bikeType',  label:'Type',       type:'select', opts:['Road','Indoor','Mountain','Gravel']}
+  ]},
+  {id:'CrossFit',   icon:'🏋️', color:'#ef4444', fields:[
+    {id:'wodName',   label:'WOD name',        type:'text',   ph:'Fran'},
+    {id:'score',     label:'Score / time',    type:'text',   ph:'5:23'},
+    {id:'level',     label:'Level',           type:'select', opts:['Rx','Scaled','Masters']},
+    {id:'rounds',    label:'Rounds done',     type:'number', ph:''}
+  ]},
+  {id:'Pickleball', icon:'🏓', color:'#84cc16', fields:[
+    {id:'setsWon',   label:'Sets won',  type:'number', ph:'3'},
+    {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
+    {id:'partner',   label:'Partner',   type:'text',   ph:'Optional'},
+    {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
+  ]},
+  {id:'Swimming',   icon:'🏊', color:'#06b6d4', fields:[
+    {id:'distance',  label:'Distance',  unit:'m',   type:'number', ph:'1000'},
+    {id:'laps',      label:'Laps',      type:'number', ph:'20'},
+    {id:'stroke',    label:'Stroke',    type:'select', opts:['Freestyle','Breaststroke','Backstroke','Butterfly','Mixed']},
+    {id:'avgHR',     label:'Avg HR',    unit:'bpm', type:'number', ph:'140'}
+  ]},
+  {id:'Tennis',     icon:'🎾', color:'#facc15', fields:[
+    {id:'setsWon',   label:'Sets won',  type:'number', ph:'2'},
+    {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
+    {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
+  ]},
+  {id:'Basketball', icon:'🏀', color:'#fb923c', fields:[
+    {id:'gameType',  label:'Format', type:'select', opts:['5v5','3v3','2v2','1v1','Practice']}
+  ]},
+  {id:'Other',      icon:'⚡', color:'#a78bfa', fields:[
+    {id:'activity',  label:'Activity', type:'text', ph:'e.g. Hiking, Boxing…'}
+  ]}
+];
+
 // ── Exercise Library (for swap dropdown) ─────────────────────────────────────
 var EXERCISE_LIBRARY = {
   Push:['Barbell Bench Press','Incline Dumbbell Press','Cable Fly','DB Lateral Raise','Tricep Pushdown','Overhead Tricep Ext','Close Grip Bench Press','Machine Shoulder Press','DB Shoulder Press','Dips','Cable Lateral Raise','OH Cable Tri Ext'],
@@ -1261,7 +1302,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1284,7 +1325,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
@@ -1621,11 +1662,16 @@ function renderLog() {
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
     '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">Run</button>'+
+    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')">Sport</button>'+
     '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">Body</button>'+
     '</div>';
 
   if (logSubTab === 'run') {
     return header + renderWeekHeader() + subBar + renderRunsSection();
+  }
+
+  if (logSubTab === 'sport') {
+    return header + renderWeekHeader() + subBar + renderSportSection();
   }
 
   if (logSubTab === 'body') {
@@ -2609,6 +2655,152 @@ function saveRun() {
     navigator.clipboard.writeText(txt).then(afterCopy).catch(function(){showManualCopy(txt);afterCopy();});
   } else {showManualCopy(txt);afterCopy();}
   render();
+}
+
+// ── SPORTS ───────────────────────────────────────────────────────────────────
+function getSportLogs(){ return lsGet('kt_sports')||[]; }
+function deleteSportLog(id){
+  lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+  render();
+}
+function pickSport(id){ logSportType=id; render(); }
+
+function saveSportLog(){
+  var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
+  var date=(document.getElementById('spDate')||{value:logDate}).value||logDate;
+  var dur=parseInt((document.getElementById('spDuration')||{value:''}).value)||0;
+  var notes=((document.getElementById('spNotes')||{value:''}).value||'').trim();
+  var data={};
+  sport.fields.forEach(function(f){
+    var el=document.getElementById('sp_'+f.id);
+    if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
+  });
+  var logs=getSportLogs();
+  logs.unshift({id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes});
+  lsSet('kt_sports',logs);
+  showToast(sport.icon+' Logged!');
+  render();
+}
+
+function buildSportSummary(log){
+  var d=log.data||{}, parts=[];
+  if(log.type==='Cycling'){
+    if(d.distance) parts.push(d.distance+'km');
+    if(d.avgSpeed) parts.push(d.avgSpeed+'km/h');
+  } else if(log.type==='CrossFit'){
+    if(d.wodName) parts.push(d.wodName);
+    if(d.score)   parts.push(d.score);
+    if(d.level)   parts.push(d.level);
+  } else if(log.type==='Pickleball'||log.type==='Tennis'){
+    if(d.setsWon!=null||d.setsLost!=null) parts.push((d.setsWon||0)+'-'+(d.setsLost||0));
+    if(d.opponent) parts.push('vs '+d.opponent);
+  } else if(log.type==='Swimming'){
+    if(d.distance) parts.push(d.distance+'m');
+    if(d.laps)     parts.push(d.laps+' laps');
+    if(d.stroke)   parts.push(d.stroke);
+  } else if(log.type==='Other'){
+    if(d.activity) parts.push(d.activity);
+  }
+  return parts.join(' · ');
+}
+
+function _renderSportField(f){
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
+    'padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
+  var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+    'letter-spacing:.05em;text-transform:uppercase;';
+  var label=f.label+(f.unit?' ('+f.unit+')':'');
+  if(f.type==='select'){
+    return '<div><label style="'+lbl+'">'+label+'</label>'+
+      '<select id="sp_'+f.id+'" style="'+inp+'">'+
+      f.opts.map(function(o){return '<option>'+o+'</option>';}).join('')+'</select></div>';
+  }
+  return '<div><label style="'+lbl+'">'+label+'</label>'+
+    '<input type="'+f.type+'" id="sp_'+f.id+'" placeholder="'+(f.ph||'')+'"'+
+    (f.step?' step="'+f.step+'"':'')+' style="'+inp+'"/></div>';
+}
+
+function _renderSportFields(sport){
+  var html='', i=0, ff=sport.fields;
+  while(i<ff.length){
+    var f1=ff[i], f2=ff[i+1];
+    // text fields (except partner/opponent pairs) go full-width
+    // full-width: lone text inputs (except partner/opponent pairs), or no next field
+    var solo=(f1.type==='text' && f1.id!=='partner' && f1.id!=='opponent') || !f2;
+    if(solo){
+      html+='<div style="margin-bottom:10px;">'+_renderSportField(f1)+'</div>';
+      i++;
+    } else {
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+        _renderSportField(f1)+_renderSportField(f2)+'</div>';
+      i+=2;
+    }
+  }
+  return html;
+}
+
+function renderRecentSportLogs(){
+  var logs=getSportLogs().slice(0,15);
+  if(!logs.length) return '<div style="text-align:center;padding:28px;color:var(--muted);font-size:13px;">No sport sessions logged yet</div>';
+  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
+  return '<div class="card" style="margin-top:8px;">'+
+    '<div class="sect-title" style="margin-bottom:4px;">Recent</div>'+
+    logs.map(function(log){
+      var s=sMap[log.type]||{icon:'⚡'};
+      var sum=buildSportSummary(log);
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'+
+        '<div style="font-size:26px;flex-shrink:0;line-height:1;">'+s.icon+'</div>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-size:14px;font-weight:700;">'+log.type+(log.duration?' · '+log.duration+' min':'')+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+sum:'')+'</div>'+
+          (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+log.notes+'</div>':'')+
+        '</div>'+
+        '<button onclick="deleteSportLog('+log.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+
+function renderSportSection(){
+  var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
+    'padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
+  var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
+    'letter-spacing:.05em;text-transform:uppercase;';
+
+  var picker='<div style="display:flex;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
+    SPORTS.map(function(s){
+      var act=s.id===logSportType;
+      return '<button onclick="pickSport(\''+s.id+'\')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;'+
+        'gap:5px;background:'+(act?s.color:'var(--card2)')+';border:none;border-radius:18px;'+
+        'padding:12px 16px;cursor:pointer;min-width:72px;-webkit-tap-highlight-color:transparent;transition:all .15s;">'+
+        '<span style="font-size:24px;line-height:1;">'+s.icon+'</span>'+
+        '<span style="font-size:11px;font-weight:700;color:'+(act?'#000':'var(--muted)')+';white-space:nowrap;">'+s.id+'</span>'+
+      '</button>';
+    }).join('')+
+  '</div>';
+
+  var form='<div class="card" style="margin-top:4px;">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">'+
+      '<span style="font-size:22px;">'+sport.icon+'</span>'+
+      '<div style="font-size:16px;font-weight:800;letter-spacing:-.3px;">Log '+sport.id+'</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+      '<div><label style="'+lbl+'">Date</label>'+
+        '<input type="date" id="spDate" value="'+logDate+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'">Duration (min)</label>'+
+        '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
+    '</div>'+
+    _renderSportFields(sport)+
+    '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
+      '<textarea id="spNotes" rows="2" placeholder="How did it go?" style="'+inp+';resize:vertical;"></textarea></div>'+
+    '<button onclick="saveSportLog()" style="width:100%;padding:14px;background:'+sport.color+';color:#000;'+
+      'border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      sport.icon+' Log '+sport.id+
+    '</button>'+
+  '</div>';
+
+  return picker+form+renderRecentSportLogs();
 }
 
 // ── WEIGHTS ───────────────────────────────────────────────────────────────────
