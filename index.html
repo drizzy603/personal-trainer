@@ -1966,12 +1966,14 @@ function pickSession(key){
 
 // ── Gather & Save ─────────────────────────────────────────────────────────────
 function gatherExercises() {
-  return getSessionExercises(logSession).map(function(ex) {
-    var s=logSets[ex.name]||ex.sets;
-    var r=logReps[ex.name]||Array(s).fill(8);
-    var noteEl=document.querySelector('.ex-note-input[data-ex="'+ex.name+'"]');
-    var note=noteEl?noteEl.value.trim():(logExNotes[ex.name]||'');
-    return {name:ex.name,sets:s,reps:r,weight:logWeights[ex.name]||0,rpe:logRPEs[ex.name]||8,note:note};
+  return getSessionExercises(logSession).map(function(ex, idx) {
+    var slotKey = logSession+'-'+idx;
+    var name = logExSwap[slotKey] || ex.name;
+    var s=logSets[name]||ex.sets;
+    var r=logReps[name]||Array(s).fill(8);
+    var noteEl=document.querySelector('.ex-note-input[data-ex="'+name+'"]');
+    var note=noteEl?noteEl.value.trim():(logExNotes[name]||'');
+    return {name:name,sets:s,reps:r,weight:logWeights[name]||0,rpe:logRPEs[name]||8,note:note};
   });
 }
 
@@ -2111,7 +2113,7 @@ function showCompletionSummary(exs,date,newPRs){
       prHTML+mainHTML+
       '<div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px;font-style:italic;">'+msg+'</div>'+
       '<button onclick="document.getElementById(\'completion-overlay\').remove();render();" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;">Done</button>'+
-      '<button onclick="document.getElementById(\'completion-overlay\').remove();switchTab(\'history\');" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:12px;cursor:pointer;">View in History</button>'+
+      '<button onclick="document.getElementById(\'completion-overlay\').remove();switchTab(\'progress\');" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:12px;cursor:pointer;">View in History</button>'+
     '</div>';
   document.body.appendChild(overlay);
 }
@@ -3563,7 +3565,9 @@ if('serviceWorker' in navigator) {
       reg.addEventListener('updatefound', function(){
         var newSW = reg.installing;
         newSW.addEventListener('statechange', function(){
-          if(newSW.state==='activated') window.location.reload();
+          if(newSW.state==='activated'){
+            showToast('App updated — reload to get the latest version');
+          }
         });
       });
     }).catch(function(){});
