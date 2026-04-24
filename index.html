@@ -1318,7 +1318,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1341,7 +1341,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_measurements','kt_custom_ex'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
@@ -3699,8 +3699,9 @@ async function startRoutineIntake(){
         }
       }
       if(streamingContent){
-        coachMessages.push({role:'assistant',content:streamingContent});
-        checkForRoutineJSON(streamingContent);
+        var _finalizedIntake=sanitizeTruncatedRoutine(streamingContent);
+        coachMessages.push({role:'assistant',content:_finalizedIntake});
+        checkForRoutineJSON(_finalizedIntake);
         saveCoachHistory();
         streamingContent='';
       }
@@ -3726,6 +3727,20 @@ function checkForRoutineJSON(text){
       pendingRoutine=obj;
     }
   }catch(e){ /* bad JSON — ignore */ }
+}
+
+// Replace a truncated ROUTINE_START/… message with a clean retry hint so
+// chat history isn't permanently polluted with half a JSON blob.
+function sanitizeTruncatedRoutine(text){
+  if(!text) return text;
+  var hasStart=text.indexOf('ROUTINE_START')!==-1;
+  var hasEnd=text.indexOf('ROUTINE_END')!==-1;
+  if(hasStart&&!hasEnd){
+    var prefix=text.slice(0,text.indexOf('ROUTINE_START')).trim();
+    var intro=prefix||'Got it — drafting your programme.';
+    return intro+'\n\n⚠️ Programme generation ran out of space and was cut off. Ask me to try again — I\'ll be more compact.';
+  }
+  return text;
 }
 
 function applyCoachAction(obj){
@@ -3812,9 +3827,16 @@ function checkForCoachActions(text){
 
 function confirmLoadRoutine(){
   if(!pendingRoutine) return;
+  var wkCount=(pendingRoutine.weeks||[]).length||0;
   var hadRoutine=hasCustomRoutine();
+  if(hadRoutine&&wkCount<12){
+    if(!confirm('This plan only has '+wkCount+' week'+(wkCount===1?'':'s')+'. Loading it will replace your current '+getTotalWeeks()+'-week programme. Continue anyway?')) return;
+  }
+  if(hadRoutine){
+    try{ lsSet('kt_routine_backup',getCustomRoutine()); }catch(e){}
+  }
   setCustomRoutine(pendingRoutine);
-  var total=(pendingRoutine.weeks||[]).length||1;
+  var total=wkCount||1;
   if(!hadRoutine||currentWeek<1||currentWeek>total){
     currentWeek=1;
     lsSet('kt_week',1);
@@ -3823,6 +3845,20 @@ function confirmLoadRoutine(){
   pendingRoutine=null;
   if(!hadRoutine) clearCoachHistory();
   showToast(hadRoutine?('Programme updated — Week '+currentWeek):('Programme loaded! Week '+currentWeek+' is ready'));
+  render();
+}
+
+function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.weeks); }
+function restoreRoutineBackup(){
+  var b=lsGet('kt_routine_backup');
+  if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
+  if(!confirm('Restore your previous programme? The current one will be discarded.')) return;
+  var cur=getCustomRoutine();
+  setCustomRoutine(b);
+  if(cur) lsSet('kt_routine_backup',cur); else localStorage.removeItem('kt_routine_backup');
+  var total=(b.weeks||[]).length||1;
+  if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
+  showToast('Previous programme restored');
   render();
 }
 
@@ -3973,7 +4009,14 @@ function buildSystemPrompt(){
   p+='Week object schema:\n';
   p+='{"wk":1,"block":1,"bName":"BASE","bColor":"#06b6d4","wkNote":"Brief week focus","push":[...],"pull":[...],"legs":[...],"runTue":{"km":3,"type":"easy","note":"Easy pace"},"runSat":{"km":5,"type":"easy","note":"Long run"}}\n';
   p+='Each exercise: {"name":"Exercise Name","isMain":true,"sets":4,"reps":6,"weight":135,"rpe":7}\n';
-  p+='Rules when emitting a full programme: include ALL weeks (typically 12), keep exercise names consistent week-to-week so progression tracks, mark the primary compound per session with isMain:true, set weights in lbs, and set block names/colors appropriately (e.g., BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e). Drop weight ~40% and sets to 2-3 on deload weeks. After loading, the user stays on their current week — do NOT assume they restart at week 1.\n';
+  p+='Rules when emitting a full programme:\n';
+  p+='  - Include EXACTLY 12 weeks in weeks[] — anything shorter will be rejected by the app.\n';
+  p+='  - Keep exercise names consistent week-to-week so progression tracks.\n';
+  p+='  - Mark the primary compound per session with isMain:true. Weights in lbs.\n';
+  p+='  - Block names/colors: BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e.\n';
+  p+='  - Deload weeks: drop weight ~40% and sets to 2-3.\n';
+  p+='  - After loading, the user stays on their current week — do NOT assume they restart at week 1.\n';
+  p+='  - TOKEN BUDGET: the JSON must be COMPACT — no indentation, no newlines inside the JSON, no trailing spaces. One big single-line JSON object between ROUTINE_START and ROUTINE_END. Precede it with at most a one-sentence intro. If you run out of space, the plan will be truncated and lost — compact JSON is mandatory.\n';
   return p;
 }
 
@@ -4022,7 +4065,7 @@ async function sendCoachMessage(){
   render();
   scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var maxTok=intakeMode?8192:8192;
+  var maxTok=32000;
   var model=intakeMode?'claude-sonnet-4-6':coachModel;
   // Strip _preview before sending — it's display-only, not part of the API schema
   var msgs=coachMessages.slice(-20).map(function(m){return {role:m.role,content:m.content};});
@@ -4059,9 +4102,10 @@ async function sendCoachMessage(){
         }
       }
       if(streamingContent){
-        coachMessages.push({role:'assistant',content:streamingContent});
-        checkForRoutineJSON(streamingContent);
-        checkForCoachActions(streamingContent);
+        var _finalized=sanitizeTruncatedRoutine(streamingContent);
+        coachMessages.push({role:'assistant',content:_finalized});
+        checkForRoutineJSON(_finalized);
+        checkForCoachActions(_finalized);
         saveCoachHistory();
         streamingContent='';
       }
@@ -4222,9 +4266,12 @@ function renderCoach(){
       '<div style="font-size:14px;color:var(--lite);">Your training, recovery, and goals</div>'+
     '</div>'+
     (hasCustomRoutine()?
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'+
         '<span style="font-size:13px;font-weight:600;color:var(--accent);">Custom Programme Active</span>'+
-        '<button onclick="resetCustomRoutine()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Regenerate</button>'+
+        '<div style="display:flex;gap:6px;">'+
+          (hasRoutineBackup()?'<button onclick="restoreRoutineBackup()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Restore Previous</button>':'')+
+          '<button onclick="resetCustomRoutine()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Regenerate</button>'+
+        '</div>'+
       '</div>'
     :'')+
     '<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">'+
@@ -4254,6 +4301,11 @@ function renderCoach(){
       }
       // Strip ACTION blocks before display
       var displayText=(typeof text==='string'?text:'').replace(/ACTION_START[\s\S]*?ACTION_END/g,'').trim();
+      // If an old message still has a truncated ROUTINE_START with no ROUTINE_END,
+      // clean it inline so the chat doesn't show raw JSON forever.
+      if(displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')===-1){
+        displayText=sanitizeTruncatedRoutine(displayText);
+      }
       var hasRoutine=displayText.indexOf('ROUTINE_START')!==-1&&displayText.indexOf('ROUTINE_END')!==-1;
       if(hasRoutine){
         var beforeJSON=displayText.slice(0,displayText.indexOf('ROUTINE_START')).trim();
@@ -4282,7 +4334,26 @@ function renderCoach(){
     });
     // Streaming bubble — live text as it arrives
     if(streamingContent){
-      bubbles+='<div class="coach-bubble assistant">'+md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span></div>';
+      var _srIdx=streamingContent.indexOf('ROUTINE_START');
+      var _seIdx=streamingContent.indexOf('ROUTINE_END');
+      var _streamOpen=_srIdx!==-1&&_seIdx===-1;
+      var _streamClosed=_srIdx!==-1&&_seIdx!==-1;
+      var _streamDisplay;
+      if(_streamOpen){
+        var _prefix=streamingContent.slice(0,_srIdx).trim();
+        _streamDisplay=(_prefix?md(_prefix)+'<hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">':'')+
+          '<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--lite);">'+
+            '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
+            '<span>Building your programme…</span>'+
+          '</div>';
+      }else if(_streamClosed){
+        var _prefix2=streamingContent.slice(0,_srIdx).trim();
+        _streamDisplay=(_prefix2?md(_prefix2):'')+
+          '<div style="font-size:13px;color:var(--accent);margin-top:6px;">Programme generated — finalizing…</div>';
+      }else{
+        _streamDisplay=md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span>';
+      }
+      bubbles+='<div class="coach-bubble assistant">'+_streamDisplay+'</div>';
     }else if(coachLoading){
       var loadMsg=intakeMode?'Building your programme…':'';
       bubbles+='<div class="typing-wrap">'+
