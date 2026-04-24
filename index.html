@@ -920,43 +920,52 @@ var SESS = {
 
 // ── Sports config ─────────────────────────────────────────────────────────────
 var SPORTS = [
-  {id:'Cycling',    icon:'🚴', color:'#f97316', fields:[
+  {id:'Cycling',    icon:'CY', color:'#f97316', fields:[
     {id:'distance',  label:'Distance',   unit:'km',  type:'number', step:'.1', ph:'25'},
     {id:'avgSpeed',  label:'Avg speed',  unit:'km/h',type:'number', step:'.1', ph:'25'},
     {id:'avgHR',     label:'Avg HR',     unit:'bpm', type:'number', ph:'145'},
     {id:'elevation', label:'Elevation',  unit:'m',   type:'number', ph:'300'},
     {id:'bikeType',  label:'Type',       type:'select', opts:['Road','Indoor','Mountain','Gravel']}
   ]},
-  {id:'CrossFit',   icon:'🏋️', color:'#ef4444', fields:[
+  {id:'CrossFit',   icon:'CF', color:'#ef4444', fields:[
     {id:'wodName',   label:'WOD name',        type:'text',   ph:'Fran'},
     {id:'score',     label:'Score / time',    type:'text',   ph:'5:23'},
     {id:'level',     label:'Level',           type:'select', opts:['Rx','Scaled','Masters']},
     {id:'rounds',    label:'Rounds done',     type:'number', ph:''}
   ]},
-  {id:'Pickleball', icon:'🏓', color:'#84cc16', fields:[
+  {id:'Pickleball', icon:'PB', color:'#84cc16', fields:[
     {id:'setsWon',   label:'Sets won',  type:'number', ph:'3'},
     {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
     {id:'partner',   label:'Partner',   type:'text',   ph:'Optional'},
     {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
   ]},
-  {id:'Swimming',   icon:'🏊', color:'#06b6d4', fields:[
+  {id:'Swimming',   icon:'SW', color:'#06b6d4', fields:[
     {id:'distance',  label:'Distance',  unit:'m',   type:'number', ph:'1000'},
     {id:'laps',      label:'Laps',      type:'number', ph:'20'},
     {id:'stroke',    label:'Stroke',    type:'select', opts:['Freestyle','Breaststroke','Backstroke','Butterfly','Mixed']},
     {id:'avgHR',     label:'Avg HR',    unit:'bpm', type:'number', ph:'140'}
   ]},
-  {id:'Tennis',     icon:'🎾', color:'#facc15', fields:[
+  {id:'Tennis',     icon:'TN', color:'#facc15', fields:[
     {id:'setsWon',   label:'Sets won',  type:'number', ph:'2'},
     {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
     {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
   ]},
-  {id:'Basketball', icon:'🏀', color:'#fb923c', fields:[
+  {id:'Basketball', icon:'BB', color:'#fb923c', fields:[
     {id:'gameType',  label:'Format', type:'select', opts:['5v5','3v3','2v2','1v1','Practice']}
   ]},
-  {id:'Other',      icon:'⚡', color:'#a78bfa', fields:[
+  {id:'Other',      icon:'+', color:'#a78bfa', fields:[
     {id:'activity',  label:'Activity', type:'text', ph:'e.g. Hiking, Boxing…'}
   ]}
 ];
+
+function sportChip(s, px, inv){
+  var sz=px||32, fs=Math.round(sz*0.38), r=Math.round(sz*0.32);
+  var bg=inv?'rgba(0,0,0,0.22)':s.color||'#888';
+  var clr=inv?'#fff':'#000';
+  return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:'+r+'px;background:'+bg+';'+
+    'display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;'+
+    'font-size:'+fs+'px;font-weight:900;color:'+clr+';letter-spacing:-.5px;">'+s.icon+'</div>';
+}
 
 // ── Exercise Library (for swap dropdown) ─────────────────────────────────────
 var EXERCISE_LIBRARY = {
@@ -2564,7 +2573,7 @@ function saveSportLog(){
   var logs=getSportLogs();
   logs.unshift({id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes});
   lsSet('kt_sports',logs);
-  showToast(sport.icon+' Logged!');
+  showToast(sport.id+' Logged!');
   render();
 }
 
@@ -2632,10 +2641,10 @@ function renderRecentSportLogs(){
   return '<div class="card" style="margin-top:8px;">'+
     '<div class="sect-title" style="margin-bottom:4px;">Recent</div>'+
     logs.map(function(log){
-      var s=sMap[log.type]||{icon:'⚡'};
+      var s=sMap[log.type]||{icon:'+',color:'#888'};
       var sum=buildSportSummary(log);
       return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'+
-        '<div style="font-size:26px;flex-shrink:0;line-height:1;">'+s.icon+'</div>'+
+        sportChip(s,36)+
         '<div style="flex:1;min-width:0;">'+
           '<div style="font-size:14px;font-weight:700;">'+log.type+(log.duration?' · '+log.duration+' min':'')+'</div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+sum:'')+'</div>'+
@@ -2656,7 +2665,7 @@ function renderActivityCards(){
   var types=Object.keys(map).sort(function(a,b){return new Date(map[b][0].date)-new Date(map[a][0].date);});
   var now=new Date();
   var cards=types.map(function(type){
-    var tl=map[type],s=sMap[type]||{icon:'⚡',color:'#888'},last=tl[0],count=tl.length;
+    var tl=map[type],s=sMap[type]||{icon:'+',color:'#888'},last=tl[0],count=tl.length;
     var daysAgo=Math.round((now-new Date(last.date+'T00:00:00'))/86400000);
     var when=daysAgo===0?'Today':daysAgo===1?'Yesterday':daysAgo+' days ago';
     var sum=buildSportSummary(last);
@@ -2667,7 +2676,7 @@ function renderActivityCards(){
     return '<div onclick="pickSport(\''+type+'\')" style="flex-shrink:0;width:148px;cursor:pointer;'+
       'background:'+(active?s.color+'1a':'var(--card2)')+';border:2px solid '+(active?s.color:'var(--border)')+';'+
       'border-radius:20px;padding:16px 14px;transition:all .15s;-webkit-tap-highlight-color:transparent;">'+
-      '<div style="font-size:30px;line-height:1;margin-bottom:10px;">'+s.icon+'</div>'+
+      '<div style="margin-bottom:10px;">'+sportChip(s,40)+'</div>'+
       '<div style="font-size:13px;font-weight:800;margin-bottom:3px;color:var(--text);">'+type+'</div>'+
       '<div style="font-size:11px;font-weight:700;color:'+s.color+';margin-bottom:6px;">'+when+'</div>'+
       '<div style="font-size:11px;color:var(--muted);line-height:1.7;">'+
@@ -2703,7 +2712,7 @@ function renderSportSection(){
       return '<button onclick="pickSport(\''+s.id+'\')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;'+
         'gap:5px;background:'+(act?s.color:'var(--card2)')+';border:none;border-radius:18px;'+
         'padding:12px 16px;cursor:pointer;min-width:72px;-webkit-tap-highlight-color:transparent;transition:all .15s;">'+
-        '<span style="font-size:24px;line-height:1;">'+s.icon+'</span>'+
+        sportChip(s,38,act)+
         '<span style="font-size:11px;font-weight:700;color:'+(act?'#000':'var(--muted)')+';white-space:nowrap;">'+s.id+'</span>'+
       '</button>';
     }).join('')+
@@ -2724,7 +2733,7 @@ function renderSportSection(){
 
   var form='<div class="card" style="margin-top:4px;">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">'+
-      '<span style="font-size:22px;">'+sport.icon+'</span>'+
+      sportChip(sport,36)+
       '<div style="font-size:16px;font-weight:800;letter-spacing:-.3px;">Log '+sport.id+'</div>'+
     '</div>'+
     aiBlock+
@@ -2739,7 +2748,7 @@ function renderSportSection(){
       '<textarea id="spNotes" rows="2" placeholder="How did it go?" style="'+inp+';resize:vertical;"></textarea></div>'+
     '<button onclick="saveSportLog()" style="width:100%;padding:14px;background:'+sport.color+';color:#000;'+
       'border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
-      sport.icon+' Log '+sport.id+
+      'Log '+sport.id+
     '</button>'+
   '</div>';
 
