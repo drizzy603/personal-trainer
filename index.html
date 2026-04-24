@@ -2801,25 +2801,6 @@ function _refreshSportAIBtn(){
 }
 
 // ── WEIGHTS ───────────────────────────────────────────────────────────────────
-function renderWeights() {
-  var bws=getBodyWeights();
-  var bwItems='';
-  bws.slice(0,8).forEach(function(e){
-    bwItems+='<div class="run-item">'+
-      '<div><div style="font-size:13px;font-weight:600;">'+e.weight+' lb</div>'+
-      '<div style="font-size:11px;color:var(--muted);">'+fmtDate(e.date)+'</div></div>'+
-      '</div>';
-  });
-
-  return '<div class="card"><h2>Body Weight</h2>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'+
-      '<div class="field" style="margin:0"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0"/></div>'+
-      '<div class="field" style="margin:0"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
-    '</div>'+
-    '<button class="btn btn-green btn-full" style="margin-bottom:12px" onclick="saveBodyWeight()">Log Weight</button>'+
-    (bwItems||'<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px 0;">No weigh-ins logged yet</div>')+
-    '</div>';
-}
 
 function renderData() {
   return '<div class="card">'+
@@ -2879,6 +2860,73 @@ function calcBWTrend(bws){
   return Math.round((last.weight-first.weight)/days*7*10)/10;
 }
 
+
+function renderSportProgress(){
+  var logs=getSportLogs();
+  if(!logs.length) return '';
+  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
+  var map={};
+  logs.forEach(function(log){if(!map[log.type])map[log.type]=[];map[log.type].push(log);});
+  var types=Object.keys(map);
+  var lbl='font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;';
+  var statBlock=function(val,unit,sub){
+    return '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+val+
+      (unit?'<span style="font-size:11px;font-weight:600;color:var(--muted);">'+unit+'</span>':'')+
+      '</div><div style="'+lbl+'">'+sub+'</div></div>';
+  };
+  var sections=types.map(function(type){
+    var tl=map[type], s=sMap[type]||{icon:'+',color:'#888'}, n=tl.length;
+    var html='<div class="chart-card" style="margin-bottom:12px;">'+
+      '<div class="chart-head"><div style="display:flex;align-items:center;gap:10px;">'+
+        sportChip(s,32)+
+        '<div><div class="chart-lbl">'+type+'</div>'+
+        '<div style="font-size:12px;color:var(--muted);">'+n+' session'+(n===1?'':'s')+'</div></div>'+
+      '</div></div>';
+
+    if(type==='Cycling'||type==='Swimming'){
+      var unit=type==='Cycling'?'km':'m';
+      var withDist=tl.filter(function(l){return l.data&&l.data.distance>0;});
+      if(withDist.length){
+        var total=withDist.reduce(function(a,l){return a+(l.data.distance||0);},0);
+        var avg=Math.round(total/withDist.length*10)/10;
+        html+='<div style="display:flex;gap:20px;margin:12px 0 8px;">'+
+          statBlock(Math.round(total),unit,'total')+
+          statBlock(avg,unit,'avg / session')+
+        '</div>';
+        if(withDist.length>=2){
+          var cd=withDist.slice(0,10).reverse().map(function(l){return{date:l.date,val:l.data.distance};});
+          html+=svgChart(cd,s.color);
+        }
+      }
+    } else if(type==='Pickleball'||type==='Tennis'){
+      var scored=tl.filter(function(l){return l.data&&(l.data.setsWon!=null||l.data.setsLost!=null);});
+      if(scored.length){
+        var w=scored.filter(function(l){return (l.data.setsWon||0)>(l.data.setsLost||0);}).length;
+        var pct=Math.round(w/scored.length*100);
+        html+='<div style="display:flex;gap:20px;margin:12px 0 4px;">'+
+          statBlock(w+'W','','wins')+
+          statBlock((scored.length-w)+'L','','losses')+
+          statBlock(pct+'%','','win rate')+
+        '</div>';
+      }
+    } else if(type==='CrossFit'){
+      var last=tl[0];
+      html+='<div style="margin:10px 0 4px;">';
+      if(last.data&&last.data.wodName) html+='<div style="font-size:13px;color:var(--muted);">Last WOD: <span style="color:var(--text);font-weight:700;">'+last.data.wodName+'</span></div>';
+      if(last.data&&last.data.score) html+='<div style="font-size:13px;color:var(--muted);margin-top:4px;">Score: <span style="color:var(--text);font-weight:700;">'+last.data.score+'</span></div>';
+      html+='</div>';
+    }
+
+    var durLogs=tl.filter(function(l){return l.duration>0;});
+    if(durLogs.length&&type!=='Cycling'&&type!=='Swimming'){
+      var avgDur=Math.round(durLogs.reduce(function(a,l){return a+l.duration;},0)/durLogs.length);
+      html+='<div style="font-size:12px;color:var(--muted);margin-top:8px;">Avg duration: <span style="color:var(--text);font-weight:700;">'+avgDur+' min</span></div>';
+    }
+    return html+'</div>';
+  }).join('');
+
+  return '<div class="sect-title" style="margin-bottom:8px;">Activity Stats</div>'+sections;
+}
 
 function renderBodySection(){
   var bws=getBodyWeights(), bwGoal=getBWGoal(), trend=calcBWTrend(bws);
@@ -3152,7 +3200,7 @@ function renderProgress() {
   }
 
 
-  var calHTML=renderCalendar(sessions,runs);
+  var calHTML=renderCalendar(sessions,runs,getSportLogs());
 
   var wd2=getWkData();
   var _crP=getCustomRoutine(); var _avP=_crP&&_crP.name?_crP.name[0].toUpperCase():'?';
@@ -3216,7 +3264,7 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  return progressHeader+stats+goals+liftsBlock+rmSection+benchChart+squatChart+runChart+volCharts+renderBodySection()+calHTML;
+  return progressHeader+stats+goals+liftsBlock+rmSection+benchChart+squatChart+runChart+volCharts+renderSportProgress()+renderBodySection()+calHTML;
 }
 
 function svgChart(data,color,goalVal) {
@@ -3259,18 +3307,20 @@ function selectCalDate(d){
   calSelectedDate=(calSelectedDate===d)?null:d;
   // re-render just the detail pane
   var el=document.getElementById('cal-detail');
-  if(el) el.innerHTML=renderCalDetail(getSessions(),getRuns());
+  if(el) el.innerHTML=renderCalDetail(getSessions(),getRuns(),getSportLogs());
   // highlight selected cell
   document.querySelectorAll('.cal-day').forEach(function(c){
     c.style.background=c.getAttribute('data-date')===calSelectedDate?'var(--accent)':'';
     c.style.color=c.getAttribute('data-date')===calSelectedDate?'#000':'';
   });
 }
-function renderCalDetail(sessions,runs){
+function renderCalDetail(sessions,runs,sports){
+  sports=sports||[];
   if(!calSelectedDate) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Tap a day to see what you did</div>';
   var daySessions=sessions.filter(function(s){return s.date===calSelectedDate;});
   var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
-  if(!daySessions.length&&!dayRuns.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
+  var daySports=sports.filter(function(sp){return sp.date===calSelectedDate;});
+  if(!daySessions.length&&!dayRuns.length&&!daySports.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
   var html='';
   daySessions.forEach(function(s){
     var def=SESS[s.type]||{icon:'',label:s.type};
@@ -3306,15 +3356,30 @@ function renderCalDetail(sessions,runs){
       (r.note?'<div style="font-size:12px;color:var(--muted);">'+r.note+'</div>':'')+
     '</div>';
   });
+  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
+  daySports.forEach(function(sp){
+    var s=sMap[sp.type]||{icon:'+',color:'#888'};
+    var sum=buildSportSummary(sp);
+    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'+
+      sportChip(s,32)+
+      '<div>'+
+        '<div style="font-size:14px;font-weight:800;">'+sp.type+(sp.duration?' · '+sp.duration+' min':'')+'</div>'+
+        (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+sum+'</div>':'')+
+        (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+sp.notes+'</div>':'')+
+      '</div>'+
+    '</div>';
+  });
   return html;
 }
-function renderCalendar(sessions,runs){
+function renderCalendar(sessions,runs,sports){
   var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  sports=sports||[];
   // build activity map
   var actMap={};
   sessions.forEach(function(s){ actMap[s.date]=(actMap[s.date]||[]); actMap[s.date].push({type:'session',stype:s.type}); });
   runs.forEach(function(r){ actMap[r.date]=(actMap[r.date]||[]); actMap[r.date].push({type:'run'}); });
+  sports.forEach(function(sp){ actMap[sp.date]=(actMap[sp.date]||[]); actMap[sp.date].push({type:'sport',stype:sp.type}); });
 
   var firstDay=new Date(calYear,calMonth,1);
   var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
@@ -3339,8 +3404,10 @@ function renderCalendar(sessions,runs){
     var dots='';
     var hasSess=acts.some(function(a){return a.type==='session';});
     var hasRun=acts.some(function(a){return a.type==='run';});
-    if(hasSess) dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
-    if(hasRun)  dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--orange);margin:0 1px;"></div>';
+    var hasSport=acts.some(function(a){return a.type==='sport';});
+    if(hasSess)  dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
+    if(hasRun)   dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--orange);margin:0 1px;"></div>';
+    if(hasSport) dots+='<div style="width:5px;height:5px;border-radius:50%;background:#a78bfa;margin:0 1px;"></div>';
     cells+='<div class="cal-day" data-date="'+dateStr+'" onclick="selectCalDate(\''+dateStr+'\')" style="'+
       'text-align:center;border-radius:3px;padding:5px 2px;cursor:'+(acts.length?'pointer':'default')+';'+
       'background:'+(isSelected?'var(--accent)':'')+';'+
@@ -3352,11 +3419,11 @@ function renderCalendar(sessions,runs){
   }
 
   var grid='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">'+dayHeaders+cells+'</div>';
-  var legend='<div style="display:flex;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
-    '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;"><div style="width:6px;height:6px;border-radius:50%;background:var(--accent);"></div>Workout</div>'+
-    '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;"><div style="width:6px;height:6px;border-radius:50%;background:var(--orange);"></div>Run</div>'+
+  var dot=function(c,t){return '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;"><div style="width:6px;height:6px;border-radius:50%;background:'+c+';"></div>'+t+'</div>';};
+  var legend='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
+    dot('var(--accent)','Workout')+dot('var(--orange)','Run')+dot('#a78bfa','Activity')+
   '</div>';
-  var detail='<div id="cal-detail" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">'+renderCalDetail(sessions,runs)+'</div>';
+  var detail='<div id="cal-detail" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">'+renderCalDetail(sessions,runs,sports)+'</div>';
 
   return '<div class="card"><h2>Activity Calendar</h2>'+header+grid+legend+detail+'</div>';
 }
