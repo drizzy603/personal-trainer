@@ -1256,6 +1256,10 @@ function getPRs() { return lsGet('kt_prs')||{}; }
 function getBodyWeights() { return lsGet('kt_bw')||[]; }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) localStorage.setItem('kt_bw_goal',v); else localStorage.removeItem('kt_bw_goal'); }
+function getBenchGoal() { return parseFloat(localStorage.getItem('kt_bench_goal'))||175; }
+function setBenchGoal(v) { if(v>0) localStorage.setItem('kt_bench_goal',v); else localStorage.removeItem('kt_bench_goal'); }
+function getSquatGoal() { return parseFloat(localStorage.getItem('kt_squat_goal'))||150; }
+function setSquatGoal(v) { if(v>0) localStorage.setItem('kt_squat_goal',v); else localStorage.removeItem('kt_squat_goal'); }
 function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // format "mm:ss" per km
 function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
 function set5kGoal(secs) { if(secs>0) localStorage.setItem('kt_5k_goal',secs); else localStorage.removeItem('kt_5k_goal'); }
@@ -1505,14 +1509,22 @@ function getDayName(dow) { // dow: 0=Mon … 6=Sun
 function buildSessionMiniCard(type, labelTop, isToday) {
   var wd = getWkData();
   var sessions = getSessions();
+  var today = todayISO();
+
+  var doneToday = isToday && sessions.some(function(s){return s.type===type && s.date===today;});
+  var runDoneToday = isToday && type==='Run' && getRuns().some(function(r){return r.date===today;});
 
   var cardStyle = isToday
-    ? 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
+    ? (doneToday || runDoneToday)
+      ? 'background:linear-gradient(135deg,rgba(200,255,0,.04) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.2);opacity:.7;'
+      : 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
     : 'opacity:.75;';
 
-  var badge = isToday
-    ? '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>'
-    : '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
+  var doneBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(200,255,0,.15);color:var(--accent);letter-spacing:.04em;">✓ Done</span>';
+  var todayBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>';
+  var otherBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
+
+  var badge = !isToday ? otherBadge : (doneToday || runDoneToday) ? doneBadge : todayBadge;
 
   if (type === 'Run') {
     var runData = wd ? (wd.runTue || wd.runSat) : null;
@@ -1547,9 +1559,11 @@ function buildSessionMiniCard(type, labelTop, isToday) {
     ? mainEx.sets+'×'+mainEx.reps+' @ '+(mainEx.weight||'BW')+' lb'+(mainEx.pr?' 🔥':'')
     : def.focus.split('·')[0].trim();
   var lastDone = sessions.filter(function(s){return s.type===type;});
-  var lastLabel = lastDone.length
-    ? '<span style="color:var(--muted);">Last: '+fmtDate(lastDone[0].date)+'</span>'
-    : '<span style="color:var(--accent);font-weight:600;">First time!</span>';
+  var lastLabel = doneToday
+    ? '<span style="color:var(--accent);font-weight:600;">Logged today</span>'
+    : lastDone.length
+      ? '<span style="color:var(--muted);">Last: '+fmtDate(lastDone[0].date)+'</span>'
+      : '<span style="color:var(--accent);font-weight:600;">First time!</span>';
   return '<div class="today-card" style="'+cardStyle+'">'+
     '<div style="flex:1;min-width:0;">'+
       '<div style="display:flex;align-items:center;gap:8px;">'+
@@ -3094,9 +3108,21 @@ function renderProgress() {
   }
 
   var run5kGoalSec=get5kGoal()||40*60;
+  var benchGoal=getBenchGoal(), squatGoal=getSquatGoal();
+  var goalInpStyle='width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;';
+  function goalRow(label,current,target,unit,lowerBetter,setFn){
+    var bar=goalBar(label,current,target,unit,lowerBetter);
+    var inp='<div style="display:flex;align-items:center;gap:6px;margin-top:-8px;margin-bottom:14px;">'+
+      '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
+      '<input type="number" value="'+target+'" min="0" style="'+goalInpStyle+'"'+
+        ' onchange="'+setFn+'(parseFloat(this.value)||0);render();" />'+
+      '<span style="font-size:11px;color:var(--muted);">'+unit+'</span>'+
+    '</div>';
+    return bar+inp;
+  }
   var goals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
-    goalBar('Bench Press',bestBench,175,'lb',false)+
-    goalBar('Back Squat',bestSquat,150,'lb',false)+
+    goalRow('Bench Press',bestBench,benchGoal,'lb',false,'setBenchGoal')+
+    goalRow('Back Squat',bestSquat,squatGoal,'lb',false,'setSquatGoal')+
     (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
     '</div>';
 
@@ -3105,12 +3131,18 @@ function renderProgress() {
   var latestBW = bws.length ? bws[0].weight : null;
   var prevBW = bws.length > 1 ? bws[1].weight : null;
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
+  var streak = calcStreak(sessions);
 
   var stats='<div class="stat-row">'+
-    '<div class="stat" style="grid-column:1/-1;">'+
+    '<div class="stat">'+
       '<div class="stat-lbl">Sessions</div>'+
       '<div class="stat-val">'+sessions.length+'</div>'+
       (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'')+
+    '</div>'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">Streak</div>'+
+      '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
+      '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
     '</div>'+
     '</div>'+
     '<div class="stat-row">'+
@@ -3719,6 +3751,12 @@ function checkForCoachActions(text){
         showToast('Weight logged: '+bwVal+' lb');
         render();
       }
+    } else if(obj.type==='SET_BENCH_GOAL'&&obj.value){
+      var bg=parseFloat(obj.value);
+      if(bg>0){setBenchGoal(bg);showToast('Bench goal set: '+bg+' lb');render();}
+    } else if(obj.type==='SET_SQUAT_GOAL'&&obj.value){
+      var sg=parseFloat(obj.value);
+      if(sg>0){setSquatGoal(sg);showToast('Squat goal set: '+sg+' lb');render();}
     }
   }catch(e){}
 }
@@ -3871,6 +3909,8 @@ function buildSystemPrompt(){
   p+='  SET_5K_GOAL        — value = total 5k time as "mm:ss" (e.g. "30:00")\n';
   p+='  SET_BW_GOAL        — value = target body weight in lbs (e.g. "175")\n';
   p+='  SET_EXERCISE_WEIGHT — name = exact exercise name from list above, value = new weight in lbs\n';
+  p+='  SET_BENCH_GOAL     — value = bench press target in lbs (e.g. "200")\n';
+  p+='  SET_SQUAT_GOAL     — value = back squat target in lbs (e.g. "185")\n';
   p+='  SET_WEEK           — value = week number 1-'+getTotalWeeks()+' (e.g. "4")\n';
   p+='  LOG_BW             — value = today\'s body weight in lbs (e.g. "178")\n';
   p+='Only emit one ACTION block per reply. Omit it entirely if no data change is needed.\n';
