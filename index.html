@@ -490,6 +490,7 @@ var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
 var _runningTools = [];      // transient pills while a multi-round tool-use turn is in progress
+var _streamingTool = null;   // {name, progress} — pending pill while a tool_use JSON streams in
 // Exercise library state
 var _libFilter   = 'All';
 var _libSearch   = '';
@@ -1554,7 +1555,7 @@ function buildSessionMiniCard(type, labelTop, isToday) {
     } else {
       var runData = wd ? (wd.runTue || wd.runSat) : null;
       runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
-      if (runData && runData.hr) runNote += ' · HR <'+runData.hr;
+      if (runData && runData.hr) runNote += ' · HR &lt;'+runData.hr;
     }
     return '<div class="today-card" style="'+cardStyle+'">'+
       '<div style="flex:1;min-width:0;">'+
@@ -3942,9 +3943,14 @@ async function runCoachTurn(systemPrompt,model,maxTok){
         try{ ev=JSON.parse(dat); }catch(e){ continue; }
         if(ev.type==='content_block_start'){
           var cb=ev.content_block||{};
-          blockBuf[ev.index]=cb.type==='tool_use'
-            ?{type:'tool_use',id:cb.id,name:cb.name,partialJson:''}
-            :{type:'text',text:''};
+          if(cb.type==='tool_use'){
+            blockBuf[ev.index]={type:'tool_use',id:cb.id,name:cb.name,partialJson:'',
+              _parse:{depth:0,inStr:false,esc:false,arrayStarted:false,progress:0}};
+            _streamingTool={name:cb.name,progress:0};
+            render(); scrollChatBottom();
+          } else {
+            blockBuf[ev.index]={type:'text',text:''};
+          }
         } else if(ev.type==='content_block_delta'){
           var b=blockBuf[ev.index]; if(!b) continue;
           if(ev.delta.type==='text_delta'&&b.type==='text'){
@@ -3952,12 +3958,31 @@ async function runCoachTurn(systemPrompt,model,maxTok){
             streamingContent+=ev.delta.text;
             render(); scrollChatBottom();
           } else if(ev.delta.type==='input_json_delta'&&b.type==='tool_use'){
-            b.partialJson+=ev.delta.partial_json||'';
+            var chunk=ev.delta.partial_json||'';
+            b.partialJson+=chunk;
+            // Incremental parse: count completed objects inside the first
+            // top-level array (e.g. weeks:[{...},{...}]) for live progress.
+            var st=b._parse, prevProgress=st.progress;
+            for(var pi=0;pi<chunk.length;pi++){
+              var pc=chunk[pi];
+              if(st.esc){st.esc=false;continue;}
+              if(pc==='\\'){st.esc=true;continue;}
+              if(pc==='"'){st.inStr=!st.inStr;continue;}
+              if(st.inStr) continue;
+              if(!st.arrayStarted){ if(pc==='[') st.arrayStarted=true; continue; }
+              if(pc==='{') st.depth++;
+              else if(pc==='}'){ st.depth--; if(st.depth===0) st.progress++; }
+            }
+            if(_streamingTool&&st.progress!==prevProgress){
+              _streamingTool.progress=st.progress;
+              render(); scrollChatBottom();
+            }
           }
         } else if(ev.type==='content_block_stop'){
           var fin=blockBuf[ev.index];
           if(!fin) continue;
           if(fin.type==='tool_use'){
+            _streamingTool=null;
             try{ fin.input=JSON.parse(fin.partialJson||'{}'); }catch(e){ fin.input={}; }
             finishedBlocks.push({type:'tool_use',id:fin.id,name:fin.name,input:fin.input});
           } else {
@@ -4005,6 +4030,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   }
 
   _runningTools=[];
+  _streamingTool=null;
   // Commit the final combined assistant message (text + tool summary metadata)
   if(!hadError){
     coachMessages.push({
@@ -4505,6 +4531,22 @@ function renderCoach(){
         return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
       }).join(' ');
       bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+livePills+'</div>';
+    }
+    // Pending pill for a tool whose JSON is still streaming in
+    if(_streamingTool){
+      var pendLabel;
+      if(_streamingTool.name==='update_routine_weeks'){
+        pendLabel=_streamingTool.progress>0
+          ?'Building week '+_streamingTool.progress+'…'
+          :'Building plan…';
+      } else {
+        pendLabel='Working…';
+      }
+      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+
+        '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(200,255,0,.1);color:var(--accent);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink .9s step-end infinite;"></span>'+
+          pendLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;')+
+        '</span></div>';
     }
     // Streaming bubble — live text as it arrives
     if(streamingContent){
