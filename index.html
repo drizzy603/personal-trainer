@@ -1127,16 +1127,38 @@ function render() {
 }
 
 // ── Weekly Schedule ───────────────────────────────────────────────────────────
-// Mon=0 … Sun=6
-var WEEK_PLAN = [
-  {type:'Push', icon:'', color:'var(--accent)',  isRest:false, isRun:false},
-  {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
-  {type:'Pull', icon:'', color:'var(--cyan)',    isRest:false, isRun:false},
-  {type:'Legs', icon:'', color:'var(--orange)',  isRest:false, isRun:false},
-  {type:'Run',  icon:'', color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Rest', icon:'', color:'var(--muted)',   isRest:true,  isRun:false},
+// Mon=0 … Sun=6. Default is used when the AI Coach hasn't written a weekPlan
+// onto the user's routine.
+var DEFAULT_WEEK_PLAN = [
+  {type:'Push', color:'var(--accent)',  isRest:false, isRun:false},
+  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true},
+  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false},
+  {type:'Pull', color:'var(--cyan)',    isRest:false, isRun:false},
+  {type:'Legs', color:'var(--orange)',  isRest:false, isRun:false},
+  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true},
+  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false},
 ];
+var _PLAN_TYPE_META={
+  Push:{color:'var(--accent)',isRest:false,isRun:false},
+  Pull:{color:'var(--cyan)',  isRest:false,isRun:false},
+  Legs:{color:'var(--orange)',isRest:false,isRun:false},
+  Run: {color:'var(--green)', isRest:false,isRun:true },
+  Rest:{color:'var(--muted)', isRest:true, isRun:false}
+};
+function _planEntry(type){
+  var t=String(type||'Rest');
+  // Title-case for tolerance ("push" → "Push")
+  t=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
+  var meta=_PLAN_TYPE_META[t]||_PLAN_TYPE_META.Rest;
+  return {type:t,color:meta.color,isRest:meta.isRest,isRun:meta.isRun};
+}
+function getWeekPlan(){
+  var cr=getCustomRoutine();
+  if(cr&&Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7){
+    return cr.weekPlan.map(_planEntry);
+  }
+  return DEFAULT_WEEK_PLAN;
+}
 
 function getMondayISO() {
   var t = new Date(); t.setHours(0,0,0,0);
@@ -1155,13 +1177,14 @@ function getNextSession() {
   var runs = getRuns();
   var skips = getSkips();
   var today = todayISO();
+  var weekPlan = getWeekPlan();
   // Build last 14 days schedule and find first unlogged/unskipped active day
   var start = addDays(getMondayISO(), -7); // start from last Monday
   for (var i = 0; i < 14; i++) {
     var date = addDays(start, i);
     if (date > today) break; // don't look into the future
     var dow = (new Date(date+'T00:00:00').getDay()+6)%7;
-    var plan = WEEK_PLAN[dow];
+    var plan = weekPlan[dow];
     if (plan.isRest) continue;
     if (plan.isRun) {
       var logged = runs.some(function(r){ return r.date === date; });
@@ -1176,7 +1199,7 @@ function getNextSession() {
   // Everything up to today is done — return today's or next scheduled gym session
   var todayDow = (new Date(today+'T00:00:00').getDay()+6)%7;
   for (var j = 0; j < 7; j++) {
-    var plan = WEEK_PLAN[(todayDow+j)%7];
+    var plan = weekPlan[(todayDow+j)%7];
     if (!plan.isRest && !plan.isRun) return plan.type;
   }
   return 'Push';
@@ -1276,7 +1299,8 @@ function buildSessionMiniCard(type, labelTop, isToday) {
 function renderTodayCard() {
   var d = new Date();
   var todayDow = (d.getDay()+6)%7; // 0=Mon … 6=Sun
-  var todayPlan = WEEK_PLAN[todayDow];
+  var weekPlan = getWeekPlan();
+  var todayPlan = weekPlan[todayDow];
   var todayType = todayPlan.isRest ? 'Rest' : (todayPlan.isRun ? 'Run' : todayPlan.type);
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1284,7 +1308,7 @@ function renderTodayCard() {
 
   var nextType = null, nextLabel = '';
   for (var j = 1; j <= 7; j++) {
-    var np = WEEK_PLAN[(todayDow+j)%7];
+    var np = weekPlan[(todayDow+j)%7];
     if (!np.isRest) {
       nextType = np.isRun ? 'Run' : np.type;
       var nextDow = (todayDow+j)%7;
@@ -1514,7 +1538,7 @@ function skipNextSession(){
   var today=todayISO();
   var d=new Date();
   var todayDow=(d.getDay()+6)%7;
-  var plan=WEEK_PLAN[todayDow];
+  var plan=getWeekPlan()[todayDow];
   if(plan.isRest){showToast('Today is already a rest day');return;}
   var type=plan.isRun?'Run':plan.type;
   saveSkip(today,type);
@@ -3279,7 +3303,7 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
 '9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks (wk 1 through 12). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks (wk 1 through 12) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Run/Rest, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure to follow:\n'+
 '- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
 '- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
@@ -3291,7 +3315,8 @@ function buildIntakeSystemPrompt(){
 '- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
 '- Keep exercise names consistent across weeks so progression tracks.\n'+
 '- Use weight=0 for bodyweight exercises. Weights in lb.\n'+
-'- If the user does not want running, omit runTue and runSat from each week.\n'+
+'- If the user does not want running, omit runTue and runSat from each week and use Rest in place of Run in weekPlan.\n'+
+'- weekPlan must use only "Push", "Pull", "Legs", "Run", or "Rest". Spread lift days with rest/run between them. Match the number of lift days to the user\'s availability — if they want 4 lifts/week, you can repeat (e.g. Push, Pull, Rest, Legs, Push, Pull, Rest); the matching exercise list comes from each week\'s push/pull/legs arrays.\n'+
 '- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
 '- Progress weight ~2.5-5 lb per week across the hypertrophy/strength blocks.\n\n'+
 'Start with the first question now.';
@@ -3353,10 +3378,11 @@ var _weekSchema={type:'object',
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s 12-week programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass all 12 in a single call — this is much faster than splitting up the work. If the response would be too long, split into two calls of 6 weeks each. Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s 12-week programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass all 12 in a single call — this is much faster than splitting up the work. If the response would be too long, split into two calls of 6 weeks each. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
-       weeks:{type:'array',minItems:1,maxItems:12,items:_weekSchema,description:'Array of 1–12 week objects, each keyed by wk (1–12).'}
+       weeks:{type:'array',minItems:1,maxItems:12,items:_weekSchema,description:'Array of 1–12 week objects, each keyed by wk (1–12).'},
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept (default Mon=Push, Tue=Run, Wed=Rest, Thu=Pull, Fri=Legs, Sat=Run, Sun=Rest).'}
      },
      required:['weeks']}},
   {name:'set_current_week',
@@ -3400,6 +3426,14 @@ function executeCoachTool(name,input){
       if(!cr){
         cr={name:'Custom Programme',weeks:[]};
       }
+      var planSupplied=Array.isArray(input.weekPlan)&&input.weekPlan.length===7;
+      if(planSupplied){
+        cr.weekPlan=input.weekPlan.map(function(s){
+          var t=String(s||'Rest');
+          t=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
+          return _PLAN_TYPE_META[t]?t:'Rest';
+        });
+      }
       var written=[];
       var skipped=[];
       var errored=null;
@@ -3429,14 +3463,14 @@ function executeCoachTool(name,input){
       }
       // Back up the pre-edit routine once per session, but only if we're
       // actually about to write something.
-      if(written.length&&!_routineBackedUp){
+      if((written.length||planSupplied)&&!_routineBackedUp){
         try{
           var prev=lsGet('kt_routine');
           if(prev&&prev.weeks) lsSet('kt_routine_backup',prev);
         }catch(e){}
         _routineBackedUp=true;
       }
-      if(written.length) setCustomRoutine(cr);
+      if(written.length||planSupplied) setCustomRoutine(cr);
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
         return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-12 can be changed.',skipped:skipped};
@@ -3895,6 +3929,7 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
+  p+='  - Change which weekdays are Push/Pull/Legs/Run/Rest → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through 12 (the user is on week '+currentWeek+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
   p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
