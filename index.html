@@ -1160,6 +1160,34 @@ function getWeekPlan(){
   return DEFAULT_WEEK_PLAN;
 }
 
+// Mon=0 … Sun=6
+var DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+var DOW_FROM_NAME = {Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+
+// Returns [{dow, name, run}] for whichever days have a run scheduled in the
+// given week. Reads the new wd.runs map first, falls back to legacy
+// runTue/runSat fields on older saved routines.
+function getScheduledRuns(wd){
+  if(!wd) return [];
+  var out=[];
+  if(wd.runs&&typeof wd.runs==='object'&&!Array.isArray(wd.runs)){
+    Object.keys(wd.runs).forEach(function(k){
+      var d=DOW_FROM_NAME[k];
+      if(d==null||!wd.runs[k]) return;
+      out.push({dow:d,name:k,run:wd.runs[k]});
+    });
+  } else {
+    if(wd.runTue) out.push({dow:1,name:'Tue',run:wd.runTue});
+    if(wd.runSat) out.push({dow:5,name:'Sat',run:wd.runSat});
+  }
+  return out.sort(function(a,b){return a.dow-b.dow;});
+}
+function getRunForDow(wd,dow){
+  var all=getScheduledRuns(wd);
+  for(var i=0;i<all.length;i++) if(all[i].dow===dow) return all[i].run;
+  return null;
+}
+
 function getMondayISO() {
   var t = new Date(); t.setHours(0,0,0,0);
   var dow = (t.getDay()+6)%7;
@@ -1248,7 +1276,14 @@ function buildSessionMiniCard(type, labelTop, isToday) {
         runNote = 'Logged';
       }
     } else {
-      var runData = wd ? (wd.runTue || wd.runSat) : null;
+      var todayDow = (new Date().getDay()+6)%7;
+      var runData = getRunForDow(wd, todayDow);
+      // Fall back to any scheduled run for the week so the "next run" preview
+      // still shows something useful when today isn't a run day.
+      if (!runData) {
+        var anyRuns = getScheduledRuns(wd);
+        runData = anyRuns.length ? anyRuns[0].run : null;
+      }
       runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
       if (runData && runData.hr) runNote += ' · HR &lt;'+runData.hr;
     }
@@ -1275,11 +1310,14 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   if (!def) return '';
   var sessKey = type.toLowerCase();
   var wdArr = wd ? wd[sessKey] : null;
+  var hasExs = !!(wdArr && wdArr.length);
   var mainEx = null;
   if (wdArr) { for (var k=0;k<wdArr.length;k++){if(wdArr[k].isMain){mainEx=wdArr[k];break;}} }
   var detail = mainEx
     ? mainEx.sets+'×'+mainEx.reps+' @ '+(mainEx.weight||'BW')+' lb'+(mainEx.pr?' 🔥':'')
-    : def.focus.split('·')[0].trim();
+    : hasExs
+      ? def.focus.split('·')[0].trim()
+      : 'Programme incomplete — ask the Coach';
   var lastDone = sessions.filter(function(s){return s.type===type;});
   var lastLabel = doneToday
     ? '<span style="color:var(--accent);font-weight:600;">Logged today</span>'
@@ -2158,7 +2196,10 @@ function renderRunsSection() {
     '</div>';
   }
 
-  var runCards = runCard(wd?wd.runTue:null,'Tuesday') + runCard(wd?wd.runSat:null,'Saturday');
+  var FULL_DAY=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var runCards = getScheduledRuns(wd).map(function(s){
+    return runCard(s.run, FULL_DAY[s.dow]);
+  }).join('');
 
   var runs = getRuns();
   var runItems = '';
@@ -3315,7 +3356,7 @@ function buildIntakeSystemPrompt(){
 '- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
 '- Keep exercise names consistent across weeks so progression tracks.\n'+
 '- Use weight=0 for bodyweight exercises. Weights in lb.\n'+
-'- If the user does not want running, omit runTue and runSat from each week and use Rest in place of Run in weekPlan.\n'+
+'- If the user wants running, set each week\'s runs field as a map of day-name → {km, type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan. If the user does not want running, omit runs entirely and use Rest in place of Run in weekPlan.\n'+
 '- weekPlan must use only "Push", "Pull", "Legs", "Run", or "Rest". Spread lift days with rest/run between them. Match the number of lift days to the user\'s availability — if they want 4 lifts/week, you can repeat (e.g. Push, Pull, Rest, Legs, Push, Pull, Rest); the matching exercise list comes from each week\'s push/pull/legs arrays.\n'+
 '- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
 '- Progress weight ~2.5-5 lb per week across the hypertrophy/strength blocks.\n\n'+
@@ -3324,6 +3365,10 @@ function buildIntakeSystemPrompt(){
 
 async function startRoutineIntake(){
   intakeMode=true;
+  // Reset to week 1 so the executor doesn't silently drop weeks before
+  // currentWeek when the AI sends the freshly-generated 12.
+  currentWeek=1;
+  lsSet('kt_week',1);
   clearCoachHistory();
   coachMessages.push({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
@@ -3371,8 +3416,9 @@ var _weekSchema={type:'object',
     push:{type:'array',items:_exerciseSchema,description:'Push session exercises'},
     pull:{type:'array',items:_exerciseSchema,description:'Pull session exercises'},
     legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
-    runTue:_runSchema,
-    runSat:_runSchema
+    runs:{type:'object',
+      description:'Optional. Map weekday name → run details for each scheduled run. Keys: Mon, Tue, Wed, Thu, Fri, Sat, Sun. Days not listed = no run that day. Should match the run days in weekPlan.',
+      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}}
   },
   required:['wk','bName','bColor','push','pull','legs']
 };
@@ -3456,8 +3502,19 @@ function executeCoachTool(name,input){
           pull:Array.isArray(w.pull)?w.pull:[],
           legs:Array.isArray(w.legs)?w.legs:[]
         };
-        if(w.runTue&&typeof w.runTue==='object') weekObj.runTue=w.runTue;
-        if(w.runSat&&typeof w.runSat==='object') weekObj.runSat=w.runSat;
+        // Preferred: runs:{Mon:{...},Wed:{...},...}. Legacy fallback: runTue/runSat.
+        if(w.runs&&typeof w.runs==='object'&&!Array.isArray(w.runs)){
+          var runsOut={};
+          DOW_NAMES.forEach(function(n){
+            if(w.runs[n]&&typeof w.runs[n]==='object') runsOut[n]=w.runs[n];
+          });
+          if(Object.keys(runsOut).length) weekObj.runs=runsOut;
+        } else {
+          var runsOut={};
+          if(w.runTue&&typeof w.runTue==='object') runsOut.Tue=w.runTue;
+          if(w.runSat&&typeof w.runSat==='object') runsOut.Sat=w.runSat;
+          if(Object.keys(runsOut).length) weekObj.runs=runsOut;
+        }
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
@@ -3477,6 +3534,11 @@ function executeCoachTool(name,input){
       }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
+      if(skipped.length){
+        var sLo=Math.min.apply(null,skipped), sHi=Math.max.apply(null,skipped);
+        var sRange=skipped.length===1?('week '+skipped[0]):('weeks '+sLo+'–'+sHi);
+        label+='; skipped '+sRange+' (already in the past — current week is '+currentWeek+')';
+      }
       return {ok:true,message:label,weeks:written,skipped:skipped};
     }
     if(name==='set_current_week'){
@@ -3874,8 +3936,9 @@ function buildSystemPrompt(){
         });
       }
     });
-    if(wd.runTue)p+='RUN (Tue): '+wd.runTue.km+'km '+wd.runTue.type+'\n';
-    if(wd.runSat)p+='RUN (Sat): '+wd.runSat.km+'km '+wd.runSat.type+'\n';
+    getScheduledRuns(wd).forEach(function(s){
+      p+='RUN ('+s.name+'): '+s.run.km+'km '+s.run.type+'\n';
+    });
     p+='\n';
   }
 
