@@ -1160,6 +1160,9 @@ function getWeekPlan(){
   return DEFAULT_WEEK_PLAN;
 }
 
+// '—' when the user didn't rate the set; otherwise the raw value as written.
+function fmtRpe(v){ return (v==null||v==='')?'—':String(v); }
+
 // Mon=0 … Sun=6
 var DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 var DOW_FROM_NAME = {Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
@@ -1431,7 +1434,7 @@ function renderLog() {
     return header + subBar +
       '<div class="card" style="text-align:center;padding:36px 20px;margin-top:14px;">'+
       '<div style="font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-.2px;">No programme yet</div>'+
-      '<div style="font-size:14px;color:var(--lite);line-height:1.6;margin-bottom:18px;">Build a custom 12-week plan with the AI Coach. Your sessions will appear here.</div>'+
+      '<div style="font-size:14px;color:var(--lite);line-height:1.6;margin-bottom:18px;">Build a custom training plan with the AI Coach. Your sessions will appear here.</div>'+
       '<button onclick="switchTab(\'coach\');startRoutineIntake();" style="background:var(--accent);color:#000;border:none;border-radius:12px;padding:12px 22px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:-.2px;">Build my programme →</button>'+
       '</div>';
   }
@@ -1609,8 +1612,8 @@ function renderQuickExRow(ex, slotIdx) {
   var wdEx = null;
   if (wdArr) { for(var r=0;r<wdArr.length;r++){if(wdArr[r].name===exName){wdEx=wdArr[r];break;}} }
   var targetStr = wdEx
-    ? (ex.isMain&&!isSwapped?'Target: ':'')+wdEx.sets+'×'+wdEx.reps+' @ RPE '+wdEx.rpe
-    : ex.sets+'×'+ex.reps+' · RPE '+ex.rpe;
+    ? (ex.isMain&&!isSwapped?'Target: ':'')+wdEx.sets+'×'+wdEx.reps+' @ RPE '+fmtRpe(wdEx.rpe)
+    : ex.sets+'×'+ex.reps+' · RPE '+fmtRpe(ex.rpe);
 
   var rpeOpts = [6,7,7.5,8,8.5,9,9.5,10];
   var pills = rpeOpts.map(function(v){
@@ -1622,7 +1625,7 @@ function renderQuickExRow(ex, slotIdx) {
   if(lastEx){
     var lw=lastEx.weight>0?lastEx.weight+'lb':'BW';
     var lr=lastEx.reps.join('/');
-    lastStr='<div style="font-size:11px;color:var(--lite);margin-top:3px;font-weight:600;">Last: '+lw+' · '+lastEx.sets+'×('+lr+') · RPE '+lastEx.rpe+'</div>';
+    lastStr='<div style="font-size:11px;color:var(--lite);margin-top:3px;font-weight:600;">Last: '+lw+' · '+lastEx.sets+'×('+lr+') · RPE '+fmtRpe(lastEx.rpe)+'</div>';
   }
   // History panel
   var histSid=exName.replace(/[^a-z0-9]/gi,'-');
@@ -1635,7 +1638,7 @@ function renderQuickExRow(ex, slotIdx) {
         '<span style="color:var(--muted);">'+fmtDate(h.date)+'</span>'+
         '<span style="font-weight:600;">'+hw+'</span>'+
         '<span style="color:var(--lite);">'+h.sets+'×('+h.reps.join('/')+')</span>'+
-        '<span style="color:var(--muted);">RPE '+h.rpe+'</span>'+
+        '<span style="color:var(--muted);">RPE '+fmtRpe(h.rpe)+'</span>'+
       '</div>';
     });
   }
@@ -2029,7 +2032,9 @@ function gatherExercises() {
     var r=logReps[name]||Array(s).fill(8);
     var noteEl=document.querySelector('.ex-note-input[data-ex="'+name+'"]');
     var note=noteEl?noteEl.value.trim():(logExNotes[name]||'');
-    return {name:name,sets:s,reps:r,weight:logWeights[name]||0,rpe:logRPEs[name]||8,note:note};
+    var rpeRaw=logRPEs[name];
+    var rpe=(rpeRaw===undefined||rpeRaw===null||rpeRaw==='')?null:rpeRaw;
+    return {name:name,sets:s,reps:r,weight:logWeights[name]||0,rpe:rpe,note:note};
   });
 }
 
@@ -2046,7 +2051,7 @@ function buildTrainerText(exs,date,note) {
     var wStr=parseFloat(ex.weight)>0?ex.weight+'lb':'BW';
     var repsStr=Array.isArray(ex.reps)?ex.reps.join('/'): ex.reps;
     var noteStr=ex.note?' // '+ex.note:'';
-    txt+=ex.name+' | '+ex.sets+'×('+repsStr+') | '+wStr+' | RPE '+ex.rpe+noteStr+' |\n';
+    txt+=ex.name+' | '+ex.sets+'×('+repsStr+') | '+wStr+' | RPE '+fmtRpe(ex.rpe)+noteStr+' |\n';
   });
   if(note) txt+='---\nSession notes: '+note+'\n';
   return txt;
@@ -3237,7 +3242,7 @@ function _buildHistExRows(exercises, prs, supersets){
           '<span class="hist-ex-name">'+ex.name+(isPR?' <span style="color:var(--yellow);font-size:9px;font-weight:800;">PR</span>':'')+'</span>'+
           '<span class="hist-ex-weight">'+wStr+'</span>'+
         '</div>'+
-        '<div class="hist-ex-detail">'+ex.sets+'×('+repsDisplay+') &nbsp;·&nbsp; RPE '+ex.rpe+'</div>'+
+        '<div class="hist-ex-detail">'+ex.sets+'×('+repsDisplay+') &nbsp;·&nbsp; RPE '+fmtRpe(ex.rpe)+'</div>'+
         (ex.note?'<div class="hist-ex-note">'+ex.note+'</div>':'')+
       '</div>';
   });
@@ -3338,7 +3343,7 @@ function getCoachChips(){
 }
 
 function buildIntakeSystemPrompt(){
-  return 'You are a world-class personal trainer conducting an intake assessment to build a personalised 12-week training programme.\n\n'+
+  return 'You are a world-class personal trainer conducting an intake assessment to build a personalised training programme.\n\n'+
 'Ask the following questions ONE AT A TIME. Wait for an answer before asking the next. Be conversational and encouraging — like a real trainer. Acknowledge each answer briefly before moving to the next question.\n\n'+
 'Questions to cover (in this order):\n'+
 '1. Main training goals (muscle gain, fat loss, strength, general fitness, sport performance)\n'+
@@ -3349,15 +3354,15 @@ function buildIntakeSystemPrompt(){
 '6. Current lifting level — approximate working weights or 1RM estimates for Bench Press, Squat, and Row/Deadlift (or "beginner" if unsure)\n'+
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
-'9. Any exercises they specifically love or hate\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your 12-week programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of all 12 weeks (wk 1 through 12) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Run/Rest, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
-'Block structure to follow:\n'+
-'- Weeks 1-3: BASE (#06b6d4) — establish technique, moderate volume\n'+
-'- Week 4: DELOAD (#22c55e) — end of Base, sets to 2-3, weight ~60%\n'+
-'- Weeks 5-7: HYPERTROPHY (#7c6bff) — increased load, muscle building\n'+
-'- Week 8: DELOAD (#22c55e) — end of Hypertrophy, sets to 2-3, weight ~65%\n'+
-'- Weeks 9-11: STRENGTH (#f97316) — heavy, low rep, peaking\n'+
-'- Week 12: PEAK (#22c55e) — PR attempts / max testing\n\n'+
+'9. Any exercises they specifically love or hate\n'+
+'10. Programme length — how many weeks do they want (suggest 12 if unsure; valid range 4–24)\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Run/Rest, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
+'Block structure — adapt to the chosen length, but keep these principles:\n'+
+'- Open with BASE (#06b6d4) — ~3 weeks of technique + moderate volume.\n'+
+'- Insert a DELOAD (#22c55e) at the end of each block (sets to 2-3, weight ~60-65%).\n'+
+'- Middle blocks: HYPERTROPHY (#7c6bff) and/or STRENGTH (#f97316) depending on goals — heavier load, lower reps as you progress.\n'+
+'- Final week: PEAK (#22c55e) for PR attempts / max testing.\n'+
+'- For a 12-week template: 1-3 BASE, 4 DELOAD, 5-7 HYPERTROPHY, 8 DELOAD, 9-11 STRENGTH, 12 PEAK. Scale this proportionally for shorter or longer programmes.\n\n'+
 'Rules:\n'+
 '- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
 '- Keep exercise names consistent across weeks so progression tracks.\n'+
@@ -3415,7 +3420,7 @@ var _runSchema={
 };
 var _weekSchema={type:'object',
   properties:{
-    wk:{type:'integer',minimum:1,maximum:12,description:'Week number 1–12'},
+    wk:{type:'integer',minimum:1,maximum:24,description:'Week number 1–24'},
     bName:{type:'string',description:'Block name: BASE, HYPERTROPHY, STRENGTH, PEAK, or DELOAD'},
     bColor:{type:'string',description:'Hex block color — BASE #06b6d4, HYPERTROPHY #7c6bff, STRENGTH #f97316, PEAK/DELOAD #22c55e'},
     wkNote:{type:'string',description:'Brief 1–2 sentence focus note for the week'},
@@ -3430,16 +3435,16 @@ var _weekSchema={type:'object',
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s 12-week programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass all 12 in a single call — this is much faster than splitting up the work. If the response would be too long, split into two calls of 6 weeks each. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
-       weeks:{type:'array',minItems:1,maxItems:12,items:_weekSchema,description:'Array of 1–12 week objects, each keyed by wk (1–12).'},
+       weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
        weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept (default Mon=Push, Tue=Run, Wed=Rest, Thu=Pull, Fri=Legs, Sat=Run, Sun=Rest).'}
      },
      required:['weeks']}},
   {name:'set_current_week',
    description:'Set which week of the programme the user is currently on.',
-   input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:12}},required:['week']}},
+   input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:24}},required:['week']}},
   {name:'set_exercise_weight',
    description:'Update the working weight for a named exercise (case-insensitive match).',
    input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
@@ -3492,7 +3497,7 @@ function executeCoachTool(name,input){
       for(var wi=0;wi<weeksIn.length;wi++){
         var w=weeksIn[wi]||{};
         var wk=parseInt(w.wk);
-        if(!(wk>=1&&wk<=12)){ errored='each week needs wk 1-12 (got '+w.wk+')'; break; }
+        if(!(wk>=1&&wk<=24)){ errored='each week needs wk 1-24 (got '+w.wk+')'; break; }
         if(!w.bName||!w.bColor){ errored='week '+wk+' missing bName or bColor'; break; }
         // Past weeks are history — the user has already lived them, so silently
         // drop any attempt to rewrite weeks before currentWeek.
@@ -3618,7 +3623,9 @@ function _toApiMsg(m){
 
 // One full coach turn: may loop through multiple tool_use rounds.
 async function runCoachTurn(systemPrompt,model,maxTok){
-  var apiMsgs=coachMessages.slice(-30).filter(function(m){
+  // Keep enough history for a full 10-question intake plus follow-ups; the
+  // system prompt holds the steady-state context, so we just need recent dialogue.
+  var apiMsgs=coachMessages.slice(-60).filter(function(m){
     // Exclude transient tool_result turns from older history when rebuilding;
     // we only carry forward within a single runCoachTurn.
     return !m._toolResults;
@@ -3778,12 +3785,13 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       _tools:allToolCalls.length?allToolCalls:null
     });
   }
-  // Auto-exit intake mode once a full 12-week plan exists — the old code did
-  // this inside confirmLoadRoutine; with tool-use there's no explicit confirm
-  // step, so we check post-turn.
+  // Auto-exit intake mode once the AI has shipped at least one fully-defined
+  // week (every existing slot has bName). With variable-length programmes we
+  // can't gate on a hardcoded 12 — we trust the AI's single-call intake to
+  // produce all the weeks the user asked for.
   if(intakeMode){
     var _cr=getCustomRoutine();
-    var _complete=!!(_cr&&_cr.weeks&&_cr.weeks.length>=12&&_cr.weeks.every(function(w){return w&&w.bName;}));
+    var _complete=!!(_cr&&_cr.weeks&&_cr.weeks.length>=1&&_cr.weeks.every(function(w){return w&&w.bName;}));
     if(_complete){
       intakeMode=false;
       currentWeek=1;
@@ -3939,7 +3947,7 @@ function buildSystemPrompt(){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         p+=sess.toUpperCase()+done+':\n';
         wd[sess].forEach(function(ex){
-          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+ex.weight+'lb RPE'+ex.rpe+'\n';
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+ex.weight+'lb RPE'+fmtRpe(ex.rpe)+'\n';
         });
       }
     });
@@ -3955,7 +3963,7 @@ function buildSystemPrompt(){
       p+=s.type+' '+s.date+' (Wk'+s.week+'): ';
       var exStrs=(s.exercises||[]).map(function(ex){
         var r=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
-        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+ex.rpe;
+        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+fmtRpe(ex.rpe);
       });
       p+=exStrs.join(' | ')+'\n';
     });
@@ -4000,15 +4008,14 @@ function buildSystemPrompt(){
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are Push/Pull/Legs/Run/Rest → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
-  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through 12 (the user is on week '+currentWeek+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
+  p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
-  p+='When building a full 12-week plan, follow this block structure (unless the user requests otherwise):\n';
-  p+='  - Weeks 1-3: BASE #06b6d4 (volume + technique)\n';
-  p+='  - Week 4: DELOAD #22c55e (end of Base — sets to 2-3, weight ~60%)\n';
-  p+='  - Weeks 5-7: HYPERTROPHY #7c6bff (increased load)\n';
-  p+='  - Week 8: DELOAD #22c55e (end of Hypertrophy — sets to 2-3, weight ~65%)\n';
-  p+='  - Weeks 9-11: STRENGTH #f97316 (heavy, low rep)\n';
-  p+='  - Week 12: PEAK #22c55e (PR attempts / max testing)\n';
+  p+='When building a programme, follow this block structure (scale the durations to the chosen length, defaults shown for a 12-week template):\n';
+  p+='  - BASE #06b6d4 (volume + technique) — open with ~3 weeks\n';
+  p+='  - DELOAD #22c55e at the end of each block (sets to 2-3, weight ~60-65%)\n';
+  p+='  - HYPERTROPHY #7c6bff (increased load) — middle block(s)\n';
+  p+='  - STRENGTH #f97316 (heavy, low rep) — late block(s)\n';
+  p+='  - PEAK #22c55e (PR attempts / max testing) — final week\n';
   p+='Keep exercise names consistent across weeks so progression tracks. Mark the primary compound per session with isMain:true. Use weight=0 for bodyweight exercises.\n';
   p+='Keep your text reply short — the user sees the effect of the tool calls directly. No need to restate the plan in prose.\n';
   return p;
@@ -4160,7 +4167,7 @@ function renderCoach(){
             '</div>'+
             '<div class="settings-row-body">'+
               '<div class="settings-row-title">Build My Programme</div>'+
-              '<div class="settings-row-sub">Generate a custom 12-week plan</div>'+
+              '<div class="settings-row-sub">Generate a custom training plan</div>'+
             '</div>'+
             '<span class="settings-row-chev">›</span>'+
           '</div>'+
@@ -4446,7 +4453,7 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body">'+
-        '<div class="settings-row-title">12-week plan</div>'+
+        '<div class="settings-row-title">Training plan</div>'+
         '<div class="settings-row-sub">Week '+currentWeek+' of '+totalWks+'</div>'+
       '</div>'+
       '<span class="settings-row-chev">›</span>'+
