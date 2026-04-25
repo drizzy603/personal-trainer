@@ -1,4 +1,4 @@
-var CACHE = 'kt-v6';
+var CACHE = 'kt-v7';
 var FILES = ['./', './sw.js', './manifest.json'];
 
 self.addEventListener('install', function(e) {

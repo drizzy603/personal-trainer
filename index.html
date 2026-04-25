@@ -2197,9 +2197,15 @@ function renderRunsSection() {
   }
 
   var FULL_DAY=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  var runCards = getScheduledRuns(wd).map(function(s){
-    return runCard(s.run, FULL_DAY[s.dow]);
-  }).join('');
+  var scheduled = getScheduledRuns(wd);
+  var runCards;
+  if (scheduled.length) {
+    runCards = scheduled.map(function(s){ return runCard(s.run, FULL_DAY[s.dow]); }).join('');
+  } else if (hasCustomRoutine()) {
+    runCards = '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No runs scheduled this week.<br><span style="color:var(--lite);font-size:12px;">Ask the Coach to add running days.</span></div>';
+  } else {
+    runCards = '';
+  }
 
   var runs = getRuns();
   var runItems = '';
@@ -3923,7 +3929,8 @@ function buildSystemPrompt(){
   p+='\n';
 
   if(wd){
-    p+='BLOCK: '+wd.bName+' — '+wd.wkNote+'\n\n';
+    p+='BLOCK: '+wd.bName+' — '+wd.wkNote+'\n';
+    p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
     var thisWeekSessions=sessions.filter(function(s){return s.week===currentWeek;});
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN:\n';
