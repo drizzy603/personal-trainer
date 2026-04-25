@@ -4491,7 +4491,11 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       intakeMode=false;
       currentWeek=1;
       lsSet('kt_week',1);
+      var _n=getNextSession();
+      logSession=(_n==='Run')?'Push':_n;
+      initLogState();
       showToast('Programme loaded — Week 1 is ready');
+      switchTab('log');
     }
   }
   saveCoachHistory();
@@ -4533,6 +4537,21 @@ function restoreRoutineBackup(){
   if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
   showToast('Previous programme restored');
   render();
+}
+
+function confirmLoadRoutine(){
+  if(!pendingRoutine) return;
+  setCustomRoutine(pendingRoutine);
+  currentWeek=1;
+  lsSet('kt_week',1);
+  intakeMode=false;
+  pendingRoutine=null;
+  clearCoachHistory();
+  var _next=getNextSession();
+  logSession=(_next==='Run')?'Push':_next;
+  initLogState();
+  showToast('Programme loaded! Week 1 is ready');
+  switchTab('log');
 }
 
 function resetCustomRoutine(){
