@@ -19,11 +19,12 @@ A single-file progressive training app with an AI coach. No framework, no build 
 - Keep `.gitignore` clean — only `.vercel` and `.DS_Store` should be ignored
 
 ## App overview
-- Four tabs: Today, Progress, Programme, AI Coach
+- Four tabs: Log, Progress, Coach, Settings
 - All data stored in browser `localStorage` — no server, no accounts
 - AI Coach uses the Anthropic API (user supplies their own key in Settings)
 - Coach supports: streaming responses, persistent chat history, intake flow to build a custom programme, smart suggestion cards
-- Programme is AI-generated per user via an intake assessment
+- Programme is AI-generated per user via an intake assessment — until generated, the Log tab shows an empty-state CTA pointing to the Coach
+- Log tab reads exercises from `kt_routine` via `getSessionExercises()` / `getWkData()`. There is no built-in fallback programme.
 - User name is dynamic (pulled from their AI-generated routine) — no hardcoded names anywhere
 
 ## Key localStorage keys

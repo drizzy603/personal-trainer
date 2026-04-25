@@ -932,9 +932,9 @@ function getPRs() { return lsGet('kt_prs')||{}; }
 function getBodyWeights() { return lsGet('kt_bw')||[]; }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) localStorage.setItem('kt_bw_goal',v); else localStorage.removeItem('kt_bw_goal'); }
-function getBenchGoal() { return parseFloat(localStorage.getItem('kt_bench_goal'))||175; }
+function getBenchGoal() { return parseFloat(localStorage.getItem('kt_bench_goal'))||0; }
 function setBenchGoal(v) { if(v>0) localStorage.setItem('kt_bench_goal',v); else localStorage.removeItem('kt_bench_goal'); }
-function getSquatGoal() { return parseFloat(localStorage.getItem('kt_squat_goal'))||150; }
+function getSquatGoal() { return parseFloat(localStorage.getItem('kt_squat_goal'))||0; }
 function setSquatGoal(v) { if(v>0) localStorage.setItem('kt_squat_goal',v); else localStorage.removeItem('kt_squat_goal'); }
 function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // format "mm:ss" per km
 function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
@@ -2769,7 +2769,7 @@ function renderProgress() {
     if(lowerBetter&&target>0) pct=current>0?Math.min(100,Math.round((target/current)*100)):0;
     var color=pct>=100?'var(--green)':pct>=70?'var(--accent)':'var(--yellow)';
     var currentStr=current>0?(lowerBetter?secToPace(current/5):current+' '+unit):'—';
-    var targetStr=lowerBetter?secToPace(target/5)+' /km':target+' '+unit;
+    var targetStr=target>0?(lowerBetter?secToPace(target/5)+' /km':target+' '+unit):'set a target';
     return '<div style="margin-bottom:16px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
         '<div style="font-size:13px;font-weight:800;">'+label+'</div>'+
@@ -2778,7 +2778,7 @@ function renderProgress() {
       '<div style="background:var(--bg);border-radius:2px;height:6px;">'+
         '<div style="height:6px;border-radius:2px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
       '</div>'+
-      (pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal reached</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
+      (target<=0?'':pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal reached</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
     '</div>';
   }
 
