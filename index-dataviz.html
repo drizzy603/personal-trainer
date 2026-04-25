@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Trainer — Data-viz</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&display=swap"/>
+<style>
+  html,body{margin:0;background:#e8e5de;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;color:#0a0a0a;}
+  #root{display:flex;gap:40px;align-items:center;}
+  .phone{width:390px;height:800px;border-radius:44px;overflow:hidden;position:relative;box-shadow:0 40px 80px -20px rgba(0,0,0,.3), 0 0 0 1px rgba(0,0,0,.08) inset;background:#fafaf8;color:#0a0a0a;font-size:14px;}
+  .phone *{box-sizing:border-box;}
+  .status{position:absolute;top:0;left:0;right:0;height:44px;padding:16px 28px 0;display:flex;justify-content:space-between;font-size:15px;font-weight:600;z-index:5;pointer-events:none;color:#0a0a0a;}
+  .screen{height:100%;overflow-y:auto;scrollbar-width:none;padding:54px 20px 100px;}
+  .screen::-webkit-scrollbar{display:none;}
+  .tabs{position:absolute;bottom:14px;left:16px;right:16px;display:flex;justify-content:space-around;background:#0a0a0a;border-radius:14px;padding:4px;z-index:4;}
+  .tab{flex:1;padding:10px 4px;font-size:10px;color:#888;border-radius:10px;font-weight:700;cursor:pointer;background:none;border:none;font-family:inherit;letter-spacing:1.5px;text-transform:uppercase;}
+  .tab.active{background:#fafaf8;color:#0a0a0a;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .serif{font-family:'Newsreader',serif;}
+  .caption{color:#6b5d44;font-size:13px;max-width:260px;line-height:1.5;}
+  .btn{font-family:inherit;cursor:pointer;border:none;}
+  input{font-family:inherit;}
+  .rule{height:1px;background:#0a0a0a;margin:14px 0;}
+  .rule-thick{height:3px;background:#0a0a0a;margin:10px 0;}
+
+  body{padding-top:56px !important;} /*PREVIEW-BANNER-PAD*/
+</style>
+</head>
+<body>
+<div id="preview-banner" style="position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(10,10,14,.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.08);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font:500 12px/1.2 -apple-system,system-ui,sans-serif;color:#9ca3af;"><span><b style="color:#c8ff00;">PREVIEW</b> · Data-viz design</span><span style="display:flex;gap:10px;"><a href="index-previews.html" style="color:#9ca3af;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.15);border-radius:999px;">All previews</a><a href="./" style="color:#c8ff00;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(200,255,0,.3);border-radius:999px;">← Main app</a></span></div>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+const accent = '#ff4500';
+const ink = '#0a0a0a';
+const bg = '#fafaf8';
+const paper = '#f2ede3';
+const dim = '#6b5d44';
+const grid = '#d8d2c5';
+
+const StatusBar = () => (
+  <div className="status">
+    <span>9:41</span>
+    <span style={{display:'flex',gap:5,alignItems:'center'}}>
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="4.5" y="4" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="9" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+      <svg width="24" height="11" viewBox="0 0 24 11" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="20" height="10" rx="2.5"/><rect x="2" y="2" width="15" height="7" rx="1" fill="currentColor"/><rect x="21.5" y="3.5" width="1.5" height="4" rx=".75" fill="currentColor"/></svg>
+    </span>
+  </div>
+);
+
+const TabBar = ({active,onChange}) => {
+  const tabs = ['today','chart','log','coach','cfg'];
+  return (
+    <div className="tabs">
+      {tabs.map(t=><button key={t} onClick={()=>onChange(t)} className={'tab'+(t===active?' active':'')}>{t}</button>)}
+    </div>
+  );
+};
+
+const Masthead = ({section,date}) => (
+  <>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',borderBottom:`3px solid ${ink}`,paddingBottom:6,marginBottom:8}}>
+      <span className="mono" style={{fontSize:9,fontWeight:700,letterSpacing:2}}>TRAINER · {section}</span>
+      <span className="mono" style={{fontSize:9,fontWeight:700,letterSpacing:1,color:dim}}>{date}</span>
+    </div>
+  </>
+);
+
+// ——— TODAY (chart-forward home) ———
+const Today = ({onStart}) => {
+  const data=[3200,4100,3900,5200,6800,7400,12400];
+  const target=[3500,4500,5500,6500,7500,8500,9500,10500,11500,12500,13500,14500];
+  const W=330,H=140,N=12,max=16000;
+  const x=i=>10+(i/(N-1))*(W-20), y=v=>H-10-(v/max)*(H-20);
+  const tP=target.map((v,i)=>`${i===0?'M':'L'} ${x(i)} ${y(v)}`).join(' ');
+  const dPts=data.map((v,i)=>({x:x(i),y:y(v)}));
+  const dP=dPts.map((p,i)=>`${i===0?'M':'L'} ${p.x} ${p.y}`).join(' ');
+
+  return (
+    <>
+      <Masthead section="VOL.07 NO.47" date="THU 24 APR"/>
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+        <div>
+          <div className="mono" style={{fontSize:9,letterSpacing:2,color:dim,fontWeight:700}}>LB LIFTED · WK 7/12</div>
+          <div className="serif" style={{fontSize:60,fontWeight:600,letterSpacing:-2.5,lineHeight:.95,marginTop:4}}>12,400</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div className="mono" style={{fontSize:10,color:accent,fontWeight:700}}>▲ 12%</div>
+          <div className="mono" style={{fontSize:9,color:dim,marginTop:2}}>VS TARGET</div>
+        </div>
+      </div>
+
+      {/* hero chart */}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',display:'block',margin:'14px 0 2px'}}>
+        {[0,.25,.5,.75,1].map((p,i)=>(<line key={i} x1={10} x2={W-10} y1={y(max*p)} y2={y(max*p)} stroke={grid} strokeWidth="1" strokeDasharray={i===0?'':'2 3'}/>))}
+        <path d={tP} fill="none" stroke={ink} strokeOpacity=".4" strokeWidth="1.5" strokeDasharray="3 3"/>
+        <path d={dP+` L ${dPts[dPts.length-1].x} ${H-10} L ${dPts[0].x} ${H-10} Z`} fill={accent} fillOpacity=".1"/>
+        <path d={dP} fill="none" stroke={accent} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+        {dPts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={i===dPts.length-1?4.5:2.2} fill={bg} stroke={accent} strokeWidth="2"/>)}
+        <circle cx={dPts[dPts.length-1].x} cy={dPts[dPts.length-1].y} r="10" fill="none" stroke={accent} strokeOpacity=".25"/>
+      </svg>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:dim,padding:'0 10px'}}>
+        <span>W1</span><span>W4</span><span style={{color:accent,fontWeight:700}}>W7 ●</span><span>W10</span><span>W12</span>
+      </div>
+
+      <div className="rule"/>
+
+      {/* Sparklines */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+        {[['BENCH',205,'+25',accent],['SQUAT',275,'+25',ink],['PULL','BW+25','PR',dim]].map(([l,v,d,c])=>(
+          <div key={l} style={{borderTop:`2px solid ${ink}`,paddingTop:8}}>
+            <div className="mono" style={{fontSize:8,letterSpacing:1.5,color:dim,fontWeight:700}}>{l}</div>
+            <div className="serif" style={{fontSize:22,fontWeight:600,letterSpacing:-.5,marginTop:2}}>{v}</div>
+            <svg viewBox="0 0 60 18" style={{width:'100%',display:'block',marginTop:2}}>
+              <polyline points="2,14 10,12 18,10 26,11 34,8 42,6 50,4 58,3" fill="none" stroke={c} strokeWidth="1.5"/>
+            </svg>
+            <div className="mono" style={{fontSize:9,color:c,fontWeight:700,marginTop:2}}>{d}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bars for week */}
+      <div style={{background:paper,borderRadius:4,padding:14,marginBottom:12,border:`1px solid ${grid}`}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+          <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700}}>WK 7 · TARGETS</div>
+          <div className="mono" style={{fontSize:9,color:dim}}>THU OF 7</div>
+        </div>
+        {[['Lift volume','12,400','14,500 lb',.86,accent],['Sessions','3','5',.6,ink],['Cardio','14','30 km',.47,dim]].map(([l,v,t,p,c])=>(
+          <div key={l} style={{marginBottom:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3}}>
+              <span style={{fontWeight:600}}>{l}</span>
+              <span className="mono" style={{color:dim}}><b style={{color:ink}}>{v}</b> / {t}</span>
+            </div>
+            <div style={{height:4,background:grid,borderRadius:0,overflow:'hidden'}}>
+              <div style={{height:'100%',width:(p*100)+'%',background:c}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Today row */}
+      <div style={{background:ink,color:bg,borderRadius:4,padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div className="mono" style={{fontSize:9,color:'#888',letterSpacing:1.5,fontWeight:700}}>TODAY · PUSH</div>
+          <div style={{fontSize:15,fontWeight:700,marginTop:2}}>4 lifts · 45m · Bench main</div>
+        </div>
+        <button onClick={onStart} className="btn" style={{background:accent,color:'#fff',padding:'10px 14px',borderRadius:4,fontSize:11,fontWeight:800,letterSpacing:1}}>START →</button>
+      </div>
+    </>
+  );
+};
+
+// ——— CHART VIEW (all lifts, time series) ———
+const Chart = () => {
+  const series = {
+    bench: [140,150,155,160,170,180,205],
+    squat: [200,210,225,240,255,265,275],
+    ohp: [90,95,100,105,110,115,125],
+  };
+  const W=340,H=220,N=12,maxV=300;
+  const x=i=>10+(i/(N-1))*(W-20), y=v=>H-20-(v/maxV)*(H-30);
+  const [sel,setSel] = React.useState('all');
+
+  const line = (vs,c,on) => {
+    const p = vs.map((v,i)=>`${i===0?'M':'L'} ${x(i)} ${y(v)}`).join(' ');
+    return <path d={p} fill="none" stroke={c} strokeWidth={on?2.5:1.2} strokeOpacity={on?1:.3} strokeLinecap="round" strokeLinejoin="round"/>;
+  };
+
+  return (
+    <>
+      <Masthead section="CHART · MAIN LIFTS" date="12 WK"/>
+      <div className="serif" style={{fontSize:36,fontWeight:600,letterSpacing:-1.2,lineHeight:1}}>One chart<br/><em>tells it all.</em></div>
+      <div style={{fontSize:11,color:dim,lineHeight:1.5,margin:'12px 0 14px'}}>Main lifts across the peak block. Bench climbs twenty-five pounds since week one. Squat holds steady. OHP accelerates.</div>
+
+      <div style={{background:paper,border:`1px solid ${grid}`,padding:'14px 6px 6px'}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',display:'block'}}>
+          {[0,.25,.5,.75,1].map((p,i)=><line key={i} x1={10} x2={W-10} y1={y(maxV*p)} y2={y(maxV*p)} stroke={grid} strokeWidth="1"/>)}
+          {[0,.25,.5,.75,1].map((p,i)=><text key={i} x={2} y={y(maxV*p)+3} fontSize="8" fill={dim} fontFamily="JetBrains Mono">{Math.round(maxV*p)}</text>)}
+          {line(series.squat, ink, sel==='all'||sel==='squat')}
+          {line(series.bench, accent, sel==='all'||sel==='bench')}
+          {line(series.ohp, dim, sel==='all'||sel==='ohp')}
+          {/* Endpoint labels */}
+          <circle cx={x(6)} cy={y(series.bench[6])} r="3.5" fill={bg} stroke={accent} strokeWidth="2"/>
+          <text x={x(6)+7} y={y(series.bench[6])+3} fontSize="10" fill={accent} fontWeight="700" fontFamily="JetBrains Mono">205</text>
+          <circle cx={x(6)} cy={y(series.squat[6])} r="3.5" fill={bg} stroke={ink} strokeWidth="2"/>
+          <text x={x(6)+7} y={y(series.squat[6])+3} fontSize="10" fill={ink} fontWeight="700" fontFamily="JetBrains Mono">275</text>
+          <circle cx={x(6)} cy={y(series.ohp[6])} r="3.5" fill={bg} stroke={dim} strokeWidth="2"/>
+          <text x={x(6)+7} y={y(series.ohp[6])+3} fontSize="10" fill={dim} fontWeight="700" fontFamily="JetBrains Mono">125</text>
+        </svg>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:8,color:dim,padding:'4px 10px 2px'}} className="mono">
+          <span>W1</span><span>W3</span><span>W5</span><span>W7</span><span>W9</span><span>W11</span>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:6,marginTop:10}}>
+        {[['all','ALL',ink],['bench','BENCH',accent],['squat','SQUAT',ink],['ohp','OHP',dim]].map(([k,l,c])=>(
+          <button key={k} onClick={()=>setSel(k)} className="btn" style={{flex:1,padding:'7px 0',background:sel===k?ink:'transparent',color:sel===k?bg:ink,border:`1px solid ${ink}`,fontSize:10,fontWeight:700,letterSpacing:1.5}}>{l}</button>
+        ))}
+      </div>
+
+      <div className="rule-thick" style={{margin:'20px 0 10px'}}/>
+      <div className="mono" style={{fontSize:9,letterSpacing:2,color:dim,fontWeight:700,marginBottom:10}}>BREAKDOWN</div>
+
+      {/* Stat rows */}
+      {[['EST. 1RM BENCH','231 lb','+42 lb since W1',accent],['VOL / SESS','5,820 lb','median',ink],['TONNAGE · BLOCK','184,000 lb','12 wk cumulative',dim],['RPE AVG','7.8','target 8',ink],['SLEEP CORR','r=0.72','strong',accent]].map(([l,v,n,c])=>(
+        <div key={l} style={{display:'grid',gridTemplateColumns:'1fr auto',padding:'10px 0',borderTop:`1px solid ${grid}`,alignItems:'baseline'}}>
+          <div>
+            <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700}}>{l}</div>
+            <div style={{fontSize:10,color:dim,marginTop:1}}>{n}</div>
+          </div>
+          <div className="serif" style={{fontSize:22,fontWeight:600,letterSpacing:-.5,color:c}}>{v}</div>
+        </div>
+      ))}
+    </>
+  );
+};
+
+// ——— LOG / WORKOUT ———
+const Log = ({onClose}) => {
+  const [setN,setSetN] = React.useState(0);
+  const [w,setW] = React.useState(185);
+  const [r,setR] = React.useState(5);
+  const [resting,setResting] = React.useState(false);
+  const [restSec,setRestSec] = React.useState(0);
+
+  React.useEffect(()=>{
+    if(!resting) return;
+    const iv = setInterval(()=>setRestSec(s=>s+1),1000);
+    return ()=>clearInterval(iv);
+  },[resting]);
+
+  const done = ()=>{
+    setResting(true); setRestSec(0);
+    if(setN+1<4) setSetN(setN+1);
+  };
+
+  return (
+    <>
+      <Masthead section="LOG · SESSION 24" date="9:41 AM"/>
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:4}}>
+        <div>
+          <div className="mono" style={{fontSize:9,color:dim,letterSpacing:1.5,fontWeight:700}}>LIFT 01 / 04</div>
+          <div className="serif" style={{fontSize:32,fontWeight:600,letterSpacing:-1,lineHeight:1,marginTop:2}}>Bench press</div>
+        </div>
+        <div className="mono" style={{fontSize:10,color:accent,fontWeight:700}}>◆ MAIN</div>
+      </div>
+      <div style={{fontSize:11,color:dim,marginTop:6,marginBottom:12}}>Target 4×5 @ RPE 8 · Last session 180×5 × 4</div>
+
+      {resting ? (
+        <div style={{background:ink,color:bg,padding:'16px 18px',marginBottom:12,borderRadius:2}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+            <div className="mono" style={{fontSize:9,letterSpacing:2,color:accent,fontWeight:700}}>● RESTING</div>
+            <button onClick={()=>{setResting(false);setRestSec(0);}} className="btn" style={{background:'none',color:'#888',fontSize:10,letterSpacing:1,fontWeight:700}}>DISMISS ✕</button>
+          </div>
+          <div className="mono" style={{fontSize:64,fontWeight:700,letterSpacing:-3,lineHeight:1,textAlign:'center',color:accent}}>{Math.floor(restSec/60)}:{String(restSec%60).padStart(2,'0')}</div>
+          <div className="mono" style={{fontSize:9,color:'#888',textAlign:'center',letterSpacing:1.5,marginTop:2}}>TARGET 2:00</div>
+          <div style={{height:3,background:'#333',margin:'12px 0 0'}}>
+            <div style={{height:'100%',width:Math.min(100,restSec/120*100)+'%',background:accent,transition:'width 1s linear'}}/>
+          </div>
+        </div>
+      ) : (
+        <div style={{background:paper,border:`1px solid ${grid}`,padding:16,marginBottom:12}}>
+          <div className="mono" style={{fontSize:9,color:dim,letterSpacing:1.5,fontWeight:700,marginBottom:10}}>SET {setN+1} / 4</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:16}}>
+            <div className="serif" style={{fontSize:74,fontWeight:600,letterSpacing:-3,lineHeight:.9}}>{w}</div>
+            <div style={{fontSize:18,color:dim,fontWeight:500}}>lb × {r}</div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+            {[['LB',w,5,setW],['REPS',r,1,setR]].map(([l,v,s,fn])=>(
+              <div key={l}>
+                <div className="mono" style={{fontSize:8,color:dim,fontWeight:700,letterSpacing:1.5,marginBottom:4}}>{l}</div>
+                <div style={{display:'flex',gap:2}}>
+                  <button onClick={()=>fn(Math.max(0,v-s))} className="btn" style={{width:36,height:40,background:bg,border:`1px solid ${ink}`,color:ink,fontSize:16,fontWeight:700}}>−</button>
+                  <div style={{flex:1,height:40,background:bg,border:`1px solid ${ink}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,fontFamily:'JetBrains Mono'}}>{v}</div>
+                  <button onClick={()=>fn(v+s)} className="btn" style={{width:36,height:40,background:bg,border:`1px solid ${ink}`,color:ink,fontSize:16,fontWeight:700}}>+</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={done} className="btn" style={{width:'100%',background:accent,color:'#fff',padding:'14px 0',fontSize:12,fontWeight:800,letterSpacing:2,borderRadius:2}}>LOG SET {setN+1} ✓</button>
+        </div>
+      )}
+
+      {/* Sets log table */}
+      <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,marginBottom:6}}>SET LOG</div>
+      <div style={{border:`1px solid ${grid}`,borderRadius:2,overflow:'hidden',marginBottom:12}}>
+        {Array.from({length:4}).map((_,i)=>{
+          const isDone = i<setN || (i===setN && resting);
+          return (
+            <div key={i} className="mono" style={{display:'grid',gridTemplateColumns:'40px 1fr 1fr 1fr',padding:'10px 12px',fontSize:11,borderBottom:i<3?`1px solid ${grid}`:'none',background:isDone?bg:paper,color:isDone?ink:dim}}>
+              <span style={{fontWeight:700}}>#{i+1}</span>
+              <span>{isDone?w+' lb':'—'}</span>
+              <span>{isDone?r+' reps':'—'}</span>
+              <span style={{color:isDone?accent:dim,fontWeight:isDone?700:400}}>{isDone?'✓ RPE 8':'pending'}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,marginBottom:6}}>NEXT</div>
+      {[['OHP','3×6','115'],['Inc DB','3×8','60'],['Cable fly','3×12','40']].map(([n,t,w])=>(
+        <div key={n} style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,padding:'8px 0',borderTop:`1px solid ${grid}`,fontSize:12}}>
+          <span style={{fontWeight:600}}>{n}</span>
+          <span className="mono" style={{color:dim}}>{t}</span>
+          <span className="mono" style={{fontWeight:700}}>{w} lb</span>
+        </div>
+      ))}
+
+      <button onClick={onClose} className="btn" style={{marginTop:14,background:'none',border:`1px solid ${ink}`,color:ink,padding:'10px 16px',fontSize:11,fontWeight:700,letterSpacing:1.5}}>← BACK</button>
+    </>
+  );
+};
+
+// ——— COACH ———
+const Coach = () => {
+  const [msgs,setMsgs] = React.useState([
+    {r:'u',t:'why did bench stall wk 4?'},
+    {r:'a',t:"Load jumped 15 lb in one step while sleep dipped to 5h avg. I'd lower next step to 7.5 lb and protect sleep."},
+  ]);
+  const [v,setV] = React.useState('');
+  const send = t => { if(!t.trim())return; setMsgs(m=>[...m,{r:'u',t}]); setV(''); setTimeout(()=>setMsgs(m=>[...m,{r:'a',t:"Queued for next cycle."}]),600); };
+
+  return (
+    <>
+      <Masthead section="COACH · CLAUDE" date="LIVE"/>
+
+      <div style={{background:paper,border:`1px solid ${grid}`,padding:12,marginBottom:12}}>
+        <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,marginBottom:8}}>ANALYSIS FOR THIS BLOCK</div>
+        <div className="serif" style={{fontSize:18,fontWeight:500,lineHeight:1.3,letterSpacing:-.3}}>"Strength trajectory is <em style={{color:accent}}>above trend</em>. Cardio deficit widening."</div>
+        <div style={{fontSize:11,color:dim,marginTop:10,lineHeight:1.5}}>Your bench is 12% above projected. Cardio completion has dropped from 70% → 47% since wk 5. Consider Z2 run Saturday.</div>
+      </div>
+
+      <div className="rule"/>
+
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{alignSelf:m.r==='u'?'flex-end':'flex-start',maxWidth:'85%',background:m.r==='u'?ink:'transparent',color:m.r==='u'?bg:ink,border:m.r==='u'?'none':`1px solid ${ink}`,padding:'10px 13px',fontSize:13,lineHeight:1.45,borderRadius:2}}>{m.t}</div>
+        ))}
+      </div>
+
+      <div style={{display:'flex',gap:6,marginBottom:8,overflowX:'auto',scrollbarWidth:'none'}}>
+        {['Plan tomorrow','RPE trend','Sleep?','Swap lift'].map(c=>(
+          <button key={c} onClick={()=>send(c)} className="btn" style={{fontSize:10,padding:'6px 10px',background:'transparent',border:`1px solid ${ink}`,color:ink,whiteSpace:'nowrap',flexShrink:0,fontWeight:700,letterSpacing:.5}}>{c}</button>
+        ))}
+      </div>
+
+      <div style={{display:'flex',gap:4,alignItems:'center',border:`1px solid ${ink}`,padding:'4px 4px 4px 12px'}}>
+        <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send(v)} placeholder="Ask coach…" style={{flex:1,background:'transparent',border:'none',outline:'none',fontSize:13,color:ink}}/>
+        <button onClick={()=>send(v)} className="btn" style={{padding:'8px 14px',background:accent,color:'#fff',fontSize:10,fontWeight:800,letterSpacing:1.5}}>SEND</button>
+      </div>
+    </>
+  );
+};
+
+// ——— SETTINGS ———
+const Settings = () => (
+  <>
+    <Masthead section="CONFIG" date="APR 2026"/>
+
+    <div style={{background:paper,border:`1px solid ${grid}`,padding:14,marginBottom:12,display:'flex',gap:12,alignItems:'center'}}>
+      <div style={{width:44,height:44,background:ink,color:bg,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18}}>K</div>
+      <div>
+        <div className="serif" style={{fontSize:20,fontWeight:600,letterSpacing:-.5}}>Kalani</div>
+        <div className="mono" style={{fontSize:9,color:dim,letterSpacing:1.5,fontWeight:700,marginTop:2}}>SUBSCRIBER · WK 7 OF 12</div>
+      </div>
+    </div>
+
+    <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,padding:'4px 0 6px',borderBottom:`1px solid ${grid}`,marginBottom:8}}>APPEARANCE</div>
+    <div style={{background:paper,border:`1px solid ${grid}`,padding:14,marginBottom:12}}>
+      <div style={{fontSize:11,marginBottom:10,fontWeight:600}}>Accent</div>
+      <div style={{display:'flex',gap:8}}>
+        {['#ff4500','#c8102e','#0055ff','#00874a','#4a148c'].map((c,i)=>(
+          <div key={c} style={{flex:1,height:40,background:c,border:i===0?`3px solid ${ink}`:`3px solid transparent`,cursor:'pointer'}}/>
+        ))}
+      </div>
+      <div style={{height:1,background:grid,margin:'14px 0'}}/>
+      <div style={{fontSize:11,marginBottom:8,fontWeight:600}}>Paper</div>
+      <div style={{display:'flex',gap:6}}>
+        {[['Cream',paper],['White','#fff'],['Ledger','#f4ebd0'],['Newsprint','#e8e0ce']].map(([n,c],i)=>(
+          <div key={n} style={{flex:1,padding:'8px 4px',background:c,border:`1px solid ${i===0?ink:grid}`,textAlign:'center',fontSize:10,fontWeight:600,color:ink}}>{n}</div>
+        ))}
+      </div>
+    </div>
+
+    <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,padding:'4px 0 6px',borderBottom:`1px solid ${grid}`,marginBottom:8}}>METHODOLOGY</div>
+    {['1RM formula — Epley','Volume — load × reps','RPE target — 8','Week start — Monday','Rest default — 2:00'].map(l=>(
+      <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'11px 4px',borderBottom:`1px solid ${grid}`,fontSize:12}}>
+        <span style={{fontWeight:500}}>{l.split(' — ')[0]}</span>
+        <span className="mono" style={{fontSize:11,color:dim}}>{l.split(' — ')[1]}</span>
+      </div>
+    ))}
+
+    <div className="mono" style={{fontSize:9,letterSpacing:1.5,color:dim,fontWeight:700,padding:'14px 0 6px',borderBottom:`1px solid ${grid}`,marginBottom:8}}>DATA</div>
+    {['Export CSV','Export PDF · Peak report','Import from Strong','Backup'].map(l=>(
+      <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'11px 4px',borderBottom:`1px solid ${grid}`,fontSize:12}}>
+        <span style={{fontWeight:500}}>{l}</span>
+        <span style={{color:dim}}>›</span>
+      </div>
+    ))}
+  </>
+);
+
+// ——— APP ———
+const App = () => {
+  const [tab,setTab] = React.useState('today');
+  const [log,setLog] = React.useState(false);
+  let body;
+  if(log) body = <Log onClose={()=>setLog(false)}/>;
+  else if(tab==='today') body = <Today onStart={()=>{setLog(true);}}/>;
+  else if(tab==='chart') body = <Chart/>;
+  else if(tab==='log') body = <Log onClose={()=>setTab('today')}/>;
+  else if(tab==='coach') body = <Coach/>;
+  else body = <Settings/>;
+  return (
+    <>
+      <div className="phone">
+        <StatusBar/>
+        <div className="screen">{body}</div>
+        <TabBar active={log?'log':tab} onChange={t=>{setLog(false);setTab(t);}}/>
+      </div>
+      <div className="caption">
+        <b style={{color:accent}}>06 · The Paper</b><br/>
+        Bloomberg × FT. Every screen is a chart, a stat table, or a typeset analysis. Newsreader serif for display, JetBrains Mono for data. Tap <b>START</b> on Today to log a session. <a href="index-previews.html" style={{color:accent,textDecoration:'none'}}>← all four</a>
+      </div>
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

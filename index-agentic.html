@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Trainer — Agentic</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"/>
+<style>
+  html,body{margin:0;background:#06060a;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;color:#fafafa;}
+  #root{display:flex;gap:40px;align-items:center;}
+  .phone{width:390px;height:800px;border-radius:44px;overflow:hidden;position:relative;box-shadow:0 40px 80px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.05) inset;background:#0b0b0f;color:#fafafa;font-size:14px;display:flex;flex-direction:column;}
+  .phone *{box-sizing:border-box;}
+  .status{position:absolute;top:0;left:0;right:0;height:44px;padding:16px 28px 0;display:flex;justify-content:space-between;font-size:15px;font-weight:600;z-index:5;pointer-events:none;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .caption{color:#6b7280;font-size:13px;max-width:260px;line-height:1.5;}
+  .btn{font-family:inherit;cursor:pointer;border:none;}
+  input{font-family:inherit;}
+  @keyframes pulse{0%,100%{opacity:.4;transform:scale(.95)}50%{opacity:1;transform:scale(1.05)}}
+  @keyframes wave{0%{transform:scaleY(.3)}50%{transform:scaleY(1)}100%{transform:scaleY(.3)}}
+  .dot{animation:pulse 1.4s ease-in-out infinite;}
+
+  body{padding-top:56px !important;} /*PREVIEW-BANNER-PAD*/
+</style>
+</head>
+<body>
+<div id="preview-banner" style="position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(10,10,14,.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.08);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font:500 12px/1.2 -apple-system,system-ui,sans-serif;color:#9ca3af;"><span><b style="color:#c8ff00;">PREVIEW</b> · Agentic design</span><span style="display:flex;gap:10px;"><a href="index-previews.html" style="color:#9ca3af;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,255,255,.15);border-radius:999px;">All previews</a><a href="./" style="color:#c8ff00;text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(200,255,0,.3);border-radius:999px;">← Main app</a></span></div>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel">
+const lime = '#c8ff00';
+const bg = '#0b0b0f';
+const panel = '#141420';
+const ink = '#fafafa';
+const dim = '#6b7280';
+
+const StatusBar = () => (
+  <div className="status" style={{color:ink}}>
+    <span>9:41</span>
+    <span style={{display:'flex',gap:5,alignItems:'center'}}>
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="4.5" y="4" width="3" height="7" rx="1"/><rect x="9" y="2" width="3" height="9" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+      <svg width="24" height="11" viewBox="0 0 24 11" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="20" height="10" rx="2.5"/><rect x="2" y="2" width="15" height="7" rx="1" fill="currentColor"/><rect x="21.5" y="3.5" width="1.5" height="4" rx=".75" fill="currentColor"/></svg>
+    </span>
+  </div>
+);
+
+const TabBar = ({active,onChange,listening,onMic}) => {
+  const tabs = ['chat','log','rings','settings'];
+  return (
+    <div style={{padding:'8px 12px 12px',borderTop:'1px solid rgba(255,255,255,.05)',background:bg}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'space-around'}}>
+        {tabs.slice(0,2).map(t=><button key={t} onClick={()=>onChange(t)} className="btn" style={{background:'none',color:t===active?lime:dim,fontSize:10,fontWeight:700,letterSpacing:1.5,padding:8,textTransform:'uppercase'}}>{t}</button>)}
+        {/* Hero mic */}
+        <button onClick={onMic} className="btn" style={{width:56,height:56,borderRadius:99,background:listening?lime:`linear-gradient(180deg,${lime},#9bd900)`,color:'#000',boxShadow:listening?`0 0 0 8px ${lime}33, 0 4px 12px ${lime}66`:`0 4px 12px ${lime}44`,display:'flex',alignItems:'center',justifyContent:'center',transform:'translateY(-10px)',transition:'all .2s'}}>
+          {listening ? (
+            <div style={{display:'flex',alignItems:'center',gap:2}}>
+              {[.4,.8,1,.6,.9].map((h,i)=><div key={i} style={{width:2.5,height:18*h,background:'#000',borderRadius:2,animation:`wave 0.8s ease-in-out ${i*.1}s infinite`}}/>)}
+            </div>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round"/></svg>
+          )}
+        </button>
+        {tabs.slice(2).map(t=><button key={t} onClick={()=>onChange(t)} className="btn" style={{background:'none',color:t===active?lime:dim,fontSize:10,fontWeight:700,letterSpacing:1.5,padding:8,textTransform:'uppercase'}}>{t}</button>)}
+      </div>
+    </div>
+  );
+};
+
+const Avatar = ({listening}) => (
+  <div style={{width:28,height:28,borderRadius:99,background:listening?lime:`conic-gradient(from 0deg,${lime},#ff2d95,#00d4ff,${lime})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:'#000',position:'relative'}}>
+    <div style={{width:22,height:22,borderRadius:99,background:'#000',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:lime}}>C</div>
+  </div>
+);
+
+const UserBubble = ({children,voice}) => (
+  <div style={{alignSelf:'flex-end',maxWidth:'82%',background:lime,color:'#000',padding:'10px 13px',borderRadius:'16px 16px 4px 16px',fontSize:13,fontWeight:500,marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
+    {voice && <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0,opacity:.6}}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/></svg>}
+    {children}
+  </div>
+);
+
+const AiText = ({children}) => (
+  <div style={{alignSelf:'flex-start',maxWidth:'90%',color:ink,fontSize:13,lineHeight:1.5,marginBottom:6,padding:'2px 4px'}}>{children}</div>
+);
+
+// ——— RICH CARDS ———
+const RingsCard = () => (
+  <div style={{alignSelf:'stretch',background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:16,padding:14,marginBottom:8}}>
+    <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:dim,letterSpacing:.6,fontWeight:700,marginBottom:10}}>
+      <span>WK 7 · RINGS</span><span>THU</span>
+    </div>
+    <div style={{display:'flex',gap:10}}>
+      {[['LIFT','86%',lime,.86],['SESS','60%','#ff2d95',.6],['CARDIO','47%','#00d4ff',.47]].map(([l,v,c,p])=>(
+        <div key={l} style={{flex:1}}>
+          <div style={{fontSize:9,color:c,fontWeight:700,letterSpacing:.6}}>{l}</div>
+          <div style={{fontSize:18,fontWeight:800,marginTop:2,letterSpacing:-.5}}>{v}</div>
+          <div style={{height:3,background:'rgba(255,255,255,.08)',borderRadius:2,marginTop:4,overflow:'hidden'}}>
+            <div style={{height:'100%',background:c,width:(p*100)+'%',borderRadius:2}}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const PlanCard = ({onStart}) => (
+  <div style={{alignSelf:'stretch',background:panel,border:`1px solid ${lime}40`,borderRadius:16,padding:14,marginBottom:8}}>
+    <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:lime,letterSpacing:.6,fontWeight:700,marginBottom:10}}>
+      <span>▶ PUSH · 45 MIN</span><span>4 LIFTS</span>
+    </div>
+    {[['Bench','4×5 @ 8','185',true],['OHP','3×6 @ 7','115'],['Inc DB','3×8 @ 7','60'],['Cable fly','3×12','40']].map(([n,t,w,m])=>(
+      <div key={n} style={{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid rgba(255,255,255,.05)',fontSize:12,alignItems:'center'}}>
+        <span style={{flex:1.2,fontWeight:m?600:500}}>{n} {m&&<span style={{color:lime,fontSize:9,marginLeft:4}}>◆</span>}</span>
+        <span style={{color:dim,flex:1,fontSize:11}}>{t}</span>
+        <span style={{fontWeight:700}}>{w} lb</span>
+      </div>
+    ))}
+    <button onClick={onStart} className="btn" style={{width:'100%',background:lime,color:'#000',borderRadius:10,padding:'10px 0',fontSize:12,fontWeight:800,marginTop:10}}>Start session →</button>
+  </div>
+);
+
+const SetLogCard = ({w,r,setN,total,onComplete,onChangeW,onChangeR,resting,restSec,onDismiss}) => (
+  <div style={{alignSelf:'stretch',background:panel,border:`1px solid ${resting?lime+'55':'rgba(255,255,255,.06)'}`,borderRadius:16,padding:14,marginBottom:8}}>
+    {resting ? (
+      <>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:lime,letterSpacing:.6,fontWeight:700,marginBottom:4}}>
+          <span>● REST · AUTO-STARTED</span>
+          <button onClick={onDismiss} className="btn" style={{background:'none',color:dim,fontSize:9,fontWeight:700,letterSpacing:.5}}>DISMISS</button>
+        </div>
+        <div className="mono" style={{fontSize:46,fontWeight:700,color:lime,letterSpacing:-2,lineHeight:1,textAlign:'center',margin:'8px 0 4px'}}>{Math.floor(restSec/60)}:{String(restSec%60).padStart(2,'0')}</div>
+        <div style={{fontSize:9,color:dim,textAlign:'center',letterSpacing:1}}>TARGET 2:00</div>
+        <div style={{height:3,background:'rgba(200,255,0,.12)',borderRadius:2,margin:'10px 0 0'}}>
+          <div style={{height:'100%',width:Math.min(100,restSec/120*100)+'%',background:lime,transition:'width 1s linear',borderRadius:2}}/>
+        </div>
+      </>
+    ) : (
+      <>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:dim,letterSpacing:.6,fontWeight:700,marginBottom:6}}>
+          <span>SET {setN+1} / {total} · BENCH</span><span>@ RPE 8</span>
+        </div>
+        <div style={{display:'flex',gap:10,marginBottom:10}}>
+          <Stepper label="LB" v={w} step={5} onChange={onChangeW}/>
+          <Stepper label="REPS" v={r} step={1} onChange={onChangeR}/>
+        </div>
+        <button onClick={onComplete} className="btn" style={{width:'100%',background:lime,color:'#000',borderRadius:10,padding:'12px 0',fontSize:12,fontWeight:800}}>Log set {setN+1}  ✓</button>
+      </>
+    )}
+  </div>
+);
+
+const Stepper = ({label,v,step,onChange}) => (
+  <div style={{flex:1}}>
+    <div style={{fontSize:9,color:dim,fontWeight:700,letterSpacing:.6,marginBottom:4}}>{label}</div>
+    <div style={{display:'flex',gap:2}}>
+      <button onClick={()=>onChange(Math.max(0,v-step))} className="btn" style={{width:32,height:38,background:bg,color:ink,borderRadius:8,fontSize:16,fontWeight:700}}>−</button>
+      <div style={{flex:1,height:38,background:bg,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:800}}>{v}</div>
+      <button onClick={()=>onChange(v+step)} className="btn" style={{width:32,height:38,background:bg,color:ink,borderRadius:8,fontSize:16,fontWeight:700}}>+</button>
+    </div>
+  </div>
+);
+
+// ——— CHAT ———
+const Chat = () => {
+  const [msgs,setMsgs] = React.useState([
+    {k:'ai',t:"Morning, Kalani. Here's where you are this week:"},
+    {k:'card',c:'rings'},
+    {k:'ai',t:"You're ahead on lift, behind on cardio. Today's push day. Ready?"},
+    {k:'card',c:'plan'},
+    {k:'user',voice:true,t:'shoulder tight. swap bench?'},
+    {k:'ai',t:"Got it — landmine press instead. Same push, friendlier on the AC joint. Updated your plan."},
+  ]);
+  const [input,setInput] = React.useState('');
+  const [listening,setListening] = React.useState(false);
+  const [inWorkout,setInWorkout] = React.useState(false);
+  const [setN,setSetN] = React.useState(0);
+  const [w,setW] = React.useState(185);
+  const [r,setR] = React.useState(5);
+  const [resting,setResting] = React.useState(false);
+  const [restSec,setRestSec] = React.useState(0);
+  const endRef = React.useRef();
+
+  React.useEffect(()=>{endRef.current?.scrollIntoView({behavior:'smooth',block:'end'})},[msgs,resting]);
+  React.useEffect(()=>{
+    if(!resting) return;
+    const iv = setInterval(()=>setRestSec(s=>s+1),1000);
+    return ()=>clearInterval(iv);
+  },[resting]);
+
+  const send = t => {
+    if(!t.trim()) return;
+    setMsgs(m=>[...m,{k:'user',t}]);
+    setInput('');
+    setTimeout(()=>setMsgs(m=>[...m,{k:'ai',t:"On it."}]),500);
+  };
+
+  const startWorkout = () => {
+    setInWorkout(true);
+    setMsgs(m=>[...m,{k:'ai',t:"Session live. Log sets below — I'll track rest automatically."},{k:'setlog'}]);
+  };
+
+  const logSet = () => {
+    setResting(true); setRestSec(0);
+    const next = setN+1;
+    if(next>=4){
+      setMsgs(m=>[...m,{k:'ai',t:"Bench complete. 4×5 @ 185 — you hit all sets at RPE 8. Next: overhead press."}]);
+      setSetN(0); setW(115); setR(6);
+    } else {
+      setSetN(next);
+    }
+  };
+
+  return (
+    <>
+      {/* Header */}
+      <div style={{padding:'50px 16px 10px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(255,255,255,.05)'}}>
+        <Avatar listening={listening}/>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:600}}>Coach</div>
+          <div style={{fontSize:10,color:dim,letterSpacing:.3}}>{listening?<span style={{color:lime}}>◉ listening…</span>:'● live · wk 7 peak'}</div>
+        </div>
+        <button className="btn" style={{background:'transparent',color:dim,fontSize:11,fontWeight:600}}>⋯</button>
+      </div>
+
+      {/* Scroll */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px 14px 8px',display:'flex',flexDirection:'column',scrollbarWidth:'none'}}>
+        <div style={{alignSelf:'center',fontSize:9,color:dim,padding:'3px 10px',borderRadius:99,background:'rgba(255,255,255,.04)',marginBottom:10,letterSpacing:1}}>THU · 9:41 AM</div>
+
+        {msgs.map((m,i)=>{
+          if(m.k==='ai') return <AiText key={i}>{m.t}</AiText>;
+          if(m.k==='user') return <UserBubble key={i} voice={m.voice}>{m.t}</UserBubble>;
+          if(m.k==='card' && m.c==='rings') return <RingsCard key={i}/>;
+          if(m.k==='card' && m.c==='plan') return <PlanCard key={i} onStart={startWorkout}/>;
+          if(m.k==='setlog') return <SetLogCard key={i} w={w} r={r} setN={setN} total={4} onComplete={logSet} onChangeW={setW} onChangeR={setR} resting={resting} restSec={restSec} onDismiss={()=>{setResting(false);setRestSec(0);}}/>;
+          return null;
+        })}
+        <div ref={endRef}/>
+      </div>
+
+      {/* Input + chips */}
+      <div style={{padding:'8px 14px 8px'}}>
+        {!listening && (
+          <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:8,paddingBottom:2,scrollbarWidth:'none'}}>
+            {inWorkout?['Increase weight','Skip set','End session','How do I feel?']:['Log a run','Swap lift','Progress','Why?'].map(c=>(
+              <button key={c} onClick={()=>send(c)} className="btn" style={{fontSize:11,padding:'5px 10px',borderRadius:99,background:panel,border:'1px solid rgba(255,255,255,.06)',color:'#9ca3af',whiteSpace:'nowrap',flexShrink:0}}>{c}</button>
+            ))}
+          </div>
+        )}
+        {listening ? (
+          <div style={{background:panel,border:`1px solid ${lime}44`,borderRadius:22,padding:'14px 18px',display:'flex',alignItems:'center',gap:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:2,flex:1}}>
+              {Array.from({length:28}).map((_,i)=><div key={i} style={{width:2,height:Math.abs(Math.sin(i*.5)*16)+4,background:lime,borderRadius:2,animation:`wave 0.8s ease-in-out ${i*.05}s infinite`}}/>)}
+            </div>
+            <div className="mono" style={{fontSize:11,color:lime,letterSpacing:1,fontWeight:700}}>0:03</div>
+          </div>
+        ) : (
+          <div style={{display:'flex',gap:6,alignItems:'center',background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:22,padding:'5px 5px 5px 14px'}}>
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send(input)} placeholder="Message or press mic…" style={{flex:1,background:'transparent',border:'none',outline:'none',color:ink,fontSize:13}}/>
+            <button onClick={()=>send(input)} className="btn" style={{width:32,height:32,borderRadius:99,background:input?lime:'rgba(255,255,255,.08)',color:input?'#000':dim,fontWeight:700}}>↑</button>
+          </div>
+        )}
+      </div>
+      <TabBar active="chat" onChange={()=>{}} listening={listening} onMic={()=>setListening(l=>!l)}/>
+    </>
+  );
+};
+
+// ——— LOG VIEW (read-only transcript) ———
+const Log = () => {
+  const sessions = [
+    {d:'THU · TODAY',t:'Push (landmine)',s:'In progress',pr:false,c:lime},
+    {d:'TUE · 22 APR',t:'Pull day',s:'5,820 lb · 45m',pr:true},
+    {d:'SUN · 20 APR',t:'Legs',s:'8,100 lb · 52m'},
+    {d:'FRI · 18 APR',t:'Push',s:'5,400 lb · 43m'},
+    {d:'WED · 16 APR',t:'Pull',s:'5,620 lb · 41m'},
+  ];
+  return (
+    <>
+      <div style={{flex:1,overflowY:'auto',padding:'50px 18px 20px'}}>
+        <div style={{fontSize:10,color:dim,letterSpacing:.8,fontWeight:700,marginBottom:4}}>SESSION LOG</div>
+        <div style={{fontSize:26,fontWeight:700,letterSpacing:-1,marginBottom:16}}>24 sessions · 7 weeks</div>
+        {sessions.map((s,i)=>(
+          <div key={i} style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:14,padding:'12px 14px',marginBottom:6}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:10,color:s.c||dim,fontWeight:700,letterSpacing:.6}}>{s.d}</div>
+                <div style={{fontSize:14,fontWeight:600,marginTop:2}}>{s.t}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:11,color:dim}}>{s.s}</div>
+                {s.pr && <div style={{fontSize:9,color:lime,fontWeight:700,letterSpacing:.5,marginTop:2}}>◆ PR</div>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+};
+
+// ——— RINGS ———
+const Rings = () => {
+  const data = [['LIFT VOLUME','12,400','14,500 lb',lime,.86],['SESSIONS','3','5 this week','#ff2d95',.6],['CARDIO','14','30 km','#00d4ff',.47]];
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'50px 18px 20px'}}>
+      <div style={{fontSize:10,color:dim,letterSpacing:.8,fontWeight:700,marginBottom:4}}>RINGS · WK 7</div>
+      <div style={{fontSize:26,fontWeight:700,letterSpacing:-1,marginBottom:16}}>Week standing</div>
+
+      {/* Concentric rings */}
+      <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
+        <svg width="220" height="220" viewBox="0 0 220 220">
+          {data.map(([,,,c,p],i)=>{
+            const r = 95-i*22;
+            const C = 2*Math.PI*r;
+            return <g key={i}>
+              <circle cx="110" cy="110" r={r} fill="none" stroke={c} strokeOpacity=".15" strokeWidth="14"/>
+              <circle cx="110" cy="110" r={r} fill="none" stroke={c} strokeWidth="14" strokeDasharray={`${C*p} ${C}`} strokeLinecap="round" transform={`rotate(-90 110 110)`}/>
+            </g>;
+          })}
+        </svg>
+      </div>
+
+      {data.map(([l,v,t,c,p])=>(
+        <div key={l} style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:14,padding:14,marginBottom:6,display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:8,height:40,background:c,borderRadius:4}}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:c,fontWeight:700,letterSpacing:.5}}>{l}</div>
+            <div style={{fontSize:18,fontWeight:800,letterSpacing:-.5,marginTop:1}}>{v} <span style={{color:dim,fontSize:12,fontWeight:500}}>/ {t}</span></div>
+          </div>
+          <div className="mono" style={{fontSize:16,fontWeight:800,color:c}}>{Math.round(p*100)}%</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ——— SETTINGS ———
+const Settings = () => (
+  <div style={{flex:1,overflowY:'auto',padding:'50px 18px 20px'}}>
+    <div style={{fontSize:10,color:dim,letterSpacing:.8,fontWeight:700,marginBottom:4}}>ACCOUNT</div>
+    <div style={{fontSize:26,fontWeight:700,letterSpacing:-1,marginBottom:16}}>Settings</div>
+
+    <div style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:16,padding:14,marginBottom:12,display:'flex',gap:12,alignItems:'center'}}>
+      <div style={{width:44,height:44,borderRadius:99,background:lime,color:'#000',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18}}>K</div>
+      <div><div style={{fontSize:14,fontWeight:600}}>Kalani</div><div style={{fontSize:11,color:dim}}>Peak · wk 7</div></div>
+    </div>
+
+    <div style={{fontSize:10,color:dim,fontWeight:700,letterSpacing:.8,padding:'4px 4px 6px'}}>COACH</div>
+    <div style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:14,padding:14,marginBottom:6}}>
+      <div style={{fontSize:11,color:ink,marginBottom:8,fontWeight:500}}>Voice</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+        {['Warm','Direct','Playful','Scientific'].map((v,i)=>(
+          <div key={v} style={{fontSize:11,padding:'6px 12px',borderRadius:99,background:i===1?lime:'rgba(255,255,255,.04)',color:i===1?'#000':dim,fontWeight:600,border:'1px solid '+(i===1?lime:'rgba(255,255,255,.06)')}}>{v}</div>
+        ))}
+      </div>
+    </div>
+
+    <div style={{fontSize:10,color:dim,fontWeight:700,letterSpacing:.8,padding:'8px 4px 6px'}}>APPEARANCE</div>
+    <div style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:14,padding:14,marginBottom:12}}>
+      <div style={{fontSize:11,color:ink,marginBottom:8,fontWeight:500}}>Accent</div>
+      <div style={{display:'flex',gap:10}}>
+        {['#c8ff00','#ff2d95','#00d4ff','#ff9f0a','#a78bfa'].map((c,i)=>(
+          <div key={c} style={{width:40,height:40,borderRadius:99,background:c,border:i===0?`3px solid ${ink}`:`3px solid transparent`,boxShadow:i===0?`0 0 0 2px ${c}`:'none',cursor:'pointer'}}/>
+        ))}
+      </div>
+    </div>
+
+    {['Units — lb / km','Rest — 2:00','Week start — Mon','Mic sensitivity','Haptics — on','Export'].map(l => (
+      <div key={l} style={{background:panel,border:'1px solid rgba(255,255,255,.06)',borderRadius:12,padding:'13px 14px',marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+        <span style={{fontSize:13,fontWeight:500}}>{l.split(' — ')[0]}</span>
+        <span style={{fontSize:11,color:dim}}>{l.split(' — ')[1]||'›'}</span>
+      </div>
+    ))}
+  </div>
+);
+
+// ——— APP ———
+const App = () => {
+  const [tab,setTab] = React.useState('chat');
+  const [listening,setListening] = React.useState(false);
+  return (
+    <>
+      <div className="phone">
+        <StatusBar/>
+        {tab==='chat'?<Chat/>:
+         <>
+           {tab==='log' && <Log/>}
+           {tab==='rings' && <Rings/>}
+           {tab==='settings' && <Settings/>}
+           <TabBar active={tab} onChange={setTab} listening={listening} onMic={()=>{setTab('chat');setListening(l=>!l);}}/>
+         </>
+        }
+        {tab==='chat' && false}
+      </div>
+      <div className="caption">
+        <b style={{color:lime}}>04 · The Dialogue</b><br/>
+        Coach is the whole app. Type, tap chips, or hold the mic (center tab) — voice and text are peers. Sets, rings, plans all appear inline as cards. Tap <b>Start session</b> on the plan card to watch the chat morph into a live log. <a href="index-previews.html" style={{color:lime,textDecoration:'none'}}>← all four</a>
+      </div>
+    </>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
