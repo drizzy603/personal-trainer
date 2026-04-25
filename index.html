@@ -15,7 +15,9 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#0b0b0d;--card:#16161a;--card2:#1f1f24;--border:rgba(255,255,255,.07);
-  --accent:#c8ff00;--green:#c8ff00;--yellow:#ffd60a;
+  --accent:#c8ff00;--accent-ink:#000;
+  --ring1:#c8ff00;--ring2:#ff2d95;--ring3:#00d4ff;
+  --green:#c8ff00;--yellow:#ffd60a;
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
   --text:#fafafa;--muted:#525259;--lite:#9ca3af;
   --shadow:none;
@@ -514,7 +516,7 @@ select option{background:var(--bg);}
 </div>
 <nav id="tabs">
   <button class="tab active" data-tab="log" onclick="switchTab('log')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>Log
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>Today
   </button>
   <button class="tab" data-tab="progress" onclick="switchTab('progress')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Progress
@@ -552,6 +554,7 @@ var logHistExpanded = {}; // {exName: bool} — exercise history panel open
 var logSupersets    = {}; // {idx: true} = exercises[idx] and exercises[idx+1] are a superset pair
 var currentWeek   = 1;
 var logSubTab        = 'workout';
+var logView          = 'today'; // 'today' (dashboard) | 'workout' (exercise rows)
 var logSportType     = 'Cycling';
 var logCompletedSets = {};
 var currentTheme     = 'dark';
@@ -1401,7 +1404,7 @@ function checkAndUpdatePRs(exercises) {
 var RAW_STRING_KEYS = ['kt_run_goal'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_accent'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1427,7 +1430,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_accent'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         RAW_STRING_KEYS.forEach(function(k){
@@ -1451,7 +1454,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(function(t){
     t.classList.toggle('active', t.getAttribute('data-tab')===tab);
   });
-  if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
+  if(tab==='log'&&logSubTab==='workout'&&logView==='workout') requestWakeLock(); else releaseWakeLock();
   render();
 }
 
@@ -1774,8 +1777,192 @@ function renderWeekHeader() {
 // ── LOG ───────────────────────────────────────────────────────────────────────
 function switchLogSub(sub) {
   logSubTab = sub;
-  if(sub==='workout') requestWakeLock(); else releaseWakeLock();
+  if(sub==='workout'&&logView==='workout') requestWakeLock(); else releaseWakeLock();
   render();
+}
+
+// Compute weekly totals for the ring hero (Mon→now window)
+function _weekTotals(){
+  var mon=getMondayISO();
+  var sessions=getSessions().filter(function(s){return s.date>=mon;});
+  var runs=getRuns().filter(function(r){return r.date>=mon;});
+  var lift=0;
+  sessions.forEach(function(s){
+    (s.exercises||[]).forEach(function(ex){ lift+=calcVolume([ex]); });
+  });
+  var km=runs.reduce(function(a,r){return a+(parseFloat(r.distance)||0);},0);
+  return {lift:lift, sess:sessions.length, cardio:km, sessions:sessions, runs:runs};
+}
+function getRingTargets(){
+  return {
+    lift:   parseFloat(localStorage.getItem('kt_target_lift'))||14500,
+    sess:   parseFloat(localStorage.getItem('kt_target_sess'))||5,
+    cardio: parseFloat(localStorage.getItem('kt_target_cardio'))||30
+  };
+}
+function setRingTarget(k,v){ if(v>0) localStorage.setItem('kt_target_'+k,v); else localStorage.removeItem('kt_target_'+k); render(); }
+function editRingTarget(k){
+  var labels={lift:'Weekly lift volume (lb)',sess:'Sessions per week',cardio:'Weekly cardio (km)'};
+  var cur=getRingTargets()[k];
+  var v=prompt(labels[k]||'Target',cur);
+  if(v==null) return;
+  var n=parseFloat(v);
+  if(!(n>0)){ showToast('Enter a positive number'); return; }
+  setRingTarget(k,n);
+}
+
+function renderTodayDashboard(){
+  var wd=getWkData();
+  var totals=_weekTotals();
+  var targets=getRingTargets();
+  var rc=ringColors();
+  var rings=[
+    {label:'LIFT',   value:totals.lift,   target:targets.lift,   unit:'lb', color:rc[0]},
+    {label:'SESS',   value:totals.sess,   target:targets.sess,   unit:'',   color:rc[1]},
+    {label:'CARDIO', value:totals.cardio, target:targets.cardio, unit:'km', color:rc[2]}
+  ];
+  var h=new Date().getHours();
+  var greeting=h<12?'Good morning':h<18?'Good afternoon':'Good evening';
+  var cr=getCustomRoutine();
+  var nm=cr&&cr.name?String(cr.name).split(' ')[0].replace(/[^A-Za-z]/g,'').slice(0,14):'';
+  if(nm&&/^(Custom|My|The|A|Programme|Plan|Week)$/i.test(nm)) nm='';
+  var blockLabel=wd&&wd.bName?String(wd.bName).charAt(0)+String(wd.bName).slice(1).toLowerCase():'';
+  var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var todayName=days[new Date().getDay()];
+  var eyebrow=todayName+(blockLabel?' · '+blockLabel:'')+' · Wk '+currentWeek;
+
+  // Ring hero card
+  var ringsHtml='<div style="background:var(--card);border:1px solid var(--border);border-radius:24px;padding:18px;margin:14px 0;display:flex;gap:14px;align-items:center;">'+
+    '<div style="flex-shrink:0;">'+svgRings(rings,{size:140,thick:12,stack:4})+'</div>'+
+    '<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;">';
+  rings.forEach(function(r){
+    var v=r.label==='CARDIO'?(Math.round(r.value*10)/10):Math.round(r.value);
+    ringsHtml+='<div>'+
+      '<div style="font-size:9px;font-weight:800;letter-spacing:.6px;color:'+r.color+';">'+r.label+'</div>'+
+      '<div style="font-size:14px;font-weight:700;margin-top:1px;">'+v.toLocaleString()+
+        '<span style="font-size:10px;color:var(--muted);font-weight:500;margin-left:3px;">/'+r.target.toLocaleString()+(r.unit?' '+r.unit:'')+'</span>'+
+      '</div>'+
+    '</div>';
+  });
+  ringsHtml+='</div></div>';
+
+  // Big CTA — matches prototype's lime accent button
+  var next=getNextSession();
+  var ctaLabel=next==='Run'?'Log your run':'Start workout';
+  var ctaMeta='';
+  if(next==='Run'){
+    var rn=wd&&(wd.runTue||wd.runSat);
+    ctaMeta=rn?((rn.km?rn.km+' km · ':'')+(rn.type||'easy')):'easy run';
+  } else {
+    var ex=getSessionExercises(next);
+    var mainName='';
+    (ex||[]).forEach(function(e){ if(e.isMain) mainName=e.name; });
+    ctaMeta=(ex?ex.length:0)+' lifts · ~45 min'+(mainName?' · '+mainName.split(' ').slice(-2).join(' ')+' main':'');
+  }
+  var ctaOnClick=next==='Run'?'switchLogSub(\'run\')':'startWorkoutView()';
+  var cta='<button onclick="'+ctaOnClick+'" style="width:100%;background:var(--accent);color:var(--accent-ink);border:none;border-radius:22px;padding:18px 22px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:14px;margin-bottom:12px;font-family:inherit;">'+
+    '<div style="flex:1;min-width:0;">'+
+      '<div style="font-size:10px;font-weight:800;letter-spacing:.6px;opacity:.6;">TODAY · '+next.toUpperCase()+'</div>'+
+      '<div style="font-size:20px;font-weight:700;letter-spacing:-.3px;margin-top:2px;">'+ctaLabel+'</div>'+
+      '<div style="font-size:12px;font-weight:600;opacity:.7;margin-top:2px;">'+ctaMeta+'</div>'+
+    '</div>'+
+    '<div style="font-size:22px;font-weight:700;">→</div>'+
+  '</button>';
+
+  // Week strip — Mon..Sun of current week
+  var mondayISO=getMondayISO();
+  var dowShort=['M','T','W','T','F','S','S'];
+  var todayISOStr=todayISO();
+  var weekSessionsByDate={};
+  totals.sessions.forEach(function(s){weekSessionsByDate[s.date]=true;});
+  totals.runs.forEach(function(r){weekSessionsByDate[r.date]=true;});
+  var weekStrip='<div style="display:flex;gap:6px;margin-bottom:14px;">';
+  for(var i=0;i<7;i++){
+    var d=addDays(mondayISO,i);
+    var dt=new Date(d+'T00:00:00');
+    var dayNum=dt.getDate();
+    var isToday=d===todayISOStr;
+    var done=!!weekSessionsByDate[d]&&!isToday;
+    var future=d>todayISOStr;
+    var bg=isToday?'var(--accent)':'var(--card)';
+    var col=isToday?'var(--accent-ink)':future?'var(--muted)':'var(--text)';
+    var borderCol=isToday?'var(--accent)':'var(--border)';
+    weekStrip+='<div style="flex:1;background:'+bg+';color:'+col+';border:1px solid '+borderCol+';border-radius:12px;padding:8px 0;text-align:center;">'+
+      '<div style="font-size:9px;font-weight:700;opacity:.75;">'+dowShort[i]+'</div>'+
+      '<div style="font-size:13px;font-weight:700;margin-top:2px;">'+dayNum+'</div>'+
+      (done?'<div style="width:3px;height:3px;background:var(--accent);border-radius:99px;margin:3px auto 0;"></div>':'')+
+    '</div>';
+  }
+  weekStrip+='</div>';
+
+  // Quick actions
+  var qa='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'+
+    '<button onclick="switchTab(\'coach\')" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;text-align:left;cursor:pointer;color:var(--text);font-family:inherit;">'+
+      '<div style="font-size:18px;margin-bottom:4px;">💬</div>'+
+      '<div style="font-size:12px;font-weight:600;">Ask coach</div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px;">Pre-session brief</div>'+
+    '</button>'+
+    '<button onclick="switchLogSub(\'run\')" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;text-align:left;cursor:pointer;color:var(--text);font-family:inherit;">'+
+      '<div style="font-size:18px;margin-bottom:4px;">🏃</div>'+
+      '<div style="font-size:12px;font-weight:600;">Log run</div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px;">Cardio · '+(Math.round(totals.cardio*10)/10)+'/'+targets.cardio+' km</div>'+
+    '</button>'+
+  '</div>';
+
+  // Last session
+  var last=null;
+  var allSess=getSessions();
+  var allRuns=getRuns();
+  if(allSess.length&&(!allRuns.length||allSess[0].date>=allRuns[0].date)) last={kind:'lift',data:allSess[0]};
+  else if(allRuns.length) last={kind:'run',data:allRuns[0]};
+  var lastCard='';
+  if(last){
+    var d=new Date(last.data.date+'T00:00:00');
+    var diff=Math.floor((new Date(todayISOStr+'T00:00:00')-d)/86400000);
+    var whenLabel=diff===0?'TODAY':diff===1?'YESTERDAY':days[d.getDay()].slice(0,3).toUpperCase();
+    var title,meta;
+    if(last.kind==='lift'){
+      title=last.data.type+' day · '+((last.data.exercises||[]).length)+' lifts';
+      var vol=0; (last.data.exercises||[]).forEach(function(ex){ vol+=calcVolume([ex]); });
+      meta=Math.round(vol).toLocaleString()+' lb total';
+    } else {
+      title='Run · '+(last.data.distance||0)+' km';
+      meta=(last.data.time||'')+(last.data.type?' · '+last.data.type:'');
+    }
+    lastCard='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-top:2px;">'+
+      '<div style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:4px;">LAST SESSION · '+whenLabel+'</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;">'+
+        '<div>'+
+          '<div style="font-size:14px;font-weight:600;">'+title+'</div>'+
+          '<div style="font-size:11px;color:var(--lite);margin-top:2px;">'+meta+'</div>'+
+        '</div>'+
+        '<div style="color:var(--muted);">›</div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  return '<div class="screen-hd" style="align-items:flex-start;">'+
+      '<div>'+
+        '<div class="screen-eyebrow">'+eyebrow+'</div>'+
+        '<div class="screen-title" style="font-size:30px;letter-spacing:-1px;">'+greeting+(nm?', '+nm:'')+'</div>'+
+      '</div>'+
+    '</div>'+
+    ringsHtml+cta+weekStrip+qa+lastCard;
+}
+
+function startWorkoutView(){
+  logView='workout';
+  if(logSubTab!=='workout') logSubTab='workout';
+  requestWakeLock();
+  render();
+  setTimeout(function(){var s=document.getElementById('screen'); if(s)s.scrollTop=0;},10);
+}
+function backToToday(){
+  logView='today';
+  logSubTab='workout';
+  releaseWakeLock();
+  render();
+  setTimeout(function(){var s=document.getElementById('screen'); if(s)s.scrollTop=0;},10);
 }
 
 function renderLog() {
@@ -1783,6 +1970,11 @@ function renderLog() {
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var todayName = days[new Date().getDay()];
   var _crL=getCustomRoutine(); var _avL=_crL&&_crL.name?_crL.name[0].toUpperCase():'?';
+
+  // Default view on Log tab = Today dashboard
+  if (logSubTab === 'workout' && logView === 'today') {
+    return renderTodayDashboard();
+  }
 
   var header = '<div class="screen-hd">'+
     '<div>'+
@@ -1792,6 +1984,10 @@ function renderLog() {
     '<div class="screen-avatar">'+_avL+'</div>'+
   '</div>';
 
+  var backBtn = (logSubTab!=='workout'||logView==='workout')
+    ? '<button onclick="backToToday()" style="background:none;border:none;color:var(--lite);font-size:13px;font-weight:600;cursor:pointer;padding:4px 0;margin-bottom:8px;">← Today</button>'
+    : '';
+
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
     '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">Run</button>'+
@@ -1799,12 +1995,14 @@ function renderLog() {
     '</div>';
 
   if (logSubTab === 'run') {
-    return header + renderWeekHeader() + subBar + renderRunsSection();
+    return header + backBtn + renderWeekHeader() + subBar + renderRunsSection();
   }
 
   if (logSubTab === 'sport') {
-    return header + renderWeekHeader() + subBar + renderSportSection();
+    return header + backBtn + renderWeekHeader() + subBar + renderSportSection();
   }
+
+  header = backBtn + header;
 
   // Workout sub-tab (default)
   if (currentWeek===getTotalWeeks() && logSession==='Legs') {
@@ -3430,7 +3628,145 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  return progressHeader+stats+goals+liftsBlock+rmSection+benchChart+squatChart+runChart+volCharts+renderSportProgress()+renderBodySection()+calHTML;
+  // ── Ring summary (new, design-system-aligned) ──────────────────────────────
+  var totals=_weekTotals();
+  var targets=getRingTargets();
+  var rc=ringColors();
+  var ringHero=(function(){
+    var rings=[
+      {label:'LIFT',   value:totals.lift,   target:targets.lift,   color:rc[0]},
+      {label:'SESS',   value:totals.sess,   target:targets.sess,   color:rc[1]},
+      {label:'CARDIO', value:totals.cardio, target:targets.cardio, color:rc[2]}
+    ];
+    var h='<div style="display:flex;justify-content:center;padding:12px 0 4px;">'+svgRings(rings,{size:220,thick:14,stack:6})+'</div>';
+    h+='<div style="display:flex;justify-content:center;gap:22px;margin-bottom:18px;">';
+    rings.forEach(function(r){
+      var pct=Math.round(Math.min(1,(r.value||0)/(r.target||1))*100);
+      h+='<div style="text-align:center;">'+
+        '<div style="font-size:9px;font-weight:800;letter-spacing:.6px;color:'+r.color+';">'+r.label+'</div>'+
+        '<div style="font-size:18px;font-weight:700;letter-spacing:-.3px;">'+pct+'%</div>'+
+      '</div>';
+    });
+    return h+'</div>';
+  })();
+
+  // KPI row
+  var totalSess=sessions.length;
+  var streakWks=calcStreak(sessions);
+  var totalVol=0;
+  sessions.forEach(function(s){(s.exercises||[]).forEach(function(ex){totalVol+=calcVolume([ex]);});});
+  var best1RM=0;
+  sessions.forEach(function(s){
+    (s.exercises||[]).forEach(function(ex){
+      var w=parseFloat(ex.weight)||0; if(!w) return;
+      var repsArr=Array.isArray(ex.reps)?ex.reps:[ex.reps];
+      var avgReps=repsArr.reduce(function(a,b){return a+(parseFloat(b)||0);},0)/(repsArr.length||1);
+      var rm=Math.round(w*(1+avgReps/30));
+      if(rm>best1RM) best1RM=rm;
+    });
+  });
+  function _kCompact(n){ if(n>=1000) return (Math.round(n/100)/10).toString().replace(/\.0$/,'')+'k'; return String(n); }
+  var kpiRow='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;">'+
+    [['SESS',String(totalSess),'total'],
+     ['STREAK',streakWks?String(streakWks):'—',streakWks?'wk':''],
+     ['VOL',_kCompact(totalVol),'lb'],
+     ['1RM',best1RM?String(best1RM):'—','lb']].map(function(row){
+      return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 8px;text-align:center;">'+
+        '<div style="font-size:8px;color:var(--muted);font-weight:700;letter-spacing:.5px;">'+row[0]+'</div>'+
+        '<div style="font-size:18px;font-weight:800;letter-spacing:-.5px;margin-top:2px;">'+row[1]+'</div>'+
+        '<div style="font-size:9px;color:var(--accent);font-family:\'JetBrains Mono\',monospace;">'+row[2]+'</div>'+
+      '</div>';
+    }).join('')+'</div>';
+
+  // 12-week activity heatmap (12 cols × 7 days)
+  var heatmap=(function(){
+    // Build a date→count map for sessions + runs + sports in last 84 days
+    var daySet={};
+    sessions.forEach(function(s){daySet[s.date]=(daySet[s.date]||0)+1;});
+    runs.forEach(function(r){daySet[r.date]=(daySet[r.date]||0)+1;});
+    getSportLogs().forEach(function(sp){daySet[sp.date]=(daySet[sp.date]||0)+1;});
+    var cells='';
+    var today=new Date(todayISO()+'T00:00:00');
+    // Anchor at 12-week block (84 days ago → today)
+    var start=new Date(today); start.setDate(start.getDate()-83);
+    // Columns = week index, Rows = day-of-week (Mon=0 … Sun=6)
+    // We want 12 cols × 7 rows laid out via CSS grid. Render row-major: Mon row first.
+    // Simpler: render in column-major order and use CSS grid-auto-flow:column.
+    var sessionCount=0;
+    for(var col=0;col<12;col++){
+      for(var row=0;row<7;row++){
+        var d=new Date(start); d.setDate(start.getDate()+col*7+row);
+        if(d>today) { cells+='<div></div>'; continue; }
+        var key=d.toISOString().slice(0,10);
+        var count=daySet[key]||0;
+        if(count) sessionCount++;
+        var intensity=Math.min(1,count*0.4);
+        var bg=intensity===0?'var(--card2)':'var(--accent)';
+        var opacity=intensity===0?1:(.25+intensity*.75);
+        cells+='<div style="aspect-ratio:1;background:'+bg+';opacity:'+opacity+';border-radius:3px;"></div>';
+      }
+    }
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px;">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:10px;">'+
+        '<span style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;">ACTIVITY · 12 WK</span>'+
+        '<span style="font-size:10px;color:var(--muted);">'+sessionCount+' session'+(sessionCount===1?'':'s')+'</span>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(12,1fr);grid-auto-flow:column;grid-template-rows:repeat(7,1fr);gap:3px;">'+cells+'</div>'+
+    '</div>';
+  })();
+
+  // Main lifts — latest working weight vs goal
+  var mainLifts=(function(){
+    var bench=bestBench||0;
+    var squat=bestSquat||0;
+    var bg=getBenchGoal(), sg=getSquatGoal();
+    var rows='';
+    function row(name,cur,goal,c){
+      var pct=goal>0?Math.min(100,Math.round((cur/goal)*100)):0;
+      var delta=goal>0&&cur>0?('+'+Math.max(0,goal-cur)+' lb'):'';
+      rows+='<div style="margin-bottom:12px;">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">'+
+          '<span style="font-size:13px;font-weight:600;">'+name+'</span>'+
+          '<span style="font-size:11px;font-weight:700;color:'+c+';font-family:\'JetBrains Mono\',monospace;">'+delta+'</span>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<span style="font-size:10px;color:var(--muted);width:48px;">'+(cur||'—')+(cur?' lb':'')+'</span>'+
+          '<div style="flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;position:relative;">'+
+            '<div style="position:absolute;inset:0;width:'+pct+'%;background:'+c+';border-radius:2px;"></div>'+
+          '</div>'+
+          '<span style="font-size:11px;font-weight:700;width:60px;text-align:right;">'+(goal||'—')+(goal?' lb':'')+'</span>'+
+        '</div>'+
+      '</div>';
+    }
+    row('Bench',bench,bg,rc[0]);
+    row('Squat',squat,sg,rc[2]);
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px;">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:10px;">MAIN LIFTS · PROGRESS TO GOAL</div>'+
+      rows+
+    '</div>';
+  })();
+
+  return progressHeader+ringHero+kpiRow+heatmap+mainLifts+stats+goals+liftsBlock+rmSection+benchChart+squatChart+runChart+volCharts+renderSportProgress()+renderBodySection()+calHTML;
+}
+
+// Activity-style concentric rings. values = [{value, target, color}] in outer-to-inner order.
+function svgRings(values, opts){
+  opts=opts||{};
+  var size=opts.size||180, thick=opts.thick||14, stack=opts.stack==null?6:opts.stack;
+  var r1=size/2 - thick/2;
+  var r2=r1 - thick - stack;
+  var r3=r2 - thick - stack;
+  var radii=[r1,r2,r3];
+  var out='<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">';
+  for(var i=0;i<values.length&&i<3;i++){
+    var v=values[i]||{};
+    var r=radii[i];
+    var C=2*Math.PI*r;
+    var pct=Math.max(0,Math.min(1,(v.value||0)/(v.target||1)));
+    out+='<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="'+v.color+'" stroke-opacity=".15" stroke-width="'+thick+'"/>';
+    out+='<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+r+'" fill="none" stroke="'+v.color+'" stroke-width="'+thick+'" stroke-dasharray="'+(C*pct)+' '+C+'" stroke-linecap="round" transform="rotate(-90 '+(size/2)+' '+(size/2)+')" style="transition:stroke-dasharray .8s ease"/>';
+  }
+  return out+'</svg>';
 }
 
 function svgChart(data,color,goalVal) {
@@ -4425,7 +4761,10 @@ function renderCoach(){
   var modelLabel=isHaiku?'Haiku':'Sonnet';
   var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
   var _crC=getCustomRoutine(); var _avC=_crC&&_crC.name?_crC.name[0].toUpperCase():'?';
-  var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">'+_avC+'</div></div>';
+  var header='<div class="screen-hd"><div>'+
+    '<div class="screen-eyebrow" style="text-transform:uppercase;letter-spacing:.8px;">Claude '+modelLabel+'</div>'+
+    '<div class="screen-title" style="font-size:30px;letter-spacing:-1px;">Coach</div>'+
+    '</div><div class="screen-avatar">'+_avC+'</div></div>';
 
   // ── No API key: setup screen ─────────────────────────────────────────────
   if(!apiKey){
@@ -4540,10 +4879,34 @@ function renderCoach(){
 
   var CHIPS=intakeMode?[]:getCoachChips();
 
+  // Live context pills — surface the coach's actual system context at a glance
+  var contextPills='';
+  if(!intakeMode){
+    var totals4=_weekTotals();
+    var prs4=getPRs();
+    var benchPR=prs4['Barbell Bench Press']||0;
+    var streak4=calcStreak(getSessions());
+    var ctxItems=[];
+    if(wd3)ctxItems.push('Wk '+currentWeek+(wd3.bName?' · '+String(wd3.bName).charAt(0)+String(wd3.bName).slice(1).toLowerCase():''));
+    if(benchPR)ctxItems.push('Bench '+benchPR);
+    if(streak4)ctxItems.push('Streak '+streak4);
+    if(totals4.sess)ctxItems.push(totals4.sess+' sess/wk');
+    if(ctxItems.length){
+      contextPills='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin-bottom:14px;">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.5px;margin-bottom:8px;">LIVE CONTEXT</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+
+          ctxItems.map(function(t){
+            return '<div style="font-size:10px;font-weight:600;padding:4px 9px;border-radius:99px;background:var(--card2);color:var(--accent);border:1px solid rgba(200,255,0,.2);">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+          }).join('')+
+        '</div>'+
+      '</div>';
+    }
+  }
+
   // ── Build messages HTML ───────────────────────────────────────────────────
   var msgsHTML='';
   if(!coachMessages.length&&!streamingContent&&!intakeMode){
-    msgsHTML='<div style="padding:20px 0 12px;">'+
+    msgsHTML=contextPills+'<div style="padding:4px 0 12px;">'+
       '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.4px;">Ask anything</div>'+
       '<div style="font-size:14px;color:var(--lite);">Your training, recovery, and goals</div>'+
     '</div>'+
@@ -4568,7 +4931,7 @@ function renderCoach(){
     }).join('')+
     '</div>';
   }else{
-    var bubbles='';
+    var bubbles=contextPills;
     coachMessages.forEach(function(m){
       if(m._toolResults) return; // never render tool_result payloads
       var text=m.content;
@@ -4705,6 +5068,39 @@ function setAutoTheme(){
   currentTheme='auto';
   render();
 }
+
+// ── Accent system (five colors, independent of theme) ─────────────────────────
+var ACCENTS={
+  lime:   {id:'lime',   name:'Lime',   hex:'#c8ff00', ink:'#000'},
+  amber:  {id:'amber',  name:'Amber',  hex:'#ff9f0a', ink:'#000'},
+  cyan:   {id:'cyan',   name:'Cyan',   hex:'#00d4ff', ink:'#001822'},
+  magenta:{id:'magenta',name:'Magenta',hex:'#ff2d95', ink:'#1a001a'},
+  violet: {id:'violet', name:'Violet', hex:'#a78bfa', ink:'#140033'}
+};
+var RING_PALETTES={
+  lime:   ['#c8ff00','#ff2d95','#00d4ff'],
+  amber:  ['#ff9f0a','#ff2d95','#00d4ff'],
+  cyan:   ['#00d4ff','#c8ff00','#ff2d95'],
+  magenta:['#ff2d95','#c8ff00','#00d4ff'],
+  violet: ['#a78bfa','#c8ff00','#ff9f0a']
+};
+var currentAccent='lime';
+function getAccent(){ return ACCENTS[currentAccent]||ACCENTS.lime; }
+function ringColors(){ return RING_PALETTES[currentAccent]||RING_PALETTES.lime; }
+function applyAccent(id){
+  var a=ACCENTS[id]; if(!a) return;
+  currentAccent=id;
+  localStorage.setItem('kt_accent',id);
+  var r=document.documentElement;
+  r.style.setProperty('--accent',a.hex);
+  r.style.setProperty('--accent-ink',a.ink);
+  r.style.setProperty('--green',a.hex);
+  var rings=RING_PALETTES[id];
+  r.style.setProperty('--ring1',rings[0]);
+  r.style.setProperty('--ring2',rings[1]);
+  r.style.setProperty('--ring3',rings[2]);
+  if(document.getElementById('screen').innerHTML) render();
+}
 function openWorkflow(){
   var el=document.getElementById('wf-view');
   if(!el)return;
@@ -4758,16 +5154,63 @@ function renderSettings() {
   var userName=cr&&cr.name?cr.name:'You';
   var userInitial=userName&&userName!=='You'?userName[0].toUpperCase():'?';
 
-  var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
+  var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title" style="font-size:30px;letter-spacing:-1px;">Settings</div></div></div>'+
     '<div class="profile-row">'+
-      '<div class="profile-ava">'+userInitial+'</div>'+
+      '<div class="profile-ava" style="background:var(--accent);color:var(--accent-ink);">'+userInitial+'</div>'+
       '<div>'+
         '<div class="profile-name">'+userName+'</div>'+
         '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+'</div>'+
       '</div>'+
     '</div>';
 
-  return header+
+  // ── Appearance: accent picker + theme tiles ───────────────────────────────
+  var accentPicker='';
+  ['lime','amber','cyan','magenta','violet'].forEach(function(id){
+    var a=ACCENTS[id];
+    var sel=currentAccent===id;
+    accentPicker+='<button onclick="applyAccent(\''+id+'\')" aria-label="'+a.name+'" style="width:46px;height:46px;border-radius:99px;background:'+a.hex+';border:'+(sel?'3px solid var(--text)':'3px solid transparent')+';cursor:pointer;padding:0;position:relative;'+(sel?'box-shadow:0 0 0 2px '+a.hex+';':'')+'font-family:inherit;">'+
+      (sel?'<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:'+a.ink+';font-size:16px;font-weight:900;">✓</span>':'')+
+    '</button>';
+  });
+  var themeTiles='';
+  [['dark','Dark','#0b0b0d'],['light','Light','#f2f2f7'],['ocean','Ocean','#060f1a'],['sunset','Sunset','#0e0600']].forEach(function(t){
+    var sel=currentTheme===t[0];
+    themeTiles+='<div onclick="applyTheme(\''+t[0]+'\')" style="flex:1;padding:10px 0;background:'+(sel?'var(--card2)':'transparent')+';border:1px solid var(--border);border-radius:10px;text-align:center;cursor:pointer;">'+
+      '<div style="width:20px;height:20px;border-radius:99px;background:'+t[2]+';border:1px solid rgba(255,255,255,.1);margin:0 auto 4px;"></div>'+
+      '<div style="font-size:10px;font-weight:600;color:'+(sel?'var(--text)':'var(--lite)')+';">'+t[1]+'</div>'+
+    '</div>';
+  });
+  var appearanceSection=
+    '<div style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.06em;padding:6px 4px 8px;text-transform:uppercase;">Appearance</div>'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin:0 0 12px;">'+
+      '<div style="font-size:12px;color:var(--lite);margin-bottom:10px;font-weight:500;">Accent color</div>'+
+      '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'+accentPicker+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);">Ring colors auto-adjust from your accent.</div>'+
+      '<div style="height:1px;background:var(--border);margin:14px 0;"></div>'+
+      '<div style="font-size:12px;color:var(--lite);margin-bottom:10px;font-weight:500;">Theme</div>'+
+      '<div style="display:flex;gap:8px;">'+themeTiles+'</div>'+
+    '</div>';
+
+  // ── Daily ring targets ────────────────────────────────────────────────────
+  var targets4=getRingTargets();
+  var rc4=ringColors();
+  var targetRows=[
+    ['lift','Lift', targets4.lift+' lb/wk', rc4[0]],
+    ['sess','Sessions', targets4.sess+' / wk', rc4[1]],
+    ['cardio','Cardio', targets4.cardio+' km/wk', rc4[2]]
+  ].map(function(row,i){
+    return '<div onclick="editRingTarget(\''+row[0]+'\')" style="display:flex;align-items:center;padding:12px 14px;'+(i<2?'border-bottom:1px solid var(--border);':'')+'gap:12px;cursor:pointer;">'+
+      '<div style="width:10px;height:10px;border-radius:99px;background:'+row[3]+';flex-shrink:0;"></div>'+
+      '<div style="flex:1;font-size:13px;font-weight:600;">'+row[1]+'</div>'+
+      '<div style="font-size:12px;color:var(--lite);">'+row[2]+'</div>'+
+      '<div style="color:var(--muted);">›</div>'+
+    '</div>';
+  }).join('');
+  var ringTargetsSection=
+    '<div style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.06em;padding:6px 4px 8px;text-transform:uppercase;">Daily ring targets</div>'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:12px;">'+targetRows+'</div>';
+
+  return header+appearanceSection+ringTargetsSection+
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">Programme</div>'+
@@ -5117,6 +5560,7 @@ if(currentTheme==='auto'){
 } else {
   applyTheme(currentTheme);
 }
+applyAccent(localStorage.getItem('kt_accent')||'lime');
 try{
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){
     if(currentTheme==='auto') applyTheme(e.matches?'dark':'light');
