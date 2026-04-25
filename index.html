@@ -4814,47 +4814,57 @@ render();
       <div class="section-header"><span class="section-num">01</span><h2>Four Screens</h2></div>
       <p>The app has four tabs, each serving a distinct purpose in the training workflow.</p>
       <div class="card-grid">
-        <div class="card"><div class="card-icon">🏋️</div><h3>Log</h3><p>Today's session — exercises, sets, reps, weight and RPE fields ready to log. Run days included.</p></div>
-        <div class="card"><div class="card-icon">📈</div><h3>Progress</h3><p>Charts and PRs across all exercises. See your strength curve, run pace, and bodyweight over 12 weeks.</p></div>
-        <div class="card"><div class="card-icon">💬</div><h3>Coach</h3><p>Claude-powered chat that reads your actual training data — and can update the app directly from conversation.</p></div>
-        <div class="card"><div class="card-icon">⚙️</div><h3>Settings</h3><p>API key, week controls, export/import backup, and this walkthrough.</p></div>
+        <div class="card"><div class="card-icon">🏋️</div><h3>Log</h3><p>Today's session — exercises, sets, reps, weight and RPE fields ready to log. Empty until you build a programme via the AI Coach. Run and sport sub-tabs work independently.</p></div>
+        <div class="card"><div class="card-icon">📈</div><h3>Progress</h3><p>Charts and PRs across all exercises. See your strength curve, run pace, and bodyweight over the full programme.</p></div>
+        <div class="card"><div class="card-icon">💬</div><h3>Coach</h3><p>Claude-powered chat that reads your actual training data — and builds, edits, or regenerates your programme directly from conversation.</p></div>
+        <div class="card"><div class="card-icon">⚙️</div><h3>Settings</h3><p>API key, themes, programme overview, export/import backup, and this walkthrough.</p></div>
       </div>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">02</span><h2>Training Blocks</h2></div>
-      <p>The programme is divided into four periodisation blocks. Each has a distinct colour and training focus.</p>
+      <div class="section-header"><span class="section-num">02</span><h2>Your Programme</h2></div>
+      <p>There's no built-in plan. The first time you open the app the Log tab is empty — the AI Coach builds your programme during a short intake conversation, then it appears in Log automatically.</p>
+      <div class="steps">
+        <div class="step"><div class="step-line"><div class="step-dot">1</div><div class="step-connector"></div></div><div class="step-body"><h3>Start intake</h3><p>Tap <strong>Build my programme</strong> from the empty Log tab or from the Coach tab. The Coach asks ten questions covering goals, frequency, split, equipment, injuries, current strength, experience, running, preferences, and programme length (4–24 weeks).</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">2</div><div class="step-connector"></div></div><div class="step-body"><h3>Programme generated</h3><p>The Coach builds every week of the programme in a single tool call. You see live progress as it commits — exercises, weights, RPE targets, and your personal weekly schedule.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">3</div><div class="step-connector"></div></div><div class="step-body"><h3>Train</h3><p>The Log tab now shows today's session. Run days, rest days, and the cadence are all driven by the schedule the AI built for you.</p></div></div>
+      </div>
+      <p style="margin-top:24px;">Programmes are built around training blocks — common shapes the AI follows:</p>
       <div class="blocks">
         <div class="block-card base"><div class="block-label">Base</div><h3>Foundation</h3><p>Moderate loads, technique focus, establish consistency.</p></div>
-        <div class="block-card build"><div class="block-label">Build</div><h3>Overload</h3><p>Weights increase weekly, RPE climbs toward 8–9.</p></div>
-        <div class="block-card peak"><div class="block-label">Peak</div><h3>Intensity</h3><p>Heaviest loads of the cycle, near-maximal effort.</p></div>
+        <div class="block-card build"><div class="block-label">Hypertrophy</div><h3>Volume</h3><p>Volume + load, muscle building, RPE climbs toward 8.</p></div>
+        <div class="block-card peak"><div class="block-label">Strength / Peak</div><h3>Intensity</h3><p>Heavier loads, lower reps, peaking toward PR attempts.</p></div>
         <div class="block-card deload"><div class="block-label">Deload</div><h3>Recovery</h3><p>Light loads, full range of motion. Let the work sink in.</p></div>
       </div>
-      <p>Each week has three gym sessions — <strong>Push</strong> (Mon), <strong>Pull</strong> (Thu), <strong>Legs</strong> (Fri) — plus two runs (Tue easy / Sat long). Wednesday and Sunday are rest days.</p>
     </div>
     <div class="section">
       <div class="section-header"><span class="section-num">03</span><h2>Logging a Session</h2></div>
-      <p>Tap through each exercise on the Today screen. When you're done, the session saves automatically.</p>
+      <p>Tap through each exercise on the Log tab. When you're done, the session saves to your history.</p>
       <div class="steps">
-        <div class="step"><div class="step-line"><div class="step-dot">1</div><div class="step-connector"></div></div><div class="step-body"><h3>Open Today tab</h3><p>The app shows the correct session for today — Push, Pull, or Legs — based on the current week.</p></div></div>
-        <div class="step"><div class="step-line"><div class="step-dot">2</div><div class="step-connector"></div></div><div class="step-body"><h3>Log each set</h3><p>Enter weight, reps and RPE for each exercise. Tap the checkmark when a set is complete.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">1</div><div class="step-connector"></div></div><div class="step-body"><h3>Open Log tab</h3><p>The default session is whatever your weekly cadence has scheduled for today — Push, Pull, or Legs. You can tap the session pills to switch.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">2</div><div class="step-connector"></div></div><div class="step-body"><h3>Log each set</h3><p>Enter weight and reps for each set. RPE is optional — leave it unrated and history shows <code>—</code> instead of a fake number.</p></div></div>
         <div class="step"><div class="step-line"><div class="step-dot">3</div><div class="step-connector"></div></div><div class="step-body"><h3>PRs detected automatically</h3><p>If you lift more than your previous best, the app flags it as a PR in real time.</p></div></div>
-        <div class="step"><div class="step-line"><div class="step-dot">4</div><div class="step-connector"></div></div><div class="step-body"><h3>Finish session</h3><p>Tap <strong>Complete</strong>. The session is saved and the week advances.</p></div></div>
-        <div class="step"><div class="step-line"><div class="step-dot">5</div><div class="step-connector"></div></div><div class="step-body"><h3>Log your run</h3><p>On run days, enter distance, time, heart rate and run type. Saved the same way.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">4</div><div class="step-connector"></div></div><div class="step-body"><h3>Save session</h3><p>Tap <strong>Save session</strong>. The session is saved to localStorage. When you've completed all three lift sessions for the week, you're prompted to advance to the next week.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">5</div><div class="step-connector"></div></div><div class="step-body"><h3>Log your run or sport</h3><p>Switch to the Run sub-tab to log distance/time/HR, or the Sport sub-tab for cycling, pickleball, swimming, etc.</p></div></div>
       </div>
     </div>
     <div class="section">
       <div class="section-header"><span class="section-num">04</span><h2>Data Storage</h2></div>
       <p>Everything lives in your browser — no server, no account, no sync. Export a JSON backup any time from Settings.</p>
       <div class="data-table">
-        <div class="data-row"><div class="data-key">Sessions</div><div class="data-val">All logged gym sessions with exercises, sets, reps, weights and RPE</div></div>
-        <div class="data-row"><div class="data-key">Runs</div><div class="data-val">Run logs — distance, time, heart rate, type, date</div></div>
+        <div class="data-row"><div class="data-key">kt_routine</div><div class="data-val">Your AI-generated programme — name, weeks (with push/pull/legs/runs per week), and weekPlan (Mon→Sun cadence)</div></div>
+        <div class="data-row"><div class="data-key">kt_routine_backup</div><div class="data-val">Snapshot of the previous routine before the Coach last edited it — powers the Restore Previous button</div></div>
+        <div class="data-row"><div class="data-key">kt_sessions</div><div class="data-val">All logged gym sessions with exercises, sets, reps, weights and RPE</div></div>
+        <div class="data-row"><div class="data-key">kt_runs</div><div class="data-val">Run logs — distance, time, heart rate, type, date</div></div>
+        <div class="data-row"><div class="data-key">kt_sports</div><div class="data-val">Sport activity logs (cycling, pickleball, swimming, etc.)</div></div>
         <div class="data-row"><div class="data-key">kt_weights</div><div class="data-val">Working weights map — exercise name → current target weight in lb</div></div>
         <div class="data-row"><div class="data-key">kt_prs</div><div class="data-val">Personal records — exercise name → max weight ever lifted</div></div>
-        <div class="data-row"><div class="data-key">kt_week</div><div class="data-val">Current week number (1–12)</div></div>
+        <div class="data-row"><div class="data-key">kt_week</div><div class="data-val">Current week number (1 through your programme length)</div></div>
         <div class="data-row"><div class="data-key">kt_bw</div><div class="data-val">Array of bodyweight entries — {date, weight} — most recent first</div></div>
         <div class="data-row"><div class="data-key">kt_run_goal</div><div class="data-val">Target pace per km as "mm:ss" (e.g. "6:00")</div></div>
         <div class="data-row"><div class="data-key">kt_5k_goal</div><div class="data-val">Target 5k finish time in seconds</div></div>
-        <div class="data-row"><div class="data-key">kt_bw_goal</div><div class="data-val">Target bodyweight in lb</div></div>
+        <div class="data-row"><div class="data-key">kt_bench_goal / kt_squat_goal / kt_bw_goal</div><div class="data-val">Lift and bodyweight targets in lb (0 until you set one)</div></div>
+        <div class="data-row"><div class="data-key">kt_apikey</div><div class="data-val">Your Anthropic API key — stored only on this device, sent only to Claude</div></div>
+        <div class="data-row"><div class="data-key">kt_theme</div><div class="data-val">Selected theme (dark / light / ocean / sunset / auto)</div></div>
         <div class="data-row"><div class="data-key">kt_coach_msgs</div><div class="data-val">Coach chat history — persists across sessions, last 60 messages kept</div></div>
       </div>
       <div class="highlight"><h3>Backup tip</h3><p>Use the Export button in Settings to download a JSON file. If you ever clear your browser data or switch devices, import the file to restore everything.</p></div>
@@ -4874,21 +4884,22 @@ render();
       <p>The Coach tab connects to Claude via your Anthropic API key. Every message automatically includes your real training data — so advice is always about <em>your</em> actual sessions, not generic tips. Conversation history persists across sessions.</p>
       <div class="steps">
         <div class="step"><div class="step-line"><div class="step-dot">1</div><div class="step-connector"></div></div><div class="step-body"><h3>Coach home menu</h3><p>Tapping the Coach tab shows a landing menu — open the chat, view conversation count, or disconnect. You're never dropped straight into the last message.</p></div></div>
-        <div class="step"><div class="step-line"><div class="step-dot">2</div><div class="step-connector"></div></div><div class="step-body"><h3>App builds context automatically</h3><p>Your session history, PRs, current week, run data, exercise weights, and goals are injected into the system prompt on every message.</p></div></div>
+        <div class="step"><div class="step-line"><div class="step-dot">2</div><div class="step-connector"></div></div><div class="step-body"><h3>App builds context automatically</h3><p>Your session history, PRs, current week, weekly cadence, run schedule, exercise weights, and goals are injected into the system prompt on every message.</p></div></div>
         <div class="step"><div class="step-line"><div class="step-dot">3</div><div class="step-connector"></div></div><div class="step-body"><h3>Claude streams a response</h3><p>The reply is specific to your numbers, streamed word-by-word in real time.</p></div></div>
         <div class="step"><div class="step-line"><div class="step-dot">4</div><div class="step-connector"></div></div><div class="step-body"><h3>Coach can update the app directly</h3><p>Ask the coach to change something and it will update the app without you leaving the chat. Supported actions:</p>
           <ul style="margin-top:10px;padding-left:18px;font-size:14px;color:var(--wf-body);line-height:2;">
+            <li><strong style="color:var(--text);">Build my programme</strong> — runs the 10-question intake</li>
+            <li><strong style="color:var(--text);">Edit one week</strong> — "make week 5 a deload"</li>
+            <li><strong style="color:var(--text);">Change cadence</strong> — "swap Wed for a Pull day, drop Sunday's run"</li>
+            <li><strong style="color:var(--text);">Rewrite the programme</strong> — "regenerate from this week onward"</li>
             <li><strong style="color:var(--text);">Exercise weights</strong> — "bump my bench to 172.5 lb"</li>
             <li><strong style="color:var(--text);">Current week</strong> — "move me to week 4"</li>
             <li><strong style="color:var(--text);">Log bodyweight</strong> — "I'm 181 lb today"</li>
-            <li><strong style="color:var(--text);">Run pace goal</strong> — "set my pace goal to 6:00/km"</li>
-            <li><strong style="color:var(--text);">5k time goal</strong> — "update my 5k target to 30:00"</li>
-            <li><strong style="color:var(--text);">Bodyweight goal</strong> — "my target weight is 175 lb"</li>
-            <li><strong style="color:var(--text);">Rewrite the programme</strong> — "regenerate my 12-week plan"</li>
+            <li><strong style="color:var(--text);">Goals</strong> — "set my pace goal to 6:00/km", "5k target 30:00", "bench goal 200"</li>
           </ul>
         </div></div>
       </div>
-      <div class="highlight"><h3>How coach actions work</h3><p>The coach uses native tool calls — each change is a structured, validated action the app executes immediately. You see a small green pill under the reply confirming what was updated. Past weeks are locked so completed training never gets rewritten.</p></div>
+      <div class="highlight"><h3>How coach actions work</h3><p>The coach uses native tool calls — each change is a structured, validated action the app executes immediately. You see a small green pill under the reply confirming what was updated. Past weeks are locked so completed training never gets rewritten, and the previous routine is backed up before any rewrite so you can <strong>Restore Previous</strong> if you don't like the new one.</p></div>
     </div>
     <div class="section">
       <div class="section-header"><span class="section-num">07</span><h2>Delivery &amp; PWA</h2></div>
