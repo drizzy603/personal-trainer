@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-3"/>
+<meta name="build" content="20260426-4"/>
 <title>Personal Trainer</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="app-icon-1024.png"/>
@@ -34,11 +34,11 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
-#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 20px 110px;scrollbar-width:none;}
+#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(14px + env(safe-area-inset-top)) 20px calc(110px + env(safe-area-inset-bottom));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
-#tabs{position:fixed;bottom:16px;left:20px;right:20px;
+#tabs{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:20px;right:20px;
   display:flex;background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid var(--border);border-radius:24px;
   padding:6px;justify-content:space-around;z-index:100;}

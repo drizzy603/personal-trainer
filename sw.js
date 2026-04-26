@@ -1,4 +1,4 @@
-var CACHE = 'kt-v10';
+var CACHE = 'kt-v11';
 var FILES = ['./', './sw.js', './manifest.json', './app-icon-1024.png'];
 
 self.addEventListener('install', function(e) {
