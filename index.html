@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-5"/>
+<meta name="build" content="20260426-6"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -28,6 +28,10 @@
       document.open('text/html');
       document.write(cachedHtml);
       document.close();
+    }else if(cachedHtml){
+      // Bundled has caught up — drop the stale cached copy so localStorage stays lean.
+      localStorage.removeItem('kt_cached_html');
+      localStorage.removeItem('kt_cached_build');
     }
   }catch(e){}
 })();
