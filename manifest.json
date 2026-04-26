@@ -1,6 +1,6 @@
 {
-  "name": "Kalani's Trainer",
-  "short_name": "KTrainer",
+  "name": "Personal Trainer",
+  "short_name": "Trainer",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f0f14",
