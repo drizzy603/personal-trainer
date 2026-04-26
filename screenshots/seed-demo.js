@@ -7,7 +7,7 @@
   const KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs',
     'kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements',
     'kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal',
-    'kt_bw_goal','kt_chat_history'];
+    'kt_bw_goal','kt_run_goal','kt_coach_msgs'];
   KEYS.forEach(k => localStorage.removeItem(k));
 
   const today = new Date();
