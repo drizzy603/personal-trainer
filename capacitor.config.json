@@ -1,5 +1,10 @@
 {
   "appId": "app.kt.trainer",
   "appName": "Personal Trainer",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
 }

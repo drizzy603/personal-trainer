@@ -6,7 +6,32 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-4"/>
+<meta name="build" content="20260426-5"/>
+<script>
+// ── Hybrid loader bootstrap ────────────────────────────────────────────────
+// If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
+// render that instead of the bundled version. Cache is updated in the background
+// after each successful launch (see checkForLiveUpdate below).
+(function(){
+  try{
+    var bundledBuild=document.querySelector('meta[name=build]').content;
+    var cachedHtml=localStorage.getItem('kt_cached_html');
+    var cachedBuild=localStorage.getItem('kt_cached_build')||'';
+    function newer(a,b){
+      if(!a) return false; if(!b) return true;
+      var ap=a.split('-'),bp=b.split('-');
+      var ad=parseInt(ap[0],10),bd=parseInt(bp[0],10);
+      if(ad!==bd) return ad>bd;
+      return parseInt(ap[1]||0,10) > parseInt(bp[1]||0,10);
+    }
+    if(cachedHtml && newer(cachedBuild,bundledBuild)){
+      document.open('text/html');
+      document.write(cachedHtml);
+      document.close();
+    }
+  }catch(e){}
+})();
+</script>
 <title>Personal Trainer</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="app-icon-1024.png"/>
@@ -538,6 +563,44 @@ select option{background:var(--bg);}
   <button class="rt-btn" onclick="hideRestTimer()">✕</button>
 </div>
 <script>
+// ── Hybrid loader: live update check ─────────────────────────────────────────
+// The bundled HTML's build version. Compared against the live version at
+// drizzy603.github.io/personal-trainer/ on every launch — newer versions are
+// cached and rendered on the next launch (see bootstrap in <head>).
+var APP_BUILD = document.querySelector('meta[name=build]').content;
+function buildNewer(a,b){
+  if(!a) return false; if(!b) return true;
+  var ap=a.split('-'),bp=b.split('-');
+  var ad=parseInt(ap[0],10),bd=parseInt(bp[0],10);
+  if(ad!==bd) return ad>bd;
+  return parseInt(ap[1]||0,10) > parseInt(bp[1]||0,10);
+}
+function checkForLiveUpdate(){
+  var url='https://drizzy603.github.io/personal-trainer/index.html?_='+Date.now();
+  fetch(url,{cache:'no-store'}).then(function(r){
+    if(!r.ok) throw 0;
+    return r.text();
+  }).then(function(html){
+    var m=html.match(/<meta name="build" content="([^"]+)"/);
+    if(!m) return;
+    var liveBuild=m[1];
+    localStorage.setItem('kt_last_seen_build', liveBuild);
+    var cachedBuild=localStorage.getItem('kt_cached_build')||'';
+    if(buildNewer(liveBuild,APP_BUILD) && buildNewer(liveBuild,cachedBuild)){
+      try{
+        localStorage.setItem('kt_cached_html', html);
+        localStorage.setItem('kt_cached_build', liveBuild);
+      }catch(e){
+        try{
+          localStorage.removeItem('kt_cached_html');
+          localStorage.setItem('kt_cached_html', html);
+          localStorage.setItem('kt_cached_build', liveBuild);
+        }catch(e2){}
+      }
+    }
+  }).catch(function(){});
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 var currentTab = 'log';
 var coachView = 'home'; // 'home' | 'chat'
@@ -4481,6 +4544,23 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Privacy policy</div><div class="settings-row-sub">How your data is handled</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    (function(){
+      var liveBuild=localStorage.getItem('kt_last_seen_build')||'';
+      var cachedBuild=localStorage.getItem('kt_cached_build')||'';
+      var status;
+      if(buildNewer(cachedBuild,APP_BUILD)) status='Update ready · restarts on next launch';
+      else if(buildNewer(liveBuild,APP_BUILD)) status='Update available · downloading…';
+      else if(liveBuild)                       status='Up to date';
+      else                                     status='Checking for updates…';
+      return '<div class="settings-row">'+
+        '<div class="settings-row-ic" style="background:#1a262e;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M21 12a9 9 0 11-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">App build '+APP_BUILD+'</div><div class="settings-row-sub">'+status+'</div></div>'+
+      '</div>';
+    })()+
     '</div>'+
 
     '<div class="settings-group">'+
@@ -4820,6 +4900,7 @@ var _next = getNextSession();
 logSession = (_next === 'Run') ? 'Push' : _next;
 initLogState();
 render();
+setTimeout(checkForLiveUpdate, 2000);
 </script>
 
 <div class="wf-view" id="wf-view" style="display:none;" aria-hidden="true">
