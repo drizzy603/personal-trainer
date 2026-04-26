@@ -132,9 +132,8 @@ This app requires the user to provide their own Anthropic API key for the AI Coa
 
 ## Build Checklist (per upload)
 
-- [ ] `npx cap copy ios` to bundle the latest web build
-- [ ] Bump `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj` (each upload needs a unique build number)
-- [ ] Bump `MARKETING_VERSION` only on user-facing release version changes
+- [ ] Run `./release-ios.sh` from the project root — bumps `CURRENT_PROJECT_VERSION` and runs `npx cap copy ios`
+- [ ] Bump `MARKETING_VERSION` only on user-facing release version changes (manual edit in Xcode → target → General → Version)
 - [ ] In Xcode: destination = "Any iOS Device (arm64)"
 - [ ] Product → Archive → Distribute App → App Store Connect → Upload
-- [ ] Answer "No" to encryption export compliance prompt (declared in Info.plist via `ITSAppUsesNonExemptEncryption=false`)
+- [ ] Answer "No" if asked about encryption export compliance (declared in Info.plist via `ITSAppUsesNonExemptEncryption=false`, but Xcode may re-confirm)
