@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-7"/>
+<meta name="build" content="20260426-8"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -84,6 +84,15 @@ html,body{height:100%;}
   /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
      momentum scroll, which lets in-flow content slide visibly under the bar. */
   transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;}
+
+/* Mask the gap between the floating tab pill and the screen edge so in-flow
+   content can't be visible there when scrolled. The tab bar stays above
+   (z=100); content still scrolls *behind* the bar (preserving the glass
+   blur effect) but is cut off below it. */
+#tab-skirt{position:fixed;left:0;right:0;bottom:0;
+  height:calc(var(--tab-gap) + var(--safe-bottom));
+  background:var(--bg);pointer-events:none;z-index:50;}
+
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:10px 4px;background:none;border:none;border-radius:18px;
   color:var(--muted);cursor:pointer;font-size:10px;font-weight:500;
@@ -557,6 +566,7 @@ select option{background:var(--bg);}
 <div id="app">
   <div id="screen"></div>
 </div>
+<div id="tab-skirt"></div>
 <nav id="tabs">
   <button class="tab active" data-tab="log" onclick="switchTab('log')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>Log
