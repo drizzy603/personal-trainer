@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260422-1"/>
+<meta name="build" content="20260426-1"/>
 <title>Personal Trainer</title>
 <link rel="manifest" href="manifest.json"/>
 <style>
@@ -4395,6 +4395,21 @@ function closeWorkflow(){
   el.setAttribute('aria-hidden','true');
   document.body.style.overflow='';
 }
+function openPrivacy(){
+  var el=document.getElementById('pp-view');
+  if(!el)return;
+  el.style.display='block';
+  el.setAttribute('aria-hidden','false');
+  el.scrollTop=0;
+  document.body.style.overflow='hidden';
+}
+function closePrivacy(){
+  var el=document.getElementById('pp-view');
+  if(!el)return;
+  el.style.display='none';
+  el.setAttribute('aria-hidden','true');
+  document.body.style.overflow='';
+}
 function renderSettings() {
   var themeList=[
     {id:'dark',   name:'Dark',   textColor:'#fff',   bg:'#0b0b0d',card:'#16161a',accent:'#c8ff00'},
@@ -4453,6 +4468,15 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body"><div class="settings-row-title">How the app works</div><div class="settings-row-sub">Visual walkthrough of all features</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>'+
+    '<div class="settings-row" onclick="openPrivacy()">'+
+      '<div class="settings-row-ic" style="background:#1a2e2a;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Privacy policy</div><div class="settings-row-sub">How your data is handled</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
     '</div>'+
@@ -4924,6 +4948,88 @@ render();
     </div>
   </div>
   <div class="wf-footer">Built with Claude · <button onclick="closeWorkflow()">Back to the app</button></div>
+</div>
+
+<div class="wf-view" id="pp-view" style="display:none;" aria-hidden="true">
+  <div class="wf-nav">
+    <button class="back-btn" onclick="closePrivacy()" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to App
+    </button>
+    <span class="nav-title">Privacy Policy</span>
+  </div>
+  <div class="hero">
+    <div class="hero-label">Legal</div>
+    <h1>Privacy <span>Policy</span></h1>
+    <p>Personal Trainer · Last updated April 26, 2026</p>
+  </div>
+  <div class="content">
+    <div class="highlight">
+      <h3>The short version</h3>
+      <p>Personal Trainer stores all your data on your own device. We don't collect it, we don't sell it, and we don't have access to it. Your training data is yours.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">01</span><h2>Who We Are</h2></div>
+      <p>Personal Trainer is operated by Personal Trainer ("we", "us", or "our"). If you have any questions about this policy, you can contact us at <a href="mailto:robertokalanisosa@outlook.com" style="color:var(--accent);">robertokalanisosa@outlook.com</a>.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">02</span><h2>What Data We Collect</h2></div>
+      <p>Personal Trainer is a local-first application. The following data is stored exclusively on your device using your browser's localStorage or the app's local storage — it never leaves your device or reaches our servers:</p>
+      <ul style="color:var(--wf-body);font-size:15px;padding-left:20px;line-height:2;margin-bottom:20px;">
+        <li>Workout sessions (exercises, sets, reps, weight, RPE)</li>
+        <li>Run and sport activity logs</li>
+        <li>Bodyweight entries</li>
+        <li>Personal records (PRs)</li>
+        <li>Your AI-generated training programme</li>
+        <li>AI Coach conversation history</li>
+        <li>App preferences (theme, goals)</li>
+      </ul>
+      <p>We do not operate servers that receive, store, or process your personal training data.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">03</span><h2>Anthropic API Key</h2></div>
+      <p>The AI Coach feature requires an Anthropic API key, which you supply yourself in the app's Settings. This key is stored only on your device and is used solely to send your messages directly to Anthropic's API.</p>
+      <p>We never see, store, or transmit your API key. Your conversations with the AI Coach are sent directly from your device to Anthropic and are subject to <a href="https://www.anthropic.com/privacy" target="_blank" style="color:var(--accent);">Anthropic's Privacy Policy</a>.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">04</span><h2>Data We Do Not Collect</h2></div>
+      <p>We do not collect:</p>
+      <ul style="color:var(--wf-body);font-size:15px;padding-left:20px;line-height:2;margin-bottom:20px;">
+        <li>Your name, email address, or any account information</li>
+        <li>Location data</li>
+        <li>Health or biometric data beyond what you manually enter</li>
+        <li>Device identifiers or advertising IDs</li>
+        <li>Usage analytics or behavioural tracking data</li>
+        <li>Crash reports or diagnostic data sent to our servers</li>
+      </ul>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">05</span><h2>Third-Party Services</h2></div>
+      <p>The app uses the following third-party service:</p>
+      <ul style="color:var(--wf-body);font-size:15px;padding-left:20px;line-height:2;margin-bottom:20px;">
+        <li><strong style="color:var(--text);">Anthropic</strong> — powers the AI Coach when you use that feature with your own API key. Subject to <a href="https://www.anthropic.com/privacy" target="_blank" style="color:var(--accent);">Anthropic's Privacy Policy</a>.</li>
+      </ul>
+      <p>We do not use advertising networks, analytics platforms, or data brokers.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">06</span><h2>Data Storage and Security</h2></div>
+      <p>All data is stored locally on your device. We have no access to it and therefore cannot recover it if lost. We recommend using the Export feature in Settings to regularly back up your data as a JSON file.</p>
+      <p>Clearing your browser data or uninstalling the app will permanently delete all locally stored data.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">07</span><h2>Children's Privacy</h2></div>
+      <p>Personal Trainer is not directed at children under the age of 13. We do not knowingly collect any information from children. If you believe a child has provided information through the app, please contact us and we will address it promptly.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">08</span><h2>Changes to This Policy</h2></div>
+      <p>We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top of this page. We encourage you to review this policy periodically.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">09</span><h2>Contact</h2></div>
+      <p>If you have any questions or concerns about this Privacy Policy, please contact us at <a href="mailto:robertokalanisosa@outlook.com" style="color:var(--accent);">robertokalanisosa@outlook.com</a>.</p>
+    </div>
+  </div>
+  <div class="wf-footer">© 2026 Personal Trainer · <button onclick="closePrivacy()">Back to the app</button></div>
 </div>
 </body>
 </html>
