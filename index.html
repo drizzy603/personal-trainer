@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-6"/>
+<meta name="build" content="20260426-7"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -51,6 +51,15 @@
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
   --text:#fafafa;--muted:#525259;--lite:#9ca3af;
   --shadow:none;
+  /* Tab-bar geometry — single source of truth so #screen padding,
+     toast, rest-timer, etc. all clear the floating tab pill on every
+     device (Capacitor WKWebView, iOS PWA, mobile Safari).
+     --tab-zone reserves: tab-h + (gap below) + (gap above) + (extra clearance) + safe-area. */
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+  --tab-h:64px;
+  --tab-gap:16px;
+  --tab-zone:calc(var(--tab-h) + var(--tab-gap) * 3 + var(--safe-bottom));
+  --above-tab:calc(var(--tab-h) + var(--tab-gap) + var(--safe-bottom) + 8px);
 }
 html,body{background:var(--bg);color:var(--text);
   font-family:'Inter',-apple-system,system-ui,sans-serif;
@@ -62,15 +71,19 @@ input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
-#app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
-#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(14px + env(safe-area-inset-top)) 20px calc(110px + env(safe-area-inset-bottom));scrollbar-width:none;}
+html,body{height:100%;}
+#app{position:relative;height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;overflow:hidden;}
+#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:calc(14px + env(safe-area-inset-top)) 20px var(--tab-zone);scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
-#tabs{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:20px;right:20px;
+#tabs{position:fixed;bottom:calc(var(--tab-gap) + var(--safe-bottom));left:20px;right:20px;
   display:flex;background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid var(--border);border-radius:24px;
-  padding:6px;justify-content:space-around;z-index:100;}
+  padding:6px;justify-content:space-around;z-index:100;
+  /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
+     momentum scroll, which lets in-flow content slide visibly under the bar. */
+  transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:10px 4px;background:none;border:none;border-radius:18px;
   color:var(--muted);cursor:pointer;font-size:10px;font-weight:500;
@@ -328,7 +341,7 @@ select option{background:var(--bg);}
   border-radius:10px;padding:7px 8px;color:var(--text);font-size:14px;font-weight:600;text-align:center;}
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
-#toast{position:fixed;bottom:calc(88px + env(safe-area-inset-bottom));left:20px;right:20px;
+#toast{position:fixed;bottom:var(--above-tab);left:20px;right:20px;
   background:var(--green);color:#000;padding:14px 20px;border-radius:14px;
   font-size:13px;font-weight:600;text-align:center;
   z-index:9999;transform:translateY(20px);opacity:0;
@@ -340,7 +353,7 @@ select option{background:var(--bg);}
 .empty p{font-size:14px;line-height:1.5;}
 
 /* ── Rest timer ──────────────────────────────────────────────────────────── */
-#rest-timer{position:fixed;bottom:calc(88px + env(safe-area-inset-bottom));left:50%;
+#rest-timer{position:fixed;bottom:var(--above-tab);left:50%;
   transform:translateX(-50%) translateY(90px);
   background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 20px;
   display:flex;align-items:center;gap:10px;z-index:999;
