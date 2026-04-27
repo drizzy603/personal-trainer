@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-2"/>
+<meta name="build" content="20260427-3"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2477,7 +2477,17 @@ function renderRunsSection() {
   var wd = getWkData();
 
   function runCard(run, label) {
-    if (!run) return '';
+    // Even when the Coach left no specific plan, show the scheduled day
+    // so the user knows a run is on the calendar.
+    if (!run) {
+      return '<div class="run-card">'+
+        '<div class="run-dot"></div>'+
+        '<div class="run-card-body">'+
+          '<div class="run-card-day">'+label+' · Run</div>'+
+          '<div class="run-card-main">No set distance — log whatever you do.</div>'+
+        '</div>'+
+      '</div>';
+    }
     var dotClass = run.type==='race'?'orange':run.type==='intervals'?'cyan':'';
     var typeLabel = run.type==='race'?'Time Trial':run.type==='intervals'?'Intervals':run.type==='tempo'?'Tempo Run':'Easy Run';
     var mainLine = run.km ? run.km+' km' : 'Structured';
@@ -2791,6 +2801,39 @@ function renderSportSection(forcedSportId){
     '</div>';
   }
 
+  // When the primary-activity tab is pinned to a sport, prepend a schedule
+  // card listing the days this sport is scheduled this week (parallels the
+  // "Week N Run Targets" card on the Run tab).
+  var scheduleCard='';
+  if(forcedSportId&&hasCustomRoutine()){
+    var wdS=getWkData();
+    var FULL_DAY=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    var scheduledDays=[];
+    if(wdS&&wdS.sports){
+      Object.keys(wdS.sports).forEach(function(k){
+        var slot=wdS.sports[k];
+        var d=DOW_FROM_NAME[k];
+        if(slot&&slot.type===forcedSportId&&d!=null) scheduledDays.push({day:k,dow:d,data:slot});
+      });
+      scheduledDays.sort(function(a,b){return a.dow-b.dow;});
+    }
+    var rows;
+    if(scheduledDays.length){
+      rows=scheduledDays.map(function(s){
+        return '<div class="run-card">'+
+          '<div class="run-dot" style="background:'+sport.color+';"></div>'+
+          '<div class="run-card-body">'+
+            '<div class="run-card-day">'+FULL_DAY[s.dow]+' · '+sport.id+'</div>'+
+            '<div class="run-card-main">'+(s.data.note||'No specific plan — log whatever you do.')+'</div>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+    } else {
+      rows='<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No '+sport.id+' scheduled this week.<br><span style="color:var(--lite);font-size:12px;">Ask the Coach to add it to your routine.</span></div>';
+    }
+    scheduleCard='<div class="card"><h2>Week '+currentWeek+' '+sport.id+' Schedule</h2>'+rows+'</div>';
+  }
+
   var hasKey=!!getApiKey();
   var aiBlock=hasKey
     ? '<div style="margin-bottom:16px;padding:14px;background:var(--bg);border-radius:14px;border:1px solid var(--border);">'+
@@ -2825,7 +2868,7 @@ function renderSportSection(forcedSportId){
     '</button>'+
   '</div>';
 
-  return renderActivityCards()+picker+form+renderRecentSportLogs();
+  return scheduleCard+renderActivityCards()+picker+form+renderRecentSportLogs();
 }
 
 function fillSportWithAI(){
@@ -3758,6 +3801,16 @@ var COACH_TOOLS=[
   {name:'set_current_week',
    description:'Set which week of the programme the user is currently on.',
    input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:24}},required:['week']}},
+  {name:'swap_cadence_days',
+   description:'Swap two days in the user\'s weekly cadence. By default the swap applies only to the current week (creates a per-week override). Pass scope:"global" to change the routine-level cadence so every week shifts. Use this when the user says e.g. "I want to do my push workout tomorrow and run today" — that\'s a one-week swap of Mon and Tue. The runs/sports planning data on those days follows the activity automatically.',
+   input_schema:{type:'object',
+     properties:{
+       dayA:{type:'string',enum:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],description:'First day to swap.'},
+       dayB:{type:'string',enum:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],description:'Second day to swap.'},
+       week:{type:'integer',minimum:1,maximum:24,description:'Optional. Week to swap. Defaults to the user\'s current week.'},
+       scope:{type:'string',enum:['week','global'],description:'Optional. "week" (default) only changes this week\'s cadence. "global" changes the routine-level default so every week shifts.'}
+     },
+     required:['dayA','dayB']}},
   {name:'set_exercise_weight',
    description:'Update the working weight for a named exercise (case-insensitive match).',
    input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
@@ -3882,6 +3935,40 @@ function executeCoachTool(name,input){
       if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
       currentWeek=w; lsSet('kt_week',w);
       return {ok:true,message:'current week set to '+w};
+    }
+    if(name==='swap_cadence_days'){
+      var dowA=DOW_FROM_NAME[input.dayA];
+      var dowB=DOW_FROM_NAME[input.dayB];
+      if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
+      if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
+      if(input.scope==='global'){
+        var crG=getCustomRoutine();
+        if(!crG) return {ok:false,error:'No routine yet'};
+        var basePlan;
+        if(Array.isArray(crG.weekPlan)&&crG.weekPlan.length===7) basePlan=crG.weekPlan.slice();
+        else basePlan=DEFAULT_WEEK_PLAN.map(function(p){return p.type;});
+        var tmpG=basePlan[dowA]; basePlan[dowA]=basePlan[dowB]; basePlan[dowB]=tmpG;
+        crG.weekPlan=basePlan;
+        // Also re-align runs/sports on every week so planning data follows
+        // the activity, not the day, across the whole programme.
+        (crG.weeks||[]).forEach(function(w){
+          ['runs','sports'].forEach(function(field){
+            if(!w||!w[field]||typeof w[field]!=='object') return;
+            var nameA=DOW_NAMES[dowA], nameB=DOW_NAMES[dowB];
+            var a=w[field][nameA], b=w[field][nameB];
+            if(a===undefined && b===undefined) return;
+            if(b!==undefined) w[field][nameA]=b; else delete w[field][nameA];
+            if(a!==undefined) w[field][nameB]=a; else delete w[field][nameB];
+          });
+        });
+        setCustomRoutine(crG);
+        return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' globally'};
+      }
+      var wkNum=parseInt(input.week)||currentWeek;
+      if(swapWeekPlanDays(wkNum,dowA,dowB)){
+        return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' for week '+wkNum};
+      }
+      return {ok:false,error:'Could not swap (no routine for that week?)'};
     }
     if(name==='set_exercise_weight'){
       var weights=getWeights();
@@ -4332,6 +4419,7 @@ function buildSystemPrompt(){
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
+  p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
   p+='When building a programme, follow this block structure (scale the durations to the chosen length, defaults shown for a 12-week template):\n';
