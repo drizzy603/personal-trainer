@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-1"/>
+<meta name="build" content="20260427-2"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1250,12 +1250,48 @@ function _planEntry(type){
   // Unknown → treat as rest so the cadence doesn't blow up
   return {type:'Rest',color:_PLAN_TYPE_META.Rest.color,isRest:true,isRun:false,isLift:false,isSport:false};
 }
-function getWeekPlan(){
+// Returns the cadence for a specific week (1-indexed), preferring the
+// per-week override if present, then the routine-level default, then the
+// hard-coded fallback.
+function getWeekPlanForWeek(weekNum){
   var cr=getCustomRoutine();
+  if(cr&&cr.weeks&&cr.weeks[weekNum-1]&&Array.isArray(cr.weeks[weekNum-1].weekPlan)
+     &&cr.weeks[weekNum-1].weekPlan.length===7){
+    return cr.weeks[weekNum-1].weekPlan.map(_planEntry);
+  }
   if(cr&&Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7){
     return cr.weekPlan.map(_planEntry);
   }
   return DEFAULT_WEEK_PLAN;
+}
+function getWeekPlan(){ return getWeekPlanForWeek(currentWeek); }
+// Swaps two day slots in the current week's cadence. If the week didn't
+// already have an override, this is what creates one (seeded from the
+// routine-level default). Persists immediately.
+function swapWeekPlanDays(weekNum, dowA, dowB){
+  if(dowA===dowB) return false;
+  var cr=getCustomRoutine();
+  if(!cr||!cr.weeks||!cr.weeks[weekNum-1]) return false;
+  var basePlan;
+  var w=cr.weeks[weekNum-1];
+  if(Array.isArray(w.weekPlan)&&w.weekPlan.length===7) basePlan=w.weekPlan.slice();
+  else if(Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7) basePlan=cr.weekPlan.slice();
+  else basePlan=DEFAULT_WEEK_PLAN.map(function(p){return p.type;});
+  var tmp=basePlan[dowA]; basePlan[dowA]=basePlan[dowB]; basePlan[dowB]=tmp;
+  w.weekPlan=basePlan;
+  // Keep planning data aligned with the activity, not the day. If Mon=Run
+  // is swapped to Tue, the run details that lived at runs.Mon now belong
+  // at runs.Tue. Same for the sports map.
+  ['runs','sports'].forEach(function(field){
+    if(!w[field]||typeof w[field]!=='object') return;
+    var nameA=DOW_NAMES[dowA], nameB=DOW_NAMES[dowB];
+    var a=w[field][nameA], b=w[field][nameB];
+    if(a===undefined && b===undefined) return;
+    if(b!==undefined) w[field][nameA]=b; else delete w[field][nameA];
+    if(a!==undefined) w[field][nameB]=a; else delete w[field][nameB];
+  });
+  setCustomRoutine(cr);
+  return true;
 }
 // Returns the most-frequent non-lift, non-rest activity in the user's
 // weekly cadence, or null if there isn't one. Used to label the second
@@ -1389,11 +1425,20 @@ function getTodayLabel() {
 function getDayName(dow) { // dow: 0=Mon … 6=Sun
   return ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dow];
 }
-function buildSessionMiniCard(type, labelTop, isToday) {
+function buildSessionMiniCard(type, labelTop, isToday, dow) {
   var wd = getWkData();
   var sessions = getSessions();
   var today = todayISO();
   var entry = _planEntry(type);
+  // Small "···" button on the card that opens the day-swap modal. Only
+  // shown when we know the slot's dow and the routine is real (no point
+  // swapping defaults).
+  var swapBtn = (dow!=null && dow>=0 && hasCustomRoutine())
+    ? '<button onclick="event.stopPropagation();openSwapModal('+dow+')" '+
+      'style="margin-left:8px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;'+
+      'padding:4px 10px;font-size:14px;font-weight:700;color:var(--lite);cursor:pointer;letter-spacing:0;line-height:1;'+
+      '-webkit-tap-highlight-color:transparent;font-family:inherit;" title="Move to a different day this week">···</button>'
+    : '';
 
   // Was this activity logged today? Different log key per activity type.
   var doneToday = false;
@@ -1436,7 +1481,7 @@ function buildSessionMiniCard(type, labelTop, isToday) {
     return '<div class="today-card" style="'+cardStyle+'">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">'+(sport?sport.id:type)+'</div>'+badge+
+          '<div class="today-label">'+(sport?sport.id:type)+'</div>'+badge+swapBtn+
         '</div>'+
         '<div class="today-detail">'+sportNote+'</div>'+
       '</div>'+
@@ -1469,7 +1514,7 @@ function buildSessionMiniCard(type, labelTop, isToday) {
     return '<div class="today-card" style="'+cardStyle+'">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">Run</div>'+badge+
+          '<div class="today-label">Run</div>'+badge+swapBtn+
         '</div>'+
         '<div class="today-detail">'+runNote+'</div>'+
       '</div>'+
@@ -1479,7 +1524,7 @@ function buildSessionMiniCard(type, labelTop, isToday) {
     return '<div class="today-card" style="opacity:.35;">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">Rest</div>'+badge+
+          '<div class="today-label">Rest</div>'+badge+swapBtn+
         '</div>'+
         '<div class="today-detail">Recovery</div>'+
       '</div>'+
@@ -1506,7 +1551,7 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   return '<div class="today-card" style="'+cardStyle+'">'+
     '<div style="flex:1;min-width:0;">'+
       '<div style="display:flex;align-items:center;gap:8px;">'+
-        '<div class="today-label">'+def.label+'</div>'+badge+
+        '<div class="today-label">'+def.label+'</div>'+badge+swapBtn+
       '</div>'+
       '<div class="today-detail">'+detail+'</div>'+
       '<div style="font-size:11px;margin-top:3px;font-weight:500;">'+lastLabel+'</div>'+
@@ -1523,20 +1568,75 @@ function renderTodayCard() {
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var todayStr = days[d.getDay()]+', '+months[d.getMonth()]+' '+d.getDate();
 
-  var nextType = null, nextLabel = '';
+  var nextType = null, nextLabel = '', nextDow = -1;
   for (var j = 1; j <= 7; j++) {
     var np = weekPlan[(todayDow+j)%7];
     if (!np.isRest) {
       nextType = np.isRun ? 'Run' : np.type;
-      var nextDow = (todayDow+j)%7;
+      nextDow = (todayDow+j)%7;
       nextLabel = j===1 ? 'Tomorrow' : getDayName(nextDow);
       break;
     }
   }
 
-  var todayCard = buildSessionMiniCard(todayType, todayStr, true);
-  var nextCard = nextType ? buildSessionMiniCard(nextType, nextLabel, false) : '';
+  var todayCard = buildSessionMiniCard(todayType, todayStr, true, todayDow);
+  var nextCard = nextType ? buildSessionMiniCard(nextType, nextLabel, false, nextDow) : '';
   return todayCard + nextCard;
+}
+
+// Day-swap modal — opens from the "···" button on today/tomorrow cards.
+// Lets the user move this slot's activity to a different day THIS WEEK
+// only; the swap creates a per-week weekPlan override.
+function _swapModalLabel(planEntry){
+  if(planEntry.isRest) return 'Rest';
+  return planEntry.type;
+}
+function openSwapModal(sourceDow){
+  closeSwapModal();
+  var plan=getWeekPlan();
+  var sourceLabel=_swapModalLabel(plan[sourceDow]);
+  var dayFullNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var rows='';
+  for(var i=0;i<7;i++){
+    var disabled=(i===sourceDow);
+    var targetLabel=_swapModalLabel(plan[i]);
+    rows+='<button '+(disabled?'disabled':'onclick="confirmSwapDay('+sourceDow+','+i+')"')+
+      ' style="display:flex;align-items:center;justify-content:space-between;width:100%;'+
+      'background:'+(disabled?'rgba(255,255,255,.02)':'var(--card2)')+';border:1px solid var(--border);'+
+      'border-radius:12px;padding:14px;margin-bottom:8px;color:var(--text);'+
+      'cursor:'+(disabled?'default':'pointer')+';opacity:'+(disabled?'.4':'1')+';'+
+      '-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+      '<span style="font-size:14px;font-weight:700;">'+dayFullNames[i]+(disabled?' (current)':'')+'</span>'+
+      '<span style="font-size:13px;color:var(--lite);font-weight:500;">'+targetLabel+'</span>'+
+      '</button>';
+  }
+  var overlay=document.createElement('div');
+  overlay.id='swap-modal'; overlay.className='ex-modal-bg';
+  overlay.onclick=function(e){ if(e.target===overlay) closeSwapModal(); };
+  overlay.innerHTML=
+    '<div class="ex-modal-sheet">'+
+      '<div class="ex-modal-head">'+
+        '<div style="font-size:17px;font-weight:800;">Move '+sourceLabel+' to…</div>'+
+        '<button class="ex-modal-close" onclick="closeSwapModal()">✕</button>'+
+      '</div>'+
+      '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px;">'+
+        'Swaps the activity on '+dayFullNames[sourceDow]+' with the day you pick. Only changes this week\'s cadence.'+
+      '</div>'+
+      rows+
+    '</div>';
+  document.body.appendChild(overlay);
+}
+function closeSwapModal(){
+  var el=document.getElementById('swap-modal'); if(el) el.remove();
+}
+function confirmSwapDay(sourceDow,targetDow){
+  if(swapWeekPlanDays(currentWeek,sourceDow,targetDow)){
+    closeSwapModal();
+    showToast('Cadence updated for this week');
+    render();
+  } else {
+    showToast('Could not swap — try again');
+  }
 }
 
 // ── Week Header ───────────────────────────────────────────────────────────────
@@ -3640,7 +3740,9 @@ var _weekSchema={type:'object',
       properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}},
     sports:{type:'object',
       description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
-      properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}}
+      properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}},
+    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},
+      description:'Optional. Per-week cadence override (Mon→Sun). Use only when this specific week deviates from the routine-level weekPlan (e.g. a deload that drops a lift day, or a holiday week). If omitted, the routine-level weekPlan applies.'}
   },
   required:['wk','bName','bColor','push','pull','legs']
 };
@@ -3743,6 +3845,10 @@ function executeCoachTool(name,input){
             if(slot&&typeof slot==='object'&&slot.type) sportsOut[n]=slot;
           });
           if(Object.keys(sportsOut).length) weekObj.sports=sportsOut;
+        }
+        // Per-week cadence override — shadows cr.weekPlan only on this week.
+        if(Array.isArray(w.weekPlan)&&w.weekPlan.length===7){
+          weekObj.weekPlan=w.weekPlan.map(function(s){return _planEntry(s).type;});
         }
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
