@@ -61,9 +61,10 @@
     12: 'Deload. 50% volume. Movement and recovery only.',
   };
 
-  // Mixed cadence: Tue=Run, Sat=Cycling. Exercises both the runs:{} and
-  // sports:{} read paths so a single seed verifies both flows after the
-  // Option C refactor.
+  // Mixed cadence: Mon+Sat=Cycling, Tue=Run. Cycling wins as primary
+  // (2 days vs Run's 1) so the second Log sub-tab renames itself to
+  // "Cycling" and dispatches to the sport form. Run still appears once
+  // so the wd.runs read path is exercised too.
   for (let w = 1; w <= 12; w++) {
     const b = blockFor(w);
     weeks.push({
@@ -74,14 +75,15 @@
         Tue: { distance: 5, paceMin: 9, paceSec: 30, note: 'Easy zone-2.' },
       },
       sports: {
-        Sat: { type: 'Cycling', note: 'Long ride — 25-30 km, zone-2.' },
+        Mon: { type: 'Cycling', note: 'Endurance ride — 25 km, zone-2.' },
+        Sat: { type: 'Cycling', note: 'Long ride — 40 km hill repeats.' },
       },
     });
   }
 
   localStorage.setItem('kt_routine', JSON.stringify({
-    name: 'Roberto’s Hypertrophy Block',
-    weekPlan: ['Push','Run','Rest','Pull','Legs','Cycling','Rest'],
+    name: 'Roberto’s Hybrid Block',
+    weekPlan: ['Cycling','Run','Push','Pull','Rest','Cycling','Legs'],
     weeks,
   }));
   localStorage.setItem('kt_week', '6');
