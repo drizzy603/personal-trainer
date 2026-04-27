@@ -1227,18 +1227,28 @@ var DEFAULT_WEEK_PLAN = [
   {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false},
 ];
 var _PLAN_TYPE_META={
-  Push:{color:'var(--accent)',isRest:false,isRun:false},
-  Pull:{color:'var(--cyan)',  isRest:false,isRun:false},
-  Legs:{color:'var(--orange)',isRest:false,isRun:false},
-  Run: {color:'var(--green)', isRest:false,isRun:true },
-  Rest:{color:'var(--muted)', isRest:true, isRun:false}
+  Push:{color:'var(--accent)',isRest:false,isRun:false,isLift:true, isSport:false},
+  Pull:{color:'var(--cyan)',  isRest:false,isRun:false,isLift:true, isSport:false},
+  Legs:{color:'var(--orange)',isRest:false,isRun:false,isLift:true, isSport:false},
+  Run: {color:'var(--green)', isRest:false,isRun:true, isLift:false,isSport:false},
+  Rest:{color:'var(--muted)', isRest:true, isRun:false,isLift:false,isSport:false}
 };
+function _findSport(id){
+  if(!id) return null;
+  for(var i=0;i<SPORTS.length;i++) if(SPORTS[i].id===id) return SPORTS[i];
+  return null;
+}
 function _planEntry(type){
   var t=String(type||'Rest');
-  // Title-case for tolerance ("push" → "Push")
-  t=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
-  var meta=_PLAN_TYPE_META[t]||_PLAN_TYPE_META.Rest;
-  return {type:t,color:meta.color,isRest:meta.isRest,isRun:meta.isRun};
+  // Title-case "push"/"PUSH" → "Push"; sport ids stay verbatim ("Pickleball")
+  var titled=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
+  var staticMeta=_PLAN_TYPE_META[titled];
+  if(staticMeta) return {type:titled,color:staticMeta.color,isRest:staticMeta.isRest,isRun:staticMeta.isRun,isLift:staticMeta.isLift,isSport:false};
+  // Fall through to SPORTS — match case-insensitively against id, return canonical id
+  var sport=_findSport(t)||_findSport(titled);
+  if(sport) return {type:sport.id,color:sport.color,isRest:false,isRun:false,isLift:false,isSport:true};
+  // Unknown → treat as rest so the cadence doesn't blow up
+  return {type:'Rest',color:_PLAN_TYPE_META.Rest.color,isRest:true,isRun:false,isLift:false,isSport:false};
 }
 function getWeekPlan(){
   var cr=getCustomRoutine();
@@ -1246,6 +1256,23 @@ function getWeekPlan(){
     return cr.weekPlan.map(_planEntry);
   }
   return DEFAULT_WEEK_PLAN;
+}
+// Returns the most-frequent non-lift, non-rest activity in the user's
+// weekly cadence, or null if there isn't one. Used to label the second
+// Log sub-tab so it reflects each user's actual programme (Run, Cycling,
+// Pickleball, etc.) instead of always saying "Run".
+function getPrimaryActivity(){
+  var plan=getWeekPlan();
+  var counts={};
+  plan.forEach(function(p){
+    if(p.isLift||p.isRest) return;
+    counts[p.type]=(counts[p.type]||0)+1;
+  });
+  var best=null,bestN=0;
+  Object.keys(counts).forEach(function(k){
+    if(counts[k]>bestN){best=k;bestN=counts[k];}
+  });
+  return best;
 }
 
 // '—' when the user didn't rate the set; otherwise the raw value as written.
