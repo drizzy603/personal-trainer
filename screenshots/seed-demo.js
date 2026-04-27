@@ -61,6 +61,9 @@
     12: 'Deload. 50% volume. Movement and recovery only.',
   };
 
+  // Mixed cadence: Tue=Run, Sat=Cycling. Exercises both the runs:{} and
+  // sports:{} read paths so a single seed verifies both flows after the
+  // Option C refactor.
   for (let w = 1; w <= 12; w++) {
     const b = blockFor(w);
     weeks.push({
@@ -69,14 +72,16 @@
       push: pushDay(w), pull: pullDay(w), legs: legsDay(w),
       runs: {
         Tue: { distance: 5, paceMin: 9, paceSec: 30, note: 'Easy zone-2.' },
-        Sat: { distance: 8, paceMin: 9, paceSec: 0,  note: 'Long run.' },
+      },
+      sports: {
+        Sat: { type: 'Cycling', note: 'Long ride — 25-30 km, zone-2.' },
       },
     });
   }
 
   localStorage.setItem('kt_routine', JSON.stringify({
     name: 'Roberto’s Hypertrophy Block',
-    weekPlan: ['Push','Run','Rest','Pull','Legs','Run','Rest'],
+    weekPlan: ['Push','Run','Rest','Pull','Legs','Cycling','Rest'],
     weeks,
   }));
   localStorage.setItem('kt_week', '6');
