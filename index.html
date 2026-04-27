@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260426-12"/>
+<meta name="build" content="20260427-1"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1282,28 +1282,54 @@ function fmtRpe(v){ return (v==null||v==='')?'—':String(v); }
 var DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 var DOW_FROM_NAME = {Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
 
-// Returns [{dow, name, run}] for whichever days have a run scheduled in the
-// given week. Reads the new wd.runs map first, falls back to legacy
+// Returns [{dow, name, type, isRun, isSport, data}] for every non-lift,
+// non-rest day in the given week. Activity types come from weekPlan; the
+// per-day planning data comes from wd.runs (Run slots) or wd.sports
+// (sport slots like Cycling, Pickleball). Falls back to legacy
 // runTue/runSat fields on older saved routines.
-function getScheduledRuns(wd){
+function getScheduledActivities(wd){
   if(!wd) return [];
+  var plan=getWeekPlan();
   var out=[];
-  if(wd.runs&&typeof wd.runs==='object'&&!Array.isArray(wd.runs)){
-    Object.keys(wd.runs).forEach(function(k){
-      var d=DOW_FROM_NAME[k];
-      if(d==null||!wd.runs[k]) return;
-      out.push({dow:d,name:k,run:wd.runs[k]});
-    });
-  } else {
-    if(wd.runTue) out.push({dow:1,name:'Tue',run:wd.runTue});
-    if(wd.runSat) out.push({dow:5,name:'Sat',run:wd.runSat});
+  plan.forEach(function(p,dow){
+    if(p.isLift||p.isRest) return;
+    var name=DOW_NAMES[dow];
+    var data=null;
+    if(p.isRun && wd.runs && wd.runs[name]) data=wd.runs[name];
+    else if(p.isSport && wd.sports && wd.sports[name]) data=wd.sports[name];
+    out.push({dow:dow,name:name,type:p.type,isRun:p.isRun,isSport:p.isSport,data:data});
+  });
+  // Legacy fallback: routines saved before weekPlan existed had runTue/runSat
+  // or wd.runs without a weekPlan. Treat any run map as scheduled runs.
+  if(out.length===0 && wd){
+    if(wd.runs && typeof wd.runs==='object' && !Array.isArray(wd.runs)){
+      Object.keys(wd.runs).forEach(function(k){
+        var d=DOW_FROM_NAME[k];
+        if(d==null||!wd.runs[k]) return;
+        out.push({dow:d,name:k,type:'Run',isRun:true,isSport:false,data:wd.runs[k]});
+      });
+    } else {
+      if(wd.runTue) out.push({dow:1,name:'Tue',type:'Run',isRun:true,isSport:false,data:wd.runTue});
+      if(wd.runSat) out.push({dow:5,name:'Sat',type:'Run',isRun:true,isSport:false,data:wd.runSat});
+    }
   }
   return out.sort(function(a,b){return a.dow-b.dow;});
 }
-function getRunForDow(wd,dow){
-  var all=getScheduledRuns(wd);
-  for(var i=0;i<all.length;i++) if(all[i].dow===dow) return all[i].run;
+function getActivityForDow(wd,dow){
+  var all=getScheduledActivities(wd);
+  for(var i=0;i<all.length;i++) if(all[i].dow===dow) return all[i];
   return null;
+}
+// Backwards-compat shims — only return Run-typed entries, in the same
+// shape callers expected ({dow,name,run}).
+function getScheduledRuns(wd){
+  return getScheduledActivities(wd)
+    .filter(function(a){return a.isRun;})
+    .map(function(a){return {dow:a.dow,name:a.name,run:a.data};});
+}
+function getRunForDow(wd,dow){
+  var a=getActivityForDow(wd,dow);
+  return (a&&a.isRun)?a.data:null;
 }
 
 function getMondayISO() {
@@ -1317,36 +1343,37 @@ function addDays(iso, n) {
   return d.toISOString().slice(0,10);
 }
 
-// Returns the next due session type, carrying over skipped days
+// Returns the next due session type, carrying over skipped days.
+// Walks the last 14 days; if every active day is covered, falls forward to
+// the next scheduled lift. The fallback intentionally ignores cardio/sport
+// because the caller uses this to set a default lift sub-tab.
 function getNextSession() {
   var sessions = getSessions();
   var runs = getRuns();
+  var sports = getSportLogs();
   var skips = getSkips();
   var today = todayISO();
   var weekPlan = getWeekPlan();
-  // Build last 14 days schedule and find first unlogged/unskipped active day
-  var start = addDays(getMondayISO(), -7); // start from last Monday
+  var start = addDays(getMondayISO(), -7);
   for (var i = 0; i < 14; i++) {
     var date = addDays(start, i);
-    if (date > today) break; // don't look into the future
+    if (date > today) break;
     var dow = (new Date(date+'T00:00:00').getDay()+6)%7;
     var plan = weekPlan[dow];
     if (plan.isRest) continue;
-    if (plan.isRun) {
-      var logged = runs.some(function(r){ return r.date === date; });
-      var skipped = skips.some(function(s){ return s.date === date && s.type === 'Run'; });
-      if (!logged && !skipped) return 'Run'; // overdue run
-    } else {
-      var logged = sessions.some(function(s){ return s.date === date && s.type === plan.type; });
-      var skipped = skips.some(function(s){ return s.date === date && s.type === plan.type; });
-      if (!logged && !skipped) return plan.type; // overdue gym session
-    }
+    var skipped = skips.some(function(s){ return s.date === date && s.type === plan.type; });
+    if (skipped) continue;
+    var logged;
+    if (plan.isRun)        logged = runs.some(function(r){ return r.date === date; });
+    else if (plan.isSport) logged = sports.some(function(l){ return l.date === date && l.type === plan.type; });
+    else                   logged = sessions.some(function(s){ return s.date === date && s.type === plan.type; });
+    if (!logged) return plan.type;
   }
-  // Everything up to today is done — return today's or next scheduled gym session
+  // Everything up to today is done — return next scheduled lift.
   var todayDow = (new Date(today+'T00:00:00').getDay()+6)%7;
   for (var j = 0; j < 7; j++) {
     var plan = weekPlan[(todayDow+j)%7];
-    if (!plan.isRest && !plan.isRun) return plan.type;
+    if (plan.isLift) return plan.type;
   }
   return 'Push';
 }
@@ -1366,12 +1393,19 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var wd = getWkData();
   var sessions = getSessions();
   var today = todayISO();
+  var entry = _planEntry(type);
 
-  var doneToday = isToday && sessions.some(function(s){return s.type===type && s.date===today;});
-  var runDoneToday = isToday && type==='Run' && getRuns().some(function(r){return r.date===today;});
+  // Was this activity logged today? Different log key per activity type.
+  var doneToday = false;
+  if(isToday){
+    if(entry.isLift)       doneToday = sessions.some(function(s){return s.type===type && s.date===today;});
+    else if(entry.isRun)   doneToday = getRuns().some(function(r){return r.date===today;});
+    else if(entry.isSport) doneToday = getSportLogs().some(function(l){return l.type===type && l.date===today;});
+  }
+  var runDoneToday = doneToday && entry.isRun; // legacy alias used below
 
   var cardStyle = isToday
-    ? (doneToday || runDoneToday)
+    ? doneToday
       ? 'background:linear-gradient(135deg,rgba(200,255,0,.04) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.2);opacity:.7;'
       : 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
     : 'opacity:.75;';
@@ -1380,7 +1414,34 @@ function buildSessionMiniCard(type, labelTop, isToday) {
   var todayBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>';
   var otherBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
 
-  var badge = !isToday ? otherBadge : (doneToday || runDoneToday) ? doneBadge : todayBadge;
+  var badge = !isToday ? otherBadge : doneToday ? doneBadge : todayBadge;
+
+  if (entry.isSport) {
+    var sport = _findSport(type);
+    var todayDow = (new Date().getDay()+6)%7;
+    var actData = (wd && wd.sports && wd.sports[DOW_NAMES[todayDow]]) ? wd.sports[DOW_NAMES[todayDow]] : null;
+    if (!actData) {
+      var anyAct = getScheduledActivities(wd).filter(function(a){return a.isSport && a.type===type;});
+      actData = anyAct.length ? anyAct[0].data : null;
+    }
+    var sportNote;
+    if (doneToday) {
+      var todayLog = getSportLogs().find(function(l){return l.type===type && l.date===today;});
+      sportNote = todayLog && todayLog.duration ? todayLog.duration+' min' : 'Logged';
+    } else if (actData && actData.note) {
+      sportNote = actData.note;
+    } else {
+      sportNote = sport ? sport.id : type;
+    }
+    return '<div class="today-card" style="'+cardStyle+'">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<div class="today-label">'+(sport?sport.id:type)+'</div>'+badge+
+        '</div>'+
+        '<div class="today-detail">'+sportNote+'</div>'+
+      '</div>'+
+    '</div>';
+  }
 
   if (type === 'Run') {
     var runNote;
@@ -1530,13 +1591,23 @@ function renderLog() {
     '<div class="screen-avatar">'+_avL+'</div>'+
   '</div>';
 
+  // Second sub-tab reflects whatever activity the user has scheduled most
+  // often in their weekPlan. Falls back to "Run" when nothing scheduled.
+  var primaryAct = getPrimaryActivity() || 'Run';
+  var primaryIsSport = primaryAct !== 'Run';
+
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
-    '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">Run</button>'+
+    '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">'+primaryAct+'</button>'+
     '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
     '</div>';
 
   if (logSubTab === 'run') {
+    if (primaryIsSport) {
+      // Pin logSportType so saveSportLog/fillSportWithAI act on the primary.
+      if (logSportType !== primaryAct) logSportType = primaryAct;
+      return header + renderWeekHeader() + subBar + renderSportSection(primaryAct);
+    }
     return header + renderWeekHeader() + subBar + renderRunsSection();
   }
 
@@ -2186,7 +2257,13 @@ function saveAndCopy() {
   lsSet('kt_sessions',sessions);
   // Auto-advance check — all 3 types logged for current week?
   var weekSess=sessions.filter(function(s){return s.week===currentWeek;});
-  var allDone=['Push','Pull','Legs'].every(function(t){return weekSess.some(function(s){return s.type===t;});});
+  // Only require lift types that actually appear in the user's cadence.
+  // Users with 2-day or non-PPL splits would otherwise never auto-advance.
+  var planLifts=[];
+  getWeekPlan().forEach(function(p){
+    if(p.isLift && planLifts.indexOf(p.type)===-1) planLifts.push(p.type);
+  });
+  var allDone=planLifts.length>0 && planLifts.every(function(t){return weekSess.some(function(s){return s.type===t;});});
   if(allDone && currentWeek<getTotalWeeks()){
     setTimeout(function(){
       var nextWk=currentWeek+1;
@@ -2585,27 +2662,34 @@ function renderActivityCards(){
     '</div>';
 }
 
-function renderSportSection(){
-  var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
+function renderSportSection(forcedSportId){
+  // forcedSportId: when the primary-activity Log tab dispatches here, it
+  // pins the section to that specific sport and hides the picker. The
+  // ad-hoc "+" tab calls without an arg and uses logSportType.
+  var activeId=forcedSportId||logSportType;
+  var sport=SPORTS.find(function(s){return s.id===activeId;})||SPORTS[0];
   var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
     'padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
     'letter-spacing:.05em;text-transform:uppercase;';
 
-  var hasPrior=getSportLogs().length>0;
-  var pickerLabel=hasPrior?'Log a session':'Choose activity';
-  var picker='<div style="margin-bottom:4px;"><span class="sect-title">'+pickerLabel+'</span></div>'+
-  '<div style="display:flex;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
-    SPORTS.map(function(s){
-      var act=s.id===logSportType;
-      return '<button onclick="pickSport(\''+s.id+'\')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;'+
-        'gap:5px;background:'+(act?s.color:'var(--card2)')+';border:none;border-radius:18px;'+
-        'padding:12px 16px;cursor:pointer;min-width:72px;-webkit-tap-highlight-color:transparent;transition:all .15s;">'+
-        sportChip(s,38,act)+
-        '<span style="font-size:11px;font-weight:700;color:'+(act?'#000':'var(--muted)')+';white-space:nowrap;">'+s.id+'</span>'+
-      '</button>';
-    }).join('')+
-  '</div>';
+  var picker='';
+  if(!forcedSportId){
+    var hasPrior=getSportLogs().length>0;
+    var pickerLabel=hasPrior?'Log a session':'Choose activity';
+    picker='<div style="margin-bottom:4px;"><span class="sect-title">'+pickerLabel+'</span></div>'+
+    '<div style="display:flex;gap:8px;overflow-x:auto;padding:0 0 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">'+
+      SPORTS.map(function(s){
+        var act=s.id===activeId;
+        return '<button onclick="pickSport(\''+s.id+'\')" style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;'+
+          'gap:5px;background:'+(act?s.color:'var(--card2)')+';border:none;border-radius:18px;'+
+          'padding:12px 16px;cursor:pointer;min-width:72px;-webkit-tap-highlight-color:transparent;transition:all .15s;">'+
+          sportChip(s,38,act)+
+          '<span style="font-size:11px;font-weight:700;color:'+(act?'#000':'var(--muted)')+';white-space:nowrap;">'+s.id+'</span>'+
+        '</button>';
+      }).join('')+
+    '</div>';
+  }
 
   var hasKey=!!getApiKey();
   var aiBlock=hasKey
@@ -3468,10 +3552,10 @@ function buildIntakeSystemPrompt(){
 '5. Any injuries, pain points, or exercises to avoid\n'+
 '6. Current lifting level — approximate working weights or 1RM estimates for Bench Press, Squat, and Row/Deadlift (or "beginner" if unsure)\n'+
 '7. Training experience — how long have they been lifting consistently\n'+
-'8. Running/cardio — do they want to include it? If yes, how many days and current ability\n'+
+'8. Cardio or sports — do they do anything besides lifting? Running, cycling, swimming, pickleball, tennis, basketball, CrossFit, or "other"? If yes, how many days a week and current ability/level\n'+
 '9. Any exercises they specifically love or hate\n'+
 '10. Programme length — how many weeks do they want (suggest 12 if unsure; valid range 4–24)\n\n'+
-'After you have all the answers, briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Run/Rest, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Rest/Run/sport, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure — adapt to the chosen length, but keep these principles:\n'+
 '- Open with BASE (#06b6d4) — ~3 weeks of technique + moderate volume.\n'+
 '- Insert a DELOAD (#22c55e) at the end of each block (sets to 2-3, weight ~60-65%).\n'+
@@ -3482,8 +3566,10 @@ function buildIntakeSystemPrompt(){
 '- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
 '- Keep exercise names consistent across weeks so progression tracks.\n'+
 '- Use weight=0 for bodyweight exercises. Weights in lb.\n'+
-'- If the user wants running, set each week\'s runs field as a map of day-name → {km, type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan. If the user does not want running, omit runs entirely and use Rest in place of Run in weekPlan.\n'+
-'- weekPlan must use only "Push", "Pull", "Legs", "Run", or "Rest". Spread lift days with rest/run between them. Match the number of lift days to the user\'s availability — if they want 4 lifts/week, you can repeat (e.g. Push, Pull, Rest, Legs, Push, Pull, Rest); the matching exercise list comes from each week\'s push/pull/legs arrays.\n'+
+'- If the user wants running, set each week\'s runs field as a map of day-name → {km, type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan.\n'+
+'- If the user does another activity instead (Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Other), put that activity\'s id directly in weekPlan on those days, and set each week\'s sports field as a map of day-name → {type, note?}. Keys must match the days marked with the activity in weekPlan, and `type` must equal the same activity id.\n'+
+'- A user can mix lift days, rest days, runs, and sports in the same week. If they have nothing scheduled on a day, use Rest.\n'+
+'- weekPlan entries must be one of: "Push", "Pull", "Legs", "Rest", "Run", "Cycling", "CrossFit", "Pickleball", "Swimming", "Tennis", "Basketball", "Other". Spread lift days with rest/cardio between them. Match the number of lift days to the user\'s availability — the matching exercise list comes from each week\'s push/pull/legs arrays.\n'+
 '- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
 '- Progress weight ~2.5-5 lb per week across the hypertrophy/strength blocks.\n\n'+
 'Start with the first question now.';
@@ -3533,6 +3619,13 @@ var _runSchema={
   },
   required:['km','type']
 };
+var _sportSlotSchema={type:'object',
+  properties:{
+    type:{type:'string',description:'Sport id — one of: Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Must match the sport on this day in weekPlan.'},
+    note:{type:'string',description:'Brief planning note (e.g. "doubles practice", "hill climb route", "long ride 40km")'}
+  },
+  required:['type']
+};
 var _weekSchema={type:'object',
   properties:{
     wk:{type:'integer',minimum:1,maximum:24,description:'Week number 1–24'},
@@ -3544,17 +3637,20 @@ var _weekSchema={type:'object',
     legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
     runs:{type:'object',
       description:'Optional. Map weekday name → run details for each scheduled run. Keys: Mon, Tue, Wed, Thu, Fri, Sat, Sun. Days not listed = no run that day. Should match the run days in weekPlan.',
-      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}}
+      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}},
+    sports:{type:'object',
+      description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
+      properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}}
   },
   required:['wk','bName','bColor','push','pull','legs']
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (lift, rest, run, or sport per day). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
-       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept (default Mon=Push, Tue=Run, Wed=Rest, Thu=Pull, Fri=Legs, Sat=Run, Sun=Rest).'}
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs. Off days = Rest. Cardio/sport days can be Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, or Other (whatever the user actually does). Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
      },
      required:['weeks']}},
   {name:'set_current_week',
@@ -3600,11 +3696,8 @@ function executeCoachTool(name,input){
       }
       var planSupplied=Array.isArray(input.weekPlan)&&input.weekPlan.length===7;
       if(planSupplied){
-        cr.weekPlan=input.weekPlan.map(function(s){
-          var t=String(s||'Rest');
-          t=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
-          return _PLAN_TYPE_META[t]?t:'Rest';
-        });
+        // Accept lift/rest types and any sport id; unknown strings collapse to Rest.
+        cr.weekPlan=input.weekPlan.map(function(s){return _planEntry(s).type;});
       }
       var written=[];
       var skipped=[];
@@ -3640,6 +3733,16 @@ function executeCoachTool(name,input){
           if(w.runTue&&typeof w.runTue==='object') runsOut.Tue=w.runTue;
           if(w.runSat&&typeof w.runSat==='object') runsOut.Sat=w.runSat;
           if(Object.keys(runsOut).length) weekObj.runs=runsOut;
+        }
+        // Sports map for non-Run activity days (Cycling/Pickleball/etc.) —
+        // mirrors the runs map. Each entry is {type, note?}.
+        if(w.sports&&typeof w.sports==='object'&&!Array.isArray(w.sports)){
+          var sportsOut={};
+          DOW_NAMES.forEach(function(n){
+            var slot=w.sports[n];
+            if(slot&&typeof slot==='object'&&slot.type) sportsOut[n]=slot;
+          });
+          if(Object.keys(sportsOut).length) weekObj.sports=sportsOut;
         }
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
@@ -4122,7 +4225,7 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
-  p+='  - Change which weekdays are Push/Pull/Legs/Run/Rest → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
+  p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
   p+='When building a programme, follow this block structure (scale the durations to the chosen length, defaults shown for a 12-week template):\n';
@@ -5008,7 +5111,7 @@ setTimeout(checkForLiveUpdate, 2000);
       <div class="section-header"><span class="section-num">04</span><h2>Data Storage</h2></div>
       <p>Everything lives in your browser — no server, no account, no sync. Export a JSON backup any time from Settings.</p>
       <div class="data-table">
-        <div class="data-row"><div class="data-key">kt_routine</div><div class="data-val">Your AI-generated programme — name, weeks (with push/pull/legs/runs per week), and weekPlan (Mon→Sun cadence)</div></div>
+        <div class="data-row"><div class="data-key">kt_routine</div><div class="data-val">Your AI-generated programme — name, weeks (push/pull/legs exercises and any runs/sports planning per week), and weekPlan (Mon→Sun cadence)</div></div>
         <div class="data-row"><div class="data-key">kt_routine_backup</div><div class="data-val">Snapshot of the previous routine before the Coach last edited it — powers the Restore Previous button</div></div>
         <div class="data-row"><div class="data-key">kt_sessions</div><div class="data-val">All logged gym sessions with exercises, sets, reps, weights and RPE</div></div>
         <div class="data-row"><div class="data-key">kt_runs</div><div class="data-val">Run logs — distance, time, heart rate, type, date</div></div>
