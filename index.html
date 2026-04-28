@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-3"/>
+<meta name="build" content="20260427-4"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -4052,6 +4052,11 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var finishedBlocks=[]; // order-preserving list of completed blocks
     var stopReason='';
     var res;
+    // Hard timeout so a hanging fetch or stream can never leave the
+    // chat stuck on the "thinking" indicator. 90s covers normal
+    // responses comfortably; anything longer is almost certainly stuck.
+    var _ctrl=new AbortController();
+    var _timeoutId=setTimeout(function(){ try{_ctrl.abort();}catch(e){} },90000);
     try{
       res=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
@@ -4068,14 +4073,20 @@ async function runCoachTurn(systemPrompt,model,maxTok){
           system:systemPrompt,
           messages:apiMsgs,
           tools:COACH_TOOLS
-        })
+        }),
+        signal:_ctrl.signal
       });
     }catch(e){
+      clearTimeout(_timeoutId);
       hadError=true;
-      coachMessages.push({role:'assistant',content:'Could not connect. Check your internet connection.'});
+      var errMsg=(e&&e.name==='AbortError')
+        ?'Request timed out after 90s — try again.'
+        :'Could not connect. Check your internet connection.';
+      coachMessages.push({role:'assistant',content:errMsg});
       break;
     }
     if(!res.ok){
+      clearTimeout(_timeoutId);
       var ed=await res.json().catch(function(){return {};});
       coachMessages.push({role:'assistant',content:(ed.error&&ed.error.message)?ed.error.message:'API error '+res.status});
       hadError=true;
@@ -4085,6 +4096,8 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var reader=res.body.getReader();
     var dec=new TextDecoder();
     var buf='';
+    var streamErr=null;
+    try{
     while(true){
       var ch=await reader.read();
       if(ch.done) break;
@@ -4150,6 +4163,19 @@ async function runCoachTurn(systemPrompt,model,maxTok){
           if(ev.delta&&ev.delta.stop_reason) stopReason=ev.delta.stop_reason;
         }
       }
+    }
+    }catch(e){
+      streamErr=e;
+    }
+    clearTimeout(_timeoutId);
+    if(streamErr){
+      hadError=true;
+      _streamingTool=null;
+      var sErrMsg=(streamErr&&streamErr.name==='AbortError')
+        ?'Response timed out mid-stream — try again.'
+        :'Streaming error: '+(streamErr.message||'unknown');
+      coachMessages.push({role:'assistant',content:sErrMsg});
+      break;
     }
 
     // Accumulate text across all turns for final display
