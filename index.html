@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260428-1"/>
+<meta name="build" content="20260428-2"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3999,11 +3999,27 @@ function _toApiMsg(m){
 async function runCoachTurn(systemPrompt,model,maxTok){
   // Keep enough history for a full 10-question intake plus follow-ups; the
   // system prompt holds the steady-state context, so we just need recent dialogue.
-  var apiMsgs=coachMessages.slice(-60).filter(function(m){
-    // Exclude transient tool_result turns from older history when rebuilding;
-    // we only carry forward within a single runCoachTurn.
+  // Take only the last ~20 messages and strip image blocks from anything
+  // older than the last 4 turns. The Coach was hanging because every turn
+  // re-sent base64 screenshots from prior conversations; on iOS PWA + spotty
+  // connections that pushes the request well past the 60s timeout. Text
+  // history is preserved so the model still has context.
+  var raw=coachMessages.slice(-20).filter(function(m){
     return !m._toolResults;
-  }).map(_toApiMsg);
+  });
+  var stripBefore=Math.max(0,raw.length-4);
+  var apiMsgs=raw.map(function(m,i){
+    var apiM=_toApiMsg(m);
+    if(i>=stripBefore || !Array.isArray(apiM.content)) return apiM;
+    var stripped=apiM.content.filter(function(b){return !b||b.type!=='image';})
+      .map(function(b){
+        // Keep tool_result + text blocks intact; image blocks were just
+        // filtered above.
+        return b;
+      });
+    if(!stripped.length) stripped=[{type:'text',text:'(image omitted)'}];
+    return {role:apiM.role,content:stripped};
+  });
   var MAX_TURNS=15;
   var totalText='';
   var allToolCalls=[];
@@ -4943,7 +4959,9 @@ function renderSettings() {
     '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. <span style="color:var(--accent)">console.anthropic.com</span></p>'+
     (apiKey
       ? '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:10px;font-family:monospace;">'+maskedKey+'</div>'+
-        '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'
+        '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'+
+        '<button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="if(confirm(\'Clear all chat history? This will not delete your routine, sessions, or any logged data.\')){clearCoachHistory();showToast(\'Chat history cleared\');}">Clear Chat History</button>'+
+        '<p style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">If the Coach starts hanging on every prompt, clearing old chats (especially ones with attached screenshots) usually fixes it.</p>'
       : '<div class="field" style="margin-bottom:10px;"><input type="password" id="settingsApiKeyInput" placeholder="sk-ant-api03-..." style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;font-family:monospace;"/></div>'+
         '<button class="btn btn-primary btn-full" onclick="saveApiKeyFromSettings()">Save Key</button>'
     )+
