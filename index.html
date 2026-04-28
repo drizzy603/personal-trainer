@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-7"/>
+<meta name="build" content="20260428-1"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1331,12 +1331,18 @@ function getScheduledActivities(wd){
     if(p.isLift||p.isRest) return;
     var name=DOW_NAMES[dow];
     var data=null;
-    if(p.isRun && wd.runs && wd.runs[name]) data=wd.runs[name];
-    else if(p.isSport && wd.sports && wd.sports[name]) data=wd.sports[name];
+    if(p.isRun){
+      if(wd.runs && wd.runs[name]) data=wd.runs[name];
+      // Legacy fallback per-day: older routines stored runs as runTue/runSat
+      // alongside weekPlan, never migrated to runs:{}. Resolve them inline so
+      // the modern read path doesn't show "no plan" cards on those weeks.
+      else if(name==='Tue' && wd.runTue) data=wd.runTue;
+      else if(name==='Sat' && wd.runSat) data=wd.runSat;
+    } else if(p.isSport && wd.sports && wd.sports[name]) data=wd.sports[name];
     out.push({dow:dow,name:name,type:p.type,isRun:p.isRun,isSport:p.isSport,data:data});
   });
-  // Legacy fallback: routines saved before weekPlan existed had runTue/runSat
-  // or wd.runs without a weekPlan. Treat any run map as scheduled runs.
+  // Last-resort legacy fallback: routine saved before weekPlan existed at all.
+  // Treat any run map present on wd as scheduled runs at their named days.
   if(out.length===0 && wd){
     if(wd.runs && typeof wd.runs==='object' && !Array.isArray(wd.runs)){
       Object.keys(wd.runs).forEach(function(k){
@@ -3880,6 +3886,19 @@ function executeCoachTool(name,input){
         // Per-week cadence override — shadows cr.weekPlan only on this week.
         if(Array.isArray(w.weekPlan)&&w.weekPlan.length===7){
           weekObj.weekPlan=w.weekPlan.map(function(s){return _planEntry(s).type;});
+        }
+        // Preserve user-set fields the AI didn't touch (per-week weekPlan
+        // override from the "···" swap UI; sports map). Without this, asking
+        // the Coach to regenerate a week silently wipes the user's manual
+        // edits to that week's cadence/plan.
+        var prev=cr.weeks[wk-1];
+        if(prev){
+          if(!weekObj.weekPlan && Array.isArray(prev.weekPlan) && prev.weekPlan.length===7){
+            weekObj.weekPlan=prev.weekPlan;
+          }
+          if(!weekObj.sports && prev.sports && typeof prev.sports==='object'){
+            weekObj.sports=prev.sports;
+          }
         }
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
