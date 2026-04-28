@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-6"/>
+<meta name="build" content="20260427-7"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3762,13 +3762,6 @@ var _runSchema={
   },
   required:['km','type']
 };
-var _sportSlotSchema={type:'object',
-  properties:{
-    type:{type:'string',description:'Sport id — one of: Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Must match the sport on this day in weekPlan.'},
-    note:{type:'string',description:'Brief planning note (e.g. "doubles practice", "hill climb route", "long ride 40km")'}
-  },
-  required:['type']
-};
 var _weekSchema={type:'object',
   properties:{
     wk:{type:'integer',minimum:1,maximum:24,description:'Week number 1–24'},
@@ -3780,22 +3773,17 @@ var _weekSchema={type:'object',
     legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
     runs:{type:'object',
       description:'Optional. Map weekday name → run details for each scheduled run. Keys: Mon, Tue, Wed, Thu, Fri, Sat, Sun. Days not listed = no run that day. Should match the run days in weekPlan.',
-      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}},
-    sports:{type:'object',
-      description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
-      properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}},
-    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},
-      description:'Optional. Per-week cadence override (Mon→Sun). Use only when this specific week deviates from the routine-level weekPlan (e.g. a deload that drops a lift day, or a holiday week). If omitted, the routine-level weekPlan applies.'}
+      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}}
   },
   required:['wk','bName','bColor','push','pull','legs']
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (lift, rest, run, or sport per day). Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
-       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs. Off days = Rest. Cardio/sport days can be Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, or Other (whatever the user actually does). Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept (default Mon=Push, Tue=Run, Wed=Rest, Thu=Pull, Fri=Legs, Sat=Run, Sun=Rest).'}
      },
      required:['weeks']}},
   {name:'set_current_week',
