@@ -1,4 +1,4 @@
-# Personal Trainer App
+# Trovo App
 
 A single-file progressive training app with an AI coach. No framework, no build step.
 

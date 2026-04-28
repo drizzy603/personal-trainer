@@ -7,10 +7,10 @@ Source of truth for App Store Connect & TestFlight copy. Update here, then paste
 **App Name** *(30 char limit)*
 
 ```
-Personal Trainer
+Trovo
 ```
 
-Fallback if taken: `Personal Trainer — AI Coach` (29 chars)
+Fallback if taken: `Trovo — AI Coach` (29 chars)
 
 **Subtitle** *(30 char limit)*
 
@@ -27,7 +27,7 @@ Your AI coach builds a custom plan, tracks every set, and adapts week by week. N
 **Description** *(4000 char limit)*
 
 ```
-Personal Trainer is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
+Trovo is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
 
 Tell the coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a full multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
@@ -100,14 +100,14 @@ https://drizzy603.github.io/personal-trainer/privacy.html
 Email: robertokalanisosa@outlook.com
 ```
 
-Set in App Store Connect → My Apps → Personal Trainer → App Information → App Review Information.
+Set in App Store Connect → My Apps → Trovo → App Information → App Review Information.
 
 ## TestFlight
 
 **Beta App Description** *(shown to external testers before install)*
 
 ```
-Personal Trainer is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
+Trovo is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
 ```
 
 **What to Test** *(shown in TestFlight app)*

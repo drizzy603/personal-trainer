@@ -2,7 +2,7 @@
   "name": "personal-trainer",
   "version": "1.0.0",
   "private": true,
-  "description": "Personal Trainer iOS shell — wraps the PWA at drizzy603.github.io/personal-trainer/",
+  "description": "Trovo iOS shell — wraps the PWA at drizzy603.github.io/personal-trainer/",
   "scripts": {
     "build:web": "rm -rf www && mkdir -p www && cp index.html sw.js manifest.json app-icon-1024.png privacy.html www/",
     "sync": "npm run build:web && cap sync",
