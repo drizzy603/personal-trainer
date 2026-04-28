@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260427-4"/>
+<meta name="build" content="20260427-5"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -4046,19 +4046,29 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   var allToolCalls=[];
   var hadError=false;
 
+  // Promise.race-based timeout. iOS PWA WKWebView is known to drop
+  // AbortSignal on long fetches, so the race is the only way to
+  // guarantee the chat doesn't get stuck on "thinking" forever.
+  function _withTimeout(promise, ms, label){
+    var timer;
+    var timeout=new Promise(function(_,rej){
+      timer=setTimeout(function(){
+        rej(new Error('TIMEOUT:'+(label||'op')));
+      },ms);
+    });
+    return Promise.race([promise,timeout]).then(function(v){
+      clearTimeout(timer); return v;
+    },function(e){ clearTimeout(timer); throw e; });
+  }
+
   for(var t=0;t<MAX_TURNS;t++){
     streamingContent='';
     var blockBuf={};       // index -> {type, text | {id,name,partialJson}}
     var finishedBlocks=[]; // order-preserving list of completed blocks
     var stopReason='';
     var res;
-    // Hard timeout so a hanging fetch or stream can never leave the
-    // chat stuck on the "thinking" indicator. 90s covers normal
-    // responses comfortably; anything longer is almost certainly stuck.
-    var _ctrl=new AbortController();
-    var _timeoutId=setTimeout(function(){ try{_ctrl.abort();}catch(e){} },90000);
     try{
-      res=await fetch('https://api.anthropic.com/v1/messages',{
+      res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{
           'content-type':'application/json',
@@ -4073,22 +4083,21 @@ async function runCoachTurn(systemPrompt,model,maxTok){
           system:systemPrompt,
           messages:apiMsgs,
           tools:COACH_TOOLS
-        }),
-        signal:_ctrl.signal
-      });
+        })
+      }),60000,'fetch');
     }catch(e){
-      clearTimeout(_timeoutId);
       hadError=true;
-      var errMsg=(e&&e.name==='AbortError')
-        ?'Request timed out after 90s — try again.'
+      var msg=String(e&&e.message||'');
+      var errMsg=msg.indexOf('TIMEOUT:')===0
+        ?'No response after 60s — Anthropic may be slow or the request was rejected. Try again.'
         :'Could not connect. Check your internet connection.';
       coachMessages.push({role:'assistant',content:errMsg});
       break;
     }
     if(!res.ok){
-      clearTimeout(_timeoutId);
-      var ed=await res.json().catch(function(){return {};});
-      coachMessages.push({role:'assistant',content:(ed.error&&ed.error.message)?ed.error.message:'API error '+res.status});
+      var ed;
+      try{ ed=await _withTimeout(res.json(),5000,'errjson'); }catch(e){ ed={}; }
+      coachMessages.push({role:'assistant',content:(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status});
       hadError=true;
       break;
     }
@@ -4099,7 +4108,9 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var streamErr=null;
     try{
     while(true){
-      var ch=await reader.read();
+      // 30s per chunk is generous — Anthropic streams steadily during
+      // tool-use thinking; longer than this means the connection died.
+      var ch=await _withTimeout(reader.read(),30000,'read');
       if(ch.done) break;
       buf+=dec.decode(ch.value,{stream:true});
       var lines=buf.split('\n');
@@ -4167,13 +4178,13 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     }catch(e){
       streamErr=e;
     }
-    clearTimeout(_timeoutId);
     if(streamErr){
       hadError=true;
       _streamingTool=null;
-      var sErrMsg=(streamErr&&streamErr.name==='AbortError')
-        ?'Response timed out mid-stream — try again.'
-        :'Streaming error: '+(streamErr.message||'unknown');
+      var sMsg=String(streamErr&&streamErr.message||'');
+      var sErrMsg=sMsg.indexOf('TIMEOUT:')===0
+        ?'Response stalled mid-stream — try again.'
+        :'Streaming error: '+(sMsg||'unknown');
       coachMessages.push({role:'assistant',content:sErrMsg});
       break;
     }
