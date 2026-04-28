@@ -3,4 +3,5 @@
 node_modules/
 www/
 workouts*.json
+trainer-backup-*.json
 screenshots/out/
