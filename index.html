@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260428-2"/>
+<meta name="build" content="20260428-4"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -4042,11 +4042,13 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
   for(var t=0;t<MAX_TURNS;t++){
     streamingContent='';
-    var blockBuf={};       // index -> {type, text | {id,name,partialJson}}
-    var finishedBlocks=[]; // order-preserving list of completed blocks
+    var finishedBlocks=[]; // order-preserving list of completed blocks from this turn
     var stopReason='';
     var res;
     try{
+      // Non-streaming: iOS PWA WKWebView has reliable issues consuming
+      // chunked SSE responses (silent stalls past the 60s timeout). The
+      // single-JSON path is slower to *feel* but actually completes.
       res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{
@@ -4058,17 +4060,16 @@ async function runCoachTurn(systemPrompt,model,maxTok){
         body:JSON.stringify({
           model:model,
           max_tokens:maxTok,
-          stream:true,
           system:systemPrompt,
           messages:apiMsgs,
           tools:COACH_TOOLS
         })
-      }),60000,'fetch');
+      }),90000,'fetch');
     }catch(e){
       hadError=true;
       var msg=String(e&&e.message||'');
       var errMsg=msg.indexOf('TIMEOUT:')===0
-        ?'No response after 60s — Anthropic may be slow or the request was rejected. Try again.'
+        ?'No response after 90s — Anthropic may be slow or the request was rejected. Try again.'
         :'Could not connect. Check your internet connection.';
       coachMessages.push({role:'assistant',content:errMsg});
       break;
@@ -4080,93 +4081,22 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       hadError=true;
       break;
     }
-
-    var reader=res.body.getReader();
-    var dec=new TextDecoder();
-    var buf='';
-    var streamErr=null;
-    try{
-    while(true){
-      // 30s per chunk is generous — Anthropic streams steadily during
-      // tool-use thinking; longer than this means the connection died.
-      var ch=await _withTimeout(reader.read(),30000,'read');
-      if(ch.done) break;
-      buf+=dec.decode(ch.value,{stream:true});
-      var lines=buf.split('\n');
-      buf=lines.pop();
-      for(var i=0;i<lines.length;i++){
-        var line=lines[i];
-        if(!line.startsWith('data: ')) continue;
-        var dat=line.slice(6);
-        if(dat==='[DONE]') continue;
-        var ev;
-        try{ ev=JSON.parse(dat); }catch(e){ continue; }
-        if(ev.type==='content_block_start'){
-          var cb=ev.content_block||{};
-          if(cb.type==='tool_use'){
-            blockBuf[ev.index]={type:'tool_use',id:cb.id,name:cb.name,partialJson:'',
-              _parse:{depth:0,inStr:false,esc:false,arrayStarted:false,progress:0}};
-            _streamingTool={name:cb.name,progress:0};
-            render(); scrollChatBottom();
-          } else {
-            blockBuf[ev.index]={type:'text',text:''};
-          }
-        } else if(ev.type==='content_block_delta'){
-          var b=blockBuf[ev.index]; if(!b) continue;
-          if(ev.delta.type==='text_delta'&&b.type==='text'){
-            b.text+=ev.delta.text;
-            streamingContent+=ev.delta.text;
-            render(); scrollChatBottom();
-          } else if(ev.delta.type==='input_json_delta'&&b.type==='tool_use'){
-            var chunk=ev.delta.partial_json||'';
-            b.partialJson+=chunk;
-            // Incremental parse: count completed objects inside the first
-            // top-level array (e.g. weeks:[{...},{...}]) for live progress.
-            var st=b._parse, prevProgress=st.progress;
-            for(var pi=0;pi<chunk.length;pi++){
-              var pc=chunk[pi];
-              if(st.esc){st.esc=false;continue;}
-              if(pc==='\\'){st.esc=true;continue;}
-              if(pc==='"'){st.inStr=!st.inStr;continue;}
-              if(st.inStr) continue;
-              if(!st.arrayStarted){ if(pc==='[') st.arrayStarted=true; continue; }
-              if(pc==='{') st.depth++;
-              else if(pc==='}'){ st.depth--; if(st.depth===0) st.progress++; }
-            }
-            if(_streamingTool&&st.progress!==prevProgress){
-              _streamingTool.progress=st.progress;
-              render(); scrollChatBottom();
-            }
-          }
-        } else if(ev.type==='content_block_stop'){
-          var fin=blockBuf[ev.index];
-          if(!fin) continue;
-          if(fin.type==='tool_use'){
-            _streamingTool=null;
-            try{ fin.input=JSON.parse(fin.partialJson||'{}'); }catch(e){ fin.input={}; }
-            finishedBlocks.push({type:'tool_use',id:fin.id,name:fin.name,input:fin.input});
-          } else {
-            finishedBlocks.push({type:'text',text:fin.text});
-          }
-          delete blockBuf[ev.index];
-        } else if(ev.type==='message_delta'){
-          if(ev.delta&&ev.delta.stop_reason) stopReason=ev.delta.stop_reason;
-        }
-      }
-    }
-    }catch(e){
-      streamErr=e;
-    }
-    if(streamErr){
+    var data;
+    try{ data=await _withTimeout(res.json(),30000,'json'); }
+    catch(e){
       hadError=true;
-      _streamingTool=null;
-      var sMsg=String(streamErr&&streamErr.message||'');
-      var sErrMsg=sMsg.indexOf('TIMEOUT:')===0
-        ?'Response stalled mid-stream — try again.'
-        :'Streaming error: '+(sMsg||'unknown');
-      coachMessages.push({role:'assistant',content:sErrMsg});
+      var jMsg=String(e&&e.message||'');
+      coachMessages.push({role:'assistant',content:jMsg.indexOf('TIMEOUT:')===0?'Response stalled — try again.':'Couldn\'t read response.'});
       break;
     }
+    if(data && Array.isArray(data.content)){
+      finishedBlocks=data.content.map(function(b){
+        if(b && b.type==='tool_use') return {type:'tool_use',id:b.id,name:b.name,input:b.input||{}};
+        if(b && b.type==='text')     return {type:'text',text:b.text||''};
+        return null;
+      }).filter(Boolean);
+    }
+    stopReason=(data&&data.stop_reason)||'';
 
     // Accumulate text across all turns for final display
     finishedBlocks.forEach(function(b){ if(b.type==='text') totalText+=b.text; });
@@ -4732,9 +4662,8 @@ function renderCoach(){
     if(streamingContent){
       bubbles+='<div class="coach-bubble assistant">'+md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span></div>';
     }else if(coachLoading){
-      var loadMsg=intakeMode?'Thinking…':'';
       bubbles+='<div class="typing-wrap">'+
-        (loadMsg?'<span style="font-size:12px;color:var(--lite);margin-right:8px;">'+loadMsg+'</span>':'')+
+        '<span style="font-size:12px;color:var(--lite);margin-right:8px;">Thinking…</span>'+
         '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
       '</div>';
     }
