@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-4"/>
+<meta name="build" content="20260429-5"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3763,6 +3763,13 @@ var _runSchema={
   },
   required:['km','type']
 };
+var _sportSlotSchema={type:'object',
+  properties:{
+    type:{type:'string',description:'Sport id — one of: Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Must match the sport on this day in weekPlan.'},
+    note:{type:'string',description:'Brief planning note (e.g. "doubles practice", "hill climb route", "long ride 40km")'}
+  },
+  required:['type']
+};
 var _weekSchema={type:'object',
   properties:{
     wk:{type:'integer',minimum:1,maximum:24,description:'Week number 1–24'},
@@ -3774,22 +3781,37 @@ var _weekSchema={type:'object',
     legs:{type:'array',items:_exerciseSchema,description:'Legs session exercises'},
     runs:{type:'object',
       description:'Optional. Map weekday name → run details for each scheduled run. Keys: Mon, Tue, Wed, Thu, Fri, Sat, Sun. Days not listed = no run that day. Should match the run days in weekPlan.',
-      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}}
+      properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}},
+    sports:{type:'object',
+      description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
+      properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}},
+    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},
+      description:'Optional. Per-week cadence override (Mon→Sun). Use only when this specific week deviates from the routine-level weekPlan (e.g. a deload that drops a lift day, or a holiday week). If omitted, the routine-level weekPlan applies.'}
   },
   required:['wk','bName','bColor','push','pull','legs']
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (which days are Push/Pull/Legs/Run/Rest). Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (lift, rest, run, or sport per day). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
-       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept (default Mon=Push, Tue=Run, Wed=Rest, Thu=Pull, Fri=Legs, Sat=Run, Sun=Rest).'}
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs. Off days = Rest. Cardio/sport days can be Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, or Other (whatever the user actually does). Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
      },
      required:['weeks']}},
   {name:'set_current_week',
    description:'Set which week of the programme the user is currently on.',
    input_schema:{type:'object',properties:{week:{type:'integer',minimum:1,maximum:24}},required:['week']}},
+  {name:'swap_cadence_days',
+   description:'Swap two days in the user\'s weekly cadence. By default the swap applies only to the current week (creates a per-week override). Pass scope:"global" to change the routine-level cadence so every week shifts. Use this when the user says e.g. "I want to do my push workout tomorrow and run today" — that\'s a one-week swap of Mon and Tue. The runs/sports planning data on those days follows the activity automatically.',
+   input_schema:{type:'object',
+     properties:{
+       dayA:{type:'string',enum:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],description:'First day to swap.'},
+       dayB:{type:'string',enum:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],description:'Second day to swap.'},
+       week:{type:'integer',minimum:1,maximum:24,description:'Optional. Week to swap. Defaults to the user\'s current week.'},
+       scope:{type:'string',enum:['week','global'],description:'Optional. "week" (default) only changes this week\'s cadence. "global" changes the routine-level default so every week shifts.'}
+     },
+     required:['dayA','dayB']}},
   {name:'set_exercise_weight',
    description:'Update the working weight for a named exercise (case-insensitive match).',
    input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
@@ -3927,6 +3949,40 @@ function executeCoachTool(name,input){
       if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
       currentWeek=w; lsSet('kt_week',w);
       return {ok:true,message:'current week set to '+w};
+    }
+    if(name==='swap_cadence_days'){
+      var dowA=DOW_FROM_NAME[input.dayA];
+      var dowB=DOW_FROM_NAME[input.dayB];
+      if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
+      if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
+      if(input.scope==='global'){
+        var crG=getCustomRoutine();
+        if(!crG) return {ok:false,error:'No routine yet'};
+        var basePlan;
+        if(Array.isArray(crG.weekPlan)&&crG.weekPlan.length===7) basePlan=crG.weekPlan.slice();
+        else basePlan=DEFAULT_WEEK_PLAN.map(function(p){return p.type;});
+        var tmpG=basePlan[dowA]; basePlan[dowA]=basePlan[dowB]; basePlan[dowB]=tmpG;
+        crG.weekPlan=basePlan;
+        // Also re-align runs/sports on every week so planning data follows
+        // the activity, not the day, across the whole programme.
+        (crG.weeks||[]).forEach(function(w){
+          ['runs','sports'].forEach(function(field){
+            if(!w||!w[field]||typeof w[field]!=='object') return;
+            var nameA=DOW_NAMES[dowA], nameB=DOW_NAMES[dowB];
+            var a=w[field][nameA], b=w[field][nameB];
+            if(a===undefined && b===undefined) return;
+            if(b!==undefined) w[field][nameA]=b; else delete w[field][nameA];
+            if(a!==undefined) w[field][nameB]=a; else delete w[field][nameB];
+          });
+        });
+        setCustomRoutine(crG);
+        return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' globally'};
+      }
+      var wkNum=parseInt(input.week)||currentWeek;
+      if(swapWeekPlanDays(wkNum,dowA,dowB)){
+        return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' for week '+wkNum};
+      }
+      return {ok:false,error:'Could not swap (no routine for that week?)'};
     }
     if(name==='set_exercise_weight'){
       var weights=getWeights();
@@ -4360,6 +4416,7 @@ function buildSystemPrompt(){
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
+  p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
   p+='When building a programme, follow this block structure (scale the durations to the chosen length, defaults shown for a 12-week template):\n';
