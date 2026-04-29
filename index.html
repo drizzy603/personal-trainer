@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-6"/>
+<meta name="build" content="20260429-7"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1190,6 +1190,24 @@ function importFromHealth(){
     showToast('Health import failed');
     if(window.console) console.error('importFromHealth', err);
   });
+}
+// Forgets which HK workouts have been imported AND removes Apple Health
+// entries from kt_runs that the user hasn't edited (i.e. still carry the
+// "From Apple Health" note). Manually-edited entries are kept so we don't
+// destroy the user's annotations.
+function resetHealthImport(){
+  if(!confirm('Reset Apple Health import?\n\nThis forgets which workouts have been imported and removes Apple Health runs you haven\'t edited. Manually-edited runs are kept.')) return;
+  var existing = getRuns();
+  var removed = 0;
+  var kept = existing.filter(function(r){
+    if(r && r.note==='From Apple Health'){ removed++; return false; }
+    return true;
+  });
+  lsSet('kt_runs', kept);
+  localStorage.removeItem('kt_hk_imported');
+  localStorage.removeItem('kt_hk_last_sync');
+  showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
+  render();
 }
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
@@ -5037,6 +5055,16 @@ function renderSettings() {
           '</svg>'+
         '</div>'+
         '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull running workouts from your watch</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>' : '')+
+    ((isNativeIOS() && (lsGet('kt_hk_imported')||[]).length)?
+      '<div class="settings-row" onclick="resetHealthImport()">'+
+        '<div class="settings-row-ic" style="background:#1f1f24;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Reset Apple Health import</div><div class="settings-row-sub">Clear sync state and unedited imports</div></div>'+
         '<span class="settings-row-chev">›</span>'+
       '</div>' : '')+
     '<div class="settings-row" onclick="importData()">'+
