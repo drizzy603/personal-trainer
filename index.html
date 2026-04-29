@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-9"/>
+<meta name="build" content="20260429-10"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -601,8 +601,9 @@ select option{background:var(--bg);}
 .kt-session-done-ttl{font-size:15px;font-weight:700;color:#fafafa;letter-spacing:-.2px;}
 .kt-session-done-sub{font-size:12px;color:#9ca3af;margin-top:2px;}
 
-/* Deck Runner — fullscreen overlay */
-#runner-root{position:fixed;inset:0;background:#0b0b0d;z-index:900;color:#fafafa;font-family:'Inter',-apple-system,system-ui,sans-serif;letter-spacing:-.011em;animation:kt-fade .25s ease;}
+/* Deck Runner — fullscreen route. z-index sits BELOW the floating tab bar
+   (#tabs is z-index 100) so the tab bar stays visible per spec section 4. */
+#runner-root{position:fixed;inset:0;background:#0b0b0d;z-index:50;color:#fafafa;font-family:'Inter',-apple-system,system-ui,sans-serif;letter-spacing:-.011em;animation:kt-fade .25s ease;}
 @keyframes kt-fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .kt-r-hd{position:absolute;top:max(env(safe-area-inset-top),20px);left:24px;right:24px;z-index:30;}
 .kt-r-hd-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
@@ -665,7 +666,7 @@ select option{background:var(--bg);}
 .kt-done-btn{margin-top:8px;padding:14px 24px;border-radius:14px;border:none;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-done-btn{background:#0b0b0d;color:#c8ff00;}
 .kt-r-card.dark .kt-done-btn{background:#c8ff00;color:#000;}
-.kt-r-strip{position:absolute;left:0;right:0;z-index:40;padding:0 16px;}
+.kt-r-strip{position:absolute;left:0;right:0;z-index:60;padding:0 16px;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 14px);}
 .kt-r-strip-inner{background:rgba(22,22,26,.88);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
 .kt-r-strip-inner::-webkit-scrollbar{display:none;}
 .kt-r-pill{flex-shrink:0;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;-webkit-tap-highlight-color:transparent;}
@@ -1437,9 +1438,11 @@ function render() {
   // Lazily fetch today's coach card the first time the editorial Today is on
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
-  if(currentTab==='log' && logSubTab==='workout' && hasCustomRoutine()
-     && coachCard==null && !coachCardLoading && !coachCardDismissed){
-    loadCoachCardForToday();
+  if(currentTab==='log' && logSubTab==='workout' && hasCustomRoutine()){
+    if(coachCard==null && !coachCardLoading && !coachCardDismissed){
+      loadCoachCardForToday();
+    }
+    attachCoachCardSwipe();
   }
   paintRunner();
 }
@@ -1715,9 +1718,17 @@ function getTodayActivity(){
     var runs = (wd && wd.runs) || {};
     var key = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][todayDow];
     var run = runs[key] || null;
+    // The Coach schema uses { km, type, hr, note }; older seeds and exports
+    // sometimes write { distance, paceMin/paceSec, ... } — accept both.
+    var kmVal = 0;
+    if(run){
+      if(run.km != null) kmVal = parseFloat(run.km) || 0;
+      else if(run.distance != null) kmVal = parseFloat(run.distance) || 0;
+    }
     return {type:'run', dayName:'Run', weekday:weekday,
-      km: run && run.km ? run.km : 0,
-      hr: run && run.hr ? run.hr : 0};
+      km: kmVal,
+      hr: run && run.hr ? run.hr : 0,
+      note: run && run.note ? run.note : ''};
   }
   // Sport day — Cycling / Pickleball / etc.
   var wd = getWkData();
@@ -1809,7 +1820,11 @@ function fallbackCoachCard(activity){
 function fetchCoachCard(activity){
   return new Promise(function(resolve){
     var key = getApiKey();
-    if(!key){ resolve(fallbackCoachCard(activity)); return; }
+    if(!key){
+      var fb = fallbackCoachCard(activity);
+      fb.loadedAt = Date.now();
+      resolve(fb); return;
+    }
     var cached = loadCachedCoachCard();
     if(cached){ resolve(cached); return; }
     var routine = lsGet('kt_routine') || {};
@@ -1844,11 +1859,20 @@ function fetchCoachCard(activity){
       if(!match) throw new Error('no json');
       var card = JSON.parse(match[0]);
       if(!card.message || !Array.isArray(card.actions)) throw new Error('bad shape');
+      card.loadedAt = Date.now();
       saveCachedCoachCard(card);
       resolve(card);
-    }).catch(function(){ resolve(fallbackCoachCard(activity)); });
+    }).catch(function(){
+      var fb = fallbackCoachCard(activity);
+      fb.loadedAt = Date.now();
+      resolve(fb);
+    });
     // 8s timeout — never block the screen
-    setTimeout(function(){ resolve(fallbackCoachCard(activity)); }, 8000);
+    setTimeout(function(){
+      var fb = fallbackCoachCard(activity);
+      fb.loadedAt = Date.now();
+      resolve(fb);
+    }, 8000);
   });
 }
 function loadCoachCardForToday(){
@@ -1936,12 +1960,19 @@ function renderTodayEditorial(){
       body = 'Tap to start when you’re ready.';
     }
   } else if(act.type === 'run'){
-    line1 = (act.km > 0 ? act.km+' km' : 'Easy run');
-    line2 = act.dayName.toLowerCase()+'.';
+    if(act.km > 0){
+      line1 = act.km+' km';
+      line2 = 'today.';
+    } else {
+      line1 = 'Easy';
+      line2 = 'run today.';
+    }
     line2Class = 'accent';
-    body = act.hr > 0
-      ? 'HR cap '+act.hr+' bpm. Easy aerobic, nothing brave.'
-      : 'Easy aerobic, nothing brave.';
+    var bodyParts = [];
+    if(act.hr > 0) bodyParts.push('HR cap '+act.hr+' bpm.');
+    bodyParts.push(act.km > 0 ? 'Easy aerobic, nothing brave.' : 'Distance up to you.');
+    if(act.note) bodyParts.push(act.note);
+    body = bodyParts.join(' ');
   } else if(act.type === 'sport'){
     line1 = 'Today is';
     line2 = act.dayName.toLowerCase()+' day.';
@@ -1983,11 +2014,11 @@ function renderTodayEditorial(){
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
   } else if(act.type === 'run'){
-    var ctaKm = act.km > 0 ? act.km+' km' : 'Run';
+    var ctaTitle = act.km > 0 ? 'Start run · '+act.km+' km' : 'Start run';
     cta = '<button class="kt-cta" onclick="switchLogSub(\'run\')">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">Start run · '+_esc(ctaKm)+'</div>'+
+        '<div class="kt-cta-title">'+_esc(ctaTitle)+'</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
@@ -2035,6 +2066,18 @@ function renderTodayEditorial(){
   return meta + hero + cta + coachHTML + marquee;
 }
 
+// Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
+// up to an hour, "N HR AGO" until midnight, "EARLIER" otherwise.
+function _coachCardEyebrow(loadedAt){
+  if(!loadedAt) return 'COACH · JUST NOW';
+  var diffSec = Math.max(0, Math.floor((Date.now() - loadedAt)/1000));
+  if(diffSec < 60) return 'COACH · JUST NOW';
+  var mins = Math.floor(diffSec/60);
+  if(mins < 60) return 'COACH · '+mins+' MIN AGO';
+  var hrs = Math.floor(mins/60);
+  if(hrs < 24) return 'COACH · '+hrs+' HR AGO';
+  return 'COACH · EARLIER';
+}
 function renderCoachCard(activity){
   if(coachCardDismissed){
     return '<div class="kt-coach-empty">All clear. The coach will check in tomorrow.</div>';
@@ -2047,6 +2090,7 @@ function renderCoachCard(activity){
     }
     // Synchronous fallback — useful when no API key.
     coachCard = fallbackCoachCard(activity);
+    coachCard.loadedAt = Date.now();
   }
   var actions = (coachCard.actions || []).slice(0,2).map(function(a){
     var cls = a.primary ? 'primary' : 'neutral';
@@ -2063,13 +2107,53 @@ function renderCoachCard(activity){
     : '';
   return '<div class="kt-coach-card" id="kt-coach-card">'+
     '<div class="kt-coach-head">'+
-      '<div class="kt-coach-eyebrow">COACH · THIS MORNING</div>'+
+      '<div class="kt-coach-eyebrow">'+_coachCardEyebrow(coachCard.loadedAt)+'</div>'+
       '<button class="kt-coach-x" onclick="dismissCoachCard()">×</button>'+
     '</div>'+
     '<div class="kt-coach-msg">'+_esc(coachCard.message)+'</div>'+
     '<div class="kt-coach-actions">'+actions+ask+'</div>'+
     input+
     '</div>';
+}
+// Attach swipe-dismiss to the coach card. Threshold 100px in either direction
+// per spec; flings the card off-screen with a fade and then runs the dismiss.
+// Idempotent — safe to call after every render.
+function attachCoachCardSwipe(){
+  var el = document.getElementById('kt-coach-card');
+  if(!el || el.dataset.swipeAttached) return;
+  el.dataset.swipeAttached = '1';
+  var startX = 0, dx = 0, dragging = false, pid = null;
+  el.addEventListener('pointerdown', function(e){
+    // Don't hijack interactions on buttons / inputs inside the card.
+    if(e.target.closest('button') || e.target.closest('input')) return;
+    startX = e.clientX; dx = 0; dragging = true; pid = e.pointerId;
+    el.classList.add('dragging');
+    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  el.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    dx = e.clientX - startX;
+    el.style.transform = 'translateX('+dx+'px) rotate('+(dx*0.02)+'deg)';
+    el.style.opacity = String(Math.max(0, 1 - Math.abs(dx)/240));
+  });
+  function endDrag(e){
+    if(!dragging) return;
+    dragging = false;
+    el.classList.remove('dragging');
+    try{ el.releasePointerCapture(pid); }catch(err){}
+    if(Math.abs(dx) > 100){
+      var fly = dx > 0 ? 600 : -600;
+      el.style.transform = 'translateX('+fly+'px) rotate('+(fly*0.02)+'deg)';
+      el.style.opacity = '0';
+      setTimeout(function(){ dismissCoachCard(); }, 220);
+    } else {
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+    dx = 0;
+  }
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
 }
 
 // HTML-escape a user/AI string for safe innerHTML insertion.
@@ -2309,11 +2393,13 @@ function renderDeckRunner(){
       '<span class="kt-r-pill-dots">'+dots+'</span>'+
       '</button>';
   }).join('');
-  var strip = '<div class="kt-r-strip" style="bottom:calc(env(safe-area-inset-bottom) + 88px);">'+
+  var strip = '<div class="kt-r-strip">'+
     '<div class="kt-r-strip-inner">'+pills+'</div></div>';
 
-  // Deck position — leave room for header (top) and strip (bottom)
-  var deckWrap = '<div class="kt-r-deck" style="top:calc(max(env(safe-area-inset-top),20px) + 60px); bottom:calc(env(safe-area-inset-bottom) + 168px);">'+deck+'</div>';
+  // Deck — leave room for the header above and the strip + tab bar below.
+  // The strip is var(--tab-h) + ~36px tall and sits 14px above the tab bar,
+  // so deck bottom = (tab area) + (strip space) ≈ tab-h + tab-gap + tab-bottom-clear + 96px.
+  var deckWrap = '<div class="kt-r-deck" style="top:calc(max(env(safe-area-inset-top),20px) + 70px); bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 96px);">'+deck+'</div>';
 
   return hd + deckWrap + strip;
 }
