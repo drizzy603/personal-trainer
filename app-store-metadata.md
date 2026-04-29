@@ -137,3 +137,91 @@ This app requires the user to provide their own Anthropic API key for the AI Coa
 - [ ] In Xcode: destination = "Any iOS Device (arm64)"
 - [ ] Product → Archive → Distribute App → App Store Connect → Upload
 - [ ] Answer "No" if asked about encryption export compliance (declared in Info.plist via `ITSAppUsesNonExemptEncryption=false`, but Xcode may re-confirm)
+
+## Submission Day Playbook
+
+Run top-to-bottom once Apple Developer verification clears.
+
+### 1. Apple Developer portal (developer.apple.com)
+- Identifiers → **+** → App IDs → App → Bundle ID **`app.kt.trainer`** (explicit) → Capabilities: leave all off → Continue → Register
+- Note the **Team ID** (top-right of the portal, 10 chars)
+- Skip cert/profile manual creation — Xcode "Automatically manage signing" handles both on first archive with `-allowProvisioningUpdates`
+
+### 2. App Store Connect (appstoreconnect.apple.com)
+- My Apps → **+** → New App
+  - Platform: iOS
+  - Name: **Trovo**
+  - Primary language: English (U.S.)
+  - Bundle ID: `app.kt.trainer` (dropdown picks up the registered identifier)
+  - SKU: `trovo-001`
+  - User access: Full
+- App Information:
+  - Category: Health & Fitness / Lifestyle
+  - Privacy Policy URL: `https://drizzy603.github.io/personal-trainer/privacy.html`
+- Pricing and Availability: Free, all territories
+- App Privacy: **Data Not Collected** (everything is local + user's own Anthropic key — note this in the Anthropic disclosure: "data sent to third-party API only when user provides their own key; not collected by us")
+- Age Rating: 4+ (no objectionable content, no tracking, no ads, no UGC)
+- Version 1.0 → paste from sections above:
+  - Subtitle, Promotional Text, Description, Keywords
+  - Support URL, Marketing URL
+  - **Screenshots → 6.9" slot:** drag all 6 PNGs from `screenshots/out/`. ASC will upscale for 6.7" + smaller automatically.
+- App Review Information:
+  - Email: `robertokalanisosa@outlook.com`
+  - Notes: paste from "Beta App Review Information" → Notes for reviewer above
+- Build: assign once the archive uploads (next step)
+
+### 3. Archive + upload (local, simplest path)
+```bash
+./release-ios.sh                      # bumps CURRENT_PROJECT_VERSION + cap copy
+open ios/App/App.xcodeproj
+```
+In Xcode:
+- Signing & Capabilities → Team = your team (the dropdown will populate after verification clears)
+- Destination dropdown → "Any iOS Device (arm64)"
+- Product → Archive
+- Organizer window → Distribute App → App Store Connect → Upload → Automatic signing → Done
+- Wait ~10 min for processing, then back in ASC: Version 1.0 → Build → pick the new build
+
+### 4. TestFlight smoke test (before submitting for review)
+- TestFlight tab → Internal Testing → add yourself as tester (uses Apple ID associated with the developer account)
+- Install via TestFlight on real iPhone → run through:
+  - Coach intake → programme generation
+  - Log a session, edit sets
+  - Switch tabs, open Settings → How the app works
+  - Verify hybrid loader: Settings → About should show "App build YYYYMMDD-N · Up to date"
+
+### 5. Submit for review
+- Version 1.0 → Add for Review → Submit
+- Expected review time: 24–48h. Common rejection causes for this app:
+  - **Guideline 4.7 (live updates)** — if reviewer flags the hybrid loader, fallback is to drop `server.url` work and ship bundled-only (memory note in `project_pt_ios_capacitor.md`)
+  - **Guideline 5.1.1 (data collection)** — privacy policy already covers this; reference `privacy.html`
+  - **API key requirement** — Notes for reviewer already explains the BYO-key model
+
+### Optional: enable CI auto-upload (post-launch)
+The `release` job in `.github/workflows/ios-build.yml` is gated `if: false`. To enable for future versions:
+1. App Store Connect → Users and Access → Keys → **+** → role Developer → download `.p8` (one-time)
+2. Export distribution cert from Keychain as `.p12` → `base64 -i cert.p12 | pbcopy`
+3. GitHub repo → Settings → Secrets and variables → Actions → add:
+   - `BUILD_CERTIFICATE_BASE64` (paste base64 cert)
+   - `P12_PASSWORD` (cert export password)
+   - `KEYCHAIN_PASSWORD` (any string)
+   - `APPLE_TEAM_ID` (from dev portal)
+   - `APP_STORE_CONNECT_KEY_ID` (10-char from ASC)
+   - `APP_STORE_CONNECT_ISSUER_ID` (UUID from ASC)
+   - `APP_STORE_CONNECT_PRIVATE_KEY` (full contents of `.p8`, including BEGIN/END lines)
+4. Flip `if: false` → `if: github.ref == 'refs/heads/main'` in `.github/workflows/ios-build.yml`
+
+### Optional: empty-state Log screenshot
+Standalone PWA on the sim has real data. To capture an empty-state shot without losing it, paste in Web Inspector:
+```js
+// Backup + clear
+localStorage.kt_routine_screenshot_backup = localStorage.kt_routine;
+localStorage.removeItem('kt_routine');
+location.reload();
+```
+Take the shot via `./screenshots/take-shot.sh log-empty`, then restore:
+```js
+localStorage.kt_routine = localStorage.kt_routine_screenshot_backup;
+localStorage.removeItem('kt_routine_screenshot_backup');
+location.reload();
+```
