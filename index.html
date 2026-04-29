@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-15"/>
+<meta name="build" content="20260429-16"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -555,6 +555,9 @@ select option{background:var(--bg);}
 .kt-prog-toggle{display:flex;gap:4px;padding:4px;background:rgba(22,22,26,.7);border-radius:14px;border:1px solid rgba(255,255,255,.05);margin-bottom:20px;}
 .kt-prog-toggle button{flex:1;padding:10px 8px;border-radius:10px;border:none;background:transparent;color:#525259;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;text-transform:capitalize;-webkit-tap-highlight-color:transparent;}
 .kt-prog-toggle button.on{background:#1f1f24;color:#fafafa;}
+.kt-name-edit-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#525259;letter-spacing:.1em;font-weight:600;margin-bottom:4px;}
+.kt-name-edit-input{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.18);color:#fafafa;font-size:18px;font-weight:600;letter-spacing:-.2px;font-family:inherit;padding:4px 0 6px;outline:none;box-sizing:border-box;}
+.kt-name-edit-input:focus{border-bottom-color:#c8ff00;}
 .kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:#c8ff00;color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -1637,15 +1640,27 @@ function isDeloadWeek(){
 //   3. cr.name's first word — IF it's not a known placeholder
 // Returns '' when nothing useful is set, so callers can render
 // "Good morning." (no trailing comma) per addendum 0b.
-// Inline prompt to set the user's display name. Stored at kt_user_name.
-function promptUserName(){
-  var current = (localStorage.getItem('kt_user_name')||'').trim();
-  var v = window.prompt('Your name (used for the morning greeting):', current);
-  if(v == null) return; // cancelled
-  v = v.trim();
+// Inline edit for the Settings profile row. Stored at kt_user_name.
+var settingsNameEdit = false;
+function openUserNameEdit(){
+  settingsNameEdit = true;
+  render();
+  setTimeout(function(){
+    var el = document.getElementById('kt-name-input');
+    if(el){ el.focus(); el.select(); }
+  }, 30);
+}
+function commitUserNameEdit(ev){
+  var el = ev && ev.target;
+  var v = el ? String(el.value||'').trim() : '';
   if(v) localStorage.setItem('kt_user_name', v);
   else localStorage.removeItem('kt_user_name');
+  settingsNameEdit = false;
   showToast(v ? 'Name updated' : 'Name cleared');
+  render();
+}
+function cancelUserNameEdit(){
+  settingsNameEdit = false;
   render();
 }
 function getUserFirstName(){
@@ -5162,24 +5177,43 @@ function renderCoach(){
   var isHaiku=coachModel.indexOf('haiku')!==-1;
   var modelLabel=isHaiku?'Haiku':'Sonnet';
   var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
-  var _crC=getCustomRoutine(); var _avC=_crC&&_crC.name?_crC.name[0].toUpperCase():'?';
-  var header='<div class="screen-hd"><div><div class="screen-title">Coach</div></div><div class="screen-avatar">'+_avC+'</div></div>';
+  var firstNameC = getUserFirstName();
+  var crC = getCustomRoutine();
+  var avSeedC = firstNameC || (crC && crC.name) || '?';
+  var avInitialC = (String(avSeedC)[0] || '?').toUpperCase();
+  var totalWksC = getTotalWeeks();
+  var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
+  // Editorial header: mono eyebrow + lime-gradient avatar.
+  var header = '<div class="kt-meta-row">'+
+    '<div class="kt-meta-label">COACH · WK '+
+      String(currentWeek).padStart(2,'0')+' / '+totalWksC+
+      (wd3 && wd3.bName ? ' · '+wd3.bName.toUpperCase() : '')+
+    '</div>'+
+    '<div class="kt-meta-ava">'+avInitialC+'</div>'+
+    '</div>';
 
   // ── No API key: setup screen ─────────────────────────────────────────────
   if(!apiKey){
-    return header+
-      '<div class="card" style="text-align:center;padding:36px 20px;">'+
-      '<div style="font-size:20px;font-weight:600;margin-bottom:8px;letter-spacing:-.3px;">AI Coach</div>'+
-      '<p style="color:var(--lite);font-size:14px;line-height:1.6;margin-bottom:22px;">'+
-        'Connect the Claude API to get personalised coaching, chat about sessions, and get a custom programme built for you.'+
-      '</p>'+
-      '<div class="field">'+
+    var greetNoKey = firstNameC
+      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
+      : '<div class="kt-hero-greet">Welcome.</div>';
+    return header +
+      '<div class="kt-hero">'+greetNoKey+
+        '<h1 class="kt-hero-headline">Connect<span class="kt-line2 accent">your coach.</span></h1>'+
+        '<div class="kt-hero-body">Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log.</div>'+
+      '</div>'+
+      '<div class="field" style="margin-bottom:14px;">'+
         '<label>Anthropic API Key</label>'+
         '<input type="password" id="coach-key-input" placeholder="sk-ant-..." style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
       '</div>'+
-      '<button class="btn btn-primary btn-full" onclick="saveApiKey()" style="margin-bottom:12px;">Connect</button>'+
-      '<p style="font-size:12px;color:var(--muted);">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>'+
-    '</div>';
+      '<button class="kt-cta" onclick="saveApiKey()">'+
+        '<div style="text-align:left;">'+
+          '<div class="kt-cta-label">CONNECT</div>'+
+          '<div class="kt-cta-title">Save key &amp; start coaching</div>'+
+        '</div>'+
+        '<div class="kt-cta-arrow">→</div>'+
+      '</button>'+
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>';
   }
 
   // ── Home menu ─────────────────────────────────────────────────────────────
@@ -5201,15 +5235,16 @@ function renderCoach(){
     }
     var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
 
+    var greetHome = firstNameC
+      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
+      : '<div class="kt-hero-greet">Welcome.</div>';
+    var heroBody = msgCount
+      ? Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' so far. Pick up where you left off, or start a new thread.'
+      : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.';
     return header+
-      '<div style="padding:8px 0 20px;">'+
-        '<div style="display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--card);border:1px solid var(--border);border-radius:20px;">'+
-          '<div class="coach-ava">C</div>'+
-          '<div>'+
-            '<div style="font-size:17px;font-weight:600;letter-spacing:-.2px;">Coach</div>'+
-            '<div style="font-size:12px;color:var(--lite);font-weight:500;margin-top:2px;">'+statusLine+'</div>'+
-          '</div>'+
-        '</div>'+
+      '<div class="kt-hero">'+greetHome+
+        '<h1 class="kt-hero-headline">Coach<span class="kt-line2 accent">ready.</span></h1>'+
+        '<div class="kt-hero-body">'+heroBody+'</div>'+
       '</div>'+
 
       '<div class="settings-group">'+
@@ -5520,13 +5555,23 @@ function renderSettings() {
   var displayName=firstName || (cr && cr.name) || 'Set your name';
   var userInitial=(firstName ? firstName[0] : (cr&&cr.name?cr.name[0]:'?')).toUpperCase();
 
-  var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
-    '<div class="profile-row" onclick="promptUserName()" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
-      '<div class="profile-ava">'+userInitial+'</div>'+
-      '<div>'+
-        '<div class="profile-name">'+displayName+'</div>'+
+  var rawName = (localStorage.getItem('kt_user_name')||'').trim();
+  var nameBody = settingsNameEdit
+    ? '<div style="flex:1;min-width:0;">'+
+        '<div class="kt-name-edit-lbl">YOUR NAME</div>'+
+        '<input id="kt-name-input" class="kt-name-edit-input" type="text" '+
+          'placeholder="First name" value="'+_esc(rawName)+'" maxlength="32" '+
+          'onkeydown="if(event.key===\'Enter\')event.target.blur();if(event.key===\'Escape\')cancelUserNameEdit();" '+
+          'onblur="commitUserNameEdit(event)"/>'+
+      '</div>'
+    : '<div style="flex:1;min-width:0;">'+
+        '<div class="profile-name">'+_esc(displayName)+'</div>'+
         '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
-      '</div>'+
+      '</div>';
+  var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
+    '<div class="profile-row"'+(settingsNameEdit?'':' onclick="openUserNameEdit()" style="cursor:pointer;-webkit-tap-highlight-color:transparent;"')+'>'+
+      '<div class="profile-ava">'+userInitial+'</div>'+
+      nameBody+
     '</div>';
 
   return header+
