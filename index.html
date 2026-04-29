@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-14"/>
+<meta name="build" content="20260429-15"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -129,16 +129,6 @@ h3{font-size:12px;font-weight:500;color:var(--lite);margin-bottom:14px;letter-sp
   padding:13px 14px;color:var(--text);font-size:16px;font-weight:500;}
 select option{background:var(--bg);}
 
-/* ── Session picker — pills ──────────────────────────────────────────────── */
-.sess-grid{display:flex;gap:8px;margin-bottom:20px;}
-.sess-btn{flex:1;background:var(--card);border:1px solid var(--border);
-  border-radius:999px;padding:14px 10px;
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .2s;font-size:14px;font-weight:600;color:var(--lite);
-  -webkit-tap-highlight-color:transparent;font-family:inherit;}
-.sess-btn.active{background:var(--text);color:#000;border-color:var(--text);}
-.sess-btn:active{opacity:.85;}
-.sess-label{font-size:14px;font-weight:600;}
 .sess-sub{display:none;}
 
 /* ── Week hero card ──────────────────────────────────────────────────────── */
@@ -179,7 +169,6 @@ select option{background:var(--bg);}
   color:var(--lite);font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;
   -webkit-tap-highlight-color:transparent;flex-shrink:0;font-family:inherit;}
 .ex-edit-btn:active{opacity:.7;}
-.ex-divider{height:1px;background:var(--border);margin:14px 0;}
 .ex-lbl{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.01em;}
 .main-badge{display:inline-flex;align-items:center;background:rgba(200,255,0,.12);color:var(--accent);
   font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px;letter-spacing:.02em;}
@@ -207,30 +196,6 @@ select option{background:var(--bg);}
   background:rgba(255,255,255,.06);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;
   -webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;}
 .ex-step button:active{opacity:.7;}
-
-/* ── Stepper (legacy — used in modals) ───────────────────────────────────── */
-.stepper{display:flex;align-items:center;background:var(--card2);border:1px solid var(--border);
-  border-radius:12px;overflow:hidden;}
-.step-btn{background:none;border:none;color:var(--text);font-size:20px;font-weight:600;
-  padding:9px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
-.step-btn:active{background:rgba(255,255,255,.06);}
-.step-val{flex:1;text-align:center;font-size:15px;font-weight:600;color:var(--text);white-space:nowrap;}
-.step-val-input{flex:1;text-align:center;font-size:16px;font-weight:600;color:var(--text);
-  background:none;border:none;width:0;min-width:0;padding:9px 4px;}
-
-/* ── Log save button ─────────────────────────────────────────────────────── */
-.log-save-btn{width:100%;padding:14px;background:var(--accent);color:#000;
-  border:none;border-radius:14px;font-size:14px;font-weight:600;
-  cursor:pointer;font-family:inherit;letter-spacing:-.1px;
-  -webkit-tap-highlight-color:transparent;}
-.log-save-btn:active{opacity:.85;}
-
-/* ── Exercise swap select ────────────────────────────────────────────────── */
-.ex-swap-select{width:100%;background:var(--card2);border:1px solid var(--border);
-  border-radius:12px;padding:12px 14px;color:var(--text);font-size:14px;
-  appearance:none;-webkit-appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23525259' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 14px center;}
 
 /* ── RPE pills ───────────────────────────────────────────────────────────── */
 .rpe-row{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
@@ -352,30 +317,6 @@ select option{background:var(--bg);}
 /* ── Empty states ────────────────────────────────────────────────────────── */
 .empty{text-align:center;padding:52px 20px;color:var(--muted);}
 .empty p{font-size:14px;line-height:1.5;}
-
-/* ── Rest timer ──────────────────────────────────────────────────────────── */
-#rest-timer{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:50%;
-  transform:translateX(-50%) translateY(90px);
-  background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 20px;
-  display:flex;align-items:center;gap:10px;z-index:999;
-  box-shadow:0 8px 40px rgba(0,0,0,.6);
-  transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .25s ease;
-  opacity:0;pointer-events:none;white-space:nowrap;}
-#rest-timer.visible{transform:translateX(-50%) translateY(0);opacity:1;pointer-events:all;}
-#rest-timer.urgent{border-color:var(--orange);}
-#rest-time-display{font-size:24px;font-weight:700;color:var(--accent);min-width:58px;
-  text-align:center;letter-spacing:-1px;}
-#rest-timer.urgent #rest-time-display{color:var(--orange);}
-.rt-btn{background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);
-  font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;font-family:inherit;}
-.rt-btn.primary{background:var(--accent);border-color:var(--accent);color:#000;}
-.rt-btn:active{opacity:.75;}
-
-/* ── Exercise notes ──────────────────────────────────────────────────────── */
-.ex-note-input{width:100%;background:var(--card2);border:1px solid var(--border);
-  border-radius:12px;padding:10px 14px;color:var(--text);font-size:16px;resize:none;margin-top:4px;}
-.ex-note-input::placeholder{color:var(--muted);}
 
 /* ── Exercise edit modal ─────────────────────────────────────────────────── */
 .ex-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;
@@ -747,13 +688,6 @@ select option{background:var(--bg);}
 </nav>
 <div id="toast">Copied!</div>
 <div id="runner-root" style="display:none;"></div>
-<div id="rest-timer">
-  <div id="rest-time-display">1:30</div>
-  <button class="rt-btn" onclick="adjustRestDuration(-15)">−15s</button>
-  <button class="rt-btn" onclick="adjustRestDuration(15)">+15s</button>
-  <button class="rt-btn primary" id="rest-toggle-btn" onclick="toggleRestTimer()">Start</button>
-  <button class="rt-btn" onclick="hideRestTimer()">✕</button>
-</div>
 <script>
 // ── Hybrid loader: live update check ─────────────────────────────────────────
 // The bundled HTML's build version. Compared against the live version at
@@ -797,29 +731,15 @@ function checkForLiveUpdate(){
 var currentTab = 'log';
 var coachView = 'home'; // 'home' | 'chat'
 var logSession = 'Push';
-var logDate = todayISO();
-var sessionNote = '';
-var logWeights    = {};
-var logRPEs       = {};
-var logSets       = {};
-var logReps       = {};
-var logExNotes    = {}; // {exName: ''}
-var logExpanded   = {}; // {exName: bool}
-var logExSwap     = {}; // {'Push-0':'alt exercise name',...}
-var logHistExpanded = {}; // {exName: bool} — exercise history panel open
-var logSupersets    = {}; // {idx: true} = exercises[idx] and exercises[idx+1] are a superset pair
 var currentWeek   = 1;
 var logSubTab        = 'workout';
 var logSportType     = 'Cycling';
-var logCompletedSets = {};
 var currentTheme     = 'dark';
 var wakeLock         = null;
 // Calendar state
 var calYear  = new Date().getFullYear();
 var calMonth = new Date().getMonth(); // 0-indexed
 var calSelectedDate = null;
-// Edit modal state
-var _editSlotKey='', _editOrigName='', _editExName='', _editSlotIdx=0, _editSets=0, _editReps=[];
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
 var streamingContent = '';
@@ -835,11 +755,6 @@ var _libExpanded = '';
 var _libAddOpen  = false;
 var _libAddLoading = false;
 var _libAddCat   = 'Push';
-// Rest timer state
-var restDuration  = 90;
-var restRemaining = 90;
-var restRunning   = false;
-var restInterval  = null;
 // Editorial Today / Deck Runner state (refresh per CLAUDE_CODE_HANDOFF.md)
 var coachCard         = null;       // {message, actions:[{label,primary}]} or null
 var coachCardLoading  = false;
@@ -1338,7 +1253,6 @@ function importData() {
           if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
-        initLogState();
         render();
         showToast('Restored '+count+' data items!');
       } catch(err) { showToast('Import failed — invalid file'); }
@@ -1450,7 +1364,6 @@ function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.week
 function adjustWeek(delta) {
   currentWeek = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
   lsSet('kt_week', currentWeek);
-  initLogState();
   render();
 }
 
@@ -1465,50 +1378,6 @@ function getSessionExercises(type) {
   return wd[key].map(function(ex){
     return {name:ex.name, isMain:!!ex.isMain, sets:ex.sets||3, reps:ex.reps||'8-10', rpe:ex.rpe||7};
   });
-}
-
-function initLogState() {
-  var weights = getWeights();
-  var def = SESS[logSession];
-  var wd = getWkData();
-  var sessionKey = logSession.toLowerCase(); // 'push', 'pull', 'legs'
-  var wdExArr = wd ? wd[sessionKey] : null;
-  // When custom routine active, exercises come from week data
-  var exercises = getSessionExercises(logSession);
-
-  for (var i=0; i<exercises.length; i++) {
-    var ex = exercises[i];
-    // find matching exercise in weekly programme data
-    var wdEx = null;
-    if (wdExArr) {
-      for (var j=0; j<wdExArr.length; j++) {
-        if (wdExArr[j].name === ex.name) { wdEx = wdExArr[j]; break; }
-      }
-    }
-    var defRpe = typeof ex.rpe==='string' && ex.rpe.indexOf('-')>-1 ? parseFloat(ex.rpe.split('-')[1]) : parseFloat(ex.rpe);
-    var defRep = typeof ex.reps==='string' && ex.reps.indexOf('-')>-1 ? parseInt(ex.reps.split('-')[1]) : parseInt(ex.reps)||8;
-    logExNotes[ex.name] = logExNotes[ex.name] || '';
-    if (logExpanded[ex.name] === undefined) logExpanded[ex.name] = !!ex.isMain;
-    if (wdEx) {
-      logWeights[ex.name] = wdEx.weight !== undefined ? wdEx.weight : (weights[ex.name]||0);
-      logSets[ex.name] = wdEx.sets;
-      logRPEs[ex.name] = wdEx.rpe;
-      var iRep = wdEx.reps;
-      if (typeof iRep==='string' && iRep.indexOf('-')>-1) iRep = parseInt(iRep.split('-')[1]);
-      else iRep = parseInt(iRep)||defRep;
-      logReps[ex.name] = Array(wdEx.sets).fill(iRep);
-    } else {
-      logWeights[ex.name] = weights[ex.name]||0;
-      logSets[ex.name] = ex.sets;
-      logReps[ex.name] = Array(ex.sets).fill(defRep);
-      logRPEs[ex.name] = defRpe;
-    }
-    // Auto-fill from session history if weight is still 0
-    if (!logWeights[ex.name]) {
-      var hist = getLastExData(logSession, ex.name);
-      if (hist && hist.weight > 0) logWeights[ex.name] = hist.weight;
-    }
-  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -2961,168 +2830,6 @@ function _renderRunnerDoneBody(ex, isLast){
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     '</div>';
 }
-function buildSessionMiniCard(type, labelTop, isToday, dow) {
-  var wd = getWkData();
-  var sessions = getSessions();
-  var today = todayISO();
-  var entry = _planEntry(type);
-  // Small "···" button on the card that opens the day-swap modal. Only
-  // shown when we know the slot's dow and the routine is real (no point
-  // swapping defaults).
-  var swapBtn = (dow!=null && dow>=0 && hasCustomRoutine())
-    ? '<button onclick="event.stopPropagation();openSwapModal('+dow+')" '+
-      'style="margin-left:8px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;'+
-      'padding:4px 10px;font-size:14px;font-weight:700;color:var(--lite);cursor:pointer;letter-spacing:0;line-height:1;'+
-      '-webkit-tap-highlight-color:transparent;font-family:inherit;" title="Move to a different day this week">···</button>'
-    : '';
-
-  // Was this activity logged today? Different log key per activity type.
-  var doneToday = false;
-  if(isToday){
-    if(entry.isLift)       doneToday = sessions.some(function(s){return s.type===type && s.date===today;});
-    else if(entry.isRun)   doneToday = getRuns().some(function(r){return r.date===today;});
-    else if(entry.isSport) doneToday = getSportLogs().some(function(l){return l.type===type && l.date===today;});
-  }
-  var runDoneToday = doneToday && entry.isRun; // legacy alias used below
-
-  var cardStyle = isToday
-    ? doneToday
-      ? 'background:linear-gradient(135deg,rgba(200,255,0,.04) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.2);opacity:.7;'
-      : 'background:linear-gradient(135deg,rgba(200,255,0,.06) 0%,transparent 55%),var(--card);border-color:rgba(200,255,0,.35);'
-    : 'opacity:.75;';
-
-  var doneBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(200,255,0,.15);color:var(--accent);letter-spacing:.04em;">✓ Done</span>';
-  var todayBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent);color:#000;letter-spacing:.04em;">TODAY</span>';
-  var otherBadge = '<span style="margin-left:auto;flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--muted);">'+labelTop+'</span>';
-
-  var badge = !isToday ? otherBadge : doneToday ? doneBadge : todayBadge;
-
-  if (entry.isSport) {
-    var sport = _findSport(type);
-    var todayDow = (new Date().getDay()+6)%7;
-    var actData = (wd && wd.sports && wd.sports[DOW_NAMES[todayDow]]) ? wd.sports[DOW_NAMES[todayDow]] : null;
-    if (!actData) {
-      var anyAct = getScheduledActivities(wd).filter(function(a){return a.isSport && a.type===type;});
-      actData = anyAct.length ? anyAct[0].data : null;
-    }
-    var sportNote;
-    if (doneToday) {
-      var todayLog = getSportLogs().find(function(l){return l.type===type && l.date===today;});
-      sportNote = todayLog && todayLog.duration ? todayLog.duration+' min' : 'Logged';
-    } else if (actData && actData.note) {
-      sportNote = actData.note;
-    } else {
-      sportNote = sport ? sport.id : type;
-    }
-    return '<div class="today-card" style="'+cardStyle+'">'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">'+(sport?sport.id:type)+'</div>'+badge+swapBtn+
-        '</div>'+
-        '<div class="today-detail">'+sportNote+'</div>'+
-      '</div>'+
-    '</div>';
-  }
-
-  if (type === 'Run') {
-    var runNote;
-    if (runDoneToday) {
-      var todayRun = getRuns().find(function(r){return r.date===today;});
-      if (todayRun) {
-        var pace = calcPace(todayRun.distance, todayRun.time);
-        runNote = todayRun.distance+' km · '+todayRun.time+(pace!=='-'?' · '+pace+'/km':'');
-        if (todayRun.hr) runNote += ' · '+todayRun.hr+' bpm';
-      } else {
-        runNote = 'Logged';
-      }
-    } else {
-      var todayDow = (new Date().getDay()+6)%7;
-      var runData = getRunForDow(wd, todayDow);
-      // Fall back to any scheduled run for the week so the "next run" preview
-      // still shows something useful when today isn't a run day.
-      if (!runData) {
-        var anyRuns = getScheduledRuns(wd);
-        runData = anyRuns.length ? anyRuns[0].run : null;
-      }
-      runNote = runData ? (runData.km ? runData.km+' km' : 'Structured') : '—';
-      if (runData && runData.hr) runNote += ' · HR &lt;'+runData.hr;
-    }
-    return '<div class="today-card" style="'+cardStyle+'">'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">Run</div>'+badge+swapBtn+
-        '</div>'+
-        '<div class="today-detail">'+runNote+'</div>'+
-      '</div>'+
-    '</div>';
-  }
-  if (type === 'Rest') {
-    return '<div class="today-card" style="opacity:.35;">'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div style="display:flex;align-items:center;gap:8px;">'+
-          '<div class="today-label">Rest</div>'+badge+swapBtn+
-        '</div>'+
-        '<div class="today-detail">Recovery</div>'+
-      '</div>'+
-    '</div>';
-  }
-  var def = SESS[type];
-  if (!def) return '';
-  var sessKey = type.toLowerCase();
-  var wdArr = wd ? wd[sessKey] : null;
-  var hasExs = !!(wdArr && wdArr.length);
-  var mainEx = null;
-  if (wdArr) { for (var k=0;k<wdArr.length;k++){if(wdArr[k].isMain){mainEx=wdArr[k];break;}} }
-  var detail = mainEx
-    ? mainEx.sets+'×'+mainEx.reps+' @ '+(mainEx.weight||'BW')+' lb'+(mainEx.pr?' 🔥':'')
-    : hasExs
-      ? def.focus.split('·')[0].trim()
-      : 'Programme incomplete — ask the Coach';
-  var lastDone = sessions.filter(function(s){return s.type===type;});
-  var lastLabel = doneToday
-    ? '<span style="color:var(--accent);font-weight:600;">Logged today</span>'
-    : lastDone.length
-      ? '<span style="color:var(--muted);">Last: '+fmtDate(lastDone[0].date)+'</span>'
-      : '<span style="color:var(--accent);font-weight:600;">First time!</span>';
-  return '<div class="today-card" style="'+cardStyle+'">'+
-    '<div style="flex:1;min-width:0;">'+
-      '<div style="display:flex;align-items:center;gap:8px;">'+
-        '<div class="today-label">'+def.label+'</div>'+badge+swapBtn+
-      '</div>'+
-      '<div class="today-detail">'+detail+'</div>'+
-      '<div style="font-size:11px;margin-top:3px;font-weight:500;">'+lastLabel+'</div>'+
-    '</div>'+
-  '</div>';
-}
-function renderTodayCard() {
-  var d = new Date();
-  var todayDow = (d.getDay()+6)%7; // 0=Mon … 6=Sun
-  var weekPlan = getWeekPlan();
-  var todayPlan = weekPlan[todayDow];
-  var todayType = todayPlan.isRest ? 'Rest' : (todayPlan.isRun ? 'Run' : todayPlan.type);
-  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var todayStr = days[d.getDay()]+', '+months[d.getMonth()]+' '+d.getDate();
-
-  var nextType = null, nextLabel = '', nextDow = -1;
-  for (var j = 1; j <= 7; j++) {
-    var np = weekPlan[(todayDow+j)%7];
-    if (!np.isRest) {
-      nextType = np.isRun ? 'Run' : np.type;
-      nextDow = (todayDow+j)%7;
-      nextLabel = j===1 ? 'Tomorrow' : getDayName(nextDow);
-      break;
-    }
-  }
-
-  var todayCard = buildSessionMiniCard(todayType, todayStr, true, todayDow);
-  var nextCard = nextType ? buildSessionMiniCard(nextType, nextLabel, false, nextDow) : '';
-  return todayCard + nextCard;
-}
-
-// Day-swap modal — opens from the "···" button on today/tomorrow cards.
-// Lets the user move this slot's activity to a different day THIS WEEK
-// only; the swap creates a per-week weekPlan override.
 function _swapModalLabel(planEntry){
   if(planEntry.isRest) return 'Rest';
   return planEntry.type;
@@ -3276,93 +2983,11 @@ function renderLog() {
   // logging; the marquee below is informational only.
   return subBar + renderTodayEditorial();
 }
-function renderRepsSection(name, sid, repsArr) {
-  var nameEsc = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">';
-  for (var i=0; i<repsArr.length; i++) {
-    html += '<div>'+
-      '<div class="qex-lbl">Set '+(i+1)+'</div>'+
-      '<div class="stepper">'+
-        '<button class="step-btn" style="padding:8px 14px;" onclick="adjustRepSet(\''+nameEsc+'\','+i+',-1,\''+sid+'\')">−</button>'+
-        '<span class="step-val" id="rv-'+sid+'-'+i+'">'+repsArr[i]+'</span>'+
-        '<button class="step-btn" style="padding:8px 14px;" onclick="adjustRepSet(\''+nameEsc+'\','+i+',1,\''+sid+'\')">+</button>'+
-      '</div>'+
-    '</div>';
-  }
-  html += '</div>';
-  return html;
-}
-
-// ── Wake Lock ─────────────────────────────────────────────────────────────────
-async function requestWakeLock(){
-  if(!('wakeLock' in navigator)) return;
-  try{ if(wakeLock) return; wakeLock=await navigator.wakeLock.request('screen'); }catch(e){}
-}
 function releaseWakeLock(){
   if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock=null; }
 }
 
 // ── Last session helper ───────────────────────────────────────────────────────
-function getLastExData(sessionType, exName) {
-  var sessions=getSessions();
-  for(var i=0;i<sessions.length;i++){
-    var s=sessions[i];
-    if(s.type!==sessionType) continue;
-    var exs=s.exercises||[];
-    for(var j=0;j<exs.length;j++){
-      if(exs[j].name===exName){
-        var ex=exs[j];
-        var w=parseFloat(ex.weight)||0;
-        var repsArr=Array.isArray(ex.reps)?ex.reps:[ex.reps];
-        return {weight:w,sets:ex.sets,reps:repsArr,rpe:ex.rpe,date:s.date};
-      }
-    }
-  }
-  return null;
-}
-function getExHistory(sessionType, exName, n) {
-  var sessions=getSessions();
-  var results=[];
-  for(var i=0;i<sessions.length&&results.length<n;i++){
-    var s=sessions[i];
-    if(s.type!==sessionType) continue;
-    var exs=s.exercises||[];
-    for(var j=0;j<exs.length;j++){
-      if(exs[j].name===exName){
-        var ex=exs[j];
-        var repsArr=Array.isArray(ex.reps)?ex.reps:[ex.reps];
-        results.push({date:s.date,weight:parseFloat(ex.weight)||0,sets:ex.sets,reps:repsArr,rpe:ex.rpe});
-        break;
-      }
-    }
-  }
-  return results;
-}
-function toggleSuperset(idx){
-  if(logSupersets[idx]) delete logSupersets[idx]; else logSupersets[idx]=true;
-  render();
-}
-function renderSupersetConnector(idx){
-  var linked=!!logSupersets[idx];
-  if(linked){
-    return '<div style="display:flex;align-items:center;gap:10px;padding:0 22px;height:30px;margin:-1px 0;">'+
-      '<div style="width:3px;align-self:stretch;background:var(--accent);border-radius:0;margin-left:8px;flex-shrink:0;"></div>'+
-      '<div style="background:var(--accent);color:#000;font-size:10px;font-weight:900;letter-spacing:.08em;padding:3px 10px;border-radius:20px;white-space:nowrap;">SUPERSET</div>'+
-      '<button onclick="toggleSuperset('+idx+')" style="background:none;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;white-space:nowrap;">Unlink</button>'+
-    '</div>';
-  }
-  return '<div style="display:flex;justify-content:center;align-items:center;height:26px;margin:-2px 0 2px;">'+
-    '<button onclick="toggleSuperset('+idx+')" style="background:none;border:1px dashed var(--border);border-radius:20px;color:var(--muted);font-size:11px;font-weight:700;padding:3px 16px;cursor:pointer;font-family:inherit;letter-spacing:.02em;">+ Superset</button>'+
-  '</div>';
-}
-function toggleExHist(name){
-  logHistExpanded[name]=!logHistExpanded[name];
-  var el=document.getElementById('exhist-'+name.replace(/[^a-z0-9]/gi,'-'));
-  if(el) el.style.display=logHistExpanded[name]?'block':'none';
-  var btn=document.getElementById('exhistbtn-'+name.replace(/[^a-z0-9]/gi,'-'));
-  if(btn) btn.textContent=logHistExpanded[name]?'▲ Hide history':'History';
-}
-// Skips — intentionally skipped sessions
 function getSkips(){return lsGet('kt_skips')||[];}
 function saveSkip(date,type){
   var skips=getSkips();
@@ -3382,372 +3007,6 @@ function skipNextSession(){
   render();
 }
 
-function renderQuickExRow(ex, slotIdx) {
-  var slotKey   = logSession+'-'+slotIdx;
-  var exName    = logExSwap[slotKey] || ex.name;
-  var sid       = 'e-'+exName.replace(/[^a-z0-9]/gi,'-');
-  var w         = logWeights[exName]||0;
-  var rpe       = logRPEs[exName]||8;
-  var sets      = logSets[exName]||ex.sets;
-  var repsArr   = logReps[exName]||Array(sets).fill(8);
-  var nameEsc   = exName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  var slotKeyEsc   = slotKey.replace(/'/g,"\\'");
-  var origNameEsc  = ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  var isSwapped = !!(logExSwap[slotKey] && logExSwap[slotKey]!==ex.name);
-  // Superset state for this slot
-  var isSSFirst  = !!logSupersets[slotIdx];
-  var isSSSecond = !!logSupersets[slotIdx-1];
-  var inSS = isSSFirst || isSSSecond;
-  var cardStyle = inSS ? 'border-left:3px solid var(--accent);' : '';
-  if (isSSFirst)  cardStyle += 'border-bottom-left-radius:5px;border-bottom-right-radius:5px;margin-bottom:0;';
-  if (isSSSecond) cardStyle += 'border-top-left-radius:5px;border-top-right-radius:5px;';
-
-  var wd = getWkData();
-  var wdArr = wd ? wd[logSession.toLowerCase()] : null;
-  var wdEx = null;
-  if (wdArr) { for(var r=0;r<wdArr.length;r++){if(wdArr[r].name===exName){wdEx=wdArr[r];break;}} }
-  var targetStr = wdEx
-    ? (ex.isMain&&!isSwapped?'Target: ':'')+wdEx.sets+'×'+wdEx.reps+' @ RPE '+fmtRpe(wdEx.rpe)
-    : ex.sets+'×'+ex.reps+' · RPE '+fmtRpe(ex.rpe);
-
-  var rpeOpts = [6,7,7.5,8,8.5,9,9.5,10];
-  var pills = rpeOpts.map(function(v){
-    return '<button class="rpe-pill'+(rpe===v?' sel':'')+'" data-sid="'+sid+'" data-val="'+v+'" onclick="setRPE(\''+nameEsc+'\','+v+',\''+sid+'\')">'+v+'</button>';
-  }).join('');
-
-  var lastEx=getLastExData(logSession, exName);
-  var lastStr='';
-  if(lastEx){
-    var lw=lastEx.weight>0?lastEx.weight+'lb':'BW';
-    var lr=lastEx.reps.join('/');
-    lastStr='<div style="font-size:11px;color:var(--lite);margin-top:3px;font-weight:600;">Last: '+lw+' · '+lastEx.sets+'×('+lr+') · RPE '+fmtRpe(lastEx.rpe)+'</div>';
-  }
-  // History panel
-  var histSid=exName.replace(/[^a-z0-9]/gi,'-');
-  var hist=getExHistory(logSession,exName,4);
-  var histRows='';
-  if(hist.length){
-    hist.forEach(function(h){
-      var hw=h.weight>0?h.weight+'lb':'BW';
-      histRows+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
-        '<span style="color:var(--muted);">'+fmtDate(h.date)+'</span>'+
-        '<span style="font-weight:600;">'+hw+'</span>'+
-        '<span style="color:var(--lite);">'+h.sets+'×('+h.reps.join('/')+')</span>'+
-        '<span style="color:var(--muted);">RPE '+fmtRpe(h.rpe)+'</span>'+
-      '</div>';
-    });
-  }
-  var histPanel=hist.length
-    ?'<div id="exhist-'+histSid+'" style="display:'+(logHistExpanded[exName]?'block':'none')+';margin-top:8px;padding:8px;background:var(--bg);border-radius:4px;">'+
-      histRows+'</div>'
-    :'';
-  var histBtn=hist.length
-    ?'<button id="exhistbtn-'+histSid+'" onclick="toggleExHist(\''+nameEsc+'\')" style="background:none;border:none;color:var(--muted);font-size:10px;font-weight:800;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:8px;text-transform:uppercase;letter-spacing:.04em;">'+(logHistExpanded[exName]?'▲ Hide':'Hist')+'</button>'
-    :'';
-
-  var curReps = repsArr[0] || 8;
-
-  return '<div class="ex-card"'+(cardStyle?' style="'+cardStyle+'"':'')+'>'+
-    '<div class="ex-card-head">'+
-      '<div style="flex:1;min-width:0;">'+
-        '<div class="ex-card-name">'+exName+
-          (ex.isMain&&!isSwapped?'<span class="main-badge">Main lift</span>':'')+
-          (isSwapped?'<span style="font-size:11px;color:var(--cyan);margin-left:8px;font-weight:500;">swapped</span>':'')+
-          (inSS?'<span style="font-size:10px;font-weight:900;background:var(--accent);color:#000;border-radius:4px;padding:1px 6px;margin-left:6px;letter-spacing:.04em;vertical-align:middle;">SS</span>':'')+
-        '</div>'+
-        '<div class="ex-card-target">'+targetStr+'</div>'+
-        lastStr+
-        (histBtn ? '<div style="margin-top:4px;">'+histBtn+'</div>' : '')+
-        histPanel+
-      '</div>'+
-      '<button class="ex-edit-btn" onclick="openExEdit(\''+slotKeyEsc+'\',\''+origNameEsc+'\',\''+nameEsc+'\','+slotIdx+')">Edit</button>'+
-    '</div>'+
-    '<div class="set-dots" id="dots-'+sid+'">'+renderSetDots(exName,sid,sets)+'</div>'+
-    '<div class="ex-fields">'+
-      '<div class="ex-field">'+
-        '<div class="ex-field-lbl">Weight</div>'+
-        '<div class="ex-field-row">'+
-          '<div><input type="number" class="ex-field-val" id="wv-'+sid+'" value="'+w+'" min="0" step="2.5" '+
-            'onchange="setWeightDirect(\''+nameEsc+'\',this.value,\''+sid+'\')" '+
-            'oninput="setWeightDirect(\''+nameEsc+'\',this.value,\''+sid+'\')" '+
-            'style="background:none;border:none;color:var(--text);font-size:19px;font-weight:600;letter-spacing:-.3px;width:4ch;text-align:left;padding:0;">'+
-          '<span class="ex-field-unit">lb</span></div>'+
-          '<div class="ex-step">'+
-            '<button onclick="adjustWeight(\''+nameEsc+'\',-2.5,\''+sid+'\')">−</button>'+
-            '<button onclick="adjustWeight(\''+nameEsc+'\',2.5,\''+sid+'\')">+</button>'+
-          '</div>'+
-        '</div>'+
-      '</div>'+
-      '<div class="ex-field">'+
-        '<div class="ex-field-lbl">Reps</div>'+
-        '<div class="ex-field-row">'+
-          '<div><span class="ex-field-val" id="rv-'+sid+'-0">'+curReps+'</span></div>'+
-          '<div class="ex-step">'+
-            '<button onclick="adjustRepSet(\''+nameEsc+'\',0,-1,\''+sid+'\')">−</button>'+
-            '<button onclick="adjustRepSet(\''+nameEsc+'\',0,1,\''+sid+'\')">+</button>'+
-          '</div>'+
-        '</div>'+
-      '</div>'+
-    '</div>'+
-    '<div class="ex-lbl">RPE <span style="font-weight:400;color:var(--muted);">· how hard it felt</span></div>'+
-    '<div class="rpe-row">'+pills+'</div>'+
-    '<div class="ex-divider"></div>'+
-    '<textarea class="ex-note-input" rows="1" data-ex="'+exName+'" placeholder="Notes — felt strong, shoulder tight..." '+
-      'oninput="logExNotes[\''+nameEsc+'\']=this.value;this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'" '+
-      'onchange="logExNotes[\''+nameEsc+'\']=this.value">'+
-      (logExNotes[exName]||'')+
-    '</textarea>'+
-    '<button onclick="showRestTimer()" style="display:block;margin-top:12px;background:none;border:none;color:var(--muted);font-size:12px;font-weight:500;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;"> Rest Timer</button>'+
-  '</div>';
-}
-
-function toggleExercise(name,sid){
-  logExpanded[name] = !logExpanded[name];
-  var body=document.getElementById('exbody-'+sid);
-  var chev=document.getElementById('exchev-'+sid);
-  var summ=document.getElementById('exsumm-'+sid);
-  if(body) body.style.display=logExpanded[name]?'':'none';
-  if(chev) chev.style.transform=logExpanded[name]?'rotate(180deg)':'rotate(0deg)';
-  if(summ) summ.style.display=logExpanded[name]?'none':'';
-}
-function updateSummary(name,sid){
-  var summ=document.getElementById('exsumm-'+sid);
-  if(!summ) return;
-  var w=logWeights[name]||0;
-  var wStr=w>0?w+' lb':'BW';
-  var sets=logSets[name]||1;
-  var repsArr=logReps[name]||[];
-  summ.textContent=wStr+' · '+sets+' sets · '+repsArr.join('/');
-}
-function adjustWeight(name,delta,sid){
-  var nw=Math.round((Math.max(0,(logWeights[name]||0)+delta))*2)/2;
-  logWeights[name]=nw;
-  var el=document.getElementById('wv-'+sid);
-  if(el) el.value=nw;
-  updateSummary(name,sid);
-}
-function setWeightDirect(name,val,sid){
-  var nw=Math.round((Math.max(0,parseFloat(val)||0))*2)/2;
-  logWeights[name]=nw;
-  updateSummary(name,sid);
-}
-function swapExercise(slotKey, origName, newName, slotIdx) {
-  if (newName === (logExSwap[slotKey]||origName)) return;
-  logExSwap[slotKey] = (newName===origName) ? undefined : newName;
-  // seed state for new exercise if not already set
-  var weights = getWeights();
-  if (logWeights[newName]===undefined) {
-    logWeights[newName] = weights[newName]||0;
-    if (!logWeights[newName]) {
-      var swapHist = getLastExData(logSession, newName);
-      if (swapHist && swapHist.weight > 0) logWeights[newName] = swapHist.weight;
-    }
-  }
-  if (logSets[newName]===undefined) {
-    var srcName = logExSwap[slotKey] ? origName : newName;
-    logSets[newName] = logSets[origName]||3;
-    logReps[newName] = (logReps[origName]||[]).slice();
-    logRPEs[newName] = logRPEs[origName]||8;
-  }
-  if (logExNotes[newName]===undefined) logExNotes[newName]='';
-  logExpanded[newName] = true;
-  render();
-}
-function adjustSets(name,delta,sid){
-  var newSets=Math.max(1,(logSets[name]||3)+delta);
-  var arr=logReps[name]||[];
-  var fillVal=arr.length>0?arr[arr.length-1]:8;
-  while(arr.length<newSets) arr.push(fillVal);
-  arr.length=newSets;
-  logSets[name]=newSets;
-  logReps[name]=arr;
-  var el=document.getElementById('sv-'+sid);
-  if(el) el.textContent=newSets;
-  var rs=document.getElementById('reps-section-'+sid);
-  if(rs) rs.innerHTML=renderRepsSection(name,sid,arr);
-  updateSummary(name,sid);
-}
-function adjustRepSet(name,setIdx,delta,sid){
-  if(!logReps[name]) logReps[name]=[];
-  logReps[name][setIdx]=Math.max(1,(logReps[name][setIdx]||8)+delta);
-  var el=document.getElementById('rv-'+sid+'-'+setIdx);
-  if(el) el.textContent=logReps[name][setIdx];
-  updateSummary(name,sid);
-}
-// ── Rest Timer ────────────────────────────────────────────────────────────────
-function fmtTimer(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
-function updateTimerDisplay(){
-  var d=document.getElementById('rest-time-display');
-  var t=document.getElementById('rest-timer');
-  var b=document.getElementById('rest-toggle-btn');
-  if(d) d.textContent=fmtTimer(restRemaining);
-  if(t) t.classList.toggle('urgent', restRemaining<=10 && restRunning);
-  if(b) b.textContent=restRunning?'Pause':'Start';
-}
-function showRestTimer(){
-  restRemaining=restDuration;
-  restRunning=false;
-  clearInterval(restInterval);
-  var t=document.getElementById('rest-timer');
-  if(t){t.classList.add('visible');t.classList.remove('urgent');}
-  updateTimerDisplay();
-}
-function hideRestTimer(){
-  clearInterval(restInterval);
-  restRunning=false;
-  var t=document.getElementById('rest-timer');
-  if(t){t.classList.remove('visible');t.classList.remove('urgent');}
-}
-function playTimerDoneSound(){
-  try{
-    var ctx=new(window.AudioContext||window.webkitAudioContext)();
-    [[880,0],[660,0.18],[880,0.36]].forEach(function(pair){
-      var osc=ctx.createOscillator();
-      var gain=ctx.createGain();
-      osc.connect(gain);gain.connect(ctx.destination);
-      osc.type='sine';osc.frequency.value=pair[0];
-      gain.gain.setValueAtTime(0.4,ctx.currentTime+pair[1]);
-      gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+pair[1]+0.15);
-      osc.start(ctx.currentTime+pair[1]);
-      osc.stop(ctx.currentTime+pair[1]+0.18);
-    });
-  }catch(e){}
-  try{if(navigator.vibrate) navigator.vibrate([200,100,200,100,300]);}catch(e){}
-}
-function toggleRestTimer(){
-  if(restRunning){
-    clearInterval(restInterval);
-    restRunning=false;
-  } else {
-    if(restRemaining<=0) restRemaining=restDuration;
-    restRunning=true;
-    restInterval=setInterval(function(){
-      if(restRemaining>0){ restRemaining--; updateTimerDisplay(); }
-      else {
-        clearInterval(restInterval); restRunning=false;
-        var t=document.getElementById('rest-timer');
-        if(t) t.classList.remove('urgent');
-        playTimerDoneSound();
-        showToast('Rest done — next set!');
-        setTimeout(hideRestTimer,2200);
-      }
-    },1000);
-  }
-  updateTimerDisplay();
-}
-function adjustRestDuration(delta){
-  restDuration=Math.max(15,Math.min(300,restDuration+delta));
-  if(!restRunning) restRemaining=restDuration;
-  updateTimerDisplay();
-}
-
-function setRPE(name,val,sid){
-  logRPEs[name]=val;
-  document.querySelectorAll('[data-sid="'+sid+'"]').forEach(function(p){
-    p.classList.toggle('sel',parseFloat(p.getAttribute('data-val'))===val);
-  });
-}
-// ── Set Tracking ──────────────────────────────────────────────────────────────
-function renderSetDots(name, sid, numSets) {
-  var completed = logCompletedSets[name] || [];
-  var nextUndone = 0;
-  while (nextUndone < numSets && completed[nextUndone]) nextUndone++;
-  var nameEsc = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-  var html = '';
-  for (var i=0; i<numSets; i++) {
-    var done = !!completed[i];
-    var isCurrent = !done && i===nextUndone;
-    var cls = done ? 'set-dot done' : (isCurrent ? 'set-dot current' : 'set-dot');
-    html += '<button class="'+cls+'" onclick="event.stopPropagation();toggleSet(\''+nameEsc+'\','+i+',\''+sid+'\')">'+
-      (done?'✓':(i+1))+'</button>';
-  }
-  return html;
-}
-
-function toggleSet(name, setIdx, sid) {
-  if (!logCompletedSets[name]) logCompletedSets[name] = [];
-  var arr = logCompletedSets[name];
-  while (arr.length <= setIdx) arr.push(false);
-  arr[setIdx] = !arr[setIdx];
-  var container = document.getElementById('dots-'+sid);
-  if (container) container.innerHTML = renderSetDots(name, sid, logSets[name]||3);
-}
-
-// ── Exercise Edit Modal ───────────────────────────────────────────────────────
-function openExEdit(slotKey, origName, exName, slotIdx) {
-  _editSlotKey=slotKey; _editOrigName=origName; _editExName=exName; _editSlotIdx=slotIdx;
-  _editSets = logSets[exName]||3;
-  _editReps = (logReps[exName]||Array(_editSets).fill(8)).slice();
-  var el=document.getElementById('ex-edit-modal'); if(el) el.remove();
-  _renderExEditModal();
-}
-
-function _renderExEditModal() {
-  var lib=(EXERCISE_LIBRARY[logSession]||[]);
-  var opts=lib.map(function(n){return '<option value="'+n+'"'+( n===_editExName?' selected':'')+'>'+n+'</option>';}).join('');
-  var repsHTML='';
-  for(var i=0;i<_editSets;i++){
-    repsHTML+='<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);">'+
-      '<div style="font-size:13px;color:var(--muted);">Set '+(i+1)+'</div>'+
-      '<div class="stepper" style="max-width:130px;">'+
-        '<button class="step-btn" style="padding:8px 14px;" onclick="editAdjRep('+i+',-1)">−</button>'+
-        '<span class="step-val" id="edit-rv-'+i+'">'+(_editReps[i]||8)+'</span>'+
-        '<button class="step-btn" style="padding:8px 14px;" onclick="editAdjRep('+i+',1)">+</button>'+
-      '</div></div>';
-  }
-  var overlay=document.createElement('div');
-  overlay.id='ex-edit-modal'; overlay.className='ex-modal-bg';
-  overlay.innerHTML=
-    '<div class="ex-modal-sheet">'+
-      '<div class="ex-modal-head">'+
-        '<div style="font-size:17px;font-weight:800;">Edit Exercise</div>'+
-        '<button class="ex-modal-close" onclick="closeExEdit()">✕</button>'+
-      '</div>'+
-      '<div class="field"><label>Exercise</label>'+
-        '<select class="ex-swap-select" onchange="editChangeEx(this.value)">'+opts+'</select>'+
-      '</div>'+
-      '<div class="field"><label>Sets</label>'+
-        '<div class="stepper" style="max-width:150px;">'+
-          '<button class="step-btn" onclick="editAdjSets(-1)">−</button>'+
-          '<span class="step-val" id="edit-sv">'+_editSets+'</span>'+
-          '<button class="step-btn" onclick="editAdjSets(1)">+</button>'+
-        '</div></div>'+
-      '<div style="margin-bottom:4px;"><div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Reps per set</div>'+repsHTML+'</div>'+
-      '<button class="btn btn-primary btn-full" style="margin-top:18px;padding:14px;" onclick="closeExEdit()">Done</button>'+
-    '</div>';
-  document.body.appendChild(overlay);
-}
-
-function editAdjSets(delta) {
-  _editSets=Math.max(1,_editSets+delta);
-  while(_editReps.length<_editSets) _editReps.push(_editReps[_editReps.length-1]||8);
-  logSets[_editExName]=_editSets;
-  logReps[_editExName]=_editReps.slice(0,_editSets);
-  var el=document.getElementById('ex-edit-modal'); if(el) el.remove();
-  _renderExEditModal();
-}
-
-function editAdjRep(idx, delta) {
-  _editReps[idx]=Math.max(1,(_editReps[idx]||8)+delta);
-  logReps[_editExName]=_editReps.slice();
-  var el=document.getElementById('edit-rv-'+idx); if(el) el.textContent=_editReps[idx];
-}
-
-function editChangeEx(newName) {
-  if(newName===_editExName) return;
-  swapExercise(_editSlotKey, _editOrigName, newName, _editSlotIdx);
-  _editExName=newName;
-  _editReps=(logReps[newName]||Array(_editSets).fill(8)).slice();
-  var el=document.getElementById('ex-edit-modal'); if(el) el.remove();
-  _renderExEditModal();
-}
-
-function closeExEdit() {
-  var el=document.getElementById('ex-edit-modal'); if(el) el.remove();
-  render();
-}
-
-// ── Programme Overview Modal ──────────────────────────────────────────────────
 function openProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
   var cr=getCustomRoutine();
@@ -3810,109 +3069,6 @@ function closeProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
 }
 
-function pickSession(key){
-  logSession=key;
-  logWeights = {}; logRPEs = {}; logSets = {}; logReps = {}; logExNotes = {}; logExpanded = {};
-  logExSwap = {}; logCompletedSets = {}; logSupersets = {};
-  initLogState();
-  render();
-}
-
-// ── Gather & Save ─────────────────────────────────────────────────────────────
-function gatherExercises() {
-  return getSessionExercises(logSession).map(function(ex, idx) {
-    var slotKey = logSession+'-'+idx;
-    var name = logExSwap[slotKey] || ex.name;
-    var s=logSets[name]||ex.sets;
-    var r=logReps[name]||Array(s).fill(8);
-    var noteEl=document.querySelector('.ex-note-input[data-ex="'+name+'"]');
-    var note=noteEl?noteEl.value.trim():(logExNotes[name]||'');
-    var rpeRaw=logRPEs[name];
-    var rpe=(rpeRaw===undefined||rpeRaw===null||rpeRaw==='')?null:rpeRaw;
-    return {name:name,sets:s,reps:r,weight:logWeights[name]||0,rpe:rpe,note:note};
-  });
-}
-
-function buildTrainerText(exs,date,note) {
-  var d=new Date(date+'T00:00:00');
-  var dd=String(d.getDate()).padStart(2,'0');
-  var mm=String(d.getMonth()+1).padStart(2,'0');
-  var yyyy=d.getFullYear();
-  var def=SESS[logSession];
-  var wd=getWkData();
-  var txt='['+dd+'/'+mm+'/'+yyyy+'] — '+def.label+' Session (Week '+currentWeek+', Block '+(wd?wd.block:'')+': '+(wd?wd.bName:'')+')\n';
-  txt+='Exercise | Sets × Reps | Weight | RPE | Notes\n';
-  exs.forEach(function(ex) {
-    var wStr=parseFloat(ex.weight)>0?ex.weight+'lb':'BW';
-    var repsStr=Array.isArray(ex.reps)?ex.reps.join('/'): ex.reps;
-    var noteStr=ex.note?' // '+ex.note:'';
-    txt+=ex.name+' | '+ex.sets+'×('+repsStr+') | '+wStr+' | RPE '+fmtRpe(ex.rpe)+noteStr+' |\n';
-  });
-  if(note) txt+='---\nSession notes: '+note+'\n';
-  return txt;
-}
-
-function saveAndCopy() {
-  var exs=gatherExercises();
-  var note=document.getElementById('sessNote')?document.getElementById('sessNote').value.trim():'';
-  var date=document.getElementById('logDate')?document.getElementById('logDate').value:logDate;
-  var weights=getWeights();
-  exs.forEach(function(ex){ var w=parseFloat(ex.weight); if(w>0) weights[ex.name]=w; });
-  lsSet('kt_weights',weights);
-  var newPRs = checkAndUpdatePRs(exs);
-  var sessions=getSessions();
-  var ssLinks=Object.keys(logSupersets).map(Number).filter(function(k){return logSupersets[k];});
-  sessions.unshift({id:Date.now(),date:date,type:logSession,week:currentWeek,exercises:exs,note:note,prs:newPRs,supersets:ssLinks.length?ssLinks:undefined});
-  lsSet('kt_sessions',sessions);
-  // Auto-advance check — all 3 types logged for current week?
-  var weekSess=sessions.filter(function(s){return s.week===currentWeek;});
-  // Only require lift types that actually appear in the user's cadence.
-  // Users with 2-day or non-PPL splits would otherwise never auto-advance.
-  var planLifts=[];
-  getWeekPlan().forEach(function(p){
-    if(p.isLift && planLifts.indexOf(p.type)===-1) planLifts.push(p.type);
-  });
-  var allDone=planLifts.length>0 && planLifts.every(function(t){return weekSess.some(function(s){return s.type===t;});});
-  if(allDone && currentWeek<getTotalWeeks()){
-    setTimeout(function(){
-      var nextWk=currentWeek+1;
-      var b=document.createElement('div');
-      b.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;';
-      b.innerHTML='<div style="background:var(--card);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;">'+
-        '<div style="font-size:17px;font-weight:800;margin-bottom:8px;">Week '+currentWeek+' complete!</div>'+
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">All 3 sessions done. Ready to move on to Week '+nextWk+'?</div>'+
-        '<button onclick="currentWeek='+nextWk+';lsSet(\'kt_week\','+nextWk+');this.closest(\'div\').parentElement.remove();render();" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">→ Advance to Week '+nextWk+'</button>'+
-        '<button onclick="this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--border);color:var(--text);border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;">Stay on Week '+currentWeek+'</button>'+
-        '</div>';
-      document.body.appendChild(b);
-    },2200);
-  }
-  if(sessions.length>0&&sessions.length%5===0){
-    setTimeout(function(){
-      var b=document.createElement('div');
-      b.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
-      b.innerHTML='<div style="background:var(--card);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;">'+
-        '<div style="font-size:17px;font-weight:800;margin-bottom:8px;">'+sessions.length+' sessions logged!</div>'+
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">Great consistency. Export a backup now so you never lose your data.</div>'+
-        '<button onclick="exportData();this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">Export Backup</button>'+
-        '<button onclick="this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--border);color:var(--text);border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;">Skip for now</button>'+
-        '</div>';
-      document.body.appendChild(b);
-    },1800);
-  }
-  initLogState();
-  sessionNote='';
-  logExNotes={};
-  logCompletedSets={};
-  var txt=buildTrainerText(exs,date,note);
-  function afterCopy(){
-    showCompletionSummary(exs,date,newPRs);
-  }
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(txt).then(afterCopy).catch(function(){showManualCopy(txt);afterCopy();});
-  } else {showManualCopy(txt);afterCopy();}
-}
-
 function showManualCopy(txt) {
   var overlay=document.createElement('div');
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -3926,60 +3082,6 @@ function showManualCopy(txt) {
 }
 function selectManual(){var ta=document.getElementById('manualCopyTxt');if(ta){ta.select();ta.setSelectionRange(0,99999);}}
 
-function showCompletionSummary(exs,date,newPRs){
-  var vol=calcVolume(exs);
-  var def=SESS[logSession]||{icon:'',label:logSession};
-  var mainEx=exs.find(function(e){return getSessionExercises(logSession).find(function(x){return x.isMain&&x.name===e.name;});});
-  var msgs=['Solid session. Keep stacking.','Every rep counts. Well done.','Consistency beats intensity. Keep showing up.','That\'s another session in the books.','Progress is progress. Nice work.'];
-  var msg=msgs[Math.floor(Math.random()*msgs.length)];
-
-  var prHTML='';
-  if(newPRs.length){
-    prHTML='<div style="background:#ca8a0420;border:1px solid #eab30855;border-radius:10px;padding:10px 12px;margin-bottom:14px;">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:4px;">NEW PR'+(newPRs.length>1?'s':'')+'</div>'+
-      newPRs.map(function(n){return '<div style="font-size:13px;color:var(--text);">'+n+'</div>';}).join('')+
-    '</div>';
-  }
-
-  var mainHTML='';
-  if(mainEx){
-    var w=parseFloat(mainEx.weight)||0;
-    var repsArr=Array.isArray(mainEx.reps)?mainEx.reps:[mainEx.reps];
-    mainHTML='<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px;">'+
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">MAIN LIFT</div>'+
-      '<div style="font-size:15px;font-weight:700;">'+mainEx.name+'</div>'+
-      '<div style="font-size:13px;color:var(--accent);margin-top:2px;">'+(w>0?w+' lb':'BW')+' &nbsp;·&nbsp; '+mainEx.sets+'×('+repsArr.join('/')+')'+'</div>'+
-    '</div>';
-  }
-
-  var overlay=document.createElement('div');
-  overlay.id='completion-overlay';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0;';
-  overlay.innerHTML=
-    '<div style="background:var(--card);border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;border-top:1px solid var(--border);">'+
-      '<div style="text-align:center;margin-bottom:20px;">'+
-        '<div style="font-size:20px;font-weight:800;">Session done</div>'+
-        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+def.label+' · '+fmtDate(date)+'</div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">'+
-        '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">'+
-          '<div style="font-size:22px;font-weight:800;color:var(--accent)">'+vol.toLocaleString()+'</div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">lb total volume</div>'+
-        '</div>'+
-        '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">'+
-          '<div style="font-size:22px;font-weight:800;color:var(--green)">'+exs.length+'</div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">exercises</div>'+
-        '</div>'+
-      '</div>'+
-      prHTML+mainHTML+
-      '<div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px;font-style:italic;">'+msg+'</div>'+
-      '<button onclick="document.getElementById(\'completion-overlay\').remove();render();" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;">Done</button>'+
-      '<button onclick="document.getElementById(\'completion-overlay\').remove();switchTab(\'progress\');" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:12px;cursor:pointer;">View in History</button>'+
-    '</div>';
-  document.body.appendChild(overlay);
-}
-
-// ── RUNS ──────────────────────────────────────────────────────────────────────
 function renderRunsSection(opts) {
   opts = opts || {};
   var wd = getWkData();
@@ -4147,7 +3249,7 @@ function pickSport(id){ logSportType=id; render(); }
 
 function saveSportLog(){
   var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
-  var date=(document.getElementById('spDate')||{value:logDate}).value||logDate;
+  var date=(document.getElementById('spDate')||{value:todayISO()}).value||todayISO();
   var dur=parseInt((document.getElementById('spDuration')||{value:''}).value)||0;
   var notes=((document.getElementById('spNotes')||{value:''}).value||'').trim();
   var data={};
@@ -4369,7 +3471,7 @@ function renderSportSection(forcedSportId){
     aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Date</label>'+
-        '<input type="date" id="spDate" value="'+logDate+'" onchange="logDate=this.value" style="'+inp+'"/></div>'+
+        '<input type="date" id="spDate" value="'+todayISO()+'" style="'+inp+'"/></div>'+
       '<div><label style="'+lbl+'">Duration (min)</label>'+
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
@@ -5761,7 +4863,6 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       lsSet('kt_week',1);
       var _n=getNextSession();
       logSession=(_n==='Run')?'Push':_n;
-      initLogState();
       showToast('Programme loaded — Week 1 is ready');
       switchTab('log');
     }
@@ -5817,7 +4918,6 @@ function confirmLoadRoutine(){
   clearCoachHistory();
   var _next=getNextSession();
   logSession=(_next==='Run')?'Push':_next;
-  initLogState();
   showToast('Programme loaded! Week 1 is ready');
   switchTab('log');
 }
@@ -6827,7 +5927,6 @@ currentWeek = getWeek();
 loadCoachHistory();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
-initLogState();
 render();
 setTimeout(checkForLiveUpdate, 2000);
 </script>
