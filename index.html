@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-1"/>
+<meta name="build" content="20260429-2"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -51,12 +51,15 @@
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
   --text:#fafafa;--muted:#525259;--lite:#9ca3af;
   --shadow:none;
-  /* Tab-bar geometry — only constants live in vars; env() is inlined at
-     each use site because iOS WebKit can return invalid values when
-     env() is wrapped in a CSS variable (especially inside min/max),
-     which falls through to bottom:auto and shoves the bar mid-screen. */
+  /* Tab-bar geometry — all constants. env(safe-area-inset-bottom) is
+     deliberately not consulted: iOS WebKit reports inflated values
+     (~100+px) during Dynamic Island Live Activity which floats the bar
+     too high, and wrapping env() in min()/calc() to cap it triggers a
+     parser bug that returns invalid → bottom:auto → bar mid-screen.
+     30px clears the home indicator on every modern iPhone. */
   --tab-h:64px;
   --tab-gap:16px;
+  --tab-bottom-clear:30px;
 }
 html,body{background:var(--bg);color:var(--text);
   font-family:'Inter',-apple-system,system-ui,sans-serif;
@@ -69,11 +72,11 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
-#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(14px + env(safe-area-inset-top)) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + min(env(safe-area-inset-bottom), 30px));scrollbar-width:none;}
+#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(14px + env(safe-area-inset-top)) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
-#tabs{position:fixed;bottom:calc(var(--tab-gap) + min(env(safe-area-inset-bottom), 30px));left:20px;right:20px;
+#tabs{position:fixed;bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));left:20px;right:20px;
   display:flex;background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid var(--border);border-radius:24px;
   padding:6px;justify-content:space-around;z-index:100;
@@ -86,7 +89,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
    (z=100); content still scrolls *behind* the bar (preserving the glass
    blur effect) but is cut off below it. */
 #tab-skirt{position:fixed;left:0;right:0;bottom:0;
-  height:calc(var(--tab-gap) + min(env(safe-area-inset-bottom), 30px));
+  height:calc(var(--tab-gap) + var(--tab-bottom-clear));
   background:var(--bg);pointer-events:none;z-index:50;}
 
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
@@ -346,7 +349,7 @@ select option{background:var(--bg);}
   border-radius:10px;padding:7px 8px;color:var(--text);font-size:14px;font-weight:600;text-align:center;}
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
-#toast{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + min(env(safe-area-inset-bottom), 30px) + 8px);left:20px;right:20px;
+#toast{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:20px;right:20px;
   background:var(--green);color:#000;padding:14px 20px;border-radius:14px;
   font-size:13px;font-weight:600;text-align:center;
   z-index:9999;transform:translateY(20px);opacity:0;
@@ -358,7 +361,7 @@ select option{background:var(--bg);}
 .empty p{font-size:14px;line-height:1.5;}
 
 /* ── Rest timer ──────────────────────────────────────────────────────────── */
-#rest-timer{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + min(env(safe-area-inset-bottom), 30px) + 8px);left:50%;
+#rest-timer{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:50%;
   transform:translateX(-50%) translateY(90px);
   background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 20px;
   display:flex;align-items:center;gap:10px;z-index:999;
