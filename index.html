@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-7"/>
+<meta name="build" content="20260429-8"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2460,7 +2460,7 @@ function saveAndCopy() {
       b.innerHTML='<div style="background:var(--card);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;">'+
         '<div style="font-size:17px;font-weight:800;margin-bottom:8px;">Week '+currentWeek+' complete!</div>'+
         '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">All 3 sessions done. Ready to move on to Week '+nextWk+'?</div>'+
-        '<button onclick="currentWeek='+nextWk+';lsSet(\'kt_week\','+nextWk+');this.closest(\'div\').parentElement.remove();render();" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">→ Advance to Week '+nextWk+'</button>'+
+        '<button onclick="currentWeek='+nextWk+';lsSet(\'kt_week\','+nextWk+');this.closest(\'div\').parentElement.remove();render();" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">→ Advance to Week '+nextWk+'</button>'+
         '<button onclick="this.closest(\'div\').parentElement.remove();" style="width:100%;background:var(--border);color:var(--text);border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;">Stay on Week '+currentWeek+'</button>'+
         '</div>';
       document.body.appendChild(b);
@@ -2491,8 +2491,6 @@ function saveAndCopy() {
     navigator.clipboard.writeText(txt).then(afterCopy).catch(function(){showManualCopy(txt);afterCopy();});
   } else {showManualCopy(txt);afterCopy();}
 }
-
-function openTrainer(){window.open('https://claude.ai/','_blank');}
 
 function showManualCopy(txt) {
   var overlay=document.createElement('div');
@@ -2554,7 +2552,7 @@ function showCompletionSummary(exs,date,newPRs){
       '</div>'+
       prHTML+mainHTML+
       '<div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px;font-style:italic;">'+msg+'</div>'+
-      '<button onclick="document.getElementById(\'completion-overlay\').remove();render();" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;">Done</button>'+
+      '<button onclick="document.getElementById(\'completion-overlay\').remove();render();" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;">Done</button>'+
       '<button onclick="document.getElementById(\'completion-overlay\').remove();switchTab(\'progress\');" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;padding:12px;cursor:pointer;">View in History</button>'+
     '</div>';
   document.body.appendChild(overlay);
@@ -4620,7 +4618,15 @@ function renderCoach(){
     var lastMsg=msgCount?coachMessages[msgCount-1]:null;
     var lastPreview='';
     if(lastMsg){
-      var raw=lastMsg.content.replace(/\n/g,' ');
+      // Image messages store content as an array of {type,...} blocks;
+      // extract the text block (if any) for the preview line.
+      var contentStr='';
+      if(typeof lastMsg.content==='string') contentStr=lastMsg.content;
+      else if(Array.isArray(lastMsg.content)){
+        var tb=lastMsg.content.find(function(b){return b&&b.type==='text';});
+        contentStr=tb?tb.text:'[Image]';
+      }
+      var raw=contentStr.replace(/\n/g,' ');
       lastPreview=raw.length>65?raw.slice(0,65)+'…':raw;
     }
     var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
