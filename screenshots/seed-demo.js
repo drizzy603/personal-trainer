@@ -139,18 +139,27 @@
   localStorage.setItem('kt_bw', JSON.stringify(bws));
 
   // ── Runs: a handful of zone-2 + long runs over the last few weeks ──────
+  // Schema matches the run-log writer (runs store {distance, time, hr, type, note}).
   const runs = [];
   let runId = Date.now() - 1000;
+  const fmtTime = (totalSec) => {
+    const m = Math.floor(totalSec / 60);
+    const s = Math.round(totalSec % 60);
+    return m + ':' + String(s).padStart(2, '0');
+  };
   for (let i = 0; i < 8; i++) {
     const isLong = i % 3 === 0;
+    const distance = isLong ? +(7 + (i % 2)).toFixed(1) : 5;
+    const paceSec = isLong ? 540 : 570;  // 9:00 long, 9:30 easy
     runs.unshift({
       id: runId++,
       date: daysAgo(i * 4 + 1),
-      distance: isLong ? 8 + (Math.random() * 2 - 1) : 5,
-      paceMin: isLong ? 9 : 9,
-      paceSec: isLong ? 0 : 30,
+      distance,
+      time: fmtTime(distance * paceSec),
       hr: 145 + (isLong ? -5 : 0),
+      type: isLong ? 'long' : 'easy',
       note: isLong ? 'Long run.' : 'Easy zone-2.',
+      week: Math.max(1, 6 - Math.floor(i * 4 / 7)),
     });
   }
   localStorage.setItem('kt_runs', JSON.stringify(runs));

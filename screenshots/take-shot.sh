@@ -9,9 +9,10 @@
 #   ./screenshots/take-shot.sh settings
 
 set -euo pipefail
-cd "$(dirname "$0")"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+OUT="$DIR/out"
 
 NAME="${1:-shot-$(date +%Y%m%d-%H%M%S)}"
-mkdir -p out
-xcrun simctl io booted screenshot "out/${NAME}.png"
-echo "Saved: screenshots/out/${NAME}.png"
+mkdir -p "$OUT"
+xcrun simctl io booted screenshot "$OUT/${NAME}.png"
+echo "Saved: $OUT/${NAME}.png"
