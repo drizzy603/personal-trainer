@@ -1,5 +1,5 @@
-var CACHE = 'kt-v15';
-var FILES = ['./', './sw.js', './manifest.json', './app-icon-1024.png'];
+var CACHE = 'kt-v16';
+var FILES = ['./', './sw.js', './manifest.json', './app-icon-1024.png', './privacy.html'];
 
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE).then(function(c) { return c.addAll(FILES); }));

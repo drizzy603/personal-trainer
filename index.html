@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260428-6"/>
+<meta name="build" content="20260429-1"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1094,7 +1094,7 @@ function exportData() {
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  a.href = url; a.download = 'trainer-backup-'+todayISO()+'.json';
+  a.href = url; a.download = 'trovo-backup-'+todayISO()+'.json';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
   showToast('Backup downloaded!');
@@ -4670,7 +4670,7 @@ function renderCoach(){
     msgsHTML='<div class="coach-msgs-wrap">'+bubbles+'</div>';
   }
 
-  var inputPlaceholder=intakeMode?'Answer the trainer\'s question…':'Message Coach…';
+  var inputPlaceholder=intakeMode?'Answer the Coach…':'Message Coach…';
   var imgPreviewHTML=pendingImage
     ?'<div style="position:relative;display:inline-block;margin-bottom:8px;">'+
         '<img src="'+pendingImage.previewUrl+'" style="max-height:80px;max-width:160px;border-radius:10px;display:block;">'+
@@ -5206,7 +5206,7 @@ setTimeout(checkForLiveUpdate, 2000);
   </div>
   <div class="hero">
     <div class="hero-label">Overview</div>
-    <h1>Personal <span>Trainer</span><br>How It Works</h1>
+    <h1><span>Trovo</span><br>How It Works</h1>
     <p>A progressive training programme with an AI coach — built as a single file, zero accounts required.</p>
   </div>
   <div class="content">

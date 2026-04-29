@@ -4,4 +4,5 @@ node_modules/
 www/
 workouts*.json
 trainer-backup-*.json
+trovo-backup-*.json
 screenshots/out/
