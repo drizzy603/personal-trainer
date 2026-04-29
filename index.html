@@ -1757,9 +1757,9 @@ function getTodayActivity(){
 }
 
 // "Last session" lookup for an exercise by name — used for ↑ delta hints.
-// Two storage shapes coexist: the legacy top-level {weight, reps:[…]} written
-// by saveAndCopy + the runner, and an older {sets:[{weight,reps,rpe}…]} shape
-// used by the screenshot seed and possibly older imports. Normalize both.
+// Two storage shapes coexist: the top-level {weight, reps:[…]} written by
+// the deck runner, and an older {sets:[{weight,reps,rpe}…]} shape used by
+// the screenshot seed and pre-runner imports. Normalize both.
 function getLastSessionData(exName){
   var sessions = getSessions();
   for(var i=0;i<sessions.length;i++){
