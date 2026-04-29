@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-10"/>
+<meta name="build" content="20260429-11"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -565,6 +565,15 @@ select option{background:var(--bg);}
 .kt-hero-headline .kt-line2.accent{color:#c8ff00;}
 .kt-hero-body{font-size:13px;color:#9ca3af;margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
 .kt-hero-body b{color:#fafafa;font-weight:600;}
+.kt-hero-deload{display:inline-block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#c8ff00;letter-spacing:.12em;margin-top:14px;font-weight:600;}
+.kt-marquee-delta.down{color:#9ca3af;}
+.kt-run-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+.kt-run-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
+.kt-run-row-main{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
+.kt-run-row-right{flex-shrink:0;text-align:right;}
+.kt-run-row-km{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:#9ca3af;}
+.kt-run-row-hr{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#525259;margin-top:2px;}
+.kt-run-note{font-size:13px;color:#9ca3af;line-height:1.5;margin-top:8px;letter-spacing:-.011em;}
 .kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:#c8ff00;color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -1438,7 +1447,7 @@ function render() {
   // Lazily fetch today's coach card the first time the editorial Today is on
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
-  if(currentTab==='log' && logSubTab==='workout' && hasCustomRoutine()){
+  if(currentTab==='log' && (logSubTab==='workout' || logSubTab==='run') && hasCustomRoutine()){
     if(coachCard==null && !coachCardLoading && !coachCardDismissed){
       loadCoachCardForToday();
     }
@@ -1663,6 +1672,51 @@ function getTodayLabel() {
 }
 function getDayName(dow) { // dow: 0=Mon … 6=Sun
   return ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dow];
+}
+
+// Detect a deload week from the routine. The Coach intake flags blocks with
+// bName='DELOAD' (#22c55e); the live executor accepts that name verbatim.
+// We check the *current* week's wd, falling back to the literal bName string.
+function isDeloadWeek(){
+  var wd = getWkData();
+  if(!wd) return false;
+  var b = (wd.bName||'').toUpperCase();
+  return b === 'DELOAD';
+}
+// Resolve the user's real first name. Order:
+//   1. kt_user_name set explicitly (Settings → Profile)
+//   2. cr.user (newer routine schema)
+//   3. cr.name's first word — IF it's not a known placeholder
+// Returns '' when nothing useful is set, so callers can render
+// "Good morning." (no trailing comma) per addendum 0b.
+// Inline prompt to set the user's display name. Stored at kt_user_name.
+function promptUserName(){
+  var current = (localStorage.getItem('kt_user_name')||'').trim();
+  var v = window.prompt('Your name (used for the morning greeting):', current);
+  if(v == null) return; // cancelled
+  v = v.trim();
+  if(v) localStorage.setItem('kt_user_name', v);
+  else localStorage.removeItem('kt_user_name');
+  showToast(v ? 'Name updated' : 'Name cleared');
+  render();
+}
+function getUserFirstName(){
+  function clean(raw){
+    if(!raw) return '';
+    var first = String(raw).trim().split(/\s+/)[0].replace(/['’]s$/i, '');
+    if(!first) return '';
+    var placeholder = ['Custom','My','Your','Trovo','Routine','Programme','Plan','User','Default'];
+    if(placeholder.indexOf(first) > -1) return '';
+    return first;
+  }
+  var explicit = (localStorage.getItem('kt_user_name')||'').trim();
+  if(explicit){ var c = clean(explicit); if(c) return c; }
+  var cr = getCustomRoutine();
+  if(cr){
+    if(cr.user){ var c2 = clean(cr.user); if(c2) return c2; }
+    if(cr.name){ var c3 = clean(cr.name); if(c3) return c3; }
+  }
+  return '';
 }
 
 // ── Editorial Today helpers ──────────────────────────────────────────────────
@@ -1925,11 +1979,11 @@ function handleCoachCardAsk(ev){
 // ── Editorial Today render ───────────────────────────────────────────────────
 function renderTodayEditorial(){
   var cr = getCustomRoutine();
-  var userName = (cr && cr.name) ? cr.name : 'there';
-  // First word of cr.name minus a possessive 's so routine names like
-  // "Roberto's Hybrid Block" still produce a clean greeting ("Roberto").
-  var firstName = userName.split(' ')[0].replace(/['’]s$/i, '');
-  var initial = (firstName[0] || '?').toUpperCase();
+  var firstName = getUserFirstName();
+  // Avatar shows the user's initial when a name is set; otherwise the routine's
+  // first character, falling back to a neutral glyph.
+  var avatarSeed = firstName || (cr && cr.name) || '?';
+  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
   var totalWks = getTotalWeeks();
   var act = getTodayActivity();
 
@@ -1940,13 +1994,19 @@ function renderTodayEditorial(){
     '</div>';
 
   // Hero — dynamic per day type
-  var greet = '<div class="kt-hero-greet">Good morning, '+firstName+'.</div>';
+  // Greeting drops the comma when no name is set (addendum 0b).
+  var greet = firstName
+    ? '<div class="kt-hero-greet">Good morning, '+_esc(firstName)+'.</div>'
+    : '<div class="kt-hero-greet">Good morning.</div>';
   var line1, line2, line2Class, body;
+  var deload = isDeloadWeek();
   if(act.type === 'lift'){
     line1 = 'Today is';
     line2 = (act.dayName||'').toLowerCase()+' day.';
     line2Class = 'accent';
-    if(act.exercises && act.exercises.length){
+    if(deload){
+      body = 'Deload — drop to 60% of working weights, 3×5, RPE 5–6. Let the body absorb the work.';
+    } else if(act.exercises && act.exercises.length){
       var main = act.exercises.find(function(e){return e.isMain;}) || act.exercises[0];
       var last = getLastSessionData(main.name);
       var lastW = last ? parseFloat(last.weight) || 0 : 0;
@@ -1968,11 +2028,15 @@ function renderTodayEditorial(){
       line2 = 'run today.';
     }
     line2Class = 'accent';
-    var bodyParts = [];
-    if(act.hr > 0) bodyParts.push('HR cap '+act.hr+' bpm.');
-    bodyParts.push(act.km > 0 ? 'Easy aerobic, nothing brave.' : 'Distance up to you.');
-    if(act.note) bodyParts.push(act.note);
-    body = bodyParts.join(' ');
+    if(deload){
+      body = (act.hr > 0 ? 'HR cap '+act.hr+' bpm. ' : '') + 'Easy aerobic — deload week, no heroics.';
+    } else {
+      var bodyParts = [];
+      if(act.hr > 0) bodyParts.push('HR cap '+act.hr+' bpm.');
+      bodyParts.push(act.km > 0 ? 'Easy aerobic, nothing brave.' : 'Distance up to you.');
+      if(act.note) bodyParts.push(act.note);
+      body = bodyParts.join(' ');
+    }
   } else if(act.type === 'sport'){
     line1 = 'Today is';
     line2 = act.dayName.toLowerCase()+' day.';
@@ -1984,10 +2048,15 @@ function renderTodayEditorial(){
     line2Class = '';
     body = 'No lifts, no runs. Walk, stretch, eat well.';
   }
+  // ◆ DELOAD WEEK · 60% LOADS micro-label (lift + run only; rest stays clean).
+  var deloadBadge = (deload && (act.type === 'lift' || act.type === 'run'))
+    ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
+    : '';
   var hero = '<div class="kt-hero">'+greet+
     '<h1 class="kt-hero-headline">'+_esc(line1)+
       '<span class="kt-line2'+(line2Class?' '+line2Class:'')+'">'+_esc(line2)+'</span>'+
     '</h1>'+
+    deloadBadge+
     '<div class="kt-hero-body">'+body+'</div>'+
     '</div>';
 
@@ -2045,6 +2114,11 @@ function renderTodayEditorial(){
       if(last && parseFloat(last.weight) > 0 && parseFloat(ex.weight) > 0){
         delta = parseFloat(ex.weight) - parseFloat(last.weight);
       }
+      // Show ↓ deltas during deload (addendum 0e: don't hide the drop —
+      // it's expected and informative).
+      var deltaHTML = '';
+      if(delta > 0) deltaHTML = '<span class="kt-marquee-delta">↑'+delta+'</span>';
+      else if(delta < 0) deltaHTML = '<span class="kt-marquee-delta down">↓'+Math.abs(delta)+'</span>';
       rows += '<div class="kt-marquee-row">'+
         '<div class="kt-marquee-left">'+
           '<span class="kt-marquee-idx'+(ex.isMain?' main':'')+'">'+
@@ -2053,7 +2127,7 @@ function renderTodayEditorial(){
           '<span class="kt-marquee-name">'+_esc(ex.name)+'</span>'+
         '</div>'+
         '<div class="kt-marquee-right">'+
-          (delta > 0 ? '<span class="kt-marquee-delta">↑'+delta+'</span>' : '')+
+          deltaHTML+
           '<span class="kt-marquee-reps">'+ex.sets+'×'+ex.reps+'</span>'+
         '</div>'+
         '</div>';
@@ -2160,6 +2234,156 @@ function attachCoachCardSwipe(){
 function _esc(s){
   return String(s==null?'':s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Editorial Run segment ────────────────────────────────────────────────────
+var _DOW_FULL = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+function _runFromSlot(slot){
+  if(!slot) return {km:0, hr:0, note:'', type:'easy'};
+  return {
+    km: parseFloat(slot.km != null ? slot.km : slot.distance) || 0,
+    hr: slot.hr || 0,
+    note: slot.note || '',
+    type: slot.type || 'easy'
+  };
+}
+// Returns the most relevant run to feature in the hero — today's if today is
+// a run day, otherwise the next run forward in the week, otherwise null.
+function getRunFocus(){
+  var todayDow = (new Date().getDay()+6)%7;
+  var weekPlan = getWeekPlan();
+  var wd = getWkData();
+  var runs = (wd && wd.runs) || {};
+  for(var i=0;i<7;i++){
+    var d = (todayDow + i)%7;
+    if(!weekPlan[d].isRun) continue;
+    var slot = _runFromSlot(runs[DOW_NAMES[d]]);
+    return Object.assign({dow:d, isToday:i===0, dayName:_DOW_FULL[d]}, slot);
+  }
+  return null;
+}
+function getThisWeekRuns(){
+  var todayDow = (new Date().getDay()+6)%7;
+  var weekPlan = getWeekPlan();
+  var wd = getWkData();
+  var runs = (wd && wd.runs) || {};
+  var out = [];
+  for(var d=0;d<7;d++){
+    if(!weekPlan[d].isRun) continue;
+    var slot = _runFromSlot(runs[DOW_NAMES[d]]);
+    out.push(Object.assign({
+      dow:d, abbrev:DOW_NAMES[d].toUpperCase(), full:_DOW_FULL[d], isToday:d===todayDow
+    }, slot));
+  }
+  return out;
+}
+function _runTypeLabel(t){
+  return ({
+    easy:'Easy run', tempo:'Tempo run', intervals:'Intervals',
+    long:'Long run', race:'Race effort', Z2:'Zone-2'
+  })[t] || 'Run';
+}
+function renderRunTargetsList(){
+  var runs = getThisWeekRuns();
+  if(!runs.length) return '';
+  var rows = runs.map(function(r){
+    var typeName = _runTypeLabel(r.type);
+    var rightTop = r.km > 0 ? r.km+' km' : '—';
+    var rightBot = r.hr > 0 ? 'HR &lt;'+r.hr : '';
+    var note = r.note ? '<div class="kt-run-note">'+_esc(r.note)+'</div>' : '';
+    return '<div class="kt-run-row">'+
+      '<div class="kt-run-row-main">'+
+        '<div class="kt-marquee-left">'+
+          '<span class="kt-marquee-idx'+(r.isToday?' main':'')+'">'+r.abbrev+'</span>'+
+          '<span class="kt-marquee-name">'+typeName+'</span>'+
+        '</div>'+
+        '<div class="kt-run-row-right">'+
+          '<div class="kt-run-row-km">'+rightTop+'</div>'+
+          (rightBot ? '<div class="kt-run-row-hr">'+rightBot+'</div>' : '')+
+        '</div>'+
+      '</div>'+
+      note+
+      '</div>';
+  }).join('');
+  return '<div class="kt-marquee">'+
+    '<div class="kt-marquee-hd">THIS WEEK</div>'+
+    rows+'</div>';
+}
+function scrollToRunForm(){
+  var el = document.getElementById('kt-run-log-card');
+  if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+// Editorial Run sub-tab: hero focused on the next run, lime CTA scrolls to
+// the input form, coach card, run-targets editorial list, then the form.
+function renderRunSegment(){
+  var cr = getCustomRoutine();
+  var firstName = getUserFirstName();
+  var totalWks = getTotalWeeks();
+  var todayDow = (new Date().getDay()+6)%7;
+  var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][todayDow];
+  var deload = isDeloadWeek();
+  var focus = getRunFocus();
+  var avatarSeed = firstName || (cr && cr.name) || '?';
+  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
+
+  var meta = '<div class="kt-meta-row">'+
+    '<div class="kt-meta-label">'+weekday+' · WK '+
+      String(currentWeek).padStart(2,'0')+' / '+totalWks+'</div>'+
+    '<div class="kt-meta-ava">'+initial+'</div>'+
+    '</div>';
+
+  var greet = firstName
+    ? '<div class="kt-hero-greet">Good morning, '+_esc(firstName)+'.</div>'
+    : '<div class="kt-hero-greet">Good morning.</div>';
+
+  var line1, line2, line2Class='accent', body;
+  if(focus && focus.isToday){
+    if(focus.km > 0){ line1 = focus.km+' km'; line2 = 'today.'; }
+    else { line1 = 'Easy'; line2 = 'run today.'; }
+    if(deload){
+      body = (focus.hr ? 'HR cap '+focus.hr+' bpm. ' : '') + 'Easy aerobic — deload week, no heroics.';
+    } else {
+      var bp = [];
+      if(focus.hr) bp.push('HR cap '+focus.hr+' bpm.');
+      bp.push(focus.km > 0 ? 'Easy aerobic, nothing brave.' : 'Distance up to you.');
+      if(focus.note) bp.push(focus.note);
+      body = bp.join(' ');
+    }
+  } else if(focus){
+    if(focus.km > 0){ line1 = focus.km+' km'; line2 = 'on '+focus.dayName.toLowerCase()+'.'; }
+    else { line1 = 'Easy run'; line2 = focus.dayName.toLowerCase()+'.'; }
+    var hrBit = focus.hr ? ' HR cap '+focus.hr+' bpm.' : '';
+    body = 'Next run is '+focus.dayName+'.'+hrBit;
+  } else {
+    line1 = 'Run.'; line2 = 'This week.'; line2Class = '';
+    body = 'No runs scheduled this week. Tap below to log one anyway.';
+  }
+  var deloadBadge = (deload && focus)
+    ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
+    : '';
+  var hero = '<div class="kt-hero">'+greet+
+    '<h1 class="kt-hero-headline">'+_esc(line1)+
+      '<span class="kt-line2'+(line2Class?' '+line2Class:'')+'">'+_esc(line2)+'</span>'+
+    '</h1>'+
+    deloadBadge+
+    '<div class="kt-hero-body">'+body+'</div>'+
+    '</div>';
+
+  var ctaTitle = '';
+  if(focus && focus.isToday) ctaTitle = focus.km > 0 ? 'Start run · '+focus.km+' km' : 'Start run';
+  else ctaTitle = 'Log a run';
+  var cta = '<button class="kt-cta" onclick="scrollToRunForm()">'+
+    '<div style="text-align:left;">'+
+      '<div class="kt-cta-label">START</div>'+
+      '<div class="kt-cta-title">'+_esc(ctaTitle)+'</div>'+
+    '</div>'+
+    '<div class="kt-cta-arrow">→</div>'+
+    '</button>';
+
+  var coach = renderCoachCard(getTodayActivity());
+  var targetsList = renderRunTargetsList();
+
+  return meta + hero + cta + coach + targetsList + renderRunsSection({skipTargets:true});
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
@@ -2762,6 +2986,10 @@ function renderLog() {
       // Pin logSportType so saveSportLog/fillSportWithAI act on the primary.
       if (logSportType !== primaryAct) logSportType = primaryAct;
       return header + renderWeekHeader() + subBar + renderSportSection(primaryAct);
+    }
+    // Editorial Run segment when a routine exists; legacy stack otherwise.
+    if(hasCustomRoutine()){
+      return subBar + renderRunSegment();
     }
     return header + renderWeekHeader() + subBar + renderRunsSection();
   }
@@ -3489,7 +3717,8 @@ function showCompletionSummary(exs,date,newPRs){
 }
 
 // ── RUNS ──────────────────────────────────────────────────────────────────────
-function renderRunsSection() {
+function renderRunsSection(opts) {
+  opts = opts || {};
   var wd = getWkData();
 
   function runCard(run, label) {
@@ -3550,8 +3779,14 @@ function renderRunsSection() {
   }
 
   var runGoal=getRunGoal();
-  return '<div class="card"><h2>Week '+currentWeek+' Run Targets</h2>'+runCards+'</div>'+
-    '<div class="card"><h2>Log Run</h2>'+
+  // Editorial Run sub-tab passes opts.skipTargets — the legacy "Week N Run
+  // Targets" card is replaced by the editorial run-targets list above the
+  // log form (addendum 0a).
+  var targetsCard = opts.skipTargets
+    ? ''
+    : '<div class="card"><h2>Week '+currentWeek+' Run Targets</h2>'+runCards+'</div>';
+  return targetsCard +
+    '<div class="card" id="kt-run-log-card"><h2>Log Run</h2>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+
     '<div class="field" style="margin:0"><label>Distance (km)</label><input type="number" id="runDist" placeholder="5.0" step="0.1" min="0" oninput="updateRunPacePreview()"/></div>'+
     '<div class="field" style="margin:0"><label>Time (mm:ss)</label><input type="text" id="runTime" placeholder="28:30" oninput="updateRunPacePreview()"/></div>'+
@@ -5876,15 +6111,16 @@ function renderSettings() {
   var wd4=getWkData();
   var totalWks=getTotalWeeks();
   var cr=getCustomRoutine();
-  var userName=cr&&cr.name?cr.name:'You';
-  var userInitial=userName&&userName!=='You'?userName[0].toUpperCase():'?';
+  var firstName=getUserFirstName();
+  var displayName=firstName || (cr && cr.name) || 'Set your name';
+  var userInitial=(firstName ? firstName[0] : (cr&&cr.name?cr.name[0]:'?')).toUpperCase();
 
   var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
-    '<div class="profile-row">'+
+    '<div class="profile-row" onclick="promptUserName()" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
       '<div class="profile-ava">'+userInitial+'</div>'+
       '<div>'+
-        '<div class="profile-name">'+userName+'</div>'+
-        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+'</div>'+
+        '<div class="profile-name">'+displayName+'</div>'+
+        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
       '</div>'+
     '</div>';
 
