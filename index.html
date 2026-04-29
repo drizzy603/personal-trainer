@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-13"/>
+<meta name="build" content="20260429-14"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -604,6 +604,16 @@ select option{background:var(--bg);}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#525259;letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-goal-line input{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.2);color:#c8ff00;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
+
+/* Progress tab — editorial streak hero + Lifts/Runs toggle */
+.kt-prog-hero{margin-bottom:24px;}
+.kt-prog-hero-greet{font-size:13px;color:#9ca3af;font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
+.kt-prog-hero-num{font-size:72px;font-weight:800;letter-spacing:-3px;line-height:.92;color:#fafafa;margin:0;}
+.kt-prog-hero-num span.accent{color:#c8ff00;display:block;}
+.kt-prog-hero-body{font-size:13px;color:#9ca3af;margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
+.kt-prog-toggle{display:flex;gap:4px;padding:4px;background:rgba(22,22,26,.7);border-radius:14px;border:1px solid rgba(255,255,255,.05);margin-bottom:20px;}
+.kt-prog-toggle button{flex:1;padding:10px 8px;border-radius:10px;border:none;background:transparent;color:#525259;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;text-transform:capitalize;-webkit-tap-highlight-color:transparent;}
+.kt-prog-toggle button.on{background:#1f1f24;color:#fafafa;}
 .kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:#c8ff00;color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -856,6 +866,8 @@ var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
 // wipe what the user has typed.
 var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
+// Progress tab: which detail charts are showing.
+var progressTab = 'lifts';   // 'lifts' | 'runs'
 
 // ── 12-Week Programme ─────────────────────────────────────────────────────────
 
@@ -1225,6 +1237,29 @@ function calcVolume(exercises) {
   });
   return Math.round(vol);
 }
+
+// Day streak — consecutive calendar days going back from today with at least
+// one logged activity (session, run, or sport). If today has nothing logged
+// yet we don't punish the user — start counting from yesterday so the streak
+// only breaks once a full day has passed without any log.
+function calcDayStreak(){
+  var dates = {};
+  getSessions().forEach(function(s){ if(s.date) dates[s.date]=true; });
+  getRuns().forEach(function(r){ if(r.date) dates[r.date]=true; });
+  getSportLogs().forEach(function(sp){ if(sp.date) dates[sp.date]=true; });
+  if(!Object.keys(dates).length) return 0;
+  var streak = 0;
+  var today = new Date(); today.setHours(0,0,0,0);
+  for(var i=0; i<400; i++){
+    var d = new Date(today); d.setDate(d.getDate()-i);
+    var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(dates[iso]) streak++;
+    else if(i === 0) continue; // grace day for "today"
+    else break;
+  }
+  return streak;
+}
+function setProgressTab(t){ progressTab = t; render(); }
 
 function calcStreak(sessions) {
   if(!sessions.length) return 0;
@@ -4829,14 +4864,48 @@ function renderProgress() {
   var calHTML=renderCalendar(sessions,runs,getSportLogs());
 
   var wd2=getWkData();
-  var _crP=getCustomRoutine(); var _avP=_crP&&_crP.name?_crP.name[0].toUpperCase():'?';
-  var progressHeader='<div class="screen-hd">'+
-    '<div>'+
-      '<div class="screen-eyebrow">'+(wd2?'Week '+currentWeek+' · '+wd2.bName:'')+'</div>'+
-      '<div class="screen-title">Progress</div>'+
+  // Editorial header: mono eyebrow + lime-gradient avatar (matches Today).
+  var totalWksP = getTotalWeeks();
+  var firstNameP = getUserFirstName();
+  var crP = getCustomRoutine();
+  var avSeed = firstNameP || (crP && crP.name) || '?';
+  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var progressHeader = '<div class="kt-meta-row">'+
+    '<div class="kt-meta-label">PROGRESS · WEEK '+
+      String(currentWeek).padStart(2,'0')+' / '+totalWksP+
+      (wd2 && wd2.bName ? ' · '+wd2.bName.toUpperCase() : '')+
     '</div>'+
-    '<div class="screen-avatar">'+_avP+'</div>'+
-  '</div>';
+    '<div class="kt-meta-ava">'+avInitial+'</div>'+
+    '</div>';
+
+  // Streak hero — large day-streak number with a contextual body sentence.
+  var dayStreak = calcDayStreak();
+  var streakLine2 = dayStreak === 1 ? 'day strong.' : 'days strong.';
+  var todayISOStr = todayISO();
+  var loggedToday = sessions.some(function(s){return s.date===todayISOStr;})
+    || runs.some(function(r){return r.date===todayISOStr;})
+    || getSportLogs().some(function(sp){return sp.date===todayISOStr;});
+  var streakBody;
+  if(dayStreak === 0){
+    streakBody = 'No streak yet. A single session or run today starts the count.';
+  } else if(loggedToday){
+    streakBody = dayStreak >= 7
+      ? dayStreak+' days in a row. This is the kind of consistency that compounds.'
+      : 'Logged today. Stack tomorrow and you\'re at '+(dayStreak+1)+'.';
+  } else {
+    streakBody = 'One log today and the streak ticks to '+(dayStreak+1)+'. Don\'t let it drop.';
+  }
+  var streakHero = '<div class="kt-prog-hero">'+
+    '<div class="kt-prog-hero-greet">You\'re on a streak.</div>'+
+    '<h1 class="kt-prog-hero-num">'+dayStreak+'<span class="accent">'+streakLine2+'</span></h1>'+
+    '<div class="kt-prog-hero-body">'+streakBody+'</div>'+
+    '</div>';
+
+  // Lifts / Runs toggle — filters the detail chart cards below.
+  var toggle = '<div class="kt-prog-toggle">'+
+    '<button class="'+(progressTab==='lifts'?'on':'')+'" onclick="setProgressTab(\'lifts\')">Lifts</button>'+
+    '<button class="'+(progressTab==='runs'?'on':'')+'" onclick="setProgressTab(\'runs\')">Runs</button>'+
+    '</div>';
 
   // ── Lifts this block ──────────────────────────────────────────────────────
   var wd2b = getWkData();
@@ -4890,7 +4959,15 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  return progressHeader+stats+goals+liftsBlock+rmSection+benchChart+squatChart+runChart+volCharts+renderSportProgress()+renderBodySection()+calHTML;
+  // Filter the detail charts based on the Lifts/Runs toggle.
+  var detailCharts = progressTab === 'runs'
+    ? runChart
+    : (benchChart + squatChart + volCharts);
+
+  return progressHeader + streakHero + toggle +
+    stats + goals + liftsBlock + rmSection +
+    detailCharts +
+    renderSportProgress() + renderBodySection() + calHTML;
 }
 
 function svgChart(data,color,goalVal) {
