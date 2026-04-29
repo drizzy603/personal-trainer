@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-5"/>
+<meta name="build" content="20260429-6"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1121,6 +1121,75 @@ function importData() {
     reader.readAsText(file);
   };
   inp.click();
+}
+
+// ── Apple Health import (Capacitor / iOS shell only) ─────────────────────────
+// True only inside the Capacitor native iOS app — never in PWA / Safari.
+function isNativeIOS(){
+  return !!(window.Capacitor && typeof Capacitor.isNativePlatform==='function'
+    && Capacitor.isNativePlatform() && Capacitor.getPlatform && Capacitor.getPlatform()==='ios');
+}
+function _secsToMMSS(secs){
+  var s=Math.max(0,Math.round(secs));
+  var m=Math.floor(s/60), r=s%60;
+  return m+':'+(r<10?'0':'')+r;
+}
+function importFromHealth(){
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(!TH){ showToast('Available in the iOS app only'); return; }
+  Promise.resolve(TH.isAvailable()).then(function(r){
+    if(!r||!r.available){ showToast('Apple Health not available on this device'); return null; }
+    return TH.requestAuth();
+  }).then(function(authRes){
+    if(authRes==null) return null;
+    // requestAuth resolves whether or not the user granted — Apple deliberately
+    // doesn't tell apps whether read access was approved. We just attempt the
+    // fetch; if denied, it returns an empty array.
+    var sinceMs = parseInt(localStorage.getItem('kt_hk_last_sync'))||0;
+    return TH.fetchRuns({sinceMs:sinceMs});
+  }).then(function(res){
+    if(res==null) return;
+    var runs = (res&&res.runs)||[];
+    var seen = new Set(lsGet('kt_hk_imported')||[]);
+    var existing = getRuns();
+    var added=0, skippedNoDist=0;
+    runs.forEach(function(r){
+      if(!r||!r.uuid||seen.has(r.uuid)) return;
+      // Treadmill / indoor runs sometimes have 0 distance — skip rather than
+      // import an unloggable entry. User can log those manually.
+      if(!r.distanceKm||r.distanceKm<=0){ skippedNoDist++; return; }
+      var d = new Date(r.startDate);
+      var localISO = d.getFullYear()+'-'+
+        String(d.getMonth()+1).padStart(2,'0')+'-'+
+        String(d.getDate()).padStart(2,'0');
+      existing.unshift({
+        id: Date.now()+added,
+        distance: Math.round(r.distanceKm*100)/100,
+        time: _secsToMMSS(r.durationSec),
+        date: localISO,
+        week: currentWeek,
+        note: 'From Apple Health',
+        hr: r.avgHr||0,
+        type: 'easy'
+      });
+      seen.add(r.uuid);
+      added++;
+    });
+    lsSet('kt_runs', existing);
+    lsSet('kt_hk_imported', Array.from(seen));
+    localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+    if(added){
+      showToast(added+' run'+(added>1?'s':'')+' imported');
+      render();
+    } else if(skippedNoDist){
+      showToast('Skipped '+skippedNoDist+' indoor run'+(skippedNoDist>1?'s':'')+' (no distance)');
+    } else {
+      showToast('Already up to date');
+    }
+  }).catch(function(err){
+    showToast('Health import failed');
+    if(window.console) console.error('importFromHealth', err);
+  });
 }
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
@@ -4960,6 +5029,16 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Export session log</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    (isNativeIOS()?
+      '<div class="settings-row" onclick="importFromHealth()">'+
+        '<div class="settings-row-ic" style="background:#2a0d14;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull running workouts from your watch</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>' : '')+
     '<div class="settings-row" onclick="importData()">'+
       '<div class="settings-row-ic" style="background:#2a1a0d;">'+
         '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
@@ -5389,7 +5468,7 @@ setTimeout(checkForLiveUpdate, 2000);
   <div class="hero">
     <div class="hero-label">Legal</div>
     <h1>Privacy <span>Policy</span></h1>
-    <p>Trovo · Last updated April 26, 2026</p>
+    <p>Trovo · Last updated April 29, 2026</p>
   </div>
   <div class="content">
     <div class="highlight">
@@ -5420,19 +5499,24 @@ setTimeout(checkForLiveUpdate, 2000);
       <p>We never see, store, or transmit your API key. Your conversations with the AI Coach are sent directly from your device to Anthropic and are subject to <a href="https://www.anthropic.com/privacy" target="_blank" style="color:var(--accent);">Anthropic's Privacy Policy</a>.</p>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">04</span><h2>Data We Do Not Collect</h2></div>
+      <div class="section-header"><span class="section-num">04</span><h2>Apple Health (iOS app only)</h2></div>
+      <p>On the iOS app, you may optionally allow Trovo to read your running workouts from Apple Health to save you re-entering them. This is opt-in: you grant permission through iOS's standard Health permission prompt the first time you tap "Import from Apple Health" in Settings, and you can revoke it at any time in iOS Settings → Privacy &amp; Security → Health → Trovo.</p>
+      <p>When you import, Trovo reads workout date, duration, distance, and average heart rate for runs only — directly from Apple Health on your device. The data is then stored alongside your other Trovo runs in local storage. It never leaves your device and is never sent to us or any third party. Trovo never writes data back to Apple Health.</p>
+    </div>
+    <div class="section">
+      <div class="section-header"><span class="section-num">05</span><h2>Data We Do Not Collect</h2></div>
       <p>We do not collect:</p>
       <ul style="color:var(--wf-body);font-size:15px;padding-left:20px;line-height:2;margin-bottom:20px;">
         <li>Your name, email address, or any account information</li>
         <li>Location data</li>
-        <li>Health or biometric data beyond what you manually enter</li>
+        <li>Health or biometric data beyond what you manually enter or what you opt to import from Apple Health (which stays on your device)</li>
         <li>Device identifiers or advertising IDs</li>
         <li>Usage analytics or behavioural tracking data</li>
         <li>Crash reports or diagnostic data sent to our servers</li>
       </ul>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">05</span><h2>Third-Party Services</h2></div>
+      <div class="section-header"><span class="section-num">06</span><h2>Third-Party Services</h2></div>
       <p>The app uses the following third-party service:</p>
       <ul style="color:var(--wf-body);font-size:15px;padding-left:20px;line-height:2;margin-bottom:20px;">
         <li><strong style="color:var(--text);">Anthropic</strong> — powers the AI Coach when you use that feature with your own API key. Subject to <a href="https://www.anthropic.com/privacy" target="_blank" style="color:var(--accent);">Anthropic's Privacy Policy</a>.</li>
@@ -5440,20 +5524,20 @@ setTimeout(checkForLiveUpdate, 2000);
       <p>We do not use advertising networks, analytics platforms, or data brokers.</p>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">06</span><h2>Data Storage and Security</h2></div>
+      <div class="section-header"><span class="section-num">07</span><h2>Data Storage and Security</h2></div>
       <p>All data is stored locally on your device. We have no access to it and therefore cannot recover it if lost. We recommend using the Export feature in Settings to regularly back up your data as a JSON file.</p>
       <p>Clearing your browser data or uninstalling the app will permanently delete all locally stored data.</p>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">07</span><h2>Children's Privacy</h2></div>
+      <div class="section-header"><span class="section-num">08</span><h2>Children's Privacy</h2></div>
       <p>Trovo is not directed at children under the age of 13. We do not knowingly collect any information from children. If you believe a child has provided information through the app, please contact us and we will address it promptly.</p>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">08</span><h2>Changes to This Policy</h2></div>
+      <div class="section-header"><span class="section-num">09</span><h2>Changes to This Policy</h2></div>
       <p>We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top of this page. We encourage you to review this policy periodically.</p>
     </div>
     <div class="section">
-      <div class="section-header"><span class="section-num">09</span><h2>Contact</h2></div>
+      <div class="section-header"><span class="section-num">10</span><h2>Contact</h2></div>
       <p>If you have any questions or concerns about this Privacy Policy, please contact us at <a href="mailto:robertokalanisosa@outlook.com" style="color:var(--accent);">robertokalanisosa@outlook.com</a>.</p>
     </div>
   </div>

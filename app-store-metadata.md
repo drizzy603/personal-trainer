@@ -159,7 +159,9 @@ Run top-to-bottom once Apple Developer verification clears.
   - Category: Health & Fitness / Lifestyle
   - Privacy Policy URL: `https://drizzy603.github.io/personal-trainer/privacy.html`
 - Pricing and Availability: Free, all territories
-- App Privacy: **Data Not Collected** (everything is local + user's own Anthropic key — note this in the Anthropic disclosure: "data sent to third-party API only when user provides their own key; not collected by us")
+- App Privacy: **Data Not Collected**
+  - Everything is local + user's own Anthropic key — note in the Anthropic disclosure: "data sent to third-party API only when user provides their own key; not collected by us"
+  - **Apple Health (Health & Fitness data type)** — also "Not Collected": Trovo reads workouts only with user's explicit Health permission, on-device, and never transmits the data anywhere. Tick the data type so the nutrition label is accurate; the linkage is "Used on this device only".
 - Age Rating: 4+ (no objectionable content, no tracking, no ads, no UGC)
 - Version 1.0 → paste from sections above:
   - Subtitle, Promotional Text, Description, Keywords
@@ -177,6 +179,7 @@ open ios/App/App.xcodeproj
 ```
 In Xcode:
 - Signing & Capabilities → Team = your team (the dropdown will populate after verification clears)
+- Signing & Capabilities → **+ Capability → HealthKit** (only needed once; reconciles the bundled `App.entitlements` with the App ID. Apple Developer portal must also have HealthKit enabled on `app.kt.trainer` — Identifiers → bundle ID → Capabilities.)
 - Destination dropdown → "Any iOS Device (arm64)"
 - Product → Archive
 - Organizer window → Distribute App → App Store Connect → Upload → Automatic signing → Done
