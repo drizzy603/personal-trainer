@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-12"/>
+<meta name="build" content="20260429-13"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -852,6 +852,10 @@ var runLogClosing   = false;
 var runLogPendingType = 'easy';     // easy | tempo | long | intervals
 var runLogConfirmed = null;         // {id, km, time} after save
 var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
+// Draft values for the inline run-log form. Captured on every render so
+// re-renders (pill taps, coach-card dismiss, async coach-card load) don't
+// wipe what the user has typed.
+var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 
 // ── 12-Week Programme ─────────────────────────────────────────────────────────
 
@@ -1474,6 +1478,10 @@ function initLogState() {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function render() {
+  // Sync the inline run-log form into module state before rebuilding the
+  // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
+  // wipe what the user has typed.
+  if(runLogOpen) _snapshotRunLogForm();
   var screen = document.getElementById('screen');
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
@@ -2351,9 +2359,21 @@ function scrollToRunForm(){
 }
 
 // ── Inline run-log form (addendum 0e) ────────────────────────────────────────
+function _resetRunLogDraft(){
+  runLogDraft = {dist:'', time:'', hr:'', date:todayISO(), note:''};
+}
+// Sync DOM inputs into runLogDraft. Call right before any render that
+// reaches the form so user-entered values survive.
+function _snapshotRunLogForm(){
+  ['dist','time','hr','date','note'].forEach(function(k){
+    var el = document.getElementById('kt-rlog-'+k);
+    if(el) runLogDraft[k] = el.value;
+  });
+}
 function openRunLog(){
   runLogOpen = true;
   runLogConfirmed = null;
+  _resetRunLogDraft();
   // Seed the type pill from the run scheduled today, if any.
   var f = getRunFocus();
   runLogPendingType = (f && f.isToday && f.type) ? String(f.type).toLowerCase() : 'easy';
@@ -2367,19 +2387,20 @@ function openRunLog(){
 function discardRunLog(){
   runLogOpen = false;
   runLogConfirmed = null;
+  _resetRunLogDraft();
   render();
 }
 function saveInlineRun(){
-  function val(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
-  var dist = parseFloat(val('kt-rlog-dist'));
-  var time = val('kt-rlog-time');
+  _snapshotRunLogForm();
+  var dist = parseFloat(runLogDraft.dist);
+  var time = (runLogDraft.time||'').trim();
   if(!(dist > 0) || !time){
     showToast('Enter distance and time');
     return;
   }
-  var hr = parseInt(val('kt-rlog-hr')) || 0;
-  var date = val('kt-rlog-date') || todayISO();
-  var note = val('kt-rlog-note');
+  var hr = parseInt(runLogDraft.hr) || 0;
+  var date = (runLogDraft.date||'').trim() || todayISO();
+  var note = (runLogDraft.note||'').trim();
   var rec = {
     id: Date.now(),
     distance: Math.round(dist*100)/100,
@@ -2406,21 +2427,30 @@ function undoLastRun(){
   runLogConfirmed = null;
   render();
 }
+// Surgical pill-class swap — re-rendering would wipe in-progress input
+// values, so update DOM in place instead.
 function selectRunLogType(t){
   runLogPendingType = t;
-  render();
-  setTimeout(function(){
-    var el = document.getElementById('kt-rlog-dist');
-    if(el && document.activeElement && document.activeElement.tagName !== 'INPUT') el.focus();
-  }, 0);
+  var pills = document.querySelectorAll('.kt-rlog-pill');
+  pills.forEach(function(el){
+    var label = (el.textContent||'').trim().toLowerCase();
+    var on = label === t;
+    el.classList.toggle('on', on);
+    el.classList.toggle('off', !on);
+  });
 }
 function renderInlineRunLog(){
-  var todayDate = todayISO();
+  var d = runLogDraft;
+  if(!d.date) d.date = todayISO();
   var pills = ['easy','tempo','long','intervals'].map(function(t){
     var label = t.charAt(0).toUpperCase()+t.slice(1);
     var on = runLogPendingType === t;
     return '<button class="kt-rlog-pill '+(on?'on':'off')+'" onclick="selectRunLogType(\''+t+'\')">'+label+'</button>';
   }).join('');
+  // Inline oninput handlers keep runLogDraft in sync — so any render that
+  // reaches the form (coach-card load, etc.) can re-paint without losing
+  // typed values.
+  var sync = ' oninput="runLogDraft.';
   return '<div class="kt-rlog">'+
     '<div class="kt-rlog-hd">'+
       '<div>'+
@@ -2431,23 +2461,23 @@ function renderInlineRunLog(){
     '</div>'+
     '<div class="kt-rlog-row">'+
       '<div><label class="kt-rlog-field-lbl">DISTANCE · KM</label>'+
-        '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0"/></div>'+
+        '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0" value="'+_esc(d.dist)+'"'+sync+'dist=this.value"/></div>'+
       '<div><label class="kt-rlog-field-lbl">TIME · MM:SS</label>'+
-        '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="numeric" placeholder="28:30"/></div>'+
+        '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="numeric" placeholder="28:30" value="'+_esc(d.time)+'"'+sync+'time=this.value"/></div>'+
     '</div>'+
     '<div class="kt-rlog-row">'+
       '<div><label class="kt-rlog-field-lbl">AVG HR · BPM</label>'+
-        '<input id="kt-rlog-hr" class="kt-rlog-input small" type="number" inputmode="numeric" min="0" max="220" placeholder="148"/></div>'+
+        '<input id="kt-rlog-hr" class="kt-rlog-input small" type="number" inputmode="numeric" min="0" max="220" placeholder="148" value="'+_esc(d.hr)+'"'+sync+'hr=this.value"/></div>'+
       '<div><label class="kt-rlog-field-lbl">TYPE</label>'+
         '<div class="kt-rlog-pills">'+pills+'</div></div>'+
     '</div>'+
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">DATE</label>'+
-        '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" value="'+_esc(todayDate)+'"/></div>'+
+        '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
     '</div>'+
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">NOTES · OPTIONAL</label>'+
-        '<input id="kt-rlog-note" class="kt-rlog-input small" type="text" placeholder="How it felt, course, conditions…"/></div>'+
+        '<input id="kt-rlog-note" class="kt-rlog-input small" type="text" placeholder="How it felt, course, conditions…" value="'+_esc(d.note)+'"'+sync+'note=this.value"/></div>'+
     '</div>'+
     '<div class="kt-rlog-actions">'+
       '<button class="kt-rlog-discard" onclick="discardRunLog()">Discard</button>'+
