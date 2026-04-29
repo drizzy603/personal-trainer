@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-11"/>
+<meta name="build" content="20260429-12"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -574,6 +574,36 @@ select option{background:var(--bg);}
 .kt-run-row-km{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:#9ca3af;}
 .kt-run-row-hr{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#525259;margin-top:2px;}
 .kt-run-note{font-size:13px;color:#9ca3af;line-height:1.5;margin-top:8px;letter-spacing:-.011em;}
+
+/* Inline Log-Run form (addendum 0e) — editorial, no nested card. */
+.kt-rlog{transform-origin:top center;animation:kt-rlog-in .35s ease-out;margin-bottom:24px;}
+@keyframes kt-rlog-in{
+  from{opacity:0;transform:translateY(-8px) scaleY(.96);}
+  to{opacity:1;transform:translateY(0) scaleY(1);}
+}
+.kt-rlog-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;}
+.kt-rlog-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#c8ff00;letter-spacing:.12em;font-weight:600;margin-bottom:4px;}
+.kt-rlog-ttl{font-size:22px;font-weight:700;letter-spacing:-.6px;color:#fafafa;}
+.kt-rlog-x{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:0;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+.kt-rlog-field-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#525259;letter-spacing:.1em;font-weight:600;display:block;margin-bottom:2px;}
+.kt-rlog-input{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.12);color:#fafafa;font-size:28px;font-weight:700;letter-spacing:-1px;font-family:inherit;padding:8px 0 10px;outline:none;}
+.kt-rlog-input.small{font-size:18px;font-weight:600;letter-spacing:-.3px;}
+.kt-rlog-input:focus{border-bottom-color:#c8ff00;}
+.kt-rlog-pills{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 10px;}
+.kt-rlog-pill{padding:7px 12px;border-radius:999px;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-pill.on{background:#c8ff00;color:#0b0b0d;}
+.kt-rlog-pill.off{background:rgba(255,255,255,.05);color:#9ca3af;}
+.kt-rlog-actions{display:flex;gap:10px;margin-top:8px;}
+.kt-rlog-discard{background:transparent;border:1px solid rgba(255,255,255,.12);color:#9ca3af;font-family:inherit;font-size:14px;font-weight:600;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-save{flex:1;background:#c8ff00;color:#0b0b0d;border:none;font-family:inherit;font-size:14px;font-weight:700;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+
+.kt-rconfirm{background:#c8ff00;color:#0b0b0d;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
+@keyframes kt-rconfirm-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.kt-rconfirm-undo{background:rgba(0,0,0,.18);color:#0b0b0d;border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+
+.kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#525259;letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-goal-line input{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.2);color:#c8ff00;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
 .kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:#c8ff00;color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -816,6 +846,12 @@ var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps}
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
+// Inline run-log state (Run sub-tab)
+var runLogOpen      = false;
+var runLogClosing   = false;
+var runLogPendingType = 'easy';     // easy | tempo | long | intervals
+var runLogConfirmed = null;         // {id, km, time} after save
+var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 
 // ── 12-Week Programme ─────────────────────────────────────────────────────────
 
@@ -2313,6 +2349,152 @@ function scrollToRunForm(){
   var el = document.getElementById('kt-run-log-card');
   if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
+
+// ── Inline run-log form (addendum 0e) ────────────────────────────────────────
+function openRunLog(){
+  runLogOpen = true;
+  runLogConfirmed = null;
+  // Seed the type pill from the run scheduled today, if any.
+  var f = getRunFocus();
+  runLogPendingType = (f && f.isToday && f.type) ? String(f.type).toLowerCase() : 'easy';
+  if(['easy','tempo','long','intervals'].indexOf(runLogPendingType) === -1) runLogPendingType = 'easy';
+  render();
+  setTimeout(function(){
+    var el = document.getElementById('kt-rlog-dist');
+    if(el) el.focus();
+  }, 80);
+}
+function discardRunLog(){
+  runLogOpen = false;
+  runLogConfirmed = null;
+  render();
+}
+function saveInlineRun(){
+  function val(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+  var dist = parseFloat(val('kt-rlog-dist'));
+  var time = val('kt-rlog-time');
+  if(!(dist > 0) || !time){
+    showToast('Enter distance and time');
+    return;
+  }
+  var hr = parseInt(val('kt-rlog-hr')) || 0;
+  var date = val('kt-rlog-date') || todayISO();
+  var note = val('kt-rlog-note');
+  var rec = {
+    id: Date.now(),
+    distance: Math.round(dist*100)/100,
+    time: time,
+    date: date,
+    week: currentWeek,
+    note: note,
+    hr: hr,
+    type: runLogPendingType
+  };
+  var runs = getRuns();
+  runs.unshift(rec);
+  lsSet('kt_runs', runs);
+  invalidateCoachCard();
+  runLogOpen = false;
+  runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  render();
+}
+function undoLastRun(){
+  if(!runLogConfirmed) return;
+  var id = runLogConfirmed.id;
+  var runs = getRuns().filter(function(r){ return r.id !== id; });
+  lsSet('kt_runs', runs);
+  runLogConfirmed = null;
+  render();
+}
+function selectRunLogType(t){
+  runLogPendingType = t;
+  render();
+  setTimeout(function(){
+    var el = document.getElementById('kt-rlog-dist');
+    if(el && document.activeElement && document.activeElement.tagName !== 'INPUT') el.focus();
+  }, 0);
+}
+function renderInlineRunLog(){
+  var todayDate = todayISO();
+  var pills = ['easy','tempo','long','intervals'].map(function(t){
+    var label = t.charAt(0).toUpperCase()+t.slice(1);
+    var on = runLogPendingType === t;
+    return '<button class="kt-rlog-pill '+(on?'on':'off')+'" onclick="selectRunLogType(\''+t+'\')">'+label+'</button>';
+  }).join('');
+  return '<div class="kt-rlog">'+
+    '<div class="kt-rlog-hd">'+
+      '<div>'+
+        '<div class="kt-rlog-eyebrow">LOGGING RUN</div>'+
+        '<div class="kt-rlog-ttl">How did it go?</div>'+
+      '</div>'+
+      '<button class="kt-rlog-x" onclick="discardRunLog()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div class="kt-rlog-row">'+
+      '<div><label class="kt-rlog-field-lbl">DISTANCE · KM</label>'+
+        '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0"/></div>'+
+      '<div><label class="kt-rlog-field-lbl">TIME · MM:SS</label>'+
+        '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="numeric" placeholder="28:30"/></div>'+
+    '</div>'+
+    '<div class="kt-rlog-row">'+
+      '<div><label class="kt-rlog-field-lbl">AVG HR · BPM</label>'+
+        '<input id="kt-rlog-hr" class="kt-rlog-input small" type="number" inputmode="numeric" min="0" max="220" placeholder="148"/></div>'+
+      '<div><label class="kt-rlog-field-lbl">TYPE</label>'+
+        '<div class="kt-rlog-pills">'+pills+'</div></div>'+
+    '</div>'+
+    '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
+      '<div><label class="kt-rlog-field-lbl">DATE</label>'+
+        '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" value="'+_esc(todayDate)+'"/></div>'+
+    '</div>'+
+    '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
+      '<div><label class="kt-rlog-field-lbl">NOTES · OPTIONAL</label>'+
+        '<input id="kt-rlog-note" class="kt-rlog-input small" type="text" placeholder="How it felt, course, conditions…"/></div>'+
+    '</div>'+
+    '<div class="kt-rlog-actions">'+
+      '<button class="kt-rlog-discard" onclick="discardRunLog()">Discard</button>'+
+      '<button class="kt-rlog-save" onclick="saveInlineRun()">Save run →</button>'+
+    '</div>'+
+    '</div>';
+}
+function renderRunSavedStrip(){
+  if(!runLogConfirmed) return '';
+  var c = runLogConfirmed;
+  return '<div class="kt-rconfirm">'+
+    '<div>✓ Run saved · '+_esc(c.km)+' km in '+_esc(c.time)+'</div>'+
+    '<button class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button>'+
+    '</div>';
+}
+
+// GOAL · 6:00/km line + inline edit (addendum 0e). Replaces the legacy goal
+// setter that lived in the bottom of the old Log Run card.
+function commitRunGoal(ev){
+  var el = ev && ev.target;
+  var v = el ? String(el.value||'').trim() : '';
+  if(v && /^\d{1,2}:\d{2}$/.test(v)) setRunGoal(v);
+  else if(!v) setRunGoal('');
+  runLogGoalEdit = false;
+  render();
+}
+function toggleRunGoalEdit(){
+  runLogGoalEdit = !runLogGoalEdit;
+  render();
+  if(runLogGoalEdit){
+    setTimeout(function(){
+      var el = document.getElementById('kt-run-goal-input');
+      if(el){ el.focus(); el.select(); }
+    }, 30);
+  }
+}
+function renderRunGoalLine(){
+  var g = (getRunGoal()||'').trim();
+  if(runLogGoalEdit){
+    return '<div class="kt-goal-line">GOAL · '+
+      '<input id="kt-run-goal-input" type="text" placeholder="6:00" value="'+_esc(g)+'" '+
+        'onblur="commitRunGoal(event)" onkeydown="if(event.key===\'Enter\')event.target.blur();"/>'+
+      '/km</div>';
+  }
+  var label = g ? g+'/km' : 'set';
+  return '<div class="kt-goal-line" onclick="toggleRunGoalEdit()">GOAL · '+_esc(label)+'</div>';
+}
 // Editorial Run sub-tab: hero focused on the next run, lime CTA scrolls to
 // the input form, coach card, run-targets editorial list, then the form.
 function renderRunSegment(){
@@ -2367,23 +2549,33 @@ function renderRunSegment(){
     '</h1>'+
     deloadBadge+
     '<div class="kt-hero-body">'+body+'</div>'+
+    renderRunGoalLine()+
     '</div>';
 
-  var ctaTitle = '';
-  if(focus && focus.isToday) ctaTitle = focus.km > 0 ? 'Start run · '+focus.km+' km' : 'Start run';
-  else ctaTitle = 'Log a run';
-  var cta = '<button class="kt-cta" onclick="scrollToRunForm()">'+
-    '<div style="text-align:left;">'+
-      '<div class="kt-cta-label">START</div>'+
-      '<div class="kt-cta-title">'+_esc(ctaTitle)+'</div>'+
-    '</div>'+
-    '<div class="kt-cta-arrow">→</div>'+
-    '</button>';
+  // CTA / form / confirmation strip occupy the same vertical slot.
+  var slot;
+  if(runLogConfirmed){
+    slot = renderRunSavedStrip();
+  } else if(runLogOpen){
+    slot = renderInlineRunLog();
+  } else {
+    var ctaTitle;
+    if(focus && focus.isToday) ctaTitle = focus.km > 0 ? 'Start run · '+focus.km+' km' : 'Start run';
+    else ctaTitle = 'Log a run';
+    slot = '<button class="kt-cta" onclick="openRunLog()">'+
+      '<div style="text-align:left;">'+
+        '<div class="kt-cta-label">START</div>'+
+        '<div class="kt-cta-title">'+_esc(ctaTitle)+'</div>'+
+      '</div>'+
+      '<div class="kt-cta-arrow">→</div>'+
+      '</button>';
+  }
 
   var coach = renderCoachCard(getTodayActivity());
   var targetsList = renderRunTargetsList();
 
-  return meta + hero + cta + coach + targetsList + renderRunsSection({skipTargets:true});
+  // Legacy log form is gone from the Run sub-tab — the inline form replaces it.
+  return meta + hero + slot + coach + targetsList;
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
@@ -2950,6 +3142,12 @@ function renderWeekHeader() {
 
 // ── LOG ───────────────────────────────────────────────────────────────────────
 function switchLogSub(sub) {
+  // Close the inline run-log form on segment switch (addendum 0e: don't
+  // preserve open state across mode switches). Drop confirmation strip too.
+  if(sub !== 'run' && (runLogOpen || runLogConfirmed)){
+    runLogOpen = false;
+    runLogConfirmed = null;
+  }
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
