@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260428-5"/>
+<meta name="build" content="20260428-6"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -5190,7 +5190,7 @@ try{
 currentWeek = getWeek();
 loadCoachHistory();
 var _next = getNextSession();
-logSession = (_next === 'Run') ? 'Push' : _next;
+logSession = SESS[_next] ? _next : 'Push';
 initLogState();
 render();
 setTimeout(checkForLiveUpdate, 2000);
