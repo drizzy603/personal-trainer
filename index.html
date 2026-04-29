@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-16"/>
+<meta name="build" content="20260429-17"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2997,6 +2997,19 @@ function renderLog() {
   // rows on the Workout sub-tab. The deck runner is the entry point for
   // logging; the marquee below is informational only.
   return subBar + renderTodayEditorial();
+}
+// Keep the screen on while the user is logging or running a session.
+// Counterpart to releaseWakeLock(). The dead-code cleanup removed the old
+// definition; switchLogSub still calls this, so re-add it as a small utility.
+function requestWakeLock(){
+  try{
+    if(!('wakeLock' in navigator)) return;
+    if(wakeLock) return;
+    var p = navigator.wakeLock.request('screen');
+    if(p && typeof p.then==='function'){
+      p.then(function(w){ wakeLock = w; }).catch(function(){});
+    }
+  }catch(e){}
 }
 function releaseWakeLock(){
   if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock=null; }
