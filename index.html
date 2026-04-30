@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-12"/>
+<meta name="build" content="20260430-14"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -74,6 +74,10 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
 #screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(14px + env(safe-area-inset-top)) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
+/* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
+   content (chat messages, long lists) doesn't bleed visibly under the Dynamic
+   Island / clock. Modals (z 9998) and overlays (z 200) draw above this. */
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:100;pointer-events:none;}
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
 #tabs{position:fixed;bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));left:20px;right:20px;
@@ -432,6 +436,7 @@ select option{background:var(--bg);}
 .coach-chip:active{background:var(--accent);color:#000;border-color:var(--accent);}
 .coach-suggest{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none;}
 .coach-suggest::-webkit-scrollbar{display:none;}
+.coach-chat-stick{position:sticky;top:0;z-index:6;background:var(--bg);margin:calc((14px + env(safe-area-inset-top)) * -1) -20px 0;padding:calc(14px + env(safe-area-inset-top)) 20px 0;border-bottom:1px solid var(--border);}
 .coach-chat-body{display:flex;flex-direction:column;min-height:calc(100vh - 260px);}
 .coach-msgs-area{flex:1;padding-top:16px;}
 .coach-input-row{display:flex;gap:8px;align-items:center;
@@ -6194,13 +6199,18 @@ function renderCoach(){
   '</div>';
 
   var _crCh=getCustomRoutine(); var _avCh=_crCh&&_crCh.name?_crCh.name[0].toUpperCase():'?';
-  return '<div class="screen-hd">'+
-    '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
-    '</button>'+
-    '<div class="screen-avatar">'+_avCh+'</div>'+
-  '</div>'+
+  // Sticky chat header — back / avatar + editorial title stay pinned at the
+  // top of the scroll container so they're always reachable. The body::before
+  // mask covers the safe-area zone above this strip.
+  return '<div class="coach-chat-stick">'+
+    '<div class="screen-hd" style="margin:0;">'+
+      '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
+      '</button>'+
+      '<div class="screen-avatar">'+_avCh+'</div>'+
+    '</div>'+
     coachHead+
+  '</div>'+
     '<div class="coach-chat-body">'+
       '<div class="coach-msgs-area">'+msgsHTML+'</div>'+
       inputRow+
