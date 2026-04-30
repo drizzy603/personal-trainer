@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-5"/>
+<meta name="build" content="20260430-6"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -341,11 +341,33 @@ select option{background:var(--bg);}
 .wk-detail{padding:4px 16px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.15);}
 .wk-detail-note{font-size:12px;color:var(--lite);line-height:1.55;padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:8px;}
 .wk-day-rows{display:flex;flex-direction:column;}
-.wk-day-row{display:grid;grid-template-columns:36px 10px auto 1fr;align-items:center;gap:10px;padding:8px 0;}
+.wk-day-row{display:grid;grid-template-columns:36px 10px auto 1fr 14px;align-items:center;gap:10px;padding:10px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;border-bottom:1px solid rgba(255,255,255,.04);}
+.wk-day-row:last-of-type{border-bottom:none;}
+.wk-day-row:active{background:rgba(255,255,255,.03);}
 .wk-day-dow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;}
 .wk-day-dot{width:8px;height:8px;border-radius:50%;justify-self:center;}
 .wk-day-type{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;}
-.wk-day-sum{font-size:12px;color:var(--lite);text-align:right;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wk-day-sum{font-size:12px;color:var(--lite);text-align:right;line-height:1.4;}
+.wk-day-chev{color:var(--muted);transition:transform .2s;justify-self:center;}
+.wk-day-row.open .wk-day-chev{transform:rotate(180deg);color:var(--accent);}
+.wk-day-detail{padding:6px 0 14px 36px;}
+.wk-day-empty{font-size:12px;color:var(--muted);line-height:1.5;padding:6px 0;font-style:italic;}
+.wk-day-note{font-size:13px;color:var(--lite);line-height:1.55;padding:8px 0;}
+/* Exercise list — one row per lift, monospaced index, name + sets/reps/weight */
+.wk-ex-list{display:flex;flex-direction:column;gap:0;}
+.wk-ex-row{display:flex;align-items:flex-start;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.wk-ex-row:last-child{border-bottom:none;}
+.wk-ex-num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;width:18px;flex-shrink:0;padding-top:2px;}
+.wk-ex-num.main{color:var(--accent);}
+.wk-ex-body{flex:1;min-width:0;}
+.wk-ex-name{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;line-height:1.35;}
+.wk-ex-main{color:var(--accent);font-weight:700;}
+.wk-ex-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);margin-top:2px;letter-spacing:.02em;}
+/* Compact stat strip — used for run + sport metadata. */
+.wk-stat-row{display:flex;flex-wrap:wrap;gap:14px;padding:6px 0;}
+.wk-stat{min-width:0;}
+.wk-stat-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.10em;}
+.wk-stat-val{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;margin-top:2px;}
 
 /* ── Theme swatches ──────────────────────────────────────────────────────── */
 .theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
@@ -3315,8 +3337,10 @@ function skipNextSession(){
 
 // Day-by-day schedule for a week — rendered inline below each Wk N row in
 // the Programme modal so the user can preview a week without leaving the
-// overview. Mirrors the cadence resolution used by the Log tab so what
-// shows here matches what'll actually render on each day.
+// overview. Each day is itself an expandable dropdown that reveals the full
+// exercise list (lift days), full run details, or full sport details.
+// Mirrors the cadence resolution used by the Log tab so what shows here
+// matches what'll actually render on each day.
 function _renderWeekDetail(wd){
   if(!wd) return '';
   var plan = getWeekPlanForWeek(wd.wk);
@@ -3325,15 +3349,29 @@ function _renderWeekDetail(wd){
     var p = plan[dow] || {type:'Rest', isRest:true};
     var dayName = DOW_NAMES[dow];
     var summary = '';
+    var fullHTML = '';
     if(p.isLift){
       var key = String(p.type||'').toLowerCase();
       var exs = (wd[key] && wd[key].length) ? wd[key] : [];
       if(exs.length){
         var main = exs.find(function(e){return e.isMain;}) || exs[0];
         var weight = main.weight ? ' · '+main.weight+' lb' : '';
-        summary = exs.length+' lifts · '+main.name+weight;
+        summary = exs.length+' lifts · '+_esc(main.name)+weight;
+        fullHTML = '<div class="wk-ex-list">'+exs.map(function(e,i){
+          var w = e.weight ? e.weight+' lb' : '—';
+          var rep = (e.sets||3)+'×'+(e.reps||'8-10');
+          var rpe = e.rpe ? ' · RPE '+e.rpe : '';
+          return '<div class="wk-ex-row">'+
+            '<span class="wk-ex-num'+(e.isMain?' main':'')+'">'+String(i+1).padStart(2,'0')+'</span>'+
+            '<div class="wk-ex-body">'+
+              '<div class="wk-ex-name">'+_esc(e.name)+(e.isMain?' <span class="wk-ex-main">·</span>':'')+'</div>'+
+              '<div class="wk-ex-meta">'+rep+' · '+w+rpe+'</div>'+
+            '</div>'+
+          '</div>';
+        }).join('')+'</div>';
       } else {
-        summary = p.type+' day';
+        summary = _esc(p.type)+' day';
+        fullHTML = '<div class="wk-day-empty">No exercises planned for this '+_esc(p.type)+' day yet.</div>';
       }
     } else if(p.isRun){
       var rd = (wd.runs && wd.runs[dayName]) || (dayName==='Tue' && wd.runTue) || (dayName==='Sat' && wd.runSat);
@@ -3342,27 +3380,60 @@ function _renderWeekDetail(wd){
         if(rd.distance) bits.push(rd.distance+' km');
         if(rd.paceMin!=null && rd.paceSec!=null) bits.push(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+'/km');
         else if(rd.pace) bits.push(rd.pace);
-        if(rd.note && bits.length<2) bits.push(rd.note);
         summary = bits.length ? bits.join(' · ') : 'Run';
+        var detailParts = [];
+        if(rd.distance) detailParts.push(['DIST', rd.distance+' km']);
+        if(rd.paceMin!=null && rd.paceSec!=null) detailParts.push(['PACE', rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+' / km']);
+        else if(rd.pace) detailParts.push(['PACE', rd.pace]);
+        if(rd.hr) detailParts.push(['HR CAP', rd.hr+' bpm']);
+        if(rd.duration) detailParts.push(['DURATION', rd.duration+' min']);
+        var metaRow = detailParts.length
+          ? '<div class="wk-stat-row">'+detailParts.map(function(p){
+              return '<div class="wk-stat"><div class="wk-stat-lbl">'+p[0]+'</div><div class="wk-stat-val">'+_esc(String(p[1]))+'</div></div>';
+            }).join('')+'</div>'
+          : '';
+        var noteHTML = rd.note ? '<div class="wk-day-note">'+_esc(rd.note)+'</div>' : '';
+        fullHTML = metaRow + noteHTML;
+        if(!fullHTML) fullHTML = '<div class="wk-day-empty">Easy run — no specific plan.</div>';
       } else {
         summary = 'Run';
+        fullHTML = '<div class="wk-day-empty">Run scheduled — distance and pace up to you.</div>';
       }
     } else if(p.isSport){
       var sd = wd.sports && wd.sports[dayName];
-      var note = sd && sd.note ? ' · '+sd.note : '';
-      if(note.length>56) note = note.slice(0,56)+'…';
-      summary = (p.type||'Sport')+note;
+      summary = _esc(p.type||'Sport');
+      if(sd){
+        var sParts = [];
+        if(sd.duration) sParts.push(['DURATION', sd.duration+' min']);
+        if(sd.distance) sParts.push(['DISTANCE', sd.distance+' km']);
+        if(sd.intensity) sParts.push(['INTENSITY', sd.intensity+'/10']);
+        if(sd.calories) sParts.push(['CALORIES', sd.calories]);
+        var sMeta = sParts.length
+          ? '<div class="wk-stat-row">'+sParts.map(function(p){
+              return '<div class="wk-stat"><div class="wk-stat-lbl">'+p[0]+'</div><div class="wk-stat-val">'+_esc(String(p[1]))+'</div></div>';
+            }).join('')+'</div>'
+          : '';
+        var sNote = sd.note ? '<div class="wk-day-note">'+_esc(sd.note)+'</div>' : '';
+        fullHTML = sMeta + sNote;
+        if(!fullHTML) fullHTML = '<div class="wk-day-empty">'+_esc(p.type)+' planned — no further details.</div>';
+      } else {
+        fullHTML = '<div class="wk-day-empty">'+_esc(p.type)+' planned — log it on the day.</div>';
+      }
     } else {
       summary = 'Rest day';
+      fullHTML = '<div class="wk-day-empty">Recover. Walk, stretch, eat well.</div>';
     }
     var iconColor = p.isLift?'var(--accent)':p.isRun?'#60a5fa':p.isSport?'#a78bfa':'var(--muted)';
     var label = p.isRest ? 'Rest' : (p.type || 'Activity');
-    dayRows += '<div class="wk-day-row">'+
+    var rowId = 'wk-'+wd.wk+'-day-'+dow;
+    dayRows += '<div class="wk-day-row" id="'+rowId+'-row" onclick="toggleWkDay(\''+rowId+'\')" role="button" aria-expanded="false">'+
       '<span class="wk-day-dow">'+dayName.toUpperCase()+'</span>'+
       '<span class="wk-day-dot" style="background:'+iconColor+';"></span>'+
       '<span class="wk-day-type">'+_esc(label)+'</span>'+
-      '<span class="wk-day-sum">'+_esc(summary)+'</span>'+
-      '</div>';
+      '<span class="wk-day-sum">'+summary+'</span>'+
+      '<svg class="wk-day-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'+
+      '</div>'+
+      '<div class="wk-day-detail" id="'+rowId+'-detail" style="display:none;">'+fullHTML+'</div>';
   }
   var fullNote = wd.wkNote ? '<div class="wk-detail-note">'+_esc(wd.wkNote)+'</div>' : '';
   return fullNote + '<div class="wk-day-rows">'+dayRows+'</div>';
@@ -3370,6 +3441,15 @@ function _renderWeekDetail(wd){
 function toggleWkDetail(weekNum){
   var detail = document.getElementById('wk-detail-'+weekNum);
   var row = document.getElementById('wk-row-'+weekNum);
+  if(!detail || !row) return;
+  var open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  row.setAttribute('aria-expanded', open ? 'false' : 'true');
+  row.classList.toggle('open', !open);
+}
+function toggleWkDay(rowId){
+  var detail = document.getElementById(rowId+'-detail');
+  var row = document.getElementById(rowId+'-row');
   if(!detail || !row) return;
   var open = detail.style.display !== 'none';
   detail.style.display = open ? 'none' : 'block';
@@ -3402,12 +3482,11 @@ function openProgrammeModal(){
     var wkRows=bl.weeks.map(function(wd){
       var isCurrent=wd.wk===currentWeek;
       var note=wd.wkNote||'';
-      if(note.length>72) note=note.slice(0,72)+'…';
       var detailHTML=_renderWeekDetail(wd);
       return '<div class="wk-row'+(isCurrent?' current':'')+'" id="wk-row-'+wd.wk+'" onclick="toggleWkDetail('+wd.wk+')" role="button" aria-expanded="false">'+
         '<span class="wk-row-num'+(isCurrent?' current':'')+'">Wk '+wd.wk+'</span>'+
         (isCurrent?'<span class="wk-row-now">NOW</span>':'')+
-        '<span class="wk-row-note">'+note+'</span>'+
+        '<span class="wk-row-note">'+_esc(note)+'</span>'+
         '<svg class="wk-row-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'+
       '</div>'+
       '<div class="wk-detail" id="wk-detail-'+wd.wk+'" style="display:none;">'+detailHTML+'</div>';
