@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-8"/>
+<meta name="build" content="20260430-10"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2056,11 +2056,14 @@ function fallbackCoachCard(activity){
   if(activity.type === 'lift' && activity.exercises && activity.exercises.length){
     var main = activity.exercises.find(function(e){return e.isMain;}) || activity.exercises[0];
     var last = getLastSessionData(main.name);
+    var mainW = parseFloat(main.weight) || 0;
+    var lastW = last ? (parseFloat(last.weight) || 0) : 0;
+    var loadPhrase = mainW > 0 ? 'Target ' + main.weight + ' lb' : 'Bodyweight';
     var msg;
-    if(last && parseFloat(last.weight) > 0 && parseFloat(main.weight) > parseFloat(last.weight)){
+    if(mainW > 0 && lastW > 0 && mainW > lastW){
       msg = main.name + ' is up to ' + main.weight + ' lb today. If warm-ups feel heavy, drop the working set to ' + last.weight + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don’t grind it.';
     } else {
-      msg = main.name + ' is the main lift. Target ' + main.weight + ' lb at RPE ' + (main.rpe || 8) + ' — stop one rep shy if speed drops.';
+      msg = main.name + ' is the main lift. ' + loadPhrase + ' at RPE ' + (main.rpe || 8) + ' — stop one rep shy if speed drops.';
     }
     return {message: msg, actions: [{label:'Got it', primary:false},{label:'Adjust target', primary:true}]};
   }
@@ -2216,7 +2219,8 @@ function renderTodayEditorial(){
       var last = getLastSessionData(main.name);
       var lastW = last ? parseFloat(last.weight) || 0 : 0;
       var curW = parseFloat(main.weight) || 0;
-      var upBit = (curW > lastW && lastW > 0) ? ' is up at <b>'+main.weight+' lb</b>' : ' at <b>'+main.weight+' lb</b>';
+      var loadHTML = curW > 0 ? '<b>'+main.weight+' lb</b>' : '<b>bodyweight</b>';
+      var upBit = (curW > lastW && lastW > 0) ? ' is up at '+loadHTML : ' at '+loadHTML;
       var rpeBit = main.rpe ? ' — last week was clean at RPE '+main.rpe+'.' : '.';
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
@@ -6718,6 +6722,36 @@ var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
 render();
 setTimeout(checkForLiveUpdate, 2000);
+
+// Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
+// the screenshot helper can drive the sim without UI taps. The key is
+// consumed (deleted) on first read; absence is the no-op default. Routes:
+//   "log/workout" | "log/run" | "log/body" | "log/sport"
+//   "progress" | "settings"
+//   "coach" (home) | "coach/chat"
+//   "modal/programme"
+//   "overlay/how" | "overlay/privacy"
+(function(){
+  try {
+    var nav = localStorage.getItem('kt_dev_nav');
+    if(!nav) return;
+    localStorage.removeItem('kt_dev_nav');
+    setTimeout(function(){
+      try {
+        var parts = String(nav).split('/');
+        var head = parts[0], sub = parts[1];
+        if(head==='log' || head==='progress' || head==='coach' || head==='settings'){
+          switchTab(head);
+        }
+        if(head==='log' && sub){ switchLogSub(sub); }
+        if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
+        if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
+        if(head==='overlay' && sub==='how'){ openWorkflow(); }
+        if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
+      } catch(e) {}
+    }, 120);
+  } catch(e) {}
+})();
 </script>
 
 <div class="wf-view" id="wf-view" style="display:none;" aria-hidden="true">
