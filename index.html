@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-20"/>
+<meta name="build" content="20260429-21"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3556,20 +3556,25 @@ function renderSportEditorial(){
     var s = SPORTS.find(function(x){return x.id===t;});
     if(s) recent.push(s);
   }
-  // Meta header (matches the editorial pattern from Today/Progress).
+  // Meta header — match the Workout / Run sub-tabs exactly: weekday + week
+  // index, no special "ONE-OFF" tag. The + tab is a sibling of those, not
+  // its own top-level destination.
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || (crP && crP.name) || '?';
   var avInitial = (String(avSeed)[0] || '?').toUpperCase();
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
+  var totalWksP = getTotalWeeks();
   var meta = '<div class="kt-meta-row">'+
-    '<div class="kt-meta-label">'+weekday+' · ONE-OFF LOG</div>'+
+    '<div class="kt-meta-label">'+weekday+' · WK '+
+      String(currentWeek).padStart(2,'0')+' / '+totalWksP+
+    '</div>'+
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
   var hero = '<div class="kt-hero">'+
     (firstNameP
-      ? '<div class="kt-hero-greet">Hey '+_esc(firstNameP)+'.</div>'
-      : '<div class="kt-hero-greet">One-off.</div>')+
+      ? '<div class="kt-hero-greet">Good morning, '+_esc(firstNameP)+'.</div>'
+      : '<div class="kt-hero-greet">Good morning.</div>')+
     '<h1 class="kt-hero-headline">Log<span class="kt-line2 accent">an activity.</span></h1>'+
     '<div class="kt-hero-body">For anything outside today\'s programme — a pickup game, a hike, a yoga class. Pick a tile, log it.</div>'+
     '</div>';
