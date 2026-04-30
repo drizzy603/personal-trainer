@@ -47,3 +47,4 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 - `kt_theme` — selected theme
 - `kt_hk_imported` — set of HealthKit workout UUIDs already imported (dedup)
 - `kt_hk_last_sync` — cursor for incremental Apple Health imports
+- `kt_dev_nav` — read once at boot, dispatches navigation, deletes itself. Used by `/tmp/shoot.py`-style scripts to drive the simulator through every screen for App Store screenshot regeneration. Routes: `log/workout` · `log/run` · `log/body` · `log/sport` · `progress` · `coach` · `coach/chat` · `settings` · `modal/programme` · `overlay/how` · `overlay/privacy`. No-op when absent. To inject without going through the in-app file picker, write the value as raw UTF-16LE into the WKWebView's `localstorage.sqlite3` (path resolves via `xcrun simctl get_app_container booted app.kt.trainer data` → `Library/WebKit/.../LocalStorage/`).
