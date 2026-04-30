@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-23"/>
+<meta name="build" content="20260429-24"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -550,7 +550,8 @@ select option{background:var(--bg);}
 .kt-prog-hero{margin-bottom:24px;}
 .kt-prog-hero-greet{font-size:13px;color:#9ca3af;font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
 .kt-prog-hero-num{font-size:72px;font-weight:800;letter-spacing:-3px;line-height:.92;color:#fafafa;margin:0;}
-.kt-prog-hero-num span.accent{color:#c8ff00;display:block;}
+.kt-prog-hero-num span{display:block;}
+.kt-prog-hero-num span.accent{color:#c8ff00;}
 .kt-prog-hero-body{font-size:13px;color:#9ca3af;margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
 .kt-prog-toggle{display:flex;gap:4px;padding:4px;background:rgba(22,22,26,.7);border-radius:14px;border:1px solid rgba(255,255,255,.05);margin-bottom:20px;}
 .kt-prog-toggle button{flex:1;padding:10px 8px;border-radius:10px;border:none;background:transparent;color:#525259;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;text-transform:capitalize;-webkit-tap-highlight-color:transparent;}
@@ -1231,6 +1232,138 @@ function calcDayStreak(){
   return streak;
 }
 function setProgressTab(t){ progressTab = t; render(); }
+
+// Pool of editorial Progress-hero variants. Each returns a {greeting, line1,
+// line2, line2Class, body} or null if the variant has no data to surface.
+// The renderer picks one at random per local day and caches it so the hero
+// stays stable through a session but rotates the next morning.
+function _progressHeroVariants(){
+  var sessions = getSessions();
+  var runs = getRuns();
+  var sports = getSportLogs();
+  var bws = getBodyWeights();
+  var prs = getPRs();
+  var totalWks = getTotalWeeks();
+  var wd = getWkData();
+  var bName = wd && wd.bName ? wd.bName : '';
+  var todayStr = todayISO();
+  var loggedToday = sessions.some(function(s){return s.date===todayStr;})
+    || runs.some(function(r){return r.date===todayStr;})
+    || sports.some(function(s){return s.date===todayStr;});
+  var dayStreak = calcDayStreak();
+  var pct = totalWks>0 ? Math.round((currentWeek/totalWks)*100) : 0;
+  var thisWeek = sessions.filter(function(s){return s.week===currentWeek;}).length
+    + runs.filter(function(r){return r.week===currentWeek;}).length;
+  var firstName = getUserFirstName();
+  var who = firstName || '';
+
+  var out = [];
+
+  // 1. Day streak — strongest motivator when there's a non-zero streak.
+  if(dayStreak >= 1){
+    var streakBody = loggedToday
+      ? (dayStreak >= 7
+          ? dayStreak+' days in a row. This is the kind of consistency that compounds.'
+          : 'Logged today. Stack tomorrow and you\'re at '+(dayStreak+1)+'.')
+      : 'One log today and the streak ticks to '+(dayStreak+1)+'. Don\'t let it drop.';
+    out.push({key:'streak',
+      greeting:'You\'re on a streak.',
+      line1:String(dayStreak),
+      line2:dayStreak===1?'day strong.':'days strong.',
+      line2Class:'accent', body:streakBody});
+  }
+
+  // 2. Sessions logged this programme-week.
+  if(thisWeek >= 1){
+    out.push({key:'weekTally',
+      greeting:'This week so far.',
+      line1:String(thisWeek),
+      line2:thisWeek===1?'session in.':'sessions in.',
+      line2Class:'accent',
+      body:'Through the work, not around it. Keep stacking.'});
+  }
+
+  // 3. Block / programme progress.
+  if(bName && totalWks > 1){
+    var bBody = pct < 50 ? 'Plenty of programme left to write.'
+      : pct < 80 ? 'Back half. Push.'
+      : 'Final stretch — make it count.';
+    out.push({key:'block',
+      greeting:'Mid-block.',
+      line1:'Week '+currentWeek,
+      line2:'of '+bName.toLowerCase()+'.',
+      line2Class:'accent',
+      body:pct+'% through the programme. '+bBody});
+  }
+
+  // 4. Bodyweight trend (only if there are 2+ weigh-ins).
+  if(bws.length >= 2){
+    var first = parseFloat(bws[bws.length-1].weight);
+    var latest = parseFloat(bws[0].weight);
+    var diff = +(latest - first).toFixed(1);
+    if(!isNaN(diff)){
+      var dir = diff > 0 ? '↑ +' : diff < 0 ? '↓ −' : '→ ';
+      var bwBody = diff > 0
+        ? 'Up since you started tracking. Keep eating with intent.'
+        : diff < 0
+          ? 'Down. Steady wins.'
+          : 'Holding. Predictable is good.';
+      out.push({key:'bw',
+        greeting:'Body weight.',
+        line1:latest+' lb',
+        line2:dir+Math.abs(diff)+' lb total.',
+        line2Class:'accent', body:bwBody});
+    }
+  }
+
+  // 5. Total sessions logged all-time (volume signal).
+  if(sessions.length >= 5){
+    out.push({key:'total',
+      greeting:'All-time tally.',
+      line1:String(sessions.length),
+      line2:sessions.length===1?'session.':'sessions logged.',
+      line2Class:'accent',
+      body:'Every one of these stuck. Volume gets built one log at a time.'});
+  }
+
+  // 6. PRs on file.
+  var prCount = Object.keys(prs||{}).length;
+  if(prCount >= 1){
+    out.push({key:'prs',
+      greeting:'Personal records.',
+      line1:String(prCount),
+      line2:prCount===1?'PR on file.':'PRs on file.',
+      line2Class:'accent',
+      body:'Numbers worth remembering. The next one\'s out there.'});
+  }
+
+  // 7. Cold-start fallback when no data is interesting yet.
+  if(!out.length){
+    out.push({key:'start',
+      greeting: who ? 'Welcome, '+who+'.' : 'Welcome.',
+      line1:'Day',
+      line2:'one.',
+      line2Class:'accent',
+      body:'Log a session, log a run, log anything. The numbers come from showing up.'});
+  }
+
+  return out;
+}
+function getProgressHero(){
+  var variants = _progressHeroVariants();
+  if(!variants.length) return null;
+  var key = 'kt_progress_hero_'+todayISO();
+  // Honour today's pick when it's still in the pool (data may shift mid-day).
+  var cached = localStorage.getItem(key);
+  if(cached){
+    var hit = null;
+    for(var i=0;i<variants.length;i++) if(variants[i].key===cached){ hit=variants[i]; break; }
+    if(hit) return hit;
+  }
+  var pick = variants[Math.floor(Math.random()*variants.length)];
+  try{ localStorage.setItem(key, pick.key); }catch(e){}
+  return pick;
+}
 
 function calcStreak(sessions) {
   if(!sessions.length) return 0;
@@ -4321,27 +4454,15 @@ function renderProgress() {
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
 
-  // Streak hero — large day-streak number with a contextual body sentence.
-  var dayStreak = calcDayStreak();
-  var streakLine2 = dayStreak === 1 ? 'day strong.' : 'days strong.';
-  var todayISOStr = todayISO();
-  var loggedToday = sessions.some(function(s){return s.date===todayISOStr;})
-    || runs.some(function(r){return r.date===todayISOStr;})
-    || getSportLogs().some(function(sp){return sp.date===todayISOStr;});
-  var streakBody;
-  if(dayStreak === 0){
-    streakBody = 'No streak yet. A single session or run today starts the count.';
-  } else if(loggedToday){
-    streakBody = dayStreak >= 7
-      ? dayStreak+' days in a row. This is the kind of consistency that compounds.'
-      : 'Logged today. Stack tomorrow and you\'re at '+(dayStreak+1)+'.';
-  } else {
-    streakBody = 'One log today and the streak ticks to '+(dayStreak+1)+'. Don\'t let it drop.';
-  }
+  // Editorial Progress hero — rotates across several framings (streak, weekly
+  // session count, block progress, bodyweight trend, total sessions, PRs).
+  // The chosen framing is cached for the local day so the screen feels stable
+  // within a session and refreshes the next morning. See getProgressHero().
+  var hero = getProgressHero();
   var streakHero = '<div class="kt-prog-hero">'+
-    '<div class="kt-prog-hero-greet">You\'re on a streak.</div>'+
-    '<h1 class="kt-prog-hero-num">'+dayStreak+'<span class="accent">'+streakLine2+'</span></h1>'+
-    '<div class="kt-prog-hero-body">'+streakBody+'</div>'+
+    '<div class="kt-prog-hero-greet">'+_esc(hero.greeting)+'</div>'+
+    '<h1 class="kt-prog-hero-num">'+_esc(hero.line1)+'<span class="'+(hero.line2Class||'')+'">'+_esc(hero.line2)+'</span></h1>'+
+    '<div class="kt-prog-hero-body">'+_esc(hero.body)+'</div>'+
     '</div>';
 
   // Lifts / Runs toggle — filters the detail chart cards below.
