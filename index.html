@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-4"/>
+<meta name="build" content="20260430-5"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -327,6 +327,25 @@ select option{background:var(--bg);}
 .ex-modal-close{background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--lite);
   font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;
   -webkit-tap-highlight-color:transparent;font-family:inherit;}
+
+/* ── Programme modal · week rows + expandable schedule ───────────────────── */
+.wk-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s;}
+.wk-row:active{background:rgba(255,255,255,.04);}
+.wk-row.current{background:rgba(200,255,0,.04);}
+.wk-row-num{font-size:12px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.02em;}
+.wk-row-num.current{color:var(--accent);}
+.wk-row-now{background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;}
+.wk-row-note{font-size:13px;color:var(--lite);line-height:1.5;flex:1;min-width:0;}
+.wk-row-chev{flex-shrink:0;color:var(--muted);transition:transform .2s;align-self:center;}
+.wk-row.open .wk-row-chev{transform:rotate(180deg);color:var(--accent);}
+.wk-detail{padding:4px 16px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.15);}
+.wk-detail-note{font-size:12px;color:var(--lite);line-height:1.55;padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.wk-day-rows{display:flex;flex-direction:column;}
+.wk-day-row{display:grid;grid-template-columns:36px 10px auto 1fr;align-items:center;gap:10px;padding:8px 0;}
+.wk-day-dow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;}
+.wk-day-dot{width:8px;height:8px;border-radius:50%;justify-self:center;}
+.wk-day-type{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;}
+.wk-day-sum{font-size:12px;color:var(--lite);text-align:right;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ── Theme swatches ──────────────────────────────────────────────────────── */
 .theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
@@ -3294,6 +3313,69 @@ function skipNextSession(){
   render();
 }
 
+// Day-by-day schedule for a week — rendered inline below each Wk N row in
+// the Programme modal so the user can preview a week without leaving the
+// overview. Mirrors the cadence resolution used by the Log tab so what
+// shows here matches what'll actually render on each day.
+function _renderWeekDetail(wd){
+  if(!wd) return '';
+  var plan = getWeekPlanForWeek(wd.wk);
+  var dayRows = '';
+  for(var dow=0; dow<7; dow++){
+    var p = plan[dow] || {type:'Rest', isRest:true};
+    var dayName = DOW_NAMES[dow];
+    var summary = '';
+    if(p.isLift){
+      var key = String(p.type||'').toLowerCase();
+      var exs = (wd[key] && wd[key].length) ? wd[key] : [];
+      if(exs.length){
+        var main = exs.find(function(e){return e.isMain;}) || exs[0];
+        var weight = main.weight ? ' · '+main.weight+' lb' : '';
+        summary = exs.length+' lifts · '+main.name+weight;
+      } else {
+        summary = p.type+' day';
+      }
+    } else if(p.isRun){
+      var rd = (wd.runs && wd.runs[dayName]) || (dayName==='Tue' && wd.runTue) || (dayName==='Sat' && wd.runSat);
+      if(rd){
+        var bits=[];
+        if(rd.distance) bits.push(rd.distance+' km');
+        if(rd.paceMin!=null && rd.paceSec!=null) bits.push(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+'/km');
+        else if(rd.pace) bits.push(rd.pace);
+        if(rd.note && bits.length<2) bits.push(rd.note);
+        summary = bits.length ? bits.join(' · ') : 'Run';
+      } else {
+        summary = 'Run';
+      }
+    } else if(p.isSport){
+      var sd = wd.sports && wd.sports[dayName];
+      var note = sd && sd.note ? ' · '+sd.note : '';
+      if(note.length>56) note = note.slice(0,56)+'…';
+      summary = (p.type||'Sport')+note;
+    } else {
+      summary = 'Rest day';
+    }
+    var iconColor = p.isLift?'var(--accent)':p.isRun?'#60a5fa':p.isSport?'#a78bfa':'var(--muted)';
+    var label = p.isRest ? 'Rest' : (p.type || 'Activity');
+    dayRows += '<div class="wk-day-row">'+
+      '<span class="wk-day-dow">'+dayName.toUpperCase()+'</span>'+
+      '<span class="wk-day-dot" style="background:'+iconColor+';"></span>'+
+      '<span class="wk-day-type">'+_esc(label)+'</span>'+
+      '<span class="wk-day-sum">'+_esc(summary)+'</span>'+
+      '</div>';
+  }
+  var fullNote = wd.wkNote ? '<div class="wk-detail-note">'+_esc(wd.wkNote)+'</div>' : '';
+  return fullNote + '<div class="wk-day-rows">'+dayRows+'</div>';
+}
+function toggleWkDetail(weekNum){
+  var detail = document.getElementById('wk-detail-'+weekNum);
+  var row = document.getElementById('wk-row-'+weekNum);
+  if(!detail || !row) return;
+  var open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  row.setAttribute('aria-expanded', open ? 'false' : 'true');
+  row.classList.toggle('open', !open);
+}
 function openProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
   var cr=getCustomRoutine();
@@ -3321,11 +3403,14 @@ function openProgrammeModal(){
       var isCurrent=wd.wk===currentWeek;
       var note=wd.wkNote||'';
       if(note.length>72) note=note.slice(0,72)+'…';
-      return '<div style="padding:12px 16px;border-bottom:1px solid var(--border);'+(isCurrent?'background:rgba(200,255,0,.04);':'')+'display:flex;align-items:baseline;gap:10px;">'+
-        '<span style="font-size:12px;font-weight:700;color:'+(isCurrent?'var(--accent)':'var(--muted)')+'flex-shrink:0;">Wk '+wd.wk+'</span>'+
-        (isCurrent?'<span style="background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;">NOW</span>':'')+
-        '<span style="font-size:13px;color:var(--lite);line-height:1.5;">'+note+'</span>'+
-      '</div>';
+      var detailHTML=_renderWeekDetail(wd);
+      return '<div class="wk-row'+(isCurrent?' current':'')+'" id="wk-row-'+wd.wk+'" onclick="toggleWkDetail('+wd.wk+')" role="button" aria-expanded="false">'+
+        '<span class="wk-row-num'+(isCurrent?' current':'')+'">Wk '+wd.wk+'</span>'+
+        (isCurrent?'<span class="wk-row-now">NOW</span>':'')+
+        '<span class="wk-row-note">'+note+'</span>'+
+        '<svg class="wk-row-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'+
+      '</div>'+
+      '<div class="wk-detail" id="wk-detail-'+wd.wk+'" style="display:none;">'+detailHTML+'</div>';
     }).join('');
     return '<div style="margin-bottom:16px;">'+
       '<div style="display:flex;align-items:center;gap:8px;padding:10px 16px 0;">'+
