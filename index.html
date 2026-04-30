@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-19"/>
+<meta name="build" content="20260429-20"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -589,6 +589,14 @@ select option{background:var(--bg);}
 .kt-act-logcard.morph .kt-act-save{background:#0b0b0d;color:#fff;}
 .kt-act-saved{background:rgba(200,255,0,.12);border:1px solid rgba(200,255,0,.25);color:#fafafa;border-radius:18px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;font-size:14px;font-weight:600;}
 .kt-act-saved-undo{background:rgba(0,0,0,.4);color:#fafafa;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+
+/* Smart suggestion chips — show ABOVE the recently-logged row. */
+.kt-act-suggest{display:flex;gap:8px;overflow-x:auto;padding:0 0 4px;margin-bottom:18px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.kt-act-suggest::-webkit-scrollbar{display:none;}
+.kt-act-suggest-chip{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;border-radius:14px;background:rgba(200,255,0,.06);border:1px solid rgba(200,255,0,.18);color:#fafafa;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-act-suggest-body{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1;}
+.kt-act-suggest-name{font-size:13px;font-weight:700;letter-spacing:-.2px;}
+.kt-act-suggest-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;color:#c8ff00;letter-spacing:.1em;font-weight:600;}
 .kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:#c8ff00;color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -3474,6 +3482,68 @@ function renderActivityCards(){
 // programme. Replaces the legacy picker + per-sport-fields form when no
 // forcedSportId is supplied. The forcedSportId path (primary-sport day)
 // keeps its richer per-sport form below.
+// Smart suggestions for the + tab — surfaces up to 3 context-aware chips
+// based on time-of-day, historical gaps, and today's plan state. Returns
+// an array of {sport, context} objects, ranked by relevance.
+function getSmartSuggestions(){
+  var logs = getSportLogs();
+  var sessions = getSessions();
+  var now = new Date();
+  var hour = now.getHours();
+  var todayStr = todayISO();
+  var todayDow = (now.getDay()+6)%7;
+  var weekPlan = getWeekPlan();
+  var todayPlan = weekPlan[todayDow];
+  // Don't re-suggest something the user already logged today.
+  var loggedToday = {};
+  logs.forEach(function(l){ if(l.date===todayStr) loggedToday[l.type] = true; });
+  var liftedToday = sessions.some(function(s){ return s.date===todayStr; });
+
+  var out = [], seen = {};
+  function add(sportId, context){
+    if(seen[sportId] || loggedToday[sportId]) return;
+    var sport = SPORTS.find(function(s){return s.id===sportId;});
+    if(!sport) return;
+    seen[sportId] = true;
+    out.push({sport:sport, context:context});
+  }
+
+  // 1. Long-gap surface — activities the user has logged ≥2 times but not in
+  //    the last 7+ days. Strongest signal: they liked it once, so nudge them
+  //    back. Sort by longest gap.
+  var byType = {};
+  logs.forEach(function(l){ if(l.date){ (byType[l.type] = byType[l.type]||[]).push(l); } });
+  var gaps = [];
+  Object.keys(byType).forEach(function(t){
+    if(byType[t].length < 2) return;
+    var last = byType[t][0].date;
+    var days = Math.floor((now - new Date(last+'T00:00:00'))/86400000);
+    if(days >= 7) gaps.push({type:t, days:days});
+  });
+  gaps.sort(function(a,b){ return b.days - a.days; });
+  if(gaps.length) add(gaps[0].type, gaps[0].days+' days');
+
+  // 2. After-lift cooldown — if the user logged a lift today, suggest yoga.
+  if(liftedToday) add('Yoga', 'after lift');
+
+  // 3. Rest-day prompt — gentle nudge to a low-effort activity.
+  if(todayPlan && todayPlan.isRest) add('Yoga', 'rest day');
+
+  // 4. Time-of-day fallback — morning yoga, evening walk.
+  if(hour < 11) add('Yoga', 'morning');
+  else if(hour >= 17) add('Hiking', 'easy');
+
+  // 5. Cold-start / thin-context — top up to at least 2 chips with safe
+  //    starter activities the user hasn't already seen above.
+  ['Yoga','Hiking','Climbing','Soccer','Boxing'].some(function(id){
+    if(out.length >= 2) return true;
+    if(seen[id]) return false;
+    add(id, 'try it');
+  });
+
+  return out.slice(0, 3);
+}
+
 function renderSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
   // Recently logged: up to 3 most-recent unique activity types, in recency order.
@@ -3503,6 +3573,22 @@ function renderSportEditorial(){
     '<h1 class="kt-hero-headline">Log<span class="kt-line2 accent">an activity.</span></h1>'+
     '<div class="kt-hero-body">For anything outside today\'s programme — a pickup game, a hike, a yoga class. Pick a tile, log it.</div>'+
     '</div>';
+  // Smart suggestions — context-aware: time-of-day, gap-based, rest-day-aware.
+  var sugg = getSmartSuggestions();
+  var suggHTML = '';
+  if(sugg.length){
+    var sChips = sugg.map(function(it){
+      return '<button class="kt-act-suggest-chip" onclick="pickSport(\''+_esc(it.sport.id)+'\')">'+
+        '<span class="kt-act-chip-badge" style="background:'+it.sport.color+';">'+_esc(it.sport.icon)+'</span>'+
+        '<span class="kt-act-suggest-body">'+
+          '<span class="kt-act-suggest-name">'+_esc(it.sport.id)+'</span>'+
+          '<span class="kt-act-suggest-ctx">'+_esc(String(it.context).toUpperCase())+'</span>'+
+        '</span>'+
+      '</button>';
+    }).join('');
+    suggHTML = '<div class="kt-marquee-hd" style="margin-bottom:10px;">SUGGESTED</div>'+
+      '<div class="kt-act-suggest">'+sChips+'</div>';
+  }
   // "Recently logged" chip strip — quick re-log path.
   var recentHTML = '';
   if(recent.length){
@@ -3597,7 +3683,7 @@ function renderSportEditorial(){
       rows+
       '</div>';
   }
-  return meta + hero + recentHTML + rail + card + thisWeek;
+  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
