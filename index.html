@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-26"/>
+<meta name="build" content="20260430-1"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2296,7 +2296,7 @@ function renderTodayEditorial(){
       rows+'</div>';
   }
 
-  return meta + hero + cta + coachHTML + marquee;
+  return meta + hero + cta + coachHTML + marquee + renderBodySection();
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -3833,9 +3833,7 @@ function renderSportEditorial(){
       rows+
       '</div>';
   }
-  // Body weight + measurements lived on Progress originally; they're
-  // log-shaped data so they fit better here on the + sub-tab.
-  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek + renderBodySection();
+  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
