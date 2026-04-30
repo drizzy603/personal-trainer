@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-25"/>
+<meta name="build" content="20260429-26"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3833,7 +3833,9 @@ function renderSportEditorial(){
       rows+
       '</div>';
   }
-  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek;
+  // Body weight + measurements lived on Progress originally; they're
+  // log-shaped data so they fit better here on the + sub-tab.
+  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek + renderBodySection();
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
@@ -4611,10 +4613,11 @@ function renderProgress() {
     liftOnly = liftsBlock + rmSection;
   }
 
+  // Body weight + measurements moved to the Log → + sub-tab.
   return progressHeader + streakHero + toggle +
     stats + goals + liftOnly +
     detailCharts +
-    renderSportProgress() + renderBodySection() + calHTML;
+    renderSportProgress() + calHTML;
 }
 
 function svgChart(data,color,goalVal) {
