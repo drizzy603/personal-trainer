@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-18"/>
+<meta name="build" content="20260429-19"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3326,7 +3326,7 @@ function saveSportLog(){
   var dur=parseInt((document.getElementById('spDuration')||{value:''}).value)||0;
   var notes=((document.getElementById('spNotes')||{value:''}).value||'').trim();
   var data={};
-  sport.fields.forEach(function(f){
+  (sport.fields||[]).forEach(function(f){
     var el=document.getElementById('sp_'+f.id);
     if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
   });
@@ -3390,7 +3390,7 @@ function _renderSportField(f){
 }
 
 function _renderSportFields(sport){
-  var html='', i=0, ff=sport.fields;
+  var html='', i=0, ff=sport.fields||[];
   while(i<ff.length){
     var f1=ff[i], f2=ff[i+1];
     // text fields (except partner/opponent pairs) go full-width
@@ -3599,11 +3599,6 @@ function renderSportEditorial(){
   }
   return meta + hero + recentHTML + rail + card + thisWeek;
 }
-function _snapshotSportLogForm(){
-  // Sport draft inputs are auto-synced via inline oninput, but capture once
-  // here for safety in case a re-render races a keystroke.
-  ['duration','distance','intensity','calories','notes'].forEach(function(){});
-}
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
   var d = sportLogDraft;
@@ -3740,7 +3735,7 @@ function fillSportWithAI(){
   if(btn){btn.disabled=true;btn.textContent='Analysing…';}
   var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
   var fieldDesc='duration (minutes, integer)\n';
-  sport.fields.forEach(function(f){
+  (sport.fields||[]).forEach(function(f){
     if(f.type==='select') fieldDesc+=f.id+' (one of: '+f.opts.join(', ')+')\n';
     else fieldDesc+=f.id+(f.unit?' ('+f.unit+', number)':' (string or number as appropriate)')+'\n';
   });
@@ -3762,7 +3757,7 @@ function fillSportWithAI(){
     if(parsed.duration!=null){var d=document.getElementById('spDuration');if(d)d.value=parsed.duration;}
     if(parsed.date){var dd=document.getElementById('spDate');if(dd)dd.value=parsed.date;}
     if(parsed.notes){var nn=document.getElementById('spNotes');if(nn)nn.value=parsed.notes;}
-    sport.fields.forEach(function(f){
+    (sport.fields||[]).forEach(function(f){
       if(parsed[f.id]!=null){var el=document.getElementById('sp_'+f.id);if(el)el.value=parsed[f.id];}
     });
     _refreshSportAIBtn();
@@ -4665,7 +4660,7 @@ var _runSchema={
 };
 var _sportSlotSchema={type:'object',
   properties:{
-    type:{type:'string',description:'Sport id — one of: Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Must match the sport on this day in weekPlan.'},
+    type:{type:'string',description:'Sport id — one of: Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Must match the sport on this day in weekPlan.'},
     note:{type:'string',description:'Brief planning note (e.g. "doubles practice", "hill climb route", "long ride 40km")'}
   },
   required:['type']
@@ -4685,7 +4680,7 @@ var _weekSchema={type:'object',
     sports:{type:'object',
       description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
       properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}},
-    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},
+    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other']},
       description:'Optional. Per-week cadence override (Mon→Sun). Use only when this specific week deviates from the routine-level weekPlan (e.g. a deload that drops a lift day, or a holiday week). If omitted, the routine-level weekPlan applies.'}
   },
   required:['wk','bName','bColor','push','pull','legs']
@@ -4696,7 +4691,7 @@ var COACH_TOOLS=[
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
-       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs. Off days = Rest. Cardio/sport days can be Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, or Other (whatever the user actually does). Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs. Off days = Rest. Cardio/sport days can be any of: Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, or Other (whatever the user actually does). Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
      },
      required:['weeks']}},
   {name:'set_current_week',
@@ -5313,7 +5308,7 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
-  p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
+  p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
