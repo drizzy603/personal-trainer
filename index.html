@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-24"/>
+<meta name="build" content="20260429-25"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -4303,11 +4303,54 @@ function renderProgress() {
     '</div>';
     return bar+inp;
   }
-  var goals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
+  // Lift-mode goals: bench, squat, plus a 5k callout when one's been logged.
+  var liftGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
     goalRow('Bench Press',bestBench,benchGoal,'lb',false,'setBenchGoal')+
     goalRow('Back Squat',bestSquat,squatGoal,'lb',false,'setSquatGoal')+
     (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
     '</div>';
+
+  // Run-mode goals: 5k time + average-pace target. The pace setter is text
+  // ("mm:ss"), so it stays inline below the bar instead of using goalRow's
+  // numeric input.
+  var runGoalPaceStr = getRunGoal();
+  var runGoalPaceSec = paceToSec(runGoalPaceStr);
+  var runPaceBar = '';
+  if(avgPaceSec > 0 && runGoalPaceSec > 0){
+    var pct = Math.min(100, Math.round((runGoalPaceSec / avgPaceSec) * 100));
+    var color = pct>=100?'var(--green)':pct>=70?'var(--accent)':'var(--yellow)';
+    runPaceBar = '<div style="margin-bottom:8px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
+        '<div style="font-size:13px;font-weight:800;">Avg pace</div>'+
+        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km / '+runGoalPaceStr+'/km</div>'+
+      '</div>'+
+      '<div style="background:var(--bg);border-radius:2px;height:6px;">'+
+        '<div style="height:6px;border-radius:2px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
+      '</div>'+
+      (pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal hit</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
+    '</div>';
+  } else if(avgPaceSec > 0){
+    runPaceBar = '<div style="margin-bottom:8px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
+        '<div style="font-size:13px;font-weight:800;">Avg pace</div>'+
+        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km · set a target</div>'+
+      '</div>'+
+    '</div>';
+  }
+  var runPaceInput = '<div style="display:flex;align-items:center;gap:6px;margin-top:-4px;margin-bottom:14px;">'+
+    '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
+    '<input type="text" placeholder="6:00" value="'+_esc(runGoalPaceStr||'')+'" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;"'+
+      ' onchange="setRunGoal(this.value);render();" />'+
+    '<span style="font-size:11px;color:var(--muted);">/km</span>'+
+    '</div>';
+  var runGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Run goals</h2>'+
+    (bestRun5kSec>0
+      ? goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true)
+      : '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:500;">5k — log a ~5 km run to start tracking pace</div>')+
+    runPaceBar + runPaceInput +
+    '</div>';
+
+  var goals = progressTab === 'runs' ? runGoals : liftGoals;
 
   var lastVol=sessions.length?calcVolume(sessions[0].exercises||[]):0;
   var bws=getBodyWeights();
@@ -4316,19 +4359,24 @@ function renderProgress() {
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
   var streak = calcStreak(sessions);
 
-  var stats='<div class="stat-row">'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Sessions</div>'+
-      '<div class="stat-val">'+sessions.length+'</div>'+
-      (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'')+
-    '</div>'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Streak</div>'+
-      '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
-      '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
-    '</div>'+
-    '</div>'+
-    '<div class="stat-row">'+
+  // Run-mode stats — total distance, this-week km, avg pace.
+  function _runSec(r){
+    var t=(r.time||'').split(':').map(Number);
+    return t.length===2 ? t[0]*60+(t[1]||0) : t[0]*3600+(t[1]||0)*60+(t[2]||0);
+  }
+  var totalKm=0, weekKm=0, totSec=0, totDist=0;
+  runs.forEach(function(r){
+    var d=parseFloat(r.distance||r.dist)||0;
+    if(d<=0) return;
+    totalKm+=d;
+    if(r.week===currentWeek) weekKm+=d;
+    var s=_runSec(r);
+    if(s>0){ totSec+=s; totDist+=d; }
+  });
+  var avgPaceSec = totDist>0 ? Math.round(totSec/totDist) : 0;
+  var lastRun = runs[0];
+
+  var bwAndWeekRow = '<div class="stat-row">'+
     (latestBW?
       '<div class="stat">'+
         '<div class="stat-lbl">Bodyweight</div>'+
@@ -4345,6 +4393,34 @@ function renderProgress() {
       '</div>'+
     '</div>'+
     '</div>';
+
+  var liftStats = '<div class="stat-row">'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">Sessions</div>'+
+      '<div class="stat-val">'+sessions.length+'</div>'+
+      (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'')+
+    '</div>'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">Streak</div>'+
+      '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
+      '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
+    '</div>'+
+    '</div>' + bwAndWeekRow;
+
+  var runStats = '<div class="stat-row">'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">Runs</div>'+
+      '<div class="stat-val">'+runs.length+'</div>'+
+      (lastRun ? '<div class="stat-delta">'+(parseFloat(lastRun.distance||lastRun.dist)||0)+' km last</div>' : '')+
+    '</div>'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">Distance</div>'+
+      '<div><span class="stat-val" style="color:var(--accent)">'+(Math.round(totalKm*10)/10)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">km</span></div>'+
+      (weekKm>0 ? '<div class="stat-delta">'+(Math.round(weekKm*10)/10)+' km this wk</div>' : '<div class="stat-delta">all-time</div>')+
+    '</div>'+
+    '</div>' + bwAndWeekRow;
+
+  var stats = progressTab === 'runs' ? runStats : liftStats;
 
   var benchData=[];
   for(var i=sessions.length-1;i>=0&&benchData.length<10;i--){
@@ -4523,13 +4599,20 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  // Filter the detail charts based on the Lifts/Runs toggle.
-  var detailCharts = progressTab === 'runs'
-    ? runChart
-    : (benchChart + squatChart + volCharts);
+  // Filter the detail charts + lift-only sections based on the toggle.
+  // Runs mode hides the strength-progression block and 1RM card; lifts
+  // mode hides the run-pace chart.
+  var detailCharts, liftOnly;
+  if(progressTab === 'runs'){
+    detailCharts = runChart;
+    liftOnly = '';
+  } else {
+    detailCharts = benchChart + squatChart + volCharts;
+    liftOnly = liftsBlock + rmSection;
+  }
 
   return progressHeader + streakHero + toggle +
-    stats + goals + liftsBlock + rmSection +
+    stats + goals + liftOnly +
     detailCharts +
     renderSportProgress() + renderBodySection() + calHTML;
 }
