@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-1"/>
+<meta name="build" content="20260430-2"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2296,7 +2296,7 @@ function renderTodayEditorial(){
       rows+'</div>';
   }
 
-  return meta + hero + cta + coachHTML + marquee + renderBodySection();
+  return meta + hero + cta + coachHTML + marquee;
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -3159,6 +3159,7 @@ function renderLog() {
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
     '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">'+primaryAct+'</button>'+
+    '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">Body</button>'+
     '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
     '</div>';
 
@@ -3179,6 +3180,10 @@ function renderLog() {
     // Editorial path — drop the legacy "Training" header + week-card so the
     // ad-hoc + tab gets the same minimal vertical rhythm as Workout / Run.
     return subBar + renderSportSection();
+  }
+
+  if (logSubTab === 'body') {
+    return subBar + renderBodyEditorial();
   }
 
   // Workout sub-tab — needs a programme.
@@ -4141,6 +4146,42 @@ function renderSportProgress(){
   }).join('');
 
   return '<div class="sect-title" style="margin-bottom:8px;">Activity Stats</div>'+sections;
+}
+
+// Body sub-tab — editorial wrapper that gives the body weight + measurements
+// section the same meta-row + greeting rhythm as Workout / Run / +.
+function renderBodyEditorial(){
+  var firstName = getUserFirstName();
+  var cr = getCustomRoutine();
+  var avSeed = firstName || (cr && cr.name) || '?';
+  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
+  var totalWks = getTotalWeeks();
+  var meta = '<div class="kt-meta-row">'+
+    '<div class="kt-meta-label">'+weekday+' · WK '+
+      String(currentWeek).padStart(2,'0')+' / '+totalWks+
+    '</div>'+
+    '<div class="kt-meta-ava">'+avInitial+'</div>'+
+    '</div>';
+  var bws = getBodyWeights();
+  var line1, line2;
+  if(bws.length){
+    line1 = bws[0].weight+' lb';
+    line2 = 'on the scale.';
+  } else {
+    line1 = 'Log your';
+    line2 = 'first weigh-in.';
+  }
+  var hero = '<div class="kt-hero">'+
+    (firstName
+      ? '<div class="kt-hero-greet">'+getGreeting()+', '+_esc(firstName)+'.</div>'
+      : '<div class="kt-hero-greet">'+getGreeting()+'.</div>')+
+    '<h1 class="kt-hero-headline">'+_esc(line1)+
+      '<span class="kt-line2 accent">'+_esc(line2)+'</span>'+
+    '</h1>'+
+    '<div class="kt-hero-body">Body weight + measurements. Trends, goals, and history all live here.</div>'+
+    '</div>';
+  return meta + hero + renderBodySection();
 }
 
 function renderBodySection(){
