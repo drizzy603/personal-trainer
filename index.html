@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260429-21"/>
+<meta name="build" content="20260429-22"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1714,6 +1714,16 @@ function cancelUserNameEdit(){
   settingsNameEdit = false;
   render();
 }
+// Time-of-day-appropriate greeting — used on Today / Run / + editorial heroes.
+//   < 12: Good morning
+//   < 17: Good afternoon
+//   else: Good night
+function getGreeting(){
+  var h = new Date().getHours();
+  if(h < 12) return 'Good morning';
+  if(h < 17) return 'Good afternoon';
+  return 'Good night';
+}
 function getUserFirstName(){
   function clean(raw){
     if(!raw) return '';
@@ -2010,8 +2020,8 @@ function renderTodayEditorial(){
   // Hero — dynamic per day type
   // Greeting drops the comma when no name is set (addendum 0b).
   var greet = firstName
-    ? '<div class="kt-hero-greet">Good morning, '+_esc(firstName)+'.</div>'
-    : '<div class="kt-hero-greet">Good morning.</div>';
+    ? '<div class="kt-hero-greet">'+getGreeting()+', '+_esc(firstName)+'.</div>'
+    : '<div class="kt-hero-greet">'+getGreeting()+'.</div>';
   var line1, line2, line2Class, body;
   var deload = isDeloadWeek();
   if(act.type === 'lift'){
@@ -2515,8 +2525,8 @@ function renderRunSegment(){
     '</div>';
 
   var greet = firstName
-    ? '<div class="kt-hero-greet">Good morning, '+_esc(firstName)+'.</div>'
-    : '<div class="kt-hero-greet">Good morning.</div>';
+    ? '<div class="kt-hero-greet">'+getGreeting()+', '+_esc(firstName)+'.</div>'
+    : '<div class="kt-hero-greet">'+getGreeting()+'.</div>';
 
   var line1, line2, line2Class='accent', body;
   if(focus && focus.isToday){
@@ -3573,8 +3583,8 @@ function renderSportEditorial(){
     '</div>';
   var hero = '<div class="kt-hero">'+
     (firstNameP
-      ? '<div class="kt-hero-greet">Good morning, '+_esc(firstNameP)+'.</div>'
-      : '<div class="kt-hero-greet">Good morning.</div>')+
+      ? '<div class="kt-hero-greet">'+getGreeting()+', '+_esc(firstNameP)+'.</div>'
+      : '<div class="kt-hero-greet">'+getGreeting()+'.</div>')+
     '<h1 class="kt-hero-headline">Log<span class="kt-line2 accent">an activity.</span></h1>'+
     '<div class="kt-hero-body">For anything outside today\'s programme — a pickup game, a hike, a yoga class. Pick a tile, log it.</div>'+
     '</div>';
