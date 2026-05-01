@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-21"/>
+<meta name="build" content="20260430-22"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -76,12 +76,8 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 #screen::-webkit-scrollbar{display:none;}
 /* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
    content (chat messages, long lists) doesn't bleed visibly under the Dynamic
-   Island / clock. Modals (z 9998) and overlays (z 200) draw above this.
-   In coach-chat view we extend it by 14px to cover the sticky-header padding
-   zone — sticky + negative-margin painting is unreliable in WebKit, so the
-   fixed body::before strip does the masking instead. */
+   Island / clock. Modals (z 9998) and overlays (z 200) draw above this. */
 body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--bg);z-index:100;pointer-events:none;}
-body:has(.coach-chat-stick)::before{height:calc(env(safe-area-inset-top) + 14px);}
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
 #tabs{position:fixed;bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));left:20px;right:20px;
