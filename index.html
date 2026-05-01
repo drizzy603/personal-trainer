@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-25"/>
+<meta name="build" content="20260430-28"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -439,23 +439,17 @@ select option{background:var(--bg);}
 .coach-chat-stick{position:sticky;top:0;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
 .coach-chat-stick .screen-hd{padding:0 0 4px;}
 .coach-chat-body{display:flex;flex-direction:column;min-height:calc(100vh - 260px);}
-.coach-msgs-area{flex:1;padding:16px 0 calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 60px);}
+.coach-msgs-area{flex:1;padding:16px 0 calc(var(--tab-h) + var(--tab-gap) * 2 + var(--tab-bottom-clear) + 60px);}
 /* Fixed pill above the floating tab bar — input persists during scroll so
    the user never has to scroll back down to type. Solid card surface so
-   chat messages can't bleed through it as they scroll past. */
-.coach-input-row{position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));
+   chat messages can't bleed through it. Sits flush against the tab bar
+   (gap: var(--tab-gap)) — the smaller the visible gap, the smaller the
+   bleed-through window for scrolled content. */
+.coach-input-row{position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 2 + var(--tab-bottom-clear));
   display:flex;gap:8px;align-items:center;
   background:var(--card);
   border:1px solid var(--border);border-radius:24px;
   padding:6px 6px 6px 18px;z-index:50;}
-/* Gradient fade above the input pill — chat messages dissolve into bg
-   instead of cutting off abruptly under the pill edge. Scoped to the chat
-   view via :has(.coach-chat-stick) so it doesn't appear on tabs that
-   don't have a fixed input. */
-body:has(.coach-chat-stick)::after{content:'';position:fixed;left:0;right:0;
-  bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 48px);
-  height:32px;background:linear-gradient(to bottom, transparent, var(--bg));
-  pointer-events:none;z-index:49;}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
 .coach-textarea::placeholder{color:var(--muted);}
