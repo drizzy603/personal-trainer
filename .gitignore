@@ -7,3 +7,4 @@ trainer-backup-*.json
 trovo-backup-*.json
 screenshots/out/
 .claude/
+xcuserdata/
