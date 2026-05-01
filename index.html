@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-18"/>
+<meta name="build" content="20260430-19"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1625,17 +1625,25 @@ function getSessionExercises(type) {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
+var _lastRenderedRoute = '';
 function render() {
   // Sync the inline run-log form into module state before rebuilding the
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
   // wipe what the user has typed.
   if(runLogOpen) _snapshotRunLogForm();
   var screen = document.getElementById('screen');
+  // Only reset scroll on an actual nav change (tab or log sub-tab). In-tab
+  // re-renders (saving a set, dismissing the coach card, ticking a goal)
+  // preserve scroll position so the user doesn't snap to the top mid-task.
+  var route = currentTab + (currentTab==='log' ? '/'+logSubTab : '') + (currentTab==='coach' ? '/'+coachView : '');
+  var routeChanged = route !== _lastRenderedRoute;
+  var prevScroll = screen.scrollTop;
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); scrollChatBottom(); paintRunner(); return; }
-  screen.scrollTop = 0;
+  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _lastRenderedRoute = route; scrollChatBottom(); paintRunner(); return; }
+  screen.scrollTop = routeChanged ? 0 : prevScroll;
+  _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
