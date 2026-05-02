@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-32"/>
+<meta name="build" content="20260430-33"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -664,6 +664,13 @@ select option{background:var(--bg);}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
 .kt-cta-arrow{font-size:24px;font-weight:600;}
+/* Ad-hoc session picker — appears below the GO-TO CTA on non-lift days
+   so the user can train off-schedule. */
+.kt-adhoc-row{margin:-12px 0 24px;}
+.kt-adhoc-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.12em;margin-bottom:8px;}
+.kt-adhoc-pills{display:flex;flex-wrap:wrap;gap:8px;}
+.kt-adhoc-pill{background:transparent;border:1px solid var(--border);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;letter-spacing:-.1px;}
+.kt-adhoc-pill:active{background:var(--card);}
 .kt-coach-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-left:2px solid var(--accent);border-radius:18px;padding:18px 18px 14px;position:relative;overflow:hidden;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:transform .25s,opacity .25s;}
 .kt-coach-card.dragging{transition:none;}
 .kt-coach-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
@@ -2322,6 +2329,36 @@ function renderTodayEditorial(){
       '</button>';
   }
 
+  // Ad-hoc workout picker — on non-lift days, expose the user's lift
+  // session types so they can train off-schedule. Done day is empty so
+  // we don't push an "extra" workout option after a session is complete.
+  var adhocPicker = '';
+  if(!sessionDoneToday && act.type !== 'lift'){
+    var crAdh = getCustomRoutine();
+    var seenTypes = {};
+    var liftTypes = [];
+    if(crAdh && Array.isArray(crAdh.weekPlan)){
+      crAdh.weekPlan.forEach(function(t){
+        if(!t) return;
+        var entry = _planEntry(t);
+        if(!entry.isLift) return;
+        if(seenTypes[entry.type]) return;
+        if(!_todayLiftExercises(entry.type).length) return;
+        seenTypes[entry.type] = true;
+        liftTypes.push(entry.type);
+      });
+    }
+    if(liftTypes.length){
+      var pills = liftTypes.map(function(t){
+        return '<button class="kt-adhoc-pill" onclick="openDeckRunner(\''+_esc(t)+'\')">'+_esc(t)+'</button>';
+      }).join('');
+      adhocPicker = '<div class="kt-adhoc-row">'+
+        '<div class="kt-adhoc-lbl">OR LOG A WORKOUT ANYWAY</div>'+
+        '<div class="kt-adhoc-pills">'+pills+'</div>'+
+      '</div>';
+    }
+  }
+
   // Coach card
   var coachHTML = renderCoachCard(act);
 
@@ -2358,7 +2395,7 @@ function renderTodayEditorial(){
       rows+'</div>';
   }
 
-  return meta + hero + cta + coachHTML + marquee;
+  return meta + hero + cta + adhocPicker + coachHTML + marquee;
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -2786,13 +2823,27 @@ function renderRunSegment(){
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
-function openDeckRunner(){
+function openDeckRunner(overrideType){
   var act = getTodayActivity();
-  if(act.type !== 'lift' || !act.exercises || !act.exercises.length){
-    showToast('No lift session scheduled today');
-    return;
+  var sessType, sessExs, dayName;
+  if(overrideType){
+    // Ad-hoc session — pull exercises for the requested type from this
+    // week's routine even if today's plan is run/sport/rest.
+    sessType = overrideType;
+    sessExs = _todayLiftExercises(overrideType);
+    dayName = overrideType;
+    if(!sessExs.length){
+      showToast('No '+overrideType+' exercises in your routine');
+      return;
+    }
+  } else {
+    if(act.type !== 'lift' || !act.exercises || !act.exercises.length){
+      showToast('No lift session scheduled today');
+      return;
+    }
+    sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
-  runnerSession = {type:act.dayName, dayName:act.dayName, weekday:act.weekday, exercises:act.exercises.slice()};
+  runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs};
   runnerExIdx = 0;
   runnerEngaged = false;
   runnerResting = false;
