@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-31"/>
+<meta name="build" content="20260430-32"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -2251,36 +2251,27 @@ function renderTodayEditorial(){
       body = 'Tap to start when you’re ready.';
     }
   } else if(act.type === 'run'){
-    if(act.km > 0){
-      line1 = act.km+' km';
-      line2 = 'today.';
-    } else {
-      line1 = 'Easy';
-      line2 = 'run today.';
-    }
+    line1 = 'No workout';
+    line2 = 'today.';
     line2Class = 'accent';
-    if(deload){
-      body = (act.hr > 0 ? 'HR cap '+act.hr+' bpm. ' : '') + 'Easy aerobic — deload week, no heroics.';
-    } else {
-      var bodyParts = [];
-      if(act.hr > 0) bodyParts.push('HR cap '+act.hr+' bpm.');
-      bodyParts.push(act.km > 0 ? 'Easy aerobic, nothing brave.' : 'Distance up to you.');
-      if(act.note) bodyParts.push(act.note);
-      body = bodyParts.join(' ');
-    }
+    body = act.km > 0
+      ? 'Today is a '+act.km+' km run. Switch to the Run tab to log it.'
+      : 'Today is a run day. Switch to the Run tab to log it.';
   } else if(act.type === 'sport'){
-    line1 = 'Today is';
-    line2 = act.dayName.toLowerCase()+' day.';
+    line1 = 'No workout';
+    line2 = 'today.';
     line2Class = 'accent';
-    body = act.note ? act.note : 'Quality movement, not max effort.';
+    body = 'Today is '+_esc(act.dayName)+'. Log it from the + tab.';
   } else {
-    line1 = 'Rest.';
-    line2 = 'Recover well.';
+    line1 = 'Rest day.';
+    line2 = 'No workout.';
     line2Class = '';
-    body = 'No lifts, no runs. Walk, stretch, eat well.';
+    body = 'Recover well — walk, stretch, eat well.';
   }
-  // ◆ DELOAD WEEK · 60% LOADS micro-label (lift + run only; rest stays clean).
-  var deloadBadge = (deload && (act.type === 'lift' || act.type === 'run'))
+  // ◆ DELOAD WEEK · 60% LOADS micro-label — Workout tab only shows it on
+  // lift days (the only day type where the badge is contextually meaningful
+  // here; non-lift days route the user to a different sub-tab).
+  var deloadBadge = (deload && act.type === 'lift')
     ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
     : '';
   var hero = '<div class="kt-hero">'+greet+
@@ -2314,19 +2305,18 @@ function renderTodayEditorial(){
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
   } else if(act.type === 'run'){
-    var ctaTitle = act.km > 0 ? 'Start run · '+act.km+' km' : 'Start run';
     cta = '<button class="kt-cta" onclick="switchLogSub(\'run\')">'+
       '<div style="text-align:left;">'+
-        '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">'+_esc(ctaTitle)+'</div>'+
+        '<div class="kt-cta-label">GO TO</div>'+
+        '<div class="kt-cta-title">Run tab</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
   } else if(act.type === 'sport'){
     cta = '<button class="kt-cta" onclick="switchLogSub(\'sport\')">'+
       '<div style="text-align:left;">'+
-        '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">Log '+_esc(act.dayName)+'</div>'+
+        '<div class="kt-cta-label">GO TO</div>'+
+        '<div class="kt-cta-title">+ tab</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
