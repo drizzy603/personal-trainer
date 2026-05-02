@@ -883,6 +883,7 @@ var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps}
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
+var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
 // Inline run-log state (Run sub-tab)
 var runLogOpen      = false;
 var runLogClosing   = false;
@@ -2851,6 +2852,7 @@ function openDeckRunner(overrideType){
   runnerCompleted = {};
   runnerWeights = {};
   runnerReps = {};
+  runnerSessionDate = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
     runnerWeights[ex.name] = parseFloat(ex.weight) || 0;
@@ -2973,8 +2975,10 @@ function runnerFinishSession(){
   exsOut.forEach(function(ex){ var w=parseFloat(ex.weight); if(w>0) weights[ex.name]=w; });
   lsSet('kt_weights', weights);
   var newPRs = checkAndUpdatePRs(exsOut);
+  var _dateEl = document.getElementById('runner-date');
+  var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
   var sessions = getSessions();
-  sessions.unshift({id:Date.now(), date:todayISO(), type:runnerSession.dayName,
+  sessions.unshift({id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
     week:currentWeek, exercises:exsOut, note:'', prs:newPRs});
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
@@ -3147,10 +3151,19 @@ function _renderRunnerRestingBody(ex, done){
 function _renderRunnerDoneBody(ex, isLast){
   var label = isLast ? 'Finish session' : 'Next exercise →';
   var onclick = isLast ? 'runnerFinishSession()' : 'runnerGoTo('+(runnerExIdx+1)+')';
+  var dateField = isLast
+    ? '<div style="margin:14px 0 6px;text-align:left;">'+
+        '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
+        '<input id="runner-date" type="date" value="'+todayISO()+'"'+
+        ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
+        'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
+      '</div>'
+    : '';
   return '<div class="kt-done">'+
     '<div class="kt-done-check">✓</div>'+
     '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
     '<div class="kt-done-meta">'+ex.sets+'/'+ex.sets+' SETS LOGGED</div>'+
+    dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     '</div>';
 }
@@ -3710,6 +3723,11 @@ function saveRun() {
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
   lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+  render();
+}
+function deleteSession(id){
+  if(!confirm('Delete this session? This cannot be undone.')) return;
+  lsSet('kt_sessions', getSessions().filter(function(s){return s.id!==id;}));
   render();
 }
 function pickSport(id){ logSportType=id; render(); }
@@ -5086,7 +5104,10 @@ function renderHistory() {
           '<div style="font-size:15px;font-weight:700;">'+def.label+'</div>'+
           '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+fmtDate(s.date)+(s.week?' · Week '+s.week:'')+'</div>'+
         '</div>'+
-        (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
+          '<button onclick="deleteSession('+s.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;" title="Delete session">✕</button>'+
+        '</div>'+
       '</div>'+
       exRows+
       (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
