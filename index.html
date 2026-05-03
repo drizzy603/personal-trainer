@@ -2298,12 +2298,49 @@ function renderTodayEditorial(){
         return s.date === _todayKey() && s.type === act.dayName;
       }));
   if(sessionDoneToday){
-    cta = '<div class="kt-session-done">'+
-      '<div class="kt-session-done-ic">✓</div>'+
-      '<div class="kt-session-done-body">'+
-        '<div class="kt-session-done-ttl">Session complete</div>'+
-        '<div class="kt-session-done-sub">Nice work — see you tomorrow.</div>'+
-      '</div></div>';
+    var _ts = getSessions().find(function(s){
+      return s.date===_todayKey() && (act.type!=='lift'||s.type===act.dayName);
+    }) || getSessions().find(function(s){ return s.date===_todayKey(); });
+    if(_ts){
+      var _sets=(_ts.exercises||[]).reduce(function(n,ex){return n+(ex.sets||0);},0);
+      var _vol=(_ts.exercises||[]).reduce(function(n,ex){
+        var w=parseFloat(ex.weight)||0; if(!w) return n;
+        var ra=Array.isArray(ex.reps)?ex.reps:[ex.reps];
+        var ravg=ra.reduce(function(a,b){return a+(parseInt(b)||0);},0)/(ra.length||1);
+        return n+(ex.sets||0)*ravg*w;
+      },0);
+      var _prc=(_ts.prs||[]).length;
+      var _sl=(SESS[_ts.type]||{label:_ts.type}).label;
+      var _ps='background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;padding:8px 12px;text-align:center;flex:1;min-width:0;';
+      var _pills='<div style="display:flex;gap:8px;margin:12px 0 14px;">'+
+        '<div style="'+_ps+'"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;">'+_sets+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">Sets</div></div>'+
+        (_vol>0?'<div style="'+_ps+'"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;">'+Math.round(_vol).toLocaleString()+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">lb volume</div></div>':'')+
+        (_prc?'<div style="'+_ps+';border-color:rgba(255,230,0,.35);"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;color:var(--yellow);">'+_prc+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">PR'+(_prc>1?'s':'')+'</div></div>':'')+
+      '</div>';
+      cta='<div class="kt-session-done" style="flex-direction:column;align-items:stretch;gap:0;">'+
+        '<div style="display:flex;align-items:center;gap:14px;">'+
+          '<div class="kt-session-done-ic">✓</div>'+
+          '<div class="kt-session-done-body">'+
+            '<div class="kt-session-done-ttl">'+_sl+'</div>'+
+            '<div class="kt-session-done-sub">Session complete'+(_ts.week?' · Week '+_ts.week:'')+'</div>'+
+          '</div>'+
+        '</div>'+
+        _pills+
+        '<div style="border-top:1px solid var(--border);padding-top:12px;">'+
+          _buildHistExRows(_ts.exercises,_ts.prs,_ts.supersets)+
+        '</div>'+
+      '</div>';
+    } else {
+      cta='<div class="kt-session-done">'+
+        '<div class="kt-session-done-ic">✓</div>'+
+        '<div class="kt-session-done-body">'+
+          '<div class="kt-session-done-ttl">Session complete</div>'+
+          '<div class="kt-session-done-sub">Nice work — see you tomorrow.</div>'+
+        '</div></div>';
+    }
   } else if(act.type === 'lift' && act.exercises && act.exercises.length){
     cta = '<button class="kt-cta" onclick="openDeckRunner()">'+
       '<div style="text-align:left;">'+
