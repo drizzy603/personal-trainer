@@ -4365,7 +4365,8 @@ function saveBodyWeight(){
   var d=document.getElementById('bwDate')?document.getElementById('bwDate').value:todayISO();
   if(!v){showToast('Enter a weight');return;}
   var bws=getBodyWeights();
-  bws.unshift({date:d,weight:v});
+  bws.push({id:Date.now(),date:d,weight:v});
+  bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
   lsSet('kt_bw',bws);
   showToast('Weight logged!');
   render();
@@ -4849,6 +4850,27 @@ function renderProgress() {
       '</div></div>'+svgChart(runData,'#c8ff00',runGoalSec)+'</div>'
     :'';
 
+  // Weekly distance trend — group runs by ISO calendar week (Mon-based).
+  var _weekBuckets={};
+  runs.forEach(function(r){
+    var dist=parseFloat(r.distance||r.dist||0);
+    if(!dist||!r.date) return;
+    var rd=new Date(r.date+'T00:00:00');
+    var dow=(rd.getDay()+6)%7; // 0=Mon
+    var mon=new Date(rd); mon.setDate(rd.getDate()-dow);
+    var wkey=mon.toISOString().slice(0,10);
+    _weekBuckets[wkey]=(_weekBuckets[wkey]||0)+dist;
+  });
+  var weeklyDistData=Object.keys(_weekBuckets).sort().slice(-10).map(function(wk){
+    return {date:wk,val:Math.round(_weekBuckets[wk]*10)/10};
+  });
+  var weeklyDistChart=weeklyDistData.length>=2
+    ?'<div class="chart-card"><div class="chart-head"><div>'+
+        '<div class="chart-lbl">Weekly distance · km</div>'+
+        '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">km this wk</span></div>'+
+      '</div></div>'+svgChart(weeklyDistData,'#60a5fa')+'</div>'
+    :'';
+
   // 1RM calculator (Epley)
   var bestBenchRM=0, bestSquatRM=0;
   sessions.forEach(function(s){
@@ -4980,7 +5002,7 @@ function renderProgress() {
   // mode hides the run-pace chart.
   var detailCharts, liftOnly;
   if(progressTab === 'runs'){
-    detailCharts = runChart;
+    detailCharts = weeklyDistChart + runChart;
     liftOnly = '';
   } else {
     detailCharts = benchChart + squatChart + volCharts;
@@ -5446,7 +5468,15 @@ var COACH_TOOLS=[
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
        notes:{type:'string',description:'Short note (optional).'}
      },
-     required:['type','duration']}}
+     required:['type','duration']}},
+  {name:'delete_log',
+   description:'Delete a previously logged entry that the user wants removed. Use this only when the user explicitly asks to delete or remove a logged entry. Confirm the id from the ground-truth lists shown in your context (date + details).',
+   input_schema:{type:'object',
+     properties:{
+       store:{type:'string',enum:['run','sport','session','bodyweight'],description:'Which log to delete from.'},
+       id:{type:'number',description:'The numeric id of the entry to delete (from the logged entries list).'}
+     },
+     required:['store','id']}}
 ];
 
 // Session-level flag — we back up kt_routine exactly once per page session, on
@@ -5645,7 +5675,8 @@ function executeCoachTool(name,input){
       var bwDate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
       var bws=getBodyWeights();
-      bws.unshift({date:bwDate,weight:bwVal});
+      bws.push({id:Date.now(),date:bwDate,weight:bwVal});
+      bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
       lsSet('kt_bw',bws);
       render();
       return {ok:true,message:'logged '+bwVal+' lb on '+bwDate};
@@ -5681,6 +5712,44 @@ function executeCoachTool(name,input){
       invalidateCoachCard();
       render();
       return {ok:true,message:stype+' logged: '+sdur+' min on '+sdate};
+    }
+    if(name==='delete_log'){
+      var dlStore=String(input.store||'');
+      var dlId=Number(input.id);
+      if(!dlId) return {ok:false,error:'id required'};
+      if(dlStore==='run'){
+        var dlRuns=getRuns();
+        var dlBefore=dlRuns.length;
+        lsSet('kt_runs',dlRuns.filter(function(r){return r.id!==dlId;}));
+        if(getRuns().length===dlBefore) return {ok:false,error:'run id not found'};
+        invalidateCoachCard(); render();
+        return {ok:true,message:'Run deleted'};
+      }
+      if(dlStore==='sport'){
+        var dlSports=getSportLogs();
+        var dlBefore2=dlSports.length;
+        lsSet('kt_sports',dlSports.filter(function(s){return s.id!==dlId;}));
+        if(getSportLogs().length===dlBefore2) return {ok:false,error:'sport log id not found'};
+        invalidateCoachCard(); render();
+        return {ok:true,message:'Sport session deleted'};
+      }
+      if(dlStore==='session'){
+        var dlSess=getSessions();
+        var dlBefore3=dlSess.length;
+        lsSet('kt_sessions',dlSess.filter(function(s){return s.id!==dlId;}));
+        if(getSessions().length===dlBefore3) return {ok:false,error:'session id not found'};
+        invalidateCoachCard(); render();
+        return {ok:true,message:'Session deleted'};
+      }
+      if(dlStore==='bodyweight'){
+        var dlBws=getBodyWeights();
+        var dlBefore4=dlBws.length;
+        lsSet('kt_bw',dlBws.filter(function(b){return b.id!==dlId;}));
+        if(getBodyWeights().length===dlBefore4) return {ok:false,error:'bodyweight id not found'};
+        render();
+        return {ok:true,message:'Bodyweight entry deleted'};
+      }
+      return {ok:false,error:'unknown store: '+dlStore};
     }
     return {ok:false,error:'unknown tool: '+name};
   }catch(e){
@@ -5885,6 +5954,7 @@ function toolCallLabel(tc){
   if(n==='log_bodyweight') return 'Logged '+i.weight+' lb';
   if(n==='log_run') return 'Run logged · '+(i.distance_km||'?')+'km '+( i.time||'');
   if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
+  if(n==='delete_log') return (i.store||'entry')+' deleted';
   return n;
 }
 
@@ -6031,23 +6101,25 @@ function buildSystemPrompt(){
     p+='LOGGED RUNS (these are the only runs actually saved in the app — this list is the ground truth):\n';
     runs.slice(0,10).forEach(function(r){
       var dist=parseFloat(r.distance||r.dist||0);
-      p+='  '+r.date+' · '+dist+'km · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
+      p+='  [id:'+r.id+'] '+r.date+' · '+dist+'km · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
     });
     p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
   } else {
     p+='LOGGED RUNS: none yet. If the user mentions a run, it is not saved — call log_run to save it.\n\n';
   }
 
-  var sportLogs=getSportLogs().slice(0,8);
+  var sportLogs=getSportLogs().slice(0,10);
   if(sportLogs.length){
-    p+='RECENT SPORT SESSIONS:\n';
+    p+='LOGGED SPORT SESSIONS (these are the only sport/activity sessions actually saved in the app — this is the ground truth):\n';
     sportLogs.forEach(function(sp){
       var sum=buildSportSummary(sp);
-      p+=sp.type+' '+sp.date+(sp.duration?' '+sp.duration+'min':'')+
-        (sum?': '+sum:'')+
-        (sp.notes?' ('+sp.notes+')':'')+'\n';
+      p+='  [id:'+sp.id+'] '+sp.date+' · '+sp.type+(sp.duration?' · '+sp.duration+'min':'')+
+        (sum?' · '+sum:'')+
+        (sp.notes?' · '+sp.notes:'')+'\n';
     });
-    p+='\n';
+    p+='If a sport session the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_sport immediately to save it.\n\n';
+  } else {
+    p+='LOGGED SPORT SESSIONS: none yet. If the user mentions a sport/activity session, it is not saved — call log_sport to save it.\n\n';
   }
 
   var prKeys=Object.keys(prs);
@@ -6055,7 +6127,7 @@ function buildSystemPrompt(){
     p+='PRs: '+prKeys.map(function(k){return k+' '+prs[k]+'lb';}).join(', ')+'\n';
   }
   if(bws.length){
-    p+='\nBODY WEIGHT: '+bws.map(function(b){return b.weight+'lb ('+b.date+')';}).join(' → ')+'\n';
+    p+='\nBODY WEIGHT: '+bws.slice(0,8).map(function(b){return b.weight+'lb ('+b.date+(b.id?',id:'+b.id:'')+')';}).join(' → ')+'\n';
   }
 
   var runGoal=getRunGoal();
@@ -6073,6 +6145,7 @@ function buildSystemPrompt(){
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance_km, time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight (lb) and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
+  p+='  - Delete a logged entry the user wants removed → call delete_log with store ("run", "sport", "session", or "bodyweight") and id (from the [id:...] shown in the ground-truth lists above). Only delete when the user explicitly asks.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
