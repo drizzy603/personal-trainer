@@ -1256,6 +1256,14 @@ function getWkData(){
 function hasCustomRoutine(){ return !!getCustomRoutine(); }
 function getPRs() { return lsGet('kt_prs')||{}; }
 function getBodyWeights() { return lsGet('kt_bw')||[]; }
+function weekForDate(dateStr){
+  if(!dateStr) return currentWeek;
+  var d=new Date(dateStr+'T00:00:00');
+  var today=new Date(todayISO()+'T00:00:00');
+  var diffDays=Math.round((today-d)/86400000);
+  var weeksAgo=Math.max(0,Math.floor(diffDays/7));
+  return Math.max(1,currentWeek-weeksAgo);
+}
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) localStorage.setItem('kt_bw_goal',v); else localStorage.removeItem('kt_bw_goal'); }
 function getBenchGoal() { return parseFloat(localStorage.getItem('kt_bench_goal'))||0; }
@@ -2659,7 +2667,7 @@ function saveInlineRun(){
     distance: Math.round(dist*100)/100,
     time: time,
     date: date,
-    week: currentWeek,
+    week: weekForDate(date),
     note: note,
     hr: hr,
     type: runLogPendingType
@@ -3049,7 +3057,7 @@ function runnerFinishSession(){
   var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
   var sessions = getSessions();
   sessions.unshift({id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
-    week:currentWeek, exercises:exsOut, note:'', prs:newPRs});
+    week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs});
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
@@ -3773,7 +3781,7 @@ function saveRun() {
   var hr=hrEl?parseInt(hrEl.value)||0:0;
   var type=typeEl?typeEl.value:'easy';
   var runs=getRuns();
-  runs.unshift({id:Date.now(),distance:dist,time:time,date:date,week:currentWeek,note:note,hr:hr,type:type});
+  runs.unshift({id:Date.now(),distance:dist,time:time,date:date,week:weekForDate(date),note:note,hr:hr,type:type});
   lsSet('kt_runs',runs);
   var pace=calcPace(dist,time);
   var d=new Date(date+'T00:00:00');
@@ -4979,10 +4987,20 @@ function renderProgress() {
     liftOnly = liftsBlock + rmSection;
   }
 
-  // Body weight + measurements moved to the Log → + sub-tab.
+  // Bodyweight chart — shown on both tabs when data exists.
+  var bwChartData=bws.slice(0,10).reverse().map(function(e){return {date:e.date,val:e.weight};});
+  var bwGoalProg=getBWGoal();
+  var bwChart=bwChartData.length>=2
+    ?'<div class="chart-card"><div class="chart-head"><div>'+
+        '<div class="chart-lbl">Body Weight</div>'+
+        '<div><span class="chart-val">'+bwChartData[bwChartData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
+        (bwGoalProg?'<div class="chart-delta">Goal: '+bwGoalProg+' lb</div>':'')+
+      '</div></div>'+svgChart(bwChartData,'#60a5fa',bwGoalProg||undefined)+'</div>'
+    :'';
+
   return progressHeader + streakHero + toggle +
     stats + goals + liftOnly +
-    detailCharts +
+    detailCharts + bwChart +
     renderSportProgress() + calHTML;
 }
 
@@ -5405,8 +5423,8 @@ var COACH_TOOLS=[
    description:'Set target body weight in lb.',
    input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
   {name:'log_bodyweight',
-   description:'Log today\'s body weight in lb.',
-   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
+   description:'Log the user\'s body weight in lb. Use the actual measurement date, not today, if they weighed in on a different day.',
+   input_schema:{type:'object',properties:{weight:{type:'number'},date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'}},required:['weight']}},
   {name:'log_run',
    description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day.',
    input_schema:{type:'object',
@@ -5418,7 +5436,17 @@ var COACH_TOOLS=[
        hr:{type:'number',description:'Average heart rate in bpm (optional).'},
        note:{type:'string',description:'Short note (optional).'}
      },
-     required:['distance_km','time']}}
+     required:['distance_km','time']}},
+  {name:'log_sport',
+   description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day.',
+   input_schema:{type:'object',
+     properties:{
+       type:{type:'string',description:'Activity type, e.g. "Cycling", "Swimming", "Pickleball", "Tennis", "Basketball", "CrossFit", "Yoga", "Hiking", "Climbing", "Soccer", "Rowing", "Boxing", "Golf", "Other".'},
+       duration:{type:'number',description:'Duration in minutes.'},
+       date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
+       notes:{type:'string',description:'Short note (optional).'}
+     },
+     required:['type','duration']}}
 ];
 
 // Session-level flag — we back up kt_routine exactly once per page session, on
@@ -5614,10 +5642,13 @@ function executeCoachTool(name,input){
     if(name==='log_bodyweight'){
       var bwVal=parseFloat(input.weight);
       if(!(bwVal>0)) return {ok:false,error:'weight must be > 0'};
+      var bwDate=String(input.date||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
       var bws=getBodyWeights();
-      bws.unshift({date:todayISO(),weight:bwVal});
+      bws.unshift({date:bwDate,weight:bwVal});
       lsSet('kt_bw',bws);
-      return {ok:true,message:'logged '+bwVal+' lb today'};
+      render();
+      return {ok:true,message:'logged '+bwVal+' lb on '+bwDate};
     }
     if(name==='log_run'){
       var rkm=parseFloat(input.distance_km);
@@ -5631,11 +5662,25 @@ function executeCoachTool(name,input){
       var rnote=String(input.note||'').trim();
       var rruns=getRuns();
       rruns.unshift({id:Date.now(),distance:Math.round(rkm*100)/100,time:rtime,
-        date:rdate,week:currentWeek,note:rnote,hr:rhr,type:rtype});
+        date:rdate,week:weekForDate(rdate),note:rnote,hr:rhr,type:rtype});
       lsSet('kt_runs',rruns);
       invalidateCoachCard();
       render();
       return {ok:true,message:'Run logged: '+rkm+'km in '+rtime+' on '+rdate};
+    }
+    if(name==='log_sport'){
+      var stype=String(input.type||'Other').trim();
+      var sdur=parseInt(input.dur)||parseInt(input.duration)||0;
+      if(!(sdur>0)) return {ok:false,error:'duration must be > 0 minutes'};
+      var sdate=String(input.date||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
+      var snotes=String(input.notes||'').trim();
+      var slogs=getSportLogs();
+      slogs.unshift({id:Date.now(),date:sdate,type:stype,duration:sdur,data:{},notes:snotes});
+      lsSet('kt_sports',slogs);
+      invalidateCoachCard();
+      render();
+      return {ok:true,message:stype+' logged: '+sdur+' min on '+sdate};
     }
     return {ok:false,error:'unknown tool: '+name};
   }catch(e){
@@ -5839,6 +5884,7 @@ function toolCallLabel(tc){
   if(n==='set_bw_goal') return 'BW goal '+i.weight+' lb';
   if(n==='log_bodyweight') return 'Logged '+i.weight+' lb';
   if(n==='log_run') return 'Run logged · '+(i.distance_km||'?')+'km '+( i.time||'');
+  if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
   return n;
 }
 
@@ -6025,6 +6071,8 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance_km, time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
+  p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
+  p+='  - Log body weight → call log_bodyweight with weight (lb) and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
