@@ -6853,15 +6853,17 @@ function deleteCustomEx(name){
 // ── Service Worker ────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator) {
   window.addEventListener('load', function(){
+    // Track whether a SW was already controlling this page before registration.
+    // If it was, a controllerchange means a NEW SW just took over → reload.
+    // If not (first install), skip the reload to avoid a pointless bounce.
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(hadController) window.location.reload();
+    });
     navigator.serviceWorker.register('sw.js').then(function(reg){
-      reg.addEventListener('updatefound', function(){
-        var newSW = reg.installing;
-        newSW.addEventListener('statechange', function(){
-          if(newSW.state==='activated'){
-            showToast('App updated — reload to get the latest version');
-          }
-        });
-      });
+      // Force the browser to check for an updated sw.js on every page load
+      // instead of waiting for the browser's own throttled update check.
+      reg.update();
     }).catch(function(){});
   });
 }
