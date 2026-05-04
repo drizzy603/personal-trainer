@@ -2691,7 +2691,7 @@ function undoLastRun(){
 function deleteRun(id){
   if(!confirm('Delete this run? This cannot be undone.')) return;
   lsSet('kt_runs', getRuns().filter(function(r){ return r.id !== id; }));
-  render();
+  calSelectedDate=null; render();
 }
 // Surgical pill-class swap — re-rendering would wipe in-progress input
 // values, so update DOM in place instead.
@@ -2872,33 +2872,7 @@ function renderRunSegment(){
   var targetsList = renderRunTargetsList();
 
   var loggedRuns = getRuns();
-  var runHistory = '';
-  if(loggedRuns.length){
-    var runRows = runHistoryOpen ? loggedRuns.slice(0,10).map(function(r){
-      var dist=parseFloat(r.distance||r.dist||0);
-      var p=calcPace(dist,r.time);
-      var typeLabel=r.type&&r.type!=='easy'?r.type.charAt(0).toUpperCase()+r.type.slice(1):'';
-      var hrLabel=r.hr?' · '+r.hr+' bpm':'';
-      var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+r.note:'');
-      return '<div class="run-item">'+
-        '<div><div style="font-size:14px;font-weight:800;">'+dist+'km &middot; '+r.time+'</div>'+
-          '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
-        '<div style="display:flex;align-items:center;gap:10px;">'+
-          '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
-          '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 2px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
-        '</div>'+
-      '</div>';
-    }).join('') : '';
-    runHistory = '<div class="kt-marquee">'+
-      '<button onclick="toggleRunHistory()" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;margin-bottom:'+(runHistoryOpen?'14px':'0')+';cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;">'+
-        '<div class="kt-marquee-hd" style="margin-bottom:0;">RUN LOG&nbsp;<span style="opacity:.55;">('+loggedRuns.length+')</span></div>'+
-        '<span style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:11px;color:var(--lite);display:inline-block;transition:transform .2s;'+(runHistoryOpen?'transform:rotate(180deg)':'')+'">⌄</span>'+
-      '</button>'+
-      (runHistoryOpen ? runRows : '')+
-    '</div>';
-  }
-
-  return meta + hero + slot + coach + targetsList + runHistory;
+  return meta + hero + slot + coach + targetsList;
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
@@ -3804,12 +3778,33 @@ function saveRun() {
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
   lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
-  render();
+  calSelectedDate=null; render();
 }
 function deleteSession(id){
   if(!confirm('Delete this session? This cannot be undone.')) return;
   lsSet('kt_sessions', getSessions().filter(function(s){return s.id!==id;}));
-  render();
+  calSelectedDate=null; render();
+}
+function moveSession(id,newDate){
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  var sessions=getSessions();
+  sessions.forEach(function(s){ if(s.id===id){ s.date=newDate; s.week=weekForDate(newDate); } });
+  lsSet('kt_sessions',sessions);
+  calSelectedDate=newDate; render();
+}
+function moveRun(id,newDate){
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  var runs=getRuns();
+  runs.forEach(function(r){ if(r.id===id){ r.date=newDate; r.week=weekForDate(newDate); } });
+  lsSet('kt_runs',runs);
+  calSelectedDate=newDate; render();
+}
+function moveSport(id,newDate){
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  var sports=getSportLogs();
+  sports.forEach(function(sp){ if(sp.id===id){ sp.date=newDate; } });
+  lsSet('kt_sports',sports);
+  calSelectedDate=newDate; render();
 }
 function pickSport(id){ logSportType=id; render(); }
 
@@ -5080,13 +5075,21 @@ function renderCalDetail(sessions,runs,sports){
   var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
   var daySports=sports.filter(function(sp){return sp.date===calSelectedDate;});
   if(!daySessions.length&&!dayRuns.length&&!daySports.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
+  var actBtnStyle='background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;padding:3px 8px;-webkit-tap-highlight-color:transparent;';
+  var dateInpStyle='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;font-family:inherit;padding:3px 6px;cursor:pointer;';
   var html='';
   daySessions.forEach(function(s){
     var def=SESS[s.type]||{icon:'',label:s.type};
     var sessionPRs=s.prs||[];
     var exRows=_buildHistExRows(s.exercises,sessionPRs,s.supersets);
-    html+='<div style="margin-bottom:10px;">'+
-      '<div style="font-size:14px;font-weight:800;margin-bottom:8px;letter-spacing:-.2px;">'+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
+    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
+        '<div style="font-size:14px;font-weight:800;letter-spacing:-.2px;">'+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+          '<input type="date" value="'+s.date+'" style="'+dateInpStyle+'" onchange="moveSession('+s.id+',this.value)" title="Move to a different date"/>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteSession('+s.id+')" title="Delete session">✕</button>'+
+        '</div>'+
+      '</div>'+
       exRows+
       (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
     '</div>';
@@ -5094,12 +5097,19 @@ function renderCalDetail(sessions,runs,sports){
   dayRuns.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
     var p=calcPace(dist,r.time);
-    html+='<div style="margin-bottom:10px;">'+
-      '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Run'+(r.week?' · Week '+r.week:'')+'</div>'+
+    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
+        '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+r.type.charAt(0).toUpperCase()+r.type.slice(1):'')+'</div>'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+          '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
+        '</div>'+
+      '</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+dist+'km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.time+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">time</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+p+'/km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
+        (r.hr?'<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.hr+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">bpm</div></div>':'')+
       '</div>'+
       (r.note?'<div style="font-size:12px;color:var(--muted);">'+r.note+'</div>':'')+
     '</div>';
@@ -5108,12 +5118,20 @@ function renderCalDetail(sessions,runs,sports){
   daySports.forEach(function(sp){
     var s=sMap[sp.type]||{icon:'+',color:'#888'};
     var sum=buildSportSummary(sp);
-    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'+
-      sportChip(s,32)+
-      '<div>'+
-        '<div style="font-size:14px;font-weight:800;">'+sp.type+(sp.duration?' · '+sp.duration+' min':'')+'</div>'+
-        (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+sum+'</div>':'')+
-        (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+sp.notes+'</div>':'')+
+    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          sportChip(s,32)+
+          '<div>'+
+            '<div style="font-size:14px;font-weight:800;">'+sp.type+(sp.duration?' · '+sp.duration+' min':'')+'</div>'+
+            (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+sum+'</div>':'')+
+            (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+sp.notes+'</div>':'')+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
+          '<input type="date" value="'+sp.date+'" style="'+dateInpStyle+'" onchange="moveSport('+sp.id+',this.value)" title="Move to a different date"/>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteSportLog('+sp.id+')" title="Delete session">✕</button>'+
+        '</div>'+
       '</div>'+
     '</div>';
   });
