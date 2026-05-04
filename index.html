@@ -5982,7 +5982,14 @@ function buildSystemPrompt(){
   }
 
   if(runs.length){
-    p+='RECENT RUNS: '+runs.map(function(r){return (r.distance||r.dist)+'km '+r.time;}).join(', ')+'\n\n';
+    p+='LOGGED RUNS (these are the only runs actually saved in the app — this list is the ground truth):\n';
+    runs.slice(0,10).forEach(function(r){
+      var dist=parseFloat(r.distance||r.dist||0);
+      p+='  '+r.date+' · '+dist+'km · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
+    });
+    p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
+  } else {
+    p+='LOGGED RUNS: none yet. If the user mentions a run, it is not saved — call log_run to save it.\n\n';
   }
 
   var sportLogs=getSportLogs().slice(0,8);
