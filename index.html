@@ -894,7 +894,6 @@ var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
 // wipe what the user has typed.
 var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
-var runHistoryOpen = false;  // collapsed by default in Run sub-tab
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 // + sub-tab editorial form draft, captured on every input.
@@ -2791,7 +2790,6 @@ function renderRunGoalLine(){
   var label = g ? g+'/km' : 'set';
   return '<div class="kt-goal-line" onclick="toggleRunGoalEdit()">GOAL · '+_esc(label)+'</div>';
 }
-function toggleRunHistory(){ runHistoryOpen = !runHistoryOpen; render(); }
 // Editorial Run sub-tab: hero focused on the next run, lime CTA scrolls to
 // the input form, coach card, run-targets editorial list, then the form.
 function renderRunSegment(){
@@ -2870,8 +2868,6 @@ function renderRunSegment(){
 
   var coach = renderCoachCard(getTodayActivity());
   var targetsList = renderRunTargetsList();
-
-  var loggedRuns = getRuns();
   return meta + hero + slot + coach + targetsList;
 }
 
