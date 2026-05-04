@@ -2679,6 +2679,11 @@ function undoLastRun(){
   runLogConfirmed = null;
   render();
 }
+function deleteRun(id){
+  if(!confirm('Delete this run? This cannot be undone.')) return;
+  lsSet('kt_runs', getRuns().filter(function(r){ return r.id !== id; }));
+  render();
+}
 // Surgical pill-class swap — re-rendering would wipe in-progress input
 // values, so update DOM in place instead.
 function selectRunLogType(t){
@@ -3655,7 +3660,10 @@ function renderRunsSection(opts) {
       runItems += '<div class="run-item">'+
         '<div><div style="font-size:14px;font-weight:800;">'+dist+'km &middot; '+r.time+'</div>'+
         '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
-        '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
+          '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 2px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
+        '</div>'+
         '</div>';
     });
   }
