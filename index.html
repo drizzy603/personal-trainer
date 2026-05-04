@@ -2861,8 +2861,28 @@ function renderRunSegment(){
   var coach = renderCoachCard(getTodayActivity());
   var targetsList = renderRunTargetsList();
 
-  // Legacy log form is gone from the Run sub-tab — the inline form replaces it.
-  return meta + hero + slot + coach + targetsList;
+  var loggedRuns = getRuns();
+  var runHistory = '';
+  if(loggedRuns.length){
+    var runRows = loggedRuns.slice(0,10).map(function(r){
+      var dist=parseFloat(r.distance||r.dist||0);
+      var p=calcPace(dist,r.time);
+      var typeLabel=r.type&&r.type!=='easy'?r.type.charAt(0).toUpperCase()+r.type.slice(1):'';
+      var hrLabel=r.hr?' · '+r.hr+' bpm':'';
+      var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+r.note:'');
+      return '<div class="run-item">'+
+        '<div><div style="font-size:14px;font-weight:800;">'+dist+'km &middot; '+r.time+'</div>'+
+          '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
+          '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 2px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    runHistory = '<div class="card"><h2>Run Log</h2>'+runRows+'</div>';
+  }
+
+  return meta + hero + slot + coach + targetsList + runHistory;
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
