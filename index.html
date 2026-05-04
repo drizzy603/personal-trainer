@@ -5406,7 +5406,19 @@ var COACH_TOOLS=[
    input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
   {name:'log_bodyweight',
    description:'Log today\'s body weight in lb.',
-   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}}
+   input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
+  {name:'log_run',
+   description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day.',
+   input_schema:{type:'object',
+     properties:{
+       distance_km:{type:'number',description:'Distance in kilometres.'},
+       time:{type:'string',description:'Duration as MM:SS (e.g. "30:36") or H:MM:SS for longer runs.'},
+       date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
+       type:{type:'string',enum:['easy','tempo','long','intervals','race'],description:'Run type. Defaults to "easy".'},
+       hr:{type:'number',description:'Average heart rate in bpm (optional).'},
+       note:{type:'string',description:'Short note (optional).'}
+     },
+     required:['distance_km','time']}}
 ];
 
 // Session-level flag — we back up kt_routine exactly once per page session, on
@@ -5606,6 +5618,24 @@ function executeCoachTool(name,input){
       bws.unshift({date:todayISO(),weight:bwVal});
       lsSet('kt_bw',bws);
       return {ok:true,message:'logged '+bwVal+' lb today'};
+    }
+    if(name==='log_run'){
+      var rkm=parseFloat(input.distance_km);
+      if(!(rkm>0)) return {ok:false,error:'distance_km must be > 0'};
+      var rtime=String(input.time||'').trim();
+      if(!rtime) return {ok:false,error:'time required as MM:SS'};
+      var rdate=String(input.date||'').trim()||todayISO();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(rdate)) rdate=todayISO();
+      var rtype=input.type||'easy';
+      var rhr=parseInt(input.hr)||0;
+      var rnote=String(input.note||'').trim();
+      var rruns=getRuns();
+      rruns.unshift({id:Date.now(),distance:Math.round(rkm*100)/100,time:rtime,
+        date:rdate,week:currentWeek,note:rnote,hr:rhr,type:rtype});
+      lsSet('kt_runs',rruns);
+      invalidateCoachCard();
+      render();
+      return {ok:true,message:'Run logged: '+rkm+'km in '+rtime+' on '+rdate};
     }
     return {ok:false,error:'unknown tool: '+name};
   }catch(e){
@@ -5808,6 +5838,7 @@ function toolCallLabel(tc){
   if(n==='set_5k_goal') return '5k goal '+i.time;
   if(n==='set_bw_goal') return 'BW goal '+i.weight+' lb';
   if(n==='log_bodyweight') return 'Logged '+i.weight+' lb';
+  if(n==='log_run') return 'Run logged · '+(i.distance_km||'?')+'km '+( i.time||'');
   return n;
 }
 
@@ -5986,6 +6017,7 @@ function buildSystemPrompt(){
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
+  p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance_km, time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
