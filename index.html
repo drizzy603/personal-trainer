@@ -6087,7 +6087,7 @@ function buildSystemPrompt(){
   if(sessions.length){
     p+='RECENT SESSIONS:\n';
     sessions.forEach(function(s){
-      p+=s.type+' '+s.date+' (Wk'+s.week+'): ';
+      p+='[id:'+s.id+'] '+s.type+' '+s.date+' (Wk'+s.week+'): ';
       var exStrs=(s.exercises||[]).map(function(ex){
         var r=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
         return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+fmtRpe(ex.rpe);
