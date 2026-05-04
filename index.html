@@ -894,6 +894,7 @@ var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
 // wipe what the user has typed.
 var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
+var runHistoryOpen = false;  // collapsed by default in Run sub-tab
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 // + sub-tab editorial form draft, captured on every input.
@@ -2782,6 +2783,7 @@ function renderRunGoalLine(){
   var label = g ? g+'/km' : 'set';
   return '<div class="kt-goal-line" onclick="toggleRunGoalEdit()">GOAL · '+_esc(label)+'</div>';
 }
+function toggleRunHistory(){ runHistoryOpen = !runHistoryOpen; render(); }
 // Editorial Run sub-tab: hero focused on the next run, lime CTA scrolls to
 // the input form, coach card, run-targets editorial list, then the form.
 function renderRunSegment(){
@@ -2864,7 +2866,7 @@ function renderRunSegment(){
   var loggedRuns = getRuns();
   var runHistory = '';
   if(loggedRuns.length){
-    var runRows = loggedRuns.slice(0,10).map(function(r){
+    var runRows = runHistoryOpen ? loggedRuns.slice(0,10).map(function(r){
       var dist=parseFloat(r.distance||r.dist||0);
       var p=calcPace(dist,r.time);
       var typeLabel=r.type&&r.type!=='easy'?r.type.charAt(0).toUpperCase()+r.type.slice(1):'';
@@ -2878,8 +2880,14 @@ function renderRunSegment(){
           '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 2px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
         '</div>'+
       '</div>';
-    }).join('');
-    runHistory = '<div class="card"><h2>Run Log</h2>'+runRows+'</div>';
+    }).join('') : '';
+    runHistory = '<div class="card" style="padding:0;">'+
+      '<button onclick="toggleRunHistory()" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:16px;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;">'+
+        '<h2 style="margin:0;font-size:15px;font-weight:800;">Run Log <span style="font-size:12px;color:var(--muted);font-weight:600;">('+loggedRuns.length+')</span></h2>'+
+        '<span style="font-size:18px;color:var(--muted);line-height:1;transition:transform .2s;'+(runHistoryOpen?'transform:rotate(180deg)':'')+'">⌄</span>'+
+      '</button>'+
+      (runHistoryOpen ? '<div style="padding:0 16px 16px;">'+runRows+'</div>' : '')+
+    '</div>';
   }
 
   return meta + hero + slot + coach + targetsList + runHistory;
