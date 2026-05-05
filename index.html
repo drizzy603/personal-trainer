@@ -2892,7 +2892,8 @@ function renderRunSegment(){
       '</button>';
   }
 
-  var coach = renderCoachCard(getTodayActivity());
+  var todayAct = getTodayActivity();
+  var coach = todayAct.type === 'run' ? renderCoachCard(todayAct) : '';
   var targetsList = renderRunTargetsList();
   return meta + hero + slot + coach + targetsList;
 }
