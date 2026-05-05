@@ -4121,19 +4121,11 @@ function getSmartSuggestions(){
 
 function renderSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
-  // Recently logged: up to 3 most-recent unique activity types, in recency order.
   var logs = getSportLogs();
-  var seen = {}, recent = [];
-  for(var i=0;i<logs.length && recent.length<3;i++){
-    var t = logs[i].type;
-    if(seen[t]) continue;
-    seen[t] = true;
-    var s = SPORTS.find(function(x){return x.id===t;});
-    if(s) recent.push(s);
-  }
-  // Meta header — match the Workout / Run sub-tabs exactly: weekday + week
-  // index, no special "ONE-OFF" tag. The + tab is a sibling of those, not
-  // its own top-level destination.
+  var d = sportLogDraft;
+  if(!d.date) d.date = todayISO();
+
+  // Meta row
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || (crP && crP.name) || '?';
@@ -4146,126 +4138,130 @@ function renderSportEditorial(){
     '</div>'+
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
-  var hero = '<div class="kt-hero">'+
-    (firstNameP
-      ? '<div class="kt-hero-greet">'+getGreeting()+', '+_esc(firstNameP)+'.</div>'
-      : '<div class="kt-hero-greet">'+getGreeting()+'.</div>')+
-    '<h1 class="kt-hero-headline">Log<span class="kt-line2 accent">an activity.</span></h1>'+
-    '<div class="kt-hero-body">For anything outside today\'s programme — a pickup game, a hike, a yoga class. Pick a tile, log it.</div>'+
-    '</div>';
-  // Smart suggestions — context-aware: time-of-day, gap-based, rest-day-aware.
+
+  // Smart suggestions — shown as compact inline pills when available.
   var sugg = getSmartSuggestions();
   var suggHTML = '';
   if(sugg.length){
-    var sChips = sugg.map(function(it){
-      return '<button class="kt-act-suggest-chip" onclick="pickSport(\''+_esc(it.sport.id)+'\')">'+
-        '<span class="kt-act-chip-badge" style="background:'+it.sport.color+';">'+_esc(it.sport.icon)+'</span>'+
-        '<span class="kt-act-suggest-body">'+
-          '<span class="kt-act-suggest-name">'+_esc(it.sport.id)+'</span>'+
-          '<span class="kt-act-suggest-ctx">'+_esc(String(it.context).toUpperCase())+'</span>'+
-        '</span>'+
-      '</button>';
-    }).join('');
-    suggHTML = '<div class="kt-marquee-hd" style="margin-bottom:10px;">SUGGESTED</div>'+
-      '<div class="kt-act-suggest">'+sChips+'</div>';
-  }
-  // "Recently logged" chip strip — quick re-log path.
-  var recentHTML = '';
-  if(recent.length){
-    var chips = recent.map(function(s){
-      return '<button class="kt-act-chip" onclick="pickSport(\''+_esc(s.id)+'\')">'+
-        '<span class="kt-act-chip-badge" style="background:'+s.color+';">'+_esc(s.icon)+'</span>'+
-        _esc(s.id)+'</button>';
-    }).join('');
-    recentHTML = '<div class="kt-marquee-hd" style="margin-bottom:10px;">RECENTLY LOGGED</div>'+
-      '<div class="kt-act-recent">'+chips+'</div>';
-  }
-  // 4-col grid of activity tiles.
-  var rail = '<div class="kt-marquee-hd" style="margin-bottom:10px;">CHOOSE ACTIVITY</div>'+
-    '<div class="kt-act-rail">'+
-    SPORTS.map(function(s){
-      var sel = s.id === logSportType;
-      return '<button class="kt-act-tile'+(sel?' selected':'')+(logSportType && !sel?' dimmed':'')+
-        '" style="background:'+s.color+';" onclick="pickSport(\''+_esc(s.id)+'\')">'+
-        '<span class="kt-act-tile-badge">'+_esc(s.icon)+'</span>'+
-        '<span class="kt-act-tile-lbl">'+_esc(s.id)+'</span>'+
+    suggHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">'+
+      sugg.map(function(it){
+        var sel = it.sport.id === logSportType;
+        return '<button onclick="pickSport(\''+_esc(it.sport.id)+'\')" style="'+
+          'display:inline-flex;align-items:center;gap:5px;padding:5px 10px 5px 7px;'+
+          'border-radius:20px;border:1.5px solid '+(sel?it.sport.color:'var(--border)')+';'+
+          'background:'+(sel?it.sport.color+'22':'var(--card2)')+';color:var(--text);'+
+          'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
+          '-webkit-tap-highlight-color:transparent;">'+
+          '<span>'+_esc(it.sport.icon)+'</span>'+
+          '<span>'+_esc(it.sport.id)+'</span>'+
+          '<span style="color:var(--muted);font-weight:500;margin-left:1px;">'+_esc(it.context)+'</span>'+
         '</button>';
-    }).join('')+
+      }).join('')+
     '</div>';
-  // Log card — morphs to the selected sport's color. 4 numeric fields + notes.
-  var d = sportLogDraft;
-  if(!d.date) d.date = todayISO();
+  }
+
+  // Sport strip — recently logged types float to the front, then the full list.
+  var seenTypes = {}, orderedSports = [];
+  logs.forEach(function(l){
+    if(!seenTypes[l.type]){
+      seenTypes[l.type] = true;
+      var sp = SPORTS.find(function(x){return x.id===l.type;});
+      if(sp) orderedSports.push(sp);
+    }
+  });
+  SPORTS.forEach(function(sp){ if(!seenTypes[sp.id]) orderedSports.push(sp); });
+
+  var strip = '<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:14px;'+
+    '-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:2px;">'+
+    orderedSports.map(function(s){
+      var sel = s.id === logSportType;
+      return '<button onclick="pickSport(\''+_esc(s.id)+'\')" style="'+
+        'flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;'+
+        'padding:10px 13px;border-radius:16px;'+
+        'border:2px solid '+(sel?s.color:'var(--border)')+';'+
+        'background:'+(sel?s.color+'22':'var(--card2)')+';'+
+        'cursor:pointer;min-width:62px;transition:border-color .15s,background .15s;'+
+        '-webkit-tap-highlight-color:transparent;">'+
+        '<span style="font-size:20px;line-height:1;">'+_esc(s.icon)+'</span>'+
+        '<span style="font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap;'+
+          'color:'+(sel?s.color:'var(--muted)')+';">'+_esc(s.id)+'</span>'+
+      '</button>';
+    }).join('')+
+  '</div>';
+
+  // Log card — morphs to selected sport colour.
+  // Layout: duration + dist-or-intensity / intensity-or-calories + date / notes / save
   var hasDist = !!sport.distUnit;
   var sync = ' oninput="sportLogDraft.';
-  var distField = hasDist
-    ? '<div><label class="kt-act-field-lbl">DISTANCE · '+sport.distUnit.toUpperCase()+'</label>'+
-        '<input class="kt-act-input" type="number" step="0.1" min="0" inputmode="decimal" '+
-        'placeholder="0" value="'+_esc(d.distance)+'"'+sync+'distance=this.value"/></div>'
-    : '';
-  var grid;
+  var row1, row2;
   if(hasDist){
-    grid = '<div class="kt-act-logcard-grid">'+
-      '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
+    row1 = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
         '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
-      distField+
-      '</div>'+
-      '<div class="kt-act-logcard-grid">'+
-      '<div><label class="kt-act-field-lbl">INTENSITY · 1–10</label>'+
+      '<div><label class="kt-act-field-lbl">DISTANCE · '+_esc(sport.distUnit.toUpperCase())+'</label>'+
+        '<input class="kt-act-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="0" value="'+_esc(d.distance)+'"'+sync+'distance=this.value"/></div>';
+    row2 = '<div><label class="kt-act-field-lbl">INTENSITY · 1–10</label>'+
         '<input class="kt-act-input" type="number" inputmode="numeric" min="1" max="10" placeholder="7" value="'+_esc(d.intensity)+'"'+sync+'intensity=this.value"/></div>'+
-      '<div><label class="kt-act-field-lbl">CALORIES</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="350" value="'+_esc(d.calories)+'"'+sync+'calories=this.value"/></div>'+
-      '</div>';
+      '<div><label class="kt-act-field-lbl">DATE</label>'+
+        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
   } else {
-    grid = '<div class="kt-act-logcard-grid">'+
-      '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
+    row1 = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
         '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
       '<div><label class="kt-act-field-lbl">INTENSITY · 1–10</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="1" max="10" placeholder="7" value="'+_esc(d.intensity)+'"'+sync+'intensity=this.value"/></div>'+
-      '</div>'+
-      '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;">'+
-      '<div><label class="kt-act-field-lbl">CALORIES</label>'+
+        '<input class="kt-act-input" type="number" inputmode="numeric" min="1" max="10" placeholder="7" value="'+_esc(d.intensity)+'"'+sync+'intensity=this.value"/></div>';
+    row2 = '<div><label class="kt-act-field-lbl">CALORIES</label>'+
         '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="350" value="'+_esc(d.calories)+'"'+sync+'calories=this.value"/></div>'+
-      '</div>';
+      '<div><label class="kt-act-field-lbl">DATE</label>'+
+        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
   }
   var card = '<div class="kt-act-logcard morph" style="background:'+sport.color+';">'+
-    '<div class="kt-act-logcard-eyebrow">LOGGING · '+_esc(getTodayLabel().toUpperCase())+'</div>'+
-    '<div class="kt-act-logcard-ttl">'+
-      '<div class="kt-act-chip-badge" style="background:rgba(0,0,0,.18);width:36px;height:36px;border-radius:11px;font-size:13px;color:#0b0b0d;">'+_esc(sport.icon)+'</div>'+
-      '<div class="kt-act-logcard-name">'+_esc(sport.id)+'</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'+
+      '<div class="kt-act-chip-badge" style="background:rgba(0,0,0,.18);width:38px;height:38px;'+
+        'border-radius:12px;font-size:15px;color:#0b0b0d;">'+_esc(sport.icon)+'</div>'+
+      '<div>'+
+        '<div style="font-size:17px;font-weight:800;color:#0b0b0d;line-height:1.1;letter-spacing:-.3px;">'+_esc(sport.id)+'</div>'+
+        '<div style="font-size:11px;font-weight:600;color:rgba(0,0,0,.4);text-transform:uppercase;'+
+          'letter-spacing:.05em;">'+weekday+' · WK '+String(currentWeek).padStart(2,'0')+'</div>'+
+      '</div>'+
     '</div>'+
-    grid+
-    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0;">'+
-      '<div><label class="kt-act-field-lbl">DATE</label>'+
-        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
+    '<div class="kt-act-logcard-grid">'+row1+'</div>'+
+    '<div class="kt-act-logcard-grid">'+row2+'</div>'+
+    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:18px;">'+
       '<div><label class="kt-act-field-lbl">NOTES · OPTIONAL</label>'+
-        '<input class="kt-act-input notes" type="text" placeholder="How it felt…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
+        '<input class="kt-act-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
     '</div>'+
-    '<button class="kt-act-save" onclick="saveSportEditorial()" style="margin-top:18px;">Save activity →</button>'+
-    '</div>';
-  // "This week" — last 3 logged sessions across all activity types.
-  var thisWeek = '';
+    '<button class="kt-act-save" onclick="saveSportEditorial()">Save '+_esc(sport.id)+' →</button>'+
+  '</div>';
+
+  // Recent logs — last 5 across all types.
+  var recentHTML = '';
   if(logs.length){
-    var rows = logs.slice(0, 3).map(function(l){
-      var s = SPORTS.find(function(x){return x.id===l.type;}) || {color:'#888', icon:'+'};
-      var when = l.date ? fmtDate(l.date) : '';
-      var summary = buildSportSummary(l) || (l.duration ? l.duration+' min' : '—');
-      return '<div class="kt-marquee-row">'+
-        '<div class="kt-marquee-left">'+
-          '<span class="kt-act-chip-badge" style="background:'+s.color+';">'+_esc(s.icon)+'</span>'+
-          '<span class="kt-marquee-name">'+_esc(l.type)+'</span>'+
-        '</div>'+
-        '<div class="kt-marquee-right" style="flex-direction:column;align-items:flex-end;gap:2px;">'+
-          '<span class="kt-marquee-reps">'+_esc(summary)+'</span>'+
-          '<span class="kt-marquee-reps" style="color:var(--muted);">'+_esc(when)+'</span>'+
-        '</div>'+
+    var sMap = {}; SPORTS.forEach(function(s){ sMap[s.id] = s; });
+    recentHTML = '<div class="kt-marquee">'+
+      '<div class="kt-marquee-hd">RECENT</div>'+
+      logs.slice(0,5).map(function(l){
+        var s = sMap[l.type] || {color:'#888', icon:'+'};
+        var when = l.date ? fmtDate(l.date) : '';
+        var summary = buildSportSummary(l) || (l.duration ? l.duration+' min' : '—');
+        return '<div class="kt-marquee-row" style="position:relative;">'+
+          '<div class="kt-marquee-left">'+
+            '<span class="kt-act-chip-badge" style="background:'+s.color+';">'+_esc(s.icon)+'</span>'+
+            '<div>'+
+              '<div class="kt-marquee-name">'+_esc(l.type)+'</div>'+
+              '<div style="font-size:11px;color:var(--muted);margin-top:1px;">'+_esc(summary)+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="kt-marquee-right" style="gap:6px;">'+
+            '<span class="kt-marquee-reps" style="color:var(--muted);">'+_esc(when)+'</span>'+
+            '<button onclick="deleteSportLog('+l.id+')" style="background:none;border:none;'+
+              'color:var(--muted);font-size:15px;padding:0 2px;cursor:pointer;line-height:1;'+
+              '-webkit-tap-highlight-color:transparent;">✕</button>'+
+          '</div>'+
         '</div>';
-    }).join('');
-    thisWeek = '<div class="kt-marquee">'+
-      '<div class="kt-marquee-hd">THIS WEEK</div>'+
-      rows+
-      '</div>';
+      }).join('')+
+    '</div>';
   }
-  return meta + hero + suggHTML + recentHTML + rail + card + thisWeek;
+
+  return meta + suggHTML + strip + card + recentHTML;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
