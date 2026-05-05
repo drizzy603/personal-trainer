@@ -2939,8 +2939,45 @@ function openDeckRunner(overrideType){
   runnerOpen = true;
   paintRunner();
 }
+function _saveRunnerDraft(){
+  if(!runnerOpen||!runnerSession) return;
+  try{
+    localStorage.setItem('kt_runner_draft', JSON.stringify({
+      date: todayISO(),
+      session: runnerSession,
+      exIdx: runnerExIdx,
+      completed: runnerCompleted,
+      weights: runnerWeights,
+      reps: runnerReps,
+      sessionDate: runnerSessionDate
+    }));
+  }catch(e){}
+}
+function _clearRunnerDraft(){
+  try{ localStorage.removeItem('kt_runner_draft'); }catch(e){}
+}
+function _restoreRunnerDraft(){
+  try{
+    var raw=localStorage.getItem('kt_runner_draft');
+    if(!raw) return false;
+    var d=JSON.parse(raw);
+    if(!d||d.date!==todayISO()||!d.session) return false;
+    runnerSession=d.session;
+    runnerExIdx=d.exIdx||0;
+    runnerCompleted=d.completed||{};
+    runnerWeights=d.weights||{};
+    runnerReps=d.reps||{};
+    runnerSessionDate=d.sessionDate||null;
+    runnerEngaged=false;
+    runnerResting=false;
+    runnerRestLeft=90;
+    runnerOpen=true;
+    return true;
+  }catch(e){ return false; }
+}
 function closeDeckRunner(){
   runnerOpen = false;
+  _clearRunnerDraft();
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   paintRunner();
 }
@@ -3085,6 +3122,7 @@ function paintRunner(){
     root.innerHTML = '';
     return;
   }
+  _saveRunnerDraft();
   root.style.display = 'block';
   root.innerHTML = renderDeckRunner();
 }
@@ -7108,6 +7146,7 @@ try{
 currentWeek = getWeek();
 autoAdvanceWeek();
 loadCoachHistory();
+_restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
 render();
