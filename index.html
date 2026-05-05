@@ -3915,6 +3915,7 @@ function saveSportLog(){
   var logs=getSportLogs();
   logs.unshift({id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes});
   lsSet('kt_sports',logs);
+  invalidateCoachCard();
   showToast(sport.id+' Logged!');
   render();
 }
@@ -4461,6 +4462,7 @@ function saveBodyWeight(){
   render();
 }
 function deleteBodyWeight(idx){
+  if(!confirm('Delete this weight entry? This cannot be undone.')) return;
   var bws=getBodyWeights();bws.splice(idx,1);lsSet('kt_bw',bws);render();
 }
 function saveBWGoal(){
