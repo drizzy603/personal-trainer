@@ -2940,7 +2940,7 @@ function openDeckRunner(overrideType){
   paintRunner();
 }
 function _saveRunnerDraft(){
-  if(!runnerOpen||!runnerSession) return;
+  if(!runnerOpen||!runnerSession||runnerResting) return;
   try{
     localStorage.setItem('kt_runner_draft', JSON.stringify({
       date: todayISO(),
@@ -3010,7 +3010,7 @@ function runnerStepWeight(delta){
 function runnerSetWeight(val){
   var ex = _runnerEx(); if(!ex) return;
   var v = parseFloat(val);
-  if(!isNaN(v) && v >= 0) runnerWeights[ex.name] = v;
+  if(!isNaN(v) && v >= 0){ runnerWeights[ex.name] = v; _saveRunnerDraft(); }
 }
 function runnerStepReps(delta){
   var ex = _runnerEx(); if(!ex) return;
@@ -3020,7 +3020,7 @@ function runnerStepReps(delta){
 function runnerSetReps(val){
   var ex = _runnerEx(); if(!ex) return;
   var v = parseInt(val);
-  if(!isNaN(v) && v >= 0) runnerReps[ex.name] = v;
+  if(!isNaN(v) && v >= 0){ runnerReps[ex.name] = v; _saveRunnerDraft(); }
 }
 }
 function runnerCompleteSet(){
@@ -5804,7 +5804,7 @@ function executeCoachTool(name,input){
     }
     if(name==='log_sport'){
       var stype=String(input.type||'Other').trim();
-      var sdur=parseInt(input.dur)||parseInt(input.duration)||0;
+      var sdur=parseInt(input.duration)||0;
       if(!(sdur>0)) return {ok:false,error:'duration must be > 0 minutes'};
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
