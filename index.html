@@ -1629,7 +1629,33 @@ function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.week
 function adjustWeek(delta) {
   currentWeek = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
   lsSet('kt_week', currentWeek);
+  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  invalidateCoachCard();
   render();
+}
+function _mostRecentMonday(){
+  var d=new Date(todayISO()+'T00:00:00');
+  var dow=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-dow);
+  return d.toISOString().slice(0,10);
+}
+function autoAdvanceWeek(){
+  var total=getTotalWeeks();
+  if(!total||currentWeek>=total) return;
+  var stored=localStorage.getItem('kt_week_monday');
+  var thisMonday=_mostRecentMonday();
+  if(!stored){ localStorage.setItem('kt_week_monday',thisMonday); return; }
+  if(stored===thisMonday) return;
+  var d1=new Date(stored+'T00:00:00'), d2=new Date(thisMonday+'T00:00:00');
+  var elapsed=Math.round((d2-d1)/(7*86400000));
+  if(elapsed<=0) return;
+  var newWeek=Math.min(total,currentWeek+elapsed);
+  if(newWeek!==currentWeek){
+    currentWeek=newWeek;
+    lsSet('kt_week',currentWeek);
+    invalidateCoachCard();
+  }
+  localStorage.setItem('kt_week_monday',thisMonday);
 }
 
 // ── Log State ─────────────────────────────────────────────────────────────────
@@ -5606,6 +5632,8 @@ function executeCoachTool(name,input){
       var total=getTotalWeeks();
       if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
       currentWeek=w; lsSet('kt_week',w);
+      localStorage.setItem('kt_week_monday',_mostRecentMonday());
+      invalidateCoachCard();
       return {ok:true,message:'current week set to '+w};
     }
     if(name==='swap_cadence_days'){
@@ -7055,6 +7083,7 @@ try{
   });
 }catch(ex){}
 currentWeek = getWeek();
+autoAdvanceWeek();
 loadCoachHistory();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
