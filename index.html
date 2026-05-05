@@ -2981,6 +2981,11 @@ function closeDeckRunner(){
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   paintRunner();
 }
+function confirmCloseRunner(){
+  var hasProg = runnerExIdx > 0 || Object.keys(runnerCompleted||{}).length > 0;
+  if(hasProg && !confirm('Leave workout? Your progress will be lost.')) return;
+  closeDeckRunner();
+}
 function _runnerEx(){ return runnerSession ? runnerSession.exercises[runnerExIdx] : null; }
 function _runnerNext(){ return runnerSession ? runnerSession.exercises[runnerExIdx+1] : null; }
 function _runnerNext2(){ return runnerSession ? runnerSession.exercises[runnerExIdx+2] : null; }
@@ -3142,7 +3147,7 @@ function renderDeckRunner(){
 
   var hd = '<div class="kt-r-hd">'+
     '<div class="kt-r-hd-row">'+
-      '<button class="kt-r-back" onclick="closeDeckRunner()">← Today</button>'+
+      '<button class="kt-r-back" onclick="confirmCloseRunner()">← Today</button>'+
       '<div class="kt-r-day">'+_esc(runnerSession.dayName.toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>'+
       '<div class="kt-r-pct">'+pct+'%</div>'+
     '</div>'+
@@ -3868,26 +3873,31 @@ function deleteSession(id){
   lsSet('kt_sessions', getSessions().filter(function(s){return s.id!==id;}));
   calSelectedDate=null; render();
 }
+function _calNavToDate(dateStr){
+  var p=dateStr.split('-');
+  calYear=parseInt(p[0]); calMonth=parseInt(p[1])-1;
+  calSelectedDate=dateStr;
+}
 function moveSession(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
   var sessions=getSessions();
   sessions.forEach(function(s){ if(s.id===id){ s.date=newDate; s.week=weekForDate(newDate); } });
   lsSet('kt_sessions',sessions);
-  calSelectedDate=newDate; render();
+  _calNavToDate(newDate); render();
 }
 function moveRun(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
   var runs=getRuns();
   runs.forEach(function(r){ if(r.id===id){ r.date=newDate; r.week=weekForDate(newDate); } });
   lsSet('kt_runs',runs);
-  calSelectedDate=newDate; render();
+  _calNavToDate(newDate); render();
 }
 function moveSport(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
   var sports=getSportLogs();
   sports.forEach(function(sp){ if(sp.id===id){ sp.date=newDate; } });
   lsSet('kt_sports',sports);
-  calSelectedDate=newDate; render();
+  _calNavToDate(newDate); render();
 }
 function pickSport(id){ logSportType=id; render(); }
 
