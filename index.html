@@ -3027,7 +3027,6 @@ function runnerSetReps(val){
   var v = parseInt(val);
   if(!isNaN(v) && v >= 0){ runnerReps[ex.name] = v; _saveRunnerDraft(); }
 }
-}
 function runnerCompleteSet(){
   var ex = _runnerEx(); if(!ex) return;
   var done = (runnerCompleted[ex.name] || 0) + 1;
