@@ -744,6 +744,8 @@ select option{background:var(--bg);}
 .kt-step-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.1em;margin-bottom:6px;}
 .kt-step-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
 .kt-step-val{font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1;color:inherit;}
+.kt-step-input{background:none;border:none;outline:none;padding:0;margin:0;width:90px;-webkit-appearance:none;appearance:none;font-family:inherit;caret-color:var(--accent);}
+.kt-step-input::-webkit-inner-spin-button,.kt-step-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
 .kt-step-btns{display:flex;gap:5px;}
 .kt-step-btn{width:30px;height:30px;border-radius:9px;border:none;cursor:pointer;color:inherit;font-size:16px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
@@ -2965,13 +2967,24 @@ function runnerToggleEngaged(){
 }
 function runnerStepWeight(delta){
   var ex = _runnerEx(); if(!ex) return;
-  runnerWeights[ex.name] = Math.max(0, (runnerWeights[ex.name]||0) + delta);
+  runnerWeights[ex.name] = Math.max(0, Math.round(((runnerWeights[ex.name]||0) + delta)*100)/100);
   paintRunner();
+}
+function runnerSetWeight(val){
+  var ex = _runnerEx(); if(!ex) return;
+  var v = parseFloat(val);
+  if(!isNaN(v) && v >= 0) runnerWeights[ex.name] = v;
 }
 function runnerStepReps(delta){
   var ex = _runnerEx(); if(!ex) return;
   runnerReps[ex.name] = Math.max(0, (runnerReps[ex.name]||0) + delta);
   paintRunner();
+}
+function runnerSetReps(val){
+  var ex = _runnerEx(); if(!ex) return;
+  var v = parseInt(val);
+  if(!isNaN(v) && v >= 0) runnerReps[ex.name] = v;
+}
 }
 function runnerCompleteSet(){
   var ex = _runnerEx(); if(!ex) return;
@@ -3189,16 +3202,25 @@ function _renderRunnerEngagedBody(ex, done){
   var stepperW = '<div class="kt-step">'+
     '<div class="kt-step-lbl">WEIGHT</div>'+
     '<div class="kt-step-row">'+
-      '<div class="kt-step-val">'+w+'<span class="kt-step-unit">lb</span></div>'+
+      '<span style="display:flex;align-items:baseline;gap:0;">'+
+        '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="2.5" min="0" value="'+w+'"'+
+          ' onclick="event.stopPropagation();this.select()"'+
+          ' oninput="event.stopPropagation();runnerSetWeight(this.value)"'+
+          ' onchange="event.stopPropagation();runnerSetWeight(this.value)"/>'+
+        '<span class="kt-step-unit">lb</span>'+
+      '</span>'+
       '<div class="kt-step-btns">'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-5)">−</button>'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(5)">+</button>'+
+        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
+        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
       '</div>'+
     '</div></div>';
   var stepperR = '<div class="kt-step">'+
     '<div class="kt-step-lbl">REPS</div>'+
     '<div class="kt-step-row">'+
-      '<div class="kt-step-val">'+r+'</div>'+
+      '<input class="kt-step-val kt-step-input" type="number" inputmode="numeric" step="1" min="0" value="'+r+'"'+
+        ' onclick="event.stopPropagation();this.select()"'+
+        ' oninput="event.stopPropagation();runnerSetReps(this.value)"'+
+        ' onchange="event.stopPropagation();runnerSetReps(this.value)"/>'+
       '<div class="kt-step-btns">'+
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(-1)">−</button>'+
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
