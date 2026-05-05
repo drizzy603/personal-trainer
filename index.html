@@ -3865,6 +3865,7 @@ function saveRun() {
 // ── SPORTS ───────────────────────────────────────────────────────────────────
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
+  if(!confirm('Delete this activity? This cannot be undone.')) return;
   lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
   calSelectedDate=null; render();
 }
