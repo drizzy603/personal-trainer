@@ -3915,7 +3915,7 @@ function saveSportLog(){
   logs.unshift({id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes});
   lsSet('kt_sports',logs);
   invalidateCoachCard();
-  showToast(sport.id+' Logged!');
+  showToast(sport.id+' logged');
   render();
 }
 
@@ -4122,7 +4122,7 @@ function renderSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
   var logs = getSportLogs();
   var d = sportLogDraft;
-  if(!d.date) d.date = todayISO();
+  if(!d.date || d.date < todayISO()) d.date = todayISO();
 
   // Meta row
   var firstNameP = getUserFirstName();
