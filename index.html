@@ -4234,11 +4234,13 @@ function renderSportEditorial(){
       '<div class="kt-act-logcard-name">'+_esc(sport.id)+'</div>'+
     '</div>'+
     grid+
-    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:18px;">'+
+    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0;">'+
+      '<div><label class="kt-act-field-lbl">DATE</label>'+
+        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
       '<div><label class="kt-act-field-lbl">NOTES · OPTIONAL</label>'+
-        '<input class="kt-act-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
+        '<input class="kt-act-input notes" type="text" placeholder="How it felt…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
     '</div>'+
-    '<button class="kt-act-save" onclick="saveSportEditorial()">Save activity →</button>'+
+    '<button class="kt-act-save" onclick="saveSportEditorial()" style="margin-top:18px;">Save activity →</button>'+
     '</div>';
   // "This week" — last 3 logged sessions across all activity types.
   var thisWeek = '';
@@ -4273,11 +4275,12 @@ function saveSportEditorial(){
   var inten = parseInt(d.intensity) || 0;
   var cals = parseInt(d.calories) || 0;
   var notes = (d.notes||'').trim();
+  var date = (d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) ? d.date : todayISO();
   // Require at least duration so we don't write a blank log.
   if(!dur){ showToast('Enter a duration'); return; }
   var rec = {
     id: Date.now(),
-    date: todayISO(),
+    date: date,
     type: logSportType,
     duration: dur,
     data: { intensity:inten, calories:cals },
