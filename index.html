@@ -2876,9 +2876,19 @@ function renderRunSegment(){
     '</div>';
 
   // CTA / form / confirmation strip occupy the same vertical slot.
+  // Also check kt_runs for today — covers runs logged via the Coach tool,
+  // which write to storage but never set the in-memory runLogConfirmed flag.
+  var _todayStoredRun = null;
+  if(!runLogConfirmed && !runLogOpen){
+    _todayStoredRun = getRuns().find(function(r){ return r.date === todayISO(); }) || null;
+  }
   var slot;
   if(runLogConfirmed){
     slot = renderRunSavedStrip();
+  } else if(_todayStoredRun){
+    slot = '<div class="kt-rconfirm">'+
+      '<div>✓ Run logged · '+_esc(_todayStoredRun.distance)+' km in '+_esc(_todayStoredRun.time)+'</div>'+
+      '</div>';
   } else if(runLogOpen){
     slot = renderInlineRunLog();
   } else {
