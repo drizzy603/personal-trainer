@@ -3854,6 +3854,7 @@ function saveRun() {
   var runs=getRuns();
   runs.unshift({id:Date.now(),distance:dist,time:time,date:date,week:weekForDate(date),note:note,hr:hr,type:type});
   lsSet('kt_runs',runs);
+  invalidateCoachCard();
   var pace=calcPace(dist,time);
   var d=new Date(date+'T00:00:00');
   var dd=String(d.getDate()).padStart(2,'0');
@@ -4494,6 +4495,7 @@ function saveMeasurement(){
   showToast('Measurements saved!');render();
 }
 function deleteMeasurement(idx){
+  if(!confirm('Delete this measurement? This cannot be undone.')) return;
   var ms=getMeasurements();ms.splice(idx,1);lsSet('kt_measurements',ms);render();
 }
 function calcBWTrend(bws){
