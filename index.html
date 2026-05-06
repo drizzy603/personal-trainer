@@ -1585,6 +1585,7 @@ function importFromHealth(){
     lsSet('kt_hk_imported', Array.from(seen));
     localStorage.setItem('kt_hk_last_sync', String(Date.now()));
     if(added){
+      invalidateCoachCard();
       showToast(added+' run'+(added>1?'s':'')+' imported');
       render();
     } else if(skippedNoDist){
@@ -1612,6 +1613,7 @@ function resetHealthImport(){
   lsSet('kt_runs', kept);
   localStorage.removeItem('kt_hk_imported');
   localStorage.removeItem('kt_hk_last_sync');
+  if(removed) invalidateCoachCard();
   showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
   render();
 }
@@ -2712,6 +2714,7 @@ function undoLastRun(){
   var id = runLogConfirmed.id;
   var runs = getRuns().filter(function(r){ return r.id !== id; });
   lsSet('kt_runs', runs);
+  invalidateCoachCard();
   runLogConfirmed = null;
   render();
 }
