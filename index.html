@@ -72,7 +72,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
-#screen{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + var(--tab-bottom-clear));scrollbar-width:none;}
+#screen{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 /* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
    content (chat messages, long lists) doesn't bleed visibly under the Dynamic
@@ -561,7 +561,7 @@ select option{background:var(--bg);}
 .kt-meta-ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent));display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px;}
 .kt-hero{margin-bottom:30px;}
 .kt-hero-greet{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
-.kt-hero-headline{font-size:48px;font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;}
+.kt-hero-headline{font-size:clamp(38px,12vw,48px);font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;overflow-wrap:break-word;}
 .kt-hero-headline .kt-line2{display:block;}
 .kt-hero-headline .kt-line2.accent{color:var(--accent);}
 .kt-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
@@ -609,7 +609,7 @@ select option{background:var(--bg);}
 /* Progress tab — editorial streak hero + Lifts/Runs toggle */
 .kt-prog-hero{margin-bottom:24px;}
 .kt-prog-hero-greet{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
-.kt-prog-hero-num{font-size:72px;font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;}
+.kt-prog-hero-num{font-size:clamp(44px,12.5vw,72px);font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;overflow-wrap:break-word;}
 .kt-prog-hero-num span{display:block;}
 .kt-prog-hero-num span.accent{color:var(--accent);}
 .kt-prog-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
