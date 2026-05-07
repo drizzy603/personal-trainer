@@ -2298,7 +2298,7 @@ function renderTodayEditorial(){
   var deload = isDeloadWeek();
   if(act.type === 'lift'){
     line1 = 'Today is';
-    line2 = (act.dayName||'').toLowerCase()+' day.';
+    line2 = ((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'').toLowerCase()+' day.';
     line2Class = 'accent';
     if(deload){
       body = 'Deload — drop to 60% of working weights, 3×5, RPE 5–6. Let the body absorb the work.';
@@ -2403,7 +2403,7 @@ function renderTodayEditorial(){
     cta = '<button class="kt-cta" onclick="openDeckRunner()">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">'+_esc(act.dayName)+' · '+act.exercises.length+' exercises</div>'+
+        '<div class="kt-cta-title">'+_esc((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName)+' · '+act.exercises.length+' exercises</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
@@ -3180,7 +3180,7 @@ function renderDeckRunner(){
   var hd = '<div class="kt-r-hd">'+
     '<div class="kt-r-hd-row">'+
       '<button class="kt-r-back" onclick="confirmCloseRunner()">← Today</button>'+
-      '<div class="kt-r-day">'+_esc(runnerSession.dayName.toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>'+
+      '<div class="kt-r-day">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName).toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>'+
       '<div class="kt-r-pct">'+pct+'%</div>'+
     '</div>'+
     '<div class="kt-r-bar"><div class="kt-r-bar-fill" style="width:'+pct+'%"></div></div>'+
@@ -3341,7 +3341,7 @@ function _renderRunnerDoneBody(ex, isLast){
 }
 function _swapModalLabel(planEntry){
   if(planEntry.isRest) return 'Rest';
-  return planEntry.type;
+  return (SESS[planEntry.type]&&SESS[planEntry.type].label)||planEntry.type;
 }
 function openSwapModal(sourceDow){
   closeSwapModal();
@@ -3571,8 +3571,9 @@ function _renderWeekDetail(wd){
           '</div>';
         }).join('')+'</div>';
       } else {
-        summary = _esc(p.type)+' day';
-        fullHTML = '<div class="wk-day-empty">No exercises planned for this '+_esc(p.type)+' day yet.</div>';
+        var _pLabel=(SESS[p.type]&&SESS[p.type].label)||p.type;
+        summary = _esc(_pLabel)+' day';
+        fullHTML = '<div class="wk-day-empty">No exercises planned for this '+_esc(_pLabel)+' day yet.</div>';
       }
     } else if(p.isRun){
       var rd = (wd.runs && wd.runs[dayName]) || (dayName==='Tue' && wd.runTue) || (dayName==='Sat' && wd.runSat);
@@ -3625,7 +3626,7 @@ function _renderWeekDetail(wd){
       fullHTML = '<div class="wk-day-empty">Recover. Walk, stretch, eat well.</div>';
     }
     var iconColor = p.isLift?'var(--accent)':p.isRun?'#60a5fa':p.isSport?'#a78bfa':'var(--muted)';
-    var label = p.isRest ? 'Rest' : (p.type || 'Activity');
+    var label = p.isRest ? 'Rest' : ((SESS[p.type]&&SESS[p.type].label)||p.type||'Activity');
     var rowId = 'wk-'+wd.wk+'-day-'+dow;
     dayRows += '<div class="wk-day-row" id="'+rowId+'-row" onclick="toggleWkDay(\''+rowId+'\')" role="button" aria-expanded="false">'+
       '<span class="wk-day-dow">'+dayName.toUpperCase()+'</span>'+
@@ -4937,7 +4938,7 @@ function renderProgress() {
   var squatData=[];
   for(var i=sessions.length-1;i>=0&&squatData.length<10;i--){
     var s=sessions[i];
-    if(s.type!=='Legs') continue;
+    if(s.type!=='Legs'&&s.type!=='Legs2') continue;
     (s.exercises||[]).forEach(function(ex){
       if((ex.name==='Barbell Back Squat'||ex.name==='Back Squat')&&parseFloat(ex.weight)>0&&squatData.length<10)
         squatData.push({date:s.date,val:parseFloat(ex.weight)});
@@ -5024,13 +5025,14 @@ function renderProgress() {
     }
     return data.reverse();
   }
-  var pushVol=getVolTrend('Push'), pullVol=getVolTrend('Pull'), legsVol=getVolTrend('Legs');
+  var pushVol=getVolTrend('Push'), pullVol=getVolTrend('Pull'), legsVol=getVolTrend('Legs'), legs2Vol=getVolTrend('Legs2');
   var volCharts='';
-  if(pushVol.length>=2||pullVol.length>=2||legsVol.length>=2){
+  if(pushVol.length>=2||pullVol.length>=2||legsVol.length>=2||legs2Vol.length>=2){
     volCharts='<div class="chart-card"><div class="chart-lbl" style="margin-bottom:14px;">Volume · total lb per session</div>';
     if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px;">Push</div>'+svgChart(pushVol,'#c8ff00')+'</div>';
     if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:6px;">Pull</div>'+svgChart(pullVol,'#60a5fa')+'</div>';
-    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs</div>'+svgChart(legsVol,'#fb923c')+'</div>';
+    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:'+(legs2Vol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs A</div>'+svgChart(legsVol,'#fb923c')+'</div>';
+    if(legs2Vol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs B</div>'+svgChart(legs2Vol,'#f97316')+'</div>';
     volCharts+='</div>';
   }
 
