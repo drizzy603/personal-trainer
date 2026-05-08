@@ -2973,7 +2973,7 @@ function openDeckRunner(overrideType){
   paintRunner();
 }
 function _saveRunnerDraft(){
-  if(!runnerOpen||!runnerSession||runnerResting) return;
+  if(!runnerOpen||!runnerSession) return;
   try{
     localStorage.setItem('kt_runner_draft', JSON.stringify({
       date: todayISO(),
