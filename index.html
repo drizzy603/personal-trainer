@@ -3012,6 +3012,7 @@ function closeDeckRunner(){
   runnerOpen = false;
   _clearRunnerDraft();
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+  _trovoTimerEnd();
   paintRunner();
 }
 function confirmCloseRunner(){
@@ -3024,6 +3025,7 @@ function _runnerNext(){ return runnerSession ? runnerSession.exercises[runnerExI
 function _runnerNext2(){ return runnerSession ? runnerSession.exercises[runnerExIdx+2] : null; }
 function runnerGoTo(i){
   if(!runnerSession || i<0 || i>=runnerSession.exercises.length) return;
+  if(runnerResting) _trovoTimerEnd();
   runnerExIdx = i;
   runnerEngaged = false;
   runnerResting = false;
@@ -3060,6 +3062,16 @@ function runnerSetReps(val){
   var v = parseInt(val);
   if(!isNaN(v) && v >= 0){ runnerReps[ex.name] = v; _saveRunnerDraft(); }
 }
+function _trovoTimerStart(ex, nextSet){
+  var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
+  if(!TT) return;
+  TT.startTimer({exerciseName: ex.name, seconds: runnerRestLeft, nextSet: nextSet, totalSets: ex.sets}).catch(function(){});
+}
+function _trovoTimerEnd(){
+  var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
+  if(!TT) return;
+  TT.endTimer().catch(function(){});
+}
 function runnerCompleteSet(){
   var ex = _runnerEx(); if(!ex) return;
   var done = (runnerCompleted[ex.name] || 0) + 1;
@@ -3068,11 +3080,13 @@ function runnerCompleteSet(){
     runnerResting = true;
     runnerRestLeft = 90;
     if(runnerRestTick) clearInterval(runnerRestTick);
+    _trovoTimerStart(ex, done + 1);
     runnerRestTick = setInterval(function(){
       runnerRestLeft -= 1;
       if(runnerRestLeft <= 0){
         clearInterval(runnerRestTick); runnerRestTick=null;
         runnerResting = false; runnerRestLeft = 90;
+        _trovoTimerEnd();
       }
       paintRunner();
     }, 1000);
@@ -3081,6 +3095,7 @@ function runnerCompleteSet(){
     runnerEngaged = false;
     runnerResting = false;
     if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+    _trovoTimerEnd();
     // Auto-advance after 1.2s if not last.
     var idx = runnerExIdx;
     if(idx < runnerSession.exercises.length - 1){
@@ -3099,6 +3114,7 @@ function runnerLogAllAtTarget(){
   runnerEngaged = false;
   runnerResting = false;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+  _trovoTimerEnd();
   var idx = runnerExIdx;
   if(idx < runnerSession.exercises.length - 1){
     setTimeout(function(){
@@ -3113,6 +3129,7 @@ function runnerSkipRest(){
   runnerResting = false;
   runnerRestLeft = 90;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+  _trovoTimerEnd();
   paintRunner();
 }
 // Finish: write a real session record and exit to Today.
