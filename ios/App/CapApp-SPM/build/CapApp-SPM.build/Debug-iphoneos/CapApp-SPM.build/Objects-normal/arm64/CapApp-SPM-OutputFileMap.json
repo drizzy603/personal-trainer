@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM-primary.dia",
+    "emit-module-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM-primary-emit-module.dia",
+    "pch" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM-primary.swiftdeps"
+  },
+  "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/Sources/CapApp-SPM/CapApp-SPM.swift" : {
+    "const-values" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.swiftconstvalues",
+    "dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.d",
+    "diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.dia",
+    "index-unit-output-path" : "/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.o",
+    "llvm-bc" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.bc",
+    "object" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.o",
+    "swift-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM.swiftdeps",
+    "swiftmodule" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/CapApp-SPM~partial.swiftmodule"
+  },
+  "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/Sources/CapApp-SPM/HealthKitReader.swift" : {
+    "const-values" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.swiftconstvalues",
+    "dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.d",
+    "diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.dia",
+    "index-unit-output-path" : "/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.o",
+    "llvm-bc" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.bc",
+    "object" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.o",
+    "swift-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader.swiftdeps",
+    "swiftmodule" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/HealthKitReader~partial.swiftmodule"
+  },
+  "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoHealthPlugin.swift" : {
+    "const-values" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.swiftconstvalues",
+    "dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.d",
+    "diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.dia",
+    "index-unit-output-path" : "/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.o",
+    "llvm-bc" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.bc",
+    "object" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.o",
+    "swift-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin.swiftdeps",
+    "swiftmodule" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoHealthPlugin~partial.swiftmodule"
+  },
+  "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoTimerPlugin.swift" : {
+    "const-values" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.swiftconstvalues",
+    "dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.d",
+    "diagnostics" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.dia",
+    "index-unit-output-path" : "/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.o",
+    "llvm-bc" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.bc",
+    "object" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.o",
+    "swift-dependencies" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin.swiftdeps",
+    "swiftmodule" : "/Users/kalani/Documents/Personal trainer/ios/App/CapApp-SPM/build/CapApp-SPM.build/Debug-iphoneos/CapApp-SPM.build/Objects-normal/arm64/TrovoTimerPlugin~partial.swiftmodule"
+  }
+}

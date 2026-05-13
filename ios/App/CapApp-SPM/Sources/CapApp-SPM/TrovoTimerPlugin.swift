@@ -1,11 +1,6 @@
 import Foundation
 import Capacitor
 
-extension Notification.Name {
-    static let trovoTimerStart = Notification.Name("TrovoTimerStart")
-    static let trovoTimerEnd   = Notification.Name("TrovoTimerEnd")
-}
-
 @objc(TrovoTimerPlugin)
 public class TrovoTimerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "TrovoTimerPlugin"
@@ -24,7 +19,7 @@ public class TrovoTimerPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         NotificationCenter.default.post(
-            name: .trovoTimerStart,
+            name: Notification.Name("TrovoTimerStart"),
             object: nil,
             userInfo: [
                 "exerciseName": exerciseName,
@@ -37,7 +32,7 @@ public class TrovoTimerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func endTimer(_ call: CAPPluginCall) {
-        NotificationCenter.default.post(name: .trovoTimerEnd, object: nil)
+        NotificationCenter.default.post(name: Notification.Name("TrovoTimerEnd"), object: nil)
         call.resolve()
     }
 }
