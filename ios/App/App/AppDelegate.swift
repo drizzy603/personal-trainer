@@ -7,8 +7,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
 
+    // Stored as Any? because @available cannot annotate stored properties.
+    private var _restActivityStorage: Any? = nil
     @available(iOS 16.2, *)
-    private var restActivity: Activity<TrovoTimerAttributes>?
+    private var restActivity: Activity<TrovoTimerAttributes>? {
+        get { _restActivityStorage as? Activity<TrovoTimerAttributes> }
+        set { _restActivityStorage = newValue }
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         NotificationCenter.default.addObserver(self, selector: #selector(handleTimerStart(_:)), name: .trovoTimerStart, object: nil)
