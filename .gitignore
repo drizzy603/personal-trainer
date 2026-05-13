@@ -8,3 +8,5 @@ trovo-backup-*.json
 screenshots/out/
 .claude/
 xcuserdata/
+ios/App/CapApp-SPM/build/
+ios/App/build/
