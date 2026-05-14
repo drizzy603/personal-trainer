@@ -6676,6 +6676,16 @@ function renderCoach(){
   }
 
   var inputPlaceholder=intakeMode?'Answer the Coach…':'Message Coach…';
+  var imgPreview=pendingImage
+    ?'<div style="position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 58px);z-index:51;'+
+        'background:rgba(22,22,26,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);'+
+        'border:1px solid var(--border);border-radius:16px;padding:10px;">'+
+        '<button onclick="clearPendingImage()" style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;'+
+          'background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;'+
+          'cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;-webkit-tap-highlight-color:transparent;">✕</button>'+
+        '<img src="'+pendingImage.previewUrl+'" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px;display:block;">'+
+      '</div>'
+    :'';
   var inputRow='<div class="coach-input-row">'+
     (!intakeMode
       ?'<button onclick="triggerImagePicker()" style="background:none;border:none;padding:6px;cursor:pointer;flex-shrink:0;opacity:'+(pendingImage?'1':'.45')+';-webkit-tap-highlight-color:transparent;" title="Attach photo">'+
@@ -6684,12 +6694,6 @@ function renderCoach(){
             '<polyline points="21 15 16 10 5 21"/>'+
           '</svg>'+
         '</button>'
-      :'')+
-    (pendingImage
-      ?'<div style="position:relative;flex-shrink:0;">'+
-          '<img src="'+pendingImage.previewUrl+'" style="width:40px;height:40px;object-fit:cover;border-radius:8px;display:block;">'+
-          '<button onclick="clearPendingImage()" style="position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.8);border:none;color:#fff;font-size:10px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;-webkit-tap-highlight-color:transparent;">✕</button>'+
-        '</div>'
       :'')+
     '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" rows="1" '+
       'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendCoachMessage();}" '+
@@ -6713,7 +6717,8 @@ function renderCoach(){
     coachHead+
   '</div>'+
     '<div class="coach-chat-body">'+
-      '<div class="coach-msgs-area">'+msgsHTML+'</div>'+
+      '<div class="coach-msgs-area" style="'+(pendingImage?'padding-bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 300px)':'')+'">'+msgsHTML+'</div>'+
+      imgPreview+
       inputRow+
     '</div>';
 }
