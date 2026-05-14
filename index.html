@@ -3907,10 +3907,11 @@ function saveRun() {
   var dist=parseFloat(distEl?distEl.value:0);
   var time=timeEl?timeEl.value.trim():'';
   if(!dist||!time){showToast('Enter distance and time');return;}
-  var date=dateEl?dateEl.value:todayISO();
+  var date=(dateEl&&dateEl.value)||todayISO();
   var note=noteEl?noteEl.value.trim():'';
   var hr=hrEl?parseInt(hrEl.value)||0:0;
   var type=typeEl?typeEl.value:'easy';
+  if(time&&!/^\d{1,2}:\d{2}(:\d{2})?$/.test(time)){showToast('Time format: mm:ss (e.g. 28:30)');return;}
   var runs=getRuns();
   runs.unshift({id:Date.now(),distance:dist,time:time,date:date,week:weekForDate(date),note:note,hr:hr,type:type});
   lsSet('kt_runs',runs);
@@ -5415,13 +5416,16 @@ function renderHistory() {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
+var _toastTimer=null;
 function showToast(msg){
   var t=document.getElementById('toast');
+  if(!t)return;
   t.textContent=msg;
-  t.style.background = 'var(--green)';
-  t.style.color = '#000';
+  t.style.background='var(--green)';
+  t.style.color='#000';
   t.classList.add('show');
-  setTimeout(function(){t.classList.remove('show');},2200);
+  if(_toastTimer)clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(function(){t.classList.remove('show');_toastTimer=null;},2200);
 }
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
@@ -5444,7 +5448,11 @@ function clearCoachHistory(){
 
 function md(text){
   text=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  text=text.replace(/^###\s+(.+)$/gm,'<strong>$1</strong>');
+  text=text.replace(/^##\s+(.+)$/gm,'<strong style="font-size:15px;">$1</strong>');
+  text=text.replace(/^#\s+(.+)$/gm,'<strong style="font-size:16px;">$1</strong>');
   text=text.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  text=text.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
   text=text.replace(/`([^`\n]+)`/g,'<code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
   var lines=text.split('\n');
   var out=[];var inList=false;
@@ -5530,11 +5538,14 @@ async function startRoutineIntake(){
   streamingContent='';
   render();
   scrollChatBottom();
-  await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-4-6',16384);
-  coachLoading=false;
-  streamingContent='';
-  render();
-  scrollChatBottom();
+  try{
+    await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-4-6',16384);
+  }finally{
+    coachLoading=false;
+    streamingContent='';
+    render();
+    scrollChatBottom();
+  }
 }
 
 // ─── Coach tools ────────────────────────────────────────────────────────────
@@ -6400,12 +6411,14 @@ async function sendCoachMessage(){
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?'claude-sonnet-4-6':coachModel;
   var maxTok=16384;
-  await runCoachTurn(systemPrompt,model,maxTok);
-
-  coachLoading=false;
-  streamingContent='';
-  render();
-  scrollChatBottom();
+  try{
+    await runCoachTurn(systemPrompt,model,maxTok);
+  }finally{
+    coachLoading=false;
+    streamingContent='';
+    render();
+    scrollChatBottom();
+  }
 }
 
 function sendCoachChip(txt){
