@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260514-1"/>
+<meta name="build" content="20260514-3"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -1503,7 +1503,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name'];
 function exportData() {
   var data = {};
   ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
@@ -1592,7 +1592,7 @@ function importFromHealth(){
         distance: Math.round(r.distanceKm*100)/100,
         time: _secsToMMSS(r.durationSec),
         date: localISO,
-        week: currentWeek,
+        week: weekForDate(localISO),
         note: 'From Apple Health',
         hr: r.avgHr||0,
         type: 'easy'
@@ -2706,6 +2706,10 @@ function saveInlineRun(){
   var time = (runLogDraft.time||'').trim();
   if(!(dist > 0) || !time){
     showToast('Enter distance and time');
+    return;
+  }
+  if(!/^\d{1,2}:\d{2}(:\d{2})?$/.test(time)){
+    showToast('Time format: mm:ss (e.g. 28:30)');
     return;
   }
   var hr = parseInt(runLogDraft.hr) || 0;
@@ -4522,7 +4526,7 @@ function renderData() {
 
 function saveBodyWeight(){
   var v=parseFloat(document.getElementById('bwVal')?document.getElementById('bwVal').value:0);
-  var d=document.getElementById('bwDate')?document.getElementById('bwDate').value:todayISO();
+  var d=(document.getElementById('bwDate')||{}).value||todayISO();
   if(!v){showToast('Enter a weight');return;}
   var bws=getBodyWeights();
   bws.push({id:Date.now(),date:d,weight:v});
@@ -4544,7 +4548,7 @@ function saveBWGoal(){
 }
 function getMeasurements(){return lsGet('kt_measurements')||[];}
 function saveMeasurement(){
-  var d=document.getElementById('msDate')?document.getElementById('msDate').value:todayISO();
+  var d=(document.getElementById('msDate')||{}).value||todayISO();
   var fields=[['msWaist','waist'],['msChest','chest'],['msArms','arms'],['msHips','hips'],['msThighs','thighs']];
   var entry={date:d};var hasAny=false;
   fields.forEach(function(f){
