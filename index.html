@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260430-33"/>
+<meta name="build" content="20260514-1"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -3061,6 +3061,25 @@ function runnerSetReps(val){
   var ex = _runnerEx(); if(!ex) return;
   var v = parseInt(val);
   if(!isNaN(v) && v >= 0){ runnerReps[ex.name] = v; _saveRunnerDraft(); }
+}
+async function checkPendingShare(){
+  if(!isNativeIOS()) return;
+  var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
+  if(!TS) return;
+  try {
+    var r = await TS.getPendingShare();
+    if(!r || !r.imageBase64) return;
+    pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
+    coachView = 'chat';
+    currentTab = 'coach';
+    render();
+    if(r.comment){
+      setTimeout(function(){
+        var ta = document.getElementById('coach-input');
+        if(ta){ ta.value = r.comment; ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,100)+'px'; }
+      }, 200);
+    }
+  } catch(e){}
 }
 function _trovoTimerStart(ex, nextSet){
   var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
@@ -7218,6 +7237,10 @@ var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
 render();
 setTimeout(checkForLiveUpdate, 2000);
+setTimeout(checkPendingShare, 2500);
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible') setTimeout(checkPendingShare, 600);
+});
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
 // the screenshot helper can drive the sim without UI taps. The key is
