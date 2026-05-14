@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260514-3"/>
+<meta name="build" content="20260514-4"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -860,6 +860,8 @@ var streamingContent = '';
 var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
 var intakeMode    = false;   // true when generating a new routine
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
+var _hkPendingRun  = null;   // most-recent unimported Health run while on Run tab
+var _hkPendingDismissed = false; // true once user dismisses the quick-log card this session
 var _runningTools = [];      // transient pills while a multi-round tool-use turn is in progress
 var _streamingTool = null;   // {name, progress} — pending pill while a tool_use JSON streams in
 // Exercise library state
@@ -1635,6 +1637,68 @@ function resetHealthImport(){
   if(removed) invalidateCoachCard();
   showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
   render();
+}
+
+// ── Health quick-log (Run tab) ────────────────────────────────────────────────
+// Silently checks Apple Health for any runs in the last 24 h that haven't been
+// imported yet. Only fires in the native iOS shell and only when Health has been
+// authorized before (kt_hk_last_sync set by a prior batch import or quick-log).
+function checkRecentHealthRun(){
+  if(!isNativeIOS()) return;
+  if(_hkPendingDismissed || _hkPendingRun) return;
+  if(!localStorage.getItem('kt_hk_last_sync')) return;
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(!TH) return;
+  var since = Date.now() - 24*60*60*1000;
+  TH.fetchRuns({sinceMs: since}).then(function(res){
+    var runs = (res&&res.runs)||[];
+    var seen = new Set(lsGet('kt_hk_imported')||[]);
+    var fresh = runs.filter(function(r){
+      return r && r.uuid && !seen.has(r.uuid) && r.distanceKm > 0;
+    });
+    if(fresh.length){ _hkPendingRun = fresh[0]; render(); }
+  }).catch(function(){});
+}
+function logPendingHealthRun(){
+  var r = _hkPendingRun; if(!r) return;
+  var d = new Date(r.startDate);
+  var localISO = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  var rec = {
+    id: Date.now(),
+    distance: Math.round(r.distanceKm*100)/100,
+    time: _secsToMMSS(r.durationSec),
+    date: localISO,
+    week: weekForDate(localISO),
+    note: 'From Apple Health',
+    hr: r.avgHr||0,
+    type: 'easy'
+  };
+  var runs = getRuns(); runs.unshift(rec); lsSet('kt_runs', runs);
+  var seen = lsGet('kt_hk_imported')||[]; seen.push(r.uuid); lsSet('kt_hk_imported', seen);
+  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  invalidateCoachCard();
+  _hkPendingRun = null;
+  runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  render();
+}
+function dismissPendingHealthRun(){ _hkPendingDismissed=true; _hkPendingRun=null; render(); }
+function renderHealthQuickLog(){
+  var r = _hkPendingRun;
+  var distStr = (Math.round(r.distanceKm*100)/100)+'km';
+  var timeStr = _secsToMMSS(r.durationSec);
+  var pace = calcPace(r.distanceKm, timeStr);
+  var d = new Date(r.startDate);
+  var timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  var meta = pace+'/km'+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+  return '<div style="background:var(--card);border:1px solid rgba(200,255,0,.2);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
+      '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(distStr)+' · '+_esc(timeStr)+'</div>'+
+    '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
+    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this run →</button>'+
+  '</div>';
 }
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
@@ -2910,7 +2974,10 @@ function renderRunSegment(){
     _todayStoredRun = getRuns().find(function(r){ return r.date === todayISO(); }) || null;
   }
   var slot;
-  if(runLogConfirmed){
+  var _showHealthCard = !!(_hkPendingRun && !_hkPendingDismissed && !runLogConfirmed && !_todayStoredRun && !runLogOpen);
+  if(_showHealthCard){
+    slot = renderHealthQuickLog();
+  } else if(runLogConfirmed){
     slot = renderRunSavedStrip();
   } else if(_todayStoredRun){
     slot = '<div class="kt-rconfirm">'+
@@ -2931,10 +2998,22 @@ function renderRunSegment(){
       '</button>';
   }
 
+  // Nudge native iOS users who haven't connected Apple Health yet so they know
+  // quick-log is available. Hidden once they've done a first import.
+  var healthNudge = '';
+  if(isNativeIOS() && !localStorage.getItem('kt_hk_last_sync') && !_showHealthCard){
+    healthNudge = '<div style="display:flex;align-items:center;justify-content:space-between;'+
+      'padding:12px 16px;border-radius:14px;border:1px solid var(--border);margin-bottom:18px;">'+
+      '<div style="font-size:13px;color:var(--muted);">Connect Apple Health to auto-detect runs</div>'+
+      '<button onclick="importFromHealth()" style="background:none;border:none;color:var(--accent);'+
+        'font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;-webkit-tap-highlight-color:transparent;">Connect →</button>'+
+    '</div>';
+  }
+
   var todayAct = getTodayActivity();
   var coach = todayAct.type === 'run' ? renderCoachCard(todayAct) : '';
   var targetsList = renderRunTargetsList();
-  return meta + hero + slot + coach + targetsList;
+  return meta + hero + slot + healthNudge + coach + targetsList;
 }
 
 // ── Deck Runner ──────────────────────────────────────────────────────────────
@@ -3472,6 +3551,7 @@ function switchLogSub(sub) {
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
+  if(sub==='run') setTimeout(checkRecentHealthRun, 400);
 }
 
 
@@ -7261,7 +7341,10 @@ render();
 setTimeout(checkForLiveUpdate, 2000);
 setTimeout(checkPendingShare, 2500);
 document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState==='visible') setTimeout(checkPendingShare, 600);
+  if(document.visibilityState==='visible'){
+    setTimeout(checkPendingShare, 600);
+    if(currentTab==='log' && logSubTab==='run') setTimeout(checkRecentHealthRun, 900);
+  }
 });
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
