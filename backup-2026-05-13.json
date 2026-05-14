@@ -1,0 +1,5175 @@
+{
+  "kt_sessions": [
+    {
+      "id": 1778627192875,
+      "date": "2026-05-12",
+      "type": "Push",
+      "week": 6,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "isMain": true,
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 165,
+          "rpe": 8
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "isMain": false,
+          "sets": 4,
+          "reps": [
+            10,
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 8
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 90,
+          "rpe": 8
+        },
+        {
+          "name": "DB Lateral Raise",
+          "isMain": false,
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 20,
+          "rpe": 8
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 42.5,
+          "rpe": 8
+        },
+        {
+          "name": "Tricep Pushdown",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 55,
+          "rpe": 8
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Overhead Tricep Ext"
+      ]
+    },
+    {
+      "id": 1778198987148,
+      "date": "2026-05-07",
+      "type": "Pull",
+      "week": 5,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "isMain": true,
+          "sets": 4,
+          "reps": [
+            6,
+            6,
+            6,
+            6
+          ],
+          "weight": 0,
+          "rpe": 8
+        },
+        {
+          "name": "Cable Row",
+          "isMain": false,
+          "sets": 4,
+          "reps": [
+            10,
+            10,
+            10,
+            10
+          ],
+          "weight": 65,
+          "rpe": 8
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 8
+        },
+        {
+          "name": "Chest Supported Row",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 8
+        },
+        {
+          "name": "Hammer Curl",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 25,
+          "rpe": 8
+        },
+        {
+          "name": "Face Pull",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            15,
+            15,
+            15
+          ],
+          "weight": 20,
+          "rpe": 7
+        }
+      ],
+      "note": "",
+      "prs": []
+    },
+    {
+      "id": 1777940113413,
+      "date": "2026-05-04",
+      "type": "Push",
+      "week": 5,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "isMain": true,
+          "sets": 4,
+          "reps": [
+            6,
+            6,
+            6,
+            6
+          ],
+          "weight": 185,
+          "rpe": 8
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "isMain": false,
+          "sets": 4,
+          "reps": [
+            10,
+            10,
+            10,
+            10
+          ],
+          "weight": 60,
+          "rpe": 8
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            8,
+            8,
+            8
+          ],
+          "weight": 87.5,
+          "rpe": 8
+        },
+        {
+          "name": "DB Lateral Raise",
+          "isMain": false,
+          "sets": 4,
+          "reps": [
+            13,
+            13,
+            13,
+            13
+          ],
+          "weight": 22.5,
+          "rpe": 8
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 40,
+          "rpe": 8
+        },
+        {
+          "name": "Tricep Pushdown",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 52.5,
+          "rpe": 8
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Barbell Bench Press"
+      ]
+    },
+    {
+      "id": 1777585927503,
+      "date": "2026-04-30",
+      "type": "Pull",
+      "week": 4,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "isMain": true,
+          "sets": 3,
+          "reps": [
+            4,
+            4,
+            4
+          ],
+          "weight": 0,
+          "rpe": 5
+        },
+        {
+          "name": "Cable Row",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 37.5,
+          "rpe": 5
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 40,
+          "rpe": 5
+        },
+        {
+          "name": "Chest Supported Row",
+          "isMain": false,
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 27.5,
+          "rpe": 5
+        },
+        {
+          "name": "Hammer Curl",
+          "isMain": false,
+          "sets": 2,
+          "reps": [
+            10,
+            10
+          ],
+          "weight": 17.5,
+          "rpe": 5
+        }
+      ],
+      "note": "",
+      "prs": []
+    },
+    {
+      "id": 1777414636351,
+      "date": "2026-04-28",
+      "type": "Push",
+      "week": 4,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 87.5,
+          "rpe": 5,
+          "note": ""
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 35,
+          "rpe": 5,
+          "note": ""
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "sets": 3,
+          "reps": [
+            5,
+            5,
+            5
+          ],
+          "weight": 47.5,
+          "rpe": 5,
+          "note": ""
+        },
+        {
+          "name": "DB Lateral Raise",
+          "sets": 2,
+          "reps": [
+            12,
+            12
+          ],
+          "weight": 12.5,
+          "rpe": 5,
+          "note": ""
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "sets": 2,
+          "reps": [
+            8,
+            8
+          ],
+          "weight": 22.5,
+          "rpe": 5,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": []
+    },
+    {
+      "id": 1777069658889,
+      "date": "2026-04-24",
+      "type": "Legs",
+      "week": 3,
+      "exercises": [
+        {
+          "name": "Barbell Back Squat",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 95,
+          "rpe": 6,
+          "note": "Too easy"
+        },
+        {
+          "name": "Romanian Deadlift",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 95,
+          "rpe": 7.5,
+          "note": ""
+        },
+        {
+          "name": "Leg Press",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 100,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Extension",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 50,
+          "rpe": 9,
+          "note": ""
+        },
+        {
+          "name": "Lying Leg Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 45,
+          "rpe": 9,
+          "note": ""
+        },
+        {
+          "name": "Standing Calf Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 0,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Hanging Leg Raise",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": []
+    },
+    {
+      "id": 1776985092144,
+      "date": "2026-04-23",
+      "type": "Pull",
+      "week": 3,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "sets": 4,
+          "reps": [
+            6,
+            6,
+            6,
+            6
+          ],
+          "weight": 0,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Cable Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 9,
+          "note": "Felt shoulders a bit uncomfortable and tight"
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 8.5,
+          "note": "Tight shoulders, did last 3 sets of the last set with 50 lb"
+        },
+        {
+          "name": "Chest Supported Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 7.5,
+          "note": ""
+        },
+        {
+          "name": "Incline DB Curl",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 20,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Hammer Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            9
+          ],
+          "weight": 30,
+          "rpe": 9,
+          "note": "Doing 12 reps in each arm each set, dont know if its 6 or 12."
+        },
+        {
+          "name": "Face Pull",
+          "sets": 3,
+          "reps": [
+            15,
+            15,
+            15
+          ],
+          "weight": 20,
+          "rpe": 8,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Cable Row",
+        "Chest Supported Row",
+        "Face Pull"
+      ]
+    },
+    {
+      "id": 1744848001000,
+      "date": "2026-04-17",
+      "type": "Legs",
+      "week": 2,
+      "exercises": [
+        {
+          "name": "Barbell Back Squat",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 95,
+          "rpe": 6,
+          "note": ""
+        },
+        {
+          "name": "Romanian Deadlift",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 105,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Leg Press",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 110,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Extension",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 55,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Lying Leg Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 55,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Standing Calf Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 0,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Hanging Leg Raise",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Romanian Deadlift",
+        "Leg Press",
+        "Leg Extension",
+        "Lying Leg Curl"
+      ]
+    },
+    {
+      "id": 1744761601000,
+      "date": "2026-04-16",
+      "type": "Pull",
+      "week": 2,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "sets": 4,
+          "reps": [
+            5,
+            5,
+            5,
+            5
+          ],
+          "weight": 0,
+          "rpe": 7.5,
+          "note": ""
+        },
+        {
+          "name": "Seated Cable Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 60,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Chest Supported Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 45,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Incline DB Curl",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 20,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Hammer Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 30,
+          "rpe": 9,
+          "note": ""
+        },
+        {
+          "name": "Face Pull",
+          "sets": 3,
+          "reps": [
+            15,
+            15,
+            15
+          ],
+          "weight": 17.5,
+          "rpe": 7.5,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Seated Cable Row",
+        "Incline DB Curl"
+      ]
+    },
+    {
+      "id": 1744588801000,
+      "date": "2026-04-14",
+      "type": "Push",
+      "week": 2,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 155,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 3,
+          "reps": [
+            8,
+            8,
+            8
+          ],
+          "weight": 65,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 90,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Cable Fly",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 100,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "DB Lateral Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 25,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Tricep Pushdown",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 55,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 40,
+          "rpe": 8,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Cable Fly",
+        "Machine Shoulder Press",
+        "Tricep Pushdown"
+      ]
+    },
+    {
+      "id": 1744243201000,
+      "date": "2026-04-10",
+      "type": "Legs",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Barbell Back Squat",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 75,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Romanian Deadlift",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 95,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Press",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 90,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Leg Extension",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Lying Leg Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 25,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Standing Calf Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Cable Crunch",
+          "sets": 3,
+          "reps": [
+            6,
+            6,
+            6
+          ],
+          "weight": 0,
+          "rpe": 7,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Barbell Back Squat",
+        "Romanian Deadlift",
+        "Leg Press",
+        "Leg Extension",
+        "Lying Leg Curl"
+      ]
+    },
+    {
+      "id": 1744070401000,
+      "date": "2026-04-08",
+      "type": "Pull",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Pull Up",
+          "sets": 4,
+          "reps": [
+            5,
+            5,
+            5,
+            5
+          ],
+          "weight": 0,
+          "rpe": 7.5,
+          "note": ""
+        },
+        {
+          "name": "Seated Cable Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 50,
+          "rpe": 6,
+          "note": ""
+        },
+        {
+          "name": "Lat Pulldown (neutral)",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 70,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Chest Supported Row",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 45,
+          "rpe": 8.5,
+          "note": ""
+        },
+        {
+          "name": "Hammer Curl",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 30,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Barbell Curl (21s)",
+          "sets": 3,
+          "reps": [
+            13,
+            13,
+            13
+          ],
+          "weight": 40,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Face Pull",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 17.5,
+          "rpe": 7,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Seated Cable Row",
+        "Lat Pulldown (neutral)",
+        "Chest Supported Row",
+        "Hammer Curl",
+        "Barbell Curl (21s)",
+        "Face Pull"
+      ]
+    },
+    {
+      "id": 1743897601000,
+      "date": "2026-04-06",
+      "type": "Push",
+      "week": 1,
+      "exercises": [
+        {
+          "name": "Barbell Bench Press",
+          "sets": 4,
+          "reps": [
+            8,
+            8,
+            8,
+            8
+          ],
+          "weight": 155,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 65,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Cable Fly",
+          "sets": 3,
+          "reps": [
+            15,
+            15,
+            15
+          ],
+          "weight": 40,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "DB Lateral Raise",
+          "sets": 4,
+          "reps": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "weight": 25,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Tricep Pushdown",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 50,
+          "rpe": 8,
+          "note": ""
+        },
+        {
+          "name": "Overhead Tricep Ext",
+          "sets": 3,
+          "reps": [
+            12,
+            12,
+            12
+          ],
+          "weight": 40,
+          "rpe": 7,
+          "note": ""
+        },
+        {
+          "name": "Close Grip Bench Press",
+          "sets": 3,
+          "reps": [
+            10,
+            10,
+            10
+          ],
+          "weight": 115,
+          "rpe": 8,
+          "note": ""
+        }
+      ],
+      "note": "",
+      "prs": [
+        "Barbell Bench Press",
+        "Incline Dumbbell Press",
+        "Cable Fly",
+        "DB Lateral Raise",
+        "Tricep Pushdown",
+        "Overhead Tricep Ext",
+        "Close Grip Bench Press"
+      ]
+    }
+  ],
+  "kt_runs": [
+    {
+      "id": 1778025017915,
+      "distance": 4,
+      "time": "37:52",
+      "date": "2026-05-05",
+      "week": 5,
+      "note": "9:28/km avg pace · 132spm cadence · 390 cal",
+      "hr": 151,
+      "type": "easy"
+    },
+    {
+      "id": 1778024855570,
+      "distance": 4,
+      "time": "37:52",
+      "date": "2026-05-05",
+      "week": 5,
+      "note": "9:28/km avg pace · 132spm cadence · 390 cal",
+      "hr": 151,
+      "type": "easy"
+    },
+    {
+      "id": 1777858534624,
+      "distance": 3,
+      "time": "30:36",
+      "date": "2026-05-02",
+      "week": 4,
+      "note": "San Juan · 10:12/km avg pace · 300 cal",
+      "hr": 139,
+      "type": "easy"
+    },
+    {
+      "id": 1745740800000,
+      "distance": 4.01,
+      "time": "38:51",
+      "date": "2026-04-27",
+      "week": 3,
+      "note": "San Juan · 4 laps · 9:40/km · 405 cal",
+      "hr": 164,
+      "type": "easy"
+    },
+    {
+      "id": 1776817457113,
+      "distance": 5,
+      "time": "48:57",
+      "date": "2026-04-21",
+      "week": 3,
+      "note": "Started zone 2 and half of it upped the pace.",
+      "hr": 160,
+      "type": "tempo"
+    },
+    {
+      "id": 1744675201000,
+      "distance": 3,
+      "time": "28:20",
+      "date": "2026-04-15",
+      "week": 2,
+      "note": "HR cap held ✅",
+      "hr": 150,
+      "type": "easy"
+    },
+    {
+      "id": 1744329601000,
+      "distance": 3,
+      "time": "29:41",
+      "date": "2026-04-11",
+      "week": 1,
+      "note": "149bpm ✅ — held HR cap the whole way",
+      "hr": 149,
+      "type": "easy"
+    },
+    {
+      "id": 1743984001000,
+      "distance": 3,
+      "time": "24:27",
+      "date": "2026-04-07",
+      "week": 1,
+      "note": "Started too fast, HR went high — lesson learned",
+      "hr": 165,
+      "type": "easy"
+    }
+  ],
+  "kt_sports": [],
+  "kt_weights": {
+    "Barbell Bench Press": 165,
+    "Incline Dumbbell Press": 50,
+    "Cable Fly": 100,
+    "DB Lateral Raise": 20,
+    "Tricep Pushdown": 55,
+    "Overhead Tricep Ext": 42.5,
+    "Close Grip Bench Press": 115,
+    "Machine Shoulder Press": 90,
+    "Pull Up": 0,
+    "Seated Cable Row": 60,
+    "Lat Pulldown (neutral)": 70,
+    "Chest Supported Row": 50,
+    "Hammer Curl": 25,
+    "Barbell Curl (21s)": 40,
+    "Face Pull": 20,
+    "Incline DB Curl": 20,
+    "Barbell Back Squat": 95,
+    "Romanian Deadlift": 95,
+    "Leg Press": 100,
+    "Leg Extension": 50,
+    "Lying Leg Curl": 45,
+    "Standing Calf Raise": 0,
+    "Hanging Leg Raise": 0,
+    "Cable Crunch": 0,
+    "Cable Row": 65
+  },
+  "kt_prs": {
+    "Barbell Bench Press": 185,
+    "Incline Dumbbell Press": 65,
+    "Cable Fly": 100,
+    "DB Lateral Raise": 25,
+    "Tricep Pushdown": 55,
+    "Overhead Tricep Ext": 42.5,
+    "Close Grip Bench Press": 115,
+    "Machine Shoulder Press": 90,
+    "Seated Cable Row": 60,
+    "Lat Pulldown (neutral)": 70,
+    "Chest Supported Row": 50,
+    "Hammer Curl": 30,
+    "Barbell Curl (21s)": 40,
+    "Face Pull": 20,
+    "Incline DB Curl": 20,
+    "Barbell Back Squat": 95,
+    "Romanian Deadlift": 105,
+    "Leg Press": 110,
+    "Leg Extension": 55,
+    "Lying Leg Curl": 55,
+    "Cable Row": 70
+  },
+  "kt_week": 6,
+  "kt_bw": [
+    {
+      "date": "2026-04-21",
+      "weight": 226
+    }
+  ],
+  "kt_routine": {
+    "name": "Custom Programme",
+    "weeks": [
+      {
+        "wk": 1,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Establish technique and baseline volume. Keep RPE moderate — these weights should feel comfortable.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 135,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 55,
+            "rpe": 7
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 75,
+            "rpe": 7
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "12",
+            "weight": 35,
+            "rpe": 7
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 45,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 55,
+            "rpe": 7
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 7
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 40,
+            "rpe": 7
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 17.5,
+            "rpe": 6
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "10",
+            "weight": 85,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 90,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 45,
+            "rpe": 7
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 40,
+            "rpe": 7
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "10",
+            "weight": 0,
+            "rpe": 6
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 145,
+            "note": "Conversational pace, no pressure"
+          },
+          "Sat": {
+            "km": 4,
+            "type": "Z2",
+            "hr": 145,
+            "note": "Keep HR under 145, walk if needed"
+          }
+        }
+      },
+      {
+        "wk": 2,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Add small load increases. Focus on full range of motion and bracing on squats and bench.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 140,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 7
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 77.5,
+            "rpe": 7
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "12",
+            "weight": 37.5,
+            "rpe": 7
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 47.5,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 7
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 7
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 42.5,
+            "rpe": 7
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 17.5,
+            "rpe": 6
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 80,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "10",
+            "weight": 90,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 95,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 47.5,
+            "rpe": 7
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 42.5,
+            "rpe": 7
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "10",
+            "weight": 0,
+            "rpe": 6
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3.5,
+            "type": "easy",
+            "hr": 145,
+            "note": "Steady easy effort"
+          },
+          "Sat": {
+            "km": 4.5,
+            "type": "Z2",
+            "hr": 145,
+            "note": "Build aerobic base at Z2"
+          }
+        }
+      },
+      {
+        "wk": 3,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Final base week — push volume to its peak before deload. Aim for clean reps on every set.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": 8,
+            "weight": 145,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": 10,
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": 10,
+            "weight": 80,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 20,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": 12,
+            "weight": 37.5,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": 12,
+            "weight": 50,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": 6,
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": 10,
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": 10,
+            "weight": 65,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": 10,
+            "weight": 45,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": 15,
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": 8,
+            "weight": 85,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": 10,
+            "weight": 95,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": 12,
+            "weight": 100,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": 12,
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 45,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": 10,
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "note": "Steady Z2 effort"
+          }
+        },
+        "weekPlan": [
+          "Run",
+          "Push",
+          "Pull",
+          "Rest",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 4,
+        "block": 1,
+        "bName": "DELOAD",
+        "bColor": "#22c55e",
+        "wkNote": "Deload week — drop to 60% of working weights, 3x5, RPE 5-6. Let the body absorb the work from weeks 1-3.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 87.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 47.5,
+            "rpe": 5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 2,
+            "reps": 12,
+            "weight": 12.5,
+            "rpe": 5
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 2,
+            "reps": 8,
+            "weight": 22.5,
+            "rpe": 5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": 4,
+            "weight": 0,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": 5,
+            "weight": 37.5,
+            "rpe": 5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": 5,
+            "weight": 40,
+            "rpe": 5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": 5,
+            "weight": 27.5,
+            "rpe": 5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 2,
+            "reps": 10,
+            "weight": 17.5,
+            "rpe": 5
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 3,
+            "reps": 5,
+            "weight": 50,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": 5,
+            "weight": 57.5,
+            "rpe": 5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 60,
+            "rpe": 5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 2,
+            "reps": 10,
+            "weight": 27.5,
+            "rpe": 5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 2,
+            "reps": 12,
+            "weight": 0,
+            "rpe": 5
+          }
+        ],
+        "runs": {
+          "Mon": {
+            "km": 3,
+            "type": "easy"
+          },
+          "Sat": {
+            "km": 3,
+            "type": "easy",
+            "note": "3.00km | 30:36 | 10'12\"/km avg | 139bpm avg | 300 cal"
+          }
+        },
+        "weekPlan": [
+          "Run",
+          "Push",
+          "Rest",
+          "Pull",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 5,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Hypertrophy block begins — increase load, drop reps to 8-10. Focus on muscle tension and controlled tempo.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 155,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 82.5,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "10",
+            "weight": 40,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 52.5,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 47.5,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 95,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "10",
+            "weight": 100,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 110,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 52.5,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Build aerobic base — easy conversational pace"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "5K at Z2 — build endurance for 30:00 goal"
+          }
+        }
+      },
+      {
+        "wk": 6,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Missed Monday Push — shifted right. Push Tue, Run Wed, Pull Thu, Legs Fri, Run Sat.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": 8,
+            "weight": 160,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": 10,
+            "weight": 62.5,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": 10,
+            "weight": 85,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 22.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": 10,
+            "weight": 42.5,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": 12,
+            "weight": 55,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": 7,
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": 10,
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": 10,
+            "weight": 70,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": 10,
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 30,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": 15,
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": 8,
+            "weight": 100,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": 10,
+            "weight": 105,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": 12,
+            "weight": 115,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": 12,
+            "weight": 55,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 52.5,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": 12,
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Wed": {
+            "km": 4,
+            "type": "Z2",
+            "note": "Z2 easy run — HR cap ~150bpm"
+          },
+          "Sat": {
+            "km": 5.5,
+            "type": "Z2",
+            "note": "Z2 easy run — HR cap ~150bpm"
+          }
+        },
+        "weekPlan": [
+          "Rest",
+          "Push",
+          "Run",
+          "Pull",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 7,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Final hypertrophy week — peak volume before deload. Push intensity but keep form solid.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 165,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 8.5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 87.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "10",
+            "weight": 42.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8.5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "7",
+            "weight": 0,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "10",
+            "weight": 70,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 72.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 52.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 30,
+            "rpe": 8.5
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 105,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "10",
+            "weight": 107.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 120,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 57.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8.5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4.5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Consistent Z2 pacing"
+          },
+          "Sat": {
+            "km": 6,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Building to 6K — aerobic base work"
+          }
+        }
+      },
+      {
+        "wk": 8,
+        "block": 2,
+        "bName": "DELOAD",
+        "bColor": "#22c55e",
+        "wkNote": "Deload after hypertrophy block. Drop to 65% weights, 3x5, RPE 5-6. Prepare for the strength block.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 107.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 42.5,
+            "rpe": 5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 57.5,
+            "rpe": 5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 2,
+            "reps": "12",
+            "weight": 15,
+            "rpe": 5
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 2,
+            "reps": "8",
+            "weight": 27.5,
+            "rpe": 5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": "4",
+            "weight": 0,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "5",
+            "weight": 45,
+            "rpe": 5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "5",
+            "weight": 47.5,
+            "rpe": 5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "5",
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 2,
+            "reps": "10",
+            "weight": 20,
+            "rpe": 5
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 3,
+            "reps": "5",
+            "weight": 67.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "5",
+            "weight": 70,
+            "rpe": 5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 77.5,
+            "rpe": 5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 2,
+            "reps": "10",
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 2,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 5
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 140,
+            "note": "Easy recovery run"
+          },
+          "Sat": {
+            "km": 3.5,
+            "type": "easy",
+            "hr": 140,
+            "note": "Short and comfortable — full recovery"
+          }
+        }
+      },
+      {
+        "wk": 9,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Strength block — heavier weight, lower reps (4-6). Focus on explosive pressing and controlled eccentric on squats.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "5",
+            "weight": 170,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 65,
+            "rpe": 8.5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 90,
+            "rpe": 8.5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 42.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8.5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 72.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 8.5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 55,
+            "rpe": 8.5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 30,
+            "rpe": 8.5
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "5",
+            "weight": 110,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 112.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 130,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4,
+            "type": "tempo",
+            "hr": 160,
+            "note": "Tempo effort — comfortably hard, build pace towards 6:00/km"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Easy long run to maintain aerobic base"
+          }
+        }
+      },
+      {
+        "wk": 10,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Load increases across all lifts. Bench at 177.5 lb — keep leg drive and arch tight.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "5",
+            "weight": 177.5,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 67.5,
+            "rpe": 9
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 92.5,
+            "rpe": 9
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 45,
+            "rpe": 9
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 9
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 9
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 77.5,
+            "rpe": 9
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 57.5,
+            "rpe": 9
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 32.5,
+            "rpe": 9
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "5",
+            "weight": 115,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 117.5,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 135,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 9
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4.5,
+            "type": "tempo",
+            "hr": 162,
+            "note": "Push pace — targeting 6:30/km or better"
+          },
+          "Sat": {
+            "km": 5.5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Aerobic base maintenance — easy effort"
+          }
+        }
+      },
+      {
+        "wk": 11,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Final strength week — highest load of the programme. Bench at 185 lb. Stay tight, stay focused.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "4",
+            "weight": 185,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 70,
+            "rpe": 9
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 95,
+            "rpe": 9
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 45,
+            "rpe": 9
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 77.5,
+            "rpe": 9
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 80,
+            "rpe": 9
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 60,
+            "rpe": 9
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 32.5,
+            "rpe": 9
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 25,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "4",
+            "weight": 120,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 122.5,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 140,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 9
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 5,
+            "type": "tempo",
+            "hr": 165,
+            "note": "Strong tempo run — push toward 6:15/km"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Easy 5K — save legs for peak week"
+          }
+        }
+      },
+      {
+        "wk": 12,
+        "block": 3,
+        "bName": "PEAK",
+        "bColor": "#22c55e",
+        "wkNote": "Peak week — PR attempts on bench and squat. Run a 5K race effort. This is what the last 11 weeks were for.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 1,
+            "reps": "1",
+            "weight": 215,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "6",
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "6",
+            "weight": 90,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 42.5,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": "Max",
+            "weight": 0,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "6",
+            "weight": 75,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "6",
+            "weight": 77.5,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "6",
+            "weight": 57.5,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 30,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 1,
+            "reps": "1",
+            "weight": 135,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "6",
+            "weight": 115,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 130,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 140,
+            "note": "Easy shakeout run — keep fresh for 5K"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "race effort",
+            "note": "5K race effort — go for sub-30:00!"
+          }
+        }
+      }
+    ],
+    "weekPlan": [
+      "Push",
+      "Run",
+      "Rest",
+      "Pull",
+      "Legs",
+      "Run",
+      "Rest"
+    ]
+  },
+  "kt_routine_backup": {
+    "name": "Custom Programme",
+    "weeks": [
+      {
+        "wk": 1,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Establish technique and baseline volume. Keep RPE moderate — these weights should feel comfortable.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 135,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 55,
+            "rpe": 7
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 75,
+            "rpe": 7
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "12",
+            "weight": 35,
+            "rpe": 7
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 45,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 55,
+            "rpe": 7
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 7
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 40,
+            "rpe": 7
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 17.5,
+            "rpe": 6
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "10",
+            "weight": 85,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 90,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 45,
+            "rpe": 7
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 40,
+            "rpe": 7
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "10",
+            "weight": 0,
+            "rpe": 6
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 145,
+            "note": "Conversational pace, no pressure"
+          },
+          "Sat": {
+            "km": 4,
+            "type": "Z2",
+            "hr": 145,
+            "note": "Keep HR under 145, walk if needed"
+          }
+        }
+      },
+      {
+        "wk": 2,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Add small load increases. Focus on full range of motion and bracing on squats and bench.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 140,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 7
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 77.5,
+            "rpe": 7
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "12",
+            "weight": 37.5,
+            "rpe": 7
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 47.5,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 7
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 7
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 42.5,
+            "rpe": 7
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 17.5,
+            "rpe": 6
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 80,
+            "rpe": 7,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "10",
+            "weight": 90,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 95,
+            "rpe": 7
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 47.5,
+            "rpe": 7
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 42.5,
+            "rpe": 7
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "10",
+            "weight": 0,
+            "rpe": 6
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3.5,
+            "type": "easy",
+            "hr": 145,
+            "note": "Steady easy effort"
+          },
+          "Sat": {
+            "km": 4.5,
+            "type": "Z2",
+            "hr": 145,
+            "note": "Build aerobic base at Z2"
+          }
+        }
+      },
+      {
+        "wk": 3,
+        "block": 1,
+        "bName": "BASE",
+        "bColor": "#06b6d4",
+        "wkNote": "Final base week — push volume to its peak before deload. Aim for clean reps on every set.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": 8,
+            "weight": 145,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": 10,
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": 10,
+            "weight": 80,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 20,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": 12,
+            "weight": 37.5,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": 12,
+            "weight": 50,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": 6,
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": 10,
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": 10,
+            "weight": 65,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": 10,
+            "weight": 45,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": 15,
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": 8,
+            "weight": 85,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": 10,
+            "weight": 95,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": 12,
+            "weight": 100,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": 12,
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": 12,
+            "weight": 45,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": 15,
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": 10,
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "note": "Steady Z2 effort"
+          }
+        },
+        "weekPlan": [
+          "Run",
+          "Push",
+          "Pull",
+          "Rest",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 4,
+        "block": 1,
+        "bName": "DELOAD",
+        "bColor": "#22c55e",
+        "wkNote": "Deload week — drop to 60% of working weights, 3x5, RPE 5-6. Let the body absorb the work from weeks 1-3.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 87.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 47.5,
+            "rpe": 5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 2,
+            "reps": 12,
+            "weight": 12.5,
+            "rpe": 5
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 2,
+            "reps": 8,
+            "weight": 22.5,
+            "rpe": 5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": 4,
+            "weight": 0,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": 5,
+            "weight": 37.5,
+            "rpe": 5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": 5,
+            "weight": 40,
+            "rpe": 5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": 5,
+            "weight": 27.5,
+            "rpe": 5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 2,
+            "reps": 10,
+            "weight": 17.5,
+            "rpe": 5
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 3,
+            "reps": 5,
+            "weight": 50,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": 5,
+            "weight": 57.5,
+            "rpe": 5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": 5,
+            "weight": 60,
+            "rpe": 5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 2,
+            "reps": 10,
+            "weight": 27.5,
+            "rpe": 5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 2,
+            "reps": 12,
+            "weight": 0,
+            "rpe": 5
+          }
+        ],
+        "runs": {
+          "Mon": {
+            "km": 3,
+            "type": "easy"
+          },
+          "Sat": {
+            "km": 3,
+            "type": "easy",
+            "note": "3.00km | 30:36 | 10'12\"/km avg | 139bpm avg | 300 cal"
+          }
+        },
+        "weekPlan": [
+          "Run",
+          "Push",
+          "Rest",
+          "Pull",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 5,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Hypertrophy block begins — increase load, drop reps to 8-10. Focus on muscle tension and controlled tempo.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 155,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 82.5,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "10",
+            "weight": 40,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 52.5,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 47.5,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 95,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "10",
+            "weight": 100,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 110,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 52.5,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Build aerobic base — easy conversational pace"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "5K at Z2 — build endurance for 30:00 goal"
+          }
+        }
+      },
+      {
+        "wk": 6,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Progress load across all lifts. Bench approaching 160 lb — stay tight on technique.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 160,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 85,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "10",
+            "weight": 42.5,
+            "rpe": 8
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "7",
+            "weight": 0,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "10",
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 70,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 50,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 30,
+            "rpe": 8
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 20,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 100,
+            "rpe": 8,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "10",
+            "weight": 105,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 115,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 52.5,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Sat": {
+            "km": 5.5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Longest run so far — keep it easy"
+          },
+          "Mon": {
+            "km": 4,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Steady Z2 effort"
+          }
+        },
+        "weekPlan": [
+          "Run",
+          "Push",
+          "Rest",
+          "Pull",
+          "Legs",
+          "Run",
+          "Rest"
+        ]
+      },
+      {
+        "wk": 7,
+        "block": 2,
+        "bName": "HYPERTROPHY",
+        "bColor": "#7c6bff",
+        "wkNote": "Final hypertrophy week — peak volume before deload. Push intensity but keep form solid.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 165,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 8.5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 87.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "10",
+            "weight": 42.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8.5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 4,
+            "reps": "7",
+            "weight": 0,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "10",
+            "weight": 70,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "10",
+            "weight": 72.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "10",
+            "weight": 52.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 30,
+            "rpe": 8.5
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 4,
+            "reps": "8",
+            "weight": 105,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "10",
+            "weight": 107.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "12",
+            "weight": 120,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "12",
+            "weight": 57.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "12",
+            "weight": 55,
+            "rpe": 8.5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "15",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4.5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Consistent Z2 pacing"
+          },
+          "Sat": {
+            "km": 6,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Building to 6K — aerobic base work"
+          }
+        }
+      },
+      {
+        "wk": 8,
+        "block": 2,
+        "bName": "DELOAD",
+        "bColor": "#22c55e",
+        "wkNote": "Deload after hypertrophy block. Drop to 65% weights, 3x5, RPE 5-6. Prepare for the strength block.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 107.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 42.5,
+            "rpe": 5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 57.5,
+            "rpe": 5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 2,
+            "reps": "12",
+            "weight": 15,
+            "rpe": 5
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 2,
+            "reps": "8",
+            "weight": 27.5,
+            "rpe": 5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": "4",
+            "weight": 0,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "5",
+            "weight": 45,
+            "rpe": 5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "5",
+            "weight": 47.5,
+            "rpe": 5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "5",
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 2,
+            "reps": "10",
+            "weight": 20,
+            "rpe": 5
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 3,
+            "reps": "5",
+            "weight": 67.5,
+            "rpe": 5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "5",
+            "weight": 70,
+            "rpe": 5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "5",
+            "weight": 77.5,
+            "rpe": 5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 2,
+            "reps": "10",
+            "weight": 35,
+            "rpe": 5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 2,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 5
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 140,
+            "note": "Easy recovery run"
+          },
+          "Sat": {
+            "km": 3.5,
+            "type": "easy",
+            "hr": 140,
+            "note": "Short and comfortable — full recovery"
+          }
+        }
+      },
+      {
+        "wk": 9,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Strength block — heavier weight, lower reps (4-6). Focus on explosive pressing and controlled eccentric on squats.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "5",
+            "weight": 170,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 65,
+            "rpe": 8.5
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 90,
+            "rpe": 8.5
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 42.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8.5
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 72.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 8.5
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 55,
+            "rpe": 8.5
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 30,
+            "rpe": 8.5
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "5",
+            "weight": 110,
+            "rpe": 8.5,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 112.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 130,
+            "rpe": 8.5
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8.5
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8.5
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4,
+            "type": "tempo",
+            "hr": 160,
+            "note": "Tempo effort — comfortably hard, build pace towards 6:00/km"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Easy long run to maintain aerobic base"
+          }
+        }
+      },
+      {
+        "wk": 10,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Load increases across all lifts. Bench at 177.5 lb — keep leg drive and arch tight.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "5",
+            "weight": 177.5,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 67.5,
+            "rpe": 9
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 92.5,
+            "rpe": 9
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 45,
+            "rpe": 9
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 9
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "5",
+            "weight": 0,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 75,
+            "rpe": 9
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 77.5,
+            "rpe": 9
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 57.5,
+            "rpe": 9
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 32.5,
+            "rpe": 9
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 22.5,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "5",
+            "weight": 115,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 117.5,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 135,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 9
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 4.5,
+            "type": "tempo",
+            "hr": 162,
+            "note": "Push pace — targeting 6:30/km or better"
+          },
+          "Sat": {
+            "km": 5.5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Aerobic base maintenance — easy effort"
+          }
+        }
+      },
+      {
+        "wk": 11,
+        "block": 3,
+        "bName": "STRENGTH",
+        "bColor": "#f97316",
+        "wkNote": "Final strength week — highest load of the programme. Bench at 185 lb. Stay tight, stay focused.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 5,
+            "reps": "4",
+            "weight": 185,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 4,
+            "reps": "8",
+            "weight": 70,
+            "rpe": 9
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 95,
+            "rpe": 9
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 27.5,
+            "rpe": 8
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 45,
+            "rpe": 9
+          },
+          {
+            "name": "Tricep Pushdown",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 5,
+            "reps": "6",
+            "weight": 0,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 4,
+            "reps": "8",
+            "weight": 77.5,
+            "rpe": 9
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "8",
+            "weight": 80,
+            "rpe": 9
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "8",
+            "weight": 60,
+            "rpe": 9
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 32.5,
+            "rpe": 9
+          },
+          {
+            "name": "Face Pull",
+            "sets": 3,
+            "reps": "15",
+            "weight": 25,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 5,
+            "reps": "4",
+            "weight": 120,
+            "rpe": 9,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 4,
+            "reps": "8",
+            "weight": 122.5,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "10",
+            "weight": 140,
+            "rpe": 9
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 65,
+            "rpe": 9
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 62.5,
+            "rpe": 9
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 4,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 8
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 5,
+            "type": "tempo",
+            "hr": 165,
+            "note": "Strong tempo run — push toward 6:15/km"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "Z2",
+            "hr": 150,
+            "note": "Easy 5K — save legs for peak week"
+          }
+        }
+      },
+      {
+        "wk": 12,
+        "block": 3,
+        "bName": "PEAK",
+        "bColor": "#22c55e",
+        "wkNote": "Peak week — PR attempts on bench and squat. Run a 5K race effort. This is what the last 11 weeks were for.",
+        "push": [
+          {
+            "name": "Barbell Bench Press",
+            "sets": 1,
+            "reps": "1",
+            "weight": 215,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Incline Dumbbell Press",
+            "sets": 3,
+            "reps": "6",
+            "weight": 67.5,
+            "rpe": 8
+          },
+          {
+            "name": "Machine Shoulder Press",
+            "sets": 3,
+            "reps": "6",
+            "weight": 90,
+            "rpe": 8
+          },
+          {
+            "name": "DB Lateral Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 25,
+            "rpe": 7
+          },
+          {
+            "name": "Overhead Tricep Ext",
+            "sets": 3,
+            "reps": "8",
+            "weight": 42.5,
+            "rpe": 7
+          }
+        ],
+        "pull": [
+          {
+            "name": "Pull Up",
+            "sets": 3,
+            "reps": "Max",
+            "weight": 0,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Cable Row",
+            "sets": 3,
+            "reps": "6",
+            "weight": 75,
+            "rpe": 8
+          },
+          {
+            "name": "Lat Pulldown (neutral)",
+            "sets": 3,
+            "reps": "6",
+            "weight": 77.5,
+            "rpe": 8
+          },
+          {
+            "name": "Chest Supported Row",
+            "sets": 3,
+            "reps": "6",
+            "weight": 57.5,
+            "rpe": 8
+          },
+          {
+            "name": "Hammer Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 30,
+            "rpe": 7
+          }
+        ],
+        "legs": [
+          {
+            "name": "Barbell Back Squat",
+            "sets": 1,
+            "reps": "1",
+            "weight": 135,
+            "rpe": 10,
+            "isMain": true
+          },
+          {
+            "name": "Romanian Deadlift",
+            "sets": 3,
+            "reps": "6",
+            "weight": 115,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Press",
+            "sets": 3,
+            "reps": "8",
+            "weight": 130,
+            "rpe": 8
+          },
+          {
+            "name": "Leg Extension",
+            "sets": 3,
+            "reps": "10",
+            "weight": 60,
+            "rpe": 8
+          },
+          {
+            "name": "Lying Leg Curl",
+            "sets": 3,
+            "reps": "10",
+            "weight": 57.5,
+            "rpe": 8
+          },
+          {
+            "name": "Standing Calf Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          },
+          {
+            "name": "Hanging Leg Raise",
+            "sets": 3,
+            "reps": "12",
+            "weight": 0,
+            "rpe": 7
+          }
+        ],
+        "runs": {
+          "Tue": {
+            "km": 3,
+            "type": "easy",
+            "hr": 140,
+            "note": "Easy shakeout run — keep fresh for 5K"
+          },
+          "Sat": {
+            "km": 5,
+            "type": "race effort",
+            "note": "5K race effort — go for sub-30:00!"
+          }
+        }
+      }
+    ],
+    "weekPlan": [
+      "Push",
+      "Run",
+      "Rest",
+      "Pull",
+      "Legs",
+      "Run",
+      "Rest"
+    ]
+  },
+  "kt_bench_goal": 225,
+  "kt_squat_goal": 225,
+  "kt_5k_goal": 1800,
+  "kt_run_goal": "6:00"
+}
