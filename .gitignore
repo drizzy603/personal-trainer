@@ -5,6 +5,7 @@ www/
 workouts*.json
 trainer-backup-*.json
 trovo-backup-*.json
+backup-*.json
 screenshots/out/
 .claude/
 xcuserdata/
