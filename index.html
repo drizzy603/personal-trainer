@@ -1794,13 +1794,13 @@ function render() {
 // Mon=0 … Sun=6. Default is used when the AI Coach hasn't written a weekPlan
 // onto the user's routine.
 var DEFAULT_WEEK_PLAN = [
-  {type:'Push', color:'var(--accent)',  isRest:false, isRun:false},
-  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false},
-  {type:'Pull', color:'var(--cyan)',    isRest:false, isRun:false},
-  {type:'Legs', color:'var(--orange)',  isRest:false, isRun:false},
-  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true},
-  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false},
+  {type:'Push', color:'var(--accent)',  isRest:false, isRun:false, isLift:true,  isSport:false},
+  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true,  isLift:false, isSport:false},
+  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false, isLift:false, isSport:false},
+  {type:'Pull', color:'var(--cyan)',    isRest:false, isRun:false, isLift:true,  isSport:false},
+  {type:'Legs', color:'var(--orange)',  isRest:false, isRun:false, isLift:true,  isSport:false},
+  {type:'Run',  color:'var(--green)',   isRest:false, isRun:true,  isLift:false, isSport:false},
+  {type:'Rest', color:'var(--muted)',   isRest:true,  isRun:false, isLift:false, isSport:false},
 ];
 var _PLAN_TYPE_META={
   Push: {color:'var(--accent)', isRest:false,isRun:false,isLift:true, isSport:false},
@@ -2263,11 +2263,13 @@ function fetchCoachCard(activity){
       'Then propose two action labels (≤ 3 words each).\n\n'+
       'Return STRICT JSON only — no prose, no code fences:\n'+
       '{"message":"...","actions":[{"label":"...","primary":false},{"label":"...","primary":true}]}';
+    var _cardTimer;
     var fetchPromise = fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:[{role:'user',content:prompt}]})
     }).then(function(r){return r.json();}).then(function(data){
+      clearTimeout(_cardTimer);
       var text = data && data.content && data.content[0] ? data.content[0].text : '';
       var match = text.match(/\{[\s\S]*\}/);
       if(!match) throw new Error('no json');
@@ -2277,12 +2279,13 @@ function fetchCoachCard(activity){
       saveCachedCoachCard(card);
       resolve(card);
     }).catch(function(){
+      clearTimeout(_cardTimer);
       var fb = fallbackCoachCard(activity);
       fb.loadedAt = Date.now();
       resolve(fb);
     });
     // 8s timeout — never block the screen
-    setTimeout(function(){
+    _cardTimer = setTimeout(function(){
       var fb = fallbackCoachCard(activity);
       fb.loadedAt = Date.now();
       resolve(fb);
@@ -3447,7 +3450,7 @@ function _renderRunnerDoneBody(ex, isLast){
   var dateField = isLast
     ? '<div style="margin:14px 0 6px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
-        '<input id="runner-date" type="date" value="'+todayISO()+'"'+
+        '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
         ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'
