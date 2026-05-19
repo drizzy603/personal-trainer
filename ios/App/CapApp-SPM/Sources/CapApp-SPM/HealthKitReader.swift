@@ -59,10 +59,14 @@ final class HealthKitReader {
         guard !workouts.isEmpty else { completion([]); return }
         var out: [[String: Any]] = []
         let group = DispatchGroup()
+        // HKStatisticsQuery completions fire on arbitrary background threads;
+        // serialise all appends through this queue to avoid a data race on `out`.
+        let serialQ = DispatchQueue(label: "trovo.enrich.serial")
         for workout in workouts {
             group.enter()
             avgHeartRate(for: workout) { bpm in
-                out.append(self.serialize(workout: workout, avgHr: bpm))
+                let entry = self.serialize(workout: workout, avgHr: bpm)
+                serialQ.sync { out.append(entry) }
                 group.leave()
             }
         }

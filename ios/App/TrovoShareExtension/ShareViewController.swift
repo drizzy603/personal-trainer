@@ -121,7 +121,7 @@ class ShareViewController: UIViewController {
         NSLayoutConstraint.activate([
             bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            bar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             bar.heightAnchor.constraint(equalToConstant: 60),
 
             sep.topAnchor.constraint(equalTo: bar.topAnchor),
