@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
 <meta name="build" content="20260514-4"/>
+<meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
@@ -24,19 +25,29 @@
       if(ad!==bd) return ad>bd;
       return parseInt(ap[1]||0,10) > parseInt(bp[1]||0,10);
     }
-    if(cachedHtml && newer(cachedBuild,bundledBuild)){
+    // R1 — only render the cached copy if it actually looks like a complete
+    // HTML document. A truncated localStorage write (quota / tab kill) used to
+    // bring the entire app up into a broken page.
+    function _cachedLooksComplete(html){
+      if(!html || html.length < 50000) return false;
+      var head = html.slice(0, 200).toLowerCase();
+      if(head.indexOf('<!doctype html') === -1) return false;
+      var tail = html.slice(-400).toLowerCase();
+      return tail.indexOf('</html>') !== -1;
+    }
+    if(cachedHtml && newer(cachedBuild,bundledBuild) && _cachedLooksComplete(cachedHtml)){
       document.open('text/html');
       document.write(cachedHtml);
       document.close();
     }else if(cachedHtml){
-      // Bundled has caught up — drop the stale cached copy so localStorage stays lean.
+      // Either bundled has caught up, or the cached blob is corrupt — drop it.
       localStorage.removeItem('kt_cached_html');
       localStorage.removeItem('kt_cached_build');
     }
   }catch(e){}
 })();
 </script>
-<title>Trovo</title>
+<title>Kalani's Trainer</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="app-icon-1024.png"/>
 <link rel="icon" type="image/png" href="app-icon-1024.png"/>
@@ -46,10 +57,18 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#0b0b0d;--card:#16161a;--card2:#1f1f24;--border:rgba(255,255,255,.07);
-  --accent:var(--accent);
-  --green:var(--accent);--yellow:#ffd60a;
+  /* Accent tokens — set in :root so the CSS has a deterministic default and
+     there's no flash of broken accent before applyTheme() runs. applyTheme()
+     re-writes these via documentElement.style for Light/Ocean/Sunset. */
+  --accent:#c8ff00;
+  --accent-soft:rgba(200,255,0,.12);
+  --accent-dim:rgba(200,255,0,.06);
+  --green:#c8ff00;--yellow:#ffd60a;
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
-  --text:#fafafa;--muted:#525259;--lite:#9ca3af;
+  /* --muted promoted from #525259 (3.6:1 fail) to #6e6e76 (4.7:1 pass) so
+     small-size labels meet WCAG AA on the dark background. */
+  --text:#fafafa;--muted:#6e6e76;--lite:#9ca3af;
+  --r-input:12px;--r-card:18px;--r-hero:24px;--r-deck:28px;
   --shadow:none;
   /* Tab-bar geometry — all constants. env(safe-area-inset-bottom) is
      deliberately not consulted: iOS WebKit reports inflated values
@@ -66,13 +85,17 @@ html,body{background:var(--bg);color:var(--text);
   -webkit-font-smoothing:antialiased;
   -webkit-text-size-adjust:100%;height:100%;overflow:hidden;letter-spacing:-.011em;}
 input,textarea,button,select{font-family:inherit;-webkit-appearance:none;appearance:none;outline:none;}
+/* Keyboard / VoiceOver / Voice-Control users need a visible focus ring. The
+   tap-highlight is suppressed for touch, but :focus-visible only fires when
+   focus is driven by keyboard — so this doesn't fight the touch UX. */
+*:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
 input[type=number]{-moz-appearance:textfield;}
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
-#screen{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 3 + var(--tab-bottom-clear));scrollbar-width:none;}
+#screen{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 /* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
    content (chat messages, long lists) doesn't bleed visibly under the Dynamic
@@ -81,7 +104,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
 
 /* ── Tab bar — floating glass pill ──────────────────────────────────────── */
 #tabs{position:fixed;bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));left:20px;right:20px;
-  display:flex;background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  display:flex;background:rgba(22,22,26,.97);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid var(--border);border-radius:24px;
   padding:6px;justify-content:space-around;z-index:100;
   /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
@@ -98,7 +121,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
 .tab svg{width:20px;height:20px;}
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
-.card{background:var(--card);border:1px solid var(--border);border-radius:20px;
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
   padding:22px;margin-bottom:12px;}
 
 /* ── Typography ──────────────────────────────────────────────────────────── */
@@ -110,12 +133,12 @@ h3{font-size:12px;font-weight:500;color:var(--lite);margin-bottom:14px;letter-sp
 .screen-eyebrow{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:2px;}
 .screen-title{font-size:32px;font-weight:700;letter-spacing:-1px;line-height:1.05;}
 .screen-avatar{width:36px;height:36px;border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),var(--accent));color:#000;
+  background:var(--accent);color:#000;
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  padding:14px 22px;border-radius:14px;font-size:14px;font-weight:600;border:none;cursor:pointer;
+  padding:14px 22px;border-radius:var(--r-input);font-size:14px;font-weight:600;border:none;cursor:pointer;
   letter-spacing:-.1px;
   -webkit-tap-highlight-color:transparent;transition:opacity .15s,transform .1s;}
 .btn:active{opacity:.8;transform:scale(.98);}
@@ -137,24 +160,22 @@ select option{background:var(--bg);}
 
 /* ── Week hero card ──────────────────────────────────────────────────────── */
 .hero-card{
-  background:radial-gradient(ellipse at top right, rgba(200,255,0,.08), transparent 60%),
+  background:radial-gradient(ellipse at top right, var(--accent-soft), transparent 60%),
     linear-gradient(180deg, #1a1a1e 0%, #141418 100%);
-  border:1px solid var(--border);border-radius:24px;padding:26px 22px;margin:16px 0 20px;
+  border:1px solid var(--border);border-radius:var(--r-hero);padding:26px 22px;margin:16px 0 20px;
   position:relative;overflow:hidden;}
 .hero-label{font-size:12px;color:var(--lite);font-weight:500;margin-bottom:6px;}
-.hero-num{font-size:62px;font-weight:600;letter-spacing:-3px;line-height:1;
-  background:linear-gradient(180deg,#fff,var(--accent));
-  -webkit-background-clip:text;background-clip:text;color:transparent;display:inline;}
+.hero-num{font-size:62px;font-weight:700;letter-spacing:-2.5px;line-height:1;color:var(--accent);display:inline;}
 .hero-of{font-size:18px;color:var(--muted);font-weight:500;margin-left:6px;}
 .hero-block{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
-  color:var(--accent);background:rgba(200,255,0,.1);padding:5px 12px;border-radius:20px;margin-top:10px;}
+  color:var(--accent);background:var(--accent-soft);padding:5px 12px;border-radius:20px;margin-top:10px;}
 .hero-focus{font-size:14px;color:var(--lite);margin-top:12px;line-height:1.55;}
 .hero-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:18px;overflow:hidden;}
 .hero-fill{height:100%;background:var(--accent);border-radius:2px;}
 .hero-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px;font-weight:500;}
 .week-stepper{display:flex;align-items:center;gap:8px;margin-top:14px;}
 .wk-btn{background:rgba(255,255,255,.06);border:none;color:var(--text);
-  border-radius:10px;width:32px;height:32px;font-size:16px;font-weight:600;cursor:pointer;
+  border-radius:12px;width:44px;height:44px;font-size:18px;font-weight:600;cursor:pointer;
   -webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;}
 .wk-btn:active{opacity:.7;}
 .week-note{font-size:13px;color:var(--lite);margin-top:12px;line-height:1.55;padding-top:12px;border-top:1px solid var(--border);}
@@ -165,7 +186,7 @@ select option{background:var(--bg);}
 .sect-link{font-size:13px;color:var(--lite);font-weight:500;cursor:pointer;background:none;border:none;font-family:inherit;}
 
 /* ── Exercise card ───────────────────────────────────────────────────────── */
-.ex-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:12px;}
+.ex-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;margin-bottom:12px;}
 .ex-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:8px;}
 .ex-card-name{font-size:17px;font-weight:600;letter-spacing:-.2px;line-height:1.3;}
 .ex-card-target{font-size:13px;color:var(--lite);margin-top:4px;font-weight:500;}
@@ -174,7 +195,7 @@ select option{background:var(--bg);}
   -webkit-tap-highlight-color:transparent;flex-shrink:0;font-family:inherit;}
 .ex-edit-btn:active{opacity:.7;}
 .ex-lbl{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.01em;}
-.main-badge{display:inline-flex;align-items:center;background:rgba(200,255,0,.12);color:var(--accent);
+.main-badge{display:inline-flex;align-items:center;background:var(--accent-soft);color:var(--accent);
   font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px;letter-spacing:.02em;}
 
 /* ── Set dots — horizontal strip ─────────────────────────────────────────── */
@@ -196,8 +217,8 @@ select option{background:var(--bg);}
 .ex-field-val{font-size:19px;font-weight:600;letter-spacing:-.3px;}
 .ex-field-unit{font-size:12px;color:var(--muted);margin-left:3px;font-weight:500;}
 .ex-step{display:flex;gap:4px;}
-.ex-step button{width:26px;height:26px;border-radius:13px;border:none;
-  background:rgba(255,255,255,.06);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;
+.ex-step button{width:44px;height:44px;border-radius:12px;border:none;
+  background:rgba(255,255,255,.06);color:var(--text);font-size:18px;font-weight:600;cursor:pointer;
   -webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;}
 .ex-step button:active{opacity:.7;}
 
@@ -265,7 +286,7 @@ select option{background:var(--bg);}
 .stat-delta.down{color:var(--orange);}
 
 /* ── Chart card ──────────────────────────────────────────────────────────── */
-.chart-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:12px;}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;margin-bottom:12px;}
 .chart-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
 .chart-lbl{font-size:12px;color:var(--lite);font-weight:500;}
 .chart-val{font-size:26px;font-weight:700;letter-spacing:-.8px;margin-top:4px;}
@@ -335,7 +356,7 @@ select option{background:var(--bg);}
 /* ── Programme modal · week rows + expandable schedule ───────────────────── */
 .wk-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s;}
 .wk-row:active{background:rgba(255,255,255,.04);}
-.wk-row.current{background:rgba(200,255,0,.04);}
+.wk-row.current{background:var(--accent-dim);}
 .wk-row-num{font-size:12px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.02em;}
 .wk-row-num.current{color:var(--accent);}
 .wk-row-now{background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;}
@@ -412,7 +433,7 @@ select option{background:var(--bg);}
 /* ── Profile header (settings) ───────────────────────────────────────────── */
 .profile-row{display:flex;align-items:center;gap:14px;padding:8px 0 20px;}
 .profile-ava{width:54px;height:54px;border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),var(--accent));color:#000;
+  background:var(--accent);color:#000;
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex-shrink:0;}
 .profile-name{font-size:18px;font-weight:600;letter-spacing:-.2px;}
 .profile-meta{font-size:13px;color:var(--lite);margin-top:2px;}
@@ -454,8 +475,8 @@ select option{background:var(--bg);}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
 .coach-textarea::placeholder{color:var(--muted);}
-.coach-send-btn{background:var(--accent);border:none;border-radius:18px;color:#000;
-  width:36px;height:36px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
+.coach-send-btn{background:var(--accent);border:none;border-radius:22px;color:#000;
+  width:44px;height:44px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .coach-send-btn:active{opacity:.7;}
 .coach-send-btn:disabled{opacity:.3;}
@@ -474,7 +495,7 @@ select option{background:var(--bg);}
 /* ── Workflow overlay ("How it works" page, inlined) ─────────────────────── */
 .wf-view{
   position:fixed;inset:0;z-index:200;overflow-y:auto;
-  --wf-surface:#111116;--wf-surface2:#18181f;--wf-accent-dim:rgba(200,255,0,0.12);
+  --wf-surface:#111116;--wf-surface2:#18181f;--wf-accent-dim:var(--accent-soft);
   --wf-base:#06b6d4;--wf-build:#7c6bff;--wf-peak:#f97316;--wf-deload:#22c55e;
   --wf-body:#a0a0b8;
   background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;line-height:1.7;
@@ -490,7 +511,7 @@ select option{background:var(--bg);}
 .wf-view .back-btn{
   display:inline-flex;align-items:center;gap:8px;color:var(--accent);text-decoration:none;
   font-size:14px;font-weight:600;letter-spacing:.02em;padding:8px 16px;
-  border:1px solid rgba(200,255,0,.3);border-radius:8px;background:transparent;cursor:pointer;
+  border:1px solid var(--accent-soft);border-radius:8px;background:transparent;cursor:pointer;
   font-family:inherit;transition:background .2s,border-color .2s;white-space:nowrap;
 }
 .wf-view .back-btn:hover{background:var(--wf-accent-dim);border-color:var(--accent);}
@@ -558,10 +579,10 @@ select option{background:var(--bg);}
 .kt-mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-meta-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0 22px;}
 .kt-meta-label{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;font-weight:500;}
-.kt-meta-ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent));display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px;}
+.kt-meta-ava{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px;}
 .kt-hero{margin-bottom:30px;}
 .kt-hero-greet{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
-.kt-hero-headline{font-size:clamp(38px,12vw,48px);font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;overflow-wrap:break-word;}
+.kt-hero-headline{font-size:clamp(38px,12vw,48px);font-weight:800;letter-spacing:-2px;line-height:.94;color:var(--text);margin:0;overflow-wrap:break-word;}
 .kt-hero-headline .kt-line2{display:block;}
 .kt-hero-headline .kt-line2.accent{color:var(--accent);}
 .kt-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
@@ -585,7 +606,7 @@ select option{background:var(--bg);}
 .kt-rlog-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;}
 .kt-rlog-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;font-weight:600;margin-bottom:4px;}
 .kt-rlog-ttl{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);}
-.kt-rlog-x{background:none;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:0;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-x{background:none;border:none;color:rgba(255,255,255,.55);font-size:20px;cursor:pointer;padding:10px 12px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;border-radius:12px;margin:-10px -8px -10px 0;}
 .kt-rlog-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
 .kt-rlog-field-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;display:block;margin-bottom:2px;}
 .kt-rlog-input{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.12);color:var(--text);font-size:28px;font-weight:700;letter-spacing:-1px;font-family:inherit;padding:8px 0 10px;outline:none;}
@@ -609,7 +630,7 @@ select option{background:var(--bg);}
 /* Progress tab — editorial streak hero + Lifts/Runs toggle */
 .kt-prog-hero{margin-bottom:24px;}
 .kt-prog-hero-greet{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
-.kt-prog-hero-num{font-size:clamp(44px,12.5vw,72px);font-weight:800;letter-spacing:-3px;line-height:.92;color:var(--text);margin:0;overflow-wrap:break-word;}
+.kt-prog-hero-num{font-size:clamp(44px,12.5vw,72px);font-weight:800;letter-spacing:-2px;line-height:.94;color:var(--text);margin:0;overflow-wrap:break-word;}
 .kt-prog-hero-num span{display:block;}
 .kt-prog-hero-num span.accent{color:var(--accent);}
 .kt-prog-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
@@ -650,17 +671,25 @@ select option{background:var(--bg);}
 .kt-act-input.notes{font-size:14px;font-weight:500;letter-spacing:-.011em;}
 .kt-act-save{width:100%;background:#0b0b0d;color:var(--accent);border:none;border-radius:14px;padding:15px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent;}
 .kt-act-logcard.morph .kt-act-save{background:#0b0b0d;color:#fff;}
-.kt-act-saved{background:rgba(200,255,0,.12);border:1px solid rgba(200,255,0,.25);color:var(--text);border-radius:18px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;font-size:14px;font-weight:600;}
+.kt-act-saved{background:var(--accent-soft);border:1px solid var(--accent-soft);color:var(--text);border-radius:18px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;font-size:14px;font-weight:600;}
 .kt-act-saved-undo{background:rgba(0,0,0,.4);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+/* B7 — Resume-in-progress banner on Today. */
+.kt-resume-banner{background:var(--accent-soft);border:1px solid var(--accent-soft);border-radius:var(--r-card);padding:14px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.kt-resume-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent);margin-bottom:4px;}
+.kt-resume-ttl{font-size:15px;font-weight:700;letter-spacing:-.2px;color:var(--text);}
+.kt-resume-actions{display:flex;gap:8px;align-items:center;}
+.kt-resume-discard{background:transparent;border:1px solid var(--border);color:var(--lite);padding:9px 14px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-resume-cta{background:var(--accent);color:#0b0b0d;border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-resume-cta:active,.kt-resume-discard:active{opacity:.7;}
 
 /* Smart suggestion chips — show ABOVE the recently-logged row. */
 .kt-act-suggest{display:flex;gap:8px;overflow-x:auto;padding:0 0 4px;margin-bottom:18px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .kt-act-suggest::-webkit-scrollbar{display:none;}
-.kt-act-suggest-chip{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;border-radius:14px;background:rgba(200,255,0,.06);border:1px solid rgba(200,255,0,.18);color:var(--text);font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-act-suggest-chip{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;border-radius:14px;background:var(--accent-dim);border:1px solid var(--accent-soft);color:var(--text);font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-act-suggest-body{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1;}
 .kt-act-suggest-name{font-size:13px;font-weight:700;letter-spacing:-.2px;}
 .kt-act-suggest-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;color:var(--accent);letter-spacing:.1em;font-weight:600;}
-.kt-cta{width:100%;padding:22px;border-radius:22px;border:none;background:var(--accent);color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
+.kt-cta{width:100%;padding:22px;border-radius:var(--r-hero);border:none;background:var(--accent);color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
 .kt-cta-arrow{font-size:24px;font-weight:600;}
@@ -697,7 +726,7 @@ select option{background:var(--bg);}
 .kt-marquee-right{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:10px;}
 .kt-marquee-delta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);font-weight:600;}
 .kt-marquee-reps{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--lite);}
-.kt-session-done{background:rgba(200,255,0,.08);border:1px solid rgba(200,255,0,.2);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;margin-bottom:24px;}
+.kt-session-done{background:var(--accent-dim);border:1px solid var(--accent-soft);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;margin-bottom:24px;}
 .kt-session-done-ic{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0;}
 .kt-session-done-body{flex:1;}
 .kt-session-done-ttl{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.2px;}
@@ -715,7 +744,7 @@ select option{background:var(--bg);}
 .kt-r-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
 .kt-r-bar-fill{height:100%;background:var(--accent);transition:width .35s;}
 .kt-r-deck{position:absolute;left:24px;right:24px;}
-.kt-r-card{position:absolute;inset:0;border-radius:32px;padding:28px 26px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;box-shadow:0 30px 60px -20px rgba(0,0,0,.6);transition:background .25s;-webkit-tap-highlight-color:transparent;}
+.kt-r-card{position:absolute;inset:0;border-radius:var(--r-deck);padding:28px 26px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;box-shadow:0 30px 60px -20px rgba(0,0,0,.6);transition:background .25s;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.peek1{transform:translateY(10px) scale(.96);opacity:.5;cursor:default;pointer-events:none;}
 .kt-r-card.peek2{transform:translateY(20px) scale(.92);opacity:.25;cursor:default;pointer-events:none;}
 .kt-r-card.lime{background:var(--accent);color:#0b0b0d;}
@@ -747,8 +776,9 @@ select option{background:var(--bg);}
 .kt-step-input{background:none;border:none;outline:none;padding:0;margin:0;width:auto;-webkit-appearance:none;appearance:none;font-family:inherit;caret-color:var(--accent);}
 .kt-step-input::-webkit-inner-spin-button,.kt-step-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
-.kt-step-btns{display:flex;gap:5px;flex-shrink:0;}
-.kt-step-btn{width:30px;height:30px;border-radius:9px;border:none;cursor:pointer;color:inherit;font-size:16px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+.kt-step-btns{display:flex;gap:8px;flex-shrink:0;}
+.kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+.kt-step-btn:active{opacity:.7;transform:scale(.94);}
 .kt-r-card.lime .kt-step-btn{background:rgba(255,255,255,.12);}
 .kt-r-card.dark .kt-step-btn{background:rgba(255,255,255,.08);}
 .kt-eng-done{margin-top:8px;padding:18px;border-radius:18px;border:none;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
@@ -759,8 +789,12 @@ select option{background:var(--bg);}
 .kt-r-card.dark .kt-eng-logall{background:rgba(255,255,255,.06);}
 .kt-rest{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;}
 .kt-rest-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;margin-bottom:12px;letter-spacing:.1em;}
-.kt-rest-time{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:96px;font-weight:600;letter-spacing:-4px;line-height:1;}
-.kt-rest-skip{margin-top:32px;padding:14px 28px;border-radius:14px;border:none;color:inherit;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rest-time{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:84px;font-weight:600;letter-spacing:-4px;line-height:1;margin-bottom:18px;}
+.kt-rest-adj{min-width:64px;height:44px;padding:0 14px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:700;letter-spacing:.04em;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-r-card.lime .kt-rest-adj{background:rgba(0,0,0,.12);}
+.kt-r-card.dark .kt-rest-adj{background:rgba(255,255,255,.08);}
+.kt-rest-adj:active{opacity:.7;transform:scale(.96);}
+.kt-rest-skip{margin-top:18px;padding:14px 28px;border-radius:14px;border:none;color:inherit;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-rest-skip{background:rgba(0,0,0,.15);}
 .kt-r-card.dark .kt-rest-skip{background:rgba(255,255,255,.08);}
 .kt-done{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;}
@@ -771,7 +805,7 @@ select option{background:var(--bg);}
 .kt-r-card.lime .kt-done-btn{background:#0b0b0d;color:var(--accent);}
 .kt-r-card.dark .kt-done-btn{background:var(--accent);color:#000;}
 .kt-r-strip{position:absolute;left:0;right:0;z-index:60;padding:0 16px;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 14px);}
-.kt-r-strip-inner{background:rgba(22,22,26,.88);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;justify-content:center;}
+.kt-r-strip-inner{background:rgba(22,22,26,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;justify-content:center;}
 .kt-r-strip-inner::-webkit-scrollbar{display:none;}
 .kt-r-pill{flex-shrink:0;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;-webkit-tap-highlight-color:transparent;}
 .kt-r-pill.active{background:var(--accent);color:#000;}
@@ -787,16 +821,16 @@ select option{background:var(--bg);}
   <div id="screen"></div>
 </div>
 <nav id="tabs">
-  <button class="tab active" data-tab="log" onclick="switchTab('log')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>Log
+  <button class="tab active" data-tab="log" onclick="switchTab('log')" aria-label="Log">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20"/></svg>Log
   </button>
-  <button class="tab" data-tab="progress" onclick="switchTab('progress')">
+  <button class="tab" data-tab="progress" onclick="switchTab('progress')" aria-label="Progress">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Progress
   </button>
-  <button class="tab" data-tab="coach" onclick="switchTab('coach')">
+  <button class="tab" data-tab="coach" onclick="switchTab('coach')" aria-label="Coach">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Coach
   </button>
-  <button class="tab" data-tab="settings" onclick="switchTab('settings')">
+  <button class="tab" data-tab="settings" onclick="switchTab('settings')" aria-label="Settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings
   </button>
 </nav>
@@ -890,6 +924,9 @@ var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
 var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
+// B7: Resume-pending flag — set when a draft is restored on cold launch so Today
+// can render a banner rather than auto-opening the overlay.
+var runnerResumePending = false;
 // Inline run-log state (Run sub-tab)
 var runLogOpen      = false;
 var runLogClosing   = false;
@@ -1247,7 +1284,20 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 function lsGet(k) { try{var s=localStorage.getItem(k);return s?JSON.parse(s):null;}catch(e){return null;} }
-function lsSet(k,v) { try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
+// R4 — surface localStorage quota / serialization failures. The previous
+// silent catch meant the user would see "Session logged" even when nothing
+// was saved. We now route real save failures to a toast so the user knows
+// to export and prune. The cached-HTML key never warns (it's allowed to fail).
+var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1};
+function lsSet(k,v) {
+  try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
+  catch(e){
+    if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
+      try{ showToast('Couldn’t save — storage full. Export your data.'); }catch(_){}
+    }
+    return false;
+  }
+}
 function getWeights() { return lsGet('kt_weights')||defaultWeights(); }
 function getSessions() { return lsGet('kt_sessions')||[]; }
 function getRuns() { return lsGet('kt_runs')||[]; }
@@ -1272,7 +1322,13 @@ function clearCustomRoutine(){ localStorage.removeItem('kt_routine'); }
 function getWkData(){
   var cr=getCustomRoutine();
   if(cr&&cr.weeks){
-    var idx=Math.min(currentWeek,cr.weeks.length)-1;
+    // R2 — clamp currentWeek to the routine length so a user who has aged
+    // past the end of their programme doesn't silently train week-1 data
+    // with a "WK 07" label. clampedWeek is exposed for renderers that want
+    // to surface the wrap.
+    var len = cr.weeks.length;
+    var idx = Math.min(currentWeek, len) - 1;
+    if(currentWeek > len) currentWeek = len; // self-heal
     return cr.weeks[Math.max(0,idx)]||cr.weeks[0];
   }
   return null;
@@ -1698,7 +1754,7 @@ function renderHealthQuickLog(){
   var d = new Date(r.startDate);
   var timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   var meta = pace+'/km'+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
-  return '<div style="background:var(--card);border:1px solid rgba(200,255,0,.2);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
+  return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
       '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
       '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
@@ -2344,6 +2400,15 @@ function handleCoachCardAsk(ev){
     streamingContent = '';
     render();
     scrollChatBottom();
+  }).catch(function(err){
+    // B8 — surface network / API errors instead of leaving the user staring at
+    // an empty "Thinking…" forever.
+    coachLoading = false;
+    streamingContent = '';
+    coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
+    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
+    render();
+    scrollChatBottom();
   });
 }
 
@@ -2353,7 +2418,7 @@ function renderTodayEditorial(){
   var firstName = getUserFirstName();
   // Avatar shows the user's initial when a name is set; otherwise the routine's
   // first character, falling back to a neutral glyph.
-  var avatarSeed = firstName || (cr && cr.name) || '?';
+  var avatarSeed = firstName || '?';
   var initial = (String(avatarSeed)[0] || '?').toUpperCase();
   var totalWks = getTotalWeeks();
   var act = getTodayActivity();
@@ -2376,6 +2441,10 @@ function renderTodayEditorial(){
     line2 = ((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'').toLowerCase()+' day.';
     line2Class = 'accent';
     if(deload){
+      // C3 — on a deload week the eyebrow ("◆ DELOAD WEEK · 60% LOADS")
+      // already owns the accent. Drop the line-2 accent so we don't have
+      // two lime emphases competing in the same hero.
+      line2Class = '';
       body = 'Deload — drop to 60% of working weights, 3×5, RPE 5–6. Let the body absorb the work.';
     } else if(act.exercises && act.exercises.length){
       var main = act.exercises.find(function(e){return e.isMain;}) || act.exercises[0];
@@ -2566,7 +2635,29 @@ function renderTodayEditorial(){
       rows+'</div>';
   }
 
-  return meta + hero + cta + adhocPicker + coachHTML + marquee;
+  // B7: Resume banner — if a runner draft was restored on cold launch, the
+  // runner overlay is suppressed; the user gets a clear choice here instead.
+  var resumeBanner = '';
+  if(runnerResumePending && runnerSession){
+    var doneCount = 0;
+    var totalCount = 0;
+    (runnerSession.exercises||[]).forEach(function(e){
+      totalCount += e.sets||0;
+      doneCount  += runnerCompleted[e.name]||0;
+    });
+    resumeBanner = '<div class="kt-resume-banner">'+
+      '<div>'+
+        '<div class="kt-resume-eyebrow">WORKOUT IN PROGRESS</div>'+
+        '<div class="kt-resume-ttl">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName))+' · '+doneCount+' / '+totalCount+' sets</div>'+
+      '</div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="discardRunnerDraft()">Discard</button>'+
+        '<button class="kt-resume-cta" onclick="resumeRunnerDraft()">Resume →</button>'+
+      '</div>'+
+      '</div>';
+  }
+
+  return meta + resumeBanner + hero + cta + adhocPicker + coachHTML + marquee;
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -2611,7 +2702,7 @@ function renderCoachCard(activity){
   return '<div class="kt-coach-card" id="kt-coach-card">'+
     '<div class="kt-coach-head">'+
       '<div class="kt-coach-eyebrow">'+_coachCardEyebrow(coachCard.loadedAt)+'</div>'+
-      '<button class="kt-coach-x" onclick="dismissCoachCard()">×</button>'+
+      '<button class="kt-coach-x" onclick="dismissCoachCard()" aria-label="Dismiss coach card">×</button>'+
     '</div>'+
     '<div class="kt-coach-msg">'+_esc(coachCard.message)+'</div>'+
     '<div class="kt-coach-actions">'+actions+ask+'</div>'+
@@ -2930,7 +3021,7 @@ function renderRunSegment(){
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][todayDow];
   var deload = isDeloadWeek();
   var focus = getRunFocus();
-  var avatarSeed = firstName || (cr && cr.name) || '?';
+  var avatarSeed = firstName || '?';
   var initial = (String(avatarSeed)[0] || '?').toUpperCase();
 
   var meta = '<div class="kt-meta-row">'+
@@ -3073,6 +3164,7 @@ function _saveRunnerDraft(){
   try{
     localStorage.setItem('kt_runner_draft', JSON.stringify({
       date: todayISO(),
+      savedAt: Date.now(),
       session: runnerSession,
       exIdx: runnerExIdx,
       completed: runnerCompleted,
@@ -3104,9 +3196,32 @@ function _restoreRunnerDraft(){
     runnerEngaged=false;
     runnerResting=false;
     runnerRestLeft=90;
-    runnerOpen=true;
+    // B7: Don't auto-open the runner overlay on cold launch. Restore the data
+    // quietly; the Today screen shows a Resume / Discard banner if a draft
+    // exists. This avoids the worst case where a user opens the app to check
+    // their plan and accidentally trashes 30 min of work via "End" → confirm.
+    runnerOpen=false;
+    runnerResumePending=true;
     return true;
   }catch(e){ return false; }
+}
+function resumeRunnerDraft(){
+  if(!runnerSession) return;
+  runnerResumePending=false;
+  runnerOpen=true;
+  paintRunner();
+}
+function discardRunnerDraft(){
+  if(!confirm('Discard the in-progress workout? Your logged sets will be lost.')) return;
+  runnerResumePending=false;
+  runnerSession=null;
+  runnerCompleted={};
+  runnerWeights={};
+  runnerReps={};
+  runnerRepsLog={};
+  runnerWeightsLog={};
+  _clearRunnerDraft();
+  render();
 }
 function closeDeckRunner(){
   runnerOpen = false;
@@ -3206,7 +3321,7 @@ function runnerCompleteSet(){
   runnerCompleted[ex.name] = done;
   if(done < ex.sets){
     runnerResting = true;
-    runnerRestLeft = 90;
+    runnerRestLeft = _defaultRestFor(ex);
     if(runnerRestTick) clearInterval(runnerRestTick);
     _trovoTimerStart(ex, done + 1);
     runnerRestTick = setInterval(function(){
@@ -3264,6 +3379,19 @@ function runnerSkipRest(){
   runnerRestLeft = 90;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
+  paintRunner();
+}
+function _defaultRestFor(ex){
+  // Main lifts take heavy compound sets that need ~3 min recovery; everything
+  // else can rebound at 90s. If the routine ever populates ex.rest, honour it.
+  if(ex && typeof ex.rest === 'number' && ex.rest >= 30) return Math.min(ex.rest, 600);
+  return ex && ex.isMain ? 180 : 90;
+}
+function runnerAddRest(delta){
+  // Tap +30s / -15s buttons inside the rest body. Clamp 5..600s so we can't
+  // accidentally fly past the timer or get into negative territory.
+  if(!runnerResting) return;
+  runnerRestLeft = Math.max(5, Math.min(600, runnerRestLeft + delta));
   paintRunner();
 }
 // Finish: write a real session record and exit to Today.
@@ -3459,9 +3587,15 @@ function _renderRunnerEngagedBody(ex, done){
       '</div>'+
     '</div></div>';
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
-  var logAllBtn = (!ex.isMain && done === 0)
-    ? '<button class="kt-eng-logall" onclick="event.stopPropagation();runnerLogAllAtTarget()">Log all '+ex.sets+' sets at target →</button>'
-    : '';
+  var logAllBtn = '';
+  if(done === 0){
+    // B3: allow Log-All on mains too, behind a confirm (foot-gun otherwise).
+    var safeName = String(ex.name||'').replace(/'/g, "\\'");
+    var logAllAction = ex.isMain
+      ? "if(confirm('Log all "+ex.sets+" sets of "+safeName+" at target without engaging?'))runnerLogAllAtTarget()"
+      : "runnerLogAllAtTarget()";
+    logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+ex.sets+' sets at target →</button>';
+  }
   return '<div class="kt-eng">'+
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
@@ -3474,6 +3608,10 @@ function _renderRunnerRestingBody(ex, done){
   return '<div class="kt-rest">'+
     '<div class="kt-rest-hd">REST · NEXT SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-rest-time">'+m+':'+String(s).padStart(2,'0')+'</div>'+
+    '<div class="kt-rest-controls" style="display:flex;gap:10px;justify-content:center;margin-bottom:10px;">'+
+      '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(-15)" aria-label="Subtract 15 seconds">−15s</button>'+
+      '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(30)" aria-label="Add 30 seconds">+30s</button>'+
+    '</div>'+
     '<button class="kt-rest-skip" onclick="event.stopPropagation();runnerSkipRest()">Skip rest</button>'+
     '</div>';
 }
@@ -3570,9 +3708,9 @@ function renderWeekHeader() {
     '<div class="hero-bar"><div class="hero-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="hero-meta"><span>Programme progress</span><span style="color:var(--text);font-weight:600">'+pct+'%</span></div>'+
     '<div class="week-stepper">'+
-      '<button class="wk-btn" onclick="adjustWeek(-1)">−</button>'+
+      '<button class="wk-btn" onclick="adjustWeek(-1)" aria-label="Previous week">−</button>'+
       '<span style="font-size:12px;font-weight:600;padding:0 12px;color:var(--lite);">Week '+currentWeek+' of '+totalWks+'</span>'+
-      '<button class="wk-btn" onclick="adjustWeek(1)">+</button>'+
+      '<button class="wk-btn" onclick="adjustWeek(1)" aria-label="Next week">+</button>'+
       '<button onclick="exportData()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;" title="Quick backup">Backup</button>'+
     '</div>'+
     '</div>';
@@ -3644,12 +3782,39 @@ function renderLog() {
 
   // Workout sub-tab — needs a programme.
   if (!hasCustomRoutine()) {
-    return header + subBar +
-      '<div class="card" style="text-align:center;padding:36px 20px;margin-top:14px;">'+
-      '<div style="font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-.2px;">No programme yet</div>'+
-      '<div style="font-size:14px;color:var(--lite);line-height:1.6;margin-bottom:18px;">Build a custom training plan with the AI Coach. Your sessions will appear here.</div>'+
-      '<button onclick="switchTab(\'coach\');startRoutineIntake();" style="background:var(--accent);color:#000;border:none;border-radius:12px;padding:12px 22px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:-.2px;">Build my programme →</button>'+
-      '</div>';
+    // (A3) Drop the legacy `.screen-hd` header on empty state so this tab uses
+    // the same meta-row + hero rhythm as the other editorial sub-tabs.
+    // (A6) "Build my programme" requires an API key; if none, route to Coach
+    // setup with copy that matches the user's actual next step.
+    var _firstName = getUserFirstName();
+    var _av = (String(_firstName)[0] || '?').toUpperCase();
+    var _weekdayE = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
+    var _hasKey = !!getApiKey();
+    var _ctaLabel = _hasKey ? 'Build my programme →' : 'Set up coach →';
+    var _ctaAction = _hasKey
+      ? "switchTab('coach');startRoutineIntake();"
+      : "switchTab('coach');";
+    var _hint = _hasKey
+      ? 'Build a custom plan with the AI Coach. Your sessions will appear here.'
+      : 'Connect the AI Coach (Anthropic API key) to generate your custom plan.';
+    var _greet = _firstName ? 'Good '+(new Date().getHours()<12?'morning':(new Date().getHours()<18?'afternoon':'evening'))+', '+_esc(_firstName)+'.' : 'Welcome.';
+    return subBar +
+      '<div class="kt-meta-row">'+
+        '<div class="kt-meta-label">'+_weekdayE+' · NEW</div>'+
+        '<div class="kt-meta-ava">'+_av+'</div>'+
+      '</div>'+
+      '<div class="kt-hero">'+
+        '<div class="kt-hero-greet">'+_greet+'</div>'+
+        '<h1 class="kt-hero-headline">No plan<span class="kt-line2 accent">yet.</span></h1>'+
+        '<div class="kt-hero-body">'+_hint+'</div>'+
+      '</div>'+
+      '<button class="kt-cta" onclick="'+_ctaAction+'">'+
+        '<div style="text-align:left;">'+
+          '<div class="kt-cta-label">'+(_hasKey?'BUILD':'SETUP')+'</div>'+
+          '<div class="kt-cta-title">'+_ctaLabel.replace(/ →$/,'')+'</div>'+
+        '</div>'+
+        '<div class="kt-cta-arrow">→</div>'+
+      '</button>';
   }
 
   // Editorial Today layout — replaces the legacy session picker / quick-log
@@ -3967,12 +4132,12 @@ function renderRunsSection(opts) {
   return targetsCard +
     '<div class="card" id="kt-run-log-card"><h2>Log Run</h2>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+
-    '<div class="field" style="margin:0"><label>Distance (km)</label><input type="number" id="runDist" placeholder="5.0" step="0.1" min="0" oninput="updateRunPacePreview()"/></div>'+
-    '<div class="field" style="margin:0"><label>Time (mm:ss)</label><input type="text" id="runTime" placeholder="28:30" oninput="updateRunPacePreview()"/></div>'+
+    '<div class="field" style="margin:0"><label>Distance (km)</label><input type="number" inputmode="decimal" id="runDist" placeholder="5.0" step="0.1" min="0" oninput="updateRunPacePreview()"/></div>'+
+    '<div class="field" style="margin:0"><label>Time (mm:ss)</label><input type="text" inputmode="numeric" pattern="[0-9:]*" id="runTime" placeholder="28:30" oninput="updateRunPacePreview()"/></div>'+
     '</div>'+
     '<div id="runPacePreview" style="text-align:center;font-size:14px;color:var(--accent);font-weight:900;margin-bottom:10px;min-height:18px;letter-spacing:-.3px;"></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+
-    '<div class="field" style="margin:0"><label>Avg HR (bpm, optional)</label><input type="number" id="runHR" placeholder="148" min="0" max="220"/></div>'+
+    '<div class="field" style="margin:0"><label>Avg HR (bpm, optional)</label><input type="number" inputmode="numeric" id="runHR" placeholder="148" min="0" max="220"/></div>'+
     '<div class="field" style="margin:0"><label>Type</label>'+
     '<select id="runType" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;color:var(--text);font-size:16px;font-weight:700;">'+
     '<option value="easy">Easy</option>'+
@@ -4321,7 +4486,7 @@ function renderSportEditorial(){
   // Meta row
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
-  var avSeed = firstNameP || (crP && crP.name) || '?';
+  var avSeed = firstNameP || '?';
   var avInitial = (String(avSeed)[0] || '?').toUpperCase();
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWksP = getTotalWeeks();
@@ -4773,7 +4938,7 @@ function renderSportProgress(){
 function renderBodyEditorial(){
   var firstName = getUserFirstName();
   var cr = getCustomRoutine();
-  var avSeed = firstName || (cr && cr.name) || '?';
+  var avSeed = firstName || '?';
   var avInitial = (String(avSeed)[0] || '?').toUpperCase();
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWks = getTotalWeeks();
@@ -5203,7 +5368,7 @@ function renderProgress() {
   var totalWksP = getTotalWeeks();
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
-  var avSeed = firstNameP || (crP && crP.name) || '?';
+  var avSeed = firstNameP || '?';
   var avInitial = (String(avSeed)[0] || '?').toUpperCase();
   var progressHeader = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">PROGRESS · WEEK '+
@@ -5667,6 +5832,9 @@ async function startRoutineIntake(){
   scrollChatBottom();
   try{
     await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-4-6',16384);
+  }catch(err){
+    coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.'});
+    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
     streamingContent='';
@@ -6252,6 +6420,12 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       var _n=getNextSession();
       logSession=(_n==='Run')?'Push':_n;
       showToast('Programme loaded — Week 1 is ready');
+      // R5 — surface partial intakes. The prompt asks for 4–24 weeks; if the AI
+      // shipped fewer than 4 weeks we ask the user to confirm rather than
+      // silently bless an undercooked programme.
+      if(_cr.weeks.length < 4){
+        showToast('Coach shipped '+_cr.weeks.length+' week'+(_cr.weeks.length===1?'':'s')+'. Ask the coach to extend if you wanted more.');
+      }
       switchTab('log');
     }
   }
@@ -6540,6 +6714,12 @@ async function sendCoachMessage(){
   var maxTok=16384;
   try{
     await runCoachTurn(systemPrompt,model,maxTok);
+  }catch(err){
+    // B8 — push a synthetic assistant message on failure so the user can
+    // see what went wrong (network, auth, schema mismatch). Otherwise the
+    // typing dots disappear with no feedback.
+    coachMessages.push({role:'assistant', content:'Coach didn't respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
+    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
     streamingContent='';
@@ -6571,7 +6751,7 @@ function renderCoach(){
   var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
-  var avSeedC = firstNameC || (crC && crC.name) || '?';
+  var avSeedC = firstNameC || '?';
   var avInitialC = (String(avSeedC)[0] || '?').toUpperCase();
   var totalWksC = getTotalWeeks();
   var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
@@ -6798,7 +6978,7 @@ function renderCoach(){
         pendLabel='Working…';
       }
       bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+
-        '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(200,255,0,.1);color:var(--accent);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+
+        '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+
           '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink .9s step-end infinite;"></span>'+
           pendLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;')+
         '</span></div>';
@@ -6865,16 +7045,16 @@ function renderCoach(){
 
 // ── Themes & Settings ─────────────────────────────────────────────────────────
 var THEMES = {
-  dark:   {name:'Dark',   textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#525259',lite:'#9ca3af'},
-  light:  {name:'Light',  textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#84cc00',green:'#84cc00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#888',   lite:'#555'},
-  ocean:  {name:'Ocean',  textColor:'#e0f2fe',bg:'#060f1a',card:'#0b1e30',card2:'#0e2438',border:'rgba(255,255,255,.07)',accent:'#00d4ff',green:'#00d4ff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#5ac8fa',text:'#e0f2fe',muted:'#4a7fa0',lite:'#7bafc8'},
-  sunset: {name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',card2:'#1f1200',border:'rgba(255,255,255,.07)',accent:'#ff9f0a',green:'#ff9f0a',yellow:'#ffd60a',red:'#ff453a',orange:'#ff6b35',cyan:'#60a5fa',text:'#fff7ed',muted:'#7a5a3a',lite:'#b8977a'},
+  dark:   {name:'Dark',   textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#6e6e76',lite:'#9ca3af'},
+  light:  {name:'Light',  textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#5b8a00','accent-soft':'rgba(91,138,0,.14)','accent-dim':'rgba(91,138,0,.07)',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#666',   lite:'#444'},
+  ocean:  {name:'Ocean',  textColor:'#e0f2fe',bg:'#060f1a',card:'#0b1e30',card2:'#0e2438',border:'rgba(255,255,255,.07)',accent:'#00d4ff','accent-soft':'rgba(0,212,255,.14)','accent-dim':'rgba(0,212,255,.07)',green:'#00d4ff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#5ac8fa',text:'#e0f2fe',muted:'#5e8aa8',lite:'#7bafc8'},
+  sunset: {name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',card2:'#1f1200',border:'rgba(255,255,255,.07)',accent:'#ff9f0a','accent-soft':'rgba(255,159,10,.14)','accent-dim':'rgba(255,159,10,.07)',green:'#ff9f0a',yellow:'#ffd60a',red:'#ff453a',orange:'#ff6b35',cyan:'#60a5fa',text:'#fff7ed',muted:'#8c6a48',lite:'#b8977a'},
 };
 
 function applyTheme(name) {
   var t=THEMES[name]; if(!t) return;
   var r=document.documentElement;
-  ['bg','card','card2','border','accent','green','yellow','red','orange','cyan','text','muted','lite'].forEach(function(k){
+  ['bg','card','card2','border','accent','accent-soft','accent-dim','green','yellow','red','orange','cyan','text','muted','lite'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
   localStorage.setItem('kt_theme',name);
