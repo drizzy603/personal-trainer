@@ -886,6 +886,7 @@ var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
 var runnerRepsLog     = {};         // {exId: [reps per completed set]}
+var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
 var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
@@ -1303,9 +1304,15 @@ function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+Stri
 function calcVolume(exercises) {
   var vol=0;
   exercises.forEach(function(ex){
-    var w=parseFloat(ex.weight)||0; if(w<=0) return;
-    var reps=Array.isArray(ex.reps)?ex.reps.reduce(function(a,b){return a+b;},0):(parseInt(ex.reps)||0)*(ex.sets||1);
-    vol+=w*reps;
+    var repsArr = Array.isArray(ex.reps) ? ex.reps : [];
+    var wLog = Array.isArray(ex.weightLog) ? ex.weightLog : [];
+    if(wLog.length && repsArr.length){
+      for(var i=0;i<repsArr.length;i++) vol += (wLog[i]||0) * (repsArr[i]||0);
+    } else {
+      var w=parseFloat(ex.weight)||0; if(w<=0) return;
+      var reps=repsArr.length?repsArr.reduce(function(a,b){return a+b;},0):(parseInt(ex.reps)||0)*(ex.sets||1);
+      vol+=w*reps;
+    }
   });
   return Math.round(vol);
 }
@@ -3050,6 +3057,7 @@ function openDeckRunner(overrideType){
   runnerWeights = {};
   runnerReps = {};
   runnerRepsLog = {};
+  runnerWeightsLog = {};
   runnerSessionDate = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
@@ -3071,6 +3079,7 @@ function _saveRunnerDraft(){
       weights: runnerWeights,
       reps: runnerReps,
       repsLog: runnerRepsLog,
+      weightsLog: runnerWeightsLog,
       sessionDate: runnerSessionDate
     }));
   }catch(e){}
@@ -3090,6 +3099,7 @@ function _restoreRunnerDraft(){
     runnerWeights=d.weights||{};
     runnerReps=d.reps||{};
     runnerRepsLog=d.repsLog||{};
+    runnerWeightsLog=d.weightsLog||{};
     runnerSessionDate=d.sessionDate||null;
     runnerEngaged=false;
     runnerResting=false;
@@ -3186,6 +3196,12 @@ function runnerCompleteSet(){
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:parseInt(ex.reps)||0);
   if(!runnerRepsLog[ex.name]) runnerRepsLog[ex.name] = [];
   runnerRepsLog[ex.name].push(typeof r === 'number' ? r : parseInt(r)||0);
+  var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
+  if(!runnerWeightsLog[ex.name]) runnerWeightsLog[ex.name] = [];
+  runnerWeightsLog[ex.name].push(w);
+  // Reset reps to target so next set starts fresh (user must confirm actual reps).
+  var targetRep = Array.isArray(ex.reps) ? ex.reps[0] : ex.reps;
+  runnerReps[ex.name] = parseInt(targetRep) || 0;
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
   if(done < ex.sets){
@@ -3224,8 +3240,10 @@ function runnerLogAllAtTarget(){
   var ex = _runnerEx(); if(!ex) return;
   var targetRep = Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
   var targetRepNum = parseInt(targetRep)||0;
+  var curW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   runnerRepsLog[ex.name] = [];
-  for(var i=0;i<ex.sets;i++) runnerRepsLog[ex.name].push(targetRepNum);
+  runnerWeightsLog[ex.name] = [];
+  for(var i=0;i<ex.sets;i++){ runnerRepsLog[ex.name].push(targetRepNum); runnerWeightsLog[ex.name].push(curW); }
   runnerCompleted[ex.name] = ex.sets;
   runnerEngaged = false;
   runnerResting = false;
@@ -3258,7 +3276,9 @@ function runnerFinishSession(){
     var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : ex.reps;
     var repsArr = (runnerRepsLog[ex.name] || []).slice(0, doneSets);
     while(repsArr.length < doneSets) repsArr.push(typeof r === 'number' ? r : parseInt(r)||0);
-    return {name:ex.name, isMain:!!ex.isMain, sets:doneSets, reps:repsArr, weight:w, rpe:ex.rpe||''};
+    var weightsArr = (runnerWeightsLog[ex.name] || []).slice(0, doneSets);
+    while(weightsArr.length < doneSets) weightsArr.push(w);
+    return {name:ex.name, isMain:!!ex.isMain, sets:doneSets, reps:repsArr, weight:w, weightLog:weightsArr, rpe:ex.rpe||''};
   }).filter(Boolean);
   if(!exsOut.length){
     // Nothing logged — just exit without recording.
