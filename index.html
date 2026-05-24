@@ -921,6 +921,8 @@ var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
 var runnerRepsLog     = {};         // {exId: [reps per completed set]}
 var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
+var runnerRpe         = {};         // {exId: currentRpe} — stepper state
+var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
 var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
@@ -3150,12 +3152,15 @@ function openDeckRunner(overrideType){
   runnerReps = {};
   runnerRepsLog = {};
   runnerWeightsLog = {};
+  runnerRpe = {};
+  runnerRpeLog = {};
   runnerSessionDate = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
     runnerWeights[ex.name] = parseFloat(ex.weight) || 0;
     var firstRep = Array.isArray(ex.reps) ? ex.reps[0] : ex.reps;
     runnerReps[ex.name] = parseInt(firstRep) || (typeof firstRep==='string' ? parseInt(firstRep.split('-')[0])||0 : 0);
+    runnerRpe[ex.name] = parseInt(ex.rpe) || 7;
   });
   runnerOpen = true;
   paintRunner();
@@ -3173,6 +3178,8 @@ function _saveRunnerDraft(){
       reps: runnerReps,
       repsLog: runnerRepsLog,
       weightsLog: runnerWeightsLog,
+      rpe: runnerRpe,
+      rpeLog: runnerRpeLog,
       sessionDate: runnerSessionDate
     }));
   }catch(e){}
@@ -3193,6 +3200,8 @@ function _restoreRunnerDraft(){
     runnerReps=d.reps||{};
     runnerRepsLog=d.repsLog||{};
     runnerWeightsLog=d.weightsLog||{};
+    runnerRpe=d.rpe||{};
+    runnerRpeLog=d.rpeLog||{};
     runnerSessionDate=d.sessionDate||null;
     runnerEngaged=false;
     runnerResting=false;
@@ -3221,6 +3230,8 @@ function discardRunnerDraft(){
   runnerReps={};
   runnerRepsLog={};
   runnerWeightsLog={};
+  runnerRpe={};
+  runnerRpeLog={};
   _clearRunnerDraft();
   render();
 }
@@ -3278,6 +3289,16 @@ function runnerSetReps(val){
   var v = parseInt(val);
   if(!isNaN(v) && v >= 0){ runnerReps[ex.name] = v; _saveRunnerDraft(); }
 }
+function runnerStepRpe(delta){
+  var ex = _runnerEx(); if(!ex) return;
+  runnerRpe[ex.name] = Math.min(10, Math.max(1, (runnerRpe[ex.name]||7) + delta));
+  paintRunner();
+}
+function runnerSetRpe(val){
+  var ex = _runnerEx(); if(!ex) return;
+  var v = parseInt(val);
+  if(!isNaN(v) && v >= 1 && v <= 10){ runnerRpe[ex.name] = v; _saveRunnerDraft(); }
+}
 async function checkPendingShare(){
   if(!isNativeIOS()) return;
   var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
@@ -3315,6 +3336,8 @@ function runnerCompleteSet(){
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   if(!runnerWeightsLog[ex.name]) runnerWeightsLog[ex.name] = [];
   runnerWeightsLog[ex.name].push(w);
+  if(!runnerRpeLog[ex.name]) runnerRpeLog[ex.name] = [];
+  runnerRpeLog[ex.name].push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
   // Reset reps to target so next set starts fresh (user must confirm actual reps).
   var targetRep = Array.isArray(ex.reps) ? ex.reps[0] : ex.reps;
   runnerReps[ex.name] = parseInt(targetRep) || 0;
@@ -3357,9 +3380,11 @@ function runnerLogAllAtTarget(){
   var targetRep = Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
   var targetRepNum = parseInt(targetRep)||0;
   var curW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
+  var targetRpe = parseInt(ex.rpe)||7;
   runnerRepsLog[ex.name] = [];
   runnerWeightsLog[ex.name] = [];
-  for(var i=0;i<ex.sets;i++){ runnerRepsLog[ex.name].push(targetRepNum); runnerWeightsLog[ex.name].push(curW); }
+  runnerRpeLog[ex.name] = [];
+  for(var i=0;i<ex.sets;i++){ runnerRepsLog[ex.name].push(targetRepNum); runnerWeightsLog[ex.name].push(curW); runnerRpeLog[ex.name].push(targetRpe); }
   runnerCompleted[ex.name] = ex.sets;
   runnerEngaged = false;
   runnerResting = false;
@@ -3382,11 +3407,11 @@ function runnerSkipRest(){
   _trovoTimerEnd();
   paintRunner();
 }
+function getRestDefault(){ return parseInt(localStorage.getItem('kt_rest_default'))||90; }
+function setRestDefault(secs){ localStorage.setItem('kt_rest_default', String(parseInt(secs)||90)); }
 function _defaultRestFor(ex){
-  // Main lifts take heavy compound sets that need ~3 min recovery; everything
-  // else can rebound at 90s. If the routine ever populates ex.rest, honour it.
   if(ex && typeof ex.rest === 'number' && ex.rest >= 30) return Math.min(ex.rest, 600);
-  return 90;
+  return getRestDefault();
 }
 function runnerAddRest(delta){
   // Tap +30s / -15s buttons inside the rest body. Clamp 5..600s so we can't
@@ -3407,9 +3432,11 @@ function runnerFinishSession(){
     while(repsArr.length < doneSets) repsArr.push(typeof r === 'number' ? r : parseInt(r)||0);
     var weightsArr = (runnerWeightsLog[ex.name] || []).slice(0, doneSets);
     while(weightsArr.length < doneSets) weightsArr.push(wFallback);
-    // Use max weight as the scalar so PRs and progress charts see the heaviest set.
     var w = weightsArr.length ? Math.max.apply(null, weightsArr) : wFallback;
-    return {name:ex.name, isMain:!!ex.isMain, sets:doneSets, reps:repsArr, weight:w, weightLog:weightsArr, rpe:ex.rpe||''};
+    var rpeArr = (runnerRpeLog[ex.name] || []).slice(0, doneSets);
+    while(rpeArr.length < doneSets) rpeArr.push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
+    var rpeAvg = rpeArr.length ? Math.round(rpeArr.reduce(function(a,b){return a+b;},0)/rpeArr.length) : (parseInt(ex.rpe)||'');
+    return {name:ex.name, isMain:!!ex.isMain, sets:doneSets, reps:repsArr, weight:w, weightLog:weightsArr, rpe:rpeAvg, rpeLog:rpeArr};
   }).filter(Boolean);
   if(!exsOut.length){
     // Nothing logged — just exit without recording.
@@ -3587,6 +3614,22 @@ function _renderRunnerEngagedBody(ex, done){
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
       '</div>'+
     '</div></div>';
+  var rpe = runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7);
+  var stepperRPE = '<div class="kt-step">'+
+    '<div class="kt-step-lbl">RPE</div>'+
+    '<div class="kt-step-row">'+
+      '<span style="display:flex;align-items:baseline;gap:0;">'+
+        '<input class="kt-step-val kt-step-input" type="number" inputmode="numeric" step="1" min="1" max="10" value="'+rpe+'"'+
+          ' onclick="event.stopPropagation();this.select()"'+
+          ' oninput="event.stopPropagation();runnerSetRpe(this.value)"'+
+          ' onchange="event.stopPropagation();runnerSetRpe(this.value)"/>'+
+        '<span class="kt-step-unit">/10</span>'+
+      '</span>'+
+      '<div class="kt-step-btns">'+
+        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepRpe(-1)">−</button>'+
+        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepRpe(1)">+</button>'+
+      '</div>'+
+    '</div></div>';
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
@@ -3600,7 +3643,7 @@ function _renderRunnerEngagedBody(ex, done){
   return '<div class="kt-eng">'+
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
+    '<div class="kt-eng-row">'+stepperW+stepperR+stepperRPE+'</div>'+
     doneBtn + logAllBtn +
     '</div>';
 }
@@ -7199,6 +7242,28 @@ function renderSettings() {
       '</div>';
     })()+
     '</div>'+
+
+    (function(){
+      var restOpts=[60,90,120,180,240,300];
+      var curRest=getRestDefault();
+      var pills=restOpts.map(function(s){
+        var lbl=s<60?s+'s':(s%60===0?(s/60)+'m':(Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s'));
+        var active=curRest===s;
+        return '<button onclick="event.stopPropagation();setRestDefault('+s+');render();" style="'+
+          'padding:7px 14px;border-radius:8px;border:1px solid '+(active?'var(--accent)':'var(--border)')+';'+
+          'background:'+(active?'var(--accent-soft)':'var(--card2)')+';'+
+          'color:'+(active?'var(--accent)':'var(--muted)')+';'+
+          'font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">'+lbl+'</button>';
+      }).join('');
+      return '<div class="settings-group">'+
+        '<div class="settings-group-hd">Workout</div>'+
+        '<div style="padding:14px 18px;">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Default rest</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+pills+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Used when your programme does not specify a rest period. Adjust per set with −15s / +30s during a workout.</div>'+
+        '</div>'+
+      '</div>';
+    })()+
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">Programme</div>'+
