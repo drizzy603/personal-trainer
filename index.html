@@ -2405,7 +2405,7 @@ function handleCoachCardAsk(ev){
     // an empty "Thinking…" forever.
     coachLoading = false;
     streamingContent = '';
-    coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
+        coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
     render();
     scrollChatBottom();
@@ -6718,7 +6718,7 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-    coachMessages.push({role:'assistant', content:'Coach didn't respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
+        coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
