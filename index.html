@@ -3385,7 +3385,7 @@ function _defaultRestFor(ex){
   // Main lifts take heavy compound sets that need ~3 min recovery; everything
   // else can rebound at 90s. If the routine ever populates ex.rest, honour it.
   if(ex && typeof ex.rest === 'number' && ex.rest >= 30) return Math.min(ex.rest, 600);
-  return ex && ex.isMain ? 180 : 90;
+  return 90;
 }
 function runnerAddRest(delta){
   // Tap +30s / -15s buttons inside the rest body. Clamp 5..600s so we can't
