@@ -1774,6 +1774,7 @@ function switchTab(tab) {
   });
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
   render();
+  paintRunner();
 }
 
 function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.weeks.length:12; }
@@ -3437,7 +3438,7 @@ function runnerFinishSession(){
 function paintRunner(){
   var root = document.getElementById('runner-root');
   if(!root) return;
-  if(!runnerOpen){
+  if(!runnerOpen || currentTab !== 'log'){
     root.style.display = 'none';
     root.innerHTML = '';
     return;
