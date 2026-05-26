@@ -3588,15 +3588,12 @@ function _renderRunnerEngagedBody(ex, done){
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
   var stepperW = '<div class="kt-step">'+
-    '<div class="kt-step-lbl">WEIGHT</div>'+
+    '<div class="kt-step-lbl">WEIGHT · lb</div>'+
     '<div class="kt-step-row">'+
-      '<span style="display:flex;align-items:baseline;gap:0;">'+
-        '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="2.5" min="0" value="'+w+'"'+
-          ' onclick="event.stopPropagation();this.select()"'+
-          ' oninput="event.stopPropagation();runnerSetWeight(this.value)"'+
-          ' onchange="event.stopPropagation();runnerSetWeight(this.value)"/>'+
-        '<span class="kt-step-unit">lb</span>'+
-      '</span>'+
+      '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="2.5" min="0" value="'+w+'"'+
+        ' onclick="event.stopPropagation();this.select()"'+
+        ' oninput="event.stopPropagation();runnerSetWeight(this.value)"'+
+        ' onchange="event.stopPropagation();runnerSetWeight(this.value)"/>'+
       '<div class="kt-step-btns">'+
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
@@ -3614,22 +3611,6 @@ function _renderRunnerEngagedBody(ex, done){
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
       '</div>'+
     '</div></div>';
-  var rpe = runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7);
-  var stepperRPE = '<div class="kt-step">'+
-    '<div class="kt-step-lbl">RPE</div>'+
-    '<div class="kt-step-row">'+
-      '<span style="display:flex;align-items:baseline;gap:0;">'+
-        '<input class="kt-step-val kt-step-input" type="number" inputmode="numeric" step="1" min="1" max="10" value="'+rpe+'"'+
-          ' onclick="event.stopPropagation();this.select()"'+
-          ' oninput="event.stopPropagation();runnerSetRpe(this.value)"'+
-          ' onchange="event.stopPropagation();runnerSetRpe(this.value)"/>'+
-        '<span class="kt-step-unit">/10</span>'+
-      '</span>'+
-      '<div class="kt-step-btns">'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepRpe(-1)">−</button>'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepRpe(1)">+</button>'+
-      '</div>'+
-    '</div></div>';
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
@@ -3643,7 +3624,7 @@ function _renderRunnerEngagedBody(ex, done){
   return '<div class="kt-eng">'+
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-eng-row">'+stepperW+stepperR+stepperRPE+'</div>'+
+    '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
     doneBtn + logAllBtn +
     '</div>';
 }
