@@ -2719,25 +2719,33 @@ function attachCoachCardSwipe(){
   var el = document.getElementById('kt-coach-card');
   if(!el || el.dataset.swipeAttached) return;
   el.dataset.swipeAttached = '1';
-  var startX = 0, dx = 0, dragging = false, pid = null;
+  var startX = 0, startY = 0, dx = 0, dragging = false, captured = false, pid = null;
   el.addEventListener('pointerdown', function(e){
-    // Don't hijack interactions on buttons / inputs inside the card.
     if(e.target.closest('button') || e.target.closest('input')) return;
-    startX = e.clientX; dx = 0; dragging = true; pid = e.pointerId;
-    el.classList.add('dragging');
-    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+    startX = e.clientX; startY = e.clientY; dx = 0; dragging = true; captured = false; pid = e.pointerId;
   });
   el.addEventListener('pointermove', function(e){
     if(!dragging) return;
-    dx = e.clientX - startX;
+    var cx = e.clientX - startX;
+    var cy = e.clientY - startY;
+    // Only capture once the gesture is clearly horizontal (2× more X than Y).
+    if(!captured){
+      if(Math.abs(cx) < 8) return;
+      if(Math.abs(cy) > Math.abs(cx)) { dragging = false; return; }
+      captured = true;
+      el.classList.add('dragging');
+      try{ el.setPointerCapture(pid); }catch(err){}
+    }
+    dx = cx;
     el.style.transform = 'translateX('+dx+'px) rotate('+(dx*0.02)+'deg)';
     el.style.opacity = String(Math.max(0, 1 - Math.abs(dx)/240));
   });
   function endDrag(e){
-    if(!dragging) return;
+    if(!dragging && !captured) return;
     dragging = false;
     el.classList.remove('dragging');
-    try{ el.releasePointerCapture(pid); }catch(err){}
+    if(captured){ try{ el.releasePointerCapture(pid); }catch(err){} }
+    captured = false;
     if(Math.abs(dx) > 100){
       var fly = dx > 0 ? 600 : -600;
       el.style.transform = 'translateX('+fly+'px) rotate('+(fly*0.02)+'deg)';
