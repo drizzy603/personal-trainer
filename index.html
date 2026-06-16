@@ -923,6 +923,8 @@ var runnerRepsLog     = {};         // {exId: [reps per completed set]}
 var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerRpe         = {};         // {exId: currentRpe} — stepper state
 var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
+var runnerEditSetIdx  = null;       // set index currently being edited (or null)
+var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
 var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
@@ -3162,6 +3164,8 @@ function openDeckRunner(overrideType){
   runnerWeightsLog = {};
   runnerRpe = {};
   runnerRpeLog = {};
+  runnerEditSetIdx = null;
+  runnerEditSetEx = null;
   runnerSessionDate = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
@@ -3240,6 +3244,8 @@ function discardRunnerDraft(){
   runnerWeightsLog={};
   runnerRpe={};
   runnerRpeLog={};
+  runnerEditSetIdx=null;
+  runnerEditSetEx=null;
   _clearRunnerDraft();
   render();
 }
@@ -3563,6 +3569,52 @@ function renderDeckRunner(){
 
   return hd + deckWrap + strip;
 }
+function runnerStartEditSet(idx){
+  var ex=_runnerEx(); if(!ex) return;
+  runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
+}
+function runnerCancelEditSet(){
+  runnerEditSetIdx=null; runnerEditSetEx=null; paintRunner();
+}
+function runnerSaveEditSet(){
+  var ex=_runnerEx(); if(!ex) return;
+  if(runnerEditSetIdx===null||runnerEditSetEx!==ex.name){ runnerCancelEditSet(); return; }
+  var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
+  if(wEl){ var w=parseFloat(wEl.value); if(!isNaN(w)&&w>=0){ if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
+  if(rEl){ var r=parseInt(rEl.value); if(!isNaN(r)&&r>0){ if(!runnerRepsLog[ex.name])runnerRepsLog[ex.name]=[]; runnerRepsLog[ex.name][runnerEditSetIdx]=r; } }
+  runnerEditSetIdx=null; runnerEditSetEx=null;
+  _saveRunnerDraft(); paintRunner();
+}
+function _renderCompletedSets(ex){
+  var done=runnerCompleted[ex.name]||0; if(!done) return '';
+  var isLime=ex.isMain;
+  var rowBg=isLime?'rgba(0,0,0,.1)':'rgba(255,255,255,.07)';
+  var inputBg=isLime?'rgba(0,0,0,.2)':'rgba(255,255,255,.12)';
+  var btnBg=isLime?'rgba(0,0,0,.18)':'rgba(255,255,255,.1)';
+  var rows='';
+  for(var i=0;i<done;i++){
+    var w=(runnerWeightsLog[ex.name]||[])[i];
+    var r=(runnerRepsLog[ex.name]||[])[i];
+    if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
+      rows+='<div style="display:flex;align-items:center;gap:5px;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
+        '<span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;opacity:.55;flex-shrink:0;letter-spacing:.06em;">S'+(i+1)+'</span>'+
+        '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+(r!=null?r:'')+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">reps ×</span>'+
+        '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+(w!=null?w:'')+'" placeholder="lb" step="2.5" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">lb</span>'+
+        '<button onclick="event.stopPropagation();runnerSaveEditSet()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;">✓</button>'+
+        '<button onclick="event.stopPropagation();runnerCancelEditSet()" style="padding:4px 8px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;opacity:.6;">✕</button>'+
+      '</div>';
+    } else {
+      rows+='<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
+        '<span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;opacity:.55;letter-spacing:.06em;">SET '+(i+1)+'</span>'+
+        '<span style="font-size:13px;font-weight:600;">'+(r!=null?r:'—')+' reps × '+(w!=null?w:'—')+' lb</span>'+
+        '<button onclick="event.stopPropagation();runnerStartEditSet('+i+')" style="padding:3px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">edit</button>'+
+      '</div>';
+    }
+  }
+  return '<div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">'+rows+'</div>';
+}
 function _renderRunnerIdleBody(ex, next){
   var lastW = ex.lastWeight != null ? ex.lastWeight : (function(){ var l=getLastSessionData(ex.name); return l ? parseFloat(l.weight)||0 : 0; })();
   var lastReps = ex.lastReps != null ? ex.lastReps : (function(){ var l=getLastSessionData(ex.name); return l ? (Array.isArray(l.reps)?l.reps[0]:l.reps) : ex.reps; })();
@@ -3585,6 +3637,7 @@ function _renderRunnerIdleBody(ex, next){
     '<div>'+
       lastBlock+
       '<div class="kt-r-card-name">'+_esc(ex.name)+'</div>'+
+      _renderCompletedSets(ex)+
     '</div>'+
     '<div class="kt-r-card-foot">'+
       '<div class="kt-r-card-hint">Tap to log →</div>'+
@@ -3646,6 +3699,7 @@ function _renderRunnerRestingBody(ex, done){
       '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(30)" aria-label="Add 30 seconds">+30s</button>'+
     '</div>'+
     '<button class="kt-rest-skip" onclick="event.stopPropagation();runnerSkipRest()">Skip rest</button>'+
+    _renderCompletedSets(ex)+
     '</div>';
 }
 function _renderRunnerDoneBody(ex, isLast){
@@ -3663,6 +3717,7 @@ function _renderRunnerDoneBody(ex, isLast){
     '<div class="kt-done-check">✓</div>'+
     '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
     '<div class="kt-done-meta">'+ex.sets+'/'+ex.sets+' SETS LOGGED</div>'+
+    _renderCompletedSets(ex)+
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     '</div>';
