@@ -6639,7 +6639,8 @@ function buildSystemPrompt(){
   var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
   var userName=cr&&cr.name?cr.name:'there';
-  var today=new Date().toISOString().slice(0,10);
+  var _d=new Date();
+  var today=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
   var totalWks=getTotalWeeks();
 
   var p='You are an expert personal trainer and strength coach for '+userName+'. ';
@@ -6647,7 +6648,7 @@ function buildSystemPrompt(){
   p+='Format responses with **bold** for key points and - bullet points for lists. ';
   p+='Keep responses under 200 words unless detail is explicitly requested. Always use actual numbers from the logs.\n\n';
 
-  p+='TODAY: '+today+'\n';
+  p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
   if(cr&&cr.name)p+=' ('+cr.name+')';
   p+='\n';
