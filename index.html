@@ -1939,6 +1939,33 @@ function swapWeekPlanDays(weekNum, dowA, dowB){
   setCustomRoutine(cr);
   return true;
 }
+// Cycles a day's type in the routine-level weekPlan (and current week override
+// if one exists). Core types loop: Push→Pull→Legs→(Legs2 if used)→Run→Rest.
+function cycleWeekPlanDay(dow){
+  var cr=getCustomRoutine();
+  if(!cr) return;
+  var CYCLE=['Push','Pull','Legs','Run','Rest'];
+  var hasLegs2=cr.weeks&&cr.weeks.some(function(w){return w.legs2&&w.legs2.length;});
+  if(hasLegs2) CYCLE.splice(3,0,'Legs2');
+  // Read from current week plan so we see any per-week override
+  var curPlan=getWeekPlanForWeek(currentWeek);
+  var curType=curPlan[dow].type;
+  var idx=CYCLE.indexOf(curType); if(idx===-1) idx=0;
+  var nextType=CYCLE[(idx+1)%CYCLE.length];
+  // Update routine-level weekPlan
+  var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
+    ?cr.weekPlan.slice()
+    :curPlan.map(function(p){return p.type;});
+  base[dow]=nextType;
+  cr.weekPlan=base;
+  // Also patch current week's per-week override if one exists
+  if(cr.weeks&&cr.weeks[currentWeek-1]&&Array.isArray(cr.weeks[currentWeek-1].weekPlan)&&cr.weeks[currentWeek-1].weekPlan.length===7){
+    cr.weeks[currentWeek-1].weekPlan[dow]=nextType;
+  }
+  setCustomRoutine(cr);
+  render();
+}
+
 // Returns the most-frequent non-lift, non-rest activity in the user's
 // weekly cadence, or null if there isn't one. Used to label the second
 // Log sub-tab so it reflects each user's actual programme (Run, Cycling,
@@ -7300,8 +7327,35 @@ function renderSettings() {
           'color:'+(active?'var(--accent)':'var(--muted)')+';'+
           'font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">'+lbl+'</button>';
       }).join('');
+      // Weekly schedule editor
+      var crSched=getCustomRoutine();
+      var schedHTML='';
+      if(crSched){
+        var wPlan=getWeekPlan();
+        var TYPE_COLOR={Push:'var(--accent)',Pull:'var(--cyan)',Legs:'var(--orange)',Legs2:'var(--orange)',Run:'var(--green)',Rest:'var(--muted)'};
+        var chips=DOW_NAMES.map(function(name,dow){
+          var entry=wPlan[dow];
+          var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
+          var lbl=entry.type==='Rest'?'—':entry.type;
+          var shortLbl=lbl==='Legs2'?'Legs2':lbl;
+          return '<button onclick="cycleWeekPlanDay('+dow+')" style="'+
+            'display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;'+
+            'padding:10px 4px;border-radius:12px;border:1.5px solid '+(entry.isRest?'var(--border)':'color-mix(in srgb,'+color+' 40%,transparent)')+';'+
+            'background:'+(entry.isRest?'var(--card2)':'color-mix(in srgb,'+color+' 10%,var(--card2))')+';'+
+            'cursor:pointer;min-width:0;-webkit-tap-highlight-color:transparent;">'+
+            '<span style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.04em;">'+name.toUpperCase()+'</span>'+
+            '<span style="font-size:11px;font-weight:800;color:'+color+';white-space:nowrap;">'+shortLbl+'</span>'+
+          '</button>';
+        }).join('');
+        schedHTML='<div style="border-bottom:1px solid var(--border);padding:14px 18px 16px;">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Weekly schedule</div>'+
+          '<div style="display:flex;gap:5px;">'+chips+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap any day to cycle through workout types. Changes apply to all weeks.</div>'+
+        '</div>';
+      }
       return '<div class="settings-group">'+
         '<div class="settings-group-hd">Workout</div>'+
+        schedHTML+
         '<div style="padding:14px 18px;">'+
           '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Default rest</div>'+
           '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+pills+'</div>'+
