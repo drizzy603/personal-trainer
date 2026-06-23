@@ -6697,7 +6697,8 @@ function buildSystemPrompt(){
       }
     });
     getScheduledRuns(wd).forEach(function(s){
-      p+='RUN ('+s.name+'): '+s.run.km+'km '+s.run.type+'\n';
+      if(s.run) p+='RUN ('+s.name+'): '+s.run.km+'km '+s.run.type+'\n';
+      else p+='RUN ('+s.name+'): scheduled\n';
     });
     p+='\n';
   }
