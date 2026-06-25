@@ -1950,7 +1950,9 @@ function cycleWeekPlanDay(dow){
   // Read from current week plan so we see any per-week override
   var curPlan=getWeekPlanForWeek(currentWeek);
   var curType=curPlan[dow].type;
-  var idx=CYCLE.indexOf(curType); if(idx===-1) idx=0;
+  // If current type is a sport (not in CYCLE), treat as Run so next step is Rest
+  // — prevents silently converting e.g. Cycling → Push on first tap.
+  var idx=CYCLE.indexOf(curType); if(idx===-1) idx=CYCLE.indexOf('Run');
   var nextType=CYCLE[(idx+1)%CYCLE.length];
   // Update routine-level weekPlan
   var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
@@ -7338,7 +7340,9 @@ function renderSettings() {
           var entry=wPlan[dow];
           var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
           var lbl=entry.type==='Rest'?'—':entry.type;
-          var shortLbl=lbl==='Legs2'?'Legs2':lbl;
+          // Abbreviate long sport names so they fit the ~55px chip
+          var ABBREV={Cycling:'Bike',CrossFit:'CF',Pickleball:'PB',Swimming:'Swim',Basketball:'Bball',Volleyball:'VB',Climbing:'Climb',Soccer:'Soccer',Rowing:'Row',Boxing:'Box',Hiking:'Hike',Yoga:'Yoga',Golf:'Golf',Other:'Other'};
+          var shortLbl=ABBREV[lbl]||lbl;
           return '<button onclick="cycleWeekPlanDay('+dow+')" style="'+
             'display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;'+
             'padding:10px 4px;border-radius:12px;border:1.5px solid '+(entry.isRest?'var(--border)':'color-mix(in srgb,'+color+' 40%,transparent)')+';'+
