@@ -459,7 +459,7 @@ select option{background:var(--bg);}
 .coach-suggest::-webkit-scrollbar{display:none;}
 .coach-chat-stick{position:sticky;top:0;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
 .coach-chat-stick .screen-hd{padding:0 0 4px;}
-.coach-chat-body{display:flex;flex-direction:column;height:calc(100dvh - 80px);min-height:calc(100dvh - 80px);}
+.coach-chat-body{display:flex;flex-direction:column;height:calc(100dvh - 160px);min-height:calc(100dvh - 160px);}
 /* Messages stack from the bottom up — newest message sits just above the
    fixed input pill (chat-app convention). When few messages, they hug the
    bottom rather than floating with empty space below. */
@@ -3662,10 +3662,18 @@ function _renderRunnerIdleBody(ex, next){
         '<div class="kt-r-card-next-name">'+_esc(next.name)+'</div>'+
       '</div>'
     : '';
+  var targetW = parseFloat(ex.weight)||0;
+  var targetR = Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+  var targetLine = '<div style="margin-top:20px;opacity:.45;font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Target</div>'+
+    '<div style="font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin-top:4px;opacity:.7;">'+
+      (targetW>0?targetW+' <span style="font-size:18px;font-weight:600;opacity:.7;">lb</span>':'BW')+
+    '</div>'+
+    '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+targetR+' reps</div>';
   return '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">'+
     '<div>'+
       lastBlock+
       '<div class="kt-r-card-name">'+_esc(ex.name)+'</div>'+
+      targetLine+
       _renderCompletedSets(ex)+
     '</div>'+
     '<div class="kt-r-card-foot">'+
@@ -5556,7 +5564,7 @@ function renderProgress() {
         (delta > 0 ? '<span class="lift-delta">+'+delta+' lb</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+delta+' lb</span>' : ''))+
       '</div>'+
       '<div class="lift-bar"><div class="lift-fill" style="width:'+(delta>0?pct:4)+'%"></div></div>'+
-      '<div class="lift-meta"><span>'+startW+(startMain&&startMain.weight===0?'BW':' lb')+' start</span><span>'+wLabel+' now</span></div>'+
+      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?'BW':startW+' lb')+' start</span><span>'+wLabel+' now</span></div>'+
     '</div>';
   });
 
@@ -7339,7 +7347,7 @@ function renderSettings() {
         var chips=DOW_NAMES.map(function(name,dow){
           var entry=wPlan[dow];
           var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
-          var lbl=entry.type==='Rest'?'—':entry.type;
+          var lbl=entry.type==='Rest'?'Rest':entry.type;
           // Abbreviate long sport names so they fit the ~55px chip
           var ABBREV={Cycling:'Bike',CrossFit:'CF',Pickleball:'PB',Swimming:'Swim',Basketball:'Bball',Volleyball:'VB',Climbing:'Climb',Soccer:'Soccer',Rowing:'Row',Boxing:'Box',Hiking:'Hike',Yoga:'Yoga',Golf:'Golf',Other:'Other'};
           var shortLbl=ABBREV[lbl]||lbl;
