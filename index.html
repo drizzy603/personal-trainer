@@ -8232,8 +8232,16 @@ logSession = SESS[_next] ? _next : 'Push';
 render();
 setTimeout(checkForLiveUpdate, 2000);
 setTimeout(checkPendingShare, 2500);
+// iOS PWA zombie recovery: when the WKWebView is evicted from memory and
+// restored, the static HTML (tab bar) survives but JS state is gone and the
+// screen div is empty. Force a reload to reinitialise.
+window.addEventListener('pageshow', function(e){
+  if(e.persisted) window.location.reload();
+});
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){
+    var s=document.getElementById('screen');
+    if(s && !s.innerHTML.trim()) { window.location.reload(); return; }
     setTimeout(checkPendingShare, 600);
     if(currentTab==='log' && logSubTab==='run') setTimeout(checkRecentHealthRun, 900);
   }
