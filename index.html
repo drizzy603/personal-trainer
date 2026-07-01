@@ -966,6 +966,7 @@ var runLogClosing   = false;
 var runLogPendingType = 'easy';     // easy | tempo | long | intervals
 var runLogConfirmed  = null;         // {id, km, time} after save
 var sportLogConfirmed = null;        // {id, type, label} after save
+var bwLogConfirmed    = null;        // {id, weight, date} after save
 var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 // Draft values for the inline run-log form. Captured on every render so
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
@@ -2527,7 +2528,7 @@ function toggleCoachCardAsk(){
     setTimeout(function(){
       var inp = document.getElementById('kt-coach-ask-input');
       if(inp) inp.focus();
-    }, 50);
+    }, 150);
   }
 }
 function handleCoachCardAsk(ev){
@@ -4064,6 +4065,7 @@ function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,parseFloat(v)||0); 
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
+  if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1');return;}
   var oldName=ex.name, newName=_rExEditName;
   ex.name   =newName;
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
@@ -4168,6 +4170,8 @@ function switchLogSub(sub) {
     runLogOpen = false;
     runLogConfirmed = null;
   }
+  if(sub !== 'sport' && sportLogConfirmed){ sportLogConfirmed = null; }
+  if(sub !== 'body' && bwLogConfirmed){ bwLogConfirmed = null; }
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
@@ -4696,7 +4700,7 @@ function moveRun(id,newDate){
   _calNavToDate(newDate); render();
 }
 function moveSport(id,newDate){
-  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var sports=getSportLogs();
   sports.forEach(function(sp){ if(sp.id===id){ sp.date=newDate; } });
   lsSet('kt_sports',sports);
@@ -5271,12 +5275,27 @@ function saveBodyWeight(){
   var v=parseFloat(document.getElementById('bwVal')?document.getElementById('bwVal').value:0);
   var d=(document.getElementById('bwDate')||{}).value||todayISO();
   if(!v){showToast('Enter a weight');return;}
+  var rec={id:Date.now(),date:d,weight:v};
   var bws=getBodyWeights();
-  bws.push({id:Date.now(),date:d,weight:v});
+  bws.push(rec);
   bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
   lsSet('kt_bw',bws);
-  showToast('Weight logged!');
+  bwLogConfirmed={id:rec.id,weight:v,date:d};
   render();
+}
+function undoLastBodyWeight(){
+  if(!bwLogConfirmed) return;
+  var id=bwLogConfirmed.id;
+  lsSet('kt_bw',getBodyWeights().filter(function(e){return e.id!==id;}));
+  bwLogConfirmed=null;
+  render();
+}
+function renderBwSavedStrip(){
+  if(!bwLogConfirmed) return '';
+  return '<div class="kt-rconfirm">'+
+    '<div>✓ '+bwLogConfirmed.weight+' lb logged</div>'+
+    '<button class="kt-rconfirm-undo" onclick="undoLastBodyWeight()">UNDO</button>'+
+    '</div>';
 }
 function deleteBodyWeight(idx){
   if(!confirm('Delete this weight entry? This cannot be undone.')) return;
@@ -5512,15 +5531,16 @@ function renderBodySection(){
   });
 
   return chart+
+    renderBwSavedStrip()+
     '<div class="card"><h2>Body Weight</h2>'+
       '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
-        '<div class="field" style="margin:0;flex:1"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0"/></div>'+
+        '<div class="field" style="margin:0;flex:1"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0" inputmode="decimal"/></div>'+
         '<div class="field" style="margin:0;flex:1"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
         '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;">Log</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">'+
         '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL lb</div>'+
-        '<input type="number" id="bwGoalInput" placeholder="e.g. 175" step="0.1" min="0" value="'+(bwGoal||'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
+        '<input type="number" id="bwGoalInput" placeholder="e.g. 175" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal||'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+trendSection+
@@ -7322,7 +7342,7 @@ function renderCoach(){
       '</div>'+
       '<div class="field" style="margin-bottom:14px;">'+
         '<label>Anthropic API Key</label>'+
-        '<input type="password" id="coach-key-input" placeholder="sk-ant-..." style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
+        '<input type="password" id="coach-key-input" placeholder="sk-ant-..." autocomplete="off" style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
       '</div>'+
       '<button class="kt-cta" onclick="saveApiKey()">'+
         '<div style="text-align:left;">'+
