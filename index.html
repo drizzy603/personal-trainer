@@ -1409,34 +1409,34 @@ function closeRoutineArchiveModal(){
   var el=document.getElementById('routine-archive-modal'); if(el) el.remove();
 }
 function restoreArchivedRoutine(id){
-  if(!confirm('Restore this programme? Your current one will be archived.')) return;
   var arr=getRoutineArchive();
   var entry=arr.find(function(e){return e.id===id;});
   if(!entry){showToast('Programme not found');return;}
-  archiveCurrentRoutine();
-  setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
-  setCustomRoutine(entry.routine);
-  currentWeek=1; lsSet('kt_week',1);
-  closeRoutineArchiveModal();
-  showToast('Programme restored');
-  render();
+  _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
+    archiveCurrentRoutine();
+    setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
+    setCustomRoutine(entry.routine);
+    currentWeek=1; lsSet('kt_week',1);
+    closeRoutineArchiveModal();
+    showToast('Programme restored'); render();
+  }});
 }
 function deleteArchivedRoutine(id){
-  if(!confirm('Permanently delete this archived programme?')) return;
-  setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
-  openRoutineArchiveModal();
-  render();
+  _ktConfirm({title:'Delete this programme?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
+    openRoutineArchiveModal(); render();
+  }});
 }
 function startNewProgramme(){
-  if(!confirm('Archive your current programme and start fresh?\n\nYou\'ll be taken to the Coach to build your new one.')) return;
-  archiveCurrentRoutine();
-  clearCustomRoutine();
-  currentWeek=1; lsSet('kt_week',1);
-  intakeMode=false;
-  clearCoachHistory();
-  switchTab('coach');
-  render();
-  showToast('Programme archived. Ask the Coach to build your new one!');
+  _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
+    archiveCurrentRoutine();
+    clearCustomRoutine();
+    currentWeek=1; lsSet('kt_week',1);
+    intakeMode=false;
+    clearCoachHistory();
+    switchTab('coach'); render();
+    showToast('Programme archived. Ask the Coach to build your new one!');
+  }});
 }
 function getWkData(){
   var cr=getCustomRoutine();
@@ -1807,19 +1807,16 @@ function importFromHealth(){
 // "From Apple Health" note). Manually-edited entries are kept so we don't
 // destroy the user's annotations.
 function resetHealthImport(){
-  if(!confirm('Reset Apple Health import?\n\nThis forgets which workouts have been imported and removes Apple Health runs you haven\'t edited. Manually-edited runs are kept.')) return;
-  var existing = getRuns();
-  var removed = 0;
-  var kept = existing.filter(function(r){
-    if(r && r.note==='From Apple Health'){ removed++; return false; }
-    return true;
-  });
-  lsSet('kt_runs', kept);
-  localStorage.removeItem('kt_hk_imported');
-  localStorage.removeItem('kt_hk_last_sync');
-  if(removed) invalidateCoachCard();
-  showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
-  render();
+  _ktConfirm({title:'Reset Apple Health import?',body:'Forgets which workouts were imported and removes unedited Apple Health runs. Manually-edited runs are kept.',confirmLabel:'Reset',onConfirm:function(){
+    var existing=getRuns(); var removed=0;
+    var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'){removed++;return false;}return true;});
+    lsSet('kt_runs',kept);
+    localStorage.removeItem('kt_hk_imported');
+    localStorage.removeItem('kt_hk_last_sync');
+    if(removed) invalidateCoachCard();
+    showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
+    render();
+  }});
 }
 
 // ── Health quick-log (Run tab) ────────────────────────────────────────────────
@@ -3071,9 +3068,10 @@ function undoLastRun(){
   render();
 }
 function deleteRun(id){
-  if(!confirm('Delete this run? This cannot be undone.')) return;
-  lsSet('kt_runs', getRuns().filter(function(r){ return r.id !== id; }));
-  calSelectedDate=null; render();
+  _ktConfirm({title:'Delete this run?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    lsSet('kt_runs',getRuns().filter(function(r){return r.id!==id;}));
+    calSelectedDate=null; render();
+  }});
 }
 // Surgical pill-class swap — re-rendering would wipe in-progress input
 // values, so update DOM in place instead.
@@ -3382,6 +3380,23 @@ function resumeRunnerDraft(){
   runnerOpen=true;
   paintRunner();
 }
+// Generic bottom-sheet confirmation — replaces all native confirm() dialogs.
+// opts: { title, body?, confirmLabel?, confirmStyle?, onConfirm }
+function _ktConfirm(opts){
+  var sid='_ktcs_'+(Date.now()%99999);
+  var el=document.createElement('div');
+  el.id=sid; el.className='kt-close-sheet';
+  el.onclick=function(e){if(e.target===el)el.remove();};
+  el.innerHTML='<div class="kt-close-sheet-inner">'+
+    '<div class="kt-close-sheet-ttl">'+_esc(opts.title)+'</div>'+
+    (opts.body?'<div class="kt-close-sheet-sub">'+_esc(opts.body)+'</div>':'')+
+    '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" '+
+      'onclick="document.getElementById(\''+sid+'\').remove()">Cancel</button>'+
+    '<button class="kt-close-sheet-btn" id="'+sid+'ok" style="background:'+(opts.confirmStyle||'#ef4444')+';color:'+(opts.confirmStyle?'#000':'#fff')+';"> '+(opts.confirmLabel||'Confirm')+'</button>'+
+  '</div>';
+  document.body.appendChild(el);
+  document.getElementById(sid+'ok').onclick=function(){el.remove();opts.onConfirm();};
+}
 function discardRunnerDraft(){
   var el=document.createElement('div');
   el.id='kt-discard-draft-sheet';
@@ -3583,6 +3598,10 @@ function runnerLogAllAtTarget(){
     }, 1200);
   }
   paintRunner();
+}
+function _confirmRunnerLogAll(){
+  var ex=_runnerEx(); if(!ex) return;
+  _ktConfirm({title:'Log all '+ex.sets+' sets at target?',body:'No individual rep tracking — marks all sets done at the programmed weight.',confirmLabel:'Log all',confirmStyle:'var(--accent)',onConfirm:runnerLogAllAtTarget});
 }
 function runnerSkipRest(){
   runnerResting = false;
@@ -3868,11 +3887,7 @@ function _renderRunnerEngagedBody(ex, done){
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
-    // B3: allow Log-All on mains too, behind a confirm (foot-gun otherwise).
-    var safeName = String(ex.name||'').replace(/'/g, "\\'");
-    var logAllAction = ex.isMain
-      ? "if(confirm('Log all "+ex.sets+" sets of "+safeName+" at target without engaging?'))runnerLogAllAtTarget()"
-      : "runnerLogAllAtTarget()";
+    var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
     logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+ex.sets+' sets at target →</button>';
   }
   return '<div class="kt-eng">'+
@@ -4672,14 +4687,16 @@ function saveRun() {
 // ── SPORTS ───────────────────────────────────────────────────────────────────
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
-  if(!confirm('Delete this activity? This cannot be undone.')) return;
-  lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
-  calSelectedDate=null; render();
+  _ktConfirm({title:'Delete this activity?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+    calSelectedDate=null; render();
+  }});
 }
 function deleteSession(id){
-  if(!confirm('Delete this session? This cannot be undone.')) return;
-  lsSet('kt_sessions', getSessions().filter(function(s){return s.id!==id;}));
-  calSelectedDate=null; render();
+  _ktConfirm({title:'Delete this session?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
+    calSelectedDate=null; render();
+  }});
 }
 function _calNavToDate(dateStr){
   var p=dateStr.split('-');
@@ -5299,8 +5316,9 @@ function renderBwSavedStrip(){
     '</div>';
 }
 function deleteBodyWeight(idx){
-  if(!confirm('Delete this weight entry? This cannot be undone.')) return;
-  var bws=getBodyWeights();bws.splice(idx,1);lsSet('kt_bw',bws);render();
+  _ktConfirm({title:'Delete this weight entry?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    var bws=getBodyWeights();bws.splice(idx,1);lsSet('kt_bw',bws);render();
+  }});
 }
 function saveBWGoal(){
   var el=document.getElementById('bwGoalInput');
@@ -5323,8 +5341,9 @@ function saveMeasurement(){
   showToast('Measurements saved!');render();
 }
 function deleteMeasurement(idx){
-  if(!confirm('Delete this measurement? This cannot be undone.')) return;
-  var ms=getMeasurements();ms.splice(idx,1);lsSet('kt_measurements',ms);render();
+  _ktConfirm({title:'Delete this measurement?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
+    var ms=getMeasurements();ms.splice(idx,1);lsSet('kt_measurements',ms);render();
+  }});
 }
 function calcBWTrend(bws){
   if(bws.length<2)return null;
@@ -6269,6 +6288,12 @@ function clearCoachHistory(){
   localStorage.removeItem('kt_coach_msgs');
   render();
 }
+function _confirmClearChat(){
+  _ktConfirm({title:'Clear chat history?',body:'Your routine, sessions, and all logged data are kept.',confirmLabel:'Clear',onConfirm:function(){clearCoachHistory();showToast('Chat history cleared');}});
+}
+function _confirmCancelIntake(){
+  _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){intakeMode=false;clearCoachHistory();render();}});
+}
 
 function md(text){
   text=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -7027,14 +7052,14 @@ function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.we
 function restoreRoutineBackup(){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
-  if(!confirm('Restore your previous programme? The current one will be discarded.')) return;
-  var cur=getCustomRoutine();
-  setCustomRoutine(b);
-  if(cur) lsSet('kt_routine_backup',cur); else localStorage.removeItem('kt_routine_backup');
-  var total=(b.weeks||[]).length||1;
-  if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
-  showToast('Previous programme restored');
-  render();
+  _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
+    var cur=getCustomRoutine();
+    setCustomRoutine(b);
+    if(cur) lsSet('kt_routine_backup',cur); else localStorage.removeItem('kt_routine_backup');
+    var total=(b.weeks||[]).length||1;
+    if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
+    showToast('Previous programme restored'); render();
+  }});
 }
 
 function confirmLoadRoutine(){
@@ -7052,14 +7077,12 @@ function confirmLoadRoutine(){
 }
 
 function resetCustomRoutine(){
-  if(!confirm('Reset your programme? This will remove the current routine. Your logged sessions will be kept.')) return;
-  clearCustomRoutine();
-  currentWeek=1;
-  lsSet('kt_week',1);
-  intakeMode=false;
-  clearCoachHistory();
-  render();
-  showToast('Programme reset. You can generate a new one anytime.');
+  _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
+    clearCustomRoutine();
+    currentWeek=1; lsSet('kt_week',1);
+    intakeMode=false; clearCoachHistory();
+    render(); showToast('Programme reset. You can generate a new one anytime.');
+  }});
 }
 
 function setApiKey(k){if(k)localStorage.setItem('kt_apikey',k.trim());else localStorage.removeItem('kt_apikey');}
@@ -7075,10 +7098,9 @@ function saveApiKey(){
 }
 
 function clearApiKey(){
-  if(!confirm('Disconnect API key?'))return;
-  setApiKey('');
-  clearCoachHistory();
-  render();
+  _ktConfirm({title:'Disconnect API key?',body:"You'll need to re-enter it to use the Coach again.",confirmLabel:'Disconnect',onConfirm:function(){
+    setApiKey(''); clearCoachHistory(); render();
+  }});
 }
 function saveCoachHistory(){
   try{
@@ -7423,7 +7445,7 @@ function renderCoach(){
       '<div class="settings-group">'+
         '<div class="settings-group-hd">Account</div>'+
         (msgCount?
-          '<div class="settings-row" onclick="if(confirm(\'Clear all chat history?\')){clearCoachHistory();render();}">'+
+          '<div class="settings-row" onclick="_confirmClearChat()">'+
             '<div class="settings-row-ic" style="background:#2a1a1a;">'+
               '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
                 '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'+
@@ -7458,7 +7480,7 @@ function renderCoach(){
         ?'<span class="coach-head-meta">WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx+'</span>'
         :'')+
       (intakeMode
-        ?'<button onclick="(function(){if(confirm(\'Stop programme setup? Your answers so far will be lost.\')){intakeMode=false;clearCoachHistory();render();}})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
         :'<button onclick="setCoachModel(\''+modelNext+'\')" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;">'+modelLabel+'</button>'
       )+
     '</div>'+
@@ -7877,7 +7899,7 @@ function renderSettings() {
     (apiKey
       ? '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:10px;font-family:monospace;">'+maskedKey+'</div>'+
         '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'+
-        '<button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="if(confirm(\'Clear all chat history? This will not delete your routine, sessions, or any logged data.\')){clearCoachHistory();showToast(\'Chat history cleared\');}">Clear Chat History</button>'+
+        '<button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="_confirmClearChat()">Clear Chat History</button>'+
         '<p style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">If the Coach starts hanging on every prompt, clearing old chats (especially ones with attached screenshots) usually fixes it.</p>'
       : '<div class="field" style="margin-bottom:10px;"><input type="password" id="settingsApiKeyInput" placeholder="sk-ant-api03-..." style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;font-family:monospace;"/></div>'+
         '<button class="btn btn-primary btn-full" onclick="saveApiKeyFromSettings()">Save Key</button>'
@@ -8160,11 +8182,11 @@ function saveCustomEx(){
   showToast('Exercise saved to your library');
 }
 function deleteCustomEx(name){
-  if(!confirm('Remove "'+name+'" from your library?'))return;
-  deleteCustomExercise(name);
-  if(_libExpanded===name)_libExpanded='';
-  _updateExLibList();
-  showToast('Removed');
+  _ktConfirm({title:'Remove from library?',body:'"'+name+'" will be deleted. This cannot be undone.',confirmLabel:'Remove',onConfirm:function(){
+    deleteCustomExercise(name);
+    if(_libExpanded===name)_libExpanded='';
+    _updateExLibList(); showToast('Removed');
+  }});
 }
 
 // ── Service Worker ────────────────────────────────────────────────────────────
