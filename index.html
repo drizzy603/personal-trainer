@@ -1690,7 +1690,7 @@ function checkAndUpdatePRs(exercises) {
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1716,7 +1716,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         RAW_STRING_KEYS.forEach(function(k){
@@ -5531,7 +5531,9 @@ function renderBodySection(){
       msInputs+
       '<div class="field" style="margin-bottom:10px;"><label>Date</label><input type="date" id="msDate" value="'+todayISO()+'"/></div>'+
       '<button class="btn btn-green btn-full" onclick="saveMeasurement()">Save Measurements</button>'+
-      (msItems?'<div style="margin-top:14px;padding-top:4px;border-top:1px solid var(--border);">'+msItems+'</div>':'')+
+      (msItems
+        ?'<div style="margin-top:14px;padding-top:4px;border-top:1px solid var(--border);">'+msItems+'</div>'
+        :'<div class="empty" style="padding:18px 0 4px;"><p>No measurements yet.<br><span style="font-size:12px;">Save your first entry above to start tracking.</span></p></div>')+
     '</div>';
 }
 
@@ -5540,6 +5542,16 @@ function renderProgress() {
   var sessions=getSessions();
   var runs=getRuns();
   var wd=getWkData();
+
+  if(!sessions.length && !runs.length && !getCustomRoutine()){
+    return '<div class="kt-meta-row"><div class="kt-meta-label">PROGRESS</div></div>'+
+      '<div style="text-align:center;padding:60px 24px 40px;">'+
+        '<div style="font-size:48px;margin-bottom:16px;opacity:.3;">📊</div>'+
+        '<div style="font-size:18px;font-weight:800;margin-bottom:8px;">Nothing to show yet</div>'+
+        '<div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:24px;">Log your first session or run to start tracking progress. The Coach can build you a personalised programme first.</div>'+
+        '<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:12px 28px;">Go to Coach →</button>'+
+      '</div>';
+  }
 
   // Dynamic goals — find bests from logged data
   var bestBench=0, bestSquat=0, bestRun5kSec=0;
@@ -5971,7 +5983,8 @@ function renderProgress() {
   return progressHeader + streakHero + toggle +
     stats + goals + liftOnly +
     detailCharts + bwChart +
-    renderSportProgress() + calHTML;
+    renderSportProgress() + calHTML +
+    (progressTab==='lifts' ? renderHistory() : '');
 }
 
 function svgChart(data,color,goalVal) {
@@ -6367,6 +6380,7 @@ async function startRoutineIntake(){
     streamingContent='';
     render();
     scrollChatBottom();
+    setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
   }
 }
 
@@ -7249,13 +7263,14 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-        coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
-    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
+        coachMessages.push({role:’assistant’, content:’Coach didn’t respond (‘+(err&&err.message||’network error’)+’). Send the message again, or check your API key in Settings.’});
+    try{ localStorage.setItem(‘kt_coach_msgs’, JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
-    streamingContent='';
+    streamingContent=’’;
     render();
     scrollChatBottom();
+    setTimeout(function(){var i=document.getElementById(‘coach-input’);if(i&&!intakeMode)i.focus();},80);
   }
 }
 
@@ -7944,7 +7959,7 @@ function closeExLib(){
 function setLibFilter(f){
   _libFilter=f;_updateExLibList();
   var pills=document.querySelectorAll('.exlib-pill');
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',All:'var(--accent)'};
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b',All:'var(--accent)'};
   pills.forEach(function(p){
     var active=p.dataset.cat===f;
     var color=catColors[p.dataset.cat]||'var(--accent)';
@@ -7969,7 +7984,7 @@ function _renderExLibList(){
     return catMatch&&searchMatch;
   });
   if(!filtered.length)return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:14px;">No exercises found</div>';
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b'};
   return filtered.map(function(ex){
     var expanded=_libExpanded===ex.name;
     var color=catColors[ex.cat]||'var(--accent)';
@@ -8006,8 +8021,8 @@ function _renderExLibList(){
   }).join('');
 }
 function _buildExLibHTML(){
-  var cats=['All','Push','Pull','Legs','Core'];
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',All:'var(--accent)'};
+  var cats=['All','Push','Pull','Legs','Core','Arms'];
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b',All:'var(--accent)'};
   var pillsHTML=cats.map(function(c){
     var active=_libFilter===c;
     var color=catColors[c]||'var(--accent)';
@@ -8043,7 +8058,7 @@ function toggleLibAdd(){
 }
 function setLibAddCat(c){
   _libAddCat=c;
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b'};
   document.querySelectorAll('.exadd-pill').forEach(function(p){
     var active=p.dataset.cat===c;
     p.style.background=active?(catColors[p.dataset.cat]||'#888'):'var(--card)';
@@ -8052,8 +8067,8 @@ function setLibAddCat(c){
 }
 function _renderExLibAddForm(){
   if(!_libAddOpen)return '';
-  var cats=['Push','Pull','Legs','Core'];
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399'};
+  var cats=['Push','Pull','Legs','Core','Arms'];
+  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b'};
   var pillsHTML=cats.map(function(c){
     var active=_libAddCat===c;
     return '<button class="exadd-pill" data-cat="'+c+'" onclick="setLibAddCat(\''+c+'\')" style="border:none;outline:none;cursor:pointer;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;'+
