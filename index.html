@@ -1688,10 +1688,10 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1717,7 +1717,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         RAW_STRING_KEYS.forEach(function(k){
@@ -1886,6 +1886,7 @@ function renderHealthQuickLog(){
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
+  if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; }
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
@@ -4693,7 +4694,7 @@ function moveSession(id,newDate){
   _calNavToDate(newDate); render();
 }
 function moveRun(id,newDate){
-  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var runs=getRuns();
   runs.forEach(function(r){ if(r.id===id){ r.date=newDate; r.week=weekForDate(newDate); } });
   lsSet('kt_runs',runs);
@@ -6149,7 +6150,7 @@ function renderCalendar(sessions,runs,sports){
   var cells='';
   for(var i=0;i<startDow;i++) cells+='<div></div>';
   for(var d=1;d<=daysInMonth;d++){
-    var dateStr=calYear+'-'+(calMonth+1<10?'0':'')+(calMonth+1)+'-'+(d<10?'0':'')+d;
+    var dateStr=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     var acts=actMap[dateStr]||[];
     var isSelected=calSelectedDate===dateStr;
     var isToday=dateStr===todayISO();
@@ -6161,7 +6162,7 @@ function renderCalendar(sessions,runs,sports){
     if(hasRun)   dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--orange);margin:0 1px;"></div>';
     if(hasSport) dots+='<div style="width:5px;height:5px;border-radius:50%;background:#a78bfa;margin:0 1px;"></div>';
     cells+='<div class="cal-day" data-date="'+dateStr+'" onclick="selectCalDate(\''+dateStr+'\')" style="'+
-      'text-align:center;border-radius:3px;padding:5px 2px;cursor:'+(acts.length?'pointer':'default')+';'+
+      'text-align:center;border-radius:3px;padding:8px 2px;min-height:44px;box-sizing:border-box;cursor:'+(acts.length?'pointer':'default')+';'+
       'background:'+(isSelected?'var(--accent)':'')+';'+
       'border-bottom:'+(isToday&&!isSelected?'2px solid var(--accent)':'2px solid transparent')+';'+
     '">'+
@@ -7674,7 +7675,7 @@ function renderSettings() {
     {id:'sunset', name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',accent:'#ff9f0a'},
   ];
   var isAuto=currentTheme==='auto';
-  var autoSwatch='<div class="theme-swatch'+(isAuto?' active':'')+'" onclick="setAutoTheme()" '+
+  var autoSwatch='<div class="theme-swatch'+(isAuto?' active':'')+'" onclick="setAutoTheme()" title="Auto" '+
     'style="background:linear-gradient(135deg,#0b0b0d 50%,#f0f0f0 50%);border-color:'+(isAuto?'#c8ff00':'transparent')+';">'+
     '<div style="font-size:13px;font-weight:600;color:#ccc;">Auto</div>'+
     '<div style="font-size:11px;color:#ccc8;margin-top:2px;">'+(isAuto?'✓ Active':'Follows phone')+'</div>'+
@@ -7685,7 +7686,7 @@ function renderSettings() {
   '</div>';
   var swatches=autoSwatch+themeList.map(function(t){
     var isActive=currentTheme===t.id;
-    return '<div class="theme-swatch'+(isActive?' active':'')+'" onclick="applyTheme(\''+t.id+'\')" '+
+    return '<div class="theme-swatch'+(isActive?' active':'')+'" onclick="applyTheme(\''+t.id+'\')" title="'+t.name+'" '+
       'style="background:'+t.bg+';border-color:'+(isActive?t.accent:'transparent')+';">'+
       '<div style="font-size:13px;font-weight:600;color:'+t.textColor+';">'+t.name+'</div>'+
       '<div style="font-size:11px;color:'+t.textColor+'80;margin-top:2px;">'+(isActive?'✓ Active':'Tap to apply')+'</div>'+
