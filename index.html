@@ -973,6 +973,7 @@ var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
+var showAllPRs  = false;
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', distance:'', intensity:'', calories:'', notes:'', date:''};
 
@@ -2575,7 +2576,7 @@ function renderTodayEditorial(){
     '<div class="kt-meta-label">'+act.weekday+' · WK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWks+'</div>'+
     '<div style="display:flex;align-items:center;gap:10px;">'+
-      '<button onclick="switchTab(\'settings\')" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;-webkit-tap-highlight-color:transparent;padding:0;">Edit split →</button>'+
+      '<button onclick="switchTab(\'settings\');setTimeout(function(){var el=document.getElementById(\'settings-workout-group\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});},120);" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;-webkit-tap-highlight-color:transparent;padding:0;">Edit split →</button>'+
       '<div class="kt-meta-ava">'+initial+'</div>'+
     '</div>'+
     '</div>';
@@ -3380,20 +3381,17 @@ function resumeRunnerDraft(){
   paintRunner();
 }
 function discardRunnerDraft(){
-  if(!confirm('Discard the in-progress workout? Your logged sets will be lost.')) return;
-  runnerResumePending=false;
-  runnerSession=null;
-  runnerCompleted={};
-  runnerWeights={};
-  runnerReps={};
-  runnerRepsLog={};
-  runnerWeightsLog={};
-  runnerRpe={};
-  runnerRpeLog={};
-  runnerEditSetIdx=null;
-  runnerEditSetEx=null;
-  _clearRunnerDraft();
-  render();
+  var el=document.createElement('div');
+  el.id='kt-discard-draft-sheet';
+  el.className='kt-close-sheet';
+  el.onclick=function(e){if(e.target===el)el.remove();};
+  el.innerHTML='<div class="kt-close-sheet-inner">'+
+    '<div class="kt-close-sheet-ttl">Discard workout?</div>'+
+    '<div class="kt-close-sheet-sub">Your in-progress sets will be lost.</div>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-discard-draft-sheet\').remove()">Keep it</button>'+
+    '<button class="kt-close-sheet-btn" style="background:#ef4444;color:#fff;" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
+  '</div>';
+  document.body.appendChild(el);
 }
 function closeDeckRunner(){
   runnerOpen = false;
@@ -3523,6 +3521,7 @@ function runnerCompleteSet(){
   runnerReps[ex.name] = parseInt(targetRep) || 0;
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
+  if(navigator.vibrate) navigator.vibrate(40);
   if(done < ex.sets){
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
@@ -4548,7 +4547,7 @@ function renderRunsSection(opts) {
   var runs = getRuns();
   var runItems = '';
   if (!runs.length) {
-    runItems = '<div class="empty"><p>No runs logged yet</p></div>';
+    runItems = '<div class="empty"><p>No runs logged yet.<br><span style="font-size:12px;">Hit the Run tab to log your first.</span></p></div>';
   } else {
     runs.slice(0,10).forEach(function(r) {
       var dist=parseFloat(r.distance||r.dist||0);
@@ -4812,7 +4811,7 @@ function _renderSportFields(sport){
 
 function renderRecentSportLogs(){
   var logs=getSportLogs().slice(0,15);
-  if(!logs.length) return '<div style="text-align:center;padding:28px;color:var(--muted);font-size:13px;">No sport sessions logged yet</div>';
+  if(!logs.length) return '<div class="empty"><p>No sport sessions logged yet.<br><span style="font-size:12px;">Use the + tab to log an activity.</span></p></div>';
   var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
   return '<div class="card" style="margin-top:8px;">'+
     '<div class="sect-title" style="margin-bottom:4px;">Recent</div>'+
@@ -5525,7 +5524,7 @@ function renderBodySection(){
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+trendSection+
-      (bwItems?bwItems:'<div style="font-size:13px;color:var(--muted);text-align:center;padding:12px 0;">No weigh-ins yet</div>')+
+      (bwItems?bwItems:'<div class="empty" style="padding:24px 0 8px;"><p>No weigh-ins yet.<br><span style="font-size:12px;">Log your weight above to start tracking.</span></p></div>')+
     '</div>'+
     '<div class="card"><h2>Measurements</h2>'+
       '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Log any you track — leave others blank.</p>'+
@@ -5708,6 +5707,8 @@ function renderProgress() {
     '</div>'+
     '</div>' + bwAndWeekRow;
 
+  var scheduledRunDays = getWeekPlan().filter(function(p){return p.isRun;}).length;
+  var thisWeekRuns = runs.filter(function(r){return r.week===currentWeek;}).length;
   var runStats = '<div class="stat-row">'+
     '<div class="stat">'+
       '<div class="stat-lbl">Runs</div>'+
@@ -5718,6 +5719,11 @@ function renderProgress() {
       '<div class="stat-lbl">Distance</div>'+
       '<div><span class="stat-val" style="color:var(--accent)">'+(Math.round(totalKm*10)/10)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">km</span></div>'+
       (weekKm>0 ? '<div class="stat-delta">'+(Math.round(weekKm*10)/10)+' km this wk</div>' : '<div class="stat-delta">all-time</div>')+
+    '</div>'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">This week</div>'+
+      '<div class="stat-val" style="color:'+(thisWeekRuns>=scheduledRunDays&&scheduledRunDays>0?'var(--green)':'var(--text)')+'">'+thisWeekRuns+'</div>'+
+      '<div class="stat-delta">'+(scheduledRunDays>0?'of '+scheduledRunDays+' planned':'runs')+'</div>'+
     '</div>'+
     '</div>' + bwAndWeekRow;
 
@@ -5928,10 +5934,15 @@ function renderProgress() {
   var prNames = Object.keys(prData).sort(function(a,b){return prData[b]-prData[a];});
   var prCard = '';
   if(prNames.length){
-    var prRows = prNames.map(function(n){
+    var PR_LIMIT = 8;
+    var visiblePRs = showAllPRs ? prNames : prNames.slice(0, PR_LIMIT);
+    var prRows = visiblePRs.map(function(n){
       return '<div class="kt-pr-row"><span class="kt-pr-name">'+_esc(n)+'</span><span class="kt-pr-val">'+prData[n]+' lb</span></div>';
     }).join('');
-    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests</div></div></div>'+prRows+'</div>';
+    var prToggle = prNames.length > PR_LIMIT
+      ? '<button onclick="showAllPRs='+(!showAllPRs)+';render()" style="width:100%;margin-top:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+(showAllPRs?'Show less ↑':'Show all '+prNames.length+' →')+'</button>'
+      : '';
+    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests</div></div></div>'+prRows+prToggle+'</div>';
   }
 
   // Filter the detail charts + lift-only sections based on the toggle.
@@ -5985,8 +5996,8 @@ function svgChart(data,color,goalVal) {
     goalLine+
     '<text x="'+(PL-4)+'" y="'+(PT+6)+'" fill="#444" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mx)+'</text>'+
     '<text x="'+(PL-4)+'" y="'+(PT+iH)+'" fill="#444" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mn)+'</text>'+
-    '<text x="'+PL+'" y="'+(H-2)+'" fill="#444" font-size="9" font-weight="700">'+data[0].date.slice(5)+'</text>'+
-    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="#444" font-size="9" text-anchor="end" font-weight="700">'+data[data.length-1].date.slice(5)+'</text>'+
+    '<text x="'+PL+'" y="'+(H-2)+'" fill="#555" font-size="8" font-weight="600">'+data[0].date.slice(5).replace('-','/')+'</text>'+
+    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="#555" font-size="8" text-anchor="end" font-weight="600">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
     '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
     dots+'</svg>';
 }
@@ -7759,7 +7770,7 @@ function renderSettings() {
           '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap any day to cycle through workout types. Changes apply to all weeks.</div>'+
         '</div>';
       }
-      return '<div class="settings-group">'+
+      return '<div class="settings-group" id="settings-workout-group">'+
         '<div class="settings-group-hd">Workout</div>'+
         schedHTML+
         '<div style="padding:14px 18px;">'+
