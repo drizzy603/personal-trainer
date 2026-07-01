@@ -1724,6 +1724,10 @@ function importData() {
           if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
         });
         if (data.kt_week) currentWeek = data.kt_week;
+        loadCoachHistory();
+        var importedTheme = localStorage.getItem('kt_theme');
+        if (importedTheme === 'auto') setAutoTheme();
+        else if (importedTheme) applyTheme(importedTheme);
         render();
         showToast('Restored '+count+' data items!');
       } catch(err) { showToast('Import failed — invalid file'); }
