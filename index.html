@@ -1331,7 +1331,7 @@ function lsSet(k,v) {
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
     if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
-      try{ showToast('Couldn’t save — storage full. Export your data.'); }catch(_){}
+      try{ showToast('Couldn\'t save — storage full. Export your data.'); }catch(_){}
     }
     return false;
   }
@@ -2276,7 +2276,7 @@ function getGreeting(){
 function getUserFirstName(){
   function clean(raw){
     if(!raw) return '';
-    var first = String(raw).trim().split(/\s+/)[0].replace(/['’]s$/i, '');
+    var first = String(raw).trim().split(/\s+/)[0].replace(/['']s$/i, '');
     if(!first) return '';
     var placeholder = ['Custom','My','Your','Trovo','Routine','Programme','Plan','User','Default'];
     if(placeholder.indexOf(first) > -1) return '';
@@ -2429,14 +2429,14 @@ function fallbackCoachCard(activity){
     var loadPhrase = mainW > 0 ? 'Target ' + main.weight + ' lb' : 'Bodyweight';
     var msg;
     if(mainW > 0 && lastW > 0 && mainW > lastW){
-      msg = main.name + ' is up to ' + main.weight + ' lb today. If warm-ups feel heavy, drop the working set to ' + last.weight + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don’t grind it.';
+      msg = main.name + ' is up to ' + main.weight + ' lb today. If warm-ups feel heavy, drop the working set to ' + last.weight + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don\'t grind it.';
     } else {
       msg = main.name + ' is the main lift. ' + loadPhrase + ' at RPE ' + (main.rpe || 8) + ' — stop one rep shy if speed drops.';
     }
     return {message: msg, actions: [{label:'Got it', primary:false},{label:'Adjust target', primary:true}]};
   }
   if(activity.type === 'run'){
-    return {message: 'Easy aerobic only today. Cap HR at ' + (activity.hr || 150) + ' bpm — if your nose can’t breathe through it, slow down.',
+    return {message: 'Easy aerobic only today. Cap HR at ' + (activity.hr || 150) + ' bpm — if your nose can\'t breathe through it, slow down.',
       actions: [{label:'Got it', primary:false},{label:'See pace', primary:true}]};
   }
   if(activity.type === 'sport'){
@@ -2475,7 +2475,7 @@ function fetchCoachCard(activity){
       'Last 5 sessions: ' + JSON.stringify(recent) + '\n\n'+
       'Write ONE proactive note (2-3 sentences max) the user should see this morning.\n'+
       'Be specific to the data — name an exercise, a number, a pattern.\n'+
-      'Don’t be generic. Don’t pep-talk. Talk like you’ve coached them for a year.\n\n'+
+      'Don\'t be generic. Don\'t pep-talk. Talk like you\'ve coached them for a year.\n\n'+
       'Then propose two action labels (≤ 3 words each).\n\n'+
       'Return STRICT JSON only — no prose, no code fences:\n'+
       '{"message":"...","actions":[{"label":"...","primary":false},{"label":"...","primary":true}]}';
@@ -2557,7 +2557,7 @@ function handleCoachCardAsk(ev){
     // an empty "Thinking…" forever.
     coachLoading = false;
     streamingContent = '';
-        coachMessages.push({role:'assistant', content:'Coach didn’t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
+        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
     render();
     scrollChatBottom();
@@ -2613,7 +2613,7 @@ function renderTodayEditorial(){
         Math.round(act.exercises.length*8.5)+' min. '+
         main.name+upBit+rpeBit;
     } else {
-      body = 'Tap to start when you’re ready.';
+      body = 'Tap to start when you\'re ready.';
     }
   } else if(act.type === 'run'){
     line1 = 'No workout';
@@ -7310,14 +7310,14 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-        coachMessages.push({role:’assistant’, content:’Coach didn’t respond (‘+(err&&err.message||’network error’)+’). Send the message again, or check your API key in Settings.’});
-    try{ localStorage.setItem(‘kt_coach_msgs’, JSON.stringify(coachMessages)); }catch(_){}
+        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
+    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
-    streamingContent=’’;
+    streamingContent='';
     render();
     scrollChatBottom();
-    setTimeout(function(){var i=document.getElementById(‘coach-input’);if(i&&!intakeMode)i.focus();},80);
+    setTimeout(function(){var i=document.getElementById('coach-input');if(i&&!intakeMode)i.focus();},80);
   }
 }
 
