@@ -6167,7 +6167,36 @@ function getCoachChips(){
 }
 
 function buildIntakeSystemPrompt(){
+  // Inject previous programme context if one was just archived (continuation mode)
+  var prevSection = '';
+  var archive = getRoutineArchive();
+  if(archive.length){
+    var prev = archive[0].routine;
+    var nWks = prev.weeks ? prev.weeks.length : 0;
+    var lastWk = nWks ? prev.weeks[nWks-1] : null;
+    var DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    prevSection = '\n\n=== PREVIOUS PROGRAMME (user just finished this — use for progression context) ===\n';
+    prevSection += 'Name: '+(prev.blockName||prev.name||'Training Programme')+' · '+nWks+' weeks\n';
+    if(prev.weekPlan) prevSection += 'Split: '+prev.weekPlan.map(function(p,i){return DOW[i]+':'+p;}).join(' / ')+'\n';
+    if(lastWk){
+      ['push','pull','legs','legs2'].forEach(function(t){
+        var exs=lastWk[t]; if(!exs||!exs.length) return;
+        prevSection += '\n'+t.toUpperCase()+' (week '+nWks+' — final weights):\n';
+        exs.forEach(function(ex){
+          prevSection += '  • '+ex.name+': '+ex.sets+'×'+ex.reps+(ex.weight?' @ '+ex.weight+' lb':'')+(ex.isMain?' [MAIN]':'')+'\n';
+        });
+      });
+    }
+    prevSection += '\n=== END PREVIOUS PROGRAMME ===\n\n';
+    prevSection += 'CONTINUATION MODE — the user is building a NEW programme that progresses from the one above.\n'+
+      'You already know their split, equipment, injuries, and experience. DO NOT re-ask those questions.\n'+
+      'Instead: (1) briefly acknowledge what you see ("I can see you just finished X — bench ended at Y lb, squat at Z lb, etc."), '+
+      '(2) ask only what is NEW or different: any goals/focus changes, exercises to add or swap out, and desired programme length (suggest 12 weeks). Max 3 quick questions.\n'+
+      'Start new working weights ~5–10% above where the previous programme ended on each lift.\n';
+  }
+
   return 'You are a world-class personal trainer conducting an intake assessment to build a personalised training programme.\n\n'+
+(prevSection||
 'Ask the following questions ONE AT A TIME. Wait for an answer before asking the next. Be conversational and encouraging — like a real trainer. Acknowledge each answer briefly before moving to the next question.\n\n'+
 'Questions to cover (in this order):\n'+
 '1. Main training goals (muscle gain, fat loss, strength, general fitness, sport performance)\n'+
@@ -6179,7 +6208,7 @@ function buildIntakeSystemPrompt(){
 '7. Training experience — how long have they been lifting consistently\n'+
 '8. Cardio or sports — do they do anything besides lifting? Running, cycling, swimming, pickleball, tennis, basketball, CrossFit, or "other"? If yes, how many days a week and current ability/level\n'+
 '9. Any exercises they specifically love or hate\n'+
-'10. Programme length — how many weeks do they want (suggest 12 if unsure; valid range 4–24)\n\n'+
+'10. Programme length — how many weeks do they want (suggest 12 if unsure; valid range 4–24)\n\n')+
 'After you have all the answers, briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Rest/Run/sport, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure — adapt to the chosen length, but keep these principles:\n'+
 '- Open with BASE (#06b6d4) — ~3 weeks of technique + moderate volume.\n'+
