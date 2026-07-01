@@ -814,6 +814,28 @@ select option{background:var(--bg);}
 .kt-r-pill.idle .kt-r-pill-idx{opacity:.6;}
 .kt-r-pill-dots{display:flex;gap:2px;}
 .kt-r-dot{width:4px;height:4px;border-radius:50%;}
+/* Close runner sheet */
+.kt-close-sheet{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;display:flex;align-items:flex-end;}
+.kt-close-sheet-inner{width:100%;background:var(--card);border-radius:24px 24px 0 0;padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);}
+.kt-close-sheet-ttl{font-size:18px;font-weight:800;margin-bottom:6px;}
+.kt-close-sheet-sub{font-size:13px;color:var(--muted);margin-bottom:24px;}
+.kt-close-sheet-btn{width:100%;padding:15px;border-radius:14px;border:none;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-bottom:10px;display:block;}
+.kt-close-sheet-btn:last-child{margin-bottom:0;}
+/* Rest-done flash */
+@keyframes kt-r-flash{0%{opacity:1;}20%{opacity:.3;}50%{opacity:.85;}80%{opacity:.4;}100%{opacity:1;}}
+.kt-r-flash{animation:kt-r-flash .7s ease-in-out;}
+/* Skip exercise */
+.kt-r-skip-ex{padding:6px 14px;border-radius:10px;border:none;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;}
+.kt-r-card.lime .kt-r-skip-ex{background:rgba(0,0,0,.1);color:rgba(0,0,0,.5);}
+.kt-r-card.dark .kt-r-skip-ex{background:rgba(255,255,255,.08);color:rgba(255,255,255,.4);}
+/* PR list */
+.kt-pr-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);}
+.kt-pr-row:last-child{border-bottom:none;padding-bottom:0;}
+.kt-pr-name{font-size:13px;font-weight:600;color:var(--text);}
+.kt-pr-val{font-size:13px;font-weight:800;color:var(--accent);flex-shrink:0;margin-left:8px;}
+/* Sport saved strip */
+.kt-sport-confirm{background:var(--card2);border:1px solid var(--border);color:var(--text);display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
+.kt-sport-confirm-undo{background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 </style>
 </head>
 <body>
@@ -942,7 +964,8 @@ var runnerResumePending = false;
 var runLogOpen      = false;
 var runLogClosing   = false;
 var runLogPendingType = 'easy';     // easy | tempo | long | intervals
-var runLogConfirmed = null;         // {id, km, time} after save
+var runLogConfirmed  = null;         // {id, km, time} after save
+var sportLogConfirmed = null;        // {id, type, label} after save
 var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 // Draft values for the inline run-log form. Captured on every render so
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
@@ -2551,7 +2574,10 @@ function renderTodayEditorial(){
   var meta = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">'+act.weekday+' · WK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWks+'</div>'+
-    '<div class="kt-meta-ava">'+initial+'</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+
+      '<button onclick="switchTab(\'settings\')" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;-webkit-tap-highlight-color:transparent;padding:0;">Edit split →</button>'+
+      '<div class="kt-meta-ava">'+initial+'</div>'+
+    '</div>'+
     '</div>';
 
   // Hero — dynamic per day type
@@ -3378,8 +3404,28 @@ function closeDeckRunner(){
 }
 function confirmCloseRunner(){
   var hasProg = runnerExIdx > 0 || Object.keys(runnerCompleted||{}).length > 0;
-  if(hasProg && !confirm('Leave workout? Your progress will be lost.')) return;
-  closeDeckRunner();
+  if(!hasProg){ closeDeckRunner(); return; }
+  var el = document.createElement('div');
+  el.id = 'kt-close-runner-sheet';
+  el.className = 'kt-close-sheet';
+  el.onclick = function(e){ if(e.target===el) el.remove(); };
+  el.innerHTML = '<div class="kt-close-sheet-inner">'+
+    '<div class="kt-close-sheet-ttl">Leave workout?</div>'+
+    '<div class="kt-close-sheet-sub">Logged sets so far won\'t be saved.</div>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-close-runner-sheet\').remove()">Keep working</button>'+
+    '<button class="kt-close-sheet-btn" style="background:#ef4444;color:#fff;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
+  '</div>';
+  document.body.appendChild(el);
+}
+function skipRunnerExercise(){
+  if(!runnerSession) return;
+  var total = runnerSession.exercises.length;
+  if(runnerExIdx < total - 1){
+    runnerGoTo(runnerExIdx + 1);
+  } else {
+    // Last exercise — skip means done with session
+    runnerFinishSession();
+  }
 }
 function _runnerEx(){ return runnerSession ? runnerSession.exercises[runnerExIdx] : null; }
 function _runnerNext(){ return runnerSession ? runnerSession.exercises[runnerExIdx+1] : null; }
@@ -3488,6 +3534,9 @@ function runnerCompleteSet(){
         clearInterval(runnerRestTick); runnerRestTick=null;
         runnerResting = false; runnerRestLeft = 90;
         _trovoTimerEnd();
+        if(navigator.vibrate) navigator.vibrate([80,40,80]);
+        var _rc=document.getElementById('runner-root');
+        if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
       }
       paintRunner();
     }, 1000);
@@ -3497,14 +3546,14 @@ function runnerCompleteSet(){
     runnerResting = false;
     if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
     _trovoTimerEnd();
-    // Auto-advance after 1.2s if not last.
+    // Auto-advance after 3s if not last.
     var idx = runnerExIdx;
     if(idx < runnerSession.exercises.length - 1){
       setTimeout(function(){
         if(runnerOpen && runnerExIdx === idx && (runnerCompleted[ex.name]||0) >= ex.sets){
           runnerGoTo(idx+1);
         }
-      }, 1200);
+      }, 3000);
     }
   }
   paintRunner();
@@ -3777,7 +3826,10 @@ function _renderRunnerIdleBody(ex, next){
       _renderCompletedSets(ex)+
     '</div>'+
     '<div class="kt-r-card-foot">'+
-      '<div class="kt-r-card-hint">Tap to log →</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;">'+
+        '<div class="kt-r-card-hint">Tap to log →</div>'+
+        '<button class="kt-r-skip-ex" onclick="event.stopPropagation();skipRunnerExercise()">Skip →</button>'+
+      '</div>'+
       nextBlock+
     '</div>'+
     '</div>';
@@ -3809,6 +3861,9 @@ function _renderRunnerEngagedBody(ex, done){
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
       '</div>'+
     '</div></div>';
+  var targetRpe = parseInt(ex.rpe) || 7;
+  var rpeLeft = 10 - targetRpe;
+  var rpeHint = '<div style="margin-top:10px;font-size:10px;opacity:.35;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-align:center;text-transform:uppercase;">RPE '+targetRpe+' target · stop with ~'+rpeLeft+' rep'+(rpeLeft===1?'':'s')+' left</div>';
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
@@ -3823,7 +3878,7 @@ function _renderRunnerEngagedBody(ex, done){
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
     '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
-    doneBtn + logAllBtn +
+    doneBtn + logAllBtn + rpeHint +
     '</div>';
 }
 function _renderRunnerRestingBody(ex, done){
@@ -3842,6 +3897,10 @@ function _renderRunnerRestingBody(ex, done){
 function _renderRunnerDoneBody(ex, isLast){
   var label = isLast ? 'Finish session' : 'Next exercise →';
   var onclick = isLast ? 'runnerFinishSession()' : 'runnerGoTo('+(runnerExIdx+1)+')';
+  var nextEx = !isLast && runnerSession ? runnerSession.exercises[runnerExIdx+1] : null;
+  var nextPreview = nextEx
+    ? '<div style="margin-top:2px;font-size:11px;opacity:.45;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-transform:uppercase;">Next · '+_esc(nextEx.name)+'</div>'
+    : '';
   var dateField = isLast
     ? '<div style="margin:14px 0 6px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
@@ -3857,6 +3916,7 @@ function _renderRunnerDoneBody(ex, isLast){
     _renderCompletedSets(ex)+
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
+    nextPreview+
     '</div>';
 }
 // ── Runner Exercise Edit Sheet ─────────────────────────────────────────────────
@@ -4655,12 +4715,28 @@ function saveSportLog(){
     var el=document.getElementById('sp_'+f.id);
     if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
   });
+  var rec={id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes};
   var logs=getSportLogs();
-  logs.unshift({id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes});
+  logs.unshift(rec);
   lsSet('kt_sports',logs);
   invalidateCoachCard();
-  showToast(sport.id+' logged');
+  sportLogConfirmed={id:rec.id,type:logSportType,label:sport.id+(dur?' · '+dur+' min':'')};
   render();
+}
+function undoLastSportLog(){
+  if(!sportLogConfirmed) return;
+  var id=sportLogConfirmed.id;
+  lsSet('kt_sports',getSportLogs().filter(function(s){return s.id!==id;}));
+  sportLogConfirmed=null;
+  render();
+}
+function renderSportSavedStrip(){
+  if(!sportLogConfirmed) return '';
+  var c=sportLogConfirmed;
+  return '<div class="kt-sport-confirm">'+
+    '<div>✓ '+_esc(c.label)+' logged</div>'+
+    '<button class="kt-sport-confirm-undo" onclick="undoLastSportLog()">UNDO</button>'+
+  '</div>';
 }
 
 function buildSportSummary(log){
@@ -5130,7 +5206,7 @@ function renderSportSection(forcedSportId){
     '</button>'+
   '</div>';
 
-  return scheduleCard+renderActivityCards()+picker+form+renderRecentSportLogs();
+  return renderSportSavedStrip()+scheduleCard+renderActivityCards()+picker+form+renderRecentSportLogs();
 }
 
 function fillSportWithAI(){
@@ -5514,11 +5590,18 @@ function renderProgress() {
     '</div>';
     return bar+inp;
   }
-  // Lift-mode goals: bench, squat, plus a 5k callout when one's been logged.
+  // Lift-mode goals: bench, squat, plus a 5k goal (always settable).
+  var run5kGoalInp='<div style="display:flex;align-items:center;gap:6px;margin-top:-8px;margin-bottom:14px;">'+
+    '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
+    '<input type="number" value="'+(run5kGoalSec/60||40)+'" min="1" step="0.5" style="'+goalInpStyle+'"'+
+      ' onchange="set5kGoal(parseFloat(this.value)*60||0);render();" />'+
+    '<span style="font-size:11px;color:var(--muted);">min</span>'+
+  '</div>';
   var liftGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
     goalRow('Bench Press',bestBench,benchGoal,'lb',false,'setBenchGoal')+
     goalRow('Back Squat',bestSquat,squatGoal,'lb',false,'setSquatGoal')+
-    (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
+    (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
+    run5kGoalInp+
     '</div>';
 
   // Run-mode goals: 5k time + average-pace target. The pace setter is text
@@ -5569,6 +5652,8 @@ function renderProgress() {
   var prevBW = bws.length > 1 ? bws[1].weight : null;
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
   var streak = calcStreak(sessions);
+  var thisWeekCount = sessions.filter(function(s){return s.week===currentWeek;}).length;
+  var scheduledLiftDays = getWeekPlan().filter(function(p){return p.isLift;}).length;
 
   // Run-mode stats — total distance, this-week km, avg pace.
   function _runSec(r){
@@ -5615,6 +5700,11 @@ function renderProgress() {
       '<div class="stat-lbl">Streak</div>'+
       '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
       '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
+    '</div>'+
+    '<div class="stat">'+
+      '<div class="stat-lbl">This week</div>'+
+      '<div class="stat-val" style="color:'+(thisWeekCount>=scheduledLiftDays&&scheduledLiftDays>0?'var(--green)':'var(--text)')+'">'+thisWeekCount+'</div>'+
+      '<div class="stat-delta">'+(scheduledLiftDays>0?'of '+scheduledLiftDays+' planned':'sessions')+'</div>'+
     '</div>'+
     '</div>' + bwAndWeekRow;
 
@@ -5833,6 +5923,17 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
+  // PR list card
+  var prData = getPRs();
+  var prNames = Object.keys(prData).sort(function(a,b){return prData[b]-prData[a];});
+  var prCard = '';
+  if(prNames.length){
+    var prRows = prNames.map(function(n){
+      return '<div class="kt-pr-row"><span class="kt-pr-name">'+_esc(n)+'</span><span class="kt-pr-val">'+prData[n]+' lb</span></div>';
+    }).join('');
+    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests</div></div></div>'+prRows+'</div>';
+  }
+
   // Filter the detail charts + lift-only sections based on the toggle.
   // Runs mode hides the strength-progression block and 1RM card; lifts
   // mode hides the run-pace chart.
@@ -5842,7 +5943,7 @@ function renderProgress() {
     liftOnly = '';
   } else {
     detailCharts = benchChart + squatChart + volCharts;
-    liftOnly = liftsBlock + rmSection;
+    liftOnly = liftsBlock + rmSection + prCard;
   }
 
   // Bodyweight chart — shown on both tabs when data exists.
@@ -7310,7 +7411,7 @@ function renderCoach(){
         ?'<span class="coach-head-meta">WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx+'</span>'
         :'')+
       (intakeMode
-        ?'<button onclick="(function(){intakeMode=false;clearCoachHistory();render();})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        ?'<button onclick="(function(){if(confirm(\'Stop programme setup? Your answers so far will be lost.\')){intakeMode=false;clearCoachHistory();render();}})()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
         :'<button onclick="setCoachModel(\''+modelNext+'\')" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;">'+modelLabel+'</button>'
       )+
     '</div>'+
