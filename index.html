@@ -925,6 +925,12 @@ var runnerRpe         = {};         // {exId: currentRpe} — stepper state
 var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
 var runnerEditSetIdx  = null;       // set index currently being edited (or null)
 var runnerEditSetEx   = null;       // exercise name for that edit
+var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
+var runnerExPickerQ   = '';         // search query in exercise picker
+var _rExEditName      = '';
+var _rExEditSets      = 0;
+var _rExEditReps      = 0;
+var _rExEditWeight    = 0;
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
 var runnerSessionDate     = null;   // date override when finishing (null = todayISO())
@@ -3669,10 +3675,16 @@ function _renderRunnerIdleBody(ex, next){
       (targetW>0?targetW+' <span style="font-size:18px;font-weight:600;opacity:.7;">lb</span>':'BW')+
     '</div>'+
     '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+targetR+' reps</div>';
+  var editBtnStyle=ex.isMain
+    ?'background:rgba(0,0,0,.18);border:1px solid rgba(0,0,0,.2);color:rgba(0,0,0,.6);'
+    :'background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);';
   return '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">'+
     '<div>'+
       lastBlock+
-      '<div class="kt-r-card-name">'+_esc(ex.name)+'</div>'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'+
+        '<div class="kt-r-card-name" style="flex:1;">'+_esc(ex.name)+'</div>'+
+        '<button onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="flex-shrink:0;margin-top:6px;padding:5px 12px;border-radius:8px;'+editBtnStyle+'font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;">Edit</button>'+
+      '</div>'+
       targetLine+
       _renderCompletedSets(ex)+
     '</div>'+
@@ -3758,6 +3770,166 @@ function _renderRunnerDoneBody(ex, isLast){
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     '</div>';
+}
+// ── Runner Exercise Edit Sheet ─────────────────────────────────────────────────
+function openRunnerExEdit(idx){
+  closeRunnerExEdit();
+  var ex=runnerSession&&runnerSession.exercises[idx]; if(!ex) return;
+  runnerExEditIdx=idx;
+  _rExEditName   =ex.name;
+  _rExEditSets   =ex.sets;
+  _rExEditReps   =Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+  _rExEditWeight =parseFloat(ex.weight)||0;
+  runnerExPickerQ='';
+  var overlay=document.createElement('div');
+  overlay.id='runner-ex-edit-modal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;display:flex;align-items:flex-end;';
+  overlay.onclick=function(e){if(e.target===overlay)closeRunnerExEdit();};
+  var sheet=document.createElement('div');
+  sheet.id='runner-ex-edit-sheet';
+  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;';
+  sheet.innerHTML=_buildRunnerExEditHTML();
+  overlay.appendChild(sheet); document.body.appendChild(overlay);
+}
+function closeRunnerExEdit(){
+  var el=document.getElementById('runner-ex-edit-modal'); if(el) el.remove();
+  runnerExEditIdx=null;
+}
+function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
+  return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
+    '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;">'+label+'</div>'+
+    '<div style="display:flex;align-items:center;gap:5px;">'+
+      '<button onclick="event.stopPropagation();'+stepFn+'(-'+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">−</button>'+
+      '<input id="'+id+'" type="number" inputmode="decimal" value="'+val+'" style="width:58px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:17px;font-weight:800;padding:7px 3px;font-family:inherit;box-sizing:border-box;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation();'+setFn+'(this.value)" onchange="event.stopPropagation();'+setFn+'(this.value)"/>'+
+      '<button onclick="event.stopPropagation();'+stepFn+'('+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">+</button>'+
+    '</div>'+
+  '</div>';
+}
+function _buildRunnerExEditHTML(){
+  var exEntry=EXERCISE_DB.find(function(e){return e.name===_rExEditName;});
+  var cat=exEntry?exEntry.cat:'';
+  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">'+
+      '<div style="font-size:17px;font-weight:800;">Edit Exercise</div>'+
+      '<button onclick="closeRunnerExEdit()" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card2);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div style="margin-bottom:22px;">'+
+      '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">Exercise</div>'+
+      '<button onclick="event.stopPropagation();_openRunnerExPicker()" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;box-sizing:border-box;">'+
+        '<div>'+
+          '<div style="font-size:15px;font-weight:700;">'+_esc(_rExEditName)+'</div>'+
+          (cat?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+_esc(cat)+'</div>':'')+
+        '</div>'+
+        '<span style="color:var(--accent);font-weight:700;font-size:14px;flex-shrink:0;margin-left:8px;">Change ›</span>'+
+      '</button>'+
+    '</div>'+
+    '<div style="display:flex;gap:10px;margin-bottom:24px;">'+
+      _runnerExStepHTML('runner-ex-sets-input','Sets',_rExEditSets,'runnerExEditStepSets','runnerExEditSetSets',1)+
+      _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
+      _runnerExStepHTML('runner-ex-weight-input','Weight · lb',_rExEditWeight,'runnerExEditStepWeight','runnerExEditSetWeight',2.5)+
+    '</div>'+
+    '<button onclick="event.stopPropagation();saveRunnerExEdit()" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.02em;-webkit-tap-highlight-color:transparent;">Save Changes</button>'+
+  '</div>';
+}
+function _openRunnerExPicker(){
+  var sheet=document.getElementById('runner-ex-edit-sheet'); if(!sheet) return;
+  runnerExPickerQ='';
+  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;';
+  sheet.innerHTML=_buildRunnerExPickerHTML();
+}
+function _closeRunnerExPicker(){
+  var sheet=document.getElementById('runner-ex-edit-sheet'); if(!sheet) return;
+  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;';
+  sheet.innerHTML=_buildRunnerExEditHTML();
+}
+function runnerExPickExercise(name){
+  _rExEditName=name; _closeRunnerExPicker();
+}
+function runnerExPickerFilter(q){
+  runnerExPickerQ=q;
+  var el=document.getElementById('runner-ex-picker-list'); if(!el) return;
+  el.innerHTML=_buildExPickerItems(q);
+}
+function _buildExPickerItems(q){
+  var sType=(runnerSession&&runnerSession.type)||'';
+  var qLow=(q||'').trim().toLowerCase();
+  var sessionNames=EXERCISE_LIBRARY[sType]||[];
+  var allNames=EXERCISE_DB.map(function(e){return e.name;});
+  var filter=function(n){return !qLow||n.toLowerCase().indexOf(qLow)>=0;};
+  var sessionFiltered=sessionNames.filter(filter);
+  var otherFiltered=allNames.filter(function(n){return filter(n)&&sessionNames.indexOf(n)<0;});
+  function item(name){
+    var isCur=name===_rExEditName;
+    var escaped=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<button onclick="event.stopPropagation();runnerExPickExercise(\''+escaped+'\')" style="'+
+      'width:100%;display:flex;align-items:center;justify-content:space-between;'+
+      'background:'+(isCur?'color-mix(in srgb,var(--accent) 10%,transparent)':'transparent')+';'+
+      'border:none;border-radius:10px;padding:12px 8px;color:var(--text);font-size:14px;font-weight:'+(isCur?'700':'500')+';'+
+      'cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+      _esc(name)+(isCur?'<span style="color:var(--accent);font-weight:700;margin-left:8px;">✓</span>':'')+
+    '</button>';
+  }
+  var html='';
+  if(sessionFiltered.length&&sType&&!qLow){
+    html+='<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:4px 8px 6px;">'+_esc(sType)+' Day</div>';
+    html+=sessionFiltered.map(item).join('');
+    if(otherFiltered.length) html+='<div style="height:1px;background:var(--border);margin:10px 0;"></div>';
+  }
+  if(otherFiltered.length){
+    if(sType&&!qLow) html+='<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:4px 8px 6px;">All Exercises</div>';
+    html+=otherFiltered.map(item).join('');
+  }
+  if(!sessionFiltered.length&&!otherFiltered.length){
+    html='<div style="text-align:center;padding:24px;color:var(--muted);font-size:14px;">No exercises match "'+_esc(q)+'"</div>';
+  }
+  return html;
+}
+function _buildRunnerExPickerHTML(){
+  return '<div style="flex-shrink:0;padding:16px 20px 12px;border-bottom:1px solid var(--border);">'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'+
+      '<button onclick="event.stopPropagation();_closeRunnerExPicker()" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:18px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">‹</button>'+
+      '<div style="font-size:17px;font-weight:800;">Choose Exercise</div>'+
+    '</div>'+
+    '<input type="text" placeholder="Search exercises…" value="'+_esc(runnerExPickerQ)+'"'+
+      ' oninput="event.stopPropagation();runnerExPickerFilter(this.value)"'+
+      ' onclick="event.stopPropagation();this.select()"'+
+      ' style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-family:inherit;box-sizing:border-box;outline:none;-webkit-appearance:none;"/>'+
+  '</div>'+
+  '<div id="runner-ex-picker-list" style="overflow-y:auto;padding:8px 12px calc(env(safe-area-inset-bottom,0px)+16px);flex:1;min-height:0;-webkit-overflow-scrolling:touch;">'+
+    _buildExPickerItems(runnerExPickerQ)+
+  '</div>';
+}
+function runnerExEditStepSets(d){
+  _rExEditSets=Math.max(1,(_rExEditSets||1)+parseInt(d));
+  var el=document.getElementById('runner-ex-sets-input'); if(el) el.value=_rExEditSets;
+}
+function runnerExEditSetSets(v){ _rExEditSets=Math.max(1,parseInt(v)||1); }
+function runnerExEditStepReps(d){
+  _rExEditReps=Math.max(1,(parseInt(_rExEditReps)||1)+parseInt(d));
+  var el=document.getElementById('runner-ex-reps-input'); if(el) el.value=_rExEditReps;
+}
+function runnerExEditSetReps(v){ _rExEditReps=Math.max(1,parseInt(v)||1); }
+function runnerExEditStepWeight(d){
+  _rExEditWeight=Math.max(0,parseFloat(_rExEditWeight||0)+parseFloat(d));
+  var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=_rExEditWeight;
+}
+function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,parseFloat(v)||0); }
+function saveRunnerExEdit(){
+  if(runnerExEditIdx===null) return;
+  var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
+  var oldName=ex.name, newName=_rExEditName;
+  ex.name   =newName;
+  ex.sets   =parseInt(_rExEditSets)||ex.sets;
+  ex.reps   =parseInt(_rExEditReps)||ex.reps;
+  ex.weight =parseFloat(_rExEditWeight)||0;
+  runnerWeights[newName]=ex.weight;
+  runnerReps[newName]=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
+  if(oldName!==newName){
+    if(runnerCompleted[oldName]){runnerCompleted[newName]=runnerCompleted[oldName];delete runnerCompleted[oldName];}
+    if(runnerWeightsLog[oldName]){runnerWeightsLog[newName]=runnerWeightsLog[oldName];delete runnerWeightsLog[oldName];}
+    if(runnerRepsLog[oldName]){runnerRepsLog[newName]=runnerRepsLog[oldName];delete runnerRepsLog[oldName];}
+  }
+  closeRunnerExEdit(); paintRunner();
 }
 function _swapModalLabel(planEntry){
   if(planEntry.isRest) return 'Rest';
