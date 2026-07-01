@@ -6710,12 +6710,14 @@ async function runCoachTurn(systemPrompt,model,maxTok){
           messages:apiMsgs,
           tools:COACH_TOOLS
         })
-      }),90000,'fetch');
+      }),intakeMode?300000:90000,'fetch');
     }catch(e){
       hadError=true;
       var msg=String(e&&e.message||'');
       var errMsg=msg.indexOf('TIMEOUT:')===0
-        ?'No response after 90s — Anthropic may be slow or the request was rejected. Try again.'
+        ?(intakeMode
+            ?'Programme generation is taking a long time — Anthropic is busy. Wait a moment and try again, or ask the Coach to generate a shorter programme first (e.g. 4 weeks).'
+            :'No response after 90s — Anthropic may be slow or the request was rejected. Try again.')
         :'Could not connect. Check your internet connection.';
       coachMessages.push({role:'assistant',content:errMsg});
       break;
