@@ -836,6 +836,7 @@ select option{background:var(--bg);}
 </nav>
 <div id="toast">Copied!</div>
 <div id="runner-root" style="display:none;"></div>
+<div id="runner-seal" style="display:none;position:fixed;bottom:0;left:0;right:0;height:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:#0b0b0d;z-index:49;pointer-events:none;"></div>
 <script>
 // ── Hybrid loader: live update check ─────────────────────────────────────────
 // The bundled HTML's build version. Compared against the live version at
@@ -3514,13 +3515,16 @@ function runnerFinishSession(){
 function paintRunner(){
   var root = document.getElementById('runner-root');
   if(!root) return;
+  var seal = document.getElementById('runner-seal');
   if(!runnerOpen || currentTab !== 'log'){
     root.style.display = 'none';
     root.innerHTML = '';
+    if(seal) seal.style.display = 'none';
     return;
   }
   _saveRunnerDraft();
   root.style.display = 'block';
+  if(seal) seal.style.display = 'block';
   root.innerHTML = renderDeckRunner();
 }
 function renderDeckRunner(){
