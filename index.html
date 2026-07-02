@@ -788,6 +788,7 @@ select option{background:var(--bg);}
 .kt-step-input{background:none;border:none;outline:none;padding:0;margin:0;width:auto;-webkit-appearance:none;appearance:none;font-family:inherit;caret-color:var(--accent);}
 .kt-step-input::-webkit-inner-spin-button,.kt-step-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
+.kt-plate-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.06em;margin-top:7px;text-transform:uppercase;}
 .kt-step-btns{display:flex;gap:8px;flex-shrink:0;}
 .kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
@@ -3504,7 +3505,13 @@ function runnerStepWeight(delta){
 function runnerSetWeight(val){
   var ex = _runnerEx(); if(!ex) return;
   var v = parseFloat(val);
-  if(!isNaN(v) && v >= 0){ runnerWeights[ex.name] = v; _saveRunnerDraft(); }
+  if(!isNaN(v) && v >= 0){
+    runnerWeights[ex.name] = v; _saveRunnerDraft();
+    // Typing doesn't repaint (would blur the input) — update the plate-math
+    // line in place instead. Element only exists for barbell lifts.
+    var pl = document.getElementById('kt-plate-line');
+    if(pl) pl.textContent = _plateMath(v) || '';
+  }
 }
 function runnerStepReps(delta){
   var ex = _runnerEx(); if(!ex) return;
@@ -3895,6 +3902,25 @@ function _renderRunnerIdleBody(ex, next){
     '</div>'+
     '</div>';
 }
+// ── Barbell intelligence (plate math · warm-up ramp · overload hint) ─────────
+// Name heuristic: bar-loaded movements get plate math and bar-based warm-ups.
+function _isBarbellLift(name){
+  var n=String(name||'').toLowerCase();
+  if(/dumbbell|\bdb\b|machine|cable|smith|band|bodyweight|kettlebell|goblet/.test(n)) return false;
+  return /barbell|bench press|back squat|front squat|deadlift|overhead press|\bohp\b|t-bar|hip thrust|good morning|close grip bench/.test(n);
+}
+// "45 + 25 + 2.5 / side" for a 45 lb bar. '' when not meaningful.
+function _plateMath(total){
+  var w=parseFloat(total);
+  if(!(w>0)) return '';
+  if(w<=45) return w===45?'Empty bar':'';
+  var rem=(w-45)/2, out=[];
+  [45,35,25,10,5,2.5].forEach(function(p){
+    while(rem>=p-0.001){ out.push(p); rem-=p; }
+  });
+  if(!out.length) return '';
+  return out.join(' + ')+(rem>0.26?' +'+(Math.round(rem*10)/10):'')+' / side';
+}
 function _renderRunnerEngagedBody(ex, done){
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
@@ -3909,7 +3935,11 @@ function _renderRunnerEngagedBody(ex, done){
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
         '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
       '</div>'+
-    '</div></div>';
+    '</div>'+
+    (_isBarbellLift(ex.name)&&_plateMath(w)
+      ?'<div id="kt-plate-line" class="kt-plate-line">'+_plateMath(w)+'</div>'
+      :'')+
+    '</div>';
   var stepperR = '<div class="kt-step">'+
     '<div class="kt-step-lbl">REPS</div>'+
     '<div class="kt-step-row">'+
