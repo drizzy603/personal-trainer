@@ -975,6 +975,7 @@ var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
+var histExpandedId = null;   // session id open in the Session History accordion
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', distance:'', intensity:'', calories:'', notes:'', date:''};
 
@@ -6334,6 +6335,10 @@ function _buildHistExRows(exercises, prs, supersets){
   return rows;
 }
 
+function toggleHistItem(id){
+  histExpandedId = histExpandedId===id ? null : id;
+  render(); // in-tab re-render — scroll position is preserved
+}
 function renderHistory() {
   var sessions=getSessions();
   if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
@@ -6341,20 +6346,33 @@ function renderHistory() {
   sessions.slice(0,30).forEach(function(s) {
     var def=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'};
     var sessionPRs=s.prs||[];
-    var exRows=_buildHistExRows(s.exercises,sessionPRs,s.supersets);
-    items+='<div class="hist-item">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
-        '<div>'+
+    var open = histExpandedId===s.id;
+    // Collapsed summary — lift count + the session's headline lift.
+    var exs = s.exercises||[];
+    var top = null;
+    for(var t=0;t<exs.length;t++){ var e=exs[t]; if(e.isMain){top=e;break;} if(!top)top=e; }
+    var summary = exs.length+' lift'+(exs.length!==1?'s':'')+
+      (top?' · '+top.name+(parseFloat(top.weight)>0?' '+top.weight+' lb':''):'');
+    var body = open
+      ? '<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:4px;">'+
+          _buildHistExRows(exs,sessionPRs,s.supersets)+
+          (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
+        '</div>'
+      : '';
+    items+='<div class="hist-item" onclick="toggleHistItem('+s.id+')" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;">'+
+        '<div style="min-width:0;">'+
           '<div style="font-size:15px;font-weight:700;">'+def.label+'</div>'+
           '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+fmtDate(s.date)+(s.week?' · Week '+s.week:'')+'</div>'+
+          '<div style="font-size:12px;color:var(--lite);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(summary)+'</div>'+
         '</div>'+
-        '<div style="display:flex;align-items:center;gap:8px;">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'+
           (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
-          '<button onclick="deleteSession('+s.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;" title="Delete session">✕</button>'+
+          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;" title="Delete session">✕</button>'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="'+(open?'var(--accent)':'var(--muted)')+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="transition:transform .2s;'+(open?'transform:rotate(180deg);':'')+'"><polyline points="6 9 12 15 18 9"/></svg>'+
         '</div>'+
       '</div>'+
-      exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
+      body+
     '</div>';
   });
   return '<div class="card"><h2>Session History</h2></div>'+items;
