@@ -6308,6 +6308,21 @@ function _buildHistExRows(exercises, prs, supersets){
   var ssSet={};(supersets||[]).forEach(function(i){ssSet[i]=true;});
   var rows='';
   (exercises||[]).forEach(function(ex,idx){
+    // Legacy nested shape {sets:[{reps,weight,rpe}…]} — written by pre-runner
+    // imports and the screenshot seed. Project onto the flat runner shape
+    // before rendering (same normalization getLastSessionData does).
+    if(Array.isArray(ex.sets)){
+      var sl=ex.sets;
+      ex={
+        name:ex.name,
+        sets:sl.length,
+        reps:sl.map(function(st){return st.reps;}),
+        weight:(sl[0]&&sl[0].weight)||0,
+        weightLog:sl.map(function(st){return st.weight||0;}),
+        rpe:sl[0]?sl[0].rpe:null,
+        note:ex.note
+      };
+    }
     var repsArr=Array.isArray(ex.reps)?ex.reps:[];
     var allRepsSame=repsArr.length&&repsArr.every(function(r){return r===repsArr[0];});
     var repsDisplay=repsArr.length?(allRepsSame?String(repsArr[0]):'('+repsArr.join('/')+')'):String(ex.reps||'—');
