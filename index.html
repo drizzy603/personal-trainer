@@ -2301,7 +2301,10 @@ function getGreeting(){
 function getUserFirstName(){
   function clean(raw){
     if(!raw) return '';
-    var first = String(raw).trim().split(/\s+/)[0].replace(/['']s$/i, '');
+    // \u2019 is the curly apostrophe, kept as an escape so no literal curly
+    // quote lives in the script — a quote-normalizing sweep once rewrote one
+    // here and silently stopped stripping possessives from routine names.
+    var first = String(raw).trim().split(/\s+/)[0].replace(/['\u2019]s$/i, '');
     if(!first) return '';
     var placeholder = ['Custom','My','Your','Trovo','Routine','Programme','Plan','User','Default'];
     if(placeholder.indexOf(first) > -1) return '';
