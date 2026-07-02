@@ -4556,7 +4556,7 @@ function renderRunsSection(opts) {
       '<div class="run-card-body">'+
         '<div class="run-card-day">'+label+' · '+typeLabel+'</div>'+
         '<div class="run-card-main">'+mainLine+'</div>'+
-        (run.note?'<div class="run-card-note">'+run.note+'</div>':'')+
+        (run.note?'<div class="run-card-note">'+_esc(run.note)+'</div>':'')+
       '</div>'+
       (run.km?'<div class="run-card-pace"><div class="run-card-pace-val">'+run.km+'</div>km</div>':'')+
     '</div>';
@@ -4583,7 +4583,7 @@ function renderRunsSection(opts) {
       var p=calcPace(dist,r.time);
       var typeLabel=r.type&&r.type!=='easy'?_runTypeLabel(r.type):'';
       var hrLabel=r.hr?' · '+r.hr+'bpm':'';
-      var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+r.note:'');
+      var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+_esc(r.note):'');
       runItems += '<div class="run-item">'+
         '<div><div style="font-size:14px;font-weight:800;">'+dist+'km &middot; '+r.time+'</div>'+
         '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
@@ -6110,7 +6110,7 @@ function renderCalDetail(sessions,runs,sports){
         '</div>'+
       '</div>'+
       exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
+      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
     '</div>';
   });
   dayRuns.forEach(function(r){
@@ -6130,7 +6130,7 @@ function renderCalDetail(sessions,runs,sports){
         '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+p+'/km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
         (r.hr?'<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.hr+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">bpm</div></div>':'')+
       '</div>'+
-      (r.note?'<div style="font-size:12px;color:var(--muted);">'+r.note+'</div>':'')+
+      (r.note?'<div style="font-size:12px;color:var(--muted);">'+_esc(r.note)+'</div>':'')+
     '</div>';
   });
   var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
@@ -6143,8 +6143,8 @@ function renderCalDetail(sessions,runs,sports){
           sportChip(s,32)+
           '<div>'+
             '<div style="font-size:14px;font-weight:800;">'+sp.type+(sp.duration?' · '+sp.duration+' min':'')+'</div>'+
-            (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+sum+'</div>':'')+
-            (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+sp.notes+'</div>':'')+
+            (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+_esc(sum)+'</div>':'')+
+            (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+_esc(sp.notes)+'</div>':'')+
           '</div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
@@ -6235,11 +6235,11 @@ function _buildHistExRows(exercises, prs, supersets){
       :'')+
       '<div class="hist-ex-row">'+
         '<div class="hist-ex-top">'+
-          '<span class="hist-ex-name">'+ex.name+(isPR?' <span style="color:var(--yellow);font-size:9px;font-weight:800;">PR</span>':'')+'</span>'+
+          '<span class="hist-ex-name">'+_esc(ex.name)+(isPR?' <span style="color:var(--yellow);font-size:9px;font-weight:800;">PR</span>':'')+'</span>'+
           '<span class="hist-ex-weight">'+wStr+'</span>'+
         '</div>'+
         '<div class="hist-ex-detail">'+ex.sets+'×'+repsDisplay+wDetail+' &nbsp;·&nbsp; RPE '+fmtRpe(ex.rpe)+'</div>'+
-        (ex.note?'<div class="hist-ex-note">'+ex.note+'</div>':'')+
+        (ex.note?'<div class="hist-ex-note">'+_esc(ex.note)+'</div>':'')+
       '</div>';
   });
   return rows;
@@ -6265,7 +6265,7 @@ function renderHistory() {
         '</div>'+
       '</div>'+
       exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+s.note+'</div>':'')+
+      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
     '</div>';
   });
   return '<div class="card"><h2>Session History</h2></div>'+items;
