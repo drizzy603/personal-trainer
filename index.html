@@ -3675,7 +3675,16 @@ function runnerFinishSession(){
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
-  showToast('Session logged');
+  // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
+  // Today card and history keep the yellow PR pills as the durable record.
+  if(newPRs.length){
+    if(navigator.vibrate) navigator.vibrate([60,40,60,40,140]);
+    showToast(newPRs.length===1
+      ? 'PR · '+newPRs[0]+' '+(weights[newPRs[0]]||'')+' lb'
+      : newPRs.length+' PRs · '+newPRs.join(' · '), 'pr');
+  } else {
+    showToast('Session logged');
+  }
   closeDeckRunner();
   render();
 }
@@ -6282,15 +6291,16 @@ function renderHistory() {
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 var _toastTimer=null;
-function showToast(msg){
+function showToast(msg, style){
   var t=document.getElementById('toast');
   if(!t)return;
   t.textContent=msg;
-  t.style.background='var(--green)';
+  // 'pr' — gold PR-celebration variant, shown a beat longer.
+  t.style.background=style==='pr'?'var(--yellow)':'var(--green)';
   t.style.color='#000';
   t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
-  _toastTimer=setTimeout(function(){t.classList.remove('show');_toastTimer=null;},2200);
+  _toastTimer=setTimeout(function(){t.classList.remove('show');_toastTimer=null;},style==='pr'?3500:2200);
 }
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
