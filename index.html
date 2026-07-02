@@ -2265,13 +2265,13 @@ function cancelUserNameEdit(){
 }
 // Time-of-day-appropriate greeting — used on Today / Run / + editorial heroes.
 //   < 12: Good morning
-//   < 17: Good afternoon
-//   else: Good night
+//   < 18: Good afternoon
+//   else: Good evening
 function getGreeting(){
   var h = new Date().getHours();
   if(h < 12) return 'Good morning';
-  if(h < 17) return 'Good afternoon';
-  return 'Good night';
+  if(h < 18) return 'Good afternoon';
+  return 'Good evening';
 }
 function getUserFirstName(){
   function clean(raw){
@@ -4232,13 +4232,15 @@ function renderLog() {
     if (primaryIsSport) {
       // Pin logSportType so saveSportLog/fillSportWithAI act on the primary.
       if (logSportType !== primaryAct) logSportType = primaryAct;
-      return header + renderWeekHeader() + subBar + renderSportSection(primaryAct);
+      // Sub-tab bar first on every renderLog branch — it must not jump
+      // position between segments.
+      return subBar + header + renderWeekHeader() + renderSportSection(primaryAct);
     }
     // Editorial Run segment when a routine exists; legacy stack otherwise.
     if(hasCustomRoutine()){
       return subBar + renderRunSegment();
     }
-    return header + renderWeekHeader() + subBar + renderRunsSection();
+    return subBar + header + renderWeekHeader() + renderRunsSection();
   }
 
   if (logSubTab === 'sport') {
@@ -4268,7 +4270,7 @@ function renderLog() {
     var _hint = _hasKey
       ? 'Build a custom plan with the AI Coach. Your sessions will appear here.'
       : 'Connect the AI Coach (Anthropic API key) to generate your custom plan.';
-    var _greet = _firstName ? 'Good '+(new Date().getHours()<12?'morning':(new Date().getHours()<18?'afternoon':'evening'))+', '+_esc(_firstName)+'.' : 'Welcome.';
+    var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : 'Welcome.';
     return subBar +
       '<div class="kt-meta-row">'+
         '<div class="kt-meta-label">'+_weekdayE+' · NEW</div>'+
@@ -4546,7 +4548,7 @@ function renderRunsSection(opts) {
       '</div>';
     }
     var dotClass = run.type==='race'?'orange':run.type==='intervals'?'cyan':'';
-    var typeLabel = run.type==='race'?'Time Trial':run.type==='intervals'?'Intervals':run.type==='tempo'?'Tempo Run':'Easy Run';
+    var typeLabel = _runTypeLabel(run.type);
     var mainLine = run.km ? run.km+' km' : 'Structured';
     if (run.hr) mainLine += ' · HR <'+run.hr+' bpm';
     return '<div class="run-card '+(dotClass)+'">'+
@@ -4579,7 +4581,7 @@ function renderRunsSection(opts) {
     runs.slice(0,10).forEach(function(r) {
       var dist=parseFloat(r.distance||r.dist||0);
       var p=calcPace(dist,r.time);
-      var typeLabel=r.type&&r.type!=='easy'?r.type.charAt(0).toUpperCase()+r.type.slice(1):'';
+      var typeLabel=r.type&&r.type!=='easy'?_runTypeLabel(r.type):'';
       var hrLabel=r.hr?' · '+r.hr+'bpm':'';
       var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+r.note:'');
       runItems += '<div class="run-item">'+
@@ -4612,7 +4614,7 @@ function renderRunsSection(opts) {
     '<div class="field" style="margin:0"><label>Type</label>'+
     '<select id="runType" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;color:var(--text);font-size:16px;font-weight:700;">'+
     '<option value="easy">Easy</option>'+
-    '<option value="race">Time Trial / Race</option>'+
+    '<option value="race">Race effort</option>'+
     '<option value="intervals">Intervals</option>'+
     '<option value="tempo">Tempo</option>'+
     '</select></div>'+
@@ -4711,7 +4713,7 @@ function _calNavToDate(dateStr){
   calSelectedDate=dateStr;
 }
 function moveSession(id,newDate){
-  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+  if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var sessions=getSessions();
   sessions.forEach(function(s){ if(s.id===id){ s.date=newDate; s.week=weekForDate(newDate); } });
   lsSet('kt_sessions',sessions);
@@ -6116,7 +6118,7 @@ function renderCalDetail(sessions,runs,sports){
     var p=calcPace(dist,r.time);
     html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
-        '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+r.type.charAt(0).toUpperCase()+r.type.slice(1):'')+'</div>'+
+        '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
           '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
