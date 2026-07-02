@@ -4192,6 +4192,9 @@ function switchLogSub(sub) {
   }
   if(sub !== 'sport' && sportLogConfirmed){ sportLogConfirmed = null; }
   if(sub !== 'body' && bwLogConfirmed){ bwLogConfirmed = null; }
+  // Fresh entry to the + tab starts a fresh dated draft (typed field values
+  // are kept — only a stale date from a previous day is brought current).
+  if(sub === 'sport' && logSubTab !== 'sport') sportLogDraft.date = todayISO();
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
@@ -4967,7 +4970,10 @@ function renderSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
   var logs = getSportLogs();
   var d = sportLogDraft;
-  if(!d.date || d.date < todayISO()) d.date = todayISO();
+  // Seed an empty date only — re-renders (sport pick, suggestion chip, coach
+  // card load) must NOT snap a deliberately backdated entry back to today.
+  // Freshness is handled at the entry point (switchLogSub seeds the draft).
+  if(!d.date) d.date = todayISO();
 
   // Meta row
   var firstNameP = getUserFirstName();
@@ -5105,7 +5111,7 @@ function renderSportEditorial(){
     '</div>';
   }
 
-  return meta + suggHTML + strip + card + recentHTML;
+  return meta + renderSportSavedStrip() + suggHTML + strip + card + recentHTML;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
@@ -5133,7 +5139,8 @@ function saveSportEditorial(){
   invalidateCoachCard();
   // Reset draft for next entry.
   sportLogDraft = {duration:'', distance:'', intensity:'', calories:'', notes:'', date:todayISO()};
-  showToast(sport.id+' logged');
+  // Same ✓-logged / UNDO strip the run and body tabs get.
+  sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
   render();
 }
 function renderSportSection(forcedSportId){
