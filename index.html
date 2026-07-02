@@ -1634,16 +1634,28 @@ function _progressHeroVariants(){
 function getProgressHero(){
   var variants = _progressHeroVariants();
   if(!variants.length) return null;
-  var key = 'kt_progress_hero_'+todayISO();
+  // One key holding {date, pick} — the old per-day kt_progress_hero_YYYY-MM-DD
+  // keys accumulated forever. Migrate by ignoring/removing stragglers.
+  var today = todayISO();
+  var cached = null;
+  try{
+    var s = localStorage.getItem('kt_progress_hero');
+    if(s){ var o = JSON.parse(s); if(o && o.date===today) cached = o.pick; }
+  }catch(e){}
   // Honour today's pick when it's still in the pool (data may shift mid-day).
-  var cached = localStorage.getItem(key);
   if(cached){
-    var hit = null;
-    for(var i=0;i<variants.length;i++) if(variants[i].key===cached){ hit=variants[i]; break; }
-    if(hit) return hit;
+    for(var i=0;i<variants.length;i++) if(variants[i].key===cached) return variants[i];
   }
   var pick = variants[Math.floor(Math.random()*variants.length)];
-  try{ localStorage.setItem(key, pick.key); }catch(e){}
+  try{
+    localStorage.setItem('kt_progress_hero', JSON.stringify({date:today, pick:pick.key}));
+    var doomed=[];
+    for(var j=0;j<localStorage.length;j++){
+      var k=localStorage.key(j);
+      if(k && k.indexOf('kt_progress_hero_')===0) doomed.push(k);
+    }
+    doomed.forEach(function(k){ localStorage.removeItem(k); });
+  }catch(e){}
   return pick;
 }
 
