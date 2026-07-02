@@ -7104,13 +7104,13 @@ function saveApiKey(){
   var k=inp.value.trim();
   if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
   setApiKey(k);
-  clearCoachHistory();
+  showToast('API key saved');
   render();
 }
 
 function clearApiKey(){
-  _ktConfirm({title:'Disconnect API key?',body:"You'll need to re-enter it to use the Coach again.",confirmLabel:'Disconnect',onConfirm:function(){
-    setApiKey(''); clearCoachHistory(); render();
+  _ktConfirm({title:'Disconnect API key?',body:"You'll need to re-enter it to use the Coach again. Chat history and logged data are kept.",confirmLabel:'Disconnect',onConfirm:function(){
+    setApiKey(''); showToast('Key removed'); render();
   }});
 }
 function saveCoachHistory(){
@@ -7977,15 +7977,15 @@ function renderSettings() {
 function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
   if(!el||!el.value.trim()){showToast('Enter a key first');return;}
-  setApiKey(el.value.trim());
-  showToast('✓ API key saved');
+  var k=el.value.trim();
+  if(!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
+  setApiKey(k);
+  showToast('API key saved');
   render();
 }
-function clearApiKeyFromSettings(){
-  setApiKey('');
-  showToast('Key removed');
-  render();
-}
+// Same confirmation sheet as the Coach tab — one accidental tap must not
+// disconnect the Coach.
+function clearApiKeyFromSettings(){ clearApiKey(); }
 
 // ── Exercise Library Modal ────────────────────────────────────────────────────
 function getCustomExercises(){ return lsGet('kt_custom_ex')||[]; }
