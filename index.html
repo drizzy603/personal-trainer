@@ -329,7 +329,7 @@ select option{background:var(--bg);}
 .wt-row:last-child{border-bottom:none;}
 .wt-name{font-size:14px;font-weight:500;}
 .wt-input{width:68px;background:var(--card2);border:1px solid var(--border);
-  border-radius:10px;padding:7px 8px;color:var(--text);font-size:14px;font-weight:600;text-align:center;}
+  border-radius:10px;padding:7px 8px;color:var(--text);font-size:16px;font-weight:600;text-align:center;}
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 #toast{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:20px;right:20px;
@@ -668,7 +668,7 @@ select option{background:var(--bg);}
 .kt-act-logcard.morph .kt-act-input::placeholder{color:rgba(255,255,255,.85);font-weight:600;}
 .kt-act-logcard.morph .kt-act-input::-webkit-input-placeholder{color:rgba(255,255,255,.85);font-weight:600;}
 .kt-act-input:focus{border-bottom-color:currentColor;}
-.kt-act-input.notes{font-size:14px;font-weight:500;letter-spacing:-.011em;}
+.kt-act-input.notes{font-size:16px;font-weight:500;letter-spacing:-.011em;}
 .kt-act-save{width:100%;background:#0b0b0d;color:var(--accent);border:none;border-radius:14px;padding:15px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent;}
 .kt-act-logcard.morph .kt-act-save{background:#0b0b0d;color:#fff;}
 .kt-act-saved{background:var(--accent-soft);border:1px solid var(--accent-soft);color:var(--text);border-radius:18px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;font-size:14px;font-weight:600;}
@@ -713,7 +713,7 @@ select option{background:var(--bg);}
 .kt-coach-ask{padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--lite);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:5px;-webkit-tap-highlight-color:transparent;}
 .kt-coach-ask svg{width:13px;height:13px;}
 .kt-coach-input-wrap{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);}
-.kt-coach-input{width:100%;background:var(--card2);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;}
+.kt-coach-input{width:100%;background:var(--card2);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none;box-sizing:border-box;}
 .kt-coach-empty{padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.03);font-size:12px;color:var(--muted);text-align:center;}
 .kt-marquee{margin-top:28px;}
 .kt-marquee-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;margin-bottom:14px;font-weight:600;}
@@ -1377,7 +1377,7 @@ function openRoutineArchiveModal(){
       var r=entry.routine;
       var name=r.blockName||r.name||'Programme';
       var wks=r.weeks?r.weeks.length:0;
-      var ds=entry.archivedAt?entry.archivedAt:'';
+      var ds=entry.archivedAt?fmtDate(entry.archivedAt):'';
       return '<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:10px;">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
           '<div>'+
@@ -1435,7 +1435,7 @@ function startNewProgramme(){
     intakeMode=false;
     clearCoachHistory();
     switchTab('coach'); render();
-    showToast('Programme archived. Ask the Coach to build your new one!');
+    showToast('Programme archived. Ask the Coach to build your new one');
   }});
 }
 function getWkData(){
@@ -1703,7 +1703,7 @@ function exportData() {
   a.href = url; a.download = 'trovo-backup-'+todayISO()+'.json';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
-  showToast('Backup downloaded!');
+  showToast('Backup downloaded');
 }
 
 // Import data from JSON file
@@ -1729,7 +1729,7 @@ function importData() {
         if (importedTheme === 'auto') setAutoTheme();
         else if (importedTheme) applyTheme(importedTheme);
         render();
-        showToast('Restored '+count+' data items!');
+        showToast('Restored '+count+' data items');
       } catch(err) { showToast('Import failed — invalid file'); }
     };
     reader.readAsText(file);
@@ -4206,7 +4206,7 @@ function renderLog() {
   var wd = getWkData();
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var todayName = days[new Date().getDay()];
-  var _crL=getCustomRoutine(); var _avL=_crL&&_crL.name?_crL.name[0].toUpperCase():'?';
+  var _avL=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
 
   var header = '<div class="screen-hd">'+
     '<div>'+
@@ -4677,16 +4677,13 @@ function saveRun() {
   lsSet('kt_runs',runs);
   invalidateCoachCard();
   var pace=calcPace(dist,time);
-  var d=new Date(date+'T00:00:00');
-  var dd=String(d.getDate()).padStart(2,'0');
-  var mm=String(d.getMonth()+1).padStart(2,'0');
-  var txt='['+dd+'/'+mm+'/'+d.getFullYear()+'] — Run (Week '+currentWeek+')\n';
+  var txt='['+fmtDate(date)+'] — Run (Week '+currentWeek+')\n';
   txt+='Distance: '+dist+'km | Time: '+time+' | Pace: '+pace+'/km';
   if(hr) txt+=' | HR avg: '+hr+' bpm';
   txt+='\n';
   if(type&&type!=='easy') txt+='Type: '+type.charAt(0).toUpperCase()+type.slice(1)+'\n';
   if(note) txt+='Notes: '+note+'\n';
-  function afterCopy(){showToast('Run saved & copied!');}
+  function afterCopy(){showToast('Run saved & copied');}
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(afterCopy).catch(function(){showManualCopy(txt);afterCopy();});
   } else {showManualCopy(txt);afterCopy();}
@@ -5351,7 +5348,7 @@ function saveMeasurement(){
   });
   if(!hasAny){showToast('Enter at least one measurement');return;}
   var ms=getMeasurements();ms.unshift(entry);lsSet('kt_measurements',ms);
-  showToast('Measurements saved!');render();
+  showToast('Measurements saved');render();
 }
 function deleteMeasurement(idx){
   _ktConfirm({title:'Delete this measurement?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
@@ -7085,7 +7082,7 @@ function confirmLoadRoutine(){
   clearCoachHistory();
   var _next=getNextSession();
   logSession=(_next==='Run')?'Push':_next;
-  showToast('Programme loaded! Week 1 is ready');
+  showToast('Programme loaded — Week 1 is ready');
   switchTab('log');
 }
 
@@ -7625,7 +7622,7 @@ function renderCoach(){
     '</button>'+
   '</div>';
 
-  var _crCh=getCustomRoutine(); var _avCh=_crCh&&_crCh.name?_crCh.name[0].toUpperCase():'?';
+  var _avCh=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
   // Sticky chat header — back / avatar + editorial title stay pinned at the
   // top of the scroll container so they're always reachable. The body::before
   // mask covers the safe-area zone above this strip.
@@ -7874,7 +7871,7 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body">'+
-        '<div class="settings-row-title">Programme History</div>'+
+        '<div class="settings-row-title">Programme history</div>'+
         '<div class="settings-row-sub">'+getRoutineArchive().length+' archived</div>'+
       '</div>'+
       '<span class="settings-row-chev">›</span>'+
@@ -7886,7 +7883,7 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body">'+
-        '<div class="settings-row-title">New Programme</div>'+
+        '<div class="settings-row-title">New programme</div>'+
         '<div class="settings-row-sub">Archive current and generate fresh</div>'+
       '</div>'+
       '<span class="settings-row-chev">›</span>'+
@@ -7898,7 +7895,7 @@ function renderSettings() {
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body">'+
-        '<div class="settings-row-title">Exercise Library</div>'+
+        '<div class="settings-row-title">Exercise library</div>'+
         '<div class="settings-row-sub">'+EXERCISE_DB.length+' exercises — muscles, tips & cues</div>'+
       '</div>'+
       '<span class="settings-row-chev">›</span>'+
