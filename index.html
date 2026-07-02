@@ -69,6 +69,10 @@
      small-size labels meet WCAG AA on the dark background. */
   --text:#fafafa;--muted:#6e6e76;--lite:#9ca3af;
   --r-input:12px;--r-card:18px;--r-hero:24px;--r-deck:28px;
+  /* Card padding tiers — feature cards (charts, forms, editorial cards) and
+     compact cards/rows (stats, list items). One knob per tier. */
+  --pad-card:22px;
+  --pad-card-sm:18px;
   --shadow:none;
   /* Tab-bar geometry — all constants. env(safe-area-inset-bottom) is
      deliberately not consulted: iOS WebKit reports inflated values
@@ -122,7 +126,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);
-  padding:22px;margin-bottom:12px;}
+  padding:var(--pad-card);margin-bottom:12px;}
 
 /* ── Typography ──────────────────────────────────────────────────────────── */
 h2{font-size:18px;font-weight:600;margin-bottom:6px;letter-spacing:-.3px;}
@@ -162,7 +166,7 @@ select option{background:var(--bg);}
 .hero-card{
   background:radial-gradient(ellipse at top right, var(--accent-soft), transparent 60%),
     linear-gradient(180deg, #1a1a1e 0%, #141418 100%);
-  border:1px solid var(--border);border-radius:var(--r-hero);padding:26px 22px;margin:16px 0 20px;
+  border:1px solid var(--border);border-radius:var(--r-hero);padding:26px var(--pad-card);margin:16px 0 20px;
   position:relative;overflow:hidden;}
 .hero-label{font-size:12px;color:var(--lite);font-weight:500;margin-bottom:6px;}
 .hero-num{font-size:62px;font-weight:700;letter-spacing:-2.5px;line-height:1;color:var(--accent);display:inline;}
@@ -186,7 +190,7 @@ select option{background:var(--bg);}
 .sect-link{font-size:13px;color:var(--lite);font-weight:500;cursor:pointer;background:none;border:none;font-family:inherit;}
 
 /* ── Exercise card ───────────────────────────────────────────────────────── */
-.ex-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;margin-bottom:12px;}
+.ex-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card);margin-bottom:12px;}
 .ex-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:8px;}
 .ex-card-name{font-size:17px;font-weight:600;letter-spacing:-.2px;line-height:1.3;}
 .ex-card-target{font-size:13px;color:var(--lite);margin-top:4px;font-weight:500;}
@@ -233,7 +237,7 @@ select option{background:var(--bg);}
 
 /* ── Run cards ───────────────────────────────────────────────────────────── */
 .run-card{background:var(--card);border:1px solid var(--border);
-  border-radius:18px;padding:18px 20px;margin-bottom:10px;
+  border-radius:18px;padding:var(--pad-card-sm) 20px;margin-bottom:10px;
   display:flex;align-items:center;gap:16px;}
 .run-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);flex-shrink:0;}
 .run-card.cyan .run-dot{background:var(--cyan);}
@@ -279,14 +283,14 @@ select option{background:var(--bg);}
 
 /* ── Stats grid ──────────────────────────────────────────────────────────── */
 .stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:var(--pad-card-sm);}
 .stat-val{font-size:28px;font-weight:600;letter-spacing:-1px;line-height:1;}
 .stat-lbl{font-size:12px;color:var(--lite);margin-top:6px;font-weight:500;}
 .stat-delta{font-size:12px;color:var(--accent);font-weight:600;margin-top:4px;}
 .stat-delta.down{color:var(--orange);}
 
 /* ── Chart card ──────────────────────────────────────────────────────────── */
-.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;margin-bottom:12px;}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card);margin-bottom:12px;}
 .chart-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
 .chart-lbl{font-size:12px;color:var(--lite);font-weight:500;}
 .chart-val{font-size:26px;font-weight:700;letter-spacing:-.8px;margin-top:4px;}
@@ -307,7 +311,7 @@ select option{background:var(--bg);}
 .lift-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px;font-weight:500;}
 
 /* ── History items ───────────────────────────────────────────────────────── */
-.hist-item{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:10px;}
+.hist-item{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:var(--pad-card-sm);margin-bottom:10px;}
 .hist-date{font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600;}
 .hist-name{font-size:15px;font-weight:600;margin-bottom:8px;letter-spacing:-.2px;}
 .hist-table{width:100%;font-size:12px;border-collapse:collapse;}
@@ -654,7 +658,7 @@ select option{background:var(--bg);}
 .kt-act-tile-badge{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:18px;font-weight:800;letter-spacing:-.5px;color:#0b0b0d;}
 .kt-act-tile-lbl{font-size:11px;font-weight:700;color:#0b0b0d;letter-spacing:-.1px;text-align:center;line-height:1.1;}
 
-.kt-act-logcard{background:var(--card);border-radius:24px;padding:22px;margin-bottom:24px;color:var(--text);transition:background .35s ease;position:relative;overflow:hidden;}
+.kt-act-logcard{background:var(--card);border-radius:24px;padding:var(--pad-card);margin-bottom:24px;color:var(--text);transition:background .35s ease;position:relative;overflow:hidden;}
 .kt-act-logcard.morph{color:#0b0b0d;}
 .kt-act-logcard-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--lite);margin-bottom:6px;}
 .kt-act-logcard.morph .kt-act-logcard-eyebrow{color:rgba(0,0,0,.6);}
@@ -700,7 +704,7 @@ select option{background:var(--bg);}
 .kt-adhoc-pills{display:flex;flex-wrap:wrap;gap:8px;}
 .kt-adhoc-pill{background:transparent;border:1px solid var(--border);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;letter-spacing:-.1px;}
 .kt-adhoc-pill:active{background:var(--card);}
-.kt-coach-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-left:2px solid var(--accent);border-radius:18px;padding:18px 18px 14px;position:relative;overflow:hidden;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:transform .25s,opacity .25s;}
+.kt-coach-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-left:2px solid var(--accent);border-radius:18px;padding:var(--pad-card-sm) var(--pad-card-sm) 14px;position:relative;overflow:hidden;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:transform .25s,opacity .25s;}
 .kt-coach-card.dragging{transition:none;}
 .kt-coach-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 .kt-coach-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--accent);letter-spacing:.12em;font-weight:600;}
