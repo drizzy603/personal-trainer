@@ -5608,6 +5608,77 @@ function renderBodySection(){
     '</div>';
 }
 
+// "Four weeks ago" — small retrospective on the Progress tab. Finds a session
+// logged 26–30 days back and compares its top lift with today's working
+// weight. Renders nothing until the log is old enough — no setup, no setting.
+function renderRetroCard(sessions){
+  var today=new Date(todayISO()+'T00:00:00');
+  var hit=null;
+  for(var i=0;i<sessions.length;i++){
+    var s=sessions[i];
+    if(!s.date||!s.exercises||!s.exercises.length) continue;
+    var days=Math.round((today-new Date(s.date+'T00:00:00'))/86400000);
+    if(days>=26&&days<=30){ hit=s; break; }
+  }
+  if(!hit) return '';
+  var main=null;
+  for(var j=0;j<hit.exercises.length;j++){
+    var ex=hit.exercises[j];
+    if(parseFloat(ex.weight)>0&&(ex.isMain||!main)) main=ex;
+    if(main&&main.isMain) break;
+  }
+  if(!main) return '';
+  var thenW=parseFloat(main.weight)||0;
+  var nowW=parseFloat(getWeights()[main.name])||0;
+  var body;
+  if(nowW>thenW) body=_esc(main.name)+' was '+thenW+' lb that day. You work at '+nowW+' lb now — up '+Math.round((nowW-thenW)*100)/100+' lb in four weeks.';
+  else if(nowW>0&&nowW<thenW) body=_esc(main.name)+' was '+thenW+' lb that day. You\'re at '+nowW+' lb now — trust the block, the load comes back.';
+  else body=_esc(main.name)+' at '+thenW+' lb. Four weeks of showing up since.';
+  var lbl=(SESS[hit.type]&&SESS[hit.type].label)||hit.type||'Session';
+  return '<div class="chart-card">'+
+    '<div class="chart-lbl">Four weeks ago · '+_esc(lbl)+' · '+fmtDate(hit.date)+'</div>'+
+    '<div style="font-size:14px;line-height:1.5;margin-top:8px;letter-spacing:-.1px;">'+body+'</div>'+
+  '</div>';
+}
+
+// Sunday recap — shows only on Sundays, only when the week has activity.
+// Sessions / volume / km / PRs / bodyweight delta, Monday through today.
+function renderWeekRecap(sessions,runs){
+  if(new Date().getDay()!==0) return '';
+  var mon=getMondayISO(), today=todayISO();
+  var wkS=sessions.filter(function(s){return s.date>=mon&&s.date<=today;});
+  var wkR=runs.filter(function(r){return r.date>=mon&&r.date<=today;});
+  var wkSp=getSportLogs().filter(function(l){return l.date&&l.date>=mon&&l.date<=today;});
+  if(!wkS.length&&!wkR.length&&!wkSp.length) return '';
+  var vol=0; wkS.forEach(function(s){vol+=calcVolume(s.exercises||[]);});
+  var km=0; wkR.forEach(function(r){km+=parseFloat(r.distance||r.dist)||0;});
+  km=Math.round(km*10)/10;
+  var prCount=0; wkS.forEach(function(s){prCount+=(s.prs||[]).length;});
+  var ps='background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;padding:8px 12px;text-align:center;flex:1;min-width:0;';
+  function pill(v,l,color){
+    return '<div style="'+ps+(color?'border-color:rgba(255,230,0,.35);':'')+'">'+
+      '<div style="font-size:20px;font-weight:800;letter-spacing:-.5px;'+(color?'color:var(--yellow);':'')+'">'+v+'</div>'+
+      '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">'+l+'</div></div>';
+  }
+  var pills='';
+  var actCount=wkS.length+wkSp.length;
+  if(actCount) pills+=pill(actCount,'session'+(actCount>1?'s':''));
+  if(vol>0) pills+=pill(vol.toLocaleString(),'lb volume');
+  if(km>0) pills+=pill(km,'km run');
+  if(prCount) pills+=pill(prCount,'PR'+(prCount>1?'s':''),true);
+  var bwLine='';
+  var wkBws=getBodyWeights().filter(function(b){return b.date>=mon&&b.date<=today;});
+  if(wkBws.length>=2){
+    var d=Math.round((parseFloat(wkBws[0].weight)-parseFloat(wkBws[wkBws.length-1].weight))*10)/10;
+    if(!isNaN(d)&&d!==0) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+Math.abs(d)+' lb this week.</div>';
+  }
+  return '<div class="chart-card" style="border-left:2px solid var(--accent);">'+
+    '<div class="chart-lbl">Sunday · this week, wrapped</div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px;">'+pills+'</div>'+
+    bwLine+
+  '</div>';
+}
+
 // ── PROGRESS ──────────────────────────────────────────────────────────────────
 function renderProgress() {
   var sessions=getSessions();
@@ -6051,10 +6122,10 @@ function renderProgress() {
       '</div></div>'+svgChart(bwChartData,'#60a5fa',bwGoalProg||undefined)+'</div>'
     :'';
 
-  return progressHeader + streakHero + toggle +
+  return progressHeader + streakHero + renderWeekRecap(sessions,runs) + toggle +
     stats + goals + liftOnly +
     detailCharts + bwChart +
-    renderSportProgress() + calHTML +
+    renderSportProgress() + renderRetroCard(sessions) + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
 
