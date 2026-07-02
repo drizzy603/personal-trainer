@@ -716,7 +716,7 @@ select option{background:var(--bg);}
 .kt-coach-card.dragging{transition:none;}
 .kt-coach-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 .kt-coach-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--accent);letter-spacing:.12em;font-weight:600;}
-.kt-coach-x{background:none;border:none;color:rgba(255,255,255,.3);font-size:14px;cursor:pointer;padding:0;line-height:1;font-family:inherit;}
+.kt-coach-x{background:none;border:none;color:rgba(255,255,255,.3);font-size:14px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;}
 .kt-coach-msg{font-size:15px;line-height:1.5;margin-bottom:14px;letter-spacing:-.1px;color:var(--text);}
 .kt-coach-actions{display:flex;gap:8px;}
 .kt-coach-btn{flex:1;padding:11px;border-radius:12px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;-webkit-tap-highlight-color:transparent;}
@@ -1902,7 +1902,7 @@ function renderHealthQuickLog(){
   return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
       '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
-      '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+      '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>'+
     '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(distStr)+' · '+_esc(timeStr)+'</div>'+
     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
@@ -4623,7 +4623,7 @@ function renderRunsSection(opts) {
         '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:10px;">'+
           '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
-          '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 2px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
+          '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px 8px;margin:-6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
         '</div>'+
         '</div>';
     });
@@ -5136,7 +5136,7 @@ function renderSportEditorial(){
           '<div class="kt-marquee-right" style="gap:6px;">'+
             '<span class="kt-marquee-reps" style="color:var(--muted);">'+_esc(when)+'</span>'+
             '<button onclick="deleteSportLog('+l.id+')" style="background:none;border:none;'+
-              'color:var(--muted);font-size:15px;padding:0 2px;cursor:pointer;line-height:1;'+
+              'color:var(--muted);font-size:15px;padding:10px 8px;margin:-8px -4px;cursor:pointer;line-height:1;'+
               '-webkit-tap-highlight-color:transparent;">✕</button>'+
           '</div>'+
         '</div>';
@@ -6274,9 +6274,9 @@ function renderCalendar(sessions,runs,sports){
   var startDow=(firstDay.getDay()+6)%7; // 0=Mon
 
   var header='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'+
-    '<button onclick="calNav(-1)" style="background:var(--card2);border:none;border-radius:4px;color:var(--text);width:32px;height:32px;font-size:16px;font-weight:800;cursor:pointer;">‹</button>'+
+    '<button onclick="calNav(-1)" style="background:var(--card2);border:none;border-radius:8px;color:var(--text);width:40px;height:40px;font-size:16px;font-weight:800;cursor:pointer;">‹</button>'+
     '<div style="font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">'+MONTHS[calMonth]+' '+calYear+'</div>'+
-    '<button onclick="calNav(1)" style="background:var(--card2);border:none;border-radius:4px;color:var(--text);width:32px;height:32px;font-size:16px;font-weight:800;cursor:pointer;">›</button>'+
+    '<button onclick="calNav(1)" style="background:var(--card2);border:none;border-radius:8px;color:var(--text);width:40px;height:40px;font-size:16px;font-weight:800;cursor:pointer;">›</button>'+
   '</div>';
 
   var dayHeaders=DAYS.map(function(d){return '<div style="text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding-bottom:4px;">'+d+'</div>';}).join('');
