@@ -1737,7 +1737,7 @@ function checkAndUpdatePRs(exercises) {
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1749,7 +1749,34 @@ function exportData() {
   a.href = url; a.download = 'trovo-backup-'+todayISO()+'.json';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+  lsSet('kt_last_export', Date.now());
   showToast('Backup downloaded');
+  render();
+}
+
+// ── Backup nudge ──────────────────────────────────────────────────────────────
+// localStorage is the only copy of the user's training history — the browser
+// can evict it. Once there's meaningful data and no export (or snooze) in the
+// last 30 days, a slim strip on Progress offers a one-tap backup.
+function snoozeBackupNudge(){ lsSet('kt_backup_snooze', Date.now()); render(); }
+function renderBackupNudge(){
+  var total = getSessions().length + getRuns().length + getSportLogs().length;
+  if(total < 10) return '';
+  var THIRTY = 30*86400000;
+  var last = lsGet('kt_last_export') || 0;
+  var snooze = lsGet('kt_backup_snooze') || 0;
+  if(Date.now()-last < THIRTY || Date.now()-snooze < THIRTY) return '';
+  var btn='padding:9px 14px;border-radius:12px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;';
+  return '<div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'+
+    '<div style="min-width:0;">'+
+      '<div class="chart-lbl">Backup</div>'+
+      '<div style="font-size:13px;line-height:1.45;margin-top:4px;">'+total+' logs live only on this phone.</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;">'+
+      '<button onclick="snoozeBackupNudge()" style="'+btn+'background:var(--card2);color:var(--lite);">Later</button>'+
+      '<button onclick="exportData()" style="'+btn+'background:var(--accent);color:#000;">Export</button>'+
+    '</div>'+
+  '</div>';
 }
 
 // Import data from JSON file
@@ -1763,7 +1790,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         RAW_STRING_KEYS.forEach(function(k){
@@ -6306,7 +6333,7 @@ function renderProgress() {
       '</div></div>'+svgChart(bwChartData,'#60a5fa',bwGoalProg||undefined)+'</div>'
     :'';
 
-  return progressHeader + streakHero + renderWeekRecap(sessions,runs) + toggle +
+  return progressHeader + streakHero + renderWeekRecap(sessions,runs) + renderBackupNudge() + toggle +
     stats + goals + liftOnly +
     detailCharts + bwChart +
     renderSportProgress() + renderRetroCard(sessions) + calHTML +
@@ -8540,6 +8567,9 @@ try{
 }catch(ex){}
 currentWeek = getWeek();
 autoAdvanceWeek();
+// Ask the browser not to evict our storage — best-effort, silently ignored
+// where unsupported. localStorage is the only copy of the user's data.
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
 loadCoachHistory();
 _restoreRunnerDraft();
 var _next = getNextSession();
