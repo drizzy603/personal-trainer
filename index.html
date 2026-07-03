@@ -789,6 +789,7 @@ select option{background:var(--bg);}
 .kt-step-input::-webkit-inner-spin-button,.kt-step-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
 .kt-plate-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.06em;margin-top:7px;text-transform:uppercase;}
+.kt-warmup{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.6;letter-spacing:.05em;text-transform:uppercase;}
 .kt-step-btns{display:flex;gap:8px;flex-shrink:0;}
 .kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
@@ -3921,6 +3922,29 @@ function _plateMath(total){
   if(!out.length) return '';
   return out.join(' + ')+(rem>0.26?' +'+(Math.round(rem*10)/10):'')+' / side';
 }
+// Warm-up ramp for the main lift — standard bar-up protocol (bar×10, then
+// 40/60/80% × 5/3/1 rounded to 5s). Non-barbell mains ramp 50/75%. Returns ''
+// when the load is too light for a ramp to mean anything.
+function _warmupRamp(w, barbell){
+  w=parseFloat(w); if(!(w>0)) return '';
+  var steps=[], seen={};
+  function add(l){ if(!seen[l]){ seen[l]=1; steps.push(l); } }
+  if(barbell){
+    add('bar × 10');
+    [[.4,5],[.6,3],[.8,1]].forEach(function(st){
+      var wt=Math.round(w*st[0]/5)*5;
+      if(wt>45 && wt<w) add(wt+' × '+st[1]);
+    });
+    if(steps.length<2) return '';
+  } else {
+    [[.5,8],[.75,4]].forEach(function(st){
+      var wt=Math.round(w*st[0]/2.5)*2.5;
+      if(wt>0 && wt<w) add(wt+' × '+st[1]);
+    });
+    if(!steps.length) return '';
+  }
+  return steps.join(' · ');
+}
 function _renderRunnerEngagedBody(ex, done){
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
@@ -3961,9 +3985,16 @@ function _renderRunnerEngagedBody(ex, done){
     var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
     logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+ex.sets+' sets at target →</button>';
   }
+  // Warm-up ramp — main lift only, only before the first working set.
+  var warmup='';
+  if(done===0 && ex.isMain){
+    var ramp=_warmupRamp(w, _isBarbellLift(ex.name));
+    if(ramp) warmup='<div class="kt-warmup">WARM-UP · '+ramp+'</div>';
+  }
   return '<div class="kt-eng">'+
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
+    warmup+
     '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
     doneBtn + logAllBtn + rpeHint +
     '</div>';
