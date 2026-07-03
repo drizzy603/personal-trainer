@@ -15,6 +15,14 @@
 // after each successful launch (see checkForLiveUpdate below).
 (function(){
   try{
+    // Native shell only (capacitor: scheme). The PWA gets updates through the
+    // service worker's network-first fetch — running the hybrid loader there
+    // stored a full second copy of the app in localStorage and raced the SW.
+    if(window.location.protocol!=='capacitor:'){
+      localStorage.removeItem('kt_cached_html');
+      localStorage.removeItem('kt_cached_build');
+      return;
+    }
     var bundledBuild=document.querySelector('meta[name=build]').content;
     var cachedHtml=localStorage.getItem('kt_cached_html');
     var cachedBuild=localStorage.getItem('kt_cached_build')||'';
@@ -894,6 +902,9 @@ function buildNewer(a,b){
   return parseInt(ap[1]||0,10) > parseInt(bp[1]||0,10);
 }
 function checkForLiveUpdate(){
+  // Native shell only — the PWA's service worker already fetches fresh HTML
+  // network-first, so caching a copy here would just duplicate storage.
+  if(window.location.protocol!=='capacitor:') return;
   var url='https://drizzy603.github.io/personal-trainer/index.html?_='+Date.now();
   fetch(url,{cache:'no-store'}).then(function(r){
     if(!r.ok) throw 0;
