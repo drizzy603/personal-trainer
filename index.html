@@ -600,6 +600,10 @@ select option{background:var(--bg);}
 .kt-hero-body b{color:var(--text);font-weight:600;}
 .kt-hero-deload{display:inline-block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;margin-top:14px;font-weight:600;}
 .kt-marquee-delta.down{color:var(--lite);}
+.kt-marquee-row.kt-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-marquee-row.kt-tap:active{background:rgba(255,255,255,.03);}
+.kt-marquee-spark{display:flex;align-items:center;gap:12px;padding:2px 0 14px 34px;border-bottom:1px solid rgba(255,255,255,.07);}
+.kt-marquee-spark span{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);}
 .kt-run-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.07);}
 .kt-run-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
 .kt-run-row-main{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;}
@@ -985,6 +989,7 @@ var runLogConfirmed  = null;         // {id, km, time} after save
 var sportLogConfirmed = null;        // {id, type, label} after save
 var bwLogConfirmed    = null;        // {id, weight, date} after save
 var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
+var todaySparkEx    = null;         // exercise name open in the Today marquee trend peek
 // Draft values for the inline run-log form. Captured on every render so
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
 // wipe what the user has typed.
@@ -1917,7 +1922,7 @@ function renderHealthQuickLog(){
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; }
+  if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; todaySparkEx=null; }
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
@@ -2597,6 +2602,44 @@ function handleCoachCardAsk(ev){
   });
 }
 
+// ── Exercise trend peek (Today marquee) ──────────────────────────────────────
+// Toggle by index so exercise names never need escaping into an onclick string.
+function toggleTodaySparkIdx(i){
+  var act = getTodayActivity();
+  var ex = act.exercises && act.exercises[i];
+  if(!ex) return;
+  todaySparkEx = todaySparkEx===ex.name ? null : ex.name;
+  render();
+}
+// Chronological logged weights for one exercise, both storage shapes.
+function _exWeightHistory(name, n){
+  var out = [];
+  getSessions().forEach(function(s){
+    (s.exercises||[]).forEach(function(ex){
+      if(ex.name !== name) return;
+      var w = parseFloat(ex.weight);
+      if(!(w>0) && Array.isArray(ex.sets) && ex.sets[0]) w = parseFloat(ex.sets[0].weight);
+      if(w>0 && s.date) out.push({date:s.date, w:w});
+    });
+  });
+  out.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:0; });
+  return out.slice(-n);
+}
+function _sparklineSVG(vals, color){
+  if(!vals || vals.length<2) return '';
+  var W=120, H=28;
+  var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+  var span=(max-min)||1;
+  var pts=vals.map(function(v,i){
+    var x=2+i*(W-4)/(vals.length-1);
+    var y=H-3-((v-min)/span)*(H-6);
+    return (Math.round(x*10)/10)+','+(Math.round(y*10)/10);
+  }).join(' ');
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="flex-shrink:0;">'+
+    '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '</svg>';
+}
+
 // ── Editorial Today render ───────────────────────────────────────────────────
 function renderTodayEditorial(){
   var cr = getCustomRoutine();
@@ -2790,7 +2833,8 @@ function renderTodayEditorial(){
   // Coach card
   var coachHTML = renderCoachCard(act);
 
-  // Session marquee — only on lift days
+  // Session marquee — only on lift days. Tapping a row peeks the exercise's
+  // logged-weight trend (last 8 sessions) without leaving the screen.
   var marquee = '';
   if(act.type === 'lift' && act.exercises && act.exercises.length){
     var rows = '';
@@ -2805,7 +2849,23 @@ function renderTodayEditorial(){
       var deltaHTML = '';
       if(delta > 0) deltaHTML = '<span class="kt-marquee-delta">↑'+delta+'</span>';
       else if(delta < 0) deltaHTML = '<span class="kt-marquee-delta down">↓'+Math.abs(delta)+'</span>';
-      rows += '<div class="kt-marquee-row">'+
+      var open = todaySparkEx === ex.name;
+      var spark = '';
+      if(open){
+        var hist = _exWeightHistory(ex.name, 8);
+        if(hist.length >= 2){
+          var vals = hist.map(function(h){return h.w;});
+          spark = '<div class="kt-marquee-spark">'+
+            _sparklineSVG(vals, 'var(--accent)')+
+            '<span>'+vals[0]+' → '+vals[vals.length-1]+' lb · '+hist.length+' sessions</span>'+
+          '</div>';
+        } else if(hist.length === 1){
+          spark = '<div class="kt-marquee-spark"><span>'+hist[0].w+' lb logged once — trend starts next session.</span></div>';
+        } else {
+          spark = '<div class="kt-marquee-spark"><span>No logged history yet.</span></div>';
+        }
+      }
+      rows += '<div class="kt-marquee-row kt-tap" onclick="toggleTodaySparkIdx('+i+')"'+(open?' style="border-bottom:none;"':'')+'>'+
         '<div class="kt-marquee-left">'+
           '<span class="kt-marquee-idx'+(ex.isMain?' main':'')+'">'+
             String(i+1).padStart(2,'0')+
@@ -2816,7 +2876,7 @@ function renderTodayEditorial(){
           deltaHTML+
           '<span class="kt-marquee-reps">'+ex.sets+'×'+ex.reps+'</span>'+
         '</div>'+
-        '</div>';
+        '</div>'+spark;
     });
     marquee = '<div class="kt-marquee">'+
       '<div class="kt-marquee-hd">THE SESSION</div>'+
