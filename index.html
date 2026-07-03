@@ -1734,10 +1734,10 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze'].forEach(function(k){
+  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'].forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1790,7 +1790,7 @@ function importData() {
       try {
         var data = JSON.parse(ev.target.result);
         var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze'].forEach(function(k){
+        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'].forEach(function(k){
           if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
         });
         RAW_STRING_KEYS.forEach(function(k){
