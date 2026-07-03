@@ -1001,6 +1001,7 @@ var sportLogConfirmed = null;        // {id, type, label} after save
 var bwLogConfirmed    = null;        // {id, weight, date} after save
 var runLogGoalEdit  = false;        // is the GOAL · X:XX/km line in edit mode
 var todaySparkEx    = null;         // exercise name open in the Today marquee trend peek
+var lapsePending    = null;         // {from,to,days} — long absence auto-advanced the programme
 // Draft values for the inline run-log form. Captured on every render so
 // re-renders (pill taps, coach-card dismiss, async coach-card load) don't
 // wipe what the user has typed.
@@ -2678,6 +2679,19 @@ function _sparklineSVG(vals, color){
     '</svg>';
 }
 
+// ── Welcome-back lapse banner ────────────────────────────────────────────────
+function lapseKeep(){ lapsePending=null; render(); }
+function lapseRewind(){
+  if(!lapsePending) return;
+  currentWeek = lapsePending.from;
+  lsSet('kt_week', currentWeek);
+  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  invalidateCoachCard();
+  showToast('Back on week '+currentWeek);
+  lapsePending=null;
+  render();
+}
+
 // ── Editorial Today render ───────────────────────────────────────────────────
 function renderTodayEditorial(){
   var cr = getCustomRoutine();
@@ -2943,7 +2957,23 @@ function renderTodayEditorial(){
       '</div>';
   }
 
-  return meta + resumeBanner + hero + cta + adhocPicker + coachHTML + marquee;
+  // Welcome-back banner — the calendar advanced while the user was away;
+  // let them choose between resuming where they trained or following it.
+  var lapseBanner = '';
+  if(lapsePending){
+    lapseBanner = '<div class="kt-resume-banner">'+
+      '<div>'+
+        '<div class="kt-resume-eyebrow">WELCOME BACK · '+lapsePending.days+' DAYS</div>'+
+        '<div class="kt-resume-ttl">The calendar moved to week '+lapsePending.to+' while you were away.</div>'+
+      '</div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="lapseKeep()">Stay on '+lapsePending.to+'</button>'+
+        '<button class="kt-resume-cta" onclick="lapseRewind()">Back to week '+lapsePending.from+' →</button>'+
+      '</div>'+
+      '</div>';
+  }
+
+  return meta + lapseBanner + resumeBanner + hero + cta + adhocPicker + coachHTML + marquee;
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -8566,7 +8596,18 @@ try{
   });
 }catch(ex){}
 currentWeek = getWeek();
+// Welcome-back check — if the user was away 10+ days and the calendar
+// auto-advanced the programme, offer a rewind instead of silently skipping
+// weeks they never trained. kt_last_open is deliberately NOT exported:
+// restoring an old backup must not fake a lapse.
+var _lastOpen = lsGet('kt_last_open') || 0;
+var _weekBeforeAdvance = currentWeek;
 autoAdvanceWeek();
+var _awayDays = _lastOpen ? Math.floor((Date.now()-_lastOpen)/86400000) : 0;
+if(_awayDays >= 10 && currentWeek > _weekBeforeAdvance && hasCustomRoutine()){
+  lapsePending = {from:_weekBeforeAdvance, to:currentWeek, days:_awayDays};
+}
+lsSet('kt_last_open', Date.now());
 // Ask the browser not to evict our storage — best-effort, silently ignored
 // where unsupported. localStorage is the only copy of the user's data.
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
