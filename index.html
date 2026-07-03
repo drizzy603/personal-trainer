@@ -790,6 +790,9 @@ select option{background:var(--bg);}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
 .kt-plate-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.06em;margin-top:7px;text-transform:uppercase;}
 .kt-warmup{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.6;letter-spacing:.05em;text-transform:uppercase;}
+.kt-overload{padding:9px 12px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:left;}
+.kt-r-card.lime .kt-overload{background:rgba(0,0,0,.12);color:#0b0b0d;}
+.kt-r-card.dark .kt-overload{background:var(--accent-soft);color:var(--accent);}
 .kt-step-btns{display:flex;gap:8px;flex-shrink:0;}
 .kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
@@ -3922,6 +3925,27 @@ function _plateMath(total){
   if(!out.length) return '';
   return out.join(' + ')+(rem>0.26?' +'+(Math.round(rem*10)/10):'')+' / side';
 }
+// Deterministic progression hint — works offline, no API key. If the last
+// logged session of this exercise hit the target reps on every set at
+// RPE ≤ 7, the weight was too easy: suggest a small bump (+5 bar / +2.5
+// other). Returns null when there's nothing to say.
+function _overloadSuggestion(ex){
+  var last=getLastSessionData(ex.name); if(!last) return null;
+  var lastW=parseFloat(last.weight)||0; if(!(lastW>0)) return null;
+  var rpe=parseInt(last.rpe); if(!(rpe>0) || rpe>7) return null;
+  var targetLow=parseInt(String(Array.isArray(ex.reps)?ex.reps[0]:ex.reps).match(/\d+/)||0);
+  if(!(targetLow>0)) return null;
+  var reps=(Array.isArray(last.reps)?last.reps:[last.reps]).map(function(x){return parseInt(x)||0;});
+  if(!reps.length || Math.min.apply(null,reps)<targetLow) return null;
+  var inc=_isBarbellLift(ex.name)?5:2.5;
+  return {to:lastW+inc, from:lastW, reps:Math.min.apply(null,reps), rpe:rpe};
+}
+function runnerApplySuggestion(w){
+  var ex=_runnerEx(); if(!ex) return;
+  runnerWeights[ex.name]=w;
+  _saveRunnerDraft();
+  paintRunner();
+}
 // Warm-up ramp for the main lift — standard bar-up protocol (bar×10, then
 // 40/60/80% × 5/3/1 rounded to 5s). Non-barbell mains ramp 50/75%. Returns ''
 // when the load is too light for a ramp to mean anything.
@@ -3991,11 +4015,23 @@ function _renderRunnerEngagedBody(ex, done){
     var ramp=_warmupRamp(w, _isBarbellLift(ex.name));
     if(ramp) warmup='<div class="kt-warmup">WARM-UP · '+ramp+'</div>';
   }
+  // Overload hint — only before the first set, and only while the current
+  // weight sits at or below last session's (i.e. the user or programme
+  // hasn't already progressed it).
+  var overload='';
+  if(done===0){
+    var sugg=_overloadSuggestion(ex);
+    if(sugg && w<sugg.to){
+      overload='<button class="kt-overload" onclick="event.stopPropagation();runnerApplySuggestion('+sugg.to+')">'+
+        'TRY '+sugg.to+' LB → last '+sugg.from+' × '+sugg.reps+' @ RPE '+sugg.rpe+'</button>';
+    }
+  }
   return '<div class="kt-eng">'+
     '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
     warmup+
     '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
+    overload+
     doneBtn + logAllBtn + rpeHint +
     '</div>';
 }
