@@ -8641,8 +8641,8 @@ document.addEventListener('visibilitychange', function(){
       <div class="ed-section-hd"><span class="ed-section-num">01</span><h2>Four screens</h2></div>
       <p class="ed-lede">One product, four tabs. Each one holds a single job.</p>
       <div class="ed-rows">
-        <div class="ed-row"><div class="ed-row-num">01</div><div class="ed-row-body"><div class="ed-row-title">Log</div><div class="ed-row-sub">Today's session — sets, reps, weight, RPE.</div></div></div>
-        <div class="ed-row"><div class="ed-row-num">02</div><div class="ed-row-body"><div class="ed-row-title">Progress</div><div class="ed-row-sub">Charts and PRs across the whole programme.</div></div></div>
+        <div class="ed-row"><div class="ed-row-num">01</div><div class="ed-row-body"><div class="ed-row-title">Log</div><div class="ed-row-sub">Today's plan and the workout runner — sets, reps, rest, RPE.</div></div></div>
+        <div class="ed-row"><div class="ed-row-num">02</div><div class="ed-row-body"><div class="ed-row-title">Progress</div><div class="ed-row-sub">Streaks, charts, PRs, weekly recaps — the whole story.</div></div></div>
         <div class="ed-row"><div class="ed-row-num">03</div><div class="ed-row-body"><div class="ed-row-title">Coach</div><div class="ed-row-sub">Claude-powered chat that knows your numbers.</div></div></div>
         <div class="ed-row"><div class="ed-row-num">04</div><div class="ed-row-body"><div class="ed-row-title">Settings</div><div class="ed-row-sub">API key, themes, intake, export, this page.</div></div></div>
       </div>
@@ -8673,7 +8673,18 @@ document.addEventListener('visibilitychange', function(){
       </div>
     </div>
     <div class="ed-section">
-      <div class="ed-section-hd"><span class="ed-section-num">03</span><h2>Coach can edit your app</h2></div>
+      <div class="ed-section-hd"><span class="ed-section-num">03</span><h2>In the gym</h2></div>
+      <p class="ed-lede">The runner coaches while you lift. Everything here is computed on your phone — it works offline, with no API key.</p>
+      <div class="ed-rows">
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Warm-up ramp</div><div class="ed-row-sub">The main lift opens with a bar-up protocol sized to your working weight.</div><div class="ed-row-sub mono" style="margin-top:5px;">BAR × 10 · 90 × 5 · 135 × 3 · 180 × 1</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Plate math</div><div class="ed-row-sub">Barbell lifts show per-side plates under the weight, updating as you change it.</div><div class="ed-row-sub mono" style="margin-top:5px;">45 + 25 + 2.5 / SIDE</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Progression hints</div><div class="ed-row-sub">Hit every rep at RPE 7 or under last time? A chip offers the next weight — tap it to apply.</div><div class="ed-row-sub mono" style="margin-top:5px;">TRY 190 LB → LAST 185 × 8 @ RPE 7</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Rest timer</div><div class="ed-row-sub">Starts itself after every set. Trim or extend it without leaving the card.</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">PR detection</div><div class="ed-row-sub">Beat an all-time best and the session says so the moment you finish — and keeps it on record.</div></div></div>
+      </div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Coach can edit your app</h2></div>
       <p class="ed-lede">Ask in chat, the app updates. No leaving the conversation.</p>
       <div class="ed-rows">
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Build my programme</div><div class="ed-row-sub mono">Runs the 10-question intake</div></div><svg class="ed-row-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
@@ -8684,7 +8695,7 @@ document.addEventListener('visibilitychange', function(){
       </div>
     </div>
     <div class="ed-section">
-      <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Tips &amp; tricks</h2></div>
+      <div class="ed-section-hd"><span class="ed-section-num">05</span><h2>Tips &amp; tricks</h2></div>
       <p class="ed-lede">The Coach knows your full history — every session, run, weight, and goal. These prompts unlock the most useful things it can do.</p>
       <div class="ed-rows">
         <div class="ed-row">
@@ -8741,6 +8752,20 @@ document.addEventListener('visibilitychange', function(){
             <div class="ed-row-title">Undo any programme change</div>
             <div class="ed-row-sub">If a Coach edit isn't right, roll it back instantly — no questions asked.</div>
             <div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Restore Previous Programme</div>
+          </div>
+        </div>
+        <div class="ed-row">
+          <div class="ed-row-body">
+            <div class="ed-row-title">Peek any lift's trend</div>
+            <div class="ed-row-sub">Tap an exercise in today's session list to see its last eight logged weights as a sparkline — before you decide how heavy to go.</div>
+            <div class="ed-row-sub mono" style="margin-top:5px;">165 → 190 LB · 8 SESSIONS</div>
+          </div>
+        </div>
+        <div class="ed-row">
+          <div class="ed-row-body">
+            <div class="ed-row-title">Back up now and then</div>
+            <div class="ed-row-sub">Your data lives only on this phone — there is no server copy. Export downloads a file you can restore anytime, on any device.</div>
+            <div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Export session log</div>
           </div>
         </div>
       </div>
