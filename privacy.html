@@ -178,7 +178,7 @@
 <div class="hero">
   <div class="label">Legal</div>
   <h1>Privacy Policy</h1>
-  <p class="updated">Trovo · Last updated: April 29, 2026</p>
+  <p class="updated">Trovo · Last updated: July 6, 2026</p>
 </div>
 
 <div class="content">
@@ -194,7 +194,7 @@
 
   <div class="section">
     <h2>2. What Data We Collect</h2>
-    <p>Trovo is a local-first application. The following data is stored exclusively on your device using your browser's localStorage or the app's local storage — it never leaves your device or reaches our servers:</p>
+    <p>Trovo is a local-first application. The following data is stored exclusively on your device using your browser's localStorage or the app's local storage — none of it is ever sent to us, and we operate no servers that could receive it:</p>
     <ul>
       <li>Workout sessions (exercises, sets, reps, weight, RPE)</li>
       <li>Run and sport activity logs</li>
@@ -205,6 +205,7 @@
       <li>App preferences (theme, goals)</li>
     </ul>
     <p>We do not operate servers that receive, store, or process your personal training data.</p>
+    <p>If you use the AI Coach, the relevant parts of this data (your programme, recent training history, and your messages) are sent directly from your device to Anthropic to generate the Coach's responses — see Sections 3 and 6. If you never use the Coach, nothing leaves your device.</p>
   </div>
 
   <div class="section">
@@ -216,7 +217,8 @@
   <div class="section">
     <h2>4. Apple Health (iOS app only)</h2>
     <p>On the iOS app, you may optionally allow Trovo to read your running workouts from Apple Health to save you re-entering them. This is opt-in: you grant permission through iOS's standard Health permission prompt the first time you tap "Import from Apple Health" in Settings, and you can revoke it at any time in iOS Settings → Privacy &amp; Security → Health → Trovo.</p>
-    <p>When you import, Trovo reads workout date, duration, distance, and average heart rate for runs only — directly from Apple Health on your device. The data is then stored alongside your other Trovo runs in local storage. It never leaves your device and is never sent to us or any third party. Trovo never writes data back to Apple Health.</p>
+    <p>When you import, Trovo reads workout date, duration, distance, and average heart rate for runs only — directly from Apple Health on your device. The data is then stored alongside your other Trovo runs in local storage. It is never sent to us, and Trovo never writes data back to Apple Health.</p>
+    <p>Imported runs become part of your training data, just like runs you log by hand. This means that if you use the AI Coach, your recent runs — including imported ones and their average heart rate — are included in the context sent directly from your device to Anthropic, as described in Section 3. If you never use the Coach, imported Health data stays on your device.</p>
   </div>
 
   <div class="section">
@@ -225,7 +227,7 @@
     <ul>
       <li>Your name, email address, or any account information</li>
       <li>Location data</li>
-      <li>Health or biometric data beyond what you manually enter or what you opt to import from Apple Health (which stays on your device)</li>
+      <li>Health or biometric data beyond what you manually enter or what you opt to import from Apple Health (stored on your device; shared with Anthropic only if you use the AI Coach)</li>
       <li>Device identifiers or advertising IDs</li>
       <li>Usage analytics or behavioural tracking data</li>
       <li>Crash reports or diagnostic data sent to our servers</li>

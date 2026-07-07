@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260514-4"/>
+<meta name="build" content="20260706-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -57,8 +57,8 @@
 </script>
 <title>Kalani's Trainer</title>
 <link rel="manifest" href="manifest.json"/>
-<link rel="apple-touch-icon" href="app-icon-1024.png"/>
-<link rel="icon" type="image/png" href="app-icon-1024.png"/>
+<link rel="apple-touch-icon" href="app-icon-192.png"/>
+<link rel="icon" type="image/png" href="app-icon-192.png"/>
 <style>
 /* ── PREMIUM DESIGN SYSTEM — v3 ─────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -1735,10 +1735,12 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default'];
+// One list for export AND import so the two can never drift apart.
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'];
 function exportData() {
   var data = {};
-  ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'].forEach(function(k){
+  BACKUP_KEYS.forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
   });
   RAW_STRING_KEYS.forEach(function(k){
@@ -1780,7 +1782,8 @@ function renderBackupNudge(){
   '</div>';
 }
 
-// Import data from JSON file
+// Import data from JSON file. Parse + validate first, confirm, then apply —
+// restore overwrites whatever is on this phone and there is no undo.
 function importData() {
   var inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.json';
@@ -1788,27 +1791,50 @@ function importData() {
     var file = e.target.files[0]; if (!file) return;
     var reader = new FileReader();
     reader.onload = function(ev) {
-      try {
-        var data = JSON.parse(ev.target.result);
-        var count = 0;
-        ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'].forEach(function(k){
-          if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
-        });
-        RAW_STRING_KEYS.forEach(function(k){
-          if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
-        });
-        if (data.kt_week) currentWeek = data.kt_week;
-        loadCoachHistory();
-        var importedTheme = localStorage.getItem('kt_theme');
-        if (importedTheme === 'auto') setAutoTheme();
-        else if (importedTheme) applyTheme(importedTheme);
-        render();
-        showToast('Restored '+count+' data items');
-      } catch(err) { showToast('Import failed — invalid file'); }
+      var data;
+      try { data = JSON.parse(ev.target.result); }
+      catch(err) { showToast('Import failed — invalid file'); return; }
+      var known = BACKUP_KEYS.concat(RAW_STRING_KEYS).filter(function(k){ return data[k] !== undefined; });
+      if (!known.length) { showToast('Import failed — not a Trovo backup'); return; }
+      var sess = (data.kt_sessions || []).length;
+      var runs = (data.kt_runs || []).length;
+      _ktConfirm({title:'Restore this backup?',
+        body:sess+' sessions and '+runs+' runs will replace the data currently on this phone. This cannot be undone.',
+        confirmLabel:'Restore', confirmStyle:'var(--accent)',
+        onConfirm:function(){ _applyImportedData(data); }});
     };
     reader.readAsText(file);
   };
   inp.click();
+}
+function _applyImportedData(data) {
+  var count = 0;
+  BACKUP_KEYS.forEach(function(k){
+    if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
+  });
+  RAW_STRING_KEYS.forEach(function(k){
+    if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
+  });
+  // Backups from before Health-import dedup was exported carry no
+  // kt_hk_imported. Keeping this device's newer dedup set would make Apple
+  // Health re-import silently skip the runs this restore just rolled back.
+  if (data.kt_hk_imported === undefined) {
+    localStorage.removeItem('kt_hk_imported');
+    localStorage.removeItem('kt_hk_last_sync');
+  }
+  if (data.kt_week) currentWeek = data.kt_week;
+  // Re-anchor the week clock like every other week-setting path — a stale
+  // anchor makes autoAdvanceWeek silently jump the restored week forward on
+  // the next boot, with no welcome-back banner to undo it.
+  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  lapsePending = null;
+  invalidateCoachCard();
+  loadCoachHistory();
+  var importedTheme = localStorage.getItem('kt_theme');
+  if (importedTheme === 'auto') setAutoTheme();
+  else if (importedTheme) applyTheme(importedTheme);
+  render();
+  showToast('Restored '+count+' data items');
 }
 
 // ── Apple Health import (Capacitor / iOS shell only) ─────────────────────────
@@ -8827,7 +8853,7 @@ document.addEventListener('visibilitychange', function(){
   <div class="ed-hero">
     <div class="ed-hero-eyebrow">Legal</div>
     <h1>Privacy<br><span>Policy</span></h1>
-    <p class="ed-stamp">TROVO · LAST UPDATED 29 APR 2026</p>
+    <p class="ed-stamp">TROVO · LAST UPDATED 6 JUL 2026</p>
   </div>
   <div class="content">
     <div class="ed-guarantees">
@@ -8854,7 +8880,7 @@ document.addEventListener('visibilitychange', function(){
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Apple Health</h2></div>
-      <p class="ed-body">Opt-in. If you grant permission, Trovo reads run workouts only — date, distance, duration, average HR — and stores them locally alongside your other data. Trovo never writes to Apple Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Trovo.</p>
+      <p class="ed-body">Opt-in. If you grant permission, Trovo reads run workouts only — date, distance, duration, average HR — and stores them locally alongside your other data. Imported runs count as training data like any other run, so the Coach includes recent ones in what it sends to Anthropic when you chat. Trovo never writes to Apple Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Trovo.</p>
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">05</span><h2>Analytics</h2></div>

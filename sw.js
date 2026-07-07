@@ -1,5 +1,8 @@
-var CACHE = 'kt-v25';
-var FILES = ['./', './sw.js', './manifest.json', './app-icon-1024.png', './privacy.html'];
+var CACHE = 'kt-v26';
+// './index.html' must be precached alongside './' — the manifest's start_url
+// is ./index.html and the offline fallback matches by exact URL, so a fresh
+// install can't launch offline without it.
+var FILES = ['./', './index.html', './sw.js', './manifest.json', './app-icon-1024.png', './app-icon-192.png', './privacy.html'];
 
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE).then(function(c) { return c.addAll(FILES); }));
