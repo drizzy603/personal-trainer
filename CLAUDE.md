@@ -9,7 +9,7 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 - `privacy.html` — standalone privacy policy (linked from App Store; also rendered inline in Settings)
 - `ios/` — Capacitor iOS shell. Custom Swift plugins live in `ios/App/CapApp-SPM/Sources/CapApp-SPM/` (currently `TrovoHealthPlugin.swift` + `HealthKitReader.swift` for Apple Health run import). HealthKit entitlement is in `ios/App/App/App.entitlements`.
 - `release-ios.sh` — pre-archive script. Bumps the web `<meta build>`, bumps `CURRENT_PROJECT_VERSION`, refreshes `www/`, runs `cap copy ios`. Run this before every Xcode archive.
-- `verify.sh` — static safety check. Extracts every `<script>` block and syntax-checks the combined JS, bans curly quotes in code, and cross-checks inline event handlers against defined functions. **Run before every commit that touches `index.html`** — one syntax error blanks the entire app.
+- `verify.sh` — static safety check. Extracts every `<script>` block and syntax-checks the combined JS, bans curly quotes in code, cross-checks inline event handlers against defined functions, and fails if `index.html` changed without a `<meta build>` bump. **Run before every commit that touches `index.html`** — one syntax error blanks the entire app.
 - `app-store-metadata.md` — single source of truth for App Store description, App Privacy answers, and the Submission Day playbook.
 - `screenshots/` — sim launcher, demo seed script, and screenshot helper.
 
@@ -22,6 +22,7 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 ## Rules
 - **Always commit and push after every change.** Do not wait to be asked.
 - **Run `./verify.sh` before committing changes to `index.html` or `sw.js`.**
+- **Bump `<meta build>` (YYYYMMDD-N) in every commit that changes `index.html`** — the native shell's OTA loader only applies the live page when its stamp is strictly newer than the bundled one. verify.sh enforces this.
 - Never commit `.DS_Store` or other system files (already in `.gitignore`).
 - Keep `.gitignore` minimal. Current entries cover `.vercel`, `.DS_Store`, generated artifacts (`www/`, `node_modules/`), user-data exports (`*-backup-*.json`), and large captures (`screenshots/out/`). Don't add more without reason.
 

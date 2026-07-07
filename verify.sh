@@ -23,6 +23,21 @@ echo "✓ script blocks parse"
 node --check sw.js
 echo "✓ sw.js parses"
 
+# The native shell's OTA loader only applies the live page when its build
+# stamp is strictly newer than the bundled one — an index.html change without
+# a <meta build> bump is invisible to installed native apps forever.
+if git rev-parse --verify HEAD >/dev/null 2>&1 && ! git diff --quiet HEAD -- index.html; then
+  OLD_BUILD=$(git show HEAD:index.html | grep -oE '<meta name="build" content="[0-9-]+"' || true)
+  NEW_BUILD=$(grep -oE '<meta name="build" content="[0-9-]+"' index.html || true)
+  if [ "$OLD_BUILD" = "$NEW_BUILD" ]; then
+    echo "FAIL: index.html changed but <meta build> was not bumped."
+    echo "      Native apps only OTA-update on a strictly newer stamp."
+    echo "      Set it to $(date +%Y%m%d)-N before committing."
+    exit 1
+  fi
+  echo "✓ build stamp bumped (${NEW_BUILD#*content=})"
+fi
+
 python3 - <<'EOF'
 import re, sys
 html = open('index.html').read()

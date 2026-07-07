@@ -143,7 +143,9 @@ This app requires the user to provide their own Anthropic API key for the AI Coa
 Run top-to-bottom once Apple Developer verification clears.
 
 ### 1. Apple Developer portal (developer.apple.com)
-- Identifiers → **+** → App IDs → App → Bundle ID **`app.kt.trainer`** (explicit) → Capabilities: leave all off → Continue → Register
+- Identifiers → **+** → App IDs → App → Bundle ID **`app.kt.trainer`** (explicit) → Capabilities: enable **HealthKit** and **App Groups** (the app entitlements carry both; App Groups backs the share extension + timer widget via `group.app.kt.trainer`) → Continue → Register
+- App Groups → **+** → register group **`group.app.kt.trainer`** if the capability step didn't create it
+- The project has three signed targets: **App**, **TrovoShareExtension**, **TrovoTimerWidget**. With "Automatically manage signing" Xcode registers the extension bundle IDs itself on first archive — no manual App IDs needed for them, but each target needs the Team set (step 3).
 - Note the **Team ID** (top-right of the portal, 10 chars)
 - Skip cert/profile manual creation — Xcode "Automatically manage signing" handles both on first archive with `-allowProvisioningUpdates`
 
@@ -159,14 +161,14 @@ Run top-to-bottom once Apple Developer verification clears.
   - Category: Health & Fitness / Lifestyle
   - Privacy Policy URL: `https://drizzy603.github.io/personal-trainer/privacy.html`
 - Pricing and Availability: Free, all territories
-- App Privacy: **Data Not Collected**
-  - Everything is local + user's own Anthropic key — note in the Anthropic disclosure: "data sent to third-party API only when user provides their own key; not collected by us"
-  - **Apple Health (Health & Fitness data type)** — also "Not Collected": Trovo reads workouts only with user's explicit Health permission, on-device, and never transmits the data anywhere. Tick the data type so the nutrition label is accurate; the linkage is "Used on this device only".
+- App Privacy: answer **No** to "Do you or your third-party partners collect data from this app?" → label reads **Data Not Collected**. (ASC shows no data-type checkboxes on the "No" path — there is nothing to tick.)
+  - Rationale to keep on file: all data is on-device; the only transmission is the user sending their own training data (including imported Apple Health runs) to Anthropic under their **own** API key and account — not collection by us or our partners. Disclosed in privacy policy sections 2–4 and 6.
+  - If App Review pushes back on Health data + the AI Coach, the fallback is to redo the questionnaire as: Health & Fitness → collected → App Functionality only → Not linked to identity → No tracking.
 - Age Rating: 4+ (no objectionable content, no tracking, no ads, no UGC)
 - Version 1.0 → paste from sections above:
   - Subtitle, Promotional Text, Description, Keywords
   - Support URL, Marketing URL
-  - **Screenshots → 6.9" slot:** drag all 6 PNGs from `screenshots/out/`. ASC will upscale for 6.7" + smaller automatically.
+  - **Screenshots → 6.9" slot:** drag the PNGs from `screenshots/out/` (9 as of the last reshoot; ASC accepts up to 10). ASC will upscale for 6.7" + smaller automatically. **Reshoot first if the UI has changed since the PNGs were captured** — check the build stamp in the capture vs. current.
 - App Review Information:
   - Email: `robertokalanisosa@outlook.com`
   - Notes: paste from "Beta App Review Information" → Notes for reviewer above
@@ -178,8 +180,8 @@ Run top-to-bottom once Apple Developer verification clears.
 open ios/App/App.xcodeproj
 ```
 In Xcode:
-- Signing & Capabilities → Team = your team (the dropdown will populate after verification clears)
-- Signing & Capabilities → **+ Capability → HealthKit** (only needed once; reconciles the bundled `App.entitlements` with the App ID. Apple Developer portal must also have HealthKit enabled on `app.kt.trainer` — Identifiers → bundle ID → Capabilities.)
+- Signing & Capabilities → Team = your team, **for all three targets** (App, TrovoShareExtension, TrovoTimerWidget — the dropdown will populate after verification clears)
+- App target → Signing & Capabilities: confirm **HealthKit** and **App Groups** (`group.app.kt.trainer`) show without errors; add via **+ Capability** if Xcode flags the entitlements. TrovoShareExtension needs the same App Group. The portal App ID must have both capabilities enabled (step 1).
 - Destination dropdown → "Any iOS Device (arm64)"
 - Product → Archive
 - Organizer window → Distribute App → App Store Connect → Upload → Automatic signing → Done

@@ -12,6 +12,9 @@ cd "$(dirname "$0")"
 PROJ="ios/App/App.xcodeproj/project.pbxproj"
 INDEX="index.html"
 
+# 0. Never archive a broken index.html — one syntax error blanks the app.
+./verify.sh
+
 # 1. Bump <meta build="YYYYMMDD-N">. If today already has builds, increment N;
 # otherwise start at 1 for the new day.
 TODAY=$(date +%Y%m%d)
