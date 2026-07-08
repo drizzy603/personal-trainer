@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260707-3"/>
+<meta name="build" content="20260708-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -2828,8 +2828,19 @@ function renderTodayEditorial(){
       return s.date===_todayKey() && (act.type!=='lift'||s.type===act.dayName);
     }) || getSessions().find(function(s){ return s.date===_todayKey(); });
     if(_ts){
-      var _sets=(_ts.exercises||[]).reduce(function(n,ex){return n+(ex.sets||0);},0);
+      // ex.sets is a count in runner-logged sessions but an array of
+      // {reps,weight,rpe} in the legacy nested shape (pre-runner imports,
+      // old backups, screenshot seed) — same normalization as _buildHistExRows.
+      // Without the branch the tile renders "0[object Object],…".
+      var _sets=(_ts.exercises||[]).reduce(function(n,ex){
+        return n+(Array.isArray(ex.sets)?ex.sets.length:(ex.sets||0));
+      },0);
       var _vol=(_ts.exercises||[]).reduce(function(n,ex){
+        if(Array.isArray(ex.sets)){
+          return n+ex.sets.reduce(function(a,st){
+            return a+(parseInt(st&&st.reps)||0)*(parseFloat(st&&st.weight)||0);
+          },0);
+        }
         var w=parseFloat(ex.weight)||0; if(!w) return n;
         var ra=Array.isArray(ex.reps)?ex.reps:[ex.reps];
         var ravg=ra.reduce(function(a,b){return a+(parseInt(b)||0);},0)/(ra.length||1);
