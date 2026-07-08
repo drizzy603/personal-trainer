@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260707-2"/>
+<meta name="build" content="20260707-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -55,13 +55,19 @@
   }catch(e){}
 })();
 </script>
-<title>Kalani's Trainer</title>
+<title>Trovo</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="app-icon-192.png"/>
 <link rel="icon" type="image/png" href="app-icon-192.png"/>
 <style>
 /* ── PREMIUM DESIGN SYSTEM — v3 ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted variable fonts (assets/fonts/) — no request to Google on any
+   load, and typography survives offline. Glyphs outside latin/latin-ext
+   fall back to system fonts, same as before. */
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 900;font-display:swap;src:url('assets/fonts/inter-var-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 900;font-display:swap;src:url('assets/fonts/inter-var-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('assets/fonts/jbm-var-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('assets/fonts/jbm-var-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#0b0b0d;--card:#16161a;--card2:#1f1f24;--border:rgba(255,255,255,.07);
@@ -951,7 +957,11 @@ var calSelectedDate = null;
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
 var streamingContent = '';
-var coachModel    = localStorage.getItem('kt_coach_model')||'claude-sonnet-4-6';
+var coachModel    = (function(){
+  var m = localStorage.getItem('kt_coach_model')||'claude-sonnet-5';
+  // Stored value from before the Sonnet 5 upgrade — same tier, newer model.
+  return m==='claude-sonnet-4-6' ? 'claude-sonnet-5' : m;
+}());
 var intakeMode    = false;   // true when generating a new routine
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
 var _hkPendingRun  = null;   // most-recent unimported Health run while on Run tab
@@ -6832,7 +6842,10 @@ async function startRoutineIntake(){
   render();
   scrollChatBottom();
   try{
-    await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-4-6',16384);
+    // 24K cap: Sonnet 5's adaptive thinking spends output tokens before the
+    // programme JSON, and its tokenizer counts ~30% more — 16K risked
+    // truncating long intakes.
+    await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-5',24576);
   }catch(err){
     coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.'});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
@@ -7361,6 +7374,10 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       finishedBlocks=data.content.map(function(b){
         if(b && b.type==='tool_use') return {type:'tool_use',id:b.id,name:b.name,input:b.input||{}};
         if(b && b.type==='text')     return {type:'text',text:b.text||''};
+        // Sonnet 5 thinks adaptively; its thinking blocks must be echoed back
+        // UNCHANGED in the assistant turn or the tool_result continuation is
+        // rejected. They only live in apiMsgs — history persists text alone.
+        if(b && (b.type==='thinking'||b.type==='redacted_thinking')) return b;
         return null;
       }).filter(Boolean);
     }
@@ -7713,8 +7730,10 @@ async function sendCoachMessage(){
   scrollChatBottom();
 
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var model=intakeMode?'claude-sonnet-4-6':coachModel;
-  var maxTok=16384;
+  var model=intakeMode?'claude-sonnet-5':coachModel;
+  // Intake gets extra headroom: adaptive thinking + programme JSON under the
+  // Sonnet 5 tokenizer can overflow 16K.
+  var maxTok=intakeMode?24576:16384;
   try{
     await runCoachTurn(systemPrompt,model,maxTok);
   }catch(err){
@@ -7752,7 +7771,7 @@ function renderCoach(){
   var wd3=getWkData();
   var isHaiku=coachModel.indexOf('haiku')!==-1;
   var modelLabel=isHaiku?'Haiku':'Sonnet';
-  var modelNext=isHaiku?'claude-sonnet-4-6':'claude-haiku-4-5-20251001';
+  var modelNext=isHaiku?'claude-sonnet-5':'claude-haiku-4-5-20251001';
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';
