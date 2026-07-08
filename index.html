@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260706-1"/>
+<meta name="build" content="20260707-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -4011,7 +4011,9 @@ function _renderCompletedSets(ex){
       '</div>';
     }
   }
-  return '<div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;">'+rows+'</div>';
+  // width:100% — inside .kt-rest (column flex, align-items:center) this div
+  // otherwise shrink-wraps and the SET label / reps / edit chip overlap.
+  return '<div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;width:100%;">'+rows+'</div>';
 }
 function _renderRunnerIdleBody(ex, next){
   var lastW = ex.lastWeight != null ? ex.lastWeight : (function(){ var l=getLastSessionData(ex.name); return l ? parseFloat(l.weight)||0 : 0; })();
