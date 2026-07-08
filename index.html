@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260707-1"/>
+<meta name="build" content="20260707-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -834,7 +834,12 @@ select option{background:var(--bg);}
 .kt-r-card.lime .kt-done-btn{background:#0b0b0d;color:var(--accent);}
 .kt-r-card.dark .kt-done-btn{background:var(--accent);color:#000;}
 .kt-r-strip{position:absolute;left:0;right:0;z-index:60;padding:0 16px;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 14px);}
-.kt-r-strip-inner{background:rgba(22,22,26,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;justify-content:center;}
+/* No justify-content:center here — centered flex + overflow-x pushes the
+   leading pills into negative scroll space where they can never be reached
+   or tapped. The first/last auto margins center the row only when it fits. */
+.kt-r-strip-inner{background:rgba(22,22,26,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
+.kt-r-pill:first-child{margin-left:auto;}
+.kt-r-pill:last-child{margin-right:auto;}
 .kt-r-strip-inner::-webkit-scrollbar{display:none;}
 .kt-r-pill{flex-shrink:0;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;-webkit-tap-highlight-color:transparent;}
 .kt-r-pill.active{background:var(--accent);color:#000;}
@@ -3885,6 +3890,12 @@ function paintRunner(){
   root.style.display = 'block';
   if(seal) seal.style.display = 'block';
   root.innerHTML = renderDeckRunner();
+  // Keep the current exercise's pill visible when the strip overflows.
+  var inner = root.querySelector('.kt-r-strip-inner');
+  var act = inner && inner.querySelector('.kt-r-pill.active');
+  if(inner && act){
+    inner.scrollLeft = (act.offsetLeft - inner.offsetLeft) - (inner.clientWidth - act.offsetWidth)/2;
+  }
 }
 function renderDeckRunner(){
   if(!runnerSession) return '';
@@ -5822,7 +5833,7 @@ function renderBodySection(){
       '<span style="font-size:13px;color:var(--muted);font-weight:500;">'+fmtDate(e.date)+'</span>'+
       '<div style="display:flex;align-items:center;gap:12px;">'+
         '<span style="font-size:14px;font-weight:700;">'+e.weight+' lb</span>'+
-        '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:0 2px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div></div>';
   });
 
@@ -5844,7 +5855,7 @@ function renderBodySection(){
     msItems+='<div style="padding:9px 0;border-bottom:1px solid var(--border);">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
         '<span style="font-size:11px;color:var(--muted);font-weight:600;">'+fmtDate(e.date)+'</span>'+
-        '<button onclick="deleteMeasurement('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:0 2px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteMeasurement('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div>'+
       '<div style="font-size:13px;font-weight:600;color:var(--lite);margin-top:3px;line-height:1.6;">'+parts.join(' · ')+'</div>'+
     '</div>';
