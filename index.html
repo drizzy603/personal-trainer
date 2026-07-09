@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260708-1"/>
+<meta name="build" content="20260708-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -2083,6 +2083,15 @@ function render() {
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
   if(currentTab==='log' && (logSubTab==='workout' || logSubTab==='run') && hasCustomRoutine()){
+    // Today's day type changed since the card was built (swap modal, Settings
+    // cycle, Coach tool) — drop both cache layers so it regenerates.
+    if(coachCard && coachCard.forDay){
+      var _cardAct = getTodayActivity();
+      if(coachCard.forDay !== _cardAct.type+'/'+_cardAct.dayName){
+        coachCard = null;
+        invalidateCoachCard();
+      }
+    }
     if(coachCard==null && !coachCardLoading && !coachCardDismissed){
       loadCoachCardForToday();
     }
@@ -2518,7 +2527,14 @@ function _coachCacheKey(){ return 'kt_coach_card_' + _todayKey(); }
 function loadCachedCoachCard(){
   try{
     var s = localStorage.getItem(_coachCacheKey());
-    return s ? JSON.parse(s) : null;
+    if(!s) return null;
+    var card = JSON.parse(s);
+    // A card is only valid for the plan it was written against. If today's
+    // activity changed since (swap modal, Settings cycle, Coach tool), serve
+    // nothing so the card regenerates instead of describing the old day.
+    var act = getTodayActivity();
+    if(!card || card.forDay !== act.type+'/'+act.dayName) return null;
+    return card;
   }catch(e){ return null; }
 }
 function saveCachedCoachCard(card){
@@ -2567,10 +2583,11 @@ function fallbackCoachCard(activity){
 // Async: try Haiku, fall back to local. Never throws.
 function fetchCoachCard(activity){
   return new Promise(function(resolve){
+    var _forDay = activity.type+'/'+activity.dayName;
     var key = getApiKey();
     if(!key){
       var fb = fallbackCoachCard(activity);
-      fb.loadedAt = Date.now();
+      fb.loadedAt = Date.now(); fb.forDay = _forDay;
       resolve(fb); return;
     }
     var cached = loadCachedCoachCard();
@@ -2609,19 +2626,19 @@ function fetchCoachCard(activity){
       if(!match) throw new Error('no json');
       var card = JSON.parse(match[0]);
       if(!card.message || !Array.isArray(card.actions)) throw new Error('bad shape');
-      card.loadedAt = Date.now();
+      card.loadedAt = Date.now(); card.forDay = _forDay;
       saveCachedCoachCard(card);
       resolve(card);
     }).catch(function(){
       clearTimeout(_cardTimer);
       var fb = fallbackCoachCard(activity);
-      fb.loadedAt = Date.now();
+      fb.loadedAt = Date.now(); fb.forDay = _forDay;
       resolve(fb);
     });
     // 8s timeout — never block the screen
     _cardTimer = setTimeout(function(){
       var fb = fallbackCoachCard(activity);
-      fb.loadedAt = Date.now();
+      fb.loadedAt = Date.now(); fb.forDay = _forDay;
       resolve(fb);
     }, 8000);
   });
@@ -3053,6 +3070,7 @@ function renderCoachCard(activity){
     // Synchronous fallback — useful when no API key.
     coachCard = fallbackCoachCard(activity);
     coachCard.loadedAt = Date.now();
+    coachCard.forDay = activity.type+'/'+activity.dayName;
   }
   var actions = (coachCard.actions || []).slice(0,2).map(function(a){
     var cls = a.primary ? 'primary' : 'neutral';
