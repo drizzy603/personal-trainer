@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260708-2"/>
+<meta name="build" content="20260709-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -8698,6 +8698,39 @@ lsSet('kt_last_open', Date.now());
 // Ask the browser not to evict our storage — best-effort, silently ignored
 // where unsupported. localStorage is the only copy of the user's data.
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
+// ── iOS keyboard scroll-offset guard ──────────────────────────────────────────
+// html/body are overflow:hidden — the document itself must never scroll
+// (#screen and inner containers own all scrolling). But when the on-screen
+// keyboard would cover a focused input (runner weight/reps, run log, chat),
+// iOS scrolls the WKWebView's native scroll view to reveal it, and often
+// fails to scroll back after the keyboard closes. The page then PAINTS
+// shifted while touch targets keep their real coordinates — every tap lands
+// on whatever sits below the visual target until the app restarts. Any
+// document-level offset is illegitimate here, so snap it back whenever the
+// keyboard isn't actively using it.
+(function(){
+  function _kbSnapBack(){
+    var ae = document.activeElement;
+    // An editable element is focused — the keyboard is (probably) open and
+    // iOS may be holding the scroll on purpose. Leave it alone; the blur
+    // that closes the keyboard re-runs this.
+    if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    if(window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop){
+      // window.scrollTo covers the WKWebView native scroll view; the DOM
+      // scrollTops cover the in-page variant (focus() can programmatically
+      // scroll html/body even under overflow:hidden).
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }
+  function _kbSnapSoon(){ setTimeout(_kbSnapBack, 80); setTimeout(_kbSnapBack, 350); }
+  document.addEventListener('focusout', _kbSnapSoon);
+  if(window.visualViewport) window.visualViewport.addEventListener('resize', _kbSnapSoon);
+  // scroll doesn't bubble from inner scrollers, so this only fires for the
+  // document itself — which should never scroll.
+  window.addEventListener('scroll', _kbSnapSoon);
+})();
 loadCoachHistory();
 _restoreRunnerDraft();
 var _next = getNextSession();
