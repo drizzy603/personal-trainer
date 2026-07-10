@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260709-1"/>
+<meta name="build" content="20260709-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -8240,7 +8240,8 @@ function renderSettings() {
       else if(buildNewer(liveBuild,APP_BUILD)) status='Update available · downloading…';
       else if(liveBuild)                       status='Up to date';
       else                                     status='Checking for updates…';
-      return '<div class="settings-row">'+
+      // Tapping the row toggles the on-device diagnostics overlay.
+      return '<div class="settings-row" onclick="toggleKtDebug()">'+
         '<div class="settings-row-ic" style="background:#1a262e;">'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
             '<path d="M21 12a9 9 0 11-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/>'+
@@ -8698,6 +8699,51 @@ lsSet('kt_last_open', Date.now());
 // Ask the browser not to evict our storage — best-effort, silently ignored
 // where unsupported. localStorage is the only copy of the user's data.
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
+// ── On-device diagnostics (tap the "App build" row in Settings) ───────────────
+// Surfaces the state behind the iOS touch-offset bug: document/native scroll
+// offsets, visual-viewport geometry, focus state, where touches actually land,
+// and the keyboard guard's recent activity. Costs nothing while off.
+var _dbgOn = false;
+var _dbgLog = [];
+function _dbgNote(type, detail){
+  _dbgLog.unshift(new Date().toTimeString().slice(0,8)+' '+type+(detail?' '+detail:''));
+  if(_dbgLog.length>6) _dbgLog.length=6;
+}
+function toggleKtDebug(){
+  _dbgOn = !_dbgOn;
+  var el = document.getElementById('kt-debug');
+  if(el) el.remove();
+  if(_dbgOn){ _dbgPaint(); showToast('Debug on — tap the panel to close'); }
+}
+function _dbgPaint(){
+  if(!_dbgOn) return;
+  var el = document.getElementById('kt-debug');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'kt-debug';
+    el.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 104px);z-index:99999;background:rgba(0,0,0,.9);color:#c8ff00;font-family:\'JetBrains Mono\',monospace;font-size:10px;line-height:1.55;padding:10px 12px;border-radius:12px;border:1px solid rgba(200,255,0,.4);white-space:pre-wrap;word-break:break-all;';
+    el.onclick = function(){ toggleKtDebug(); };
+    document.body.appendChild(el);
+  }
+  var vv = window.visualViewport;
+  var ae = document.activeElement;
+  el.textContent =
+    'DEBUG · build '+APP_BUILD+' · tap to close\n'+
+    'pageY '+window.pageYOffset+' · html '+document.documentElement.scrollTop+' · body '+document.body.scrollTop+'\n'+
+    'innerH '+window.innerHeight+(vv?' · vvH '+Math.round(vv.height)+' · vvTop '+Math.round(vv.offsetTop)+' · scale '+vv.scale.toFixed(2):' · no visualViewport')+'\n'+
+    'focus '+(ae && ae!==document.body?ae.tagName.toLowerCase():'none')+'\n'+
+    (_dbgLog.length?_dbgLog.join('\n'):'(no events yet — touch things)');
+  setTimeout(_dbgPaint, 500);
+}
+// While debugging, record where each touch actually registers.
+document.addEventListener('touchstart', function(e){
+  if(!_dbgOn || !e.touches || !e.touches[0]) return;
+  var t = e.touches[0];
+  var hit = document.elementFromPoint(t.clientX, t.clientY);
+  var d = hit ? hit.tagName.toLowerCase()+(hit.className && typeof hit.className==='string' && hit.className.trim()?'.'+hit.className.trim().split(/\s+/)[0]:'') : 'null';
+  _dbgNote('touch', Math.round(t.clientX)+','+Math.round(t.clientY)+' → '+d);
+}, {passive:true, capture:true});
+
 // ── iOS keyboard scroll-offset guard ──────────────────────────────────────────
 // html/body are overflow:hidden — the document itself must never scroll
 // (#screen and inner containers own all scrolling). But when the on-screen
@@ -8714,8 +8760,13 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
     // An editable element is focused — the keyboard is (probably) open and
     // iOS may be holding the scroll on purpose. Leave it alone; the blur
     // that closes the keyboard re-runs this.
-    if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-    if(window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop){
+    var _off = (window.pageYOffset||0) + (document.documentElement.scrollTop||0) + (document.body.scrollTop||0);
+    if(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)){
+      if(_off) _dbgNote('snap-skip', 'off='+_off+' while '+ae.tagName.toLowerCase()+' focused');
+      return;
+    }
+    if(_off){
+      _dbgNote('SNAP', 'y='+window.pageYOffset+'/'+document.documentElement.scrollTop+'/'+document.body.scrollTop);
       // window.scrollTo covers the WKWebView native scroll view; the DOM
       // scrollTops cover the in-page variant (focus() can programmatically
       // scroll html/body even under overflow:hidden).
