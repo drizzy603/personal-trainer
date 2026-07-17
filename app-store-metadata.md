@@ -7,10 +7,10 @@ Source of truth for App Store Connect & TestFlight copy. Update here, then paste
 **App Name** *(30 char limit)*
 
 ```
-Trovo
+Alzo
 ```
 
-Fallback if taken: `Trovo — AI Coach` (29 chars)
+Fallback if taken: `Alzo — AI Coach` (29 chars)
 
 **Subtitle** *(30 char limit)*
 
@@ -27,7 +27,7 @@ Your AI coach builds a custom plan, tracks every set, and adapts week by week. N
 **Description** *(4000 char limit)*
 
 ```
-Trovo is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
+Alzo is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
 
 Tell the coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a full multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
@@ -100,14 +100,14 @@ https://drizzy603.github.io/personal-trainer/privacy.html
 Email: robertokalanisosa@outlook.com
 ```
 
-Set in App Store Connect → My Apps → Trovo → App Information → App Review Information.
+Set in App Store Connect → My Apps → Alzo → App Information → App Review Information.
 
 ## TestFlight
 
 **Beta App Description** *(shown to external testers before install)*
 
 ```
-Trovo is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
+Alzo is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
 ```
 
 **What to Test** *(shown in TestFlight app)*
@@ -152,10 +152,10 @@ Run top-to-bottom once Apple Developer verification clears.
 ### 2. App Store Connect (appstoreconnect.apple.com)
 - My Apps → **+** → New App
   - Platform: iOS
-  - Name: **Trovo**
+  - Name: **Alzo**
   - Primary language: English (U.S.)
   - Bundle ID: `app.kt.trainer` (dropdown picks up the registered identifier)
-  - SKU: `trovo-001`
+  - SKU: `alzo-001`
   - User access: Full
 - App Information:
   - Category: Health & Fitness / Lifestyle

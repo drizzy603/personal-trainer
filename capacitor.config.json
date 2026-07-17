@@ -1,6 +1,6 @@
 {
   "appId": "app.kt.trainer",
-  "appName": "Trovo",
+  "appName": "Alzo",
   "webDir": "www",
   "plugins": {
     "CapacitorHttp": {

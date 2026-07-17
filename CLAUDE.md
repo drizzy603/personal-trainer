@@ -1,4 +1,4 @@
-# Trovo App
+# Alzo App
 
 A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS shell for native distribution.
 
@@ -33,7 +33,7 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 - Coach supports: persistent chat history, intake flow to build a custom programme, native tool calls for routine edits, image input. Programme is AI-generated per user via a 10-question intake — until generated, the Log tab shows an empty-state CTA pointing to the Coach.
 - Log tab reads exercises from `kt_routine` via `getSessionExercises()` / `getWkData()`. There is no built-in fallback programme.
 - User name is dynamic (pulled from their AI-generated routine) — no hardcoded names anywhere.
-- **iOS native shell only:** Settings → Data → Import from Apple Health pulls running workouts from HealthKit into `kt_runs`, with dedup against `kt_hk_imported`. Read-only — Trovo never writes to HealthKit.
+- **iOS native shell only:** Settings → Data → Import from Apple Health pulls running workouts from HealthKit into `kt_runs`, with dedup against `kt_hk_imported`. Read-only — Alzo never writes to HealthKit.
 
 ## Key localStorage keys
 - `kt_sessions` — logged gym sessions
