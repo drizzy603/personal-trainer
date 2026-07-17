@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260716-1"/>
+<meta name="build" content="20260717-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -81,7 +81,7 @@
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
   /* --muted promoted from #525259 (3.6:1 fail) to #6e6e76 (4.7:1 pass) so
      small-size labels meet WCAG AA on the dark background. */
-  --text:#fafafa;--muted:#6e6e76;--lite:#9ca3af;
+  --text:#fafafa;--muted:#808089;--lite:#9ca3af;
   --r-input:12px;--r-card:18px;--r-hero:24px;--r-deck:28px;
   /* Card padding tiers — feature cards (charts, forms, editorial cards) and
      compact cards/rows (stats, list items). One knob per tier. */
@@ -1371,13 +1371,27 @@ function fmtDate(iso) {
   var d = new Date(iso+'T00:00:00');
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
-function lsGet(k) { try{var s=localStorage.getItem(k);return s?JSON.parse(s):null;}catch(e){return null;} }
+// Parsed-value cache: renders re-read the same keys dozens of times, and the
+// JSON parse cost scales with history size. Every write goes through lsSet /
+// lsDel (the app's convention), which keep the cache coherent. Cached values
+// are shared references — mutate-then-lsSet (the existing pattern everywhere)
+// stays correct.
+var _lsCache = {};
+function lsGet(k) {
+  if (k in _lsCache) return _lsCache[k];
+  var v = null;
+  try{ var s=localStorage.getItem(k); v = s?JSON.parse(s):null; }catch(e){ v = null; }
+  _lsCache[k] = v;
+  return v;
+}
+function lsDel(k) { delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(e){} }
 // R4 — surface localStorage quota / serialization failures. The previous
 // silent catch meant the user would see "Session logged" even when nothing
 // was saved. We now route real save failures to a toast so the user knows
 // to export and prune. The cached-HTML key never warns (it's allowed to fail).
 var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1};
 function lsSet(k,v) {
+  _lsCache[k] = v;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
     if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
@@ -1406,7 +1420,7 @@ function defaultWeights() {
 
 function getCustomRoutine(){ var r=lsGet('kt_routine'); return r&&r.weeks&&r.weeks.length?r:null; }
 function setCustomRoutine(r){ lsSet('kt_routine',r); }
-function clearCustomRoutine(){ localStorage.removeItem('kt_routine'); }
+function clearCustomRoutine(){ lsDel('kt_routine'); }
 function getRoutineArchive(){ return lsGet('kt_routine_archive')||[]; }
 function setRoutineArchive(a){ lsSet('kt_routine_archive',a); }
 function archiveCurrentRoutine(){
@@ -1514,14 +1528,14 @@ function weekForDate(dateStr){
   return Math.max(1,currentWeek-weeksAgo);
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
-function setBWGoal(v) { if(v>0) localStorage.setItem('kt_bw_goal',v); else localStorage.removeItem('kt_bw_goal'); }
+function setBWGoal(v) { if(v>0) lsSet('kt_bw_goal',v); else lsDel('kt_bw_goal'); }
 function getBenchGoal() { return parseFloat(localStorage.getItem('kt_bench_goal'))||0; }
-function setBenchGoal(v) { if(v>0) localStorage.setItem('kt_bench_goal',v); else localStorage.removeItem('kt_bench_goal'); }
+function setBenchGoal(v) { if(v>0) lsSet('kt_bench_goal',v); else lsDel('kt_bench_goal'); }
 function getSquatGoal() { return parseFloat(localStorage.getItem('kt_squat_goal'))||0; }
-function setSquatGoal(v) { if(v>0) localStorage.setItem('kt_squat_goal',v); else localStorage.removeItem('kt_squat_goal'); }
+function setSquatGoal(v) { if(v>0) lsSet('kt_squat_goal',v); else lsDel('kt_squat_goal'); }
 function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // format "mm:ss" per km
 function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
-function set5kGoal(secs) { if(secs>0) localStorage.setItem('kt_5k_goal',secs); else localStorage.removeItem('kt_5k_goal'); }
+function set5kGoal(secs) { if(secs>0) lsSet('kt_5k_goal',secs); else lsDel('kt_5k_goal'); }
 function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else localStorage.removeItem('kt_run_goal'); }
 function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
 function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'); }
@@ -1838,7 +1852,7 @@ function _applyImportedData(data) {
   // kt_hk_imported. Keeping this device's newer dedup set would make Apple
   // Health re-import silently skip the runs this restore just rolled back.
   if (data.kt_hk_imported === undefined) {
-    localStorage.removeItem('kt_hk_imported');
+    lsDel('kt_hk_imported');
     localStorage.removeItem('kt_hk_last_sync');
   }
   if (data.kt_week) currentWeek = data.kt_week;
@@ -1934,7 +1948,7 @@ function resetHealthImport(){
     var existing=getRuns(); var removed=0;
     var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'){removed++;return false;}return true;});
     lsSet('kt_runs',kept);
-    localStorage.removeItem('kt_hk_imported');
+    lsDel('kt_hk_imported');
     localStorage.removeItem('kt_hk_last_sync');
     if(removed) invalidateCoachCard();
     showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
@@ -2080,7 +2094,7 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _lastRenderedRoute = route; scrollChatBottom(); paintRunner(); return; }
+  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
   screen.scrollTop = routeChanged ? 0 : prevScroll;
   _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
@@ -2101,6 +2115,7 @@ function render() {
     }
     attachCoachCardSwipe();
   }
+  _a11yPass();
   _scheduleNativeSync();
   paintRunner();
 }
@@ -3584,7 +3599,7 @@ function _saveRunnerDraft(){
   }catch(e){}
 }
 function _clearRunnerDraft(){
-  try{ localStorage.removeItem('kt_runner_draft'); }catch(e){}
+  lsDel('kt_runner_draft');
 }
 function _restoreRunnerDraft(){
   try{
@@ -3941,6 +3956,7 @@ function paintRunner(){
   root.style.display = 'block';
   if(seal) seal.style.display = 'block';
   root.innerHTML = renderDeckRunner();
+  _a11yPass();
   // Keep the current exercise's pill visible when the strip overflows.
   var inner = root.querySelector('.kt-r-strip-inner');
   var act = inner && inner.querySelector('.kt-r-pill.active');
@@ -6751,7 +6767,7 @@ function loadCoachHistory(){
 }
 function clearCoachHistory(){
   coachMessages=[];streamingContent='';
-  localStorage.removeItem('kt_coach_msgs');
+  lsDel('kt_coach_msgs');
   render();
 }
 function _confirmClearChat(){
@@ -7528,7 +7544,7 @@ function restoreRoutineBackup(){
   _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
     setCustomRoutine(b);
-    if(cur) lsSet('kt_routine_backup',cur); else localStorage.removeItem('kt_routine_backup');
+    if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
     var total=(b.weeks||[]).length||1;
     if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
     showToast('Previous programme restored'); render();
@@ -8109,10 +8125,10 @@ function renderCoach(){
 
 // ── Themes & Settings ─────────────────────────────────────────────────────────
 var THEMES = {
-  dark:   {name:'Dark',   textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#6e6e76',lite:'#9ca3af'},
+  dark:   {name:'Dark',   textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
   light:  {name:'Light',  textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#5b8a00','accent-soft':'rgba(91,138,0,.14)','accent-dim':'rgba(91,138,0,.07)',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#666',   lite:'#444'},
   ocean:  {name:'Ocean',  textColor:'#e0f2fe',bg:'#060f1a',card:'#0b1e30',card2:'#0e2438',border:'rgba(255,255,255,.07)',accent:'#00d4ff','accent-soft':'rgba(0,212,255,.14)','accent-dim':'rgba(0,212,255,.07)',green:'#00d4ff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#5ac8fa',text:'#e0f2fe',muted:'#5e8aa8',lite:'#7bafc8'},
-  sunset: {name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',card2:'#1f1200',border:'rgba(255,255,255,.07)',accent:'#ff9f0a','accent-soft':'rgba(255,159,10,.14)','accent-dim':'rgba(255,159,10,.07)',green:'#ff9f0a',yellow:'#ffd60a',red:'#ff453a',orange:'#ff6b35',cyan:'#60a5fa',text:'#fff7ed',muted:'#8c6a48',lite:'#b8977a'},
+  sunset: {name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',card2:'#1f1200',border:'rgba(255,255,255,.07)',accent:'#ff9f0a','accent-soft':'rgba(255,159,10,.14)','accent-dim':'rgba(255,159,10,.07)',green:'#ff9f0a',yellow:'#ffd60a',red:'#ff453a',orange:'#ff6b35',cyan:'#60a5fa',text:'#fff7ed',muted:'#9a754f',lite:'#b8977a'},
 };
 
 function applyTheme(name) {
@@ -8782,6 +8798,30 @@ document.addEventListener('visibilitychange', function(){
     setTimeout(checkPendingShare, 600);
     if(currentTab==='log' && logSubTab==='run') setTimeout(checkRecentHealthRun, 900);
   }
+});
+
+// ── Keyboard / assistive-tech access for clickable divs ──────────────────────
+// Rendered markup uses onclick divs in places (calendar days, settings rows).
+// Post-paint, expose them to the accessibility tree and keyboard focus; the
+// delegated keydown handler makes Enter/Space activate them. The global
+// :focus-visible rule already draws the focus ring.
+function _a11yPass(){
+  var els=document.querySelectorAll('[onclick]');
+  for(var i=0;i<els.length;i++){
+    var el=els[i], t=el.tagName;
+    if(t==='BUTTON'||t==='A'||t==='INPUT'||t==='SELECT'||t==='TEXTAREA') continue;
+    if(!el.hasAttribute('role')) el.setAttribute('role','button');
+    if(!el.hasAttribute('tabindex')) el.setAttribute('tabindex','0');
+  }
+}
+document.addEventListener('keydown', function(e){
+  if(e.key!=='Enter' && e.key!==' ') return;
+  var el=document.activeElement;
+  if(!el || !el.hasAttribute || !el.hasAttribute('onclick')) return;
+  var t=el.tagName;
+  if(t==='BUTTON'||t==='A'||t==='INPUT'||t==='SELECT'||t==='TEXTAREA') return;
+  e.preventDefault();
+  el.click();
 });
 
 // ── Native integrations: widget, notifications, haptics, auto-backup ─────────
