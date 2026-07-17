@@ -4,13 +4,13 @@ Source of truth for App Store Connect & TestFlight copy. Update here, then paste
 
 ## App Information
 
-**App Name** *(30 char limit)*
+**App Name** *(30 char limit)* — as registered in App Store Connect
 
 ```
-Alzo
+Supero — AI Trainer
 ```
 
-Fallback if taken: `Alzo — AI Coach` (29 chars)
+Home-screen name (CFBundleDisplayName) is the short form `Supero`. Bare "Supero" and "Alzo" were both reserved by unreleased app records, so the store listing carries the qualifier.
 
 **Subtitle** *(30 char limit)*
 
@@ -27,7 +27,7 @@ Your AI coach builds a custom plan, tracks every set, and adapts week by week. N
 **Description** *(4000 char limit)*
 
 ```
-Alzo is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
+Supero is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
 
 Tell the coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a full multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
@@ -64,7 +64,7 @@ Made for lifters, runners, and anyone who wants their training plan to actually 
 **Keywords** *(100 char limit, comma-separated, no spaces between commas)*
 
 ```
-workout,gym,training,fitness,coach,ai,strength,running,tracker,programme,push,pull,legs,log
+workout,gym,training,fitness,coach,strength,running,tracker,programme,push,pull,legs,log,lifting
 ```
 
 Do not include words already in the app name or category — Apple indexes those automatically.
@@ -100,14 +100,14 @@ https://drizzy603.github.io/personal-trainer/privacy.html
 Email: robertokalanisosa@outlook.com
 ```
 
-Set in App Store Connect → My Apps → Alzo → App Information → App Review Information.
+Set in App Store Connect → My Apps → Supero → App Information → App Review Information.
 
 ## TestFlight
 
 **Beta App Description** *(shown to external testers before install)*
 
 ```
-Alzo is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
+Supero is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
 ```
 
 **What to Test** *(shown in TestFlight app)*
@@ -152,10 +152,10 @@ Run top-to-bottom once Apple Developer verification clears.
 ### 2. App Store Connect (appstoreconnect.apple.com)
 - My Apps → **+** → New App
   - Platform: iOS
-  - Name: **Alzo**
+  - Name: **Supero**
   - Primary language: English (U.S.)
   - Bundle ID: `app.kt.trainer` (dropdown picks up the registered identifier)
-  - SKU: `alzo-001`
+  - SKU: `supero-001`
   - User access: Full
 - App Information:
   - Category: Health & Fitness / Lifestyle

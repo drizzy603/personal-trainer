@@ -1,6 +1,6 @@
 {
   "appId": "app.kt.trainer",
-  "appName": "Alzo",
+  "appName": "Supero",
   "webDir": "www",
   "plugins": {
     "CapacitorHttp": {

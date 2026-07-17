@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260715-2"/>
+<meta name="build" content="20260715-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -55,7 +55,7 @@
   }catch(e){}
 })();
 </script>
-<title>Alzo</title>
+<title>Supero</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="app-icon-192.png"/>
 <link rel="icon" type="image/png" href="app-icon-192.png"/>
@@ -1764,7 +1764,7 @@ function exportData() {
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  a.href = url; a.download = 'alzo-backup-'+todayISO()+'.json';
+  a.href = url; a.download = 'supero-backup-'+todayISO()+'.json';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
   lsSet('kt_last_export', Date.now());
@@ -1810,7 +1810,7 @@ function importData() {
       try { data = JSON.parse(ev.target.result); }
       catch(err) { showToast('Import failed — invalid file'); return; }
       var known = BACKUP_KEYS.concat(RAW_STRING_KEYS).filter(function(k){ return data[k] !== undefined; });
-      if (!known.length) { showToast('Import failed — not a Alzo backup'); return; }
+      if (!known.length) { showToast('Import failed — not a Supero backup'); return; }
       var sess = (data.kt_sessions || []).length;
       var runs = (data.kt_runs || []).length;
       _ktConfirm({title:'Restore this backup?',
@@ -2405,7 +2405,7 @@ function getUserFirstName(){
     // here and silently stopped stripping possessives from routine names.
     var first = String(raw).trim().split(/\s+/)[0].replace(/['\u2019]s$/i, '');
     if(!first) return '';
-    var placeholder = ['Custom','My','Your','Alzo','Routine','Programme','Plan','User','Default'];
+    var placeholder = ['Custom','My','Your','Supero','Routine','Programme','Plan','User','Default'];
     if(placeholder.indexOf(first) > -1) return '';
     return first;
   }
@@ -8424,7 +8424,7 @@ function renderSettings() {
     '</div>'+
     '</div>'+
 
-    '<div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 32px;font-weight:500;">Alzo · All data stored locally</div>';
+    '<div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 32px;font-weight:500;">Supero · All data stored locally</div>';
 }
 function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
@@ -8794,7 +8794,7 @@ document.addEventListener('visibilitychange', function(){
   </div>
   <div class="ed-hero">
     <div class="ed-hero-eyebrow">Overview</div>
-    <h1><span>Alzo</span><br>How It<br>Works</h1>
+    <h1><span>Supero</span><br>How It<br>Works</h1>
     <p class="ed-tag">A progressive training programme with an AI coach — built as a single file. Zero accounts. All data on-device.</p>
   </div>
   <div class="content">
@@ -8947,7 +8947,7 @@ document.addEventListener('visibilitychange', function(){
   <div class="ed-hero">
     <div class="ed-hero-eyebrow">Legal</div>
     <h1>Privacy<br><span>Policy</span></h1>
-    <p class="ed-stamp">ALZO · LAST UPDATED 6 JUL 2026</p>
+    <p class="ed-stamp">SUPERO · LAST UPDATED 6 JUL 2026</p>
   </div>
   <div class="content">
     <div class="ed-guarantees">
@@ -8974,11 +8974,11 @@ document.addEventListener('visibilitychange', function(){
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Apple Health</h2></div>
-      <p class="ed-body">Opt-in. If you grant permission, Alzo reads run workouts only — date, distance, duration, average HR — and stores them locally alongside your other data. Imported runs count as training data like any other run, so the Coach includes recent ones in what it sends to Anthropic when you chat. Alzo never writes to Apple Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Alzo.</p>
+      <p class="ed-body">Opt-in. If you grant permission, Supero reads run workouts only — date, distance, duration, average HR — and stores them locally alongside your other data. Imported runs count as training data like any other run, so the Coach includes recent ones in what it sends to Anthropic when you chat. Supero never writes to Apple Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">05</span><h2>Analytics</h2></div>
-      <p class="ed-body">None. No tracking SDK, no advertising network, no data broker. The app does not phone home. Alzo is not directed at children under 13 and we do not knowingly collect any information from children.</p>
+      <p class="ed-body">None. No tracking SDK, no advertising network, no data broker. The app does not phone home. Supero is not directed at children under 13 and we do not knowingly collect any information from children.</p>
     </div>
     <div class="ed-contact">
       <div class="ed-contact-hd">Contact</div>
@@ -8986,7 +8986,7 @@ document.addEventListener('visibilitychange', function(){
       <a href="mailto:robertokalanisosa@outlook.com" class="ed-contact-email">robertokalanisosa@outlook.com</a>
     </div>
   </div>
-  <div class="wf-footer">© 2026 Alzo · <button onclick="closePrivacy()">Back to the app</button></div>
+  <div class="wf-footer">© 2026 Supero · <button onclick="closePrivacy()">Back to the app</button></div>
 </div>
 </body>
 </html>

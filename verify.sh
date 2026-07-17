@@ -1,5 +1,5 @@
 #!/bin/bash
-# Alzo pre-commit / pre-archive check.
+# Supero pre-commit / pre-archive check.
 #
 #   ./verify.sh          — static checks (fast, no dependencies beyond node+python3)
 #
@@ -15,9 +15,9 @@ var fs=require('fs');
 var html=fs.readFileSync('index.html','utf8');
 var re=/<script\b[^>]*>([\s\S]*?)<\/script>/gi, parts=[], m;
 while((m=re.exec(html))!==null) parts.push(m[1]);
-fs.writeFileSync('/tmp/alzo-verify.js', parts.join('\n'));
+fs.writeFileSync('/tmp/supero-verify.js', parts.join('\n'));
 "
-node --check /tmp/alzo-verify.js
+node --check /tmp/supero-verify.js
 echo "✓ script blocks parse"
 
 node --check sw.js
