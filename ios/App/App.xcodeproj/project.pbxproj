@@ -528,6 +528,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				CODE_SIGN_ENTITLEMENTS = TrovoTimerWidget/TrovoTimerWidget.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = app.kt.trainer.TrovoTimerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -550,6 +551,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				CODE_SIGN_ENTITLEMENTS = TrovoTimerWidget/TrovoTimerWidget.entitlements;
 				PRODUCT_BUNDLE_IDENTIFIER = app.kt.trainer.TrovoTimerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

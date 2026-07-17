@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import ActivityKit
+import CapApp_SPM
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -70,5 +71,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    }
+}
+
+// ── Plugin registration ───────────────────────────────────────────────────────
+// Capacitor stops runtime-scanning for CAPPlugin subclasses once the generated
+// capacitor.config.json carries a packageClassList (it appeared when the first
+// npm plugins were added). The custom in-app plugins must therefore be
+// registered programmatically. Main.storyboard's view controller points here.
+class SuperoViewController: CAPBridgeViewController {
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(TrovoHealthPlugin())
+        bridge?.registerPluginInstance(TrovoTimerPlugin())
+        bridge?.registerPluginInstance(TrovoSharePlugin())
+        bridge?.registerPluginInstance(TrovoWidgetPlugin())
     }
 }

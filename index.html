@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260715-3"/>
+<meta name="build" content="20260716-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1753,7 +1753,7 @@ function checkAndUpdatePRs(exercises) {
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'];
-function exportData() {
+function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
     var v = lsGet(k); if (v !== null) data[k] = v;
@@ -1761,6 +1761,10 @@ function exportData() {
   RAW_STRING_KEYS.forEach(function(k){
     var v = localStorage.getItem(k); if (v) data[k] = v;
   });
+  return data;
+}
+function exportData() {
+  var data = buildBackupJSON();
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -2097,6 +2101,7 @@ function render() {
     }
     attachCoachCardSwipe();
   }
+  _scheduleNativeSync();
   paintRunner();
 }
 
@@ -3755,11 +3760,15 @@ async function checkPendingShare(){
   } catch(e){}
 }
 function _trovoTimerStart(ex, nextSet){
+  // Backgrounded-phone alert when the rest is over (Live Activity shows the
+  // countdown; the notification does the buzz). Cancelled on skip/return.
+  scheduleRestNotification(ex, nextSet, runnerRestLeft);
   var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
   if(!TT) return;
   TT.startTimer({exerciseName: ex.name, seconds: runnerRestLeft, nextSet: nextSet, totalSets: ex.sets}).catch(function(){});
 }
 function _trovoTimerEnd(){
+  cancelRestNotification();
   var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
   if(!TT) return;
   TT.endTimer().catch(function(){});
@@ -3780,6 +3789,7 @@ function runnerCompleteSet(){
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
   if(navigator.vibrate) navigator.vibrate(40);
+  haptic('light');
   if(done < ex.sets){
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
@@ -3792,6 +3802,7 @@ function runnerCompleteSet(){
         runnerResting = false; runnerRestLeft = 90;
         _trovoTimerEnd();
         if(navigator.vibrate) navigator.vibrate([80,40,80]);
+        haptic('success');
         var _rc=document.getElementById('runner-root');
         if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
       }
@@ -3899,6 +3910,7 @@ function runnerFinishSession(){
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs});
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
+  haptic('success');
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
@@ -8298,6 +8310,15 @@ function renderSettings() {
           '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Default rest</div>'+
           '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+pills+'</div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Used when your programme does not specify a rest period. Adjust per set with −15s / +30s during a workout.</div>'+
+          (isNativeIOS()?
+          '<div style="margin-top:20px;">'+
+            '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;">NOTIFICATIONS</div>'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'+
+              '<div style="min-width:0;"><div style="font-size:14px;font-weight:600;">Training-day reminder</div>'+
+              '<div style="font-size:12px;color:var(--muted);margin-top:2px;">9:00 on non-rest days. Rest-timer alerts are always on.</div></div>'+
+              '<button onclick="toggleDailyReminder()" style="flex-shrink:0;padding:9px 18px;border-radius:12px;border:1px solid '+(localStorage.getItem('kt_notif_daily')==='1'?'var(--accent)':'var(--border)')+';background:'+(localStorage.getItem('kt_notif_daily')==='1'?'var(--accent)':'var(--card2)')+';color:'+(localStorage.getItem('kt_notif_daily')==='1'?'#000':'var(--lite)')+';font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+(localStorage.getItem('kt_notif_daily')==='1'?'On':'Off')+'</button>'+
+            '</div>'+
+          '</div>' : '')+
         '</div>'+
       '</div>';
     })()+
@@ -8389,6 +8410,16 @@ function renderSettings() {
           '</svg>'+
         '</div>'+
         '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull running workouts from your watch</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>' : '')+
+    (isNativeIOS()?
+      '<div class="settings-row" onclick="runAutoBackupNow()">'+
+        '<div class="settings-row-ic" style="background:#0d2233;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M21 21H3"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Auto-backup to Files</div><div class="settings-row-sub">'+(localStorage.getItem('kt_last_autobackup')===todayISO()?'Backed up today · tap to run again':'Daily · tap to back up now')+'</div></div>'+
         '<span class="settings-row-chev">›</span>'+
       '</div>' : '')+
     ((isNativeIOS() && (lsGet('kt_hk_imported')||[]).length)?
@@ -8752,6 +8783,139 @@ document.addEventListener('visibilitychange', function(){
     if(currentTab==='log' && logSubTab==='run') setTimeout(checkRecentHealthRun, 900);
   }
 });
+
+// ── Native integrations: widget, notifications, haptics, auto-backup ─────────
+// All no-ops outside the iOS shell. The 7-day summary written to the App
+// Group feeds the Home Screen widget and the reminder scheduler, and is the
+// read surface for a future watch app.
+function _plug(name){
+  return (isNativeIOS() && window.Capacitor && Capacitor.Plugins) ? Capacitor.Plugins[name] : null;
+}
+function haptic(kind){
+  var H = _plug('Haptics'); if(!H) return;
+  try{
+    if(kind==='success')     H.notification({type:'SUCCESS'}).catch(function(){});
+    else if(kind==='medium') H.impact({style:'MEDIUM'}).catch(function(){});
+    else                     H.impact({style:'LIGHT'}).catch(function(){});
+  }catch(e){}
+}
+var REST_NOTIF_ID = 9001;
+function _notifPermission(cb){
+  var LN = _plug('LocalNotifications'); if(!LN){ cb(false); return; }
+  LN.checkPermissions().then(function(p){
+    if(p.display==='granted'){ cb(true); return; }
+    if(p.display==='denied'){ cb(false); return; }
+    LN.requestPermissions().then(function(r){ cb(r.display==='granted'); }).catch(function(){ cb(false); });
+  }).catch(function(){ cb(false); });
+}
+function scheduleRestNotification(ex, nextSet, seconds){
+  var LN = _plug('LocalNotifications'); if(!LN || !(seconds>=5)) return;
+  _notifPermission(function(ok){
+    if(!ok) return;
+    LN.schedule({notifications:[{
+      id: REST_NOTIF_ID,
+      title: 'Rest done',
+      body: ex.name+' — set '+nextSet+' of '+ex.sets,
+      schedule: { at: new Date(Date.now()+seconds*1000) },
+      sound: 'default'
+    }]}).catch(function(){});
+  });
+}
+function cancelRestNotification(){
+  var LN = _plug('LocalNotifications'); if(!LN) return;
+  LN.cancel({notifications:[{id: REST_NOTIF_ID}]}).catch(function(){});
+}
+// Daily training-day reminder at 9:00 — ids 9101..9107, rescheduled whenever
+// the plan changes so rest days and already-logged days never fire.
+function toggleDailyReminder(){
+  if(localStorage.getItem('kt_notif_daily')==='1'){
+    localStorage.setItem('kt_notif_daily','0');
+    _syncReminders(); render();
+  } else {
+    _notifPermission(function(ok){
+      if(!ok){ showToast('Enable notifications for Supero in iOS Settings'); render(); return; }
+      localStorage.setItem('kt_notif_daily','1');
+      _syncReminders(); showToast('Reminders on — 9:00 on training days'); render();
+    });
+  }
+}
+function _syncReminders(){
+  var LN = _plug('LocalNotifications'); if(!LN) return;
+  var ids=[]; for(var i=0;i<7;i++) ids.push({id:9101+i});
+  LN.cancel({notifications:ids}).catch(function(){});
+  if(localStorage.getItem('kt_notif_daily')!=='1' || !hasCustomRoutine()) return;
+  var days=_nativeSummaryDays(), toSched=[];
+  for(var j=0;j<days.length;j++){
+    var d=days[j];
+    if(d.isRest || d.done) continue;
+    var at=new Date(d.date+'T09:00:00');
+    if(at.getTime() <= Date.now()) continue;
+    toSched.push({ id:9101+j,
+      title:'Today is '+String(d.type).toLowerCase()+' day',
+      body: d.lifts>0 ? d.lifts+' lifts planned · ~'+(d.lifts*8)+' min' : 'Time to move.',
+      schedule:{ at: at }, sound:'default' });
+  }
+  if(toSched.length) LN.schedule({notifications:toSched}).catch(function(){});
+}
+// 7-day plan summary — widget + reminders share this.
+function _nativeSummaryDays(){
+  var out=[], total=getTotalWeeks();
+  var sessions=getSessions(), runs=getRuns(), sports=getSportLogs();
+  for(var i=0;i<7;i++){
+    var iso=addDays(todayISO(), i);
+    var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
+    var wk=Math.min(total, Math.max(1, weekForDate(iso)));
+    var plan=getWeekPlanForWeek(wk)[dow];
+    var done=false;
+    if(plan.isLift)       done=sessions.some(function(s){return s.date===iso && s.type===plan.type;});
+    else if(plan.isRun)   done=runs.some(function(r){return r.date===iso;});
+    else if(plan.isSport) done=sports.some(function(l){return l.date===iso && l.type===plan.type;});
+    out.push({date:iso, type:plan.type, isRest:!!plan.isRest,
+      lifts: plan.isLift ? getSessionExercises(plan.type).length : 0, done:done});
+  }
+  return out;
+}
+var _lastNativeSummary=null, _nativeSyncTimer=null;
+function _scheduleNativeSync(){
+  if(!isNativeIOS()) return;
+  if(_nativeSyncTimer) clearTimeout(_nativeSyncTimer);
+  _nativeSyncTimer=setTimeout(_runNativeSync, 800);
+}
+function _runNativeSync(){
+  _nativeSyncTimer=null;
+  try{
+    var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
+      streak:calcStreak(getSessions()), days:_nativeSummaryDays() };
+    var json=JSON.stringify(summary);
+    if(json!==_lastNativeSummary){
+      _lastNativeSummary=json;
+      var TW=_plug('TrovoWidget');
+      if(TW) TW.updateSummary({json:json}).catch(function(){});
+      _syncReminders();
+    }
+    _autoBackupIfDue();
+  }catch(e){}
+}
+// Silent daily backup into Documents/Supero — visible in the Files app and
+// included in device backups. Complements the manual export, replaces nothing.
+function _autoBackupIfDue(){
+  var FS=_plug('Filesystem'); if(!FS) return;
+  if(localStorage.getItem('kt_last_autobackup')===todayISO()) return;
+  var payload=JSON.stringify(buildBackupJSON());
+  var dow=['mon','tue','wed','thu','fri','sat','sun'][(new Date().getDay()+6)%7];
+  FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
+    .then(function(){ return FS.writeFile({path:'Supero/auto-backup-'+dow+'.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
+    .then(function(){ localStorage.setItem('kt_last_autobackup', todayISO()); })
+    .catch(function(){});
+}
+function runAutoBackupNow(){
+  var FS=_plug('Filesystem');
+  if(!FS){ showToast('Available in the iOS app'); return; }
+  localStorage.removeItem('kt_last_autobackup');
+  _autoBackupIfDue();
+  showToast('Backed up to Files → Supero');
+  setTimeout(render, 400);
+}
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
 // the screenshot helper can drive the sim without UI taps. The key is
