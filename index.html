@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-4"/>
+<meta name="build" content="20260718-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -2286,6 +2286,10 @@ function render() {
   }
   _a11yPass();
   _scheduleNativeSync();
+  // The Apple Health sheet lives outside #screen — refresh its rows so
+  // toggle pills update in place (toggles end with render()).
+  var _hs=document.getElementById('healthSheetList');
+  if(_hs) _hs.innerHTML=_buildHealthRows();
   paintRunner();
 }
 
@@ -8492,35 +8496,6 @@ function closePrivacy(){
   document.body.style.overflow='';
 }
 function renderSettings() {
-  var themeList=[
-    {id:'dark',   name:'Dark',   textColor:'#fff',   bg:'#0b0b0d',card:'#16161a',accent:'#c8ff00'},
-    {id:'light',  name:'Light',  textColor:'#111',   bg:'#f0f0f0',card:'#fff',   accent:'#84cc00'},
-    {id:'ocean',  name:'Ocean',  textColor:'#e0f2fe',bg:'#060f1a',card:'#0e2438',accent:'#00d4ff'},
-    {id:'sunset', name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',accent:'#ff9f0a'},
-  ];
-  var isAuto=currentTheme==='auto';
-  var autoSwatch='<div class="theme-swatch'+(isAuto?' active':'')+'" onclick="setAutoTheme()" title="Auto" '+
-    'style="background:linear-gradient(135deg,#0b0b0d 50%,#f0f0f0 50%);border-color:'+(isAuto?'#c8ff00':'transparent')+';">'+
-    '<div style="font-size:13px;font-weight:600;color:#ccc;">Auto</div>'+
-    '<div style="font-size:11px;color:#ccc8;margin-top:2px;">'+(isAuto?'✓ Active':'Follows phone')+'</div>'+
-    '<div class="theme-dots" style="margin-top:8px;">'+
-      '<div class="theme-dot" style="background:#c8ff00"></div>'+
-      '<div class="theme-dot" style="background:#fff2;"></div>'+
-    '</div>'+
-  '</div>';
-  var swatches=autoSwatch+themeList.map(function(t){
-    var isActive=currentTheme===t.id;
-    return '<div class="theme-swatch'+(isActive?' active':'')+'" onclick="applyTheme(\''+t.id+'\')" title="'+t.name+'" '+
-      'style="background:'+t.bg+';border-color:'+(isActive?t.accent:'transparent')+';">'+
-      '<div style="font-size:13px;font-weight:600;color:'+t.textColor+';">'+t.name+'</div>'+
-      '<div style="font-size:11px;color:'+t.textColor+'80;margin-top:2px;">'+(isActive?'✓ Active':'Tap to apply')+'</div>'+
-      '<div class="theme-dots" style="margin-top:8px;">'+
-        '<div class="theme-dot" style="background:'+t.accent+'"></div>'+
-        '<div class="theme-dot" style="background:'+t.card+'"></div>'+
-      '</div>'+
-    '</div>';
-  }).join('');
-
   var apiKey=getApiKey();
   var maskedKey=apiKey?apiKey.slice(0,8)+'••••••••••••••••':'';
   var wd4=getWkData();
@@ -8667,59 +8642,6 @@ function renderSettings() {
       return progGroup+workoutGroup;
     })()+
 
-    (isNativeIOS()?
-    '<div class="settings-group">'+
-    '<div class="settings-group-hd">Apple Health</div>'+
-    '<div class="settings-row" onclick="importFromHealth()">'+
-      '<div class="settings-row-ic" style="background:#2a0d14;">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-          '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'+
-        '</svg>'+
-      '</div>'+
-      '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull runs and rides from your watch</div></div>'+
-      '<span class="settings-row-chev">›</span>'+
-    '</div>'+
-    (localStorage.getItem('kt_hk_last_sync')?
-      '<div class="settings-row" onclick="toggleAutoLogRuns()">'+
-        '<div class="settings-row-ic" style="background:#132a1a;">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-            '<polyline points="20 6 9 17 4 12"/>'+
-          '</svg>'+
-        '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Auto-log Watch workouts</div><div class="settings-row-sub">'+(localStorage.getItem('kt_autolog_runs')==='1'?'New runs & rides log when you open Supero':'Off — confirm each workout with a tap')+'</div></div>'+
-        '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_autolog_runs')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_autolog_runs')==='1'?'On':'Off')+'</span>'+
-      '</div>' : '')+
-    (localStorage.getItem('kt_hk_last_sync')?
-      '<div class="settings-row" onclick="toggleBgSync()">'+
-        '<div class="settings-row-ic" style="background:#1a132a;">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-            '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>'+
-          '</svg>'+
-        '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Background Watch sync</div><div class="settings-row-sub">'+(localStorage.getItem('kt_bg_sync')==='1'?'Workouts sync even when Supero is closed':'Off — workouts sync when you open Supero')+'</div></div>'+
-        '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_bg_sync')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_bg_sync')==='1'?'On':'Off')+'</span>'+
-      '</div>' : '')+
-    '<div class="settings-row" onclick="toggleHealthWrite()">'+
-      '<div class="settings-row-ic" style="background:#2a0d14;">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-          '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/>'+
-        '</svg>'+
-      '</div>'+
-      '<div class="settings-row-body"><div class="settings-row-title">Save lifts to Apple Health</div><div class="settings-row-sub">'+(localStorage.getItem('kt_health_write')==='1'?'Finished sessions count toward your rings':'Off — Supero never writes to Health')+'</div></div>'+
-      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_health_write')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_health_write')==='1'?'On':'Off')+'</span>'+
-    '</div>'+
-    ((lsGet('kt_hk_imported')||[]).length?
-      '<div class="settings-row" onclick="resetHealthImport()">'+
-        '<div class="settings-row-ic" style="background:var(--card2);">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-            '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>'+
-          '</svg>'+
-        '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Reset Apple Health import</div><div class="settings-row-sub">Clear sync state and unedited imports</div></div>'+
-        '<span class="settings-row-chev">›</span>'+
-      '</div>' : '')+
-    '</div>' : '')+
-
     '<div class="settings-group">'+
     '<div class="settings-group-hd">AI Coach</div>'+
     '<div style="padding:16px 18px;">'+
@@ -8736,13 +8658,6 @@ function renderSettings() {
     '</div>'+
 
     '<div class="settings-group">'+
-    '<div class="settings-group-hd">Appearance</div>'+
-    '<div style="padding:2px 18px 18px;">'+
-      '<div class="theme-grid" style="margin-top:4px;">'+swatches+'</div>'+
-    '</div>'+
-    '</div>'+
-
-    '<div class="settings-group">'+
     '<div class="settings-group-hd">Data</div>'+
     '<div class="settings-row" onclick="exportData()">'+
       '<div class="settings-row-ic" style="background:#0d1e2e;">'+
@@ -8753,6 +8668,16 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Export session log</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    (isNativeIOS()?
+      '<div class="settings-row" onclick="openHealthSettings()">'+
+        '<div class="settings-row-ic" style="background:#2a0d14;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Apple Health</div><div class="settings-row-sub">'+(localStorage.getItem('kt_hk_last_sync')?'Import, auto-log, sync & save lifts':'Connect to import runs and rides')+'</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>' : '')+
     (isNativeIOS()?
       '<div class="settings-row" onclick="runAutoBackupNow()">'+
         '<div class="settings-row-ic" style="background:#0d2233;">'+
@@ -8840,6 +8765,80 @@ function saveApiKeyFromSettings(){
 // Same confirmation sheet as the Coach tab — one accidental tap must not
 // disconnect the Coach.
 function clearApiKeyFromSettings(){ clearApiKey(); }
+
+// ── Apple Health sheet (Settings → Data → Apple Health) ──────────────────────
+function _buildHealthRows(){
+  return '<div class="settings-row" onclick="importFromHealth()" style="border-top:none;">'+
+    '<div class="settings-row-ic" style="background:#2a0d14;">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+        '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull runs and rides from your watch</div></div>'+
+    '<span class="settings-row-chev">›</span>'+
+  '</div>'+
+  (localStorage.getItem('kt_hk_last_sync')?
+    '<div class="settings-row" onclick="toggleAutoLogRuns()">'+
+      '<div class="settings-row-ic" style="background:#132a1a;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<polyline points="20 6 9 17 4 12"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Auto-log Watch workouts</div><div class="settings-row-sub">'+(localStorage.getItem('kt_autolog_runs')==='1'?'New runs & rides log when you open Supero':'Off — confirm each workout with a tap')+'</div></div>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_autolog_runs')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_autolog_runs')==='1'?'On':'Off')+'</span>'+
+    '</div>' : '')+
+  (localStorage.getItem('kt_hk_last_sync')?
+    '<div class="settings-row" onclick="toggleBgSync()">'+
+      '<div class="settings-row-ic" style="background:#1a132a;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Background Watch sync</div><div class="settings-row-sub">'+(localStorage.getItem('kt_bg_sync')==='1'?'Workouts sync even when Supero is closed':'Off — workouts sync when you open Supero')+'</div></div>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_bg_sync')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_bg_sync')==='1'?'On':'Off')+'</span>'+
+    '</div>' : '')+
+  '<div class="settings-row" onclick="toggleHealthWrite()">'+
+    '<div class="settings-row-ic" style="background:#2a0d14;">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+        '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Save lifts to Apple Health</div><div class="settings-row-sub">'+(localStorage.getItem('kt_health_write')==='1'?'Finished sessions count toward your rings':'Off — Supero never writes to Health')+'</div></div>'+
+    '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_health_write')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_health_write')==='1'?'On':'Off')+'</span>'+
+  '</div>'+
+  ((lsGet('kt_hk_imported')||[]).length?
+    '<div class="settings-row" onclick="resetHealthImport()">'+
+      '<div class="settings-row-ic" style="background:var(--card2);">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Reset Apple Health import</div><div class="settings-row-sub">Clear sync state and unedited imports</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>' : '');
+}
+function openHealthSettings(){
+  var existing=document.getElementById('healthSheetOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='healthSheetOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding-bottom:max(env(safe-area-inset-bottom),16px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 6px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Apple Health</div>'+
+      '<button onclick="closeHealthSettings()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">Read and write access is controlled by iOS — revoke any time in Settings → Privacy &amp; Security → Health.</div>'+
+    '<div id="healthSheetList">'+_buildHealthRows()+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeHealthSettings();});
+  _a11yPass();
+}
+function closeHealthSettings(){
+  var el=document.getElementById('healthSheetOverlay');
+  if(el)el.remove();
+}
 
 // ── Exercise Library Modal ────────────────────────────────────────────────────
 function getCustomExercises(){ return lsGet('kt_custom_ex')||[]; }
@@ -9366,9 +9365,9 @@ function runAutoBackupNow(){
       <p class="ed-lede">One product, four tabs. Each one holds a single job.</p>
       <div class="ed-rows">
         <div class="ed-row"><div class="ed-row-num">01</div><div class="ed-row-body"><div class="ed-row-title">Log</div><div class="ed-row-sub">Today's plan and the workout runner — sets, reps, rest, RPE.</div></div></div>
-        <div class="ed-row"><div class="ed-row-num">02</div><div class="ed-row-body"><div class="ed-row-title">Progress</div><div class="ed-row-sub">Streaks, charts, PRs, weekly recaps — the whole story.</div></div></div>
+        <div class="ed-row"><div class="ed-row-num">02</div><div class="ed-row-body"><div class="ed-row-title">Progress</div><div class="ed-row-sub">Streaks, charts, PRs, strength trends — the whole story.</div></div></div>
         <div class="ed-row"><div class="ed-row-num">03</div><div class="ed-row-body"><div class="ed-row-title">Coach</div><div class="ed-row-sub">Claude-powered chat that knows your numbers.</div></div></div>
-        <div class="ed-row"><div class="ed-row-num">04</div><div class="ed-row-body"><div class="ed-row-title">Settings</div><div class="ed-row-sub">API key, themes, intake, export, this page.</div></div></div>
+        <div class="ed-row"><div class="ed-row-num">04</div><div class="ed-row-body"><div class="ed-row-title">Settings</div><div class="ed-row-sub">Programme, Apple Health, backups, API key, this page.</div></div></div>
       </div>
     </div>
     <div class="ed-section">
@@ -9492,6 +9491,18 @@ function runAutoBackupNow(){
             <div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Export session log</div>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="ed-section">
+      <div class="ed-section-hd"><span class="ed-section-num">06</span><h2>On your iPhone</h2></div>
+      <p class="ed-lede">The native app goes beyond the gym — widgets, alerts, and Apple Health working in the background.</p>
+      <div class="ed-rows">
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Home-screen widget</div><div class="ed-row-sub">Today's session, week progress, and streak at a glance — rolls over at midnight and flips to done when you finish.</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Rest timer on your Lock Screen</div><div class="ed-row-sub">The countdown runs as a Live Activity in the Dynamic Island — no need to keep the app open between sets.</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Apple Health, both directions</div><div class="ed-row-sub">Runs and rides from your watch land in your log — one tap, or automatically. Turn on saving and finished lifts count toward your rings.</div><div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Apple Health</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Background sync</div><div class="ed-row-sub">With background sync on, iOS wakes Supero when a workout ends — the widget updates before you even open the app.</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Training-day reminders</div><div class="ed-row-sub">An optional 9:00 nudge on training days. Rest-timer alerts fire even with the phone locked.</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Daily auto-backup</div><div class="ed-row-sub">A backup file is written to the Files app every day, ready to restore if anything ever happens to your phone.</div><div class="ed-row-sub mono" style="margin-top:5px;">Files → On My iPhone → Supero</div></div></div>
       </div>
     </div>
   </div>
