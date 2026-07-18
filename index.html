@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260717-4"/>
+<meta name="build" content="20260718-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1772,7 +1772,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week'];
 function buildBackupJSON() {
@@ -1907,9 +1907,18 @@ function importFromHealth(){
     var runs = (res&&res.runs)||[];
     var seen = new Set(lsGet('kt_hk_imported')||[]);
     var existing = getRuns();
-    var added=0, skippedNoDist=0;
+    var sports = getSportLogs();
+    var added=0, rides=0, skippedNoDist=0;
     runs.forEach(function(r){
       if(!r||!r.uuid||seen.has(r.uuid)) return;
+      if(r.type==='ride'){
+        // Cycling workouts land in the sport log as Cycling entries.
+        if(!r.durationSec||r.durationSec<=0) return;
+        sports.unshift(_healthRideRec(r, rides));
+        seen.add(r.uuid);
+        rides++;
+        return;
+      }
       // Treadmill / indoor runs sometimes have 0 distance — skip rather than
       // import an unloggable entry. User can log those manually.
       if(!r.distanceKm||r.distanceKm<=0){ skippedNoDist++; return; }
@@ -1931,11 +1940,15 @@ function importFromHealth(){
       added++;
     });
     lsSet('kt_runs', existing);
+    if(rides) lsSet('kt_sports', sports);
     lsSet('kt_hk_imported', Array.from(seen));
     localStorage.setItem('kt_hk_last_sync', String(Date.now()));
-    if(added){
+    if(added || rides){
       invalidateCoachCard();
-      showToast(added+' run'+(added>1?'s':'')+' imported');
+      var parts=[];
+      if(added) parts.push(added+' run'+(added>1?'s':''));
+      if(rides) parts.push(rides+' ride'+(rides>1?'s':''));
+      showToast(parts.join(' · ')+' imported');
       render();
     } else if(skippedNoDist){
       showToast('Skipped '+skippedNoDist+' indoor run'+(skippedNoDist>1?'s':'')+' (no distance)');
@@ -1965,32 +1978,60 @@ function resetHealthImport(){
 }
 
 // ── Health quick-log (Run tab) ────────────────────────────────────────────────
-// Silently checks Apple Health for any runs in the last 24 h that haven't been
-// imported yet. Only fires in the native iOS shell and only when Health has been
-// authorized before (kt_hk_last_sync set by a prior batch import or quick-log).
-function checkRecentHealthRun(){
+// Silently checks Apple Health for any runs/rides in the last 24 h that haven't
+// been imported yet. Only fires in the native iOS shell and only when Health has
+// been authorized before (kt_hk_last_sync set by a prior batch import or quick-log).
+function checkRecentHealthRun(sinceOverride){
   if(!isNativeIOS()) return;
   if(_hkPendingDismissed || _hkPendingRun) return;
   if(!localStorage.getItem('kt_hk_last_sync')) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH) return;
-  var since = Date.now() - 24*60*60*1000;
+  var since = (typeof sinceOverride==='number' && sinceOverride>0)
+    ? sinceOverride : Date.now() - 24*60*60*1000;
   TH.fetchRuns({sinceMs: since}).then(function(res){
     var runs = (res&&res.runs)||[];
     var seen = new Set(lsGet('kt_hk_imported')||[]);
     var fresh = runs.filter(function(r){
-      return r && r.uuid && !seen.has(r.uuid) && r.distanceKm > 0;
+      if(!r || !r.uuid || seen.has(r.uuid)) return false;
+      // Rides only need a duration (indoor rides can lack distance);
+      // runs still need distance to be loggable.
+      return r.type==='ride' ? r.durationSec > 0 : r.distanceKm > 0;
     });
     if(!fresh.length) return;
     if(localStorage.getItem('kt_autolog_runs')==='1'){
-      // Auto mode: log every fresh run without the confirmation card. The
-      // entry lands in the run log (editable/deletable there as the undo).
-      var last=null;
-      fresh.forEach(function(r){ last=_logHealthRun(r); });
-      if(last){ showToast('Run logged from Apple Health · '+last.distance+'km'); haptic('light'); render(); }
+      // Auto mode: log every fresh workout without the confirmation card. The
+      // entry lands in the run/sport log (editable/deletable there as the undo).
+      var lastRun=null, rideCount=0;
+      fresh.forEach(function(r){
+        if(r.type==='ride'){ _logHealthRide(r); rideCount++; }
+        else lastRun=_logHealthRun(r);
+      });
+      if(lastRun) showToast('Run logged from Apple Health · '+lastRun.distance+'km');
+      else if(rideCount) showToast('Ride'+(rideCount>1?'s':'')+' logged from Apple Health');
+      haptic('light'); render();
     } else {
       _hkPendingRun = fresh[0]; render();
     }
+  }).catch(function(){});
+}
+// Drains workouts queued by background delivery (harvested while the app was
+// closed). The queue is only a signal — the real entries come from a normal
+// enriched fetch reaching back to the oldest queued workout.
+function drainPendingHealth(){
+  if(!isNativeIOS()) return;
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(!TH || !TH.getPendingWorkouts) return;
+  TH.getPendingWorkouts().then(function(res){
+    var pend = (res&&res.workouts)||[];
+    if(!pend.length) return;
+    var oldest = Date.now();
+    pend.forEach(function(w){
+      var t = new Date(w.startDate).getTime();
+      if(t && t < oldest) oldest = t;
+    });
+    TH.clearPendingWorkouts().catch(function(){});
+    checkRecentHealthRun(oldest - 60*1000);
   }).catch(function(){});
 }
 // Shared by the one-tap card and auto-log: writes the run + dedup marker.
@@ -2013,44 +2054,136 @@ function _logHealthRun(r){
   invalidateCoachCard();
   return rec;
 }
+// Builds a kt_sports Cycling record from a Health ride. idOffset keeps ids
+// unique when several rides are mapped in one batch-import tick.
+function _healthRideRec(r, idOffset){
+  var d = new Date(r.startDate);
+  var localISO = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  var data = {};
+  if(r.distanceKm>0) data.distance = Math.round(r.distanceKm*100)/100;
+  if(r.distanceKm>0 && r.durationSec>0) data.avgSpeed = Math.round(r.distanceKm/(r.durationSec/3600)*10)/10;
+  if(r.avgHr) data.avgHR = r.avgHr;
+  return {id: Date.now()+(idOffset||0), date: localISO, type:'Cycling',
+    duration: Math.round((r.durationSec||0)/60), data: data, notes:'From Apple Health'};
+}
+// Shared by the one-tap card and auto-log: writes the ride + dedup marker.
+function _logHealthRide(r){
+  var rec = _healthRideRec(r, 0);
+  var logs = getSportLogs(); logs.unshift(rec); lsSet('kt_sports', logs);
+  var seen = lsGet('kt_hk_imported')||[]; seen.push(r.uuid); lsSet('kt_hk_imported', seen);
+  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  invalidateCoachCard();
+  return rec;
+}
+// ── Health write (lifting sessions → Apple Health) ───────────────────────────
+// Opt-in via Settings (kt_health_write). Only live, same-day sessions are
+// written — backdated logs would create misleading Health entries.
+function _saveLiftToHealth(sess, exs, dateISO){
+  if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
+  if(dateISO !== todayISO()) return;
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(!TH || !TH.saveLift) return;
+  var end = Date.now();
+  var start = (sess && sess.startedAt) || 0;
+  var dur = end - start;
+  // Implausible window (draft restored across days, phone clock, etc.) —
+  // estimate from volume: ~3 min per completed set incl. rest, min 15 min.
+  if(!start || dur < 5*60*1000 || dur > 5*60*60*1000){
+    var totalSets = exs.reduce(function(a,ex){ return a+(ex.sets||0); },0);
+    dur = Math.max(15, totalSets*3)*60*1000;
+    start = end - dur;
+  }
+  Promise.resolve(TH.saveLift({startMs:start, endMs:end})).catch(function(){});
+}
+function toggleHealthWrite(){
+  if(localStorage.getItem('kt_health_write')==='1'){
+    localStorage.setItem('kt_health_write','0');
+    render();
+    return;
+  }
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(!TH || !TH.requestWriteAuth){ showToast('Update Supero from TestFlight first'); return; }
+  TH.requestWriteAuth().then(function(){
+    localStorage.setItem('kt_health_write','1');
+    showToast('Finished lifts will be saved to Apple Health');
+    render();
+  }).catch(function(){ showToast('Apple Health access failed'); });
+}
+// ── Background Watch sync (Level 2) ──────────────────────────────────────────
+// HealthKit background delivery wakes the app when a workout lands; the native
+// side queues it in the App Group (widget flips to done) and the app drains
+// the queue on next open. Toggle mirrors the native observer flag.
+function toggleBgSync(){
+  var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
+  if(localStorage.getItem('kt_bg_sync')==='1'){
+    localStorage.setItem('kt_bg_sync','0');
+    if(TH && TH.setBackgroundSync) Promise.resolve(TH.setBackgroundSync({enabled:false})).catch(function(){});
+    render();
+    return;
+  }
+  if(!TH || !TH.setBackgroundSync){ showToast('Update Supero from TestFlight first'); return; }
+  TH.setBackgroundSync({enabled:true}).then(function(){
+    localStorage.setItem('kt_bg_sync','1');
+    showToast('Watch workouts now sync in the background');
+    render();
+  }).catch(function(){ showToast('Could not enable background sync'); });
+}
 function logPendingHealthRun(){
   var r = _hkPendingRun; if(!r) return;
-  var rec = _logHealthRun(r);
   _hkPendingRun = null;
-  runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  if(r.type==='ride'){
+    var srec = _logHealthRide(r);
+    sportLogConfirmed = {id: srec.id, type:'Cycling',
+      label: 'Cycling'+(srec.duration?' · '+srec.duration+' min':'')};
+    showToast('Ride logged from Apple Health');
+  } else {
+    var rec = _logHealthRun(r);
+    runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  }
   render();
 }
 function toggleAutoLogRuns(){
   var on = localStorage.getItem('kt_autolog_runs')==='1';
   localStorage.setItem('kt_autolog_runs', on?'0':'1');
-  if(!on){ showToast('Auto-log on — checking for new runs'); setTimeout(checkRecentHealthRun, 400); }
+  if(!on){ showToast('Auto-log on — checking for new workouts'); setTimeout(checkRecentHealthRun, 400); }
   render();
 }
 function dismissPendingHealthRun(){ _hkPendingDismissed=true; _hkPendingRun=null; render(); }
 // Health card for tabs outside the run editorial (sport-primary second tab):
-// simpler gating — pending run, not dismissed, nothing logged today.
+// simpler gating — pending workout, not dismissed, nothing of its kind logged today.
 function _healthCardSlot(){
   if(!_hkPendingRun || _hkPendingDismissed) return '';
   var t=todayISO();
-  if(getRuns().some(function(r){ return r.date===t; })) return '';
+  if(_hkPendingRun.type==='ride'){
+    if(getSportLogs().some(function(s){ return s.date===t && s.type==='Cycling'; })) return '';
+  } else {
+    if(getRuns().some(function(r){ return r.date===t; })) return '';
+  }
   return renderHealthQuickLog();
 }
 function renderHealthQuickLog(){
   var r = _hkPendingRun;
+  var isRide = r.type==='ride';
   var distStr = (Math.round(r.distanceKm*100)/100)+'km';
   var timeStr = _secsToMMSS(r.durationSec);
-  var pace = calcPace(r.distanceKm, timeStr);
   var d = new Date(r.startDate);
   var timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  var meta = pace+'/km'+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+  var meta;
+  if(isRide){
+    var kmh = (r.distanceKm>0 && r.durationSec>0) ? Math.round(r.distanceKm/(r.durationSec/3600)*10)/10 : 0;
+    meta = (kmh?kmh+' km/h':'Ride')+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+  } else {
+    meta = calcPace(r.distanceKm, timeStr)+'/km'+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+  }
+  var headline = r.distanceKm>0 ? distStr+' · '+timeStr : timeStr;
   return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
       '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
       '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>'+
-    '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(distStr)+' · '+_esc(timeStr)+'</div>'+
+    '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(headline)+'</div>'+
     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
-    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this run →</button>'+
+    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this '+(isRide?'ride':'run')+' →</button>'+
   '</div>';
 }
 
@@ -3568,7 +3701,7 @@ function renderRunSegment(){
   if(isNativeIOS() && !localStorage.getItem('kt_hk_last_sync') && !_showHealthCard){
     healthNudge = '<div style="display:flex;align-items:center;justify-content:space-between;'+
       'padding:12px 16px;border-radius:14px;border:1px solid var(--border);margin-bottom:18px;">'+
-      '<div style="font-size:13px;color:var(--muted);">Connect Apple Health to auto-detect runs</div>'+
+      '<div style="font-size:13px;color:var(--muted);">Connect Apple Health to auto-detect workouts</div>'+
       '<button onclick="importFromHealth()" style="background:none;border:none;color:var(--accent);'+
         'font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;-webkit-tap-highlight-color:transparent;">Connect →</button>'+
     '</div>';
@@ -3601,7 +3734,7 @@ function openDeckRunner(overrideType){
     }
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
-  runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs};
+  runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now()};
   runnerExIdx = 0;
   runnerEngaged = false;
   runnerResting = false;
@@ -3972,6 +4105,7 @@ function runnerFinishSession(){
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs});
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
+  _saveLiftToHealth(runnerSession, exsOut, _sessionDate);
   haptic('success');
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
@@ -8602,7 +8736,7 @@ function renderSettings() {
             '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'+
           '</svg>'+
         '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull running workouts from your watch</div></div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Import from Apple Health</div><div class="settings-row-sub">Pull runs and rides from your watch</div></div>'+
         '<span class="settings-row-chev">›</span>'+
       '</div>' : '')+
     (isNativeIOS()?
@@ -8622,8 +8756,28 @@ function renderSettings() {
             '<polyline points="20 6 9 17 4 12"/>'+
           '</svg>'+
         '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Auto-log Watch runs</div><div class="settings-row-sub">'+(localStorage.getItem('kt_autolog_runs')==='1'?'New Health runs log when you open Supero':'Off — confirm each run with a tap')+'</div></div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Auto-log Watch workouts</div><div class="settings-row-sub">'+(localStorage.getItem('kt_autolog_runs')==='1'?'New runs & rides log when you open Supero':'Off — confirm each workout with a tap')+'</div></div>'+
         '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_autolog_runs')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_autolog_runs')==='1'?'On':'Off')+'</span>'+
+      '</div>' : '')+
+    ((isNativeIOS() && localStorage.getItem('kt_hk_last_sync'))?
+      '<div class="settings-row" onclick="toggleBgSync()">'+
+        '<div class="settings-row-ic" style="background:#1a132a;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Background Watch sync</div><div class="settings-row-sub">'+(localStorage.getItem('kt_bg_sync')==='1'?'Workouts sync even when Supero is closed':'Off — workouts sync when you open Supero')+'</div></div>'+
+        '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_bg_sync')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_bg_sync')==='1'?'On':'Off')+'</span>'+
+      '</div>' : '')+
+    (isNativeIOS()?
+      '<div class="settings-row" onclick="toggleHealthWrite()">'+
+        '<div class="settings-row-ic" style="background:#2a0d14;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Save lifts to Apple Health</div><div class="settings-row-sub">'+(localStorage.getItem('kt_health_write')==='1'?'Finished sessions count toward your rings':'Off — Supero never writes to Health')+'</div></div>'+
+        '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_health_write')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_health_write')==='1'?'On':'Off')+'</span>'+
       '</div>' : '')+
     ((isNativeIOS() && (lsGet('kt_hk_imported')||[]).length)?
       '<div class="settings-row" onclick="resetHealthImport()">'+
@@ -8971,6 +9125,7 @@ var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
 render();
 // Auto-log any new Apple Watch runs on open (opt-in, Settings → Data).
+setTimeout(drainPendingHealth, 900);
 if(localStorage.getItem('kt_autolog_runs')==='1') setTimeout(checkRecentHealthRun, 1200);
 setTimeout(checkForLiveUpdate, 2000);
 setTimeout(checkPendingShare, 2500);
@@ -8985,6 +9140,7 @@ document.addEventListener('visibilitychange', function(){
     var s=document.getElementById('screen');
     if(s && !s.innerHTML.trim()) { window.location.reload(); return; }
     setTimeout(checkPendingShare, 600);
+    setTimeout(drainPendingHealth, 700);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab==='run')) setTimeout(checkRecentHealthRun, 900);
   }
 });
@@ -9367,7 +9523,7 @@ function runAutoBackupNow(){
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Apple Health</h2></div>
-      <p class="ed-body">Opt-in. If you grant permission, Supero reads run workouts only — date, distance, duration, average HR — and stores them locally alongside your other data. Imported runs count as training data like any other run, so the Coach includes recent ones in what it sends to Anthropic when you chat. Supero never writes to Apple Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
+      <p class="ed-body">Opt-in. If you grant permission, Supero reads your runs and rides only — date, distance, duration, average HR — and stores them locally alongside your other data. Background Watch sync (optional) lets iOS wake Supero briefly so new workouts are ready when you open the app; everything stays on-device. Imported workouts count as training data like any other, so the Coach includes recent ones in what it sends to Anthropic when you chat. Writing goes the other way only if you turn on "Save lifts to Apple Health" — then finished lifting sessions are added to Health as strength workouts; otherwise Supero never writes to Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">05</span><h2>Analytics</h2></div>

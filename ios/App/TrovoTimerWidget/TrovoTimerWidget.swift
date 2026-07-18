@@ -118,7 +118,35 @@ func loadSummary() -> WidgetSummary? {
     guard let json = UserDefaults(suiteName: "group.app.kt.trainer")?
             .string(forKey: "superoWidgetSummary"),
           let data = json.data(using: .utf8) else { return nil }
-    return try? JSONDecoder().decode(WidgetSummary.self, from: data)
+    let summary = try? JSONDecoder().decode(WidgetSummary.self, from: data)
+    return summary.map(applyPendingWorkouts)
+}
+
+// Workouts harvested by background delivery but not yet drained by the app
+// live in the App Group as pendingHealthWorkouts. Overlay them so a cardio
+// day flips to "done" right after the watch workout ends, even if the app
+// hasn't been opened since.
+private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
+    guard let data = UserDefaults(suiteName: "group.app.kt.trainer")?
+            .data(forKey: "pendingHealthWorkouts"),
+          let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
+          !arr.isEmpty else { return summary }
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime]
+    let dayFmt = DateFormatter()
+    dayFmt.dateFormat = "yyyy-MM-dd"
+    let pendingDays = Set(arr.compactMap { entry -> String? in
+        guard let s = entry["startDate"] as? String, let d = iso.date(from: s) else { return nil }
+        return dayFmt.string(from: d)
+    })
+    guard !pendingDays.isEmpty else { return summary }
+    let days = summary.days.map { d -> SummaryDay in
+        // Only cardio days (not rest, no lifts planned) get auto-completed.
+        guard !d.done, !d.isRest, d.lifts == 0, pendingDays.contains(d.date) else { return d }
+        return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
+    }
+    return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
+                         streak: summary.streak, days: days)
 }
 
 struct TodayEntry: TimelineEntry {

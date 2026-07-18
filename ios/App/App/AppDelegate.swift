@@ -16,9 +16,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         set { _restActivityStorage = newValue }
     }
 
+    // Kept alive for the app's lifetime so its HKObserverQuery stays registered.
+    private let healthObserver = HealthKitReader()
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         NotificationCenter.default.addObserver(self, selector: #selector(handleTimerStart(_:)), name: .trovoTimerStart, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleTimerEnd),      name: .trovoTimerEnd,   object: nil)
+        // HealthKit background delivery: iOS relaunches the app after a new
+        // workout and expects the observer to be set up during launch.
+        if HealthKitReader.backgroundSyncEnabled {
+            healthObserver.startBackgroundObserver()
+        }
         return true
     }
 

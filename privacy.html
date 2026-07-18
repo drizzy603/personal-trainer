@@ -219,9 +219,11 @@
 
   <div class="section">
     <h2>4. Apple Health (iOS app only)</h2>
-    <p>On the iOS app, you may optionally allow Supero to read your running workouts from Apple Health to save you re-entering them. This is opt-in: you grant permission through iOS's standard Health permission prompt the first time you tap "Import from Apple Health" in Settings, and you can revoke it at any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
-    <p>When you import, Supero reads workout date, duration, distance, and average heart rate for runs only — directly from Apple Health on your device. The data is then stored alongside your other Supero runs in local storage. It is never sent to us, and Supero never writes data back to Apple Health.</p>
-    <p>Imported runs become part of your training data, just like runs you log by hand. This means that if you use the AI Coach, your recent runs — including imported ones and their average heart rate — are included in the context sent directly from your device to Anthropic, as described in Section 3. If you never use the Coach, imported Health data stays on your device.</p>
+    <p>On the iOS app, you may optionally allow Supero to read your running and cycling workouts from Apple Health to save you re-entering them. This is opt-in: you grant permission through iOS's standard Health permission prompt the first time you tap "Import from Apple Health" in Settings, and you can revoke it at any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
+    <p>When you import, Supero reads workout date, duration, distance, and average heart rate for runs and rides only — directly from Apple Health on your device. The data is then stored alongside your other Supero activity in local storage. It is never sent to us.</p>
+    <p>If you turn on "Background Watch sync" in Settings, iOS can wake Supero briefly when a new run or ride is saved to Apple Health so the workout is ready in your log the next time you open the app. This processing happens entirely on your device.</p>
+    <p>Separately, you may turn on "Save lifts to Apple Health" in Settings. When enabled, Supero writes the lifting sessions you finish in the app to Apple Health as strength-training workouts (start time, end time, and workout type only), so they count toward your activity rings. This is off by default, uses its own iOS Health permission prompt, and Supero only ever writes workouts you logged yourself — nothing else is written to Health.</p>
+    <p>Imported workouts become part of your training data, just like activity you log by hand. This means that if you use the AI Coach, your recent runs and rides — including imported ones and their average heart rate — are included in the context sent directly from your device to Anthropic, as described in Section 3. If you never use the Coach, imported Health data stays on your device.</p>
   </div>
 
   <div class="section">

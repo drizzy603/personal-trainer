@@ -162,7 +162,7 @@ Run top-to-bottom once Apple Developer verification clears.
   - Privacy Policy URL: `https://drizzy603.github.io/personal-trainer/privacy.html`
 - Pricing and Availability: Free, all territories
 - App Privacy: answer **No** to "Do you or your third-party partners collect data from this app?" → label reads **Data Not Collected**. (ASC shows no data-type checkboxes on the "No" path — there is nothing to tick.)
-  - Rationale to keep on file: all data is on-device; the only transmission is the user sending their own training data (including imported Apple Health runs) to Anthropic under their **own** API key and account — not collection by us or our partners. Disclosed in privacy policy sections 2–4 and 6.
+  - Rationale to keep on file: all data is on-device; the only transmission is the user sending their own training data (including imported Apple Health runs/rides) to Anthropic under their **own** API key and account — not collection by us or our partners. Disclosed in privacy policy sections 2–4 and 6. Health writes (opt-in "Save lifts to Apple Health", added in 1.2) go device → HealthKit only and are likewise not collection; background delivery processes workouts on-device.
   - If App Review pushes back on Health data + the AI Coach, the fallback is to redo the questionnaire as: Health & Fitness → collected → App Functionality only → Not linked to identity → No tracking.
 - Age Rating: 4+ (no objectionable content, no tracking, no ads, no UGC)
 - Version 1.0 → paste from sections above:

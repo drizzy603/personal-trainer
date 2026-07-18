@@ -40,9 +40,9 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Supero imports your running workouts so you can see them alongside your training log. Data stays on your device.</string>
+	<string>Supero imports your running and cycling workouts so they appear alongside your training log. Data stays on your device.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Supero never writes to Apple Health. It only reads your running workouts to display them in your training log.</string>
+	<string>If you turn on saving in Settings, Supero adds your finished lifting sessions to Apple Health so they count toward your activity. Supero only writes workouts you logged yourself.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIFileSharingEnabled</key>
