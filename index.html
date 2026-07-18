@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-6"/>
+<meta name="build" content="20260718-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -5543,54 +5543,50 @@ function renderSportEditorial(){
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
 
-  // Smart suggestions — shown as compact inline pills when available.
-  var sugg = getSmartSuggestions();
-  var suggHTML = '';
-  if(sugg.length){
-    suggHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">'+
-      sugg.map(function(it){
-        var sel = it.sport.id === logSportType;
-        return '<button onclick="pickSport(\''+_esc(it.sport.id)+'\')" style="'+
-          'display:inline-flex;align-items:center;gap:5px;padding:5px 10px 5px 7px;'+
-          'border-radius:20px;border:1.5px solid '+(sel?it.sport.color:'var(--border)')+';'+
-          'background:'+(sel?it.sport.color+'22':'var(--card2)')+';color:var(--text);'+
-          'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
-          '-webkit-tap-highlight-color:transparent;">'+
-          '<span>'+_esc(it.sport.icon)+'</span>'+
-          '<span>'+_esc(it.sport.id)+'</span>'+
-          '<span style="color:var(--muted);font-weight:500;margin-left:1px;">'+_esc(it.context)+'</span>'+
-        '</button>';
-      }).join('')+
+  // Activity picker — every activity visible at once, structured into
+  // labelled category rows instead of one endless horizontal strip.
+  var sMapPick = {}; SPORTS.forEach(function(s){ sMapPick[s.id] = s; });
+  function _sportPickChip(s, context){
+    var sel = s.id === logSportType;
+    return '<button onclick="pickSport(\''+_esc(s.id)+'\')" style="'+
+      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 6px;'+
+      'border-radius:20px;border:1.5px solid '+(sel?s.color:'var(--border)')+';'+
+      'background:'+(sel?s.color+'22':'var(--card2)')+';color:'+(sel?'var(--text)':'var(--lite)')+';'+
+      'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
+      '-webkit-tap-highlight-color:transparent;">'+
+      sportChip(s, 20)+
+      '<span>'+_esc(s.id)+'</span>'+
+      (context?'<span style="color:var(--muted);font-weight:500;">'+_esc(context)+'</span>':'')+
+    '</button>';
+  }
+  function _pickerRow(label, chips){
+    if(!chips) return '';
+    return '<div style="margin-bottom:11px;">'+
+      '<div class="kt-adhoc-lbl" style="margin-bottom:7px;">'+label+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px;">'+chips+'</div>'+
     '</div>';
   }
-
-  // Sport strip — recently logged types float to the front, then the full list.
-  var seenTypes = {}, orderedSports = [];
-  logs.forEach(function(l){
-    if(!seenTypes[l.type]){
-      seenTypes[l.type] = true;
-      var sp = SPORTS.find(function(x){return x.id===l.type;});
-      if(sp) orderedSports.push(sp);
-    }
-  });
-  SPORTS.forEach(function(sp){ if(!seenTypes[sp.id]) orderedSports.push(sp); });
-
-  var strip = '<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:14px;'+
-    '-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:2px;">'+
-    orderedSports.map(function(s){
-      var sel = s.id === logSportType;
-      return '<button onclick="pickSport(\''+_esc(s.id)+'\')" style="'+
-        'flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;'+
-        'padding:10px 13px;border-radius:16px;'+
-        'border:2px solid '+(sel?s.color:'var(--border)')+';'+
-        'background:'+(sel?s.color+'22':'var(--card2)')+';'+
-        'cursor:pointer;min-width:62px;transition:border-color .15s,background .15s;'+
-        '-webkit-tap-highlight-color:transparent;">'+
-        '<span style="font-size:20px;line-height:1;">'+_esc(s.icon)+'</span>'+
-        '<span style="font-size:10px;font-weight:800;letter-spacing:.03em;white-space:nowrap;'+
-          'color:'+(sel?s.color:'var(--muted)')+';">'+_esc(s.id)+'</span>'+
-      '</button>';
+  // FOR YOU — smart suggestions with their context ("rest day", "6 days"…).
+  var sugg = getSmartSuggestions();
+  var forYou = sugg.map(function(it){ return _sportPickChip(it.sport, it.context); }).join('');
+  var SPORT_CATS = [
+    {label:'CARDIO',   ids:['Cycling','Swimming','Rowing','Hiking']},
+    {label:'SPORTS',   ids:['Pickleball','Tennis','Basketball','Soccer','Golf']},
+    {label:'TRAINING', ids:['CrossFit','Boxing','Climbing','Yoga','Other']}
+  ];
+  var _catCovered = {};
+  SPORT_CATS.forEach(function(c){ c.ids.forEach(function(id){ _catCovered[id]=true; }); });
+  var leftovers = SPORTS.filter(function(s){ return !_catCovered[s.id]; })
+    .map(function(s){ return _sportPickChip(s); }).join('');
+  var strip = '<div style="margin-bottom:8px;">'+
+    _pickerRow('FOR YOU', forYou)+
+    SPORT_CATS.map(function(cat){
+      return _pickerRow(cat.label, cat.ids.map(function(id){
+        var s = sMapPick[id];
+        return s ? _sportPickChip(s) : '';
+      }).join(''));
     }).join('')+
+    _pickerRow('MORE', leftovers)+
   '</div>';
 
   // Log card — morphs to selected sport colour.
@@ -5665,7 +5661,7 @@ function renderSportEditorial(){
     '</div>';
   }
 
-  return meta + renderSportSavedStrip() + suggHTML + strip + card + recentHTML;
+  return meta + renderSportSavedStrip() + strip + card + recentHTML;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
