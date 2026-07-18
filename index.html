@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-9"/>
+<meta name="build" content="20260718-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1047,50 +1047,50 @@ var SESS = {
 // CrossFit / Pickleball / Swimming / Tennis / Basketball so the primary-sport-day
 // renderSportSection path (forcedSportId) keeps its richer per-sport form.
 var SPORTS = [
-  {id:'Cycling',    icon:'CY', color:'#f97316', distUnit:'km', fields:[
+  {id:'Cycling', emoji:'🚴',    icon:'CY', color:'#f97316', distUnit:'km', fields:[
     {id:'distance',  label:'Distance',   unit:'km',  type:'number', step:'.1', ph:'25'},
     {id:'avgSpeed',  label:'Avg speed',  unit:'km/h',type:'number', step:'.1', ph:'25'},
     {id:'avgHR',     label:'Avg HR',     unit:'bpm', type:'number', ph:'145'},
     {id:'elevation', label:'Elevation',  unit:'m',   type:'number', ph:'300'},
     {id:'bikeType',  label:'Type',       type:'select', opts:['Road','Indoor','Mountain','Gravel']}
   ]},
-  {id:'CrossFit',   icon:'CF', color:'#ef4444', fields:[
+  {id:'CrossFit', emoji:'🏋️',   icon:'CF', color:'#ef4444', fields:[
     {id:'wodName',   label:'WOD name',        type:'text',   ph:'Fran'},
     {id:'score',     label:'Score / time',    type:'text',   ph:'5:23'},
     {id:'level',     label:'Level',           type:'select', opts:['Rx','Scaled','Masters']},
     {id:'rounds',    label:'Rounds done',     type:'number', ph:''}
   ]},
-  {id:'Pickleball', icon:'PB', color:'#84cc16', fields:[
+  {id:'Pickleball', emoji:'🏓', icon:'PB', color:'#84cc16', fields:[
     {id:'setsWon',   label:'Sets won',  type:'number', ph:'3'},
     {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
     {id:'partner',   label:'Partner',   type:'text',   ph:'Optional'},
     {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
   ]},
-  {id:'Swimming',   icon:'SW', color:'#06b6d4', distUnit:'m', fields:[
+  {id:'Swimming', emoji:'🏊',   icon:'SW', color:'#06b6d4', distUnit:'m', fields:[
     {id:'distance',  label:'Distance',  unit:'m',   type:'number', ph:'1000'},
     {id:'laps',      label:'Laps',      type:'number', ph:'20'},
     {id:'stroke',    label:'Stroke',    type:'select', opts:['Freestyle','Breaststroke','Backstroke','Butterfly','Mixed']},
     {id:'avgHR',     label:'Avg HR',    unit:'bpm', type:'number', ph:'140'}
   ]},
-  {id:'Tennis',     icon:'TN', color:'#facc15', fields:[
+  {id:'Tennis', emoji:'🎾',     icon:'TN', color:'#facc15', fields:[
     {id:'setsWon',   label:'Sets won',  type:'number', ph:'2'},
     {id:'setsLost',  label:'Sets lost', type:'number', ph:'1'},
     {id:'opponent',  label:'Opponent',  type:'text',   ph:'Optional'}
   ]},
-  {id:'Basketball', icon:'BB', color:'#fb923c', fields:[
+  {id:'Basketball', emoji:'🏀', icon:'BB', color:'#fb923c', fields:[
     {id:'result',   label:'Result',   type:'select', opts:['Win','Loss','Draw','Practice']},
     {id:'points',   label:'Pts scored',type:'number', ph:'12'},
     {id:'opponent', label:'Opponent', type:'text',   ph:'Optional'},
     {id:'gameType', label:'Format',   type:'select', opts:['5v5','3v3','2v2','1v1','Practice']}
   ]},
-  {id:'Yoga',       icon:'YG', color:'#a78bfa'},
-  {id:'Hiking',     icon:'HK', color:'#65a30d', distUnit:'km'},
-  {id:'Climbing',   icon:'CL', color:'#94a3b8'},
-  {id:'Soccer',     icon:'SC', color:'#22c55e'},
-  {id:'Rowing',     icon:'RW', color:'#14b8a6', distUnit:'m'},
-  {id:'Boxing',     icon:'BX', color:'#f43f5e'},
-  {id:'Golf',       icon:'GF', color:'#16a34a'},
-  {id:'Other',      icon:'+',  color:'#d4d4d8'}
+  {id:'Yoga', emoji:'🧘',       icon:'YG', color:'#a78bfa'},
+  {id:'Hiking', emoji:'🥾',     icon:'HK', color:'#65a30d', distUnit:'km'},
+  {id:'Climbing', emoji:'🧗',   icon:'CL', color:'#94a3b8'},
+  {id:'Soccer', emoji:'⚽',     icon:'SC', color:'#22c55e'},
+  {id:'Rowing', emoji:'🚣',     icon:'RW', color:'#14b8a6', distUnit:'m'},
+  {id:'Boxing', emoji:'🥊',     icon:'BX', color:'#f43f5e'},
+  {id:'Golf', emoji:'⛳',       icon:'GF', color:'#16a34a'},
+  {id:'Other', emoji:'✨',      icon:'+',  color:'#d4d4d8'}
 ];
 
 function sportChip(s, px, inv){
@@ -5594,12 +5594,12 @@ function renderSportEditorial(){
   function _sportPickChip(s, context){
     var sel = s.id === logSportType;
     return '<button onclick="pickSport(\''+_esc(s.id)+'\')" style="'+
-      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 6px;'+
+      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 9px;'+
       'border-radius:20px;border:1.5px solid '+(sel?s.color:'var(--border)')+';'+
       'background:'+(sel?s.color+'22':'var(--card2)')+';color:'+(sel?'var(--text)':'var(--lite)')+';'+
       'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
       '-webkit-tap-highlight-color:transparent;">'+
-      sportChip(s, 20)+
+      (s.emoji?'<span style="font-size:15px;line-height:1;">'+s.emoji+'</span>':sportChip(s, 20))+
       '<span>'+_esc(s.id)+'</span>'+
       (context?'<span style="color:var(--muted);font-weight:500;">'+_esc(context)+'</span>':'')+
     '</button>';
@@ -8896,15 +8896,15 @@ function closeHealthSettings(){
 // ── Log-tabs editor (customize which tabs sit next to Workout and +) ─────────
 function _buildLogTabsRows(){
   var tabs = getLogTabs();
-  function chip(id, name, icon, color){
+  function chip(id, name, emoji, color){
     var pinned = tabs.indexOf(id)>=0;
     return '<button onclick="toggleLogTab(\''+_esc(id)+'\')" style="'+
-      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 6px;'+
+      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 9px;'+
       'border-radius:20px;border:1.5px solid '+(pinned?color:'var(--border)')+';'+
       'background:'+(pinned?color+'22':'var(--card2)')+';color:'+(pinned?'var(--text)':'var(--lite)')+';'+
       'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
       '-webkit-tap-highlight-color:transparent;">'+
-      sportChip({icon:icon,color:color}, 20)+
+      '<span style="font-size:15px;line-height:1;">'+emoji+'</span>'+
       '<span>'+_esc(name)+'</span>'+
       (pinned?'<span style="color:'+color+';">✓</span>':'')+
     '</button>';
@@ -8918,12 +8918,12 @@ function _buildLogTabsRows(){
   var sMap={}; SPORTS.forEach(function(s){ sMap[s.id]=s; });
   function sportChips(ids){
     return ids.map(function(id){
-      var s=sMap[id]; return s ? chip(s.id, _logTabLabel(s.id), s.icon, s.color) : '';
+      var s=sMap[id]; return s ? chip(s.id, _logTabLabel(s.id), s.emoji||s.icon, s.color) : '';
     }).join('');
   }
   return '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">'+
       tabs.length+' of '+LOG_TAB_MAX+' pinned — these sit between Workout and +. Everything else stays reachable in the + tab.</div>'+
-    row('CORE', chip('run','Run','RN','#4ade80')+chip('body','Body','BD','#60a5fa'))+
+    row('CORE', chip('run','Run','🏃','#4ade80')+chip('body','Body','⚖️','#60a5fa'))+
     row('CARDIO', sportChips(['Cycling','Swimming','Rowing','Hiking']))+
     row('SPORTS', sportChips(['Pickleball','Tennis','Basketball','Soccer','Golf']))+
     row('TRAINING', sportChips(['CrossFit','Boxing','Climbing','Yoga','Other']));
