@@ -37,11 +37,35 @@ public final class HealthKitReader {
         return s
     }
 
+    // Watch activity types Supero can register, mapped to the web app's ids.
+    // "run"/"ride" are legacy names the JS side already understands; the rest
+    // match SPORTS ids in index.html exactly.
+    private static let typeMap: [(HKWorkoutActivityType, String)] = [
+        (.running, "run"),
+        (.cycling, "ride"),
+        (.swimming, "Swimming"),
+        (.tennis, "Tennis"),
+        (.basketball, "Basketball"),
+        (.soccer, "Soccer"),
+        (.rowing, "Rowing"),
+        (.boxing, "Boxing"),
+        (.golf, "Golf"),
+        (.yoga, "Yoga"),
+        (.hiking, "Hiking"),
+        (.climbing, "Climbing"),
+        (.pickleball, "Pickleball"),
+        (.crossTraining, "CrossFit"),
+    ]
+
     private static var workoutPredicate: NSPredicate {
-        NSCompoundPredicate(orPredicateWithSubpredicates: [
-            HKQuery.predicateForWorkouts(with: .running),
-            HKQuery.predicateForWorkouts(with: .cycling),
-        ])
+        NSCompoundPredicate(orPredicateWithSubpredicates:
+            typeMap.map { HKQuery.predicateForWorkouts(with: $0.0) })
+    }
+
+    // Workouts Supero itself wrote to Health (saveLift) must never round-trip
+    // back in as imports.
+    private static func isOwnWorkout(_ w: HKWorkout) -> Bool {
+        w.sourceRevision.source.bundleIdentifier == Bundle.main.bundleIdentifier
     }
 
     // MARK: - Authorization
@@ -82,7 +106,7 @@ public final class HealthKitReader {
                 DispatchQueue.main.async { completion([], error) }
                 return
             }
-            let workouts = (samples as? [HKWorkout]) ?? []
+            let workouts = ((samples as? [HKWorkout]) ?? []).filter { !Self.isOwnWorkout($0) }
             self.enrich(workouts: workouts) { runs in
                 DispatchQueue.main.async { completion(runs, nil) }
             }
@@ -138,12 +162,13 @@ public final class HealthKitReader {
 
     private func serialize(workout: HKWorkout, avgHr: Int?) -> [String: Any] {
         let distMeters = workout.totalDistance?.doubleValue(for: .meter()) ?? 0
+        let type = Self.typeMap.first(where: { $0.0 == workout.workoutActivityType })?.1 ?? "run"
         var dict: [String: Any] = [
             "uuid": workout.uuid.uuidString,
             "startDate": isoFormatter.string(from: workout.startDate),
             "distanceKm": distMeters / 1000.0,
             "durationSec": Int(workout.duration.rounded()),
-            "type": workout.workoutActivityType == .cycling ? "ride" : "run",
+            "type": type,
         ]
         if let hr = avgHr { dict["avgHr"] = hr }
         if let kcal = workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()), kcal > 0 {
@@ -233,7 +258,7 @@ public final class HealthKitReader {
                let data = try? NSKeyedArchiver.archivedData(withRootObject: newAnchor, requiringSecureCoding: true) {
                 defaults?.set(data, forKey: Self.anchorKey)
             }
-            let workouts = (samples as? [HKWorkout]) ?? []
+            let workouts = ((samples as? [HKWorkout]) ?? []).filter { !Self.isOwnWorkout($0) }
             guard !workouts.isEmpty else { return }
             var pending = Self.readPending()
             let known = Set(pending.compactMap { $0["uuid"] as? String })
