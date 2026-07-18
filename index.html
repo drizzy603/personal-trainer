@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-7"/>
+<meta name="build" content="20260718-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1774,7 +1774,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -2286,10 +2286,12 @@ function render() {
   }
   _a11yPass();
   _scheduleNativeSync();
-  // The Apple Health sheet lives outside #screen — refresh its rows so
-  // toggle pills update in place (toggles end with render()).
+  // Sheets live outside #screen — refresh their rows so toggle pills
+  // update in place (their toggles end with render()).
   var _hs=document.getElementById('healthSheetList');
   if(_hs) _hs.innerHTML=_buildHealthRows();
+  var _lt=document.getElementById('logTabsSheetList');
+  if(_lt) _lt.innerHTML=_buildLogTabsRows();
   paintRunner();
 }
 
@@ -4736,6 +4738,41 @@ function renderWeekHeader() {
 }
 
 // ── LOG ───────────────────────────────────────────────────────────────────────
+// ── Customizable Log sub-tabs ────────────────────────────────────────────────
+// kt_log_tabs holds the user's pinned middle tabs ('run', 'body', or a sport
+// id). Workout and + are fixed bookends. No key stored → derive the default
+// from the routine's primary activity, matching the old hardwired bar.
+var LOG_TAB_MAX = 3;
+function getLogTabs(){
+  var t = lsGet('kt_log_tabs');
+  if(Array.isArray(t)){
+    return t.filter(function(id){
+      return id==='run' || id==='body' || SPORTS.some(function(s){return s.id===id;});
+    }).slice(0, LOG_TAB_MAX);
+  }
+  var primary = getPrimaryActivity() || 'Run';
+  return [primary==='Run' ? 'run' : primary, 'body'];
+}
+function _logTabLabel(id){
+  if(id==='run') return 'Run';
+  if(id==='body') return 'Body';
+  var ABBREV={Cycling:'Bike',CrossFit:'CF',Pickleball:'PB',Swimming:'Swim',Basketball:'Bball',Climbing:'Climb',Rowing:'Row',Boxing:'Box',Hiking:'Hike'};
+  return ABBREV[id]||id;
+}
+function _isSportTab(id){ return SPORTS.some(function(s){return s.id===id;}); }
+function toggleLogTab(id){
+  var tabs = getLogTabs().slice();
+  var i = tabs.indexOf(id);
+  if(i>=0){ tabs.splice(i,1); }
+  else {
+    if(tabs.length>=LOG_TAB_MAX){ showToast('Up to '+LOG_TAB_MAX+' tabs — remove one first'); return; }
+    tabs.push(id);
+  }
+  lsSet('kt_log_tabs', tabs);
+  // If the active sub-tab just got unpinned, fall back to the + tab.
+  if(logSubTab!=='workout' && logSubTab!=='sport' && tabs.indexOf(logSubTab)<0) logSubTab='sport';
+  render();
+}
 function switchLogSub(sub) {
   // Close the inline run-log form on segment switch (addendum 0e: don't
   // preserve open state across mode switches). Drop confirmation strip too.
@@ -4743,7 +4780,8 @@ function switchLogSub(sub) {
     runLogOpen = false;
     runLogConfirmed = null;
   }
-  if(sub !== 'sport' && sportLogConfirmed){ sportLogConfirmed = null; }
+  // Sport confirm strips are shared by the + tab and pinned sport tabs.
+  if(sub !== 'sport' && !_isSportTab(sub) && sportLogConfirmed){ sportLogConfirmed = null; }
   if(sub !== 'body' && bwLogConfirmed){ bwLogConfirmed = null; }
   // Fresh entry to the + tab starts a fresh dated draft (typed field values
   // are kept — only a stale date from a previous day is brought current).
@@ -4751,7 +4789,7 @@ function switchLogSub(sub) {
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
-  if(sub==='run') setTimeout(checkRecentHealthRun, 400);
+  if(sub==='run' || _isSportTab(sub)) setTimeout(checkRecentHealthRun, 400);
 }
 
 
@@ -4769,17 +4807,24 @@ function renderLog() {
     '<div class="screen-avatar">'+_avL+'</div>'+
   '</div>';
 
-  // Second sub-tab reflects whatever activity the user has scheduled most
-  // often in their weekPlan. Falls back to "Run" when nothing scheduled.
+  // Middle tabs come from the user's pinned list (Settings / + tab editor);
+  // default derives from whatever activity they scheduled most in weekPlan.
   var primaryAct = getPrimaryActivity() || 'Run';
   var primaryIsSport = primaryAct !== 'Run';
 
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
-    '<button class="log-subtab '+(logSubTab==='run'?'active':'')+'" onclick="switchLogSub(\'run\')">'+primaryAct+'</button>'+
-    '<button class="log-subtab '+(logSubTab==='body'?'active':'')+'" onclick="switchLogSub(\'body\')">Body</button>'+
+    getLogTabs().map(function(id){
+      return '<button class="log-subtab '+(logSubTab===id?'active':'')+'" onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
+    }).join('')+
     '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
     '</div>';
+
+  // Pinned sport tab — same rich per-sport view primary-sport plans get.
+  if (logSubTab !== 'sport' && _isSportTab(logSubTab)) {
+    if (logSportType !== logSubTab) logSportType = logSubTab;
+    return subBar + header + renderWeekHeader() + _healthCardSlot() + renderSportSection(logSubTab);
+  }
 
   if (logSubTab === 'run') {
     if (primaryIsSport) {
@@ -5587,6 +5632,9 @@ function renderSportEditorial(){
       }).join(''));
     }).join('')+
     _pickerRow('MORE', leftovers)+
+    '<button onclick="openLogTabsEditor()" style="background:none;border:none;padding:0;'+
+      'font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;'+
+      'color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">CUSTOMIZE TABS →</button>'+
   '</div>';
 
   // Log card — morphs to selected sport colour.
@@ -8624,6 +8672,15 @@ function renderSettings() {
           '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+pills+'</div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Used when your programme does not specify a rest period. Adjust per set with −15s / +30s during a workout.</div>'+
         '</div>'+
+        '<div class="settings-row" onclick="openLogTabsEditor()">'+
+          '<div class="settings-row-ic" style="background:#132a1a;">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+              '<rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/>'+
+            '</svg>'+
+          '</div>'+
+          '<div class="settings-row-body"><div class="settings-row-title">Log tabs</div><div class="settings-row-sub">'+((getLogTabs().map(_logTabLabel).join(' · ')||'Workout & + only')+' — pick your own')+'</div></div>'+
+          '<span class="settings-row-chev">›</span>'+
+        '</div>'+
         (isNativeIOS()?
         '<div class="settings-row" onclick="toggleDailyReminder()">'+
           '<div class="settings-row-ic" style="background:#2a230d;">'+
@@ -8833,6 +8890,63 @@ function openHealthSettings(){
 }
 function closeHealthSettings(){
   var el=document.getElementById('healthSheetOverlay');
+  if(el)el.remove();
+}
+
+// ── Log-tabs editor (customize which tabs sit next to Workout and +) ─────────
+function _buildLogTabsRows(){
+  var tabs = getLogTabs();
+  function chip(id, name, icon, color){
+    var pinned = tabs.indexOf(id)>=0;
+    return '<button onclick="toggleLogTab(\''+_esc(id)+'\')" style="'+
+      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 6px;'+
+      'border-radius:20px;border:1.5px solid '+(pinned?color:'var(--border)')+';'+
+      'background:'+(pinned?color+'22':'var(--card2)')+';color:'+(pinned?'var(--text)':'var(--lite)')+';'+
+      'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
+      '-webkit-tap-highlight-color:transparent;">'+
+      sportChip({icon:icon,color:color}, 20)+
+      '<span>'+_esc(name)+'</span>'+
+      (pinned?'<span style="color:'+color+';">✓</span>':'')+
+    '</button>';
+  }
+  function row(label, chips){
+    return '<div style="margin-bottom:12px;">'+
+      '<div class="kt-adhoc-lbl" style="margin-bottom:7px;">'+label+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px;">'+chips+'</div>'+
+    '</div>';
+  }
+  var sMap={}; SPORTS.forEach(function(s){ sMap[s.id]=s; });
+  function sportChips(ids){
+    return ids.map(function(id){
+      var s=sMap[id]; return s ? chip(s.id, _logTabLabel(s.id), s.icon, s.color) : '';
+    }).join('');
+  }
+  return '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">'+
+      tabs.length+' of '+LOG_TAB_MAX+' pinned — these sit between Workout and +. Everything else stays reachable in the + tab.</div>'+
+    row('CORE', chip('run','Run','RN','#4ade80')+chip('body','Body','BD','#60a5fa'))+
+    row('CARDIO', sportChips(['Cycling','Swimming','Rowing','Hiking']))+
+    row('SPORTS', sportChips(['Pickleball','Tennis','Basketball','Soccer','Golf']))+
+    row('TRAINING', sportChips(['CrossFit','Boxing','Climbing','Yoga','Other']));
+}
+function openLogTabsEditor(){
+  var existing=document.getElementById('logTabsOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='logTabsOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Log tabs</div>'+
+      '<button onclick="closeLogTabsEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div id="logTabsSheetList">'+_buildLogTabsRows()+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeLogTabsEditor();});
+  _a11yPass();
+}
+function closeLogTabsEditor(){
+  var el=document.getElementById('logTabsOverlay');
   if(el)el.remove();
 }
 
