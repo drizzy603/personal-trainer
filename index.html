@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260717-3"/>
+<meta name="build" content="20260717-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1543,6 +1543,14 @@ function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+Stri
 function calcVolume(exercises) {
   var vol=0;
   exercises.forEach(function(ex){
+    // Legacy nested shape {sets:[{reps,weight}…]} — pre-runner imports and
+    // old backups. Same normalization as _buildHistExRows / the session card.
+    if(Array.isArray(ex.sets)){
+      ex.sets.forEach(function(st){
+        vol += (parseFloat(st&&st.weight)||0) * (parseInt(st&&st.reps)||0);
+      });
+      return;
+    }
     var repsArr = Array.isArray(ex.reps) ? ex.reps : [];
     var wLog = Array.isArray(ex.weightLog) ? ex.weightLog : [];
     if(wLog.length && repsArr.length){
@@ -1766,7 +1774,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -3090,7 +3098,18 @@ function renderTodayEditorial(){
       '</div>';
   }
 
-  return meta + lapseBanner + resumeBanner + hero + cta + adhocPicker + coachHTML + marquee;
+  // Weekly review banner — one per programme week, needs last-week activity.
+  var reviewBanner='';
+  if(_weekReviewDue()){
+    reviewBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div class="kt-resume-ttl">Your coach can review last week and tune what\'s next.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="dismissWeeklyReview()">Skip</button>'+
+        '<button class="kt-resume-cta" onclick="startWeeklyReview()">Get review →</button>'+
+      '</div></div>';
+  }
+  return meta + lapseBanner + resumeBanner + reviewBanner + hero + cta + adhocPicker + coachHTML + marquee;
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -6057,6 +6076,126 @@ function renderWeekRecap(sessions,runs){
 }
 
 // ── PROGRESS ──────────────────────────────────────────────────────────────────
+// ── e1RM strength trends ──────────────────────────────────────────────────────
+// Epley estimate (w × (1 + reps/30)) from the best set of each logged session.
+// Powers the Strength card on Progress, the plateau flags, and the Coach's
+// plateau awareness. Handles both session shapes (runner + legacy nested).
+function _epley(w, r){ return r>0 ? w*(1+r/30) : w; }
+function _e1rmSeries(){
+  var out={};
+  var sessions=getSessions();
+  for(var i=sessions.length-1;i>=0;i--){          // stored newest-first
+    var s=sessions[i]; if(!s || !s.exercises || !s.date) continue;
+    s.exercises.forEach(function(ex){
+      if(!ex || !ex.name) return;
+      var best=0;
+      if(Array.isArray(ex.sets)){                  // legacy nested shape
+        ex.sets.forEach(function(st){
+          var w=parseFloat(st&&st.weight)||0, r=parseInt(st&&st.reps)||0;
+          if(w>0&&r>0) best=Math.max(best,_epley(w,r));
+        });
+      } else {
+        var reps=Array.isArray(ex.reps)?ex.reps:[ex.reps];
+        var wl=(Array.isArray(ex.weightLog)&&ex.weightLog.length)?ex.weightLog:null;
+        for(var k=0;k<reps.length;k++){
+          var w2=wl?(parseFloat(wl[k])||0):(parseFloat(ex.weight)||0);
+          var r2=parseInt(reps[k])||0;
+          if(w2>0&&r2>0) best=Math.max(best,_epley(w2,r2));
+        }
+      }
+      if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10}); }
+    });
+  }
+  return out;
+}
+// Lifts still being trained whose e1RM peak is 21+ days old.
+function _plateauLifts(){
+  var res=[], series=_e1rmSeries(), now=Date.now();
+  Object.keys(series).forEach(function(name){
+    var pts=series[name]; if(pts.length<4) return;
+    var peak=0, peakDate=null;
+    pts.forEach(function(p){ if(p.e1rm>=peak){ peak=p.e1rm; peakDate=p.date; } });
+    var days=Math.floor((now-new Date(peakDate+'T00:00:00'))/86400000);
+    var sinceLast=(now-new Date(pts[pts.length-1].date+'T00:00:00'))/86400000;
+    if(days>=21 && sinceLast<=14) res.push({name:name, days:days, e1rm:peak});
+  });
+  return res;
+}
+function renderStrengthTrends(){
+  var series=_e1rmSeries();
+  var names=Object.keys(series).filter(function(n){ return series[n].length>=3; })
+    .sort(function(a,b){ return series[b].length-series[a].length; }).slice(0,4);
+  if(!names.length) return '';
+  var plateaus={}; _plateauLifts().forEach(function(p){ plateaus[p.name]=p; });
+  var rows=names.map(function(n){
+    var pts=series[n], cur=pts[pts.length-1].e1rm;
+    var cutoff=Date.now()-28*86400000, base=pts[0].e1rm;
+    for(var i=pts.length-1;i>=0;i--){
+      if(new Date(pts[i].date+'T00:00:00').getTime() < cutoff){ base=pts[i].e1rm; break; }
+    }
+    var delta=Math.round((cur-base)*10)/10;
+    var deltaStr=delta>0?'<span style="color:var(--green);">↑'+delta+'</span>'
+      :delta<0?'<span style="color:var(--red);">↓'+Math.abs(delta)+'</span>'
+      :'<span style="color:var(--muted);">—</span>';
+    var flag=plateaus[n]?'<div style="font-size:10px;color:var(--yellow);font-weight:700;margin-top:2px;">No new peak in '+plateaus[n].days+' days</div>':'';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">'+
+      '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(n)+'</div>'+flag+'</div>'+
+      _sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)')+
+      '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(cur)+'<span style="font-size:10px;color:var(--muted);"> lb</span></div>'+
+      '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">4w</span></div></div>'+
+    '</div>';
+  }).join('');
+  return '<div class="chart-card"><h2 style="margin-bottom:4px;">Strength</h2>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets</div>'+
+    rows+'</div>';
+}
+
+// ── Weekly coach review ───────────────────────────────────────────────────────
+// Once per programme week (and only if last week had activity), the Log tab
+// offers a one-tap review: a prepared message with real week stats goes into
+// the normal chat flow, where the Coach can respond and use its tools.
+function _weekReviewDue(){
+  if(!hasCustomRoutine() || currentWeek<=1) return false;
+  if(String(lsGet('kt_last_review_week'))===String(currentWeek)) return false;
+  if(!getApiKey()) return false;
+  var cutoff=addDays(todayISO(),-7);
+  return getSessions().some(function(s){ return s.date>=cutoff; }) ||
+         getRuns().some(function(r){ return r.date>=cutoff; }) ||
+         getSportLogs().some(function(l){ return l.date>=cutoff; });
+}
+function _buildWeekReviewMsg(){
+  var cutoff=addDays(todayISO(),-7);
+  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
+  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
+  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
+  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
+  var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){ prs.push(p.ex+' '+p.weight+'×'+p.reps); }); });
+  var lines=['Review my last 7 days and adjust next week if needed.',
+    'Done: '+sessions.length+' lifts'+(sessions.length?' ('+sessions.map(function(s){ return s.type; }).join(', ')+')':'')+
+    (runs.length?', '+runs.length+' run'+(runs.length>1?'s':''):'')+
+    (sports.length?', '+sports.length+' sport session'+(sports.length>1?'s':''):'')+
+    ' vs '+planned+' planned activity days.',
+    'Lift volume: '+Math.round(vol).toLocaleString()+' lb.'];
+  if(prs.length) lines.push('PRs: '+prs.join('; ')+'.');
+  var pl=_plateauLifts().slice(0,3);
+  if(pl.length) lines.push('Plateaus: '+pl.map(function(p){ return p.name+' (no new peak in '+p.days+' days)'; }).join(', ')+'.');
+  lines.push('Be specific — keep, change, or push. Use your tools if the plan should change.');
+  return lines.join('\n');
+}
+function startWeeklyReview(){
+  if(!getApiKey()){ switchTab('coach'); return; }
+  lsSet('kt_last_review_week', currentWeek);
+  switchTab('coach'); openCoachChat();
+  setTimeout(function(){
+    var ta=document.getElementById('coach-input');
+    if(!ta) return;
+    ta.value=_buildWeekReviewMsg();
+    sendCoachMessage();
+  }, 250);
+}
+function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
+
 function renderProgress() {
   var sessions=getSessions();
   var runs=getRuns();
@@ -6174,7 +6313,7 @@ function renderProgress() {
     runPaceBar + runPaceInput +
     '</div>';
 
-  var goals = progressTab === 'runs' ? runGoals : liftGoals;
+  var goals = progressTab === 'runs' ? runGoals : (renderStrengthTrends() + liftGoals);
 
   var lastVol=sessions.length?calcVolume(sessions[0].exercises||[]):0;
   var bws=getBodyWeights();
@@ -7715,6 +7854,14 @@ function buildSystemPrompt(){
     p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
   } else {
     p+='LOGGED RUNS: none yet. If the user mentions a run, it is not saved — call log_run to save it.\n\n';
+  }
+
+  // Plateau awareness — computed from e1RM history, not vibes.
+  var _plat=_plateauLifts().slice(0,3);
+  if(_plat.length){
+    p+='PLATEAUS (no new estimated-1RM peak): '+_plat.map(function(x){
+      return x.name+' stuck at ~'+Math.round(x.e1rm)+' lb for '+x.days+' days';
+    }).join('; ')+'. Consider variation, intensity change, or a deload when relevant.\n\n';
   }
 
   var sportLogs=getSportLogs().slice(0,10);
