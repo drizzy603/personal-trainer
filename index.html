@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-16"/>
+<meta name="build" content="20260718-17"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -6107,6 +6107,83 @@ function calcBWTrend(bws){
 }
 
 
+// Sports mode: last-4-weeks activity mix — one bar per activity, emoji + count.
+function renderActivityMix(){
+  var logs=getSportLogs();
+  var cutoff=new Date(); cutoff.setDate(cutoff.getDate()-28);
+  var cutISO=cutoff.getFullYear()+'-'+String(cutoff.getMonth()+1).padStart(2,'0')+'-'+String(cutoff.getDate()).padStart(2,'0');
+  var counts={}, mins=0, total=0;
+  logs.forEach(function(l){
+    if(!l.date||l.date<cutISO) return;
+    counts[l.type]=(counts[l.type]||0)+1; total++;
+    mins+=l.duration||0;
+  });
+  if(!total) return '';
+  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
+  var types=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
+  var max=counts[types[0]];
+  var rows=types.map(function(t){
+    var s=sMap[t]||{color:'#888',emoji:''};
+    var pct=Math.max(8,Math.round(counts[t]/max*100));
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">'+
+      '<span style="font-size:15px;width:22px;text-align:center;flex-shrink:0;">'+(s.emoji||'')+'</span>'+
+      '<div style="width:76px;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">'+_esc(t)+'</div>'+
+      '<div style="flex:1;height:8px;border-radius:4px;background:var(--card2);overflow:hidden;">'+
+        '<div style="width:'+pct+'%;height:100%;border-radius:4px;background:'+s.color+';"></div></div>'+
+      '<div style="width:22px;text-align:right;font-size:12px;font-weight:800;flex-shrink:0;">'+counts[t]+'</div>'+
+    '</div>';
+  }).join('');
+  var hours=Math.round(mins/6)/10;
+  return '<div class="chart-card"><div class="chart-head"><div>'+
+    '<div class="chart-lbl">Activity mix · last 4 weeks</div>'+
+    '<div><span class="chart-val">'+total+'</span><span class="chart-unit">sessions'+(hours?' · '+hours+'h':'')+'</span></div>'+
+    '</div></div>'+rows+'</div>';
+}
+// Repeated WODs: same name logged 2+ times → last score vs all-time best.
+// Times ("11:40") are lower-better; bare numbers (AMRAP reps) higher-better.
+function _parseWodScore(s){
+  if(s==null) return null;
+  s=String(s).trim();
+  var m=s.match(/^(\d+):(\d{2})$/);
+  if(m) return {v:parseInt(m[1],10)*60+parseInt(m[2],10), lowerBetter:true};
+  if(/^[\d.]+$/.test(s)){ var n=parseFloat(s); if(!isNaN(n)) return {v:n, lowerBetter:false}; }
+  return null;
+}
+function renderWODRepeats(){
+  var cf=getSportLogs().filter(function(l){return l.type==='CrossFit'&&l.data&&l.data.wodName&&l.data.score;});
+  var by={};
+  cf.forEach(function(l){
+    var k=String(l.data.wodName).trim().toLowerCase();
+    (by[k]=by[k]||[]).push(l);
+  });
+  var rows='';
+  Object.keys(by).forEach(function(k){
+    var list=by[k];               // newest-first, matching kt_sports order
+    if(list.length<2) return;
+    var latest=list[0];
+    var scores=list.map(function(l){return {p:_parseWodScore(l.data.score), raw:l.data.score};});
+    var latestP=scores[0].p, prevP=scores[1].p;
+    var best=null;
+    scores.forEach(function(sc){
+      if(!sc.p) return;
+      if(!best || (sc.p.lowerBetter ? sc.p.v<best.p.v : sc.p.v>best.p.v)) best=sc;
+    });
+    var trend='';
+    if(latestP&&prevP&&latestP.lowerBetter===prevP.lowerBetter){
+      trend=latestP.v===prevP.v?'<span style="color:var(--muted);font-weight:700;">=</span>'
+        :(latestP.lowerBetter?latestP.v<prevP.v:latestP.v>prevP.v)
+          ?'<span style="color:var(--green);font-weight:800;">▲</span>'
+          :'<span style="color:var(--orange);font-weight:800;">▼</span>';
+    }
+    rows+='<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">'+
+      '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:800;">'+_esc(latest.data.wodName)+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:1px;">'+list.length+'× · best '+_esc(best?best.raw:'—')+'</div></div>'+
+      '<div style="font-size:14px;font-weight:800;">'+_esc(latest.data.score)+'</div>'+trend+
+    '</div>';
+  });
+  if(!rows) return '';
+  return '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Repeated WODs · last vs best</div></div></div>'+rows+'</div>';
+}
 function renderSportProgress(){
   var logs=getSportLogs();
   if(!logs.length) return '';
@@ -6638,7 +6715,7 @@ function renderProgress() {
     runPaceBar + runPaceInput +
     '</div>';
 
-  var goals = progressTab === 'runs' ? runGoals : (renderStrengthTrends() + liftGoals);
+  var goals = progressTab === 'runs' ? runGoals : (progressTab === 'sports' ? '' : (renderStrengthTrends() + liftGoals));
 
   var lastVol=sessions.length?calcVolume(sessions[0].exercises||[]):0;
   var bws=getBodyWeights();
@@ -6722,7 +6799,7 @@ function renderProgress() {
     '</div>'+
     '</div>' + bwAndWeekRow;
 
-  var stats = progressTab === 'runs' ? runStats : liftStats;
+  var stats = progressTab === 'runs' ? runStats : (progressTab === 'sports' ? '' : liftStats);
 
   var benchData=[];
   for(var i=sessions.length-1;i>=0&&benchData.length<10;i--){
@@ -6866,10 +6943,11 @@ function renderProgress() {
     '<div class="kt-prog-hero-body">'+_esc(hero.body)+'</div>'+
     '</div>';
 
-  // Lifts / Runs toggle — filters the detail chart cards below.
+  // Lifts / Runs / Sports toggle — filters the detail chart cards below.
   var toggle = '<div class="kt-prog-toggle">'+
     '<button class="'+(progressTab==='lifts'?'on':'')+'" onclick="setProgressTab(\'lifts\')">Lifts</button>'+
     '<button class="'+(progressTab==='runs'?'on':'')+'" onclick="setProgressTab(\'runs\')">Runs</button>'+
+    '<button class="'+(progressTab==='sports'?'on':'')+'" onclick="setProgressTab(\'sports\')">Sports</button>'+
     '</div>';
 
   // ── Lifts this block ──────────────────────────────────────────────────────
@@ -6947,6 +7025,9 @@ function renderProgress() {
   if(progressTab === 'runs'){
     detailCharts = weeklyDistChart + runChart;
     liftOnly = '';
+  } else if(progressTab === 'sports'){
+    detailCharts = renderActivityMix() + renderWODRepeats();
+    liftOnly = '';
   } else {
     detailCharts = benchChart + squatChart + volCharts;
     liftOnly = liftsBlock + rmSection + prCard;
@@ -6965,8 +7046,8 @@ function renderProgress() {
 
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) + renderBackupNudge() + toggle +
     stats + goals + liftOnly +
-    detailCharts + bwChart +
-    renderSportProgress() + renderRetroCard(sessions) + calHTML +
+    detailCharts + (progressTab==='sports' ? '' : bwChart) +
+    (progressTab==='sports' ? renderSportProgress() : '') + renderRetroCard(sessions) + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
 
@@ -8644,6 +8725,14 @@ function applyTheme(name) {
   if(document.getElementById('screen').innerHTML) render();
 }
 
+// Settings → About row: tap cycles Auto → Dark → Light → Ocean → Sunset.
+function cycleTheme(){
+  var order=['auto','dark','light','ocean','sunset'];
+  var cur=order.indexOf(currentTheme);
+  var next=order[(cur+1)%order.length];
+  if(next==='auto') setAutoTheme(); else applyTheme(next);
+  render();
+}
 function setAutoTheme(){
   currentTheme='auto';
   localStorage.setItem('kt_theme','auto');
@@ -8897,6 +8986,15 @@ function renderSettings() {
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">About</div>'+
+    '<div class="settings-row" onclick="cycleTheme()">'+
+      '<div class="settings-row-ic" style="background:#231a2e;">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+          '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'+
+        '</svg>'+
+      '</div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Theme</div><div class="settings-row-sub">Tap to switch</div></div>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;background:var(--card2);color:var(--accent);border:1px solid var(--border);text-transform:capitalize;">'+_esc(currentTheme)+'</span>'+
+    '</div>'+
     '<div class="settings-row" onclick="openWorkflow()">'+
       '<div class="settings-row-ic" style="background:#1e1a2e;">'+
         '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
