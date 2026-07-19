@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-14"/>
+<meta name="build" content="20260718-15"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -3429,8 +3429,11 @@ function attachCoachCardSwipe(){
 
 // HTML-escape a user/AI string for safe innerHTML insertion.
 function _esc(s){
+  // Quotes must be escaped too — _esc output lands in value="…" attributes
+  // (drafts re-render on every state change), not just text nodes.
   return String(s==null?'':s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Editorial Run segment ────────────────────────────────────────────────────
