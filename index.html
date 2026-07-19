@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-20"/>
+<meta name="build" content="20260718-21"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -327,8 +327,8 @@ select option{background:var(--bg);}
 .lift-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
 .lift-name{font-size:15px;font-weight:600;}
 .lift-delta{font-size:13px;color:var(--accent);font-weight:600;}
-.lift-bar{height:5px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;}
-.lift-fill{height:100%;background:var(--accent);border-radius:3px;}
+.lift-bar{height:7px;background:var(--card2);border-radius:4px;overflow:hidden;}
+.lift-fill{height:100%;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 45%,transparent),var(--accent));border-radius:4px;}
 .lift-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px;font-weight:500;}
 
 /* ── History items ───────────────────────────────────────────────────────── */
@@ -1570,7 +1570,21 @@ function getWkData(){
   return null;
 }
 function hasCustomRoutine(){ return !!getCustomRoutine(); }
-function getPRs() { return lsGet('kt_prs')||{}; }
+function getPRs() {
+  var p = lsGet('kt_prs')||{};
+  // Legacy/demo shape was an array of {ex|name, weight}; the app uses a
+  // {name: bestWeight} map. Normalize so old backups and seeds render.
+  if (Array.isArray(p)) {
+    var m = {};
+    p.forEach(function(e){
+      if(!e) return;
+      var n = e.ex || e.name, w = parseFloat(e.weight)||0;
+      if(n && w > 0 && (!m[n] || w > m[n])) m[n] = w;
+    });
+    return m;
+  }
+  return p;
+}
 function getBodyWeights() { return lsGet('kt_bw')||[]; }
 function weekForDate(dateStr){
   if(!dateStr) return currentWeek;
@@ -2999,13 +3013,21 @@ function _sparklineSVG(vals, color){
   var W=120, H=28;
   var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
   var span=(max-min)||1;
-  var pts=vals.map(function(v,i){
-    var x=2+i*(W-4)/(vals.length-1);
-    var y=H-3-((v-min)/span)*(H-6);
-    return (Math.round(x*10)/10)+','+(Math.round(y*10)/10);
-  }).join(' ');
+  var P=vals.map(function(v,i){
+    return {x:2+i*(W-8)/(vals.length-1), y:H-4-((v-min)/span)*(H-10)};
+  });
+  var line=_smoothPath(P);
+  var gid='sg'+(_svgUid++);
+  var area=line+' L'+P[P.length-1].x.toFixed(1)+' '+(H-1)+' L'+P[0].x.toFixed(1)+' '+(H-1)+' Z';
+  var last=P[P.length-1];
   return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="flex-shrink:0;">'+
-    '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0" style="stop-color:'+color+'" stop-opacity=".3"/>'+
+      '<stop offset="1" style="stop-color:'+color+'" stop-opacity="0"/>'+
+    '</linearGradient></defs>'+
+    '<path d="'+area+'" fill="url(#'+gid+')"/>'+
+    '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="2.6" fill="'+color+'"/>'+
     '</svg>';
 }
 
@@ -6128,8 +6150,8 @@ function renderActivityMix(){
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">'+
       '<span style="font-size:15px;width:22px;text-align:center;flex-shrink:0;">'+(s.emoji||'')+'</span>'+
       '<div style="width:76px;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">'+_esc(t)+'</div>'+
-      '<div style="flex:1;height:8px;border-radius:4px;background:var(--card2);overflow:hidden;">'+
-        '<div style="width:'+pct+'%;height:100%;border-radius:4px;background:'+s.color+';"></div></div>'+
+      '<div style="flex:1;height:9px;border-radius:5px;background:var(--card2);overflow:hidden;">'+
+        '<div style="width:'+pct+'%;height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,'+s.color+' 50%,transparent),'+s.color+');"></div></div>'+
       '<div style="width:22px;text-align:right;font-size:12px;font-weight:800;flex-shrink:0;">'+counts[t]+'</div>'+
     '</div>';
   }).join('');
@@ -6641,8 +6663,8 @@ function renderProgress() {
         '<div style="font-size:13px;font-weight:800;">'+label+'</div>'+
         '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+currentStr+' / '+targetStr+'</div>'+
       '</div>'+
-      '<div style="background:var(--bg);border-radius:2px;height:6px;">'+
-        '<div style="height:6px;border-radius:2px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
+      '<div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden;">'+
+        '<div style="height:7px;border-radius:4px;background:linear-gradient(90deg,color-mix(in srgb,'+color+' 45%,transparent),'+color+');width:'+pct+'%;transition:width .4s;"></div>'+
       '</div>'+
       (target<=0?'':pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal reached</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
     '</div>';
@@ -6689,8 +6711,8 @@ function renderProgress() {
         '<div style="font-size:13px;font-weight:800;">Avg pace</div>'+
         '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km / '+runGoalPaceStr+'/km</div>'+
       '</div>'+
-      '<div style="background:var(--bg);border-radius:2px;height:6px;">'+
-        '<div style="height:6px;border-radius:2px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
+      '<div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden;">'+
+        '<div style="height:7px;border-radius:4px;background:linear-gradient(90deg,color-mix(in srgb,'+color+' 45%,transparent),'+color+');width:'+pct+'%;transition:width .4s;"></div>'+
       '</div>'+
       (pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal hit</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
     '</div>';
@@ -7103,32 +7125,70 @@ function renderProgress() {
     (progressTab==='lifts' ? renderHistory() : '');
 }
 
+// Catmull-Rom → cubic bezier, so charts draw as smooth curves not zig-zags.
+var _svgUid=0;
+function _smoothPath(P){
+  if(P.length<2) return '';
+  if(P.length===2) return 'M'+P[0].x.toFixed(1)+' '+P[0].y.toFixed(1)+' L'+P[1].x.toFixed(1)+' '+P[1].y.toFixed(1);
+  var d='M'+P[0].x.toFixed(1)+' '+P[0].y.toFixed(1);
+  for(var i=0;i<P.length-1;i++){
+    var p0=P[i-1]||P[i], p1=P[i], p2=P[i+1], p3=P[i+2]||p2;
+    d+='C'+(p1.x+(p2.x-p0.x)/6).toFixed(1)+' '+(p1.y+(p2.y-p0.y)/6).toFixed(1)+' '+
+      (p2.x-(p3.x-p1.x)/6).toFixed(1)+' '+(p2.y-(p3.y-p1.y)/6).toFixed(1)+' '+
+      p2.x.toFixed(1)+' '+p2.y.toFixed(1);
+  }
+  return d;
+}
 function svgChart(data,color,goalVal) {
-  var W=320,H=120,PL=40,PR=10,PT=10,PB=24;
+  var W=320,H=124,PL=40,PR=14,PT=16,PB=24;
   var iW=W-PL-PR,iH=H-PT-PB;
   var vals=data.map(function(d){return d.val;});
   if(goalVal) vals.push(goalVal);
   var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=mx-mn||1;
   function px(i){return PL+(i/(data.length-1))*iW;}
   function py(v){return PT+iH-((v-mn)/rng)*iH;}
-  var pts=data.map(function(d,i){return px(i)+','+py(d.val);}).join(' ');
-  var dots=data.map(function(d,i){return '<circle cx="'+px(i)+'" cy="'+py(d.val)+'" r="4" fill="'+color+'"/>';}).join('');
+  var P=data.map(function(d,i){return {x:px(i),y:py(d.val)};});
+  var line=_smoothPath(P);
+  var base=PT+iH;
+  var area=line+' L'+P[P.length-1].x.toFixed(1)+' '+base+' L'+P[0].x.toFixed(1)+' '+base+' Z';
+  var gid='cg'+(_svgUid++);
+  // Subtle dashed gridlines instead of hard axis strokes; all chrome uses
+  // theme variables so Light / Ocean / Sunset render correctly.
+  var grid='';
+  for(var g=1;g<=3;g++){
+    var gy=(PT+iH*g/4).toFixed(1);
+    grid+='<line x1="'+PL+'" y1="'+gy+'" x2="'+(PL+iW)+'" y2="'+gy+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,4" opacity=".6"/>';
+  }
+  var dots=P.map(function(p,i){
+    if(i===P.length-1) return '';
+    return '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="2.4" fill="'+color+'" opacity=".55"/>';
+  }).join('');
+  var last=P[P.length-1];
+  var lastVal=Math.round(data[data.length-1].val*10)/10;
+  var anchor=last.x>PL+iW-26?'end':'middle';
+  var lastDot='<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="7" fill="'+color+'" opacity=".18"/>'+
+    '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="3.6" fill="'+color+'" stroke="var(--card)" stroke-width="1.5"/>'+
+    '<text x="'+last.x.toFixed(1)+'" y="'+Math.max(10,last.y-10).toFixed(1)+'" fill="'+color+'" font-size="10" font-weight="800" text-anchor="'+anchor+'">'+lastVal+'</text>';
   var goalLine='';
   if(goalVal&&goalVal>=mn&&goalVal<=mx){
-    var gy=py(goalVal);
-    goalLine='<line x1="'+PL+'" y1="'+gy+'" x2="'+(PL+iW)+'" y2="'+gy+'" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4,3"/>'+
-      '<text x="'+(PL-4)+'" y="'+(gy+4)+'" fill="#22c55e" font-size="9" text-anchor="end">'+goalVal+'</text>';
+    var gy2=py(goalVal);
+    goalLine='<line x1="'+PL+'" y1="'+gy2+'" x2="'+(PL+iW)+'" y2="'+gy2+'" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4,3"/>'+
+      '<text x="'+(PL-4)+'" y="'+(gy2+4)+'" fill="var(--green)" font-size="9" text-anchor="end">'+goalVal+'</text>';
   }
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">'+
-    '<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(PT+iH)+'" stroke="#222" stroke-width="1"/>'+
-    '<line x1="'+PL+'" y1="'+(PT+iH)+'" x2="'+(PL+iW)+'" y2="'+(PT+iH)+'" stroke="#222" stroke-width="1"/>'+
+    '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0" style="stop-color:'+color+'" stop-opacity=".26"/>'+
+      '<stop offset="1" style="stop-color:'+color+'" stop-opacity="0"/>'+
+    '</linearGradient></defs>'+
+    grid+
+    '<path d="'+area+'" fill="url(#'+gid+')"/>'+
     goalLine+
-    '<text x="'+(PL-4)+'" y="'+(PT+6)+'" fill="#444" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mx)+'</text>'+
-    '<text x="'+(PL-4)+'" y="'+(PT+iH)+'" fill="#444" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mn)+'</text>'+
-    '<text x="'+PL+'" y="'+(H-2)+'" fill="#555" font-size="8" font-weight="600">'+data[0].date.slice(5).replace('-','/')+'</text>'+
-    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="#555" font-size="8" text-anchor="end" font-weight="600">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
-    '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
-    dots+'</svg>';
+    '<text x="'+(PL-8)+'" y="'+(PT+6)+'" fill="var(--muted)" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mx)+'</text>'+
+    '<text x="'+(PL-8)+'" y="'+base+'" fill="var(--muted)" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mn)+'</text>'+
+    '<text x="'+PL+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" font-weight="600" opacity=".8">'+data[0].date.slice(5).replace('-','/')+'</text>'+
+    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" text-anchor="end" font-weight="600" opacity=".8">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
+    '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
+    dots+lastDot+'</svg>';
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────────

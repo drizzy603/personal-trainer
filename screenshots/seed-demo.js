@@ -125,11 +125,11 @@
   localStorage.setItem('kt_sessions', JSON.stringify(sessions));
 
   // ── PRs ────────────────────────────────────────────────────────────────
-  localStorage.setItem('kt_prs', JSON.stringify([
-    { ex: 'Bench Press', weight: 155, reps: 8, date: daysAgo(0) },
-    { ex: 'Back Squat',  weight: 235, reps: 6, date: daysAgo(2) },
-    { ex: 'Barbell Row', weight: 152, reps: 8, date: daysAgo(4) },
-  ]));
+  localStorage.setItem('kt_prs', JSON.stringify({
+    'Bench Press': 155,
+    'Back Squat': 235,
+    'Barbell Row': 152,
+  }));
 
   // ── Bodyweight history: slight lean over 6 weeks ───────────────────────
   const bws = [];
