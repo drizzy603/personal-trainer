@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-19"/>
+<meta name="build" content="20260718-20"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -6743,61 +6743,90 @@ function renderProgress() {
   var avgPaceSec = totDist>0 ? Math.round(totSec/totDist) : 0;
   var lastRun = runs[0];
 
-  var bwAndWeekRow = '<div class="stat-row">'+
-    (latestBW?
-      '<div class="stat">'+
-        '<div class="stat-lbl">Bodyweight</div>'+
-        '<div><span class="stat-val">'+latestBW+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">lb</span></div>'+
-        (bwDelta?'<div class="stat-delta '+(parseFloat(bwDelta)>0?'down':'')+'">'+
-          (parseFloat(bwDelta)>0?'↑ +':'↓ ')+Math.abs(bwDelta)+' lb</div>':'')+
-      '</div>':'')+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Week</div>'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;">'+
-        '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;font-weight:700;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">−</button>'+
-        '<span class="stat-val" style="color:var(--accent);">'+currentWeek+'</span>'+
-        '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;font-weight:700;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>'+
-      '</div>'+
-    '</div>'+
+  // "This week" as a calendar-week dot strip — one dot per day Mon→Sun,
+  // filled when anything was trained (lift, run, or sport), today ringed,
+  // planned rest days muted. Calendar-based so it always agrees with the
+  // Sunday recap card, unlike the old programme-week session count.
+  function _weekDotsCard(){
+    var mon=getMondayISO(), todayS=todayISO();
+    var trained={};
+    sessions.forEach(function(s){ if(s.date) trained[s.date]=1; });
+    runs.forEach(function(r){ if(r.date) trained[r.date]=1; });
+    getSportLogs().forEach(function(l){ if(l.date) trained[l.date]=1; });
+    var plan=getWeekPlan();
+    var planned=plan.filter(function(p){return !p.isRest;}).length;
+    var m=new Date(mon+'T00:00:00');
+    var done=0, dots='';
+    for(var i=0;i<7;i++){
+      var d=new Date(m); d.setDate(m.getDate()+i);
+      var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      var isDone=!!trained[iso]; if(isDone) done++;
+      var isToday=iso===todayS;
+      var isRest=plan[i]&&plan[i].isRest;
+      dots+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">'+
+        '<div style="width:11px;height:11px;border-radius:50%;box-sizing:border-box;'+
+          'background:'+(isDone?'var(--accent)':'transparent')+';'+
+          'border:1.5px solid '+(isDone?'var(--accent)':(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)')))+';'+
+        '"></div>'+
+        '<div style="font-size:8px;font-weight:700;letter-spacing:.03em;color:'+(isToday?'var(--text)':'var(--muted)')+';">'+
+          ['M','T','W','T','F','S','S'][i]+'</div>'+
+      '</div>';
+    }
+    var met=planned>0&&done>=planned;
+    return '<div class="stat">'+
+      '<div class="stat-lbl">This week</div>'+
+      '<div><span class="stat-val" style="color:'+(met?'var(--green)':'var(--text)')+'">'+done+'</span>'+
+        '<span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">/ '+planned+' days</span></div>'+
+      '<div style="display:flex;gap:2px;margin-top:8px;">'+dots+'</div>'+
     '</div>';
+  }
+
+  // PRs at a glance — count plus the heaviest lift on record.
+  var _prMap=getPRs();
+  var _prNames=Object.keys(_prMap).sort(function(a,b){return _prMap[b]-_prMap[a];});
+  var prStatCard='<div class="stat">'+
+    '<div class="stat-lbl">PRs</div>'+
+    '<div class="stat-val" style="color:var(--yellow)">'+_prNames.length+'</div>'+
+    (_prNames.length
+      ? '<div class="stat-delta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(_prNames[0])+' · '+_prMap[_prNames[0]]+' lb</div>'
+      : '<div class="stat-delta">all-time bests</div>')+
+  '</div>';
 
   var liftStats = '<div class="stat-row">'+
     '<div class="stat">'+
       '<div class="stat-lbl">Sessions</div>'+
       '<div class="stat-val">'+sessions.length+'</div>'+
-      (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'')+
+      (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'<div class="stat-delta">all-time</div>')+
     '</div>'+
     '<div class="stat">'+
       '<div class="stat-lbl">Streak</div>'+
       '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
       '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
     '</div>'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">This week</div>'+
-      '<div class="stat-val" style="color:'+(thisWeekCount>=scheduledLiftDays&&scheduledLiftDays>0?'var(--green)':'var(--text)')+'">'+thisWeekCount+'</div>'+
-      '<div class="stat-delta">'+(scheduledLiftDays>0?'of '+scheduledLiftDays+' planned':'sessions')+'</div>'+
-    '</div>'+
-    '</div>' + bwAndWeekRow;
+    _weekDotsCard()+
+    prStatCard+
+    '</div>';
 
-  var scheduledRunDays = getWeekPlan().filter(function(p){return p.isRun;}).length;
-  var thisWeekRuns = runs.filter(function(r){return r.week===currentWeek;}).length;
   var runStats = '<div class="stat-row">'+
     '<div class="stat">'+
       '<div class="stat-lbl">Runs</div>'+
       '<div class="stat-val">'+runs.length+'</div>'+
-      (lastRun ? '<div class="stat-delta">'+(parseFloat(lastRun.distance||lastRun.dist)||0)+' km last</div>' : '')+
+      (lastRun ? '<div class="stat-delta">'+(parseFloat(lastRun.distance||lastRun.dist)||0)+' km last</div>' : '<div class="stat-delta">all-time</div>')+
     '</div>'+
     '<div class="stat">'+
       '<div class="stat-lbl">Distance</div>'+
       '<div><span class="stat-val" style="color:var(--accent)">'+(Math.round(totalKm*10)/10)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">km</span></div>'+
       (weekKm>0 ? '<div class="stat-delta">'+(Math.round(weekKm*10)/10)+' km this wk</div>' : '<div class="stat-delta">all-time</div>')+
     '</div>'+
+    _weekDotsCard()+
     '<div class="stat">'+
-      '<div class="stat-lbl">This week</div>'+
-      '<div class="stat-val" style="color:'+(thisWeekRuns>=scheduledRunDays&&scheduledRunDays>0?'var(--green)':'var(--text)')+'">'+thisWeekRuns+'</div>'+
-      '<div class="stat-delta">'+(scheduledRunDays>0?'of '+scheduledRunDays+' planned':'runs')+'</div>'+
+      '<div class="stat-lbl">Avg pace</div>'+
+      (avgPaceSec>0
+        ? '<div><span class="stat-val">'+secToPace(avgPaceSec)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">/km</span></div>'+
+          '<div class="stat-delta">all runs</div>'
+        : '<div class="stat-val" style="color:var(--muted)">—</div><div class="stat-delta">log a run</div>')+
     '</div>'+
-    '</div>' + bwAndWeekRow;
+    '</div>';
 
   var stats = progressTab === 'runs' ? runStats : (progressTab === 'sports' ? '' : liftStats);
 
@@ -7027,6 +7056,13 @@ function renderProgress() {
     liftOnly = '';
   } else if(progressTab === 'sports'){
     detailCharts = renderActivityMix() + renderWODRepeats();
+    if(!detailCharts && !getSportLogs().length){
+      detailCharts = '<div class="chart-card" style="text-align:center;padding:28px 20px;">'+
+        '<div style="font-size:22px;margin-bottom:8px;">🏓 🚴 🏊</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:4px;">No activities yet</div>'+
+        '<div style="font-size:12px;color:var(--muted);line-height:1.5;">Log rides, WODs, or matches from the + tab —<br>your mix and trends build here.</div>'+
+      '</div>';
+    }
     liftOnly = '';
   } else {
     detailCharts = benchChart + squatChart + volCharts;
@@ -7044,10 +7080,26 @@ function renderProgress() {
       '</div></div>'+svgChart(bwChartData,'#60a5fa',bwGoalProg||undefined)+'</div>'
     :'';
 
+  // Slim programme-week stepper — utility, so it lives down by the calendar
+  // instead of eating a stat slot at the top.
+  var weekAdjustRow = '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
+    'background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 16px;margin-bottom:12px;">'+
+    '<div style="min-width:0;">'+
+      '<div style="font-size:13px;font-weight:700;">Programme week</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:1px;">Adjust if you paused or jumped ahead</div>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">'+
+      '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
+      '<span style="font-size:18px;font-weight:800;color:var(--accent);min-width:22px;text-align:center;">'+currentWeek+'</span>'+
+      '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
+    '</div>'+
+  '</div>';
+
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) + renderBackupNudge() + toggle +
     stats + goals + liftOnly +
     detailCharts + (progressTab==='sports' ? '' : bwChart) +
-    (progressTab==='sports' ? renderSportProgress() : '') + renderRetroCard(sessions) + calHTML +
+    (progressTab==='sports' ? renderSportProgress() : '') + renderRetroCard(sessions) +
+    weekAdjustRow + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
 
