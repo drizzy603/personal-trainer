@@ -8970,7 +8970,7 @@ function renderSettings() {
             '<path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M21 21H3"/>'+
           '</svg>'+
         '</div>'+
-        '<div class="settings-row-body"><div class="settings-row-title">Auto-backup to Files</div><div class="settings-row-sub">'+(localStorage.getItem('kt_last_autobackup')===todayISO()?'Backed up today · tap to run again':'Daily · tap to back up now')+'</div></div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Auto-backup</div><div class="settings-row-sub">'+(localStorage.getItem('kt_last_autobackup')===todayISO()?('Backed up today'+(localStorage.getItem('kt_icloud_backup')===todayISO()?' · iCloud ✓':' · Files only')+' · tap to run again'):'Daily to Files & iCloud Drive · tap to run now')+'</div></div>'+
         '<span class="settings-row-chev">›</span>'+
       '</div>' : '')+
     '<div class="settings-row" onclick="importData()">'+
@@ -9961,6 +9961,8 @@ function _runNativeSync(){
 }
 // Silent daily backup into Documents/Supero — visible in the Files app and
 // included in device backups. Complements the manual export, replaces nothing.
+// When iCloud is available the same payload also lands in iCloud Drive →
+// Supero, so it survives a lost or dead phone.
 function _autoBackupIfDue(){
   var FS=_plug('Filesystem'); if(!FS) return;
   if(localStorage.getItem('kt_last_autobackup')===todayISO()) return;
@@ -9968,8 +9970,19 @@ function _autoBackupIfDue(){
   var dow=['mon','tue','wed','thu','fri','sat','sun'][(new Date().getDay()+6)%7];
   FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
     .then(function(){ return FS.writeFile({path:'Supero/auto-backup-'+dow+'.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
-    .then(function(){ localStorage.setItem('kt_last_autobackup', todayISO()); })
+    .then(function(){ localStorage.setItem('kt_last_autobackup', todayISO()); _backupToICloud(payload, dow); })
     .catch(function(){});
+}
+function _backupToICloud(payload, dow){
+  var TS=_plug('TrovoShare');
+  if(!TS || !TS.saveToICloud) return;
+  Promise.resolve(TS.saveToICloud({name:'supero-backup-latest.json', content:payload}))
+    .then(function(r){
+      if(r && r.saved){
+        localStorage.setItem('kt_icloud_backup', todayISO());
+        return TS.saveToICloud({name:'supero-backup-'+dow+'.json', content:payload});
+      }
+    }).catch(function(){});
 }
 function runAutoBackupNow(){
   var FS=_plug('Filesystem');
@@ -10167,7 +10180,7 @@ function runAutoBackupNow(){
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Apple Health, both directions</div><div class="ed-row-sub">Watch workouts — runs, rides, swims, pickleball, and more — land in your log with one tap, or automatically. Turn on saving and finished lifts count toward your rings.</div><div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Apple Health</div></div></div>
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Background sync</div><div class="ed-row-sub">With background sync on, iOS wakes Supero when a workout ends — the widget updates before you even open the app.</div></div></div>
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Training-day reminders</div><div class="ed-row-sub">An optional 9:00 nudge on training days. Rest-timer alerts fire even with the phone locked.</div></div></div>
-        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Daily auto-backup</div><div class="ed-row-sub">A backup file is written to the Files app every day, ready to restore if anything ever happens to your phone.</div><div class="ed-row-sub mono" style="margin-top:5px;">Files → On My iPhone → Supero</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Daily auto-backup</div><div class="ed-row-sub">A backup file is written to the Files app every day — and to iCloud Drive when available, so your training history survives a lost phone.</div><div class="ed-row-sub mono" style="margin-top:5px;">Files → iCloud Drive → Supero</div></div></div>
       </div>
     </div>
   </div>

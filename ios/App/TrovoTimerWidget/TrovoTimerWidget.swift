@@ -201,7 +201,41 @@ struct SuperoTodayView: View {
         return d.lifts > 0 ? "\(d.lifts) lifts · ~\(d.lifts * 8) min" : "Log it when done"
     }
 
+    // Lock Screen circular: glyph + compressed day label.
+    private var circularLabel: String {
+        guard let d = day else { return "—" }
+        if d.done { return "DONE" }
+        if d.isRest { return "REST" }
+        return String(d.type.prefix(5)).uppercased()
+    }
+
     var body: some View {
+        switch family {
+        case .accessoryCircular:
+            VStack(spacing: 1) {
+                Image(systemName: day?.done == true ? "checkmark" : "dumbbell.fill")
+                    .font(.system(size: 13, weight: .bold))
+                Text(circularLabel)
+                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+            }
+        case .accessoryRectangular:
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.summary != nil ? "SUPERO · WK \(entry.summary!.week)" : "SUPERO")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Text(headline)
+                    .font(.system(size: 14, weight: .heavy))
+                Text(subline)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        default:
+            homeBody
+        }
+    }
+
+    private var homeBody: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 if let s = entry.summary {
@@ -260,20 +294,37 @@ struct SuperoTodayView: View {
     }
 }
 
+// Home-screen families get the black editorial card; Lock Screen accessories
+// must stay clear so the system's vibrant material shows through.
+struct SuperoTodayEntryView: View {
+    @Environment(\.widgetFamily) var family
+    let entry: TodayEntry
+
+    private var isAccessory: Bool {
+        family == .accessoryCircular || family == .accessoryRectangular
+    }
+
+    var body: some View {
+        if #available(iOS 17.0, *) {
+            SuperoTodayView(entry: entry)
+                .containerBackground(for: .widget) {
+                    if isAccessory { Color.clear } else { Color.black }
+                }
+        } else {
+            SuperoTodayView(entry: entry)
+                .background(isAccessory ? Color.clear : Color.black)
+        }
+    }
+}
+
 struct SuperoTodayWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "SuperoTodayWidget", provider: SuperoTodayProvider()) { entry in
-            if #available(iOS 17.0, *) {
-                SuperoTodayView(entry: entry)
-                    .containerBackground(Color.black, for: .widget)
-            } else {
-                SuperoTodayView(entry: entry)
-                    .background(Color.black)
-            }
+            SuperoTodayEntryView(entry: entry)
         }
         .configurationDisplayName("Today's Session")
         .description("Your next workout, week progress, and streak.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
     }
 }
 

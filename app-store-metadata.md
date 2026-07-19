@@ -21,7 +21,7 @@ AI-built training programmes
 **Promotional Text** *(170 char limit, editable any time without review)*
 
 ```
-Your AI coach builds a custom plan, tracks every set, and adapts week by week. No accounts. No subscriptions. Your data stays on your phone.
+Your AI coach builds a custom plan, tracks every set, and syncs your Apple Watch workouts. No accounts. No subscriptions. Your data stays on your phone.
 ```
 
 **Description** *(4000 char limit)*
@@ -35,10 +35,13 @@ Tell the coach what you want to train for — strength, size, a 5K, getting back
 WHAT'S INSIDE
 ━━━━━━━━━━━━━━━━━━━━
 
-• AI Coach — Conversational programme building, mid-cycle tweaks, honest RPE-based progression
-• Log — Quick set entry, supersets, exercise notes, rest timer, session notes
-• Progress — Streaks, weekly volume, bodyweight, lift goals, run pace
-• Library — 70+ exercises with muscles worked, form tips, and cues
+• AI Coach — Conversational programme building, weekly reviews, mid-cycle tweaks, honest RPE-based progression
+• Log — Workout runner with rest timer on your Lock Screen, plus runs, body tracking, and 14 sports with fully customizable fields
+• CrossFit — Build WODs from a 56-movement library and track your repeated benchmarks
+• Apple Health — Watch workouts (runs, rides, swims, pickleball, and more) land in your log automatically; finished lifts can count toward your rings
+• Progress — Streaks, strength trends, PRs, weekly volume, activity mix, repeated-WOD bests
+• Widgets — Today's session on your Home Screen and Lock Screen
+• Library — 80 exercises with muscles worked, form tips, and cues
 • Programme — Visual training plan with week-by-week notes and PR attempts
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -64,7 +67,7 @@ Made for lifters, runners, and anyone who wants their training plan to actually 
 **Keywords** *(100 char limit, comma-separated, no spaces between commas)*
 
 ```
-workout,gym,training,fitness,coach,strength,running,tracker,programme,push,pull,legs,log,lifting
+workout,gym,training,fitness,coach,strength,running,tracker,crossfit,cycling,log,lifting,health
 ```
 
 Do not include words already in the app name or category — Apple indexes those automatically.
