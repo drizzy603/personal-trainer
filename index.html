@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-12"/>
+<meta name="build" content="20260718-13"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -730,6 +730,8 @@ select option{background:var(--bg);}
 .kt-adhoc-pills{display:flex;flex-wrap:wrap;gap:8px;}
 .kt-adhoc-pill{background:transparent;border:1px solid var(--border);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;letter-spacing:-.1px;}
 .kt-adhoc-pill:active{background:var(--card);}
+.kt-sf-btn{background:var(--card2);border:1px solid var(--border);border-radius:10px;width:34px;height:34px;
+  color:var(--lite);font-size:14px;cursor:pointer;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;}
 .kt-coach-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-left:2px solid var(--accent);border-radius:18px;padding:var(--pad-card-sm) var(--pad-card-sm) 14px;position:relative;overflow:hidden;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:transform .25s,opacity .25s;}
 .kt-coach-card.dragging{transition:none;}
 .kt-coach-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
@@ -1026,7 +1028,7 @@ var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
 var histExpandedId = null;   // session id open in the Session History accordion
 // + sub-tab editorial form draft, captured on every input.
-var sportLogDraft = {duration:'', distance:'', intensity:'', calories:'', notes:'', date:''};
+var sportLogDraft = {duration:'', notes:'', date:'', f:{}};
 
 // ── 12-Week Programme ─────────────────────────────────────────────────────────
 
@@ -1092,6 +1094,36 @@ var SPORTS = [
   {id:'Golf', emoji:'⛳',       icon:'GF', color:'#16a34a'},
   {id:'Other', emoji:'✨',      icon:'+',  color:'#d4d4d8'}
 ];
+
+// ── Per-activity custom fields ───────────────────────────────────────────────
+// kt_sport_fields: map sportId → array of field defs ({id,label,type,unit?,
+// opts?,ph?,step?}), type 'number' | 'text' | 'select'. No entry for a sport →
+// its built-in defaults. Lets each user decide what data each activity tracks.
+var SPORT_FIELD_MAX = 6;
+function _defaultSportFields(sport){
+  if(sport.fields) return sport.fields;
+  var f=[];
+  if(sport.distUnit) f.push({id:'distance',label:'Distance',unit:sport.distUnit,type:'number',step:'.1',ph:sport.distUnit==='m'?'1000':'10'});
+  f.push({id:'intensity',label:'Intensity',unit:'1–10',type:'number',ph:'7'});
+  f.push({id:'calories',label:'Calories',type:'number',ph:'350'});
+  return f;
+}
+function getSportFields(sportId){
+  var sport=SPORTS.find(function(s){return s.id===sportId;});
+  if(!sport) return [];
+  var all=lsGet('kt_sport_fields')||{};
+  return Array.isArray(all[sportId]) ? all[sportId].slice(0,SPORT_FIELD_MAX) : _defaultSportFields(sport);
+}
+function isSportFieldsCustomized(sportId){
+  var all=lsGet('kt_sport_fields')||{};
+  return Array.isArray(all[sportId]);
+}
+function setSportFields(sportId, fields){
+  var all=lsGet('kt_sport_fields')||{};
+  if(fields==null) delete all[sportId];
+  else all[sportId]=fields;
+  lsSet('kt_sport_fields', all);
+}
 
 function sportChip(s, px, inv){
   var sz=px||32, fs=Math.round(sz*0.38), r=Math.round(sz*0.32);
@@ -1774,7 +1806,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -5362,7 +5394,7 @@ function saveSportLog(){
   var dur=parseInt((document.getElementById('spDuration')||{value:''}).value)||0;
   var notes=((document.getElementById('spNotes')||{value:''}).value||'').trim();
   var data={};
-  (sport.fields||[]).forEach(function(f){
+  getSportFields(sport.id).forEach(function(f){
     var el=document.getElementById('sp_'+f.id);
     if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
   });
@@ -5415,6 +5447,15 @@ function buildSportSummary(log){
   } else if(log.type==='Other'){
     if(d.activity) parts.push(d.activity);
   }
+  // Customized activities: surface whatever the user chose to track.
+  if(!parts.length && isSportFieldsCustomized(log.type)){
+    getSportFields(log.type).forEach(function(f){
+      if(parts.length>=3) return;
+      var v=d[f.id];
+      if(v==null||v==='') return;
+      parts.push(v+(f.unit&&typeof v==='number'?' '+f.unit:''));
+    });
+  }
   // Generic editorial-form fields: distance / intensity / calories. Show
   // duration here when nothing else surfaced so empty rows aren't blank.
   if(!parts.length){
@@ -5443,7 +5484,7 @@ function _renderSportField(f){
 }
 
 function _renderSportFields(sport){
-  var html='', i=0, ff=sport.fields||[];
+  var html='', i=0, ff=getSportFields(sport.id);
   while(i<ff.length){
     var f1=ff[i], f2=ff[i+1];
     // text fields (except partner/opponent pairs) go full-width
@@ -5671,29 +5712,43 @@ function renderSportEditorial(){
       'color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">CUSTOMIZE TABS →</button>'+
   '</div>';
 
-  // Log card — morphs to selected sport colour.
-  // Layout: duration + dist-or-intensity / intensity-or-calories + date / notes / save
-  var hasDist = !!sport.distUnit;
+  // Log card — morphs to selected sport colour. Layout: duration + date fixed,
+  // then the activity's own fields (built-in defaults or the user's custom set).
+  if(!d.f) d.f = {};
   var sync = ' oninput="sportLogDraft.';
-  var row1, row2;
-  if(hasDist){
-    row1 = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
-      '<div><label class="kt-act-field-lbl">DISTANCE · '+_esc(sport.distUnit.toUpperCase())+'</label>'+
-        '<input class="kt-act-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="0" value="'+_esc(d.distance)+'"'+sync+'distance=this.value"/></div>';
-    row2 = '<div><label class="kt-act-field-lbl">INTENSITY · 1–10</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="1" max="10" placeholder="7" value="'+_esc(d.intensity)+'"'+sync+'intensity=this.value"/></div>'+
-      '<div><label class="kt-act-field-lbl">DATE</label>'+
-        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
-  } else {
-    row1 = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
-      '<div><label class="kt-act-field-lbl">INTENSITY · 1–10</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="1" max="10" placeholder="7" value="'+_esc(d.intensity)+'"'+sync+'intensity=this.value"/></div>';
-    row2 = '<div><label class="kt-act-field-lbl">CALORIES</label>'+
-        '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="350" value="'+_esc(d.calories)+'"'+sync+'calories=this.value"/></div>'+
-      '<div><label class="kt-act-field-lbl">DATE</label>'+
-        '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
+  function _edField(f){
+    var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(f.unit).toUpperCase()):'');
+    var fSync = ' oninput="sportLogDraft.f[\''+f.id+'\']=this.value"';
+    var val = d.f[f.id]!=null?String(d.f[f.id]):'';
+    if(f.type==='select'){
+      return '<div><label class="kt-act-field-lbl">'+lblTxt+'</label>'+
+        '<select class="kt-act-input" onchange="sportLogDraft.f[\''+f.id+'\']=this.value">'+
+        '<option value=""'+(val===''?' selected':'')+'>—</option>'+
+        (f.opts||[]).map(function(o){return '<option'+(val===o?' selected':'')+'>'+_esc(o)+'</option>';}).join('')+
+        '</select></div>';
+    }
+    var typ = f.type==='number'?'number':'text';
+    return '<div><label class="kt-act-field-lbl">'+lblTxt+'</label>'+
+      '<input class="kt-act-input" type="'+typ+'"'+
+      (typ==='number'?' inputmode="decimal" min="0"'+(f.step?' step="'+f.step+'"':''):'')+
+      ' placeholder="'+_esc(f.ph||'')+'" value="'+_esc(val)+'"'+fSync+'/></div>';
+  }
+  var fixedRow = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
+      '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
+    '<div><label class="kt-act-field-lbl">DATE</label>'+
+      '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
+  var sportFields = getSportFields(logSportType);
+  var fieldRows = '', fi = 0;
+  while(fi < sportFields.length){
+    var f1 = sportFields[fi], f2 = sportFields[fi+1];
+    var solo = (f1.type==='text') || !f2;
+    if(solo){
+      fieldRows += '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;">'+_edField(f1)+'</div>';
+      fi++;
+    } else {
+      fieldRows += '<div class="kt-act-logcard-grid">'+_edField(f1)+_edField(f2)+'</div>';
+      fi += 2;
+    }
   }
   var card = '<div class="kt-act-logcard morph" style="background:'+sport.color+';">'+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'+
@@ -5704,9 +5759,12 @@ function renderSportEditorial(){
         '<div style="font-size:11px;font-weight:600;color:rgba(0,0,0,.4);text-transform:uppercase;'+
           'letter-spacing:.05em;">'+weekday+' · WK '+String(currentWeek).padStart(2,'0')+'</div>'+
       '</div>'+
+      '<button onclick="openSportFieldsEditor(logSportType)" style="margin-left:auto;background:rgba(0,0,0,.18);'+
+        'border:none;border-radius:10px;padding:8px 12px;font-size:10px;font-weight:800;letter-spacing:.08em;'+
+        'color:#0b0b0d;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">EDIT FIELDS</button>'+
     '</div>'+
-    '<div class="kt-act-logcard-grid">'+row1+'</div>'+
-    '<div class="kt-act-logcard-grid">'+row2+'</div>'+
+    '<div class="kt-act-logcard-grid">'+fixedRow+'</div>'+
+    fieldRows+
     '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:18px;">'+
       '<div><label class="kt-act-field-lbl">NOTES · OPTIONAL</label>'+
         '<input class="kt-act-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
@@ -5751,28 +5809,30 @@ function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
   var d = sportLogDraft;
   var dur = parseInt(d.duration) || 0;
-  var dist = parseFloat(d.distance) || 0;
-  var inten = parseInt(d.intensity) || 0;
-  var cals = parseInt(d.calories) || 0;
   var notes = (d.notes||'').trim();
   var date = (d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) ? d.date : todayISO();
   // Require at least duration so we don't write a blank log.
   if(!dur){ showToast('Enter a duration'); return; }
+  var data = {};
+  getSportFields(logSportType).forEach(function(f){
+    var v = (d.f && d.f[f.id]!=null) ? String(d.f[f.id]).trim() : '';
+    if(!v) return;
+    data[f.id] = f.type==='number' ? (parseFloat(v)||0) : v;
+  });
   var rec = {
     id: Date.now(),
     date: date,
     type: logSportType,
     duration: dur,
-    data: { intensity:inten, calories:cals },
+    data: data,
     notes: notes
   };
-  if(sport.distUnit && dist > 0) rec.data.distance = dist;
   var logs = getSportLogs();
   logs.unshift(rec);
   lsSet('kt_sports', logs);
   invalidateCoachCard();
   // Reset draft for next entry.
-  sportLogDraft = {duration:'', distance:'', intensity:'', calories:'', notes:'', date:todayISO()};
+  sportLogDraft = {duration:'', notes:'', date:todayISO(), f:{}};
   // Same ✓-logged / UNDO strip the run and body tabs get.
   sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
   render();
@@ -5855,6 +5915,9 @@ function renderSportSection(forcedSportId){
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">'+
       sportChip(sport,36)+
       '<div style="font-size:16px;font-weight:800;letter-spacing:-.3px;">Log '+sport.id+'</div>'+
+      '<button onclick="openSportFieldsEditor(\''+_esc(sport.id)+'\')" style="margin-left:auto;background:var(--card2);'+
+        'border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:10px;font-weight:800;letter-spacing:.08em;'+
+        'color:var(--lite);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">EDIT FIELDS</button>'+
     '</div>'+
     aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
@@ -5885,7 +5948,7 @@ function fillSportWithAI(){
   if(btn){btn.disabled=true;btn.textContent='Analysing…';}
   var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
   var fieldDesc='duration (minutes, integer)\n';
-  (sport.fields||[]).forEach(function(f){
+  getSportFields(sport.id).forEach(function(f){
     if(f.type==='select') fieldDesc+=f.id+' (one of: '+f.opts.join(', ')+')\n';
     else fieldDesc+=f.id+(f.unit?' ('+f.unit+', number)':' (string or number as appropriate)')+'\n';
   });
@@ -5907,7 +5970,7 @@ function fillSportWithAI(){
     if(parsed.duration!=null){var d=document.getElementById('spDuration');if(d)d.value=parsed.duration;}
     if(parsed.date){var dd=document.getElementById('spDate');if(dd)dd.value=parsed.date;}
     if(parsed.notes){var nn=document.getElementById('spNotes');if(nn)nn.value=parsed.notes;}
-    (sport.fields||[]).forEach(function(f){
+    getSportFields(sport.id).forEach(function(f){
       if(parsed[f.id]!=null){var el=document.getElementById('sp_'+f.id);if(el)el.value=parsed[f.id];}
     });
     _refreshSportAIBtn();
@@ -8984,6 +9047,123 @@ function openLogTabsEditor(){
 function closeLogTabsEditor(){
   var el=document.getElementById('logTabsOverlay');
   if(el)el.remove();
+}
+
+// ── Per-activity field editor sheet ──────────────────────────────────────────
+var _sfSport = null;   // sport id the open sheet is editing
+function _buildSportFieldsSheet(){
+  var fields = getSportFields(_sfSport);
+  var rows = fields.map(function(f, i){
+    var meta = (f.type==='select' ? 'choice: '+(f.opts||[]).join(' / ') : f.type)+(f.unit?' · '+f.unit:'');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:14px;font-weight:700;">'+_esc(f.label)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(meta)+'</div>'+
+      '</div>'+
+      '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↑</button>'+
+      '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↓</button>'+
+      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:#ef4444;">✕</button>'+
+    '</div>';
+  }).join('');
+  var addForm = fields.length>=SPORT_FIELD_MAX
+    ? '<div style="font-size:12px;color:var(--muted);padding:14px 0;">Field limit reached ('+SPORT_FIELD_MAX+') — remove one to add another.</div>'
+    : '<div style="padding:14px 0 4px;">'+
+      '<div class="kt-adhoc-lbl" style="margin-bottom:8px;">ADD A FIELD</div>'+
+      '<div style="display:flex;gap:6px;margin-bottom:8px;">'+
+        ['number','text','select'].map(function(t){
+          var lbl = t==='select'?'Choice':t.charAt(0).toUpperCase()+t.slice(1);
+          return '<button onclick="_sfType=\''+t+'\';_refreshSportFieldsSheet()" style="flex:1;padding:8px;border-radius:10px;'+
+            'border:1.5px solid '+(_sfType===t?'var(--accent)':'var(--border)')+';'+
+            'background:'+(_sfType===t?'var(--accent-soft)':'var(--card2)')+';'+
+            'color:'+(_sfType===t?'var(--accent)':'var(--lite)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'+lbl+'</button>';
+        }).join('')+
+      '</div>'+
+      '<input id="sfLabel" type="text" placeholder="Field name — e.g. Waves caught" maxlength="24" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>'+
+      (_sfType==='number'
+        ? '<input id="sfUnit" type="text" placeholder="Unit — e.g. km, reps (optional)" maxlength="10" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>' : '')+
+      (_sfType==='select'
+        ? '<input id="sfOpts" type="text" placeholder="Options, comma-separated — e.g. Easy, Medium, Hard" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>' : '')+
+      '<button onclick="_sfAdd()" style="width:100%;padding:11px;border-radius:12px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">Add field</button>'+
+    '</div>';
+  var resetBtn = isSportFieldsCustomized(_sfSport)
+    ? '<button onclick="_sfReset()" style="width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--lite);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Reset to defaults</button>'
+    : '';
+  return rows + addForm + resetBtn;
+}
+function _refreshSportFieldsSheet(){
+  var el=document.getElementById('sportFieldsList');
+  if(el) el.innerHTML=_buildSportFieldsSheet();
+}
+var _sfType='number';
+function _sfMutate(fn){
+  var fields = getSportFields(_sfSport).slice();
+  fn(fields);
+  setSportFields(_sfSport, fields);
+  _refreshSportFieldsSheet();
+  render();
+}
+function _sfMove(i, dir){
+  _sfMutate(function(fields){
+    var j=i+dir;
+    if(j<0||j>=fields.length) return;
+    var t=fields[i]; fields[i]=fields[j]; fields[j]=t;
+  });
+}
+function _sfRemove(i){
+  _sfMutate(function(fields){ fields.splice(i,1); });
+}
+function _sfAdd(){
+  var lblEl=document.getElementById('sfLabel');
+  var label=(lblEl&&lblEl.value||'').trim();
+  if(!label){ showToast('Name the field first'); return; }
+  var fields=getSportFields(_sfSport);
+  if(fields.length>=SPORT_FIELD_MAX){ showToast('Field limit reached'); return; }
+  var base='c_'+label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  var id=base, n=2;
+  while(fields.some(function(f){return f.id===id;})){ id=base+'_'+(n++); }
+  var f={id:id, label:label, type:_sfType};
+  if(_sfType==='number'){
+    var u=(document.getElementById('sfUnit')||{value:''}).value.trim();
+    if(u) f.unit=u;
+  }
+  if(_sfType==='select'){
+    var opts=((document.getElementById('sfOpts')||{value:''}).value||'')
+      .split(',').map(function(o){return o.trim();}).filter(Boolean);
+    if(!opts.length){ showToast('Add at least one option'); return; }
+    f.opts=opts.slice(0,8);
+  }
+  _sfMutate(function(fields){ fields.push(f); });
+}
+function _sfReset(){
+  setSportFields(_sfSport, null);
+  _refreshSportFieldsSheet();
+  render();
+}
+function openSportFieldsEditor(sportId){
+  _sfSport = sportId;
+  _sfType = 'number';
+  var sport = SPORTS.find(function(s){return s.id===sportId;});
+  var existing=document.getElementById('sportFieldsOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='sportFieldsOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:85vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">'+(sport&&sport.emoji?sport.emoji+' ':'')+_esc(sportId)+' fields</div>'+
+      '<button onclick="closeSportFieldsEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;">These fields appear on the '+_esc(sportId)+' log card. Duration, date, and notes are always there.</div>'+
+    '<div id="sportFieldsList">'+_buildSportFieldsSheet()+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeSportFieldsEditor();});
+  _a11yPass();
+}
+function closeSportFieldsEditor(){
+  var el=document.getElementById('sportFieldsOverlay');
+  if(el)el.remove();
+  _sfSport=null;
 }
 
 // ── Exercise Library Modal ────────────────────────────────────────────────────
