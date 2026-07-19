@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-13"/>
+<meta name="build" content="20260718-14"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1058,6 +1058,7 @@ var SPORTS = [
   ]},
   {id:'CrossFit', emoji:'🏋️',   icon:'CF', color:'#ef4444', fields:[
     {id:'wodName',   label:'WOD name',        type:'text',   ph:'Fran'},
+    {id:'format',    label:'Format',          type:'select', opts:['For Time','AMRAP','EMOM','Tabata','Strength','Chipper']},
     {id:'score',     label:'Score / time',    type:'text',   ph:'5:23'},
     {id:'level',     label:'Level',           type:'select', opts:['Rx','Scaled','Masters']},
     {id:'rounds',    label:'Rounds done',     type:'number', ph:''}
@@ -1124,6 +1125,26 @@ function setSportFields(sportId, fields){
   else all[sportId]=fields;
   lsSet('kt_sport_fields', all);
 }
+
+// ── CrossFit movement library ────────────────────────────────────────────────
+// Built-ins + user additions (kt_cf_moves). Sessions store picked movements in
+// rec.data.movements = [{name, reps?, weight?}] alongside the regular fields.
+var CF_MOVEMENTS = [
+  'Air Squat','Back Squat','Front Squat','Overhead Squat','Goblet Squat','Pistol',
+  'Deadlift','Sumo Deadlift','Romanian Deadlift','Clean','Power Clean','Squat Clean',
+  'Clean & Jerk','Jerk','Push Jerk','Push Press','Strict Press','Thruster',
+  'Snatch','Power Snatch','Squat Snatch','Kettlebell Swing','Turkish Get-up',
+  'Wall Ball','Box Jump','Box Step-over','Burpee','Burpee Box Jump-over','Devil Press',
+  'Pull-up','Chest-to-Bar Pull-up','Muscle-up','Ring Muscle-up','Ring Dip','Ring Row',
+  'Handstand Push-up','Handstand Walk','Push-up','Dip','Rope Climb',
+  'Toes-to-Bar','Knees-to-Elbows','Sit-up','GHD Sit-up','V-up',
+  'Double-Under','Single-Under','Lunge','Overhead Lunge','Farmer Carry',
+  'Row · cals','Bike · cals','Ski Erg · cals','Run · m','Sled Push','Bench Press'
+];
+function getAllCFMovements(){
+  return CF_MOVEMENTS.concat(lsGet('kt_cf_moves')||[]);
+}
+var cfDraftMoves = [];   // movements being built into the current CF log
 
 function sportChip(s, px, inv){
   var sz=px||32, fs=Math.round(sz*0.38), r=Math.round(sz*0.32);
@@ -1806,7 +1827,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -5386,7 +5407,10 @@ function moveSport(id,newDate){
   lsSet('kt_sports',sports);
   _calNavToDate(newDate); render();
 }
-function pickSport(id){ logSportType=id; render(); }
+function pickSport(id){
+  if(id!=='CrossFit') cfDraftMoves=[];
+  logSportType=id; render();
+}
 
 function saveSportLog(){
   var sport=SPORTS.find(function(s){return s.id===logSportType;})||SPORTS[0];
@@ -5398,11 +5422,16 @@ function saveSportLog(){
     var el=document.getElementById('sp_'+f.id);
     if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
   });
+  if(logSportType==='CrossFit'){
+    var _mv=_cfMovesForSave();
+    if(_mv) data.movements=_mv;
+  }
   var rec={id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes};
   var logs=getSportLogs();
   logs.unshift(rec);
   lsSet('kt_sports',logs);
   invalidateCoachCard();
+  cfDraftMoves=[];
   sportLogConfirmed={id:rec.id,type:logSportType,label:sport.id+(dur?' · '+dur+' min':'')};
   render();
 }
@@ -5430,8 +5459,13 @@ function buildSportSummary(log){
     if(d.avgSpeed) parts.push(d.avgSpeed+'km/h');
   } else if(log.type==='CrossFit'){
     if(d.wodName) parts.push(d.wodName);
+    if(d.format)  parts.push(d.format);
     if(d.score)   parts.push(d.score);
     if(d.level)   parts.push(d.level);
+    if(d.movements&&d.movements.length){
+      parts.push(d.movements.slice(0,3).map(function(m){return m.name;}).join(', ')+
+        (d.movements.length>3?' +'+(d.movements.length-3):''));
+    }
   } else if(log.type==='Pickleball'||log.type==='Tennis'){
     if(d.setsWon!=null||d.setsLost!=null) parts.push((d.setsWon||0)+'-'+(d.setsLost||0));
     if(d.opponent) parts.push('vs '+d.opponent);
@@ -5513,7 +5547,7 @@ function renderRecentSportLogs(){
       var sum=buildSportSummary(log);
       return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'+
         sportChip(s,36)+
-        '<div style="flex:1;min-width:0;">'+
+        '<div style="flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openSportLogEditor('+log.id+')">'+
           '<div style="font-size:14px;font-weight:700;">'+log.type+(log.duration?' · '+log.duration+' min':'')+'</div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+sum:'')+'</div>'+
           (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+log.notes+'</div>':'')+
@@ -5765,6 +5799,7 @@ function renderSportEditorial(){
     '</div>'+
     '<div class="kt-act-logcard-grid">'+fixedRow+'</div>'+
     fieldRows+
+    (logSportType==='CrossFit'?_renderCFMovesBlock(true):'')+
     '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:18px;">'+
       '<div><label class="kt-act-field-lbl">NOTES · OPTIONAL</label>'+
         '<input class="kt-act-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
@@ -5783,7 +5818,7 @@ function renderSportEditorial(){
         var when = l.date ? fmtDate(l.date) : '';
         var summary = buildSportSummary(l) || (l.duration ? l.duration+' min' : '—');
         return '<div class="kt-marquee-row" style="position:relative;">'+
-          '<div class="kt-marquee-left">'+
+          '<div class="kt-marquee-left" onclick="openSportLogEditor('+l.id+')" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
             '<span class="kt-act-chip-badge" style="background:'+s.color+';">'+_esc(s.icon)+'</span>'+
             '<div>'+
               '<div class="kt-marquee-name">'+_esc(l.type)+'</div>'+
@@ -5819,6 +5854,10 @@ function saveSportEditorial(){
     if(!v) return;
     data[f.id] = f.type==='number' ? (parseFloat(v)||0) : v;
   });
+  if(logSportType==='CrossFit'){
+    var mv = _cfMovesForSave();
+    if(mv) data.movements = mv;
+  }
   var rec = {
     id: Date.now(),
     date: date,
@@ -5833,6 +5872,7 @@ function saveSportEditorial(){
   invalidateCoachCard();
   // Reset draft for next entry.
   sportLogDraft = {duration:'', notes:'', date:todayISO(), f:{}};
+  cfDraftMoves = [];
   // Same ✓-logged / UNDO strip the run and body tabs get.
   sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
   render();
@@ -5927,6 +5967,7 @@ function renderSportSection(forcedSportId){
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
     _renderSportFields(sport)+
+    (sport.id==='CrossFit'?_renderCFMovesBlock(false):'')+
     '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
       '<textarea id="spNotes" rows="2" placeholder="How did it go?" style="'+inp+';resize:vertical;"></textarea></div>'+
     '<button onclick="saveSportLog()" style="width:100%;padding:14px;background:'+sport.color+';color:#000;'+
@@ -9164,6 +9205,203 @@ function closeSportFieldsEditor(){
   var el=document.getElementById('sportFieldsOverlay');
   if(el)el.remove();
   _sfSport=null;
+}
+
+// ── CrossFit session builder ─────────────────────────────────────────────────
+// A movements list under the CrossFit log form: pick from the library sheet,
+// set reps/weight inline, saved into rec.data.movements.
+function _renderCFMovesBlock(dark){
+  // dark=true → editorial colored card (black-on-color); else neutral card.
+  var lblStyle = dark
+    ? 'font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(0,0,0,.4);'
+    : 'font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;';
+  var rowBg = dark ? 'rgba(0,0,0,.12)' : 'var(--card2)';
+  var txt = dark ? '#0b0b0d' : 'var(--text)';
+  var inpStyle = 'width:100%;background:'+(dark?'rgba(255,255,255,.55)':'var(--bg)')+';border:1px solid '+
+    (dark?'transparent':'var(--border)')+';border-radius:8px;padding:7px 8px;color:#0b0b0d;'+
+    (dark?'':'color:var(--text);')+'font-size:14px;box-sizing:border-box;font-family:inherit;';
+  var rows = cfDraftMoves.map(function(m, i){
+    return '<div style="display:flex;align-items:center;gap:8px;background:'+rowBg+';border-radius:12px;padding:8px 10px;margin-bottom:6px;">'+
+      '<div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:'+txt+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(m.name)+'</div>'+
+      '<input type="number" inputmode="numeric" placeholder="reps" value="'+_esc(m.reps||'')+'" '+
+        'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'width:64px;flex-shrink:0;"/>'+
+      '<input type="number" inputmode="decimal" placeholder="lb" value="'+_esc(m.weight||'')+'" '+
+        'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'width:64px;flex-shrink:0;"/>'+
+      '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:'+
+        (dark?'rgba(0,0,0,.5)':'var(--muted)')+';font-size:15px;cursor:pointer;padding:4px;flex-shrink:0;'+
+        'font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>';
+  }).join('');
+  return '<div style="margin-bottom:14px;">'+
+    '<div style="'+lblStyle+'margin-bottom:8px;">MOVEMENTS'+(cfDraftMoves.length?' · '+cfDraftMoves.length:'')+'</div>'+
+    rows+
+    '<button onclick="openCFMovePicker()" style="width:100%;padding:10px;border-radius:12px;border:1.5px dashed '+
+      (dark?'rgba(0,0,0,.35)':'var(--border)')+';background:transparent;color:'+(dark?'#0b0b0d':'var(--lite)')+';'+
+      'font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+ Add movement</button>'+
+  '</div>';
+}
+var _cfPickerQuery='';
+function _buildCFPickerList(){
+  var q=_cfPickerQuery.trim().toLowerCase();
+  var all=getAllCFMovements();
+  var hits=all.filter(function(m){ return !q || m.toLowerCase().indexOf(q)>-1; });
+  var html=hits.slice(0,60).map(function(m){
+    return '<button onclick="addCFMove(\''+_esc(m).replace(/'/g,'&#39;')+'\')" style="display:block;width:100%;text-align:left;'+
+      'padding:12px 4px;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);'+
+      'font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_esc(m)+'</button>';
+  }).join('');
+  if(q && !all.some(function(m){return m.toLowerCase()===q;})){
+    html+='<button onclick="addCFMoveCustom()" style="display:block;width:100%;text-align:left;padding:12px 4px;'+
+      'border:none;background:none;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;'+
+      'font-family:inherit;-webkit-tap-highlight-color:transparent;">+ Add &ldquo;'+_esc(_cfPickerQuery.trim())+'&rdquo;</button>';
+  }
+  if(!html) html='<div style="padding:20px 0;color:var(--muted);font-size:13px;">No movements found</div>';
+  return html;
+}
+function openCFMovePicker(){
+  _cfPickerQuery='';
+  var existing=document.getElementById('cfPickerOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='cfPickerOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2100;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;height:70vh;display:flex;flex-direction:column;padding:20px 20px 0;">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Add movement</div>'+
+      '<button onclick="closeCFMovePicker()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<input id="cfPickerSearch" type="text" placeholder="Search — thrusters, wall balls…" autocomplete="off" '+
+      'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;'+
+      'color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:6px;"/>'+
+    '<div id="cfPickerList" style="flex:1;overflow-y:auto;padding-bottom:max(env(safe-area-inset-bottom),16px);">'+_buildCFPickerList()+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  var search=document.getElementById('cfPickerSearch');
+  if(search) search.addEventListener('input', function(){
+    _cfPickerQuery=this.value;
+    var list=document.getElementById('cfPickerList');
+    if(list) list.innerHTML=_buildCFPickerList();
+  });
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeCFMovePicker();});
+  _a11yPass();
+}
+function closeCFMovePicker(){
+  var el=document.getElementById('cfPickerOverlay');
+  if(el)el.remove();
+}
+function addCFMove(name){
+  cfDraftMoves.push({name:name, reps:'', weight:''});
+  closeCFMovePicker();
+  render();
+}
+function addCFMoveCustom(){
+  var name=_cfPickerQuery.trim();
+  if(!name) return;
+  var customs=lsGet('kt_cf_moves')||[];
+  if(!getAllCFMovements().some(function(m){return m.toLowerCase()===name.toLowerCase();})){
+    customs.push(name);
+    lsSet('kt_cf_moves', customs);
+  }
+  addCFMove(name);
+}
+// Collects the built movements for a save; returns undefined when none.
+function _cfMovesForSave(){
+  if(!cfDraftMoves.length) return undefined;
+  return cfDraftMoves.map(function(m){
+    var out={name:m.name};
+    var r=parseInt(m.reps); if(r>0) out.reps=r;
+    var w=parseFloat(m.weight); if(w>0) out.weight=w;
+    return out;
+  });
+}
+
+// ── Sport-log enrichment sheet ───────────────────────────────────────────────
+// Tap any logged activity (incl. Watch imports) to edit duration/date/notes and
+// the activity's fields. Keys the current fields don't cover (avgHR, kcal,
+// movements from a WOD build…) are preserved untouched.
+function openSportLogEditor(id){
+  var rec = getSportLogs().find(function(l){ return l.id===id; });
+  if(!rec) return;
+  var sport = SPORTS.find(function(s){return s.id===rec.type;}) || SPORTS[0];
+  var d = rec.data||{};
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
+  var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;';
+  function field(f){
+    var v = d[f.id]!=null?String(d[f.id]):'';
+    var label=f.label+(f.unit?' ('+f.unit+')':'');
+    if(f.type==='select'){
+      return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
+        '<select id="sle_'+f.id+'" style="'+inp+'">'+
+        '<option value=""'+(v===''?' selected':'')+'>—</option>'+
+        (f.opts||[]).map(function(o){return '<option'+(v===o?' selected':'')+'>'+_esc(o)+'</option>';}).join('')+
+        '</select></div>';
+    }
+    return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
+      '<input id="sle_'+f.id+'" type="'+(f.type==='number'?'number':'text')+'" value="'+_esc(v)+'" placeholder="'+_esc(f.ph||'')+'"'+
+      (f.step?' step="'+f.step+'"':'')+' style="'+inp+'"/></div>';
+  }
+  var fields = getSportFields(rec.type);
+  var grid='', i=0;
+  while(i<fields.length){
+    var f1=fields[i], f2=fields[i+1];
+    if((f1.type==='text') || !f2){
+      grid+='<div style="margin-bottom:10px;">'+field(f1)+'</div>'; i++;
+    } else {
+      grid+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+field(f1)+field(f2)+'</div>'; i+=2;
+    }
+  }
+  var fromHealth = rec.notes==='From Apple Health';
+  var existing=document.getElementById('sportLogEditOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='sportLogEditOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:85vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">'+(sport.emoji?sport.emoji+' ':'')+_esc(rec.type)+'</div>'+
+      '<button onclick="closeSportLogEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    (fromHealth?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Imported from Apple Health — the watch data stays; add what it couldn\'t know.</div>':'')+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+      '<div><label style="'+lbl+'">Duration (min)</label><input id="sleDuration" type="number" min="0" value="'+_esc(rec.duration||'')+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'">Date</label><input id="sleDate" type="date" value="'+_esc(rec.date||todayISO())+'" style="'+inp+'"/></div>'+
+    '</div>'+
+    grid+
+    '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
+      '<input id="sleNotes" type="text" value="'+_esc(rec.notes||'')+'" placeholder="Optional" style="'+inp+'"/></div>'+
+    '<button onclick="saveSportLogEdit('+rec.id+')" style="width:100%;padding:14px;background:'+sport.color+';color:#000;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeSportLogEditor();});
+  _a11yPass();
+}
+function closeSportLogEditor(){
+  var el=document.getElementById('sportLogEditOverlay');
+  if(el)el.remove();
+}
+function saveSportLogEdit(id){
+  var logs = getSportLogs();
+  var rec = logs.find(function(l){ return l.id===id; });
+  if(!rec){ closeSportLogEditor(); return; }
+  var dur = parseInt((document.getElementById('sleDuration')||{value:''}).value)||0;
+  var date = (document.getElementById('sleDate')||{value:''}).value;
+  var notes = ((document.getElementById('sleNotes')||{value:''}).value||'').trim();
+  if(dur>0) rec.duration = dur;
+  if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)) rec.date = date;
+  rec.notes = notes;
+  rec.data = rec.data||{};
+  getSportFields(rec.type).forEach(function(f){
+    var el = document.getElementById('sle_'+f.id);
+    if(!el) return;
+    var v = el.value.trim();
+    if(v) rec.data[f.id] = f.type==='number'?(parseFloat(v)||0):v;
+    else delete rec.data[f.id];
+  });
+  lsSet('kt_sports', logs);
+  invalidateCoachCard();
+  closeSportLogEditor();
+  showToast(rec.type+' updated');
+  render();
 }
 
 // ── Exercise Library Modal ────────────────────────────────────────────────────
