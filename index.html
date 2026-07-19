@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260718-21"/>
+<meta name="build" content="20260718-22"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -1026,7 +1026,9 @@ var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
+var showAllHist = false;     // Session History collapsed to recent rows by default
 var histExpandedId = null;   // session id open in the Session History accordion
+var strengthChartOpen = null; // lift name expanded to a full e1RM chart
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', notes:'', date:'', f:{}};
 
@@ -6234,9 +6236,11 @@ function renderSportProgress(){
       if(withDist.length){
         var total=withDist.reduce(function(a,l){return a+(l.data.distance||0);},0);
         var avg=Math.round(total/withDist.length*10)/10;
+        var maxD=0; withDist.forEach(function(l){ if(l.data.distance>maxD) maxD=l.data.distance; });
         html+='<div style="display:flex;gap:20px;margin:12px 0 8px;">'+
           statBlock(Math.round(total),unit,'total')+
           statBlock(avg,unit,'avg / session')+
+          statBlock(Math.round(maxD*10)/10,unit,'longest')+
         '</div>';
         if(withDist.length>=2){
           var cd=withDist.slice(0,10).reverse().map(function(l){return{date:l.date,val:l.data.distance};});
@@ -6545,7 +6549,11 @@ function _plateauLifts(){
   });
   return res;
 }
-function renderStrengthTrends(){
+function toggleStrengthChart(name){
+  strengthChartOpen = strengthChartOpen===name ? null : name;
+  render();
+}
+function renderStrengthTrends(extraHTML){
   var series=_e1rmSeries();
   var names=Object.keys(series).filter(function(n){ return series[n].length>=3; })
     .sort(function(a,b){ return series[b].length-series[a].length; }).slice(0,4);
@@ -6562,16 +6570,26 @@ function renderStrengthTrends(){
       :delta<0?'<span style="color:var(--red);">↓'+Math.abs(delta)+'</span>'
       :'<span style="color:var(--muted);">—</span>';
     var flag=plateaus[n]?'<div style="font-size:10px;color:var(--yellow);font-weight:700;margin-top:2px;">No new peak in '+plateaus[n].days+' days</div>':'';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">'+
-      '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(n)+'</div>'+flag+'</div>'+
-      _sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)')+
-      '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(cur)+'<span style="font-size:10px;color:var(--muted);"> lb</span></div>'+
-      '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">4w</span></div></div>'+
+    var open = strengthChartOpen===n;
+    // Tap a row for the full e1RM history drawn by the main chart engine.
+    var full = open
+      ? '<div style="padding:6px 0 8px;">'+
+          svgChart(pts.slice(-30).map(function(p){ return {date:p.date, val:Math.round(p.e1rm)}; }),'var(--accent)')+
+        '</div>'
+      : '';
+    return '<div style="border-bottom:1px solid var(--border);">'+
+      '<div onclick="toggleStrengthChart(\''+_esc(n)+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+        '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:'+(open?'var(--accent)':'var(--text)')+';">'+_esc(n)+'</div>'+flag+'</div>'+
+        (open?'':_sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)'))+
+        '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(cur)+'<span style="font-size:10px;color:var(--muted);"> lb</span></div>'+
+        '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">4w</span></div></div>'+
+      '</div>'+
+      full+
     '</div>';
   }).join('');
   return '<div class="chart-card"><h2 style="margin-bottom:4px;">Strength</h2>'+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets</div>'+
-    rows+'</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets · tap a lift for the full curve</div>'+
+    rows+(extraHTML||'')+'</div>';
 }
 
 // ── Weekly coach review ───────────────────────────────────────────────────────
@@ -6737,7 +6755,9 @@ function renderProgress() {
     runPaceBar + runPaceInput +
     '</div>';
 
-  var goals = progressTab === 'runs' ? runGoals : (progressTab === 'sports' ? '' : (renderStrengthTrends() + liftGoals));
+  // Lifts-mode goals are assembled later, once the block-progression rows
+  // exist to fold into the Strength card.
+  var goals = progressTab === 'runs' ? runGoals : '';
 
   var lastVol=sessions.length?calcVolume(sessions[0].exercises||[]):0;
   var bws=getBodyWeights();
@@ -6852,8 +6872,10 @@ function renderProgress() {
 
   var stats = progressTab === 'runs' ? runStats : (progressTab === 'sports' ? '' : liftStats);
 
+  // kt_sessions is newest-first; walk from the front to collect the most
+  // recent entries, then reverse so charts run oldest → newest left-to-right.
   var benchData=[];
-  for(var i=sessions.length-1;i>=0&&benchData.length<10;i--){
+  for(var i=0;i<sessions.length&&benchData.length<10;i++){
     var s=sessions[i];
     if(s.type!=='Push') continue;
     (s.exercises||[]).forEach(function(ex){
@@ -6864,7 +6886,7 @@ function renderProgress() {
   benchData.reverse();
 
   var squatData=[];
-  for(var i=sessions.length-1;i>=0&&squatData.length<10;i--){
+  for(var i=0;i<sessions.length&&squatData.length<10;i++){
     var s=sessions[i];
     if(s.type!=='Legs'&&s.type!=='Legs2') continue;
     (s.exercises||[]).forEach(function(ex){
@@ -6946,7 +6968,7 @@ function renderProgress() {
   // Volume trend
   function getVolTrend(type){
     var data=[];
-    for(var i=sessions.length-1;i>=0&&data.length<8;i--){
+    for(var i=0;i<sessions.length&&data.length<8;i++){
       var s=sessions[i]; if(s.type!==type) continue;
       var vol=calcVolume(s.exercises||[]);
       if(vol>0) data.push({date:s.date,val:vol});
@@ -7049,24 +7071,38 @@ function renderProgress() {
     '</div>';
   });
 
+  // Block-progression rows fold into the Strength card when it exists;
+  // standalone card only as a fallback (no e1RM data yet).
+  var blockLabel = (wd2b?wd2b.bName+' block':'Current block');
+  var blockInner = liftRows
+    ? '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">'+
+        '<div class="chart-lbl" style="margin-bottom:10px;">'+blockLabel+' · main lifts</div>'+liftRows+'</div>'
+    : '';
   var liftsBlock = liftRows
-    ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+(wd2b?wd2b.bName+' block':'Current block')+' · strength progression</div></div></div>'+liftRows+'</div>'
+    ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+blockLabel+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  // PR list card
+  // PR strip — compact gold pills instead of a full row-per-lift card.
   var prData = getPRs();
   var prNames = Object.keys(prData).sort(function(a,b){return prData[b]-prData[a];});
   var prCard = '';
   if(prNames.length){
-    var PR_LIMIT = 8;
+    var PR_LIMIT = 12;
     var visiblePRs = showAllPRs ? prNames : prNames.slice(0, PR_LIMIT);
-    var prRows = visiblePRs.map(function(n){
-      return '<div class="kt-pr-row"><span class="kt-pr-name">'+_esc(n)+'</span><span class="kt-pr-val">'+prData[n]+' lb</span></div>';
+    var prPills = visiblePRs.map(function(n){
+      return '<div style="display:inline-flex;align-items:baseline;gap:5px;'+
+        'background:color-mix(in srgb,var(--yellow) 9%,transparent);'+
+        'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);'+
+        'border-radius:12px;padding:6px 11px;">'+
+        '<span style="font-size:12px;font-weight:700;">'+_esc(n)+'</span>'+
+        '<span style="font-size:12px;font-weight:800;color:var(--yellow);">'+prData[n]+'</span>'+
+      '</div>';
     }).join('');
     var prToggle = prNames.length > PR_LIMIT
       ? '<button onclick="showAllPRs='+(!showAllPRs)+';render()" style="width:100%;margin-top:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+(showAllPRs?'Show less ↑':'Show all '+prNames.length+' →')+'</button>'
       : '';
-    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests</div></div></div>'+prRows+prToggle+'</div>';
+    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests · lb</div></div></div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px;">'+prPills+'</div>'+prToggle+'</div>';
   }
 
   // Filter the detail charts + lift-only sections based on the toggle.
@@ -7074,7 +7110,31 @@ function renderProgress() {
   // mode hides the run-pace chart.
   var detailCharts, liftOnly;
   if(progressTab === 'runs'){
-    detailCharts = weeklyDistChart + runChart;
+    // Bests — longest run, best 5k pace, fastest pace, biggest week.
+    var bestsCard='';
+    if(runs.length){
+      var _longest=0,_bestPace=0,_weekSums={};
+      runs.forEach(function(r){
+        var d=parseFloat(r.distance||r.dist)||0; if(d<=0) return;
+        if(d>_longest) _longest=d;
+        var s=_runSec(r);
+        if(s>0 && d>=2){ var p=s/d; if(!_bestPace||p<_bestPace) _bestPace=p; }
+        if(r.week!=null) _weekSums[r.week]=(_weekSums[r.week]||0)+d;
+      });
+      var _bigWeek=0; Object.keys(_weekSums).forEach(function(w){ if(_weekSums[w]>_bigWeek) _bigWeek=_weekSums[w]; });
+      var bb=function(v,l){ return '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+v+'</div>'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:2px;">'+l+'</div></div>'; };
+      if(_longest>0){
+        bestsCard='<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Bests</div></div></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;">'+
+          bb(Math.round(_longest*10)/10+' km','longest run')+
+          (bestRun5kSec>0?bb(secToPace(Math.round(bestRun5kSec/5))+'/km','best 5k pace'):'')+
+          (_bestPace?bb(secToPace(Math.round(_bestPace))+'/km','fastest pace'):'')+
+          (_bigWeek?bb(Math.round(_bigWeek*10)/10+' km','biggest week'):'')+
+          '</div></div>';
+      }
+    }
+    detailCharts = bestsCard + weeklyDistChart + runChart;
     liftOnly = '';
   } else if(progressTab === 'sports'){
     detailCharts = renderActivityMix() + renderWODRepeats();
@@ -7087,12 +7147,19 @@ function renderProgress() {
     }
     liftOnly = '';
   } else {
+    // Strength card absorbs the block-progression rows; the standalone
+    // block card only appears when there's no e1RM data to hang it on.
+    var trendsCard = renderStrengthTrends(blockInner);
+    goals = (trendsCard || liftsBlock) + liftGoals;
     detailCharts = benchChart + squatChart + volCharts;
-    liftOnly = liftsBlock + rmSection + prCard;
+    liftOnly = rmSection + prCard;
   }
 
   // Bodyweight chart — shown on both tabs when data exists.
-  var bwChartData=bws.slice(0,10).reverse().map(function(e){return {date:e.date,val:e.weight};});
+  // Sort by date so the chart is immune to storage order (imports/seeds can
+  // arrive oldest-first even though the app itself unshifts newest-first).
+  var bwChartData=bws.slice().sort(function(a,b){return a.date<b.date?-1:1;}).slice(-10)
+    .map(function(e){return {date:e.date,val:e.weight};});
   var bwGoalProg=getBWGoal();
   var bwChart=bwChartData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
@@ -7175,6 +7242,11 @@ function svgChart(data,color,goalVal) {
     goalLine='<line x1="'+PL+'" y1="'+gy2+'" x2="'+(PL+iW)+'" y2="'+gy2+'" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4,3"/>'+
       '<text x="'+(PL-4)+'" y="'+(gy2+4)+'" fill="var(--green)" font-size="9" text-anchor="end">'+goalVal+'</text>';
   }
+  // Invisible tap targets — touch any point to toast its date + value.
+  var hits=P.map(function(p,i){
+    return '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="12" fill="transparent" style="cursor:pointer;" '+
+      'onclick="showToast(\''+fmtDate(data[i].date)+' · '+(Math.round(data[i].val*10)/10)+'\')"/>';
+  }).join('');
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">'+
     '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'+
       '<stop offset="0" style="stop-color:'+color+'" stop-opacity=".26"/>'+
@@ -7188,7 +7260,7 @@ function svgChart(data,color,goalVal) {
     '<text x="'+PL+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" font-weight="600" opacity=".8">'+data[0].date.slice(5).replace('-','/')+'</text>'+
     '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" text-anchor="end" font-weight="600" opacity=".8">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
     '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
-    dots+lastDot+'</svg>';
+    dots+lastDot+hits+'</svg>';
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────────
@@ -7390,40 +7462,55 @@ function toggleHistItem(id){
 function renderHistory() {
   var sessions=getSessions();
   if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
-  var items='';
-  sessions.slice(0,30).forEach(function(s) {
+  // Compact, week-grouped rows in one card — recent few by default. The old
+  // one-card-per-session list made this section half the tab's height.
+  var HIST_LIMIT=6;
+  var visible=showAllHist?sessions.slice(0,60):sessions.slice(0,HIST_LIMIT);
+  var rows='', lastWk=null;
+  visible.forEach(function(s) {
     var def=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'};
     var sessionPRs=s.prs||[];
     var open = histExpandedId===s.id;
-    // Collapsed summary — lift count + the session's headline lift.
     var exs = s.exercises||[];
     var top = null;
     for(var t=0;t<exs.length;t++){ var e=exs[t]; if(e.isMain){top=e;break;} if(!top)top=e; }
     var summary = exs.length+' lift'+(exs.length!==1?'s':'')+
       (top?' · '+top.name+(parseFloat(top.weight)>0?' '+top.weight+' lb':''):'');
+    if(s.week!==lastWk){
+      lastWk=s.week;
+      rows+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);padding:12px 0 4px;">'+
+        (s.week?'WEEK '+String(s.week).padStart(2,'0'):'UNSCHEDULED')+'</div>';
+    }
     var body = open
-      ? '<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:4px;">'+
+      ? '<div style="padding:2px 0 10px;">'+
           _buildHistExRows(exs,sessionPRs,s.supersets)+
           (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
+          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
         '</div>'
       : '';
-    items+='<div class="hist-item" onclick="toggleHistItem('+s.id+')" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;">'+
-        '<div style="min-width:0;">'+
-          '<div style="font-size:15px;font-weight:700;">'+def.label+'</div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+fmtDate(s.date)+(s.week?' · Week '+s.week:'')+'</div>'+
-          '<div style="font-size:12px;color:var(--lite);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(summary)+'</div>'+
+    rows+='<div onclick="toggleHistItem('+s.id+')" style="border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;">'+
+        '<div style="width:34px;height:34px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;'+
+          'background:color-mix(in srgb,'+def.color+' 14%,transparent);color:'+def.color+';font-size:11px;font-weight:900;letter-spacing:-.3px;">'+
+          _esc(def.label.slice(0,2).toUpperCase())+'</div>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="display:flex;align-items:baseline;gap:7px;">'+
+            '<span style="font-size:13px;font-weight:800;">'+_esc(def.label)+'</span>'+
+            '<span style="font-size:11px;color:var(--muted);">'+fmtDate(s.date)+'</span>'+
+          '</div>'+
+          '<div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(summary)+'</div>'+
         '</div>'+
-        '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'+
-          (sessionPRs.length?'<div style="font-size:11px;font-weight:700;color:var(--yellow);">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
-          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;" title="Delete session">✕</button>'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="'+(open?'var(--accent)':'var(--muted)')+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" style="transition:transform .2s;'+(open?'transform:rotate(180deg);':'')+'"><polyline points="6 9 12 15 18 9"/></svg>'+
-        '</div>'+
+        (sessionPRs.length?'<div style="font-size:10px;font-weight:800;color:var(--yellow);flex-shrink:0;">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="'+(open?'var(--accent)':'var(--muted)')+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="flex-shrink:0;transition:transform .2s;'+(open?'transform:rotate(180deg);':'')+'"><polyline points="6 9 12 15 18 9"/></svg>'+
       '</div>'+
       body+
     '</div>';
   });
-  return '<div class="card"><h2>Session History</h2></div>'+items;
+  var moreBtn = sessions.length>HIST_LIMIT
+    ? '<button onclick="showAllHist='+(!showAllHist)+';histExpandedId=null;render()" style="width:100%;margin-top:12px;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      (showAllHist?'Show recent ↑':'Show all '+sessions.length+' →')+'</button>'
+    : '';
+  return '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Session history · '+sessions.length+' logged</div></div></div>'+rows+moreBtn+'</div>';
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
