@@ -94,5 +94,6 @@ class SuperoViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TrovoSharePlugin())
         bridge?.registerPluginInstance(TrovoWidgetPlugin())
         bridge?.registerPluginInstance(TrovoSpeechPlugin())
+        bridge?.registerPluginInstance(TrovoWatchPlugin())
     }
 }

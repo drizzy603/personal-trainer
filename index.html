@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260720-4"/>
+<meta name="build" content="20260720-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -10392,7 +10392,15 @@ logSession = SESS[_next] ? _next : 'Push';
 render();
 // Auto-log any new Apple Watch runs on open (opt-in, Settings → Data).
 setTimeout(drainPendingHealth, 900);
+setTimeout(drainWatchSessions, 1000);
 setTimeout(refreshReadiness, 1100);
+// Live nudge when the watch syncs while the app is open.
+(function(){
+  var TWch=_plug('TrovoWatch');
+  if(TWch && TWch.addListener){
+    try{ TWch.addListener('watchSession', function(){ setTimeout(drainWatchSessions, 200); }); }catch(e){}
+  }
+})();
 if(localStorage.getItem('kt_autolog_runs')==='1') setTimeout(checkRecentHealthRun, 1200);
 setTimeout(checkForLiveUpdate, 2000);
 setTimeout(checkPendingShare, 2500);
@@ -10408,6 +10416,7 @@ document.addEventListener('visibilitychange', function(){
     if(s && !s.innerHTML.trim()) { window.location.reload(); return; }
     setTimeout(checkPendingShare, 600);
     setTimeout(drainPendingHealth, 700);
+    setTimeout(drainWatchSessions, 750);
     setTimeout(refreshReadiness, 800);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
   }
@@ -10534,6 +10543,70 @@ function _scheduleNativeSync(){
   if(_nativeSyncTimer) clearTimeout(_nativeSyncTimer);
   _nativeSyncTimer=setTimeout(_runNativeSync, 800);
 }
+// ── Apple Watch bridge ───────────────────────────────────────────────────────
+// Today's plan goes down via applicationContext; sessions the watch logged
+// come back through a pending queue drained here (same pattern as Health).
+var _lastWatchPlan='';
+function _pushWatchPlan(){
+  var TWch=_plug('TrovoWatch');
+  if(!TWch || !TWch.updateContext) return;
+  try{
+    var act=getTodayActivity();
+    var exs=(act.type==='lift'&&act.exercises?act.exercises:[]).map(function(ex){
+      var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+      var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
+      return { name:String(ex.name), sets:parseInt(ex.sets)||3,
+        reps:reps, weight:parseFloat(ex.weight)||0 };
+    });
+    var plan={ week:currentWeek, dayName:String(act.dayName||act.type||'Rest'),
+      type:String(act.type||'rest'), exercises:exs };
+    var json=JSON.stringify(plan);
+    if(json===_lastWatchPlan) return;
+    _lastWatchPlan=json;
+    TWch.updateContext({json:json}).catch(function(){});
+  }catch(e){}
+}
+function drainWatchSessions(){
+  var TWch=_plug('TrovoWatch');
+  if(!TWch || !TWch.getPendingSessions) return;
+  TWch.getPendingSessions().then(function(res){
+    var arr=(res&&res.sessions)||[];
+    if(!arr.length) return;
+    var act=getTodayActivity();
+    var mainByName={};
+    (act.exercises||[]).forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; });
+    var added=0;
+    arr.forEach(function(json){
+      var s; try{ s=JSON.parse(json); }catch(e){ return; }
+      if(!s || !Array.isArray(s.exercises) || !s.exercises.length) return;
+      var exsOut=s.exercises.map(function(ex){
+        var reps=(ex.reps||[]).map(function(r){ return parseInt(r)||0; });
+        var w=parseFloat(ex.weight)||0;
+        return { name:String(ex.name), isMain:!!mainByName[ex.name], sets:reps.length,
+          reps:reps, weight:w, weightLog:reps.map(function(){ return w; }), rpe:'' };
+      }).filter(function(ex){ return ex.sets>0; });
+      if(!exsOut.length) return;
+      var d=s.loggedAt?new Date(s.loggedAt):new Date();
+      var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      var weights=getWeights();
+      exsOut.forEach(function(ex){ if(ex.weight>0) weights[ex.name]=ex.weight; });
+      lsSet('kt_weights', weights);
+      var newPRs=checkAndUpdatePRs(exsOut);
+      var sessions=getSessions();
+      sessions.unshift({ id:Date.now()+added, date:localISO, type:s.dayName||'Session',
+        week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs });
+      lsSet('kt_sessions', sessions);
+      added++;
+    });
+    TWch.clearPendingSessions().catch(function(){});
+    if(added){
+      invalidateCoachCard();
+      showToast('Watch session'+(added>1?'s':'')+' synced ⌚');
+      haptic('light');
+      render();
+    }
+  }).catch(function(){});
+}
 function _runNativeSync(){
   _nativeSyncTimer=null;
   try{
@@ -10546,6 +10619,7 @@ function _runNativeSync(){
       if(TW) TW.updateSummary({json:json}).catch(function(){});
       _syncReminders();
     }
+    _pushWatchPlan();
     _autoBackupIfDue();
   }catch(e){}
 }
