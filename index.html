@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260720-1"/>
+<meta name="build" content="20260720-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -3351,7 +3351,79 @@ function renderTodayEditorial(){
         '<button class="kt-resume-cta" onclick="startWeeklyReview()">Get review →</button>'+
       '</div></div>';
   }
-  return meta + lapseBanner + resumeBanner + reviewBanner + hero + cta + adhocPicker + coachHTML + marquee;
+  // Proactive plateau fix — the coach comes to you when a lift has stalled.
+  // One card per programme week, and it yields to the weekly-review banner.
+  var plateauBanner='';
+  if(!reviewBanner && _plateauFixDue()){
+    var _pl=_plateauLifts();
+    plateauBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow" style="color:var(--yellow);">PLATEAU SPOTTED</div>'+
+      '<div class="kt-resume-ttl">'+_esc(_pl[0].name)+' has stalled for '+_pl[0].days+' days. Your coach can fix it — one concrete change, applied for you.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="dismissPlateauFix()">Skip</button>'+
+        '<button class="kt-resume-cta" onclick="startPlateauFix()">Fix it →</button>'+
+      '</div></div>';
+  }
+  var debriefCard=_renderDebriefCard();
+  return meta + lapseBanner + resumeBanner + reviewBanner + plateauBanner + debriefCard + hero + cta + adhocPicker + coachHTML + marquee;
+}
+
+// ── Proactive coach: plateau fix ─────────────────────────────────────────────
+function _plateauFixDue(){
+  if(!hasCustomRoutine() || !getApiKey()) return false;
+  if(String(lsGet('kt_last_plateau_week'))===String(currentWeek)) return false;
+  return _plateauLifts().length>0;
+}
+function dismissPlateauFix(){ lsSet('kt_last_plateau_week', currentWeek); render(); }
+function startPlateauFix(){
+  var pl=_plateauLifts();
+  if(!pl.length) return;
+  lsSet('kt_last_plateau_week', currentWeek);
+  var msg='These lifts have plateaued (no new estimated-1RM peak): '+
+    pl.map(function(x){ return x.name+' at ~'+Math.round(x.e1rm)+' lb for '+x.days+' days'; }).join('; ')+
+    '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
+    '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
+    'Briefly explain why, then make the edit.';
+  switchTab('coach');
+  openCoachChat();
+  setTimeout(function(){
+    var inp=document.getElementById('coach-input');
+    if(inp){ inp.value=msg; sendCoachMessage(); }
+  }, 250);
+}
+
+// ── Proactive coach: session auto-debrief ────────────────────────────────────
+// Fired after a session saves; a short Haiku take lands as a card on Today.
+function _requestDebrief(sess){
+  var key=getApiKey();
+  if(!key || !sess || !(sess.exercises||[]).length) return;
+  var lines=sess.exercises.map(function(ex){
+    var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps;
+    return ex.name+' '+ex.sets+'×['+reps+'] @ '+ex.weight+' lb'+(ex.rpe?' RPE '+ex.rpe:'');
+  }).join('; ');
+  var prompt='You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
+    'and one cue for next time about this just-finished '+sess.type+' session. No greetings, no fluff.\n'+
+    'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'');
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:120,messages:[{role:'user',content:prompt}]})
+  }).then(function(r){return r.json();}).then(function(data){
+    var txt=data&&data.content&&data.content[0]?String(data.content[0].text||'').trim():'';
+    if(!txt) return;
+    lsSet('kt_debrief', {id:sess.id, date:sess.date, text:txt});
+    render();
+  }).catch(function(){});
+}
+function _renderDebriefCard(){
+  var d=lsGet('kt_debrief');
+  if(!d || !d.text || d.date!==todayISO()) return '';
+  if(String(lsGet('kt_debrief_seen'))===String(d.id)) return '';
+  return '<div class="kt-resume-banner" style="align-items:flex-start;">'+
+    '<div style="flex:1;min-width:0;"><div class="kt-resume-eyebrow">COACH · SESSION DEBRIEF</div>'+
+    '<div class="kt-resume-ttl" style="font-weight:600;">'+_esc(d.text)+'</div></div>'+
+    '<button onclick="lsSet(\'kt_debrief_seen\','+d.id+');render()" aria-label="Dismiss" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:6px;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  '</div>';
 }
 
 // Relative time for the coach-card eyebrow. "JUST NOW" within 60s, "N MIN AGO"
@@ -4218,6 +4290,7 @@ function runnerFinishSession(){
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
   _saveLiftToHealth(runnerSession, exsOut, _sessionDate);
+  _requestDebrief(sessions[0]);
   haptic('success');
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
@@ -6555,6 +6628,26 @@ function toggleStrengthChart(name){
   strengthChartOpen = strengthChartOpen===name ? null : name;
   render();
 }
+// Linear fit over the recent e1RM points → projected date for the next
+// 10 lb milestone. Null when flat/declining or the horizon is silly.
+function _forecastLift(pts){
+  if(!pts || pts.length<4) return null;
+  var recent=pts.slice(-6);
+  var t0=new Date(recent[0].date+'T00:00:00').getTime();
+  var xs=recent.map(function(p){return (new Date(p.date+'T00:00:00').getTime()-t0)/86400000;});
+  var ys=recent.map(function(p){return p.e1rm;});
+  var n=xs.length, sx=0, sy=0, sxy=0, sxx=0;
+  for(var i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; sxy+=xs[i]*ys[i]; sxx+=xs[i]*xs[i]; }
+  var denom=n*sxx-sx*sx; if(!denom) return null;
+  var slope=(n*sxy-sx*sy)/denom;             // lb per day
+  if(slope<=0.02) return null;
+  var cur=ys[ys.length-1];
+  var target=Math.ceil((cur+1)/10)*10;
+  var days=(target-cur)/slope;
+  if(days<3||days>180) return null;
+  var d=new Date(); d.setDate(d.getDate()+Math.round(days));
+  return {target:target, date:d.toLocaleDateString([],{month:'short',day:'numeric'})};
+}
 function renderStrengthTrends(extraHTML){
   var series=_e1rmSeries();
   var names=Object.keys(series).filter(function(n){ return series[n].length>=3; })
@@ -6572,6 +6665,10 @@ function renderStrengthTrends(extraHTML){
       :delta<0?'<span style="color:var(--red);">↓'+Math.abs(delta)+'</span>'
       :'<span style="color:var(--muted);">—</span>';
     var flag=plateaus[n]?'<div style="font-size:10px;color:var(--yellow);font-weight:700;margin-top:2px;">No new peak in '+plateaus[n].days+' days</div>':'';
+    if(!flag){
+      var fc=_forecastLift(pts);
+      if(fc) flag='<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+fc.target+' lb ≈ '+_esc(fc.date)+' at this pace</div>';
+    }
     var open = strengthChartOpen===n;
     // Tap a row for the full e1RM history drawn by the main chart engine.
     var full = open
@@ -7461,6 +7558,73 @@ function toggleHistItem(id){
   histExpandedId = histExpandedId===id ? null : id;
   render(); // in-tab re-render — scroll position is preserved
 }
+// ── Share card: editorial session image → iOS share sheet ────────────────────
+function shareSessionCard(id){
+  var s=getSessions().find(function(x){return x.id===id;});
+  if(!s) return;
+  var css=getComputedStyle(document.documentElement);
+  var v=function(name,fb){ return (css.getPropertyValue(name)||fb).trim()||fb; };
+  var bg=v('--bg','#0b0b0d'), card=v('--card','#16161a'), accent=v('--accent','#c8ff00'),
+      text=v('--text','#fafafa'), muted=v('--muted','#808089'), yellow=v('--yellow','#ffd60a');
+  var W=1080,H=1350;
+  var c=document.createElement('canvas'); c.width=W; c.height=H;
+  var x=c.getContext('2d');
+  x.fillStyle=bg; x.fillRect(0,0,W,H);
+  var mono='700 30px "JetBrains Mono", ui-monospace, monospace';
+  var exs=s.exercises||[];
+  var vol=calcVolume(exs);
+  var prs=s.prs||[];
+  // eyebrow
+  x.fillStyle=muted; x.font=mono;
+  x.fillText('SUPERO · '+fmtDate(s.date).toUpperCase()+(s.week?' · WEEK '+s.week:''), 72, 120);
+  // headline
+  x.fillStyle=text; x.font='800 130px -apple-system, "Helvetica Neue", sans-serif';
+  x.fillText((s.type||'Session'), 64, 300);
+  x.fillStyle=accent;
+  x.fillText('day, done.', 64, 440);
+  // stat block
+  var stats=[[String(exs.length),'LIFTS'],[vol?vol.toLocaleString():'—','LB VOLUME'],[String(prs.length),'PRS']];
+  var sy=600;
+  stats.forEach(function(st,i){
+    var sx=72+i*330;
+    x.fillStyle=card; _rr(x,sx,sy,300,220,28); x.fill();
+    x.fillStyle=(st[1]==='PRS'&&prs.length)?yellow:text;
+    x.font='800 84px -apple-system, "Helvetica Neue", sans-serif';
+    x.fillText(st[0], sx+36, sy+110);
+    x.fillStyle=muted; x.font='700 26px "JetBrains Mono", ui-monospace, monospace';
+    x.fillText(st[1], sx+36, sy+172);
+  });
+  // exercises list (top 5)
+  var ly=940;
+  x.font='600 40px -apple-system, "Helvetica Neue", sans-serif';
+  exs.slice(0,5).forEach(function(ex){
+    var isPR=prs.indexOf(ex.name)>-1;
+    x.fillStyle=isPR?yellow:text;
+    var line=ex.name+(parseFloat(ex.weight)>0?' · '+ex.weight+' lb':'')+(isPR?'  ★ PR':'');
+    x.fillText(line.length>44?line.slice(0,43)+'…':line, 72, ly);
+    ly+=72;
+  });
+  if(exs.length>5){ x.fillStyle=muted; x.fillText('+ '+(exs.length-5)+' more', 72, ly); }
+  // footer accent bar + wordmark
+  x.fillStyle=accent; x.fillRect(72, H-96, 120, 10);
+  x.fillStyle=muted; x.font=mono;
+  x.fillText('SUPERO — AI TRAINER', 220, H-84);
+  c.toBlob(function(blob){
+    if(!blob){ showToast('Could not build card'); return; }
+    var file=new File([blob], 'supero-'+s.date+'.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file]}).catch(function(){});
+    } else {
+      showToast('Sharing not supported here');
+    }
+  }, 'image/png');
+}
+function _rr(x,px,py,w,h,r){
+  x.beginPath();
+  x.moveTo(px+r,py); x.arcTo(px+w,py,px+w,py+h,r); x.arcTo(px+w,py+h,px,py+h,r);
+  x.arcTo(px,py+h,px,py,r); x.arcTo(px,py,px+w,py,r); x.closePath();
+}
+
 function renderHistory() {
   var sessions=getSessions();
   if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
@@ -7487,7 +7651,10 @@ function renderHistory() {
       ? '<div style="padding:2px 0 10px;">'+
           _buildHistExRows(exs,sessionPRs,s.supersets)+
           (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
-          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="margin-top:10px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
+          '<div style="display:flex;gap:8px;margin-top:10px;">'+
+          '<button onclick="event.stopPropagation();shareSessionCard('+s.id+')" style="background:var(--accent);border:none;border-radius:10px;color:#000;font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share card →</button>'+
+          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
+          '</div>'+
         '</div>'
       : '';
     rows+='<div onclick="toggleHistItem('+s.id+')" style="border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
@@ -8470,6 +8637,16 @@ function buildSystemPrompt(){
       return x.name+' stuck at ~'+Math.round(x.e1rm)+' lb for '+x.days+' days';
     }).join('; ')+'. Consider variation, intensity change, or a deload when relevant.\n\n';
   }
+  // Trend forecasts — linear projection of e1RM to the next 10 lb milestone.
+  try{
+    var _fcSeries=_e1rmSeries(), _fcLines=[];
+    Object.keys(_fcSeries).forEach(function(nm){
+      if(_fcLines.length>=3) return;
+      var f=_forecastLift(_fcSeries[nm]);
+      if(f) _fcLines.push(nm+' on track for '+f.target+' lb around '+f.date);
+    });
+    if(_fcLines.length) p+='TRENDS: '+_fcLines.join('; ')+'.\n\n';
+  }catch(e){}
 
   var sportLogs=getSportLogs().slice(0,10);
   if(sportLogs.length){
