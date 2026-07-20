@@ -28,6 +28,10 @@ public final class HealthKitReader {
         if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { s.insert(hr) }
         if let dist = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) { s.insert(dist) }
         if let cyc = HKObjectType.quantityType(forIdentifier: .distanceCycling) { s.insert(cyc) }
+        // Readiness inputs — last night's sleep + HRV/resting-HR vs baseline.
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(sleep) }
+        if let hrv = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) { s.insert(hrv) }
+        if let rhr = HKObjectType.quantityType(forIdentifier: .restingHeartRate) { s.insert(rhr) }
         return s
     }
 
@@ -175,6 +179,82 @@ public final class HealthKitReader {
             dict["kcal"] = Int(kcal.rounded())
         }
         return dict
+    }
+
+    // MARK: - Readiness (sleep + HRV + resting HR)
+
+    // Returns whatever is available: sleepHours (last night), hrv + hrvBaseline
+    // (ms, latest vs 30-day mean), rhr + rhrBaseline (bpm). Keys are omitted
+    // when Health has no data, so the JS side can degrade gracefully.
+    public func fetchReadiness(completion: @escaping ([String: Any]) -> Void) {
+        guard HKHealthStore.isHealthDataAvailable() else { completion([:]); return }
+        var out: [String: Any] = [:]
+        let outQ = DispatchQueue(label: "trovo.readiness.serial")
+        let group = DispatchGroup()
+        let now = Date()
+        let cal = Calendar.current
+
+        // Last night's asleep time: samples from yesterday 15:00 → now.
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            group.enter()
+            let windowStart = cal.date(byAdding: .hour, value: -33, to: now)!
+            let pred = HKQuery.predicateForSamples(withStart: windowStart, end: now, options: [])
+            let q = HKSampleQuery(sampleType: sleepType, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                defer { group.leave() }
+                guard let cats = samples as? [HKCategorySample], !cats.isEmpty else { return }
+                var asleepValues: Set<Int> = [HKCategoryValueSleepAnalysis.asleep.rawValue]
+                if #available(iOS 16.0, *) {
+                    asleepValues.insert(HKCategoryValueSleepAnalysis.asleepCore.rawValue)
+                    asleepValues.insert(HKCategoryValueSleepAnalysis.asleepDeep.rawValue)
+                    asleepValues.insert(HKCategoryValueSleepAnalysis.asleepREM.rawValue)
+                }
+                // Merge overlapping intervals (watch + phone often both record).
+                let intervals = cats.filter { asleepValues.contains($0.value) }
+                    .map { ($0.startDate, $0.endDate) }
+                    .sorted { $0.0 < $1.0 }
+                var total: TimeInterval = 0
+                var curStart: Date? = nil, curEnd: Date? = nil
+                for iv in intervals {
+                    if let e = curEnd, iv.0 <= e {
+                        if iv.1 > e { curEnd = iv.1 }
+                    } else {
+                        if let s0 = curStart, let e0 = curEnd { total += e0.timeIntervalSince(s0) }
+                        curStart = iv.0; curEnd = iv.1
+                    }
+                }
+                if let s0 = curStart, let e0 = curEnd { total += e0.timeIntervalSince(s0) }
+                if total > 0 {
+                    let hours = (total / 3600.0 * 10).rounded() / 10
+                    outQ.sync { out["sleepHours"] = hours }
+                }
+            }
+            store.execute(q)
+        }
+
+        func latestAndBaseline(_ id: HKQuantityTypeIdentifier, unit: HKUnit, latestKey: String, baseKey: String) {
+            guard let t = HKObjectType.quantityType(forIdentifier: id) else { return }
+            group.enter()
+            let pred = HKQuery.predicateForSamples(withStart: cal.date(byAdding: .day, value: -30, to: now), end: now, options: [])
+            let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+            let q = HKSampleQuery(sampleType: t, predicate: pred, limit: 200, sortDescriptors: [sort]) { _, samples, _ in
+                defer { group.leave() }
+                guard let qs = samples as? [HKQuantitySample], !qs.isEmpty else { return }
+                let vals = qs.map { $0.quantity.doubleValue(for: unit) }
+                let latest = vals[0]
+                let base = vals.reduce(0, +) / Double(vals.count)
+                outQ.sync {
+                    out[latestKey] = (latest * 10).rounded() / 10
+                    out[baseKey] = (base * 10).rounded() / 10
+                }
+            }
+            store.execute(q)
+        }
+        latestAndBaseline(.heartRateVariabilitySDNN, unit: HKUnit.secondUnit(with: .milli), latestKey: "hrv", baseKey: "hrvBaseline")
+        latestAndBaseline(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()), latestKey: "rhr", baseKey: "rhrBaseline")
+
+        group.notify(queue: .main) {
+            outQ.sync { completion(out) }
+        }
     }
 
     // MARK: - Writing (lifting sessions)

@@ -39,8 +39,12 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Supero listens only while you hold the mic button, so you can log sets by voice between lifts.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Supero transcribes what you say ("185 for 8") to fill in your set — processing happens on your device where iOS supports it.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Supero imports your workouts — runs, rides, and sports like swimming or pickleball — so they appear alongside your training log. Data stays on your device.</string>
+	<string>Supero imports your workouts (runs, rides, sports) and — if you enable the readiness score — reads sleep, heart-rate variability, and resting heart rate to gauge recovery. Data stays on your device.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>If you turn on saving in Settings, Supero adds your finished lifting sessions to Apple Health so they count toward your activity. Supero only writes workouts you logged yourself.</string>
 	<key>NSSupportsLiveActivities</key>

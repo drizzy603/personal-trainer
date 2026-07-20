@@ -13,6 +13,7 @@ public class TrovoHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "fetchRuns",            returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveLift",             returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBackgroundSync",    returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getReadiness",         returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPendingWorkouts",   returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearPendingWorkouts", returnType: CAPPluginReturnPromise),
     ]
@@ -72,6 +73,12 @@ public class TrovoHealthPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             call.resolve(["saved": saved])
+        }
+    }
+
+    @objc func getReadiness(_ call: CAPPluginCall) {
+        reader.fetchReadiness { data in
+            call.resolve(["data": data])
         }
     }
 
