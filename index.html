@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260719-1"/>
+<meta name="build" content="20260720-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -2385,6 +2385,8 @@ function render() {
   if(_hs) _hs.innerHTML=_buildHealthRows();
   var _lt=document.getElementById('logTabsSheetList');
   if(_lt) _lt.innerHTML=_buildLogTabsRows();
+  var _ts=document.getElementById('themeSheetList');
+  if(_ts) _ts.innerHTML=_buildThemeRows();
   paintRunner();
 }
 
@@ -8906,11 +8908,17 @@ function renderCoach(){
 }
 
 // ── Themes & Settings ─────────────────────────────────────────────────────────
+// Dark-first theme set: every variant keeps the near-black editorial base
+// with a subtle hue tint and swaps the accent. Light exists mainly so Auto
+// can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
-  dark:   {name:'Dark',   textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
-  light:  {name:'Light',  textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#5b8a00','accent-soft':'rgba(91,138,0,.14)','accent-dim':'rgba(91,138,0,.07)',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#666',   lite:'#444'},
-  ocean:  {name:'Ocean',  textColor:'#e0f2fe',bg:'#060f1a',card:'#0b1e30',card2:'#0e2438',border:'rgba(255,255,255,.07)',accent:'#00d4ff','accent-soft':'rgba(0,212,255,.14)','accent-dim':'rgba(0,212,255,.07)',green:'#00d4ff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#5ac8fa',text:'#e0f2fe',muted:'#5e8aa8',lite:'#7bafc8'},
-  sunset: {name:'Sunset', textColor:'#fff7ed',bg:'#0e0600',card:'#1a0e00',card2:'#1f1200',border:'rgba(255,255,255,.07)',accent:'#ff9f0a','accent-soft':'rgba(255,159,10,.14)','accent-dim':'rgba(255,159,10,.07)',green:'#ff9f0a',yellow:'#ffd60a',red:'#ff453a',orange:'#ff6b35',cyan:'#60a5fa',text:'#fff7ed',muted:'#9a754f',lite:'#b8977a'},
+  dark:     {name:'Lime',     textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
+  midnight: {name:'Midnight', textColor:'#f0f6ff',bg:'#06080f',card:'#10141d',card2:'#171c28',border:'rgba(160,190,255,.09)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.13)','accent-dim':'rgba(125,211,252,.06)',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#f0f6ff',muted:'#6b7a94',lite:'#8fa1bd'},
+  carbon:   {name:'Carbon',   textColor:'#fafafa',bg:'#09090a',card:'#141416',card2:'#1d1d20',border:'rgba(255,255,255,.08)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.13)','accent-dim':'rgba(255,255,255,.06)',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#fafafa',muted:'#7a7a80',lite:'#a1a1a8'},
+  ember:    {name:'Ember',    textColor:'#fff5f2',bg:'#0d0708',card:'#191012',card2:'#221518',border:'rgba(255,170,150,.09)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.14)','accent-dim':'rgba(255,92,56,.07)',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff5f2',muted:'#8f7570',lite:'#b39a94'},
+  violet:   {name:'Violet',   textColor:'#f5f0ff',bg:'#0a0812',card:'#14101f',card2:'#1c1629',border:'rgba(190,160,255,.09)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.14)','accent-dim':'rgba(183,139,253,.07)',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f5f0ff',muted:'#7d7395',lite:'#a196bd'},
+  gold:     {name:'Gold',     textColor:'#fffbe8',bg:'#0c0a05',card:'#17130a',card2:'#201a0e',border:'rgba(255,220,150,.09)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.13)','accent-dim':'rgba(245,197,24,.06)',green:'#f5c518',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fffbe8',muted:'#93865f',lite:'#b3a67e'},
+  light:    {name:'Light',    textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#5b8a00','accent-soft':'rgba(91,138,0,.14)','accent-dim':'rgba(91,138,0,.07)',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#666',   lite:'#444'},
 };
 
 function applyTheme(name) {
@@ -8924,13 +8932,56 @@ function applyTheme(name) {
   if(document.getElementById('screen').innerHTML) render();
 }
 
-// Settings → About row: tap cycles Auto → Dark → Light → Ocean → Sunset.
-function cycleTheme(){
-  var order=['auto','dark','light','ocean','sunset'];
-  var cur=order.indexOf(currentTheme);
-  var next=order[(cur+1)%order.length];
-  if(next==='auto') setAutoTheme(); else applyTheme(next);
-  render();
+// Settings → About → Theme opens a swatch sheet; taps apply instantly so
+// themes can be compared without leaving the sheet.
+function _buildThemeRows(){
+  var order=['auto','dark','midnight','carbon','ember','violet','gold','light'];
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">'+
+    order.map(function(id){
+      var sel=currentTheme===id;
+      if(id==='auto'){
+        return '<button onclick="setAutoTheme()" style="display:flex;align-items:center;gap:10px;padding:12px;'+
+          'border-radius:14px;border:1.5px solid '+(sel?'var(--accent)':'var(--border)')+';'+
+          'background:'+(sel?'var(--accent-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+          '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:linear-gradient(135deg,#0b0b0d 50%,#f2f2f7 50%);border:1px solid var(--border);"></span>'+
+          '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">Auto</span>'+
+          '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">follows phone</span></span>'+
+          (sel?'<span style="margin-left:auto;color:var(--accent);font-weight:800;">✓</span>':'')+
+        '</button>';
+      }
+      var t=THEMES[id];
+      return '<button onclick="applyTheme(\''+id+'\')" style="display:flex;align-items:center;gap:10px;padding:12px;'+
+        'border-radius:14px;border:1.5px solid '+(sel?t.accent:'var(--border)')+';'+
+        'background:'+(sel?'var(--accent-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+        '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:'+t.bg+';border:1px solid rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;">'+
+          '<span style="width:11px;height:11px;border-radius:50%;background:'+t.accent+';"></span></span>'+
+        '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">'+t.name+'</span>'+
+        '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">'+(id==='light'?'for daylight':'dark')+'</span></span>'+
+        (sel?'<span style="margin-left:auto;color:var(--accent);font-weight:800;">✓</span>':'')+
+      '</button>';
+    }).join('')+
+  '</div>';
+}
+function openThemeSheet(){
+  var existing=document.getElementById('themeSheetOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='themeSheetOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
+  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
+      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Theme</div>'+
+      '<button onclick="closeThemeSheet()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+    '</div>'+
+    '<div id="themeSheetList">'+_buildThemeRows()+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeThemeSheet();});
+  _a11yPass();
+}
+function closeThemeSheet(){
+  var el=document.getElementById('themeSheetOverlay');
+  if(el)el.remove();
 }
 function setAutoTheme(){
   currentTheme='auto';
@@ -9185,14 +9236,15 @@ function renderSettings() {
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">About</div>'+
-    '<div class="settings-row" onclick="cycleTheme()">'+
+    '<div class="settings-row" onclick="openThemeSheet()">'+
       '<div class="settings-row-ic" style="background:#231a2e;">'+
         '<svg viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
           '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'+
         '</svg>'+
       '</div>'+
-      '<div class="settings-row-body"><div class="settings-row-title">Theme</div><div class="settings-row-sub">Tap to switch</div></div>'+
-      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;background:var(--card2);color:var(--accent);border:1px solid var(--border);text-transform:capitalize;">'+_esc(currentTheme)+'</span>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Theme</div><div class="settings-row-sub">Six dark looks & light</div></div>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;background:var(--card2);color:var(--accent);border:1px solid var(--border);">'+
+        _esc(currentTheme==='auto'?'Auto':(THEMES[currentTheme]?THEMES[currentTheme].name:currentTheme))+'</span>'+
     '</div>'+
     '<div class="settings-row" onclick="openWorkflow()">'+
       '<div class="settings-row-ic" style="background:#1e1a2e;">'+
@@ -9936,6 +9988,11 @@ if('serviceWorker' in navigator) {
 }
 // ── Start ─────────────────────────────────────────────────────────────────────
 currentTheme = localStorage.getItem('kt_theme') || 'dark';
+// Retired themes (ocean/sunset) and any unknown value migrate to dark.
+if(currentTheme!=='auto' && !THEMES[currentTheme]){
+  currentTheme='dark';
+  localStorage.setItem('kt_theme','dark');
+}
 if(currentTheme==='auto'){
   applyTheme(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   currentTheme='auto';
