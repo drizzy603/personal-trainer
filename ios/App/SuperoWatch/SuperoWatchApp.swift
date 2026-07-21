@@ -1,6 +1,7 @@
 import SwiftUI
 import WatchConnectivity
 import WatchKit
+import HealthKit
 
 // Supero Watch — run today's session from the wrist. The iPhone pushes the
 // day's plan via WatchConnectivity applicationContext; logged sessions go
@@ -74,6 +75,82 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     }
 }
 
+// MARK: - Workout session (live HR, ring credit, real Health workout)
+
+// Runs an HKWorkoutSession around the wrist runner: starts when the first set
+// is logged, streams heart rate into the UI, and finishes into Health as a
+// strength workout (which credits the Activity rings). The phone never
+// re-imports these — its isOwnWorkout guard covers the whole bundle family.
+final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate, HKLiveWorkoutBuilderDelegate {
+    static let shared = WorkoutManager()
+    private let store = HKHealthStore()
+    private var session: HKWorkoutSession?
+    private var builder: HKLiveWorkoutBuilder?
+    @Published var heartRate: Int = 0
+    @Published var active = false
+
+    func requestAuth() {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let share: Set<HKSampleType> = [HKObjectType.workoutType()]
+        var read: Set<HKObjectType> = []
+        if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { read.insert(hr) }
+        if let en = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) { read.insert(en) }
+        store.requestAuthorization(toShare: share, read: read) { _, _ in }
+    }
+
+    func start() {
+        guard HKHealthStore.isHealthDataAvailable(), session == nil else { return }
+        let config = HKWorkoutConfiguration()
+        config.activityType = .traditionalStrengthTraining
+        config.locationType = .indoor
+        do {
+            let s = try HKWorkoutSession(healthStore: store, configuration: config)
+            let b = s.associatedWorkoutBuilder()
+            b.dataSource = HKLiveWorkoutDataSource(healthStore: store, workoutConfiguration: config)
+            s.delegate = self
+            b.delegate = self
+            session = s
+            builder = b
+            let startDate = Date()
+            s.startActivity(with: startDate)
+            b.beginCollection(withStart: startDate) { _, _ in }
+            DispatchQueue.main.async { self.active = true }
+        } catch {
+            // Health unavailable (auth denied, etc.) — the runner works without it.
+        }
+    }
+
+    func end() {
+        guard let s = session, let b = builder else { return }
+        session = nil
+        builder = nil
+        s.end()
+        b.endCollection(withEnd: Date()) { _, _ in
+            b.finishWorkout { _, _ in }
+        }
+        DispatchQueue.main.async { self.active = false; self.heartRate = 0 }
+    }
+
+    // MARK: HKWorkoutSessionDelegate
+    func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
+    func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        DispatchQueue.main.async { self.active = false }
+        session = nil
+        builder = nil
+    }
+
+    // MARK: HKLiveWorkoutBuilderDelegate
+    func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
+        guard let hrType = HKQuantityType.quantityType(forIdentifier: .heartRate),
+              collectedTypes.contains(hrType),
+              let stats = workoutBuilder.statistics(for: hrType),
+              let bpm = stats.mostRecentQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute()))
+        else { return }
+        DispatchQueue.main.async { self.heartRate = Int(bpm.rounded()) }
+    }
+    func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
+}
+
 // MARK: - Runner state
 
 final class Runner: ObservableObject {
@@ -89,6 +166,7 @@ final class Runner: ObservableObject {
     func isComplete(_ ex: WatchExercise) -> Bool { done(ex) >= ex.sets }
 
     func logSet(_ ex: WatchExercise, reps: Int) {
+        WorkoutManager.shared.start()   // no-op while a session is already live
         var arr = repsDone[ex.name] ?? []
         arr.append(reps)
         repsDone[ex.name] = arr
@@ -123,6 +201,7 @@ final class Runner: ObservableObject {
         }
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs)
+        WorkoutManager.shared.end()
         synced = true
         WKInterfaceDevice.current().play(.success)
     }
@@ -226,6 +305,7 @@ struct ExerciseView: View {
                     Text("SET \(min(runner.done(ex) + 1, ex.sets)) OF \(ex.sets)")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(.secondary)
+                    LiveHRChip()
                     HStack(spacing: 12) {
                         Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 5) } label: { Text("−5") }
                             .buttonStyle(.bordered)
@@ -271,6 +351,7 @@ struct RestView: View {
             Text("\(runner.restLeft / 60):\(String(format: "%02d", runner.restLeft % 60))")
                 .font(.system(size: 40, weight: .heavy, design: .monospaced))
                 .foregroundColor(lime)
+            LiveHRChip()
             Button("Skip") { runner.skipRest() }
                 .buttonStyle(.bordered)
         }
@@ -308,11 +389,29 @@ struct SyncedView: View {
     }
 }
 
+// Small live heart-rate readout — hidden until the workout session streams data.
+struct LiveHRChip: View {
+    @ObservedObject var wm = WorkoutManager.shared
+    var body: some View {
+        if wm.active && wm.heartRate > 0 {
+            HStack(spacing: 4) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 11)).foregroundColor(.red)
+                Text("\(wm.heartRate)")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Text("BPM")
+                    .font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
 @main
 struct SuperoWatchApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .onAppear { WorkoutManager.shared.requestAuth() }
         }
     }
 }

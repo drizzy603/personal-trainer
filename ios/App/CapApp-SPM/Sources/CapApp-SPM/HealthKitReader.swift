@@ -69,7 +69,12 @@ public final class HealthKitReader {
     // Workouts Supero itself wrote to Health (saveLift) must never round-trip
     // back in as imports.
     private static func isOwnWorkout(_ w: HKWorkout) -> Bool {
-        w.sourceRevision.source.bundleIdentifier == Bundle.main.bundleIdentifier
+        // The watch app writes under app.kt.trainer.watchkitapp — treat the
+        // whole bundle family as our own so wrist-written lifts never
+        // round-trip back into the log as Health imports.
+        let src = w.sourceRevision.source.bundleIdentifier
+        guard let own = Bundle.main.bundleIdentifier else { return false }
+        return src == own || src.hasPrefix(own + ".")
     }
 
     // MARK: - Authorization
