@@ -1,0 +1,9 @@
+{
+  "name": "supero-tests",
+  "private": true,
+  "description": "Playwright regression suites for the Supero web app",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

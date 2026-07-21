@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260720-7"/>
+<meta name="build" content="20260720-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -4359,6 +4359,11 @@ function runnerFinishSession(){
   var _dateEl = document.getElementById('runner-date');
   var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
   var sessions = getSessions();
+  // Double-log guard: a watch-synced copy of this same session (same day, same
+  // type) gets replaced by the richer phone log. Manual entries are never touched.
+  sessions = sessions.filter(function(x){
+    return !(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch');
+  });
   sessions.unshift({id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs});
   lsSet('kt_sessions', sessions);
@@ -10526,12 +10531,17 @@ function drainWatchSessions(){
       if(!exsOut.length) return;
       var d=s.loggedAt?new Date(s.loggedAt):new Date();
       var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      var dayType=s.dayName||'Session';
+      // Double-log guard: the same session may already be in the log — phone-
+      // logged, or from an earlier drain of a payload that failed to clear.
+      var already=getSessions().some(function(x){ return x.date===localISO && x.type===dayType; });
+      if(already) return;
       var weights=getWeights();
       exsOut.forEach(function(ex){ if(ex.weight>0) weights[ex.name]=ex.weight; });
       lsSet('kt_weights', weights);
       var newPRs=checkAndUpdatePRs(exsOut);
       var sessions=getSessions();
-      sessions.unshift({ id:Date.now()+added, date:localISO, type:s.dayName||'Session',
+      sessions.unshift({ id:Date.now()+added, date:localISO, type:dayType,
         week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs });
       lsSet('kt_sessions', sessions);
       added++;

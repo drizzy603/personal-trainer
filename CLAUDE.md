@@ -12,6 +12,7 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 - `verify.sh` — static safety check. Extracts every `<script>` block and syntax-checks the combined JS, bans curly quotes in code, cross-checks inline event handlers against defined functions, and fails if `index.html` changed without a `<meta build>` bump. **Run before every commit that touches `index.html`** — one syntax error blanks the entire app.
 - `app-store-metadata.md` — single source of truth for App Store description, App Privacy answers, and the Submission Day playbook.
 - `screenshots/` — sim launcher, demo seed script, and screenshot helper.
+- `tests/` — Playwright regression suites (`./tests/run.sh`). Headless Chromium boots index.html on the demo seed, with an optional mocked Capacitor bridge for native code paths (watch sync, widgets). **Run alongside verify.sh for any commit that changes app logic in `index.html`** — verify.sh catches syntax, these catch behavior.
 
 ## Deployment
 - GitHub repo: `drizzy603/personal-trainer`
