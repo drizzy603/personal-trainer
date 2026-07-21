@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-5"/>
+<meta name="build" content="20260721-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -5174,31 +5174,30 @@ function renderLog() {
     var _av = (String(_firstName)[0] || '?').toUpperCase();
     var _weekdayE = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
     var _hasKey = !!getApiKey();
-    var _ctaLabel = _hasKey ? 'Build my programme →' : 'Set up coach →';
     var _ctaAction = _hasKey
       ? "switchTab('coach');startRoutineIntake();"
       : "switchTab('coach');";
-    var _hint = _hasKey
-      ? 'Build a custom plan with the AI Coach. Your sessions will appear here.'
-      : 'Connect the AI Coach (Anthropic API key) to generate your custom plan.';
-    var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : 'Welcome.';
+    var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : getGreeting()+'.';
     return subBar +
       '<div class="kt-meta-row">'+
-        '<div class="kt-meta-label">'+_weekdayE+' · NEW</div>'+
+        '<div class="kt-meta-label">'+_weekdayE+' · WK 01</div>'+
         '<div class="kt-meta-ava">'+_av+'</div>'+
       '</div>'+
       '<div class="kt-hero">'+
         '<div class="kt-hero-greet">'+_greet+'</div>'+
-        '<h1 class="kt-hero-headline">No plan<span class="kt-line2 accent">yet.</span></h1>'+
-        '<div class="kt-hero-body">'+_hint+'</div>'+
+        '<h1 class="kt-hero-headline">Let\'s build<span class="kt-line2 accent">your programme.</span></h1>'+
+        '<div style="font-size:13px;color:var(--lite);line-height:1.6;max-width:320px;margin-top:18px;">Ten questions, two minutes. The Coach writes a 12-week plan around your gear, your schedule, your sports — then this tab runs it.</div>'+
       '</div>'+
       '<button class="kt-cta" onclick="'+_ctaAction+'">'+
         '<div style="text-align:left;">'+
-          '<div class="kt-cta-label">'+(_hasKey?'BUILD':'SETUP')+'</div>'+
-          '<div class="kt-cta-title">'+_ctaLabel.replace(/ →$/,'')+'</div>'+
+          '<div class="kt-cta-label">START</div>'+
+          '<div class="kt-cta-title">'+(_hasKey?'Meet your coach':'Set up coach')+'</div>'+
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
-      '</button>';
+      '</button>'+
+      '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:-10px;">Already trained with Supero? '+
+        '<button onclick="switchTab(\'settings\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Restore a backup →</button>'+
+      '</div>';
   }
 
   // Editorial Today layout — replaces the legacy session picker / quick-log
@@ -6875,12 +6874,13 @@ function renderProgress() {
   var wd=getWkData();
 
   if(!sessions.length && !runs.length && !getCustomRoutine()){
-    return '<div class="kt-meta-row"><div class="kt-meta-label">PROGRESS</div></div>'+
-      '<div style="text-align:center;padding:60px 24px 40px;">'+
-        '<div style="font-size:48px;margin-bottom:16px;opacity:.3;">📊</div>'+
-        '<div style="font-size:18px;font-weight:800;margin-bottom:8px;">Nothing to show yet</div>'+
-        '<div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:24px;">Log your first session or run to start tracking progress. The Coach can build you a personalised programme first.</div>'+
-        '<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:12px 28px;">Go to Coach →</button>'+
+    return '<div class="kt-meta-row"><div class="kt-meta-label">PROGRESS</div><div class="kt-meta-ava">?</div></div>'+
+      '<div style="text-align:center;padding:64px 24px 48px;">'+
+        '<div style="width:56px;height:56px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:16px;">📊</div>'+
+        '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">No data yet</div>'+
+        '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px;line-height:1.15;margin-bottom:12px;">Nothing to show —<br><span style="color:var(--accent);">yet.</span></div>'+
+        '<div style="font-size:13px;color:var(--muted);line-height:1.6;max-width:280px;margin:0 auto 24px;">Log your first session or run and this tab starts charting weights, pace and PRs.</div>'+
+        '<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Go to Coach →</button>'+
       '</div>';
   }
 
