@@ -19,6 +19,9 @@ First run installs Playwright into `tests/node_modules` (gitignored). Suites:
 - `02-runner` — engage a Push session, log a set, finish, entry lands in `kt_sessions`
 - `03-watch-sync` — wrist sessions drain into the log; double-log guard in both directions
 - `04-progress` — Progress tab charts, week dots, and history render
+- `05-sheets` — all six overlay sheets mount on the shared R2 shell (surface, scrim, ✕, grabber)
+- `06-today-slots` — Today slot system: one banner, chip promotion, dismissal drops chips
+- `07-themes-visuals` — theme-room tokens, share-card draw path, editorial empty states
 
 Run these before any commit that touches app logic in `index.html` (verify.sh
 covers syntax; these cover behavior).

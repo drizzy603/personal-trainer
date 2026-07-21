@@ -6,9 +6,26 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-6"/>
+<meta name="build" content="20260721-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
+// ── On-device error log ──────────────────────────────────────────────────────
+// Ring buffer (cap 30) in localStorage, surfaced in Settings → About. Wired
+// before anything else so even boot/loader failures get recorded.
+function _trapErr(msg){
+  try{
+    var log=JSON.parse(localStorage.getItem('kt_err_log')||'[]');
+    log.unshift({t:Date.now(), m:String(msg).slice(0,400)});
+    localStorage.setItem('kt_err_log', JSON.stringify(log.slice(0,30)));
+  }catch(e){}
+}
+window.addEventListener('error', function(e){
+  _trapErr((e.message||'Script error')+(e.filename?' @ '+String(e.filename).split('/').pop()+':'+(e.lineno||0):''));
+});
+window.addEventListener('unhandledrejection', function(e){
+  var r=e&&e.reason;
+  _trapErr('Promise: '+((r&&r.message)?r.message:String(r)));
+});
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
 // If a newer index.html has been cached from drizzy603.github.io/personal-trainer/,
 // render that instead of the bundled version. Cache is updated in the background
@@ -882,6 +899,8 @@ select option{background:var(--bg);}
 .kt-sheet-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;}
 .kt-sheet-over{z-index:2100;}
 .kt-sheet{background:var(--card);border-radius:24px 24px 0 0;border-top:1px solid var(--border);max-height:85vh;overflow-y:auto;padding:20px 20px 24px;padding-bottom:calc(max(env(safe-area-inset-bottom),16px) + 8px);}
+.kt-sheet-grab{display:flex;justify-content:center;padding:2px 0 10px;margin-top:-8px;touch-action:none;}
+.kt-sheet-grab div{width:36px;height:5px;border-radius:3px;background:var(--border);}
 .kt-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .kt-sheet-title{font-size:19px;font-weight:800;letter-spacing:-.5px;color:var(--text);}
 .kt-sheet-x{background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
@@ -9333,6 +9352,50 @@ function _buildThemeRows(){
     }).join('')+
   '</div>';
 }
+// Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
+// drag zone (body content keeps normal scrolling); drag past 90px or flick
+// to dismiss. Animates the sheet element itself, which is created once per
+// open — remount-safe, unlike sheet rows.
+function _sheetDrag(overlay, closeFn){
+  var sheet=overlay.querySelector('.kt-sheet');
+  if(!sheet) return;
+  var g=document.createElement('div');
+  g.className='kt-sheet-grab';
+  g.innerHTML='<div></div>';
+  // Full-bleed sheets (padding 0) can't absorb the negative pull-up margin.
+  if(parseInt(getComputedStyle(sheet).paddingTop)===0){ g.style.marginTop='0'; g.style.paddingTop='10px'; }
+  sheet.insertBefore(g, sheet.firstChild);
+  var startY=null, dy=0, startT=0, dragging=false;
+  function inZone(t){
+    if(!t) return false;
+    if(g.contains(t)) return true;
+    return !!(t.closest && t.closest('.kt-sheet-head'));
+  }
+  sheet.addEventListener('touchstart', function(e){
+    if(!inZone(e.target)) return;
+    startY=e.touches[0].clientY; startT=Date.now(); dy=0; dragging=true;
+    sheet.style.transition='none';
+  }, {passive:true});
+  sheet.addEventListener('touchmove', function(e){
+    if(!dragging || startY==null) return;
+    dy=Math.max(0, e.touches[0].clientY-startY);
+    sheet.style.transform='translateY('+dy+'px)';
+    if(dy>0) e.preventDefault();
+  }, {passive:false});
+  sheet.addEventListener('touchend', function(){
+    if(!dragging) return;
+    dragging=false;
+    var v=dy/((Date.now()-startT)||1);
+    sheet.style.transition='transform .22s ease-out';
+    if(dy>90 || v>.5){
+      sheet.style.transform='translateY(105%)';
+      setTimeout(closeFn, 180);
+    } else {
+      sheet.style.transform='';
+    }
+    startY=null;
+  });
+}
 function openThemeSheet(){
   var existing=document.getElementById('themeSheetOverlay');
   if(existing)existing.remove();
@@ -9347,6 +9410,7 @@ function openThemeSheet(){
     '<div id="themeSheetList">'+_buildThemeRows()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeThemeSheet);
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeThemeSheet();});
   _a11yPass();
 }
@@ -9652,6 +9716,18 @@ function renderSettings() {
         '<div class="settings-row-body"><div class="settings-row-title">App build '+APP_BUILD+'</div><div class="settings-row-sub">'+status+'</div></div>'+
       '</div>';
     })()+
+    (function(){
+      var n=0; try{ n=(JSON.parse(localStorage.getItem('kt_err_log')||'[]')).length; }catch(e){}
+      return '<div class="settings-row" onclick="openErrorLogSheet()">'+
+        '<div class="settings-row-ic" style="background:#2e1a1a;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Error log</div><div class="settings-row-sub">'+(n?n+' recorded — tap to view':'Diagnostics · none recorded')+'</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>';
+    })()+
     '</div>'+
 
     (!isNativeIOS()?
@@ -9668,6 +9744,53 @@ function renderSettings() {
     '</div>' : '')+
 
     '<div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 32px;font-weight:500;">Supero · All data stored locally</div>';
+}
+function openErrorLogSheet(){
+  var existing=document.getElementById('errLogOverlay');
+  if(existing)existing.remove();
+  var log=[]; try{ log=JSON.parse(localStorage.getItem('kt_err_log')||'[]'); }catch(e){}
+  var rows=log.length?log.map(function(en){
+    return '<div style="padding:12px 0;border-bottom:1px solid var(--border);">'+
+      '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;color:var(--muted);margin-bottom:4px;">'+new Date(en.t).toLocaleString()+'</div>'+
+      '<div style="font-size:12px;line-height:1.5;color:var(--text);word-break:break-word;">'+_esc(en.m)+'</div>'+
+    '</div>';
+  }).join(''):'<div style="padding:24px 0;color:var(--muted);font-size:13px;text-align:center;">No errors recorded — all clear.</div>';
+  var overlay=document.createElement('div');
+  overlay.id='errLogOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Error log</div>'+
+      '<button class="kt-sheet-x" onclick="closeErrorLogSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Device-local diagnostics — never sent anywhere. Copy and share when reporting a bug.</div>'+
+    rows+
+    (log.length?'<div style="display:flex;gap:10px;margin-top:14px;">'+
+      '<button onclick="clearErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Clear</button>'+
+      '<button onclick="copyErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Copy</button>'+
+    '</div>':'')+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeErrorLogSheet);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeErrorLogSheet();});
+  _a11yPass();
+}
+function closeErrorLogSheet(){
+  var el=document.getElementById('errLogOverlay');
+  if(el)el.remove();
+}
+function copyErrorLog(){
+  var raw=localStorage.getItem('kt_err_log')||'[]';
+  var txt='Supero '+APP_BUILD+' error log\n'+raw;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ showToast('Error log copied'); }).catch(function(){ showToast('Copy failed'); });
+  } else { showToast('Copy not supported here'); }
+}
+function clearErrorLog(){
+  localStorage.removeItem('kt_err_log');
+  closeErrorLogSheet();
+  render();
+  showToast('Error log cleared');
 }
 function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
@@ -9758,6 +9881,7 @@ function openHealthSettings(){
     '<div id="healthSheetList">'+_buildHealthRows()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeHealthSettings);
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeHealthSettings();});
   _a11yPass();
 }
@@ -9815,6 +9939,7 @@ function openLogTabsEditor(){
     '<div id="logTabsSheetList">'+_buildLogTabsRows()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeLogTabsEditor);
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeLogTabsEditor();});
   _a11yPass();
 }
@@ -9931,6 +10056,7 @@ function openSportFieldsEditor(sportId){
     '<div id="sportFieldsList">'+_buildSportFieldsSheet()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeSportFieldsEditor);
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeSportFieldsEditor();});
   _a11yPass();
 }
@@ -10009,6 +10135,7 @@ function openCFMovePicker(){
     '<div id="cfPickerList" style="flex:1;overflow-y:auto;padding-bottom:max(env(safe-area-inset-bottom),16px);">'+_buildCFPickerList()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeCFMovePicker);
   var search=document.getElementById('cfPickerSearch');
   if(search) search.addEventListener('input', function(){
     _cfPickerQuery=this.value;
@@ -10105,6 +10232,7 @@ function openSportLogEditor(id){
     '<button onclick="saveSportLogEdit('+rec.id+')" style="width:100%;padding:14px;background:'+sport.color+';color:#000;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
   '</div>';
   document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeSportLogEditor);
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeSportLogEditor();});
   _a11yPass();
 }
