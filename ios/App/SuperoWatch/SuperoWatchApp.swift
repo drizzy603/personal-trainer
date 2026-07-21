@@ -2,6 +2,7 @@ import SwiftUI
 import WatchConnectivity
 import WatchKit
 import HealthKit
+import WidgetKit
 
 // Supero Watch — run today's session from the wrist. The iPhone pushes the
 // day's plan via WatchConnectivity applicationContext; logged sessions go
@@ -51,6 +52,13 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         DispatchQueue.main.async {
             self.plan = p
             UserDefaults.standard.set(data, forKey: "lastPlan")
+            // Mirror into the App Group for the watch-face complication.
+            if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
+                shared.set(p.dayName, forKey: "watchPlanDay")
+                shared.set(p.type, forKey: "watchPlanType")
+                shared.set(p.week, forKey: "watchPlanWeek")
+            }
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 

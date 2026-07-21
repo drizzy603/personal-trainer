@@ -7,7 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01BBE4C2F7F3EB7F74B9A04D /* SuperoWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7483CDCC342A55B75924827 /* SuperoWatchWidget.swift */; };
+		065EBDEF59EF633712055019 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1374D2397A249E817291E8D0 /* Foundation.framework */; };
 		0F81DECF2018C6E0C8A187BF /* SuperoWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = C80F9E9FB0999BC397BE97F1 /* SuperoWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		22496722802977373E234B00 /* SuperoWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6F6A889662CDA7C7FCB6B983 /* SuperoWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -34,6 +37,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 93AD82895C134B15317D0C8A;
 			remoteInfo = SuperoWatch;
+		};
+		5FD5B18C2AECDA27EC4AA9CE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3B8F6159F966F303C89C95B7;
+			remoteInfo = SuperoWatchWidget;
 		};
 		B300000000000000000000B3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -75,11 +85,24 @@
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AD6D5836EE7E9C4CCA0DADED /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				22496722802977373E234B00 /* SuperoWatchWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1374D2397A249E817291E8D0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		3A2174A34DE512C0A2B94058 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4E1D472F3A3D04065AFC1E9F /* SuperoWatchWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = SuperoWatchWidget.entitlements; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -88,6 +111,7 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		6F6A889662CDA7C7FCB6B983 /* SuperoWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SuperoWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D4438F87FD1918D90E1F715 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A100000000000000000000A1 /* TrovoTimerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrovoTimerWidget.swift; sourceTree = "<group>"; };
@@ -99,6 +123,7 @@
 		C300000000000000000000C3 /* TrovoShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TrovoShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C400000000000000000000C4 /* TrovoShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrovoShareExtension.entitlements; sourceTree = "<group>"; };
 		C80F9E9FB0999BC397BE97F1 /* SuperoWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperoWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7483CDCC342A55B75924827 /* SuperoWatchWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperoWatchWidget.swift; sourceTree = "<group>"; };
 		F992C105CCB83436385AADE5 /* SuperoWatchApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperoWatchApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -108,6 +133,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A92B0842DED0D3A4A78157D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				065EBDEF59EF633712055019 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -162,6 +195,7 @@
 				504EC3051FED79650016851F /* Products */,
 				33DD1ACE4EE83B8A03EEEFD6 /* Frameworks */,
 				E480D40EE6FE6BAD87EBD313 /* SuperoWatch */,
+				76639D5FF654F365265BFC6D /* SuperoWatchWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -172,6 +206,7 @@
 				A300000000000000000000A3 /* TrovoTimerWidget.appex */,
 				C300000000000000000000C3 /* TrovoShareExtension.appex */,
 				C80F9E9FB0999BC397BE97F1 /* SuperoWatch.app */,
+				6F6A889662CDA7C7FCB6B983 /* SuperoWatchWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -190,6 +225,17 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		76639D5FF654F365265BFC6D /* SuperoWatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				D7483CDCC342A55B75924827 /* SuperoWatchWidget.swift */,
+				3A2174A34DE512C0A2B94058 /* Info.plist */,
+				4E1D472F3A3D04065AFC1E9F /* SuperoWatchWidget.entitlements */,
+			);
+			name = SuperoWatchWidget;
+			path = SuperoWatchWidget;
 			sourceTree = "<group>";
 		};
 		A900000000000000000000A9 /* TrovoTimerWidget */ = {
@@ -224,6 +270,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		3B8F6159F966F303C89C95B7 /* SuperoWatchWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 69A39E21130CC0B4A68625AB /* Build configuration list for PBXNativeTarget "SuperoWatchWidget" */;
+			buildPhases = (
+				3EBC787148380100E64AAFB8 /* Sources */,
+				5A92B0842DED0D3A4A78157D /* Frameworks */,
+				DEB9B29ED1756C52CFA45A77 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SuperoWatchWidget;
+			productName = SuperoWatchWidget;
+			productReference = 6F6A889662CDA7C7FCB6B983 /* SuperoWatchWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -256,10 +319,12 @@
 				93AFFBEA373A7833EEE262F2 /* Sources */,
 				95A07814AA46D3D8BBBD8418 /* Frameworks */,
 				708FBC2DDBEFB678C227CF6A /* Resources */,
+				AD6D5836EE7E9C4CCA0DADED /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				849ED72B11217127B977DAEF /* PBXTargetDependency */,
 			);
 			name = SuperoWatch;
 			productName = SuperoWatch;
@@ -344,6 +409,7 @@
 				AE0000000000000000000AEE /* TrovoTimerWidget */,
 				CB000000000000000000CB00 /* TrovoShareExtension */,
 				93AD82895C134B15317D0C8A /* SuperoWatch */,
+				3B8F6159F966F303C89C95B7 /* SuperoWatchWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -384,9 +450,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DEB9B29ED1756C52CFA45A77 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3EBC787148380100E64AAFB8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01BBE4C2F7F3EB7F74B9A04D /* SuperoWatchWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -429,6 +510,12 @@
 			name = SuperoWatch;
 			target = 93AD82895C134B15317D0C8A /* SuperoWatch */;
 			targetProxy = 12C6A9065389291928191FF6 /* PBXContainerItemProxy */;
+		};
+		849ED72B11217127B977DAEF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = SuperoWatchWidget;
+			target = 3B8F6159F966F303C89C95B7 /* SuperoWatchWidget */;
+			targetProxy = 5FD5B18C2AECDA27EC4AA9CE /* PBXContainerItemProxy */;
 		};
 		B200000000000000000000B2 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -619,6 +706,57 @@
 			};
 			name = Release;
 		};
+		56613EEF295006E1E21922DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 21;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kt.trainer.watchkitapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Release;
+		};
+		716A875C498D8690C63B0EF0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 21;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kt.trainer.watchkitapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+			};
+			name = Debug;
+		};
 		AF0000000000000000000AFF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -792,6 +930,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		69A39E21130CC0B4A68625AB /* Build configuration list for PBXNativeTarget "SuperoWatchWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				56613EEF295006E1E21922DC /* Release */,
+				716A875C498D8690C63B0EF0 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
