@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-4"/>
+<meta name="build" content="20260721-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -7708,55 +7708,98 @@ function toggleHistItem(id){
 }
 // ── Share card: editorial session image → iOS share sheet ────────────────────
 function shareSessionCard(id){
-  var s=getSessions().find(function(x){return x.id===id;});
-  if(!s) return;
+  var sess=getSessions().find(function(x){return x.id===id;});
+  if(!sess) return;
+  // Editorial poster, 1080x1350 (screen 06): always the dark brand surface;
+  // the accent is the user's theme accent, except Light -> Lime (a dark green
+  // has no presence on near-black). All other colors are fixed base values.
   var css=getComputedStyle(document.documentElement);
-  var v=function(name,fb){ return (css.getPropertyValue(name)||fb).trim()||fb; };
-  var bg=v('--bg','#0b0b0d'), card=v('--card','#16161a'), accent=v('--accent','#c8ff00'),
-      text=v('--text','#fafafa'), muted=v('--muted','#808089'), yellow=v('--yellow','#ffd60a');
-  var W=1080,H=1350;
+  var accent=(css.getPropertyValue('--accent')||'#c8ff00').trim()||'#c8ff00';
+  if(accent.toLowerCase()==='#5b8a00') accent='#c8ff00';
+  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', LITE='#9ca3af', RULE='#1f1f24', GOLD='#ffd60a';
+  // Inter is self-hosted and in use across the page; draw once fonts settle.
+  document.fonts.ready.then(function(){ _drawShareCard(sess, accent, BG, INK, MUTED, LITE, RULE, GOLD); });
+}
+function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
+  var W=1080,H=1350,M=88,R=992;
   var c=document.createElement('canvas'); c.width=W; c.height=H;
   var x=c.getContext('2d');
-  x.fillStyle=bg; x.fillRect(0,0,W,H);
-  var mono='700 30px "JetBrains Mono", ui-monospace, monospace';
   var exs=s.exercises||[];
+  var prs=(s.prs||[]).map(function(p){ return typeof p==='string'?p:(p&&(p.ex||p.name))||''; });
   var vol=calcVolume(exs);
-  var prs=s.prs||[];
-  // eyebrow
-  x.fillStyle=muted; x.font=mono;
-  x.fillText('SUPERO · '+fmtDate(s.date).toUpperCase()+(s.week?' · WEEK '+s.week:''), 72, 120);
-  // headline
-  x.fillStyle=text; x.font='800 130px -apple-system, "Helvetica Neue", sans-serif';
-  x.fillText((s.type||'Session'), 64, 300);
-  x.fillStyle=accent;
-  x.fillText('day, done.', 64, 440);
-  // stat block
-  var stats=[[String(exs.length),'LIFTS'],[vol?vol.toLocaleString():'—','LB VOLUME'],[String(prs.length),'PRS']];
-  var sy=600;
-  stats.forEach(function(st,i){
-    var sx=72+i*330;
-    x.fillStyle=card; _rr(x,sx,sy,300,220,28); x.fill();
-    x.fillStyle=(st[1]==='PRS'&&prs.length)?yellow:text;
-    x.font='800 84px -apple-system, "Helvetica Neue", sans-serif';
-    x.fillText(st[0], sx+36, sy+110);
-    x.fillStyle=muted; x.font='700 26px "JetBrains Mono", ui-monospace, monospace';
-    x.fillText(st[1], sx+36, sy+172);
-  });
-  // exercises list (top 5)
-  var ly=940;
-  x.font='600 40px -apple-system, "Helvetica Neue", sans-serif';
-  exs.slice(0,5).forEach(function(ex){
+  // Legacy nested shape support (sets as [{reps,weight,rpe}] from old backups).
+  function exSets(ex){ return Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||(Array.isArray(ex.reps)?ex.reps.length:0)); }
+  function exWeight(ex){
+    if(Array.isArray(ex.sets)) return ex.sets.reduce(function(m,st){ var w=parseFloat(st.weight)||0; return w>m?w:m; },0);
+    return parseFloat(ex.weight)||0;
+  }
+  var sets=exs.reduce(function(a,ex){ return a+exSets(ex); },0);
+  function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
+  x.fillStyle=BG; x.fillRect(0,0,W,H);
+  // Eyebrow — SUPERO · WEEK NN · SUN JUL 20
+  var d=new Date((s.date||todayISO())+'T00:00:00');
+  var dp=d.toDateString().toUpperCase().split(' '); // ["SUN","JUL","20","2026"]
+  var eyebrow='SUPERO'+(s.week?' · WEEK '+String(s.week).padStart(2,'0'):'')+' · '+dp[0]+' '+dp[1]+' '+parseInt(dp[2],10);
+  x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
+  x.fillText(eyebrow, M, 136);
+  // Headline — "{Type} day," in ink / "done." in accent
+  var line1=(s.type||'Session')+' day,';
+  x.font='800 136px Inter, sans-serif'; ls('-4px');
+  var y1=312, y2=444;
+  if(x.measureText(line1).width>904){ x.font='800 112px Inter, sans-serif'; y1=300; y2=420; }
+  x.fillStyle=INK;   x.fillText(line1, M, y1);
+  x.fillStyle=accent; x.fillText('done.', M, y2);
+  ls('0px');
+  // Rules
+  x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
+  // Stat table — SETS at x=88, LB VOLUME at x=400, PR right-aligned to x=992
+  var volStr=vol?vol.toLocaleString():'0';
+  var prVal=String(prs.length), prLbl=prs.length===1?'PR':'PRS';
+  var prCol=prs.length?GOLD:MUTED;
+  x.textAlign='left';
+  x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
+  x.fillText(String(sets), M, 664);
+  x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
+  x.fillText(volStr, 400, 664);
+  x.textAlign='right'; x.fillStyle=prCol;
+  x.font='800 100px Inter, sans-serif';
+  x.fillText(prVal, R, 664);
+  ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
+  x.fillText(prLbl, R, 722);
+  x.textAlign='left'; x.fillStyle=MUTED;
+  x.fillText('SETS', M, 722);
+  x.fillText('LB VOLUME', 400, 722);
+  ls('0px');
+  // Lift list — 5 rows max, pitch 82; >5 -> 4 rows + "+ N more"
+  var rows=exs.length>5?exs.slice(0,4):exs.slice(0,5);
+  var ly=884;
+  rows.forEach(function(ex){
     var isPR=prs.indexOf(ex.name)>-1;
-    x.fillStyle=isPR?yellow:text;
-    var line=ex.name+(parseFloat(ex.weight)>0?' · '+ex.weight+' lb':'')+(isPR?'  ★ PR':'');
-    x.fillText(line.length>44?line.slice(0,43)+'…':line, 72, ly);
-    ly+=72;
+    var name=ex.name;
+    x.font='600 40px Inter, sans-serif';
+    while(x.measureText(name).width>620 && name.length>2){ name=name.slice(0,-2)+'…'; }
+    x.fillStyle=isPR?GOLD:INK;
+    x.fillText(name, M, ly);
+    var w=exWeight(ex);
+    var wStr=(w>0?(w+' LB'):'BW')+(isPR?' ★':'');
+    x.textAlign='right'; x.fillStyle=isPR?GOLD:LITE;
+    x.font='700 34px "JetBrains Mono", ui-monospace, monospace';
+    x.fillText(wStr, R, ly);
+    x.textAlign='left';
+    ly+=82;
   });
-  if(exs.length>5){ x.fillStyle=muted; x.fillText('+ '+(exs.length-5)+' more', 72, ly); }
-  // footer accent bar + wordmark
-  x.fillStyle=accent; x.fillRect(72, H-96, 120, 10);
-  x.fillStyle=muted; x.font=mono;
-  x.fillText('SUPERO — AI TRAINER', 220, H-84);
+  if(exs.length>5){
+    x.fillStyle=MUTED; x.font='600 32px Inter, sans-serif';
+    x.fillText('+ '+(exs.length-4)+' more', M, ly);
+  }
+  // Footer — accent square + SUPERO lockup / AI TRAINER
+  x.fillStyle=accent; x.fillRect(M,1242,20,20);
+  x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
+  x.fillText('SUPERO', 122, 1262);
+  x.textAlign='right'; x.fillStyle=MUTED;
+  x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
+  x.fillText('AI TRAINER', R, 1262);
+  x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card'); return; }
     var file=new File([blob], 'supero-'+s.date+'.png', {type:'image/png'});
@@ -7767,12 +7810,6 @@ function shareSessionCard(id){
     }
   }, 'image/png');
 }
-function _rr(x,px,py,w,h,r){
-  x.beginPath();
-  x.moveTo(px+r,py); x.arcTo(px+w,py,px+w,py+h,r); x.arcTo(px+w,py+h,px,py+h,r);
-  x.arcTo(px,py+h,px,py,r); x.arcTo(px,py,px+w,py,r); x.closePath();
-}
-
 function renderHistory() {
   var sessions=getSessions();
   if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
