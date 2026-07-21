@@ -2,8 +2,30 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-// Accent colour matching the app's lime (#C8FF00 ≈ rgb(0.78, 1.0, 0.0))
-private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
+// App accent. The web app writes its applied theme's accent into the App
+// Group summary (Light sends Lime — these surfaces render on dark). Falls
+// back to the classic lime when no summary exists yet.
+private let limeDefault = Color(red: 0.78, green: 1.0, blue: 0.0)
+private var lime: Color {
+    guard let json = UserDefaults(suiteName: "group.app.kt.trainer")?
+            .string(forKey: "superoWidgetSummary"),
+          let data = json.data(using: .utf8),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          let hex = obj["accent"] as? String else { return limeDefault }
+    return Color(hex: hex) ?? limeDefault
+}
+
+extension Color {
+    // #RRGGBB → Color; nil on anything else.
+    init?(hex: String) {
+        var h = hex.trimmingCharacters(in: .whitespaces)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let v = UInt64(h, radix: 16) else { return nil }
+        self.init(red: Double((v >> 16) & 0xff) / 255,
+                  green: Double((v >> 8) & 0xff) / 255,
+                  blue: Double(v & 0xff) / 255)
+    }
+}
 
 struct TrovoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {

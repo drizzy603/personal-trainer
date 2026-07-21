@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-7"/>
+<meta name="build" content="20260721-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10792,8 +10792,14 @@ function drainWatchSessions(){
 function _runNativeSync(){
   _nativeSyncTimer=null;
   try{
+    // Widgets + Live Activity render on dark surfaces, so the Light theme
+    // sends Lime (same rule as the share card).
+    var _appliedT=currentTheme==='auto'
+      ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')
+      : currentTheme;
+    var _acc=(_appliedT==='light'||!THEMES[_appliedT])?THEMES.dark.accent:THEMES[_appliedT].accent;
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(getSessions()), days:_nativeSummaryDays() };
+      streak:calcStreak(getSessions()), days:_nativeSummaryDays(), accent:_acc };
     var json=JSON.stringify(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;
