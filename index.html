@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-2"/>
+<meta name="build" content="20260721-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -715,6 +715,13 @@ select option{background:var(--bg);}
 .kt-resume-discard{background:transparent;border:1px solid var(--border);color:var(--lite);padding:9px 14px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-resume-cta{background:var(--accent);color:#000;border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-resume-cta:active,.kt-resume-discard:active{opacity:.7;}
+/* Screen 04 — Today slot system: one utility strip, at most one banner.
+   Chips are remount-safe (no entrance animation by design). */
+.kt-util-strip{display:flex;gap:8px;overflow-x:auto;margin:0 0 16px;height:32px;align-items:center;scrollbar-width:none;}
+.kt-util-strip::-webkit-scrollbar{display:none;}
+.kt-util-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border);flex-shrink:0;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-util-chip .lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--lite);white-space:nowrap;}
+.kt-util-chip .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 
 /* Smart suggestion chips — show ABOVE the recently-logged row. */
 .kt-act-suggest{display:flex;gap:8px;overflow-x:auto;padding:0 0 4px;margin-bottom:18px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
@@ -2234,6 +2241,8 @@ function toggleReadiness(){
   }).catch(function(){ showToast('Apple Health access failed'); });
 }
 function _readinessChip(){
+  // Slot-system chip (screen 04): score + zone on the strip; the detail bits
+  // (sleep / HRV / RHR) surface in a toast on tap. Never occupies the banner.
   var r=lsGet('kt_readiness');
   if(!r || r.date!==todayISO()) return '';
   var col = r.score>=80?'var(--green)':r.score>=60?'var(--yellow)':'var(--red)';
@@ -2241,13 +2250,12 @@ function _readinessChip(){
   if(r.parts.sleep!=null) bits.push(r.parts.sleep+'h sleep');
   if(r.parts.hrvDelta!=null) bits.push('HRV '+(r.parts.hrvDelta>=0?'+':'')+r.parts.hrvDelta+'%');
   if(r.parts.rhrDelta!=null && r.parts.rhrDelta!==0) bits.push('RHR '+(r.parts.rhrDelta>0?'+':'')+r.parts.rhrDelta+'%');
-  return '<div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:16px;padding:7px 12px;'+
-    'border-radius:12px;border:1px solid var(--border);background:var(--card);">'+
-    '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0;"></span>'+
-    '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text);">READINESS '+r.score+'</span>'+
+  var tap = bits.length?' onclick="showToast(\''+_esc(bits.join(' · '))+'\')"':'';
+  return '<button class="kt-util-chip"'+tap+'>'+
+    '<span class="dot" style="background:'+col+';"></span>'+
+    '<span class="lbl" style="color:var(--text);">READINESS '+r.score+'</span>'+
     '<span style="font-size:10px;font-weight:700;color:'+col+';text-transform:uppercase;letter-spacing:.04em;">'+_esc(r.zone)+'</span>'+
-    (bits.length?'<span style="font-size:10px;color:var(--muted);font-weight:600;">'+_esc(bits.join(' · '))+'</span>':'')+
-  '</div>';
+  '</button>';
 }
 
 // ── Health write (lifting sessions → Apple Health) ───────────────────────────
@@ -2327,7 +2335,7 @@ function toggleAutoLogRuns(){
 function dismissPendingHealthRun(){ _hkPendingDismissed=true; _hkPendingRun=null; render(); }
 // Health card for tabs outside the run editorial (sport-primary second tab):
 // simpler gating — pending workout, not dismissed, nothing of its kind logged today.
-function _healthCardSlot(){
+function _healthCardSlot(compact){
   if(!_hkPendingRun || _hkPendingDismissed) return '';
   var t=todayISO();
   var sid=_hkSportId(_hkPendingRun);
@@ -2336,9 +2344,9 @@ function _healthCardSlot(){
   } else {
     if(getRuns().some(function(r){ return r.date===t; })) return '';
   }
-  return renderHealthQuickLog();
+  return renderHealthQuickLog(compact);
 }
-function renderHealthQuickLog(){
+function renderHealthQuickLog(compact){
   var r = _hkPendingRun;
   var sid = _hkSportId(r);
   var distStr = (Math.round(r.distanceKm*100)/100)+'km';
@@ -2359,14 +2367,19 @@ function renderHealthQuickLog(){
     ctaNoun = 'run';
   }
   var headline = r.distanceKm>0 ? distStr+' · '+timeStr : timeStr;
-  return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
+  // Compact geometry when the card occupies the Today banner slot (screen 04).
+  var hlSize = compact?'font-size:24px;letter-spacing:-1px;':'font-size:28px;letter-spacing:-1.5px;';
+  var metaSize = compact?'11px':'12px';
+  var ctaPad = compact?'13px':'14px';
+  var mb = compact?'18px':'24px';
+  return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:'+mb+';">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
       '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent-ink);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
       '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>'+
-    '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(headline)+'</div>'+
-    '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
-    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this '+_esc(ctaNoun)+' →</button>'+
+    '<div style="'+hlSize+'font-weight:800;color:var(--text);margin-bottom:4px;">'+_esc(headline)+'</div>'+
+    '<div style="font-family:\'JetBrains Mono\',monospace;font-size:'+metaSize+';color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
+    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:'+ctaPad+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this '+_esc(ctaNoun)+' →</button>'+
   '</div>';
 }
 
@@ -3444,7 +3457,7 @@ function renderTodayEditorial(){
   // Proactive plateau fix — the coach comes to you when a lift has stalled.
   // One card per programme week, and it yields to the weekly-review banner.
   var plateauBanner='';
-  if(!reviewBanner && _plateauFixDue()){
+  if(_plateauFixDue()){
     var _pl=_plateauLifts();
     plateauBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow" style="color:var(--yellow);">PLATEAU SPOTTED</div>'+
@@ -3455,8 +3468,32 @@ function renderTodayEditorial(){
       '</div></div>';
   }
   var debriefCard=_renderDebriefCard();
-  return meta + _readinessChip() + lapseBanner + resumeBanner + reviewBanner + plateauBanner + debriefCard + hero + cta + adhocPicker + coachHTML + marquee;
+
+  // Slot system (screen 04): at most ONE banner above the hero; everything
+  // else that qualifies collapses into a chip on the utility strip. Tapping a
+  // chip promotes it into the banner slot for this render (todayBannerOverride).
+  // Priority: resume > welcome-back > Watch quick-log > review > plateau > debrief.
+  var watchCard=_healthCardSlot(true);
+  var cands=[];
+  if(resumeBanner) cands.push({id:'resume', label:'IN PROGRESS', dot:'var(--accent-ink)', html:resumeBanner});
+  if(lapseBanner) cands.push({id:'lapse', label:'WELCOME BACK', dot:'var(--accent-ink)', html:lapseBanner});
+  if(watchCard) cands.push({id:'watch', label:'APPLE WATCH', dot:'var(--accent-ink)', html:watchCard});
+  if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
+  if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
+  if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
+  var activeSlot=null;
+  for(var ci=0;ci<cands.length;ci++){ if(cands[ci].id===todayBannerOverride){ activeSlot=cands[ci]; break; } }
+  if(!activeSlot) activeSlot=cands[0]||null;
+  var chipsHtml=_readinessChip()+cands.filter(function(c){ return !activeSlot || c.id!==activeSlot.id; }).map(function(c){
+    return '<button class="kt-util-chip" onclick="promoteTodayItem(\''+c.id+'\')">'+
+      '<span class="dot" style="background:'+c.dot+';"></span>'+
+      '<span class="lbl">'+c.label+'</span></button>';
+  }).join('');
+  var strip=chipsHtml?'<div class="kt-util-strip">'+chipsHtml+'</div>':'';
+  return meta + strip + (activeSlot?activeSlot.html:'') + hero + cta + adhocPicker + coachHTML + marquee;
 }
+var todayBannerOverride=null;
+function promoteTodayItem(id){ todayBannerOverride=id; render(); }
 
 // ── Proactive coach: plateau fix ─────────────────────────────────────────────
 function _plateauFixDue(){
