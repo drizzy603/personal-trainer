@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260720-8"/>
+<meta name="build" content="20260721-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -77,6 +77,9 @@
   --accent:#c8ff00;
   --accent-soft:rgba(200,255,0,.12);
   --accent-dim:rgba(200,255,0,.06);
+  /* Text-only accent: equals --accent on dark themes; Light overrides to a
+     darker green so small accent text passes AA on tinted surfaces. */
+  --accent-ink:#c8ff00;
   --green:#c8ff00;--yellow:#ffd60a;
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
   /* --muted promoted from #525259 (3.6:1 fail) to #6e6e76 (4.7:1 pass) so
@@ -142,7 +145,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
   color:var(--muted);cursor:pointer;font-size:10px;font-weight:500;
   -webkit-tap-highlight-color:transparent;transition:all .2s;font-family:inherit;}
 .tab:focus,.tab:focus-visible{outline:none;}
-.tab.active{background:var(--card2);color:var(--accent);}
+.tab.active{background:var(--card2);color:var(--accent-ink);}
 .tab svg{width:20px;height:20px;}
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
@@ -193,7 +196,7 @@ select option{background:var(--bg);}
 .hero-num{font-size:62px;font-weight:700;letter-spacing:-2.5px;line-height:1;color:var(--accent);display:inline;}
 .hero-of{font-size:18px;color:var(--muted);font-weight:500;margin-left:6px;}
 .hero-block{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
-  color:var(--accent);background:var(--accent-soft);padding:5px 12px;border-radius:20px;margin-top:10px;}
+  color:var(--accent-ink);background:var(--accent-soft);padding:5px 12px;border-radius:20px;margin-top:10px;}
 .hero-focus{font-size:14px;color:var(--lite);margin-top:12px;line-height:1.55;}
 .hero-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:18px;overflow:hidden;}
 .hero-fill{height:100%;background:var(--accent);border-radius:2px;}
@@ -220,7 +223,7 @@ select option{background:var(--bg);}
   -webkit-tap-highlight-color:transparent;flex-shrink:0;font-family:inherit;}
 .ex-edit-btn:active{opacity:.7;}
 .ex-lbl{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.01em;}
-.main-badge{display:inline-flex;align-items:center;background:var(--accent-soft);color:var(--accent);
+.main-badge{display:inline-flex;align-items:center;background:var(--accent-soft);color:var(--accent-ink);
   font-size:10px;font-weight:600;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px;letter-spacing:.02em;}
 
 /* ── Set dots — horizontal strip ─────────────────────────────────────────── */
@@ -307,7 +310,7 @@ select option{background:var(--bg);}
 .stat{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:var(--pad-card-sm);}
 .stat-val{font-size:28px;font-weight:600;letter-spacing:-1px;line-height:1;}
 .stat-lbl{font-size:12px;color:var(--lite);margin-top:6px;font-weight:500;}
-.stat-delta{font-size:12px;color:var(--accent);font-weight:600;margin-top:4px;}
+.stat-delta{font-size:12px;color:var(--accent-ink);font-weight:600;margin-top:4px;}
 .stat-delta.down{color:var(--orange);}
 
 /* ── Chart card ──────────────────────────────────────────────────────────── */
@@ -316,7 +319,7 @@ select option{background:var(--bg);}
 .chart-lbl{font-size:12px;color:var(--lite);font-weight:500;}
 .chart-val{font-size:26px;font-weight:700;letter-spacing:-.8px;margin-top:4px;}
 .chart-unit{font-size:14px;color:var(--muted);font-weight:500;margin-left:3px;}
-.chart-delta{font-size:12px;color:var(--accent);font-weight:600;margin-top:2px;}
+.chart-delta{font-size:12px;color:var(--accent-ink);font-weight:600;margin-top:2px;}
 .chart-range{display:flex;gap:4px;}
 .chart-range span{font-size:10px;font-weight:600;padding:4px 9px;border-radius:999px;background:var(--card2);color:var(--muted);}
 .chart-range span.on{background:var(--accent);color:#000;}
@@ -326,7 +329,7 @@ select option{background:var(--bg);}
 .lift-row:last-child{border-bottom:none;}
 .lift-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
 .lift-name{font-size:15px;font-weight:600;}
-.lift-delta{font-size:13px;color:var(--accent);font-weight:600;}
+.lift-delta{font-size:13px;color:var(--accent-ink);font-weight:600;}
 .lift-bar{height:7px;background:var(--card2);border-radius:4px;overflow:hidden;}
 .lift-fill{height:100%;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 45%,transparent),var(--accent));border-radius:4px;}
 .lift-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px;font-weight:500;}
@@ -342,7 +345,7 @@ select option{background:var(--bg);}
 .hist-ex-row:last-child{border-bottom:none;}
 .hist-ex-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
 .hist-ex-name{font-size:13px;font-weight:600;color:var(--text);}
-.hist-ex-weight{font-size:13px;font-weight:700;color:var(--accent);flex-shrink:0;}
+.hist-ex-weight{font-size:13px;font-weight:700;color:var(--accent-ink);flex-shrink:0;}
 .hist-ex-detail{font-size:11px;color:var(--muted);margin-top:2px;}
 .hist-ex-note{font-size:11px;color:var(--muted);font-style:italic;margin-top:1px;}
 
@@ -359,7 +362,8 @@ select option{background:var(--bg);}
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 #toast{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:20px;right:20px;
   background:var(--green);color:#000;padding:14px 20px;border-radius:14px;
-  font-size:13px;font-weight:600;text-align:center;
+  border:1px solid rgba(0,0,0,.15);
+  font-size:13px;font-weight:700;line-height:1.4;text-align:center;
   z-index:9999;transform:translateY(20px);opacity:0;
   transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 #toast.show{transform:translateY(0);opacity:1;}
@@ -383,7 +387,7 @@ select option{background:var(--bg);}
 .wk-row:active{background:rgba(255,255,255,.04);}
 .wk-row.current{background:var(--accent-dim);}
 .wk-row-num{font-size:12px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.02em;}
-.wk-row-num.current{color:var(--accent);}
+.wk-row-num.current{color:var(--accent-ink);}
 .wk-row-now{background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;}
 .wk-row-note{font-size:13px;color:var(--lite);line-height:1.5;flex:1;min-width:0;}
 .wk-row-chev{flex-shrink:0;color:var(--muted);transition:transform .2s;align-self:center;}
@@ -408,10 +412,10 @@ select option{background:var(--bg);}
 .wk-ex-row{display:flex;align-items:flex-start;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);}
 .wk-ex-row:last-child{border-bottom:none;}
 .wk-ex-num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;width:18px;flex-shrink:0;padding-top:2px;}
-.wk-ex-num.main{color:var(--accent);}
+.wk-ex-num.main{color:var(--accent-ink);}
 .wk-ex-body{flex:1;min-width:0;}
 .wk-ex-name{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.1px;line-height:1.35;}
-.wk-ex-main{color:var(--accent);font-weight:700;}
+.wk-ex-main{color:var(--accent-ink);font-weight:700;}
 .wk-ex-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);margin-top:2px;letter-spacing:.02em;}
 /* Compact stat strip — used for run + sport metadata. */
 .wk-stat-row{display:flex;flex-wrap:wrap;gap:14px;padding:6px 0;}
@@ -612,7 +616,7 @@ select option{background:var(--bg);}
 .kt-hero-headline .kt-line2.accent{color:var(--accent);}
 .kt-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
 .kt-hero-body b{color:var(--text);font-weight:600;}
-.kt-hero-deload{display:inline-block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;margin-top:14px;font-weight:600;}
+.kt-hero-deload{display:inline-block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-ink);letter-spacing:.12em;margin-top:14px;font-weight:600;}
 .kt-marquee-delta.down{color:var(--lite);}
 .kt-marquee-row.kt-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-marquee-row.kt-tap:active{background:rgba(255,255,255,.03);}
@@ -633,7 +637,7 @@ select option{background:var(--bg);}
   to{opacity:1;transform:translateY(0) scaleY(1);}
 }
 .kt-rlog-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;}
-.kt-rlog-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;font-weight:600;margin-bottom:4px;}
+.kt-rlog-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-ink);letter-spacing:.12em;font-weight:600;margin-bottom:4px;}
 .kt-rlog-ttl{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);}
 .kt-rlog-x{background:none;border:none;color:rgba(255,255,255,.55);font-size:20px;cursor:pointer;padding:10px 12px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;border-radius:12px;margin:-10px -8px -10px 0;}
 .kt-rlog-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
@@ -643,15 +647,15 @@ select option{background:var(--bg);}
 .kt-rlog-input:focus{border-bottom-color:var(--accent);}
 .kt-rlog-pills{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 10px;}
 .kt-rlog-pill{padding:7px 12px;border-radius:999px;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-rlog-pill.on{background:var(--accent);color:#0b0b0d;}
+.kt-rlog-pill.on{background:var(--accent);color:#000;}
 .kt-rlog-pill.off{background:rgba(255,255,255,.05);color:var(--lite);}
 .kt-rlog-actions{display:flex;gap:10px;margin-top:8px;}
 .kt-rlog-discard{background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--lite);font-family:inherit;font-size:14px;font-weight:600;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-rlog-save{flex:1;background:var(--accent);color:#0b0b0d;border:none;font-family:inherit;font-size:14px;font-weight:700;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
-.kt-rconfirm{background:var(--accent);color:#0b0b0d;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
+.kt-rconfirm{background:var(--accent);color:#000;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
 @keyframes kt-rconfirm-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
-.kt-rconfirm-undo{background:rgba(0,0,0,.18);color:#0b0b0d;border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rconfirm-undo{background:rgba(0,0,0,.18);color:#000;border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-goal-line input{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.2);color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
@@ -704,11 +708,11 @@ select option{background:var(--bg);}
 .kt-act-saved-undo{background:rgba(0,0,0,.4);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 /* B7 — Resume-in-progress banner on Today. */
 .kt-resume-banner{background:var(--accent-soft);border:1px solid var(--accent-soft);border-radius:var(--r-card);padding:14px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
-.kt-resume-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent);margin-bottom:4px;}
+.kt-resume-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent-ink);margin-bottom:4px;}
 .kt-resume-ttl{font-size:15px;font-weight:700;letter-spacing:-.2px;color:var(--text);}
 .kt-resume-actions{display:flex;gap:8px;align-items:center;}
 .kt-resume-discard{background:transparent;border:1px solid var(--border);color:var(--lite);padding:9px 14px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-resume-cta{background:var(--accent);color:#0b0b0d;border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-resume-cta{background:var(--accent);color:#000;border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-resume-cta:active,.kt-resume-discard:active{opacity:.7;}
 
 /* Smart suggestion chips — show ABOVE the recently-logged row. */
@@ -717,7 +721,7 @@ select option{background:var(--bg);}
 .kt-act-suggest-chip{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;border-radius:14px;background:var(--accent-dim);border:1px solid var(--accent-soft);color:var(--text);font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-act-suggest-body{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1;}
 .kt-act-suggest-name{font-size:13px;font-weight:700;letter-spacing:-.2px;}
-.kt-act-suggest-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;color:var(--accent);letter-spacing:.1em;font-weight:600;}
+.kt-act-suggest-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;color:var(--accent-ink);letter-spacing:.1em;font-weight:600;}
 .kt-cta{width:100%;padding:22px;border-radius:var(--r-hero);border:none;background:var(--accent);color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;transition:transform .15s,opacity .15s;}
 .kt-cta:active{opacity:.9;transform:scale(.985);}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
@@ -735,7 +739,7 @@ select option{background:var(--bg);}
 .kt-coach-card{background:var(--card);border:1px solid rgba(255,255,255,.07);border-left:2px solid var(--accent);border-radius:18px;padding:var(--pad-card-sm) var(--pad-card-sm) 14px;position:relative;overflow:hidden;touch-action:pan-y;-webkit-tap-highlight-color:transparent;transition:transform .25s,opacity .25s;}
 .kt-coach-card.dragging{transition:none;}
 .kt-coach-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
-.kt-coach-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--accent);letter-spacing:.12em;font-weight:600;}
+.kt-coach-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--accent-ink);letter-spacing:.12em;font-weight:600;}
 .kt-coach-x{background:none;border:none;color:rgba(255,255,255,.3);font-size:14px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;}
 .kt-coach-msg{font-size:15px;line-height:1.5;margin-bottom:14px;letter-spacing:-.1px;color:var(--text);}
 .kt-coach-actions{display:flex;gap:8px;}
@@ -753,10 +757,10 @@ select option{background:var(--bg);}
 .kt-marquee-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
 .kt-marquee-left{display:flex;align-items:baseline;gap:14px;flex:1;min-width:0;}
 .kt-marquee-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:600;flex-shrink:0;color:var(--muted);}
-.kt-marquee-idx.main{color:var(--accent);}
+.kt-marquee-idx.main{color:var(--accent-ink);}
 .kt-marquee-name{font-size:16px;font-weight:600;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
 .kt-marquee-right{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:10px;}
-.kt-marquee-delta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent);font-weight:600;}
+.kt-marquee-delta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-ink);font-weight:600;}
 .kt-marquee-reps{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--lite);}
 .kt-session-done{background:var(--accent-dim);border:1px solid var(--accent-soft);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;margin-bottom:24px;}
 .kt-session-done-ic{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0;}
@@ -2345,7 +2349,7 @@ function renderHealthQuickLog(){
   var headline = r.distanceKm>0 ? distStr+' · '+timeStr : timeStr;
   return '<div style="background:var(--card);border:1px solid var(--accent-soft);border-radius:18px;padding:18px 20px;margin-bottom:24px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
-      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent-ink);">APPLE WATCH · '+_esc(timeLabel)+'</div>'+
       '<button onclick="dismissPendingHealthRun()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px;margin:-10px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>'+
     '<div style="font-size:28px;font-weight:800;letter-spacing:-1.5px;color:var(--text);margin-bottom:4px;">'+_esc(headline)+'</div>'+
@@ -4085,7 +4089,7 @@ function _ktConfirm(opts){
     (opts.body?'<div class="kt-close-sheet-sub">'+_esc(opts.body)+'</div>':'')+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" '+
       'onclick="document.getElementById(\''+sid+'\').remove()">Cancel</button>'+
-    '<button class="kt-close-sheet-btn" id="'+sid+'ok" style="background:'+(opts.confirmStyle||'#ef4444')+';color:'+(opts.confirmStyle?'#000':'#fff')+';"> '+(opts.confirmLabel||'Confirm')+'</button>'+
+    '<button class="kt-close-sheet-btn" id="'+sid+'ok" style="background:'+(opts.confirmStyle||'var(--red)')+';color:#000;"> '+(opts.confirmLabel||'Confirm')+'</button>'+
   '</div>';
   document.body.appendChild(el);
   document.getElementById(sid+'ok').onclick=function(){el.remove();opts.onConfirm();};
@@ -4099,7 +4103,7 @@ function discardRunnerDraft(){
     '<div class="kt-close-sheet-ttl">Discard workout?</div>'+
     '<div class="kt-close-sheet-sub">Your in-progress sets will be lost.</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-discard-draft-sheet\').remove()">Keep it</button>'+
-    '<button class="kt-close-sheet-btn" style="background:#ef4444;color:#fff;" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--red);color:#000;" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
   '</div>';
   document.body.appendChild(el);
 }
@@ -4121,7 +4125,7 @@ function confirmCloseRunner(){
     '<div class="kt-close-sheet-ttl">Leave workout?</div>'+
     '<div class="kt-close-sheet-sub">Logged sets so far won\'t be saved.</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-close-runner-sheet\').remove()">Keep working</button>'+
-    '<button class="kt-close-sheet-btn" style="background:#ef4444;color:#fff;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--red);color:#000;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
   '</div>';
   document.body.appendChild(el);
 }
@@ -6488,7 +6492,7 @@ function renderBodySection(){
         '<div class="chart-lbl">Body Weight</div>'+
         '<div><span class="chart-val">'+currentW+'</span><span class="chart-unit">lb</span></div>'+
         (bwGoal?'<div class="chart-delta">Goal: '+bwGoal+' lb</div>':'')+
-      '</div></div>'+svgChart(bwData,'#60a5fa',bwGoal)+'</div>'
+      '</div></div>'+svgChart(bwData,'var(--cyan)',bwGoal)+'</div>'
     :'';
 
   // Goal bar
@@ -7078,14 +7082,14 @@ function renderProgress() {
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Bench Press · working weight</div>'+
       '<div><span class="chart-val">'+benchData[benchData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
       (benchData.length>=2?'<div class="chart-delta">↑ '+(benchData[benchData.length-1].val-benchData[0].val)+' lb total</div>':'')+
-      '</div></div>'+svgChart(benchData,'#c8ff00')+'</div>'
+      '</div></div>'+svgChart(benchData,'var(--accent)')+'</div>'
     :'';
 
   var squatChart=squatData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Back Squat · working weight</div>'+
       '<div><span class="chart-val">'+squatData[squatData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
       (squatData.length>=2?'<div class="chart-delta">↑ '+(squatData[squatData.length-1].val-squatData[0].val)+' lb total</div>':'')+
-      '</div></div>'+svgChart(squatData,'#fb923c')+'</div>'
+      '</div></div>'+svgChart(squatData,'var(--orange)')+'</div>'
     :'';
 
   var runData=[];
@@ -7100,7 +7104,7 @@ function renderProgress() {
   var runChart=runData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Run pace · sec/km (lower = faster)</div>'+
       (runGoalSec?'<div class="chart-delta">Goal: '+getRunGoal()+'/km</div>':'')+
-      '</div></div>'+svgChart(runData,'#c8ff00',runGoalSec)+'</div>'
+      '</div></div>'+svgChart(runData,'var(--accent)',runGoalSec)+'</div>'
     :'';
 
   // Weekly distance trend — group runs by ISO calendar week (Mon-based).
@@ -7121,7 +7125,7 @@ function renderProgress() {
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Weekly distance · km</div>'+
         '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">km this wk</span></div>'+
-      '</div></div>'+svgChart(weeklyDistData,'#60a5fa')+'</div>'
+      '</div></div>'+svgChart(weeklyDistData,'var(--cyan)')+'</div>'
     :'';
 
   // 1RM calculator (Epley)
@@ -7157,11 +7161,11 @@ function renderProgress() {
   var volCharts='';
   if(pushVol.length>=2||pullVol.length>=2||legsVol.length>=2||legs2Vol.length>=2||armsVol.length>=2){
     volCharts='<div class="chart-card"><div class="chart-lbl" style="margin-bottom:14px;">Volume · total lb per session</div>';
-    if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px;">Push</div>'+svgChart(pushVol,'#c8ff00')+'</div>';
-    if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:6px;">Pull</div>'+svgChart(pullVol,'#60a5fa')+'</div>';
-    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:'+(legs2Vol.length>=2||armsVol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs A</div>'+svgChart(legsVol,'#fb923c')+'</div>';
-    if(legs2Vol.length>=2) volCharts+='<div style="margin-bottom:'+(armsVol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:6px;">Legs B</div>'+svgChart(legs2Vol,'#f97316')+'</div>';
-    if(armsVol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:#f59e0b;margin-bottom:6px;">Arms</div>'+svgChart(armsVol,'#f59e0b')+'</div>';
+    if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Push</div>'+svgChart(pushVol,'var(--accent)')+'</div>';
+    if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Pull</div>'+svgChart(pullVol,'var(--accent)')+'</div>';
+    if(legsVol.length>=2) volCharts+='<div style="margin-bottom:'+(legs2Vol.length>=2||armsVol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Legs A</div>'+svgChart(legsVol,'var(--accent)')+'</div>';
+    if(legs2Vol.length>=2) volCharts+='<div style="margin-bottom:'+(armsVol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Legs B</div>'+svgChart(legs2Vol,'var(--accent)')+'</div>';
+    if(armsVol.length>=2) volCharts+='<div style="margin-bottom:4px;"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Arms</div>'+svgChart(armsVol,'var(--accent)')+'</div>';
     volCharts+='</div>';
   }
 
@@ -7344,7 +7348,7 @@ function renderProgress() {
         '<div class="chart-lbl">Body Weight</div>'+
         '<div><span class="chart-val">'+bwChartData[bwChartData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
         (bwGoalProg?'<div class="chart-delta">Goal: '+bwGoalProg+' lb</div>':'')+
-      '</div></div>'+svgChart(bwChartData,'#60a5fa',bwGoalProg||undefined)+'</div>'
+      '</div></div>'+svgChart(bwChartData,'var(--cyan)',bwGoalProg||undefined)+'</div>'
     :'';
 
   // Slim programme-week stepper — utility, so it lives down by the calendar
@@ -9177,19 +9181,19 @@ function renderCoach(){
 // with a subtle hue tint and swaps the accent. Light exists mainly so Auto
 // can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
-  dark:     {name:'Lime',     textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
-  midnight: {name:'Midnight', textColor:'#f0f6ff',bg:'#06080f',card:'#10141d',card2:'#171c28',border:'rgba(160,190,255,.09)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.13)','accent-dim':'rgba(125,211,252,.06)',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#f0f6ff',muted:'#6b7a94',lite:'#8fa1bd'},
-  carbon:   {name:'Carbon',   textColor:'#fafafa',bg:'#09090a',card:'#141416',card2:'#1d1d20',border:'rgba(255,255,255,.08)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.13)','accent-dim':'rgba(255,255,255,.06)',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#fafafa',muted:'#7a7a80',lite:'#a1a1a8'},
-  ember:    {name:'Ember',    textColor:'#fff5f2',bg:'#0d0708',card:'#191012',card2:'#221518',border:'rgba(255,170,150,.09)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.14)','accent-dim':'rgba(255,92,56,.07)',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff5f2',muted:'#8f7570',lite:'#b39a94'},
-  violet:   {name:'Violet',   textColor:'#f5f0ff',bg:'#0a0812',card:'#14101f',card2:'#1c1629',border:'rgba(190,160,255,.09)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.14)','accent-dim':'rgba(183,139,253,.07)',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f5f0ff',muted:'#7d7395',lite:'#a196bd'},
-  gold:     {name:'Gold',     textColor:'#fffbe8',bg:'#0c0a05',card:'#17130a',card2:'#201a0e',border:'rgba(255,220,150,.09)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.13)','accent-dim':'rgba(245,197,24,.06)',green:'#f5c518',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fffbe8',muted:'#93865f',lite:'#b3a67e'},
-  light:    {name:'Light',    textColor:'#111',   bg:'#f2f2f7',card:'#fff',    card2:'#e8e8ed',border:'rgba(0,0,0,.08)',    accent:'#5b8a00','accent-soft':'rgba(91,138,0,.14)','accent-dim':'rgba(91,138,0,.07)',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626', orange:'#ea580c',cyan:'#0891b2',text:'#111',  muted:'#666',   lite:'#444'},
+  dark:     {name:'Lime',     room:'Studio',    textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)','accent-ink':'#c8ff00',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
+  midnight: {name:'Midnight', room:'Night ops', textColor:'#eaf4ff',bg:'#050a14',card:'#0c1524',card2:'#142033',border:'rgba(125,211,252,.14)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.14)','accent-dim':'rgba(125,211,252,.07)','accent-ink':'#7dd3fc',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#eaf4ff',muted:'#6b81a6',lite:'#8ba3c7'},
+  carbon:   {name:'Carbon',   room:'Wireframe', textColor:'#ffffff',bg:'#060607',card:'#060607',card2:'#161618',border:'rgba(255,255,255,.16)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.10)','accent-dim':'rgba(255,255,255,.05)','accent-ink':'#ffffff',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#ffffff',muted:'#7f7f85',lite:'#ababb2'},
+  ember:    {name:'Ember',    room:'Forge',     textColor:'#fff1e8',bg:'#120a06',card:'#1e130c',card2:'#2a1a11',border:'rgba(255,140,90,.12)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.16)','accent-dim':'rgba(255,92,56,.08)','accent-ink':'#ff5c38',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff1e8',muted:'#9a7d6d',lite:'#c2a08e'},
+  violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6'},
+  gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088'},
+  light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c'},
 };
 
 function applyTheme(name) {
   var t=THEMES[name]; if(!t) return;
   var r=document.documentElement;
-  ['bg','card','card2','border','accent','accent-soft','accent-dim','green','yellow','red','orange','cyan','text','muted','lite'].forEach(function(k){
+  ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','green','yellow','red','orange','cyan','text','muted','lite'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
   localStorage.setItem('kt_theme',name);
@@ -9211,7 +9215,7 @@ function _buildThemeRows(){
           '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:linear-gradient(135deg,#0b0b0d 50%,#f2f2f7 50%);border:1px solid var(--border);"></span>'+
           '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">Auto</span>'+
           '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">follows phone</span></span>'+
-          (sel?'<span style="margin-left:auto;color:var(--accent);font-weight:800;">✓</span>':'')+
+          (sel?'<span style="margin-left:auto;color:var(--accent-ink);font-weight:800;">✓</span>':'')+
         '</button>';
       }
       var t=THEMES[id];
@@ -9221,8 +9225,8 @@ function _buildThemeRows(){
         '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:'+t.bg+';border:1px solid rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;">'+
           '<span style="width:11px;height:11px;border-radius:50%;background:'+t.accent+';"></span></span>'+
         '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">'+t.name+'</span>'+
-        '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">'+(id==='light'?'for daylight':'dark')+'</span></span>'+
-        (sel?'<span style="margin-left:auto;color:var(--accent);font-weight:800;">✓</span>':'')+
+        '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">'+(t.room||'dark')+'</span></span>'+
+        (sel?'<span style="margin-left:auto;color:var(--accent-ink);font-weight:800;">✓</span>':'')+
       '</button>';
     }).join('')+
   '</div>';
@@ -9730,7 +9734,7 @@ function _buildSportFieldsSheet(){
       '</div>'+
       '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↑</button>'+
       '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↓</button>'+
-      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:#ef4444;">✕</button>'+
+      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:var(--red);">✕</button>'+
     '</div>';
   }).join('');
   var addForm = fields.length>=SPORT_FIELD_MAX
