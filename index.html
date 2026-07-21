@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-11"/>
+<meta name="build" content="20260721-12"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10669,7 +10669,12 @@ function cancelRestNotification(){
 function toggleDailyReminder(){
   if(localStorage.getItem('kt_notif_daily')==='1'){
     localStorage.setItem('kt_notif_daily','0');
-    _syncReminders(); render();
+    // Explicit cancel here — _syncReminders no longer touches the
+    // notification center while the feature is off.
+    var LNoff=_plug('LocalNotifications');
+    if(LNoff){ var offIds=[]; for(var oi=0;oi<7;oi++) offIds.push({id:9101+oi});
+      LNoff.cancel({notifications:offIds}).catch(function(){}); }
+    render();
   } else {
     _notifPermission(function(ok){
       if(!ok){ showToast('Enable notifications for Supero in iOS Settings'); render(); return; }
@@ -10680,9 +10685,12 @@ function toggleDailyReminder(){
 }
 function _syncReminders(){
   var LN = _plug('LocalNotifications'); if(!LN) return;
+  // Never touch the notification center while reminders are off — on a fresh
+  // install even cancel() surfaces the iOS permission prompt, so first-run
+  // users saw an unexplained notifications dialog seconds after boot.
+  if(localStorage.getItem('kt_notif_daily')!=='1' || !hasCustomRoutine()) return;
   var ids=[]; for(var i=0;i<7;i++) ids.push({id:9101+i});
   LN.cancel({notifications:ids}).catch(function(){});
-  if(localStorage.getItem('kt_notif_daily')!=='1' || !hasCustomRoutine()) return;
   var days=_nativeSummaryDays(), toSched=[];
   for(var j=0;j<days.length;j++){
     var d=days[j];
