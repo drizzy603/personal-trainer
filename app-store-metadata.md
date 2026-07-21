@@ -133,6 +133,25 @@ Report any layout glitches, crashes, or AI Coach errors.
 This app requires the user to provide their own Anthropic API key for the AI Coach feature. To test the Coach: open Settings → API key, paste a valid Anthropic key. Without a key, the Coach tab shows an empty state but the rest of the app (Log, Progress, Library) is fully functional.
 ```
 
+## What's New in 1.2 (release notes — paste at submission)
+
+```
+Supero 1.2 is the Health release — your training now lives on your wrist, your watch, and your rings.
+
+• Apple Watch app: run today's session from your wrist — live heart rate, rest timer with haptics, and one-tap set logging. Finished sessions count toward your Activity rings and sync straight into your log.
+• Watch-face complication: today's session, one tap from the face.
+• Import any workout from Apple Health — rides, swims, pickleball, and 10 more — with optional background sync.
+• Finished lifts can save to Apple Health (opt-in).
+• Readiness score (opt-in): sleep, HRV, and resting heart rate distilled into one number on your Today screen.
+• Seven refined themes, with widgets and the rest-timer Live Activity matching your pick.
+• Redesigned Progress tab: smoother charts, PR forecasts, and a clearer weekly picture.
+• Customizable Log tabs, per-activity fields, and a CrossFit session builder.
+• Share cards: turn a finished session into a poster.
+• Proactive coach: weekly reviews, plateau fixes, and post-session debriefs.
+```
+
+*(ASC field limit is 4000 chars; this is ~1000. Trim bullets from the bottom if a shorter note is preferred.)*
+
 ## Build Checklist (per upload)
 
 - [ ] Run `./release-ios.sh` from the project root — bumps `CURRENT_PROJECT_VERSION` and runs `npx cap copy ios`
