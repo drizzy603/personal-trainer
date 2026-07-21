@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-1"/>
+<meta name="build" content="20260721-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -373,13 +373,14 @@ select option{background:var(--bg);}
 .empty p{font-size:14px;line-height:1.5;}
 
 /* ── Exercise edit modal ─────────────────────────────────────────────────── */
-.ex-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;
+.ex-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;
   display:flex;align-items:flex-end;justify-content:center;}
-.ex-modal-sheet{background:var(--card);border-radius:24px 24px 0 0;padding:24px 20px 42px;
-  width:100%;max-width:480px;border-top:1px solid var(--border);max-height:82vh;overflow-y:auto;}
+.ex-modal-sheet{background:var(--card);border-radius:24px 24px 0 0;padding:20px 20px 24px;
+  padding-bottom:calc(max(env(safe-area-inset-bottom),16px) + 8px);
+  width:100%;max-width:480px;border-top:1px solid var(--border);max-height:85vh;overflow-y:auto;}
 .ex-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
-.ex-modal-close{background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--lite);
-  font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;
+.ex-modal-close{background:var(--card2);border:1px solid var(--border);border-radius:50%;color:var(--lite);
+  width:34px;height:34px;line-height:1;font-size:15px;padding:0;cursor:pointer;flex-shrink:0;
   -webkit-tap-highlight-color:transparent;font-family:inherit;}
 
 /* ── Programme modal · week rows + expandable schedule ───────────────────── */
@@ -861,12 +862,23 @@ select option{background:var(--bg);}
 .kt-r-pill-dots{display:flex;gap:2px;}
 .kt-r-dot{width:4px;height:4px;border-radius:50%;}
 /* Close runner sheet */
-.kt-close-sheet{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;display:flex;align-items:flex-end;}
-.kt-close-sheet-inner{width:100%;background:var(--card);border-radius:24px 24px 0 0;padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);}
-.kt-close-sheet-ttl{font-size:18px;font-weight:800;margin-bottom:6px;}
+.kt-close-sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;display:flex;align-items:flex-end;}
+.kt-close-sheet-inner{width:100%;background:var(--card);border-radius:24px 24px 0 0;border-top:1px solid var(--border);padding:20px 20px calc(max(env(safe-area-inset-bottom),16px) + 8px);}
+.kt-close-sheet-ttl{font-size:19px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px;}
 .kt-close-sheet-sub{font-size:13px;color:var(--muted);margin-bottom:24px;}
-.kt-close-sheet-btn{width:100%;padding:15px;border-radius:14px;border:none;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-bottom:10px;display:block;}
+.kt-close-sheet-btn{width:100%;padding:14px;border-radius:14px;border:none;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-bottom:10px;display:block;}
 .kt-close-sheet-btn:last-child{margin-bottom:0;}
+/* R2 — one bottom-sheet spec (polish pass 2, screen 03). Shared by the six
+   overlay sheets; confirm sheets and the legacy .ex-modal shell carry the
+   same values in their own rules. No grabber (swipe-dismiss isn't
+   implemented) and no row entrance animation (rows remount on re-render). */
+.kt-sheet-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.6);display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;}
+.kt-sheet-over{z-index:2100;}
+.kt-sheet{background:var(--card);border-radius:24px 24px 0 0;border-top:1px solid var(--border);max-height:85vh;overflow-y:auto;padding:20px 20px 24px;padding-bottom:calc(max(env(safe-area-inset-bottom),16px) + 8px);}
+.kt-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.kt-sheet-title{font-size:19px;font-weight:800;letter-spacing:-.5px;color:var(--text);}
+.kt-sheet-x{background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
+
 /* Rest-done flash */
 @keyframes kt-r-flash{0%{opacity:1;}20%{opacity:.3;}50%{opacity:.85;}80%{opacity:.4;}100%{opacity:1;}}
 .kt-r-flash{animation:kt-r-flash .7s ease-in-out;}
@@ -1518,7 +1530,7 @@ function openRoutineArchiveModal(){
   overlay.className='ex-modal-bg';
   overlay.onclick=function(e){if(e.target===overlay)closeRoutineArchiveModal();};
   overlay.innerHTML=
-    '<div class="ex-modal-sheet" style="max-height:82vh;overflow-y:auto;">'+
+    '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div style="font-size:17px;font-weight:800;">Programme History</div>'+
         '<button class="ex-modal-close" onclick="closeRoutineArchiveModal()">✕</button>'+
@@ -5363,7 +5375,7 @@ function openProgrammeModal(){
   var overlay=document.createElement('div');
   overlay.id='prog-modal'; overlay.className='ex-modal-bg';
   overlay.innerHTML=
-    '<div class="ex-modal-sheet" style="max-height:88vh;">'+
+    '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div>'+
           '<div style="font-size:17px;font-weight:800;letter-spacing:-.3px;">Programme</div>'+
@@ -9236,11 +9248,11 @@ function openThemeSheet(){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='themeSheetOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Theme</div>'+
-      '<button onclick="closeThemeSheet()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Theme</div>'+
+      '<button class="kt-sheet-x" onclick="closeThemeSheet()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div id="themeSheetList">'+_buildThemeRows()+'</div>'+
   '</div>';
@@ -9646,11 +9658,11 @@ function openHealthSettings(){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='healthSheetOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding-bottom:max(env(safe-area-inset-bottom),16px);">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 6px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Apple Health</div>'+
-      '<button onclick="closeHealthSettings()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
+    '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
+      '<div class="kt-sheet-title">Apple Health</div>'+
+      '<button class="kt-sheet-x" onclick="closeHealthSettings()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">Read and write access is controlled by iOS — revoke any time in Settings → Privacy &amp; Security → Health.</div>'+
     '<div id="healthSheetList">'+_buildHealthRows()+'</div>'+
@@ -9704,11 +9716,11 @@ function openLogTabsEditor(){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='logTabsOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:80vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Log tabs</div>'+
-      '<button onclick="closeLogTabsEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Log tabs</div>'+
+      '<button class="kt-sheet-x" onclick="closeLogTabsEditor()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div id="logTabsSheetList">'+_buildLogTabsRows()+'</div>'+
   '</div>';
@@ -9727,7 +9739,7 @@ function _buildSportFieldsSheet(){
   var fields = getSportFields(_sfSport);
   var rows = fields.map(function(f, i){
     var meta = (f.type==='select' ? 'choice: '+(f.opts||[]).join(' / ') : f.type)+(f.unit?' · '+f.unit:'');
-    return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);">'+
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px 0;min-height:44px;box-sizing:border-box;border-bottom:1px solid var(--border);">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:14px;font-weight:700;">'+_esc(f.label)+'</div>'+
         '<div style="font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(meta)+'</div>'+
@@ -9819,13 +9831,13 @@ function openSportFieldsEditor(sportId){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='sportFieldsOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:85vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">'+(sport&&sport.emoji?sport.emoji+' ':'')+_esc(sportId)+' fields</div>'+
-      '<button onclick="closeSportFieldsEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">'+(sport&&sport.emoji?sport.emoji+' ':'')+_esc(sportId)+' fields</div>'+
+      '<button class="kt-sheet-x" onclick="closeSportFieldsEditor()" aria-label="Close">✕</button>'+
     '</div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;">These fields appear on the '+_esc(sportId)+' log card. Duration, date, and notes are always there.</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">These fields appear on the '+_esc(sportId)+' log card. Duration, date, and notes are always there.</div>'+
     '<div id="sportFieldsList">'+_buildSportFieldsSheet()+'</div>'+
   '</div>';
   document.body.appendChild(overlay);
@@ -9878,7 +9890,7 @@ function _buildCFPickerList(){
   var hits=all.filter(function(m){ return !q || m.toLowerCase().indexOf(q)>-1; });
   var html=hits.slice(0,60).map(function(m){
     return '<button onclick="addCFMove(\''+_esc(m).replace(/'/g,'&#39;')+'\')" style="display:block;width:100%;text-align:left;'+
-      'padding:12px 4px;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);'+
+      'padding:12px 4px;min-height:44px;box-sizing:border-box;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);'+
       'font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_esc(m)+'</button>';
   }).join('');
   if(q && !all.some(function(m){return m.toLowerCase()===q;})){
@@ -9895,11 +9907,11 @@ function openCFMovePicker(){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='cfPickerOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2100;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;height:70vh;display:flex;flex-direction:column;padding:20px 20px 0;">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">Add movement</div>'+
-      '<button onclick="closeCFMovePicker()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay kt-sheet-over';
+  overlay.innerHTML='<div class="kt-sheet" style="height:70vh;max-height:none;display:flex;flex-direction:column;overflow:hidden;padding:20px 20px 0;">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Add movement</div>'+
+      '<button class="kt-sheet-x" onclick="closeCFMovePicker()" aria-label="Close">✕</button>'+
     '</div>'+
     '<input id="cfPickerSearch" type="text" placeholder="Search — thrusters, wall balls…" autocomplete="off" '+
       'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;'+
@@ -9955,7 +9967,7 @@ function openSportLogEditor(id){
   if(!rec) return;
   var sport = SPORTS.find(function(s){return s.id===rec.type;}) || SPORTS[0];
   var d = rec.data||{};
-  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;';
   function field(f){
     var v = d[f.id]!=null?String(d[f.id]):'';
@@ -9986,11 +9998,11 @@ function openSportLogEditor(id){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='sportLogEditOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
-  overlay.innerHTML='<div style="background:var(--bg);border-radius:24px 24px 0 0;border:1px solid var(--border);border-bottom:none;max-height:85vh;overflow-y:auto;padding:20px 20px max(env(safe-area-inset-bottom),16px);">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
-      '<div style="font-size:19px;font-weight:800;letter-spacing:-.5px;">'+(sport.emoji?sport.emoji+' ':'')+_esc(rec.type)+'</div>'+
-      '<button onclick="closeSportLogEditor()" aria-label="Close" style="background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">'+(sport.emoji?sport.emoji+' ':'')+_esc(rec.type)+'</div>'+
+      '<button class="kt-sheet-x" onclick="closeSportLogEditor()" aria-label="Close">✕</button>'+
     '</div>'+
     (fromHealth?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Imported from Apple Health — the watch data stays; add what it couldn\'t know.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
