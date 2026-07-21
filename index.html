@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-9"/>
+<meta name="build" content="20260721-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10870,6 +10870,21 @@ function runAutoBackupNow(){
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
+        // App Preview auto-tour — drives the sim through the money screens on
+        // a timer while simctl records. Dev-only; unreachable in normal use.
+        if(head==='demo' && sub==='tour'){
+          [
+            function(){ switchTab('log'); },
+            function(){ openDeckRunner('Push'); },
+            function(){ runnerToggleEngaged(); },
+            function(){ runnerCompleteSet(); },
+            function(){ closeDeckRunner(); switchTab('progress'); },
+            function(){ switchTab('settings'); openThemeSheet(); },
+            function(){ applyTheme('ember'); },
+            function(){ applyTheme('midnight'); },
+            function(){ applyTheme('dark'); closeThemeSheet(); switchTab('log'); },
+          ].forEach(function(fn,i){ setTimeout(function(){ try{ fn(); }catch(e){} }, 2600*(i+1)); });
+        }
       } catch(e) {}
     }, 120);
   } catch(e) {}
