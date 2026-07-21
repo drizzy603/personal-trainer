@@ -665,7 +665,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -689,7 +689,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -711,7 +711,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Supero;
@@ -737,7 +737,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Supero;
@@ -762,7 +762,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TrovoTimerWidget/TrovoTimerWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = TrovoTimerWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -785,7 +785,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TrovoTimerWidget/TrovoTimerWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = TrovoTimerWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -809,7 +809,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SuperoWatch/SuperoWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -840,7 +840,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TrovoShareExtension/TrovoShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = TrovoShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -864,7 +864,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TrovoShareExtension/TrovoShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = TrovoShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -888,7 +888,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SuperoWatch/SuperoWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
