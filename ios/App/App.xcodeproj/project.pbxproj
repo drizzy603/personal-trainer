@@ -712,6 +712,7 @@
 				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 7D243X2KD4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Supero;
@@ -738,6 +739,7 @@
 				CODE_SIGN_ENTITLEMENTS = SuperoWatchWidget/SuperoWatchWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 7D243X2KD4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Supero;
