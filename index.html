@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-12"/>
+<meta name="build" content="20260721-13"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10661,8 +10661,13 @@ function scheduleRestNotification(ex, nextSet, seconds){
   });
 }
 function cancelRestNotification(){
+  // cancel() itself surfaces the iOS permission prompt when authorization is
+  // undetermined — and this runs on every runner close. Nothing can be
+  // scheduled without a grant, so only touch the center when granted.
   var LN = _plug('LocalNotifications'); if(!LN) return;
-  LN.cancel({notifications:[{id: REST_NOTIF_ID}]}).catch(function(){});
+  LN.checkPermissions().then(function(p){
+    if(p.display==='granted') LN.cancel({notifications:[{id: REST_NOTIF_ID}]}).catch(function(){});
+  }).catch(function(){});
 }
 // Daily training-day reminder at 9:00 — ids 9101..9107, rescheduled whenever
 // the plan changes so rest days and already-logged days never fire.
