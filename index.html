@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-14"/>
+<meta name="build" content="20260721-15"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3486,12 +3486,50 @@ function renderTodayEditorial(){
         '<button class="kt-resume-cta" onclick="startPlateauFix()">Fix it →</button>'+
       '</div></div>';
   }
+  // Low readiness on a lift day — the coach can lighten or swap today.
+  var recoveryBanner='';
+  if(_recoveryDue()){
+    var _rr2=lsGet('kt_readiness');
+    recoveryBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow" style="color:var(--red);">LOW READINESS · '+_rr2.score+'</div>'+
+      '<div class="kt-resume-ttl">Rough night. Your coach can lighten today\'s session or swap the day.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="dismissRecoveryAdjust()">Train anyway</button>'+
+        '<button class="kt-resume-cta" onclick="startRecoveryAdjust()">Adjust →</button>'+
+      '</div></div>';
+  }
+  // Clean week on the main lifts — a +5 lb bump is earned.
+  var progressionBanner='';
+  if(_progressionDue()){
+    var _pg=_progressionLifts();
+    progressionBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow">PROGRESSION EARNED</div>'+
+      '<div class="kt-resume-ttl">'+_esc(_pg[0].name)+(_pg.length>1?' and '+(_pg.length-1)+' more':'')+' hit every set cleanly last week. +5 lb is earned.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="dismissProgression()">Skip</button>'+
+        '<button class="kt-resume-cta" onclick="startProgression()">Apply +5 lb →</button>'+
+      '</div></div>';
+  }
+  // First week of a new month — last month as a shareable poster.
+  var wrapBanner='';
+  if(_wrapDue()){
+    var _wm=new Date(_wrapMonthKey()+'-01T00:00:00').toLocaleString([],{month:'long'});
+    var _ws=_monthStats(_wrapMonthKey());
+    wrapBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow">'+_esc(_wm.toUpperCase())+' WRAPPED</div>'+
+      '<div class="kt-resume-ttl">'+_ws.total+' activities'+(_ws.prs?' · '+_ws.prs+' PR'+(_ws.prs>1?'s':''):'')+' — share the poster.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="dismissWrap()">Skip</button>'+
+        '<button class="kt-resume-cta" onclick="shareMonthlyCard()">Share it →</button>'+
+      '</div></div>';
+  }
   var debriefCard=_renderDebriefCard();
 
   // Slot system (screen 04): at most ONE banner above the hero; everything
   // else that qualifies collapses into a chip on the utility strip. Tapping a
   // chip promotes it into the banner slot for this render (todayBannerOverride).
-  // Priority: resume > welcome-back > Watch quick-log > review > plateau > debrief.
+  // Priority: resume > welcome-back > Watch quick-log > review > plateau >
+  // recovery > progression > wrapped > debrief.
   var watchCard=_healthCardSlot(true);
   var cands=[];
   if(resumeBanner) cands.push({id:'resume', label:'IN PROGRESS', dot:'var(--accent-ink)', html:resumeBanner});
@@ -3499,6 +3537,9 @@ function renderTodayEditorial(){
   if(watchCard) cands.push({id:'watch', label:'APPLE WATCH', dot:'var(--accent-ink)', html:watchCard});
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
+  if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
+  if(progressionBanner) cands.push({id:'progression', label:'+5 LB', dot:'var(--accent-ink)', html:progressionBanner});
+  if(wrapBanner) cands.push({id:'wrap', label:'WRAPPED', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
   var activeSlot=null;
   for(var ci=0;ci<cands.length;ci++){ if(cands[ci].id===todayBannerOverride){ activeSlot=cands[ci]; break; } }
@@ -3536,6 +3577,188 @@ function startPlateauFix(){
     var inp=document.getElementById('coach-input');
     if(inp){ inp.value=msg; sendCoachMessage(); }
   }, 250);
+}
+
+// ── Proactive coach: earned progression ──────────────────────────────────────
+// Main lifts that hit every set cleanly last week (RPE ≤ 7) have earned a
+// +5 lb bump; the coach applies it with its routine tools on one tap.
+function _progressionLifts(){
+  if(!hasCustomRoutine()) return [];
+  var lastWk=currentWeek-1;
+  if(lastWk<1) return [];
+  var best={};
+  getSessions().forEach(function(sess){
+    if(sess.week!==lastWk) return;
+    (sess.exercises||[]).forEach(function(ex){
+      if(!ex.isMain) return;
+      var rpe=parseFloat(ex.rpe);
+      var w=parseFloat(ex.weight)||0;
+      var sets=Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||0);
+      if(!(rpe>0) || rpe>7 || sets<3 || !(w>0)) return;
+      if(!best[ex.name] || w>best[ex.name].weight) best[ex.name]={name:ex.name, weight:w, rpe:rpe, sets:sets};
+    });
+  });
+  return Object.keys(best).map(function(k){ return best[k]; });
+}
+function _progressionDue(){
+  if(!hasCustomRoutine() || !getApiKey()) return false;
+  if(String(lsGet('kt_last_prog_week'))===String(currentWeek)) return false;
+  return _progressionLifts().length>0;
+}
+function dismissProgression(){ lsSet('kt_last_prog_week', currentWeek); render(); }
+function startProgression(){
+  var pl=_progressionLifts();
+  if(!pl.length) return;
+  lsSet('kt_last_prog_week', currentWeek);
+  var msg='Last week these main lifts hit every set cleanly: '+
+    pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+x.weight+' lb (RPE '+x.rpe+')'; }).join('; ')+
+    '. Propose a +5 lb progression on each for this week and apply it to my routine with your tools. '+
+    'Briefly note why, then make the edits.';
+  switchTab('coach');
+  openCoachChat();
+  setTimeout(function(){
+    var inp=document.getElementById('coach-input');
+    if(inp){ inp.value=msg; sendCoachMessage(); }
+  }, 250);
+}
+
+// ── Proactive coach: low-readiness adjustment ────────────────────────────────
+// Rough night before a lift day → offer a lighter session or a day swap.
+function _recoveryDue(){
+  var r=lsGet('kt_readiness');
+  if(!r || r.date!==todayISO() || !(r.score<50)) return false;
+  if(String(lsGet('kt_readiness_adj_seen'))===todayISO()) return false;
+  if(!hasCustomRoutine() || !getApiKey()) return false;
+  return getTodayActivity().type==='lift';
+}
+function dismissRecoveryAdjust(){ lsSet('kt_readiness_adj_seen', todayISO()); render(); }
+function startRecoveryAdjust(){
+  var r=lsGet('kt_readiness');
+  if(!r) return;
+  lsSet('kt_readiness_adj_seen', todayISO());
+  var bits=[];
+  if(r.parts && r.parts.sleep!=null) bits.push(r.parts.sleep+'h sleep');
+  if(r.parts && r.parts.hrvDelta!=null) bits.push('HRV '+(r.parts.hrvDelta>=0?'+':'')+r.parts.hrvDelta+'%');
+  if(r.parts && r.parts.rhrDelta!=null && r.parts.rhrDelta!==0) bits.push('RHR '+(r.parts.rhrDelta>0?'+':'')+r.parts.rhrDelta+'%');
+  var act=getTodayActivity();
+  var msg='My readiness today is '+r.score+'/100'+(bits.length?' ('+bits.join(', ')+')':'')+
+    '. Today is '+(act.dayName||'a training day')+'. Propose ONE adjustment — lighter loads (about 10% off, cap RPE 7) '+
+    'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
+  switchTab('coach');
+  openCoachChat();
+  setTimeout(function(){
+    var inp=document.getElementById('coach-input');
+    if(inp){ inp.value=msg; sendCoachMessage(); }
+  }, 250);
+}
+
+// ── Monthly wrapped ──────────────────────────────────────────────────────────
+// First week of a new month: last month's training as a shareable poster.
+function _monthStats(mk){
+  var sessions=getSessions().filter(function(x){ return x.date && x.date.slice(0,7)===mk; });
+  var runs=getRuns().filter(function(x){ return x.date && x.date.slice(0,7)===mk; });
+  var sports=getSportLogs().filter(function(x){ return x.date && x.date.slice(0,7)===mk; });
+  var vol=0, prs=0, topLift=null;
+  sessions.forEach(function(sess){
+    vol+=calcVolume(sess.exercises||[]);
+    prs+=(sess.prs||[]).length;
+    (sess.exercises||[]).forEach(function(ex){
+      var w=parseFloat(ex.weight)||0;
+      if(w>0 && (!topLift || w>topLift.weight)) topLift={name:ex.name, weight:w};
+    });
+  });
+  var km=0;
+  runs.forEach(function(r){ km+=parseFloat(r.distance||r.dist)||0; });
+  return { sessions:sessions.length, runs:runs.length, sports:sports.length,
+    total:sessions.length+runs.length+sports.length,
+    volume:vol, prs:prs, topLift:topLift, km:Math.round(km*10)/10 };
+}
+function _wrapMonthKey(){
+  var now=new Date();
+  var prev=new Date(now.getFullYear(), now.getMonth()-1, 1);
+  return prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0');
+}
+function _wrapDue(){
+  if(new Date().getDate()>7) return false;
+  var mk=_wrapMonthKey();
+  if(String(lsGet('kt_last_wrap'))===mk) return false;
+  return _monthStats(mk).total>=4;
+}
+function dismissWrap(){ lsSet('kt_last_wrap', _wrapMonthKey()); render(); }
+function shareMonthlyCard(){
+  var mk=_wrapMonthKey();
+  var stats=_monthStats(mk);
+  lsSet('kt_last_wrap', mk);
+  var css=getComputedStyle(document.documentElement);
+  var accent=(css.getPropertyValue('--accent')||'#c8ff00').trim()||'#c8ff00';
+  if(accent.toLowerCase()==='#5b8a00') accent='#c8ff00';
+  document.fonts.ready.then(function(){ _drawWrapCard(mk, stats, accent); });
+  render();
+}
+function _drawWrapCard(mk, st, accent){
+  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', LITE='#9ca3af', RULE='#1f1f24', GOLD='#ffd60a';
+  var W=1080,H=1350,M=88,R=992;
+  var c=document.createElement('canvas'); c.width=W; c.height=H;
+  var x=c.getContext('2d');
+  function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
+  var monthName=new Date(mk+'-01T00:00:00').toLocaleString([],{month:'long'});
+  x.fillStyle=BG; x.fillRect(0,0,W,H);
+  x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
+  x.fillText('SUPERO · '+monthName.toUpperCase()+' '+mk.slice(0,4)+' · WRAPPED', M, 136);
+  x.font='800 136px Inter, sans-serif'; ls('-4px');
+  var y1=312, y2=444, line1=monthName+',';
+  if(x.measureText(line1).width>904){ x.font='800 112px Inter, sans-serif'; y1=300; y2=420; }
+  x.fillStyle=INK;   x.fillText(line1, M, y1);
+  x.fillStyle=accent; x.fillText('banked.', M, y2);
+  ls('0px');
+  x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
+  var volStr=st.volume?st.volume.toLocaleString():'0';
+  x.textAlign='left'; x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
+  x.fillText(String(st.total), M, 664);
+  x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
+  x.fillText(volStr, 400, 664);
+  x.textAlign='right'; x.fillStyle=st.prs?GOLD:MUTED;
+  x.font='800 100px Inter, sans-serif';
+  x.fillText(String(st.prs), R, 664);
+  ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
+  x.fillText(st.prs===1?'PR':'PRS', R, 722);
+  x.textAlign='left'; x.fillStyle=MUTED;
+  x.fillText('ACTIVITIES', M, 722);
+  x.fillText('LB VOLUME', 400, 722);
+  ls('0px');
+  var rows=[];
+  if(st.topLift) rows.push([ 'Heaviest lift — '+st.topLift.name, st.topLift.weight+' LB' ]);
+  if(st.sessions) rows.push([ 'Gym sessions', String(st.sessions) ]);
+  if(st.km>0) rows.push([ 'Running', st.km+' KM' ]);
+  if(st.sports) rows.push([ 'Sport activities', String(st.sports) ]);
+  var ly=884;
+  rows.slice(0,5).forEach(function(row){
+    var name=row[0];
+    x.font='600 40px Inter, sans-serif';
+    while(x.measureText(name).width>620 && name.length>2){ name=name.slice(0,-2)+'…'; }
+    x.fillStyle=INK; x.fillText(name, M, ly);
+    x.textAlign='right'; x.fillStyle=LITE;
+    x.font='700 34px "JetBrains Mono", ui-monospace, monospace';
+    x.fillText(row[1], R, ly);
+    x.textAlign='left';
+    ly+=82;
+  });
+  x.fillStyle=accent; x.fillRect(M,1242,20,20);
+  x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
+  x.fillText('SUPERO', 122, 1262);
+  x.textAlign='right'; x.fillStyle=MUTED;
+  x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
+  x.fillText('AI TRAINER', R, 1262);
+  x.textAlign='left'; ls('0px');
+  c.toBlob(function(blob){
+    if(!blob){ showToast('Could not build card'); return; }
+    var file=new File([blob], 'supero-'+mk+'-wrapped.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file]}).catch(function(){});
+    } else {
+      showToast('Sharing not supported here');
+    }
+  }, 'image/png');
 }
 
 // ── Proactive coach: session auto-debrief ────────────────────────────────────
