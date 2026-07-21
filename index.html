@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260720-6"/>
+<meta name="build" content="20260720-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -4226,61 +4226,6 @@ function _trovoTimerEnd(){
   if(!TT) return;
   TT.endTimer().catch(function(){});
 }
-// ── Voice set logging ────────────────────────────────────────────────────────
-// Hold nothing, tap once: native dictation ("185 for 8, RPE 7") fills the
-// steppers; the user still confirms with Done. Regex parse — offline, instant.
-var _dictating=false;
-function _parseSetSpeech(text){
-  var t=String(text).toLowerCase().replace(/,/g,' ');
-  var out={};
-  var rpeM=t.match(/(?:rpe|felt like|effort)\s*(?:of\s*|a\s*)?(\d{1,2})/);
-  if(rpeM){ var rv=parseInt(rpeM[1],10); if(rv>=1&&rv<=10){ out.rpe=rv; t=t.replace(rpeM[0],' '); } }
-  var wrM=t.match(/(\d{2,3}(?:\.\d+)?)\s*(?:pounds|pound|lbs|lb)?\s*(?:for|by|x|times)\s*(\d{1,2})\b/);
-  if(wrM){ out.weight=parseFloat(wrM[1]); out.reps=parseInt(wrM[2],10); }
-  else {
-    var repsM=t.match(/(\d{1,2})\s*reps?\b/);
-    if(repsM) out.reps=parseInt(repsM[1],10);
-    var wM=t.match(/(\d{2,3}(?:\.\d+)?)\s*(?:pounds|pound|lbs|lb)\b/);
-    if(wM) out.weight=parseFloat(wM[1]);
-    if(out.weight==null && out.reps==null){
-      var solo=t.match(/^\s*(\d{1,2})\s*$/);
-      if(solo) out.reps=parseInt(solo[1],10);
-    }
-  }
-  if(out.reps!=null && (out.reps<1||out.reps>50)) delete out.reps;
-  return (out.weight!=null||out.reps!=null||out.rpe!=null)?out:null;
-}
-function voiceLogSet(){
-  if(_dictating) return;
-  var TS=window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoSpeech;
-  if(!TS || !TS.dictate){ showToast('Update Supero from TestFlight for voice logging'); return; }
-  _dictating=true;
-  var btn=document.getElementById('kt-mic-btn');
-  if(btn){ btn.style.background='var(--red)'; btn.textContent='●'; }
-  haptic('light');
-  TS.dictate().then(function(res){
-    _dictating=false;
-    var text=(res&&res.text?String(res.text):'').trim();
-    paintRunner();
-    if(!text){
-      if(res&&res.reason&&res.reason.indexOf('denied')>-1) showToast('Enable mic & speech in iOS Settings → Supero');
-      return;
-    }
-    var parsed=_parseSetSpeech(text);
-    if(!parsed){ showToast('Heard "'+text+'" — say e.g. "185 for 8, RPE 7"'); return; }
-    if(parsed.weight!=null) runnerSetWeight(String(parsed.weight));
-    if(parsed.reps!=null) runnerSetReps(String(parsed.reps));
-    if(parsed.rpe!=null) runnerSetRpe(String(parsed.rpe));
-    paintRunner();
-    var bits=[];
-    if(parsed.weight!=null) bits.push(parsed.weight+' lb');
-    if(parsed.reps!=null) bits.push(parsed.reps+' reps');
-    if(parsed.rpe!=null) bits.push('RPE '+parsed.rpe);
-    showToast(bits.join(' · ')+' — tap Done to log');
-    haptic('light');
-  }).catch(function(){ _dictating=false; paintRunner(); });
-}
-
 function runnerCompleteSet(){
   var ex = _runnerEx(); if(!ex) return;
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:parseInt(ex.reps)||0);
@@ -4732,14 +4677,7 @@ function _renderRunnerEngagedBody(ex, done){
   var targetRpe = parseInt(ex.rpe) || 7;
   var rpeLeft = 10 - targetRpe;
   var rpeHint = '<div style="margin-top:10px;font-size:10px;opacity:.35;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-align:center;text-transform:uppercase;">RPE '+targetRpe+' target · stop with ~'+rpeLeft+' rep'+(rpeLeft===1?'':'s')+' left</div>';
-  var doneBtn = '<div style="display:flex;gap:10px;align-items:stretch;">'+
-    '<button class="kt-eng-done" style="flex:1;" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>'+
-    (isNativeIOS()
-      ? '<button id="kt-mic-btn" onclick="event.stopPropagation();voiceLogSet()" aria-label="Log set by voice" '+
-        'style="width:54px;border-radius:16px;border:1.5px solid rgba(0,0,0,.25);background:rgba(0,0,0,.15);'+
-        'color:#0b0b0d;font-size:19px;cursor:pointer;-webkit-tap-highlight-color:transparent;">🎙️</button>'
-      : '')+
-  '</div>';
+  var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
     var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
