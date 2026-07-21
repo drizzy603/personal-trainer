@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-3"/>
+<meta name="build" content="20260721-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── Hybrid loader bootstrap ────────────────────────────────────────────────
@@ -306,16 +306,16 @@ select option{background:var(--bg);}
 .prog-bar{height:3px;border-radius:2px;transition:width .4s ease;}
 
 /* ── Stats grid ──────────────────────────────────────────────────────────── */
-.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:var(--pad-card-sm);}
-.stat-val{font-size:28px;font-weight:600;letter-spacing:-1px;line-height:1;}
+.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:0;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px;}
+.stat-val{font-size:26px;font-weight:700;letter-spacing:-.8px;line-height:1;}
 .stat-lbl{font-size:12px;color:var(--lite);margin-top:6px;font-weight:500;}
 .stat-delta{font-size:12px;color:var(--accent-ink);font-weight:600;margin-top:4px;}
 .stat-delta.down{color:var(--orange);}
 
 /* ── Chart card ──────────────────────────────────────────────────────────── */
 .chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card);margin-bottom:12px;}
-.chart-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
+.chart-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
 .chart-lbl{font-size:12px;color:var(--lite);font-weight:500;}
 .chart-val{font-size:26px;font-weight:700;letter-spacing:-.8px;margin-top:4px;}
 .chart-unit{font-size:14px;color:var(--muted);font-weight:500;margin-left:3px;}
@@ -668,7 +668,7 @@ select option{background:var(--bg);}
 .kt-prog-hero-num span{display:block;}
 .kt-prog-hero-num span.accent{color:var(--accent);}
 .kt-prog-hero-body{font-size:13px;color:var(--lite);margin-top:18px;line-height:1.5;max-width:320px;letter-spacing:-.011em;}
-.kt-prog-toggle{display:flex;gap:4px;padding:4px;background:rgba(22,22,26,.7);border-radius:14px;border:1px solid rgba(255,255,255,.05);margin-bottom:20px;}
+.kt-prog-toggle{display:flex;gap:4px;padding:4px;background:color-mix(in srgb,var(--card2) 75%,transparent);border-radius:14px;border:1px solid var(--border);margin-bottom:12px;}
 .kt-prog-toggle button{flex:1;padding:10px 8px;border-radius:10px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;text-transform:capitalize;-webkit-tap-highlight-color:transparent;}
 .kt-prog-toggle button.on{background:var(--card2);color:var(--text);}
 .kt-name-edit-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-bottom:4px;}
@@ -1903,10 +1903,10 @@ function renderBackupNudge(){
   var snooze = lsGet('kt_backup_snooze') || 0;
   if(Date.now()-last < THIRTY || Date.now()-snooze < THIRTY) return '';
   var btn='padding:9px 14px;border-radius:12px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;';
-  return '<div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'+
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px;">'+
     '<div style="min-width:0;">'+
-      '<div class="chart-lbl">Backup</div>'+
-      '<div style="font-size:13px;line-height:1.45;margin-top:4px;">'+total+' logs live only on this phone.</div>'+
+      '<div style="font-size:13px;font-weight:600;">Backup</div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;margin-top:2px;">'+total+' logs live only on this phone.</div>'+
     '</div>'+
     '<div style="display:flex;gap:8px;">'+
       '<button onclick="snoozeBackupNudge()" style="'+btn+'background:var(--card2);color:var(--lite);">Later</button>'+
@@ -7041,7 +7041,7 @@ function renderProgress() {
           'background:'+(isDone?'var(--accent)':'transparent')+';'+
           'border:1.5px solid '+(isDone?'var(--accent)':(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)')))+';'+
         '"></div>'+
-        '<div style="font-size:8px;font-weight:700;letter-spacing:.03em;color:'+(isToday?'var(--text)':'var(--muted)')+';">'+
+        '<div style="font-size:9px;font-weight:700;letter-spacing:.03em;color:'+(isToday?'var(--text)':'var(--muted)')+';">'+
           ['M','T','W','T','F','S','S'][i]+'</div>'+
       '</div>';
     }
@@ -7333,7 +7333,7 @@ function renderProgress() {
       ? '<button onclick="showAllPRs='+(!showAllPRs)+';render()" style="width:100%;margin-top:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+(showAllPRs?'Show less ↑':'Show all '+prNames.length+' →')+'</button>'
       : '';
     prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests · lb</div></div></div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:7px;">'+prPills+'</div>'+prToggle+'</div>';
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+prPills+'</div>'+prToggle+'</div>';
   }
 
   // Filter the detail charts + lift-only sections based on the toggle.
@@ -7381,7 +7381,7 @@ function renderProgress() {
     // Strength card absorbs the block-progression rows; the standalone
     // block card only appears when there's no e1RM data to hang it on.
     var trendsCard = renderStrengthTrends(blockInner);
-    goals = (trendsCard || liftsBlock) + liftGoals;
+    goals = trendsCard || liftsBlock;
     detailCharts = benchChart + squatChart + volCharts;
     liftOnly = rmSection + prCard;
   }
@@ -7415,11 +7415,27 @@ function renderProgress() {
     '</div>'+
   '</div>';
 
-  return progressHeader + streakHero + renderWeekRecap(sessions,runs) + renderBackupNudge() + toggle +
-    stats + goals + liftOnly +
-    detailCharts + (progressTab==='sports' ? '' : bwChart) +
-    (progressTab==='sports' ? renderSportProgress() : '') + renderRetroCard(sessions) +
-    weekAdjustRow + calHTML +
+  // R3 group eyebrows — labeled seams instead of an undifferentiated drizzle.
+  function eyebrow(txt){
+    return '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:28px 0 10px;">'+txt+'</div>';
+  }
+  // Grouped order (screen 05): hero → wrapped → OVERVIEW → detail groups →
+  // GOALS → RECORDS → HISTORY (backup slim row demoted here, above the log).
+  var midGroups;
+  if(progressTab==='runs'){
+    midGroups = eyebrow('Pace') + detailCharts + bwChart +
+      (goals ? eyebrow('Goals') + goals : '');
+  } else if(progressTab==='sports'){
+    midGroups = eyebrow('Activity') + detailCharts + renderSportProgress();
+  } else {
+    midGroups = eyebrow('Strength') + goals + detailCharts + bwChart +
+      eyebrow('Goals') + liftGoals +
+      (liftOnly ? eyebrow('Records') + liftOnly : '');
+  }
+  return progressHeader + streakHero + renderWeekRecap(sessions,runs) +
+    eyebrow('Overview') + toggle + stats +
+    midGroups + renderRetroCard(sessions) +
+    eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
 
