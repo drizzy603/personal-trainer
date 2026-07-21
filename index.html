@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-13"/>
+<meta name="build" content="20260721-14"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10479,7 +10479,10 @@ function deleteCustomEx(name){
 }
 
 // ── Service Worker ────────────────────────────────────────────────────────────
-if('serviceWorker' in navigator) {
+// PWA only — inside the Capacitor shell the hybrid OTA loader owns updates,
+// and a service worker on capacitor:// makes WebKit spin up its web-push
+// machinery, which surfaces a notifications permission prompt at boot.
+if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) {
   window.addEventListener('load', function(){
     // Track whether a SW was already controlling this page before registration.
     // If it was, a controllerchange means a NEW SW just took over → reload.
@@ -10569,6 +10572,19 @@ logSession = SESS[_next] ? _next : 'Push';
 render();
 // Auto-log any new Apple Watch runs on open (opt-in, Settings → Data).
 setTimeout(drainPendingHealth, 900);
+setTimeout(function(){
+  try{
+    var LN=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications;
+    if(LN){ ['requestPermissions','schedule','cancel','checkPermissions','registerActionTypes'].forEach(function(m){
+      var orig=LN[m]; if(!orig) return;
+      LN[m]=function(){ _trapErr('DBG LN.'+m+' :: '+String(new Error().stack||'').replace(/\n/g,' | ').slice(0,350)); return orig.apply(LN,arguments); };
+    }); }
+    if(window.Notification&&Notification.requestPermission){
+      var onp=Notification.requestPermission;
+      Notification.requestPermission=function(){ _trapErr('DBG WebNotification.requestPermission'); return onp.apply(Notification,arguments); };
+    }
+  }catch(e){}
+}, 200);
 setTimeout(drainWatchSessions, 1000);
 setTimeout(refreshReadiness, 1100);
 // Live nudge when the watch syncs while the app is open.
