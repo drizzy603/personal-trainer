@@ -35,8 +35,14 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else {
             call.resolve(["sent": false]); return
         }
+        // "live" carries the phone runner's in-progress state for mid-session
+        // handoff; empty string means no session is running.
+        var context: [String: Any] = ["plan": json]
+        if let live = call.getString("live"), !live.isEmpty {
+            context["live"] = live
+        }
         do {
-            try WCSession.default.updateApplicationContext(["plan": json])
+            try WCSession.default.updateApplicationContext(context)
             call.resolve(["sent": true])
         } catch {
             call.resolve(["sent": false, "reason": error.localizedDescription])

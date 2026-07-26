@@ -28,11 +28,22 @@ struct WatchPlan: Codable {
     let exercises: [WatchExercise]
 }
 
+// In-progress phone runner state — offered as "Continue from iPhone".
+struct LiveSession: Codable {
+    let dayName: String
+    let startedAt: Double       // ms since epoch
+    let reps: [String: [Int]]
+    let weights: [String: Double]
+    var setsDone: Int { reps.values.reduce(0) { $0 + $1.count } }
+    var isFresh: Bool { Date().timeIntervalSince1970 - startedAt / 1000 < 6 * 3600 }
+}
+
 // MARK: - Connectivity
 
 final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = Connectivity()
     @Published var plan: WatchPlan? = nil
+    @Published var live: LiveSession? = nil
 
     override init() {
         super.init()
@@ -49,8 +60,15 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         guard let json = context["plan"] as? String,
               let data = json.data(using: .utf8),
               let p = try? JSONDecoder().decode(WatchPlan.self, from: data) else { return }
+        var liveSession: LiveSession? = nil
+        if let lj = context["live"] as? String, !lj.isEmpty,
+           let ld = lj.data(using: .utf8),
+           let l = try? JSONDecoder().decode(LiveSession.self, from: ld) {
+            liveSession = l
+        }
         DispatchQueue.main.async {
             self.plan = p
+            self.live = liveSession
             UserDefaults.standard.set(data, forKey: "lastPlan")
             // Mirror into the App Group for the watch-face complication.
             if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
@@ -218,6 +236,13 @@ final class Runner: ObservableObject {
         repsDone = [:]; weights = [:]; synced = false; resting = false
         timer?.invalidate()
     }
+
+    // Mid-session handoff: pick up exactly where the phone runner left off.
+    func adopt(_ live: LiveSession) {
+        repsDone = live.reps
+        weights = live.weights
+        WKInterfaceDevice.current().play(.success)
+    }
 }
 
 // MARK: - Views
@@ -258,8 +283,29 @@ struct PlanView: View {
         plan.exercises.contains { runner.done($0) > 0 }
     }
 
+    private var handoff: LiveSession? {
+        guard let live = Connectivity.shared.live,
+              live.dayName == plan.dayName, live.isFresh, live.setsDone > 0,
+              !anyLogged else { return nil }
+        return live
+    }
+
     var body: some View {
         List {
+            if let live = handoff {
+                Button {
+                    runner.adopt(live)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Continue from iPhone")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("\(live.setsDone) set\(live.setsDone == 1 ? "" : "s") already in")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .listRowBackground(RoundedRectangle(cornerRadius: 10).fill(lime.opacity(0.18)))
+            }
             Section {
                 ForEach(plan.exercises) { ex in
                     NavigationLink(value: ex) {

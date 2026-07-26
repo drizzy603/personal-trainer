@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260721-15"/>
+<meta name="build" content="20260721-16"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4314,6 +4314,7 @@ function openDeckRunner(overrideType){
 }
 function _saveRunnerDraft(){
   if(!runnerOpen||!runnerSession) return;
+  _scheduleNativeSync();   // live handoff state rides the debounced watch push
   try{
     localStorage.setItem('kt_runner_draft', JSON.stringify({
       date: todayISO(),
@@ -10976,6 +10977,20 @@ function _scheduleNativeSync(){
 // Today's plan goes down via applicationContext; sessions the watch logged
 // come back through a pending queue drained here (same pattern as Health).
 var _lastWatchPlan='';
+// Mid-session handoff: while the phone runner is open, its live state rides
+// along with the plan so the watch can offer "Continue from iPhone".
+function _buildWatchLive(){
+  if(!runnerOpen || !runnerSession || !(runnerSession.exercises||[]).length) return null;
+  var reps={}, weights={};
+  runnerSession.exercises.forEach(function(ex){
+    var done=runnerCompleted[ex.name]||0;
+    var arr=(runnerRepsLog[ex.name]||[]).slice(0, done).map(function(r){ return parseInt(r)||0; });
+    if(arr.length) reps[ex.name]=arr;
+    weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
+  });
+  return { dayName:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
+    reps:reps, weights:weights };
+}
 function _pushWatchPlan(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.updateContext) return;
@@ -10990,9 +11005,11 @@ function _pushWatchPlan(){
     var plan={ week:currentWeek, dayName:String(act.dayName||act.type||'Rest'),
       type:String(act.type||'rest'), exercises:exs };
     var json=JSON.stringify(plan);
-    if(json===_lastWatchPlan) return;
-    _lastWatchPlan=json;
-    TWch.updateContext({json:json}).catch(function(){});
+    var live=_buildWatchLive();
+    var liveJson=live?JSON.stringify(live):'';
+    if(json+'|'+liveJson===_lastWatchPlan) return;
+    _lastWatchPlan=json+'|'+liveJson;
+    TWch.updateContext({json:json, live:liveJson}).catch(function(){});
   }catch(e){}
 }
 function drainWatchSessions(){
@@ -11030,6 +11047,15 @@ function drainWatchSessions(){
       sessions.unshift({ id:Date.now()+added, date:localISO, type:dayType,
         week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs });
       lsSet('kt_sessions', sessions);
+      // Handoff completion: the wrist finished a session the phone started —
+      // drop the stale runner draft so no resume banner offers a ghost.
+      try{
+        var _dr=JSON.parse(localStorage.getItem('kt_runner_draft')||'null');
+        if(_dr && _dr.session && _dr.session.dayName===dayType && localISO===todayISO()){
+          localStorage.removeItem('kt_runner_draft');
+          runnerResumePending=false;
+        }
+      }catch(e){}
       added++;
     });
     TWch.clearPendingSessions().catch(function(){});
