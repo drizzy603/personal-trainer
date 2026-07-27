@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260726-1"/>
+<meta name="build" content="20260726-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7696,6 +7696,16 @@ function _smoothPath(P){
   }
   return d;
 }
+// Chart-axis number format: 14255 → "14.3k". Full precision stays in the
+// tap-toast; five-digit raw values were unreadable in the 40px axis gutter.
+function _fmtChartVal(v){
+  v=Math.round(v*10)/10;
+  if(Math.abs(v)>=1000){
+    var k=Math.round(v/100)/10;
+    return (k%1===0?String(k):k.toFixed(1))+'k';
+  }
+  return String(v);
+}
 function svgChart(data,color,goalVal) {
   var W=320,H=124,PL=40,PR=14,PT=16,PB=24;
   var iW=W-PL-PR,iH=H-PT-PB;
@@ -7721,7 +7731,8 @@ function svgChart(data,color,goalVal) {
     return '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="2.4" fill="'+color+'" opacity=".55"/>';
   }).join('');
   var last=P[P.length-1];
-  var lastVal=Math.round(data[data.length-1].val*10)/10;
+  var lastVal=_fmtChartVal(data[data.length-1].val);
+  var lastRaw=data[data.length-1].val;
   var anchor=last.x>PL+iW-26?'end':'middle';
   var lastDot='<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="7" fill="'+color+'" opacity=".18"/>'+
     '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="3.6" fill="'+color+'" stroke="var(--card)" stroke-width="1.5"/>'+
@@ -7730,12 +7741,12 @@ function svgChart(data,color,goalVal) {
   if(goalVal&&goalVal>=mn&&goalVal<=mx){
     var gy2=py(goalVal);
     goalLine='<line x1="'+PL+'" y1="'+gy2+'" x2="'+(PL+iW)+'" y2="'+gy2+'" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4,3"/>'+
-      '<text x="'+(PL-4)+'" y="'+(gy2+4)+'" fill="var(--green)" font-size="9" text-anchor="end">'+goalVal+'</text>';
+      '<text x="'+(PL-4)+'" y="'+(gy2+4)+'" fill="var(--green)" font-size="9" text-anchor="end">'+_fmtChartVal(goalVal)+'</text>';
   }
   // Invisible tap targets — touch any point to toast its date + value.
   var hits=P.map(function(p,i){
     return '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="12" fill="transparent" style="cursor:pointer;" '+
-      'onclick="showToast(\''+fmtDate(data[i].date)+' · '+(Math.round(data[i].val*10)/10)+'\')"/>';
+      'onclick="showToast(\''+fmtDate(data[i].date)+' · '+(Math.round(data[i].val*10)/10).toLocaleString()+'\')"/>';
   }).join('');
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;">'+
     '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'+
@@ -7745,8 +7756,8 @@ function svgChart(data,color,goalVal) {
     grid+
     '<path d="'+area+'" fill="url(#'+gid+')"/>'+
     goalLine+
-    '<text x="'+(PL-8)+'" y="'+(PT+6)+'" fill="var(--muted)" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mx)+'</text>'+
-    '<text x="'+(PL-8)+'" y="'+base+'" fill="var(--muted)" font-size="9" text-anchor="end" font-weight="700">'+Math.round(mn)+'</text>'+
+    (lastRaw===mx?'':'<text x="'+(PL-8)+'" y="'+(PT+6)+'" fill="var(--muted)" font-size="10" text-anchor="end" font-weight="700">'+_fmtChartVal(mx)+'</text>')+
+    (lastRaw===mn?'':'<text x="'+(PL-8)+'" y="'+base+'" fill="var(--muted)" font-size="10" text-anchor="end" font-weight="700">'+_fmtChartVal(mn)+'</text>')+
     '<text x="'+PL+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" font-weight="600" opacity=".8">'+data[0].date.slice(5).replace('-','/')+'</text>'+
     '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" text-anchor="end" font-weight="600" opacity=".8">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
     '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
