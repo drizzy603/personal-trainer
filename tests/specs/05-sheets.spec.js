@@ -25,6 +25,7 @@ run('sheets share the R2 shell + grabber', async () => {
       probe('sportFields', () => openSportFieldsEditor('CrossFit'), 'sportFieldsOverlay', closeSportFieldsEditor);
       probe('cfPicker', openCFMovePicker, 'cfPickerOverlay', closeCFMovePicker);
       probe('errLog', openErrorLogSheet, 'errLogOverlay', closeErrorLogSheet);
+      probe('sportCatalog', openSportCatalogSheet, 'sportCatalogOverlay', closeSportCatalogSheet);
       return res;
     });
     for (const [name, r] of Object.entries(out)) {

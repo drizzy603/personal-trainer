@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260728-2"/>
+<meta name="build" content="20260728-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -719,6 +719,9 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-well-caret{position:absolute;right:12px;bottom:14px;color:var(--muted);font-size:11px;pointer-events:none;}
 /* Duration is the hero of the form; the date collapses to a chip beside it. */
 .kt-sport-hero{font-size:32px;font-weight:800;letter-spacing:-1.4px;line-height:1.05;color:var(--text);margin-bottom:24px;}
+.kt-sport-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;}
+.kt-sport-tile-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent-ink);}
+.kt-sport-allrow{width:100%;height:52px;border-radius:16px;padding:0 16px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
 .kt-sport-durband{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:20px 0;}
 .kt-sport-dur-input{background:transparent;border:none;outline:none;color:var(--text);font-size:44px;font-weight:800;letter-spacing:-2px;font-family:inherit;padding:0;width:92px;}
 .kt-sport-dur-input::placeholder{color:var(--muted);}
@@ -6187,54 +6190,27 @@ function renderSportEditorial(){
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
 
-  // Activity picker — every activity visible at once, structured into
-  // labelled category rows instead of one endless horizontal strip.
-  var sMapPick = {}; SPORTS.forEach(function(s){ sMapPick[s.id] = s; });
-  function _sportPickChip(s, context){
-    var sel = s.id === logSportType;
-    return '<button onclick="pickSport(\''+_esc(s.id)+'\')" style="'+
-      'display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 9px;'+
-      'border-radius:20px;border:1.5px solid '+(sel?s.color:'var(--border)')+';'+
-      'background:'+(sel?s.color+'22':'var(--card2)')+';color:'+(sel?'var(--text)':'var(--lite)')+';'+
-      'font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'+
-      '-webkit-tap-highlight-color:transparent;">'+
-      (s.emoji?'<span style="font-size:15px;line-height:1;">'+s.emoji+'</span>':sportChip(s, 20))+
-      '<span>'+_esc(s.id)+'</span>'+
-      (context?'<span style="color:var(--muted);font-weight:500;">'+_esc(context)+'</span>':'')+
+  // FOR YOU tiles + one route into the catalogue — the chip wall is gone;
+  // the full taxonomy lives in the catalogue sheet (openSportCatalogSheet).
+  // Suggestions finally get the hierarchy the wall denied them.
+  var sugg = getSmartSuggestions().filter(function(it){ return !_pinned[it.sport.id]; }).slice(0, 3);
+  var tiles = sugg.map(function(it, i){
+    var s = it.sport;
+    var span = (sugg.length === 3 && i === 2) ? 'grid-column:1/-1;' : '';
+    return '<button class="kt-sport-tile" style="'+span+'" onclick="pickSport(\''+_esc(s.id)+'\')">'+
+      '<span style="font-size:20px;line-height:1;">'+(s.emoji||'')+'</span>'+
+      '<span style="font-size:15px;font-weight:800;color:var(--text);">'+_esc(s.id)+'</span>'+
+      (it.context?'<span class="kt-sport-tile-ctx">'+_esc(String(it.context).toUpperCase())+'</span>':'')+
     '</button>';
-  }
-  function _pickerRow(label, chips){
-    if(!chips) return '';
-    return '<div style="margin-bottom:11px;">'+
-      '<div class="kt-adhoc-lbl" style="margin-bottom:7px;">'+label+'</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:7px;">'+chips+'</div>'+
-    '</div>';
-  }
-  // FOR YOU — smart suggestions with their context ("rest day", "6 days"…).
-  var sugg = getSmartSuggestions();
-  var forYou = sugg.filter(function(it){ return !_pinned[it.sport.id]; })
-    .map(function(it){ return _sportPickChip(it.sport, it.context); }).join('');
-  var SPORT_CATS = [
-    {label:'CARDIO',   ids:['Cycling','Swimming','Rowing','Hiking']},
-    {label:'SPORTS',   ids:['Pickleball','Tennis','Basketball','Soccer','Golf']},
-    {label:'TRAINING', ids:['CrossFit','Boxing','Climbing','Yoga','Other']}
-  ];
-  var _catCovered = {};
-  SPORT_CATS.forEach(function(c){ c.ids.forEach(function(id){ _catCovered[id]=true; }); });
-  var leftovers = SPORTS.filter(function(s){ return !_catCovered[s.id] && !_pinned[s.id]; })
-    .map(function(s){ return _sportPickChip(s); }).join('');
-  var strip = '<div style="margin-bottom:8px;">'+
-    _pickerRow('FOR YOU', forYou)+
-    SPORT_CATS.map(function(cat){
-      return _pickerRow(cat.label, cat.ids.map(function(id){
-        var s = sMapPick[id];
-        return (s && !_pinned[id]) ? _sportPickChip(s) : '';
-      }).join(''));
-    }).join('')+
-    _pickerRow('MORE', leftovers)+
-    '<button onclick="openLogTabsEditor()" style="background:none;border:none;padding:0;'+
-      'font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;'+
-      'color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">CUSTOMIZE TABS →</button>'+
+  }).join('');
+  var visCount = SPORTS.filter(function(s){ return !_pinned[s.id]; }).length;
+  var strip = '<div style="margin-bottom:20px;">'+
+    (tiles?'<div class="kt-adhoc-lbl" style="margin-bottom:8px;">FOR YOU</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'+tiles+'</div>':'')+
+    '<button class="kt-sport-allrow" onclick="openSportCatalogSheet()">'+
+      '<span style="font-size:14px;font-weight:700;color:var(--text);">All activities</span>'+
+      '<span style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--muted);">'+visCount+' ›</span>'+
+    '</button>'+
   '</div>';
 
   // Log card — token surface (spec: sport color survives as exactly two
@@ -6372,6 +6348,64 @@ function saveSportEditorial(){
   // Same ✓-logged / UNDO strip the run and body tabs get.
   sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
   render();
+}
+// Catalogue sheet — the full taxonomy, demoted off the surface. Category
+// eyebrows preserved, nothing duplicated (suggestions live on the surface,
+// not in here), pinned activities stay hidden, footer routes to the tabs
+// editor. R2 shell.
+function openSportCatalogSheet(){
+  var existing=document.getElementById('sportCatalogOverlay');
+  if(existing)existing.remove();
+  var _pinned={};
+  getLogTabs().forEach(function(id){ _pinned[id]=true; });
+  var byId={}; SPORTS.forEach(function(s){ byId[s.id]=s; });
+  var CATS=[
+    {label:'CARDIO',   ids:['Cycling','Swimming','Rowing','Hiking']},
+    {label:'SPORTS',   ids:['Pickleball','Tennis','Basketball','Soccer','Golf']},
+    {label:'TRAINING', ids:['CrossFit','Boxing','Climbing','Yoga','Other']}
+  ];
+  var covered={};
+  CATS.forEach(function(c){ c.ids.forEach(function(id){ covered[id]=true; }); });
+  var leftovers=SPORTS.filter(function(s){ return !covered[s.id]; }).map(function(s){ return s.id; });
+  if(leftovers.length) CATS.push({label:'MORE', ids:leftovers});
+  function row(s){
+    var sel=s.id===logSportType;
+    return '<button onclick="pickSport(\''+_esc(s.id)+'\');closeSportCatalogSheet()" style="display:flex;align-items:center;'+
+      'gap:10px;width:100%;min-height:44px;padding:0 10px;border:none;border-radius:12px;'+
+      'background:'+(sel?'var(--accent-dim)':'none')+';color:var(--text);font-size:14px;font-weight:700;'+
+      'cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;">'+
+      '<span style="font-size:17px;line-height:1;">'+(s.emoji||'')+'</span>'+
+      '<span style="flex:1;">'+_esc(s.id)+'</span>'+
+      (sel?'<span style="color:var(--accent-ink);font-weight:800;">✓</span>':'')+
+    '</button>';
+  }
+  var body=CATS.map(function(cat){
+    var rows=cat.ids.map(function(id){ var s=byId[id]; return (s&&!_pinned[id])?row(s):''; }).join('');
+    if(!rows) return '';
+    return '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;'+
+      'letter-spacing:.12em;color:var(--muted);margin:22px 0 6px;">'+cat.label+'</div>'+rows;
+  }).join('');
+  var overlay=document.createElement('div');
+  overlay.id='sportCatalogOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Log an activity</div>'+
+      '<button class="kt-sheet-x" onclick="closeSportCatalogSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    body+
+    '<button onclick="closeSportCatalogSheet();openLogTabsEditor()" style="width:100%;height:48px;margin-top:16px;'+
+      'border:none;background:none;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;'+
+      'letter-spacing:.1em;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">CUSTOMIZE TABS →</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeSportCatalogSheet);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeSportCatalogSheet();});
+  _a11yPass();
+}
+function closeSportCatalogSheet(){
+  var el=document.getElementById('sportCatalogOverlay');
+  if(el)el.remove();
 }
 function renderSportSection(forcedSportId){
   // Ad-hoc + tab → editorial path. Primary-sport day → legacy per-sport form.
