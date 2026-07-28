@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260728-1"/>
+<meta name="build" content="20260728-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -718,6 +718,7 @@ select option{background:var(--bg);}
 select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-well-caret{position:absolute;right:12px;bottom:14px;color:var(--muted);font-size:11px;pointer-events:none;}
 /* Duration is the hero of the form; the date collapses to a chip beside it. */
+.kt-sport-hero{font-size:32px;font-weight:800;letter-spacing:-1.4px;line-height:1.05;color:var(--text);margin-bottom:24px;}
 .kt-sport-durband{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:20px 0;}
 .kt-sport-dur-input{background:transparent;border:none;outline:none;color:var(--text);font-size:44px;font-weight:800;letter-spacing:-2px;font-family:inherit;padding:0;width:92px;}
 .kt-sport-dur-input::placeholder{color:var(--muted);}
@@ -6329,9 +6330,11 @@ function renderSportEditorial(){
     '</div>';
   }
 
-  // Watch-detected workouts (pickleball, tennis, swims…) surface here too —
-  // the + tab is where casual activity lives.
-  return meta + renderSportSavedStrip() + _healthCardSlot() + strip + card + recentHTML;
+  // Editorial statement — the tab's identity, present in every state. The
+  // watch quick-log card is the screen's single emphasis slot, directly under
+  // it; the confirm/undo strip stays above (transient, toast rules).
+  var hero = '<div class="kt-sport-hero">Not on the plan?<br>Still counts.</div>';
+  return meta + renderSportSavedStrip() + hero + _healthCardSlot() + strip + card + recentHTML;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
