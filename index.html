@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260727-3"/>
+<meta name="build" content="20260727-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10003,6 +10003,13 @@ function openErrorLogSheet(){
       '<div style="font-size:12px;line-height:1.5;color:var(--text);word-break:break-word;">'+_esc(en.m)+'</div>'+
     '</div>';
   }).join(''):'<div style="padding:24px 0;color:var(--muted);font-size:13px;text-align:center;">No errors recorded — all clear.</div>';
+  // Watch-sync trace — breadcrumbs from every bridge hop (push/live/drain).
+  var wch=[]; try{ wch=JSON.parse(localStorage.getItem('kt_wch_log')||'[]'); }catch(e){}
+  var wchRows=wch.length?
+    '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin:18px 0 4px;">WATCH SYNC</div>'+
+    wch.map(function(m){
+      return '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;line-height:1.7;color:var(--lite);word-break:break-word;">'+_esc(m)+'</div>';
+    }).join(''):'';
   var overlay=document.createElement('div');
   overlay.id='errLogOverlay';
   overlay.className='kt-sheet-overlay';
@@ -10012,8 +10019,8 @@ function openErrorLogSheet(){
       '<button class="kt-sheet-x" onclick="closeErrorLogSheet()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Device-local diagnostics — never sent anywhere. Copy and share when reporting a bug.</div>'+
-    rows+
-    (log.length?'<div style="display:flex;gap:10px;margin-top:14px;">'+
+    rows+wchRows+
+    ((log.length||wch.length)?'<div style="display:flex;gap:10px;margin-top:14px;">'+
       '<button onclick="clearErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Clear</button>'+
       '<button onclick="copyErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Copy</button>'+
     '</div>':'')+
@@ -10028,14 +10035,15 @@ function closeErrorLogSheet(){
   if(el)el.remove();
 }
 function copyErrorLog(){
-  var raw=localStorage.getItem('kt_err_log')||'[]';
-  var txt='Supero '+APP_BUILD+' error log\n'+raw;
+  var txt='Supero '+APP_BUILD+' error log\n'+(localStorage.getItem('kt_err_log')||'[]')+
+    '\n\nwatch sync\n'+(localStorage.getItem('kt_wch_log')||'[]');
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(function(){ showToast('Error log copied'); }).catch(function(){ showToast('Copy failed'); });
   } else { showToast('Copy not supported here'); }
 }
 function clearErrorLog(){
   localStorage.removeItem('kt_err_log');
+  localStorage.removeItem('kt_wch_log');
   closeErrorLogSheet();
   render();
   showToast('Error log cleared');
@@ -10839,13 +10847,18 @@ setTimeout(refreshReadiness, 1100);
 (function(){
   var TWch=_plug('TrovoWatch');
   if(TWch && TWch.addListener){
-    try{ TWch.addListener('watchSession', function(){ setTimeout(drainWatchSessions, 200); }); }catch(e){}
+    try{ TWch.addListener('watchSession', function(){ _wchLog('event: session arrived'); setTimeout(drainWatchSessions, 200); }); }catch(e){}
     try{ TWch.addListener('watchLive', function(ev){ _onWatchLive(ev&&ev.json); }); }catch(e){}
   }
   // The wrist may already be mid-session when this layer boots — pull the
   // native cache so the live banner doesn't wait for the next set.
   if(TWch && TWch.getLiveState){
-    try{ TWch.getLiveState().then(function(r){ if(r&&r.json) _onWatchLive(r.json); }).catch(function(){}); }catch(e){}
+    try{ TWch.getLiveState().then(function(r){
+      _wchLog('boot: live cache '+((r&&r.json)?'present':'empty'));
+      if(r&&r.json) _onWatchLive(r.json);
+    }).catch(function(){}); }catch(e){}
+  } else if(TWch){
+    _wchLog('boot: old native build (no getLiveState)');
   }
 })();
 if(localStorage.getItem('kt_autolog_runs')==='1') setTimeout(checkRecentHealthRun, 1200);
@@ -11006,6 +11019,15 @@ function _scheduleNativeSync(){
 // ── Apple Watch bridge ───────────────────────────────────────────────────────
 // Today's plan goes down via applicationContext; sessions the watch logged
 // come back through a pending queue drained here (same pattern as Health).
+// Every hop drops a breadcrumb into kt_wch_log (own ring — routine traffic
+// must never drown real errors in kt_err_log) shown in Settings → Error log.
+function _wchLog(msg){
+  try{
+    var arr=JSON.parse(localStorage.getItem('kt_wch_log')||'[]');
+    arr.unshift(new Date().toISOString().slice(5,19).replace('T',' ')+' '+msg);
+    localStorage.setItem('kt_wch_log', JSON.stringify(arr.slice(0,80)));
+  }catch(e){}
+}
 var _lastWatchPlan='';
 // Mid-session handoff: while the phone runner is open, its live state rides
 // along with the plan so the watch can offer "Continue from iPhone".
@@ -11039,7 +11061,9 @@ function _pushWatchPlan(){
     var liveJson=live?JSON.stringify(live):'';
     if(json+'|'+liveJson===_lastWatchPlan) return;
     _lastWatchPlan=json+'|'+liveJson;
-    TWch.updateContext({json:json, live:liveJson}).catch(function(){});
+    TWch.updateContext({json:json, live:liveJson}).then(function(r){
+      _wchLog('push '+plan.dayName+'/'+plan.type+(liveJson?' +live':'')+' → '+((r&&r.sent)?'sent':'NOT SENT'+((r&&r.reason)?' · '+r.reason:'')));
+    }).catch(function(e){ _wchLog('push FAILED · '+((e&&e.message)||e)); });
   }catch(e){}
 }
 // Real-time mirror of the wrist runner — the watch pushes per-set state over
@@ -11047,15 +11071,16 @@ function _pushWatchPlan(){
 // session still arrives through the guaranteed pending queue below.
 var _watchLive=null;
 function _onWatchLive(json){
-  var s; try{ s=typeof json==='string'?JSON.parse(json):json; }catch(e){ return; }
+  var s; try{ s=typeof json==='string'?JSON.parse(json):json; }catch(e){ _wchLog('live: bad payload'); return; }
   if(!s || !s.dayName) return;
+  var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
   var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
+  _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
   if(s.ended || !fresh){
     _watchLive=null;
     // The finished session follows on the guaranteed channel moments later.
     if(s.ended){ setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000); }
   } else {
-    var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
     _watchLive={ dayName:String(s.dayName), sets:n, at:Date.now() };
   }
   if(currentTab==='log') render();
@@ -11067,6 +11092,7 @@ function drainWatchSessions(){
   TWch.getPendingSessions().then(function(res){
     var arr=(res&&res.sessions)||[];
     if(!arr.length) return;
+    _wchLog('drain: '+arr.length+' pending');
     var act=getTodayActivity();
     var mainByName={};
     (act.exercises||[]).forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; });
@@ -11087,7 +11113,7 @@ function drainWatchSessions(){
       // Double-log guard: the same session may already be in the log — phone-
       // logged, or from an earlier drain of a payload that failed to clear.
       var already=getSessions().some(function(x){ return x.date===localISO && x.type===dayType; });
-      if(already) return;
+      if(already){ _wchLog('drain: skip duplicate '+localISO+' '+dayType); return; }
       var weights=getWeights();
       exsOut.forEach(function(ex){ if(ex.weight>0) weights[ex.name]=ex.weight; });
       lsSet('kt_weights', weights);
@@ -11108,6 +11134,7 @@ function drainWatchSessions(){
       added++;
     });
     TWch.clearPendingSessions().catch(function(){});
+    _wchLog('drain: added '+added);
     if(added){
       _watchLive=null;
       invalidateCoachCard();

@@ -1,6 +1,12 @@
 import Foundation
 import Capacitor
 import WatchConnectivity
+import os.log
+
+// Debug trace for the watch bridge — `log stream` / Console.app filtered on
+// subsystem app.kt.trainer shows every hop. Values are .public: day names and
+// set counts, nothing sensitive.
+private let wchLog = Logger(subsystem: "app.kt.trainer", category: "watch")
 
 // Phone side of the Watch bridge. The web app pushes today's plan down
 // (updateContext) and drains sessions the watch logged (getPendingSessions →
@@ -55,13 +61,19 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
         do {
             try WCSession.default.updateApplicationContext(context)
             sent = true
-        } catch {}
+        } catch {
+            wchLog.error("updateApplicationContext failed: \(error.localizedDescription, privacy: .public)")
+        }
         // applicationContext delivery is "eventual" — when the watch app is
         // frontmost, mirror the payload over the instant message channel too.
-        if WCSession.default.isReachable {
-            WCSession.default.sendMessage(context, replyHandler: nil, errorHandler: nil)
+        let reachable = WCSession.default.isReachable
+        if reachable {
+            WCSession.default.sendMessage(context, replyHandler: nil, errorHandler: { err in
+                wchLog.error("context sendMessage failed: \(err.localizedDescription, privacy: .public)")
+            })
             sent = true
         }
+        wchLog.info("push context (live: \(context["live"] != nil), reachable: \(reachable)) → sent \(sent)")
         call.resolve(["sent": sent])
     }
 
@@ -91,6 +103,7 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         guard let json = userInfo["session"] as? String else { return }
+        wchLog.info("finished session arrived from watch")
         DispatchQueue.main.async {
             var arr = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
             arr.append(json)
@@ -104,7 +117,9 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
     // natively so it works even when the web layer isn't loaded yet.
     public func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         if message["req"] as? String == "plan" {
-            replyHandler(UserDefaults.standard.dictionary(forKey: Self.contextKey) ?? [:])
+            let cached = UserDefaults.standard.dictionary(forKey: Self.contextKey) ?? [:]
+            wchLog.info("watch pulled plan → replying (cached: \(!cached.isEmpty))")
+            replyHandler(cached)
             return
         }
         handleLive(message)
@@ -119,6 +134,7 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
     // pull and forwarded live so Today can mirror the watch in real time.
     private func handleLive(_ message: [String: Any]) {
         guard let json = message["wlive"] as? String else { return }
+        wchLog.info("wrist live state received (\(json.count) bytes)")
         lastLive = json
         DispatchQueue.main.async {
             self.notifyListeners("watchLive", data: ["json": json])

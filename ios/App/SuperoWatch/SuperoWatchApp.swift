@@ -3,6 +3,11 @@ import WatchConnectivity
 import WatchKit
 import HealthKit
 import WidgetKit
+import os.log
+
+// Debug trace mirroring the phone plugin's — Console.app on the paired watch
+// filtered on subsystem app.kt.trainer shows both sides of every hop.
+private let wchLog = Logger(subsystem: "app.kt.trainer", category: "watch")
 
 // Supero Watch — run today's session from the wrist. The iPhone pushes the
 // day's plan via WatchConnectivity applicationContext; logged sessions go
@@ -64,7 +69,11 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     private func ingest(_ context: [String: Any]) {
         guard let json = context["plan"] as? String,
               let data = json.data(using: .utf8),
-              let p = try? JSONDecoder().decode(WatchPlan.self, from: data) else { return }
+              let p = try? JSONDecoder().decode(WatchPlan.self, from: data) else {
+            if !context.isEmpty { wchLog.error("ingest: payload had no decodable plan") }
+            return
+        }
+        wchLog.info("ingest: plan \(p.dayName, privacy: .public)/\(p.type, privacy: .public) wk\(p.week) (live: \(context["live"] != nil))")
         var liveSession: LiveSession? = nil
         if let lj = context["live"] as? String, !lj.isEmpty,
            let ld = lj.data(using: .utf8),
@@ -86,6 +95,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
+        wchLog.info("session activated (state: \(state.rawValue))")
         ingest(session.receivedApplicationContext)
         requestRefresh()
     }
@@ -105,10 +115,17 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     // scene foreground, and the manual retry on the empty screen.
     func requestRefresh() {
         let s = WCSession.default
-        guard s.activationState == .activated, s.isReachable else { return }
+        guard s.activationState == .activated, s.isReachable else {
+            wchLog.info("refresh skipped (activated: \(s.activationState == .activated), reachable: \(s.isReachable))")
+            return
+        }
+        wchLog.info("refresh: pulling plan from phone")
         s.sendMessage(["req": "plan"], replyHandler: { [weak self] reply in
+            wchLog.info("refresh: reply received (\(reply.count) keys)")
             self?.ingest(reply)
-        }, errorHandler: nil)
+        }, errorHandler: { err in
+            wchLog.error("refresh failed: \(err.localizedDescription, privacy: .public)")
+        })
     }
 
     // Best-effort real-time mirror of the wrist runner for the phone's Today
@@ -116,8 +133,13 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     // guaranteed transferUserInfo queue.
     func sendLive(_ json: String) {
         let s = WCSession.default
-        guard s.activationState == .activated, s.isReachable else { return }
-        s.sendMessage(["wlive": json], replyHandler: nil, errorHandler: nil)
+        guard s.activationState == .activated, s.isReachable else {
+            wchLog.info("live push skipped (phone unreachable)")
+            return
+        }
+        s.sendMessage(["wlive": json], replyHandler: nil, errorHandler: { err in
+            wchLog.error("live push failed: \(err.localizedDescription, privacy: .public)")
+        })
     }
 
     func sendSession(dayName: String, exercises: [[String: Any]]) {
