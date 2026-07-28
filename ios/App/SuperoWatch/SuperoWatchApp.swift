@@ -462,6 +462,8 @@ struct ExerciseView: View {
     let ex: WatchExercise
     @ObservedObject var runner: Runner
     @State private var reps: Int = 0
+    @State private var editingWeight = false
+    @State private var weightText = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -477,13 +479,20 @@ struct ExerciseView: View {
                     HStack(spacing: 8) {
                         Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 2.5) } label: { Text("−2.5") }
                             .buttonStyle(.bordered)
-                        VStack(spacing: 0) {
-                            Text(fmtWeight(runner.weight(for: ex)))
-                                .font(.system(size: 26, weight: .heavy, design: .rounded))
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                            Text("LB").font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
+                        // Tap the number to type an exact weight.
+                        Button {
+                            weightText = fmtWeight(runner.weight(for: ex))
+                            editingWeight = true
+                        } label: {
+                            VStack(spacing: 0) {
+                                Text(fmtWeight(runner.weight(for: ex)))
+                                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                                    .lineLimit(1).minimumScaleFactor(0.6)
+                                Text("LB").font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
+                            }
+                            .frame(minWidth: 44)
                         }
-                        .frame(minWidth: 44)
+                        .buttonStyle(.plain)
                         Button { runner.weights[ex.name] = runner.weight(for: ex) + 2.5 } label: { Text("+2.5") }
                             .buttonStyle(.bordered)
                     }
@@ -506,6 +515,28 @@ struct ExerciseView: View {
             }
             .navigationTitle(ex.name)
             .onAppear { if reps == 0 { reps = ex.reps } }
+            .sheet(isPresented: $editingWeight) {
+                VStack(spacing: 12) {
+                    Text("WEIGHT · LB")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    TextField("0", text: $weightText)
+                        .multilineTextAlignment(.center)
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    Button("Set") {
+                        let cleaned = weightText.replacingOccurrences(of: ",", with: ".")
+                            .trimmingCharacters(in: .whitespaces)
+                        if let v = Double(cleaned), v >= 0, v <= 1995 {
+                            runner.weights[ex.name] = v
+                        }
+                        editingWeight = false
+                    }
+                    .tint(lime)
+                    .buttonStyle(.borderedProminent)
+                    .foregroundColor(.black)
+                }
+                .padding(.horizontal, 8)
+            }
         }
     }
 }
