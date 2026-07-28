@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260727-5"/>
+<meta name="build" content="20260727-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -11024,7 +11024,8 @@ function _scheduleNativeSync(){
 function _wchLog(msg){
   try{
     var arr=JSON.parse(localStorage.getItem('kt_wch_log')||'[]');
-    arr.unshift(new Date().toISOString().slice(5,19).replace('T',' ')+' '+msg);
+    var d=new Date(), p=function(x){ return String(x).padStart(2,'0'); };
+    arr.unshift(p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+' '+msg);
     localStorage.setItem('kt_wch_log', JSON.stringify(arr.slice(0,80)));
   }catch(e){}
 }

@@ -54,6 +54,9 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = Connectivity()
     @Published var plan: WatchPlan? = nil
     @Published var live: LiveSession? = nil
+    // The phone mirrors pushes over context + message, so the same payload
+    // often lands twice — skip the repeat (WidgetCenter reloads are budgeted).
+    private var lastIngestSig = ""
 
     override init() {
         super.init()
@@ -73,6 +76,9 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             if !context.isEmpty { wchLog.error("ingest: payload had no decodable plan") }
             return
         }
+        let sig = json + "|" + ((context["live"] as? String) ?? "")
+        if sig == lastIngestSig { return }
+        lastIngestSig = sig
         wchLog.info("ingest: plan \(p.dayName, privacy: .public)/\(p.type, privacy: .public) wk\(p.week) (live: \(context["live"] != nil))")
         var liveSession: LiveSession? = nil
         if let lj = context["live"] as? String, !lj.isEmpty,
@@ -524,9 +530,29 @@ struct RestView: View {
 
 struct OffDayView: View {
     let plan: WatchPlan
+
+    // Match the emoji to the day — a Cycling day showing a runner reads wrong.
+    private var emoji: String {
+        if plan.type == "rest" { return "😴" }
+        let n = plan.dayName.lowercased()
+        if n.contains("cycl") || n.contains("bike") || n.contains("ride") { return "🚴" }
+        if n.contains("swim") { return "🏊" }
+        if n.contains("row") { return "🚣" }
+        if n.contains("yoga") { return "🧘" }
+        if n.contains("box") { return "🥊" }
+        if n.contains("climb") { return "🧗" }
+        if n.contains("hik") { return "🥾" }
+        if n.contains("golf") { return "⛳️" }
+        if n.contains("tennis") || n.contains("pickle") { return "🎾" }
+        if n.contains("basket") { return "🏀" }
+        if n.contains("soccer") || n.contains("futbol") { return "⚽️" }
+        if n.contains("run") || plan.type == "run" { return "🏃" }
+        return "🏅"
+    }
+
     var body: some View {
         VStack(spacing: 8) {
-            Text(plan.type == "rest" ? "😴" : "🏃")
+            Text(emoji)
                 .font(.system(size: 34))
             Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
                 .font(.system(size: 17, weight: .heavy))
@@ -575,7 +601,11 @@ struct SuperoWatchApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .onAppear { WorkoutManager.shared.requestAuth() }
+                .onAppear {
+                    #if !targetEnvironment(simulator)
+                    WorkoutManager.shared.requestAuth()
+                    #endif
+                }
         }
     }
 }

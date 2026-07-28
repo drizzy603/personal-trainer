@@ -44,19 +44,20 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     @objc func updateContext(_ call: CAPPluginCall) {
         guard let json = call.getString("json") else { call.reject("json required"); return }
-        guard WCSession.isSupported(), WCSession.default.activationState == .activated else {
-            call.resolve(["sent": false]); return
-        }
         // "live" carries the phone runner's in-progress state for mid-session
         // handoff; empty string means no session is running.
         var context: [String: Any] = ["plan": json]
         if let live = call.getString("live"), !live.isEmpty {
             context["live"] = live
         }
-        // Cache natively so the watch's pull-refresh can be answered even
-        // before the web layer has booted (WCSession wakes this app in the
-        // background to serve the reply).
+        // Cache BEFORE any bail-out: the watch's pull-refresh and the
+        // activation-complete flush both serve from here, and the JS side
+        // dedups — a payload dropped now would never be resent.
         UserDefaults.standard.set(context, forKey: Self.contextKey)
+        guard WCSession.isSupported(), WCSession.default.activationState == .activated else {
+            wchLog.info("push deferred — session not activated yet (flushed on activation)")
+            call.resolve(["sent": false, "reason": "session not activated"]); return
+        }
         var sent = false
         do {
             try WCSession.default.updateApplicationContext(context)
@@ -93,7 +94,18 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     // ── WCSessionDelegate ────────────────────────────────────────────────────
 
-    public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        // Flush the cached context — a web push that raced activation would
+        // otherwise be lost for good (the JS side dedups and won't resend).
+        guard activationState == .activated,
+              let cached = UserDefaults.standard.dictionary(forKey: Self.contextKey), !cached.isEmpty else { return }
+        do {
+            try session.updateApplicationContext(cached)
+            wchLog.info("activation complete → cached context flushed")
+        } catch {
+            wchLog.error("activation flush failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
     public func sessionDidBecomeInactive(_ session: WCSession) {}
 
