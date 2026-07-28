@@ -82,9 +82,37 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         ingest(session.receivedApplicationContext)
+        requestRefresh()
     }
     func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
         ingest(context)
+    }
+    // Instant channel — the phone mirrors plan/live over sendMessage whenever
+    // this app is frontmost, so changes land immediately instead of whenever
+    // applicationContext feels like delivering.
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        ingest(message)
+    }
+
+    // Pull the latest plan from the phone. sendMessage wakes the iOS app in
+    // the background and its plugin replies from a native cache — the user no
+    // longer has to open Supero on the phone first. Called on activation,
+    // scene foreground, and the manual retry on the empty screen.
+    func requestRefresh() {
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        s.sendMessage(["req": "plan"], replyHandler: { [weak self] reply in
+            self?.ingest(reply)
+        }, errorHandler: nil)
+    }
+
+    // Best-effort real-time mirror of the wrist runner for the phone's Today
+    // screen. Fire-and-forget; the finished session still goes through the
+    // guaranteed transferUserInfo queue.
+    func sendLive(_ json: String) {
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        s.sendMessage(["wlive": json], replyHandler: nil, errorHandler: nil)
     }
 
     func sendSession(dayName: String, exercises: [[String: Any]]) {
@@ -126,6 +154,10 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
 
     func start() {
         guard HKHealthStore.isHealthDataAvailable(), session == nil else { return }
+        // watchOS allows one live workout — starting ours would end a workout
+        // already running in another app (e.g. Apple's Workout app). The
+        // toggle in PlanView lets users who track elsewhere opt out.
+        guard UserDefaults.standard.object(forKey: "autoWorkout") as? Bool ?? true else { return }
         let config = HKWorkoutConfiguration()
         config.activityType = .traditionalStrengthTraining
         config.locationType = .indoor
@@ -186,6 +218,7 @@ final class Runner: ObservableObject {
     @Published var restLeft = 90
     @Published var synced = false
     private var timer: Timer?
+    private var startedAt: Double = 0   // ms since epoch, set on first logged set
 
     func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.weight }
     func done(_ ex: WatchExercise) -> Int { repsDone[ex.name]?.count ?? 0 }
@@ -193,11 +226,31 @@ final class Runner: ObservableObject {
 
     func logSet(_ ex: WatchExercise, reps: Int) {
         WorkoutManager.shared.start()   // no-op while a session is already live
+        if startedAt == 0 { startedAt = Date().timeIntervalSince1970 * 1000 }
         var arr = repsDone[ex.name] ?? []
         arr.append(reps)
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
+        pushLive()
         if arr.count < ex.sets { startRest() }
+    }
+
+    // Mirror this session to the phone in real time — Today shows a live
+    // "on watch" banner while the wrist logs sets.
+    func pushLive(ended: Bool = false) {
+        guard let day = Connectivity.shared.plan?.dayName else { return }
+        let sets = repsDone.values.reduce(0) { $0 + $1.count }
+        guard ended || sets > 0 else { return }
+        let payload: [String: Any] = [
+            "dayName": day,
+            "startedAt": startedAt > 0 ? startedAt : Date().timeIntervalSince1970 * 1000,
+            "reps": repsDone,
+            "weights": weights,
+            "ended": ended,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        Connectivity.shared.sendLive(json)
     }
 
     func startRest() {
@@ -228,12 +281,14 @@ final class Runner: ObservableObject {
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs)
         WorkoutManager.shared.end()
+        pushLive(ended: true)
         synced = true
         WKInterfaceDevice.current().play(.success)
     }
 
     func reset() {
         repsDone = [:]; weights = [:]; synced = false; resting = false
+        startedAt = 0
         timer?.invalidate()
     }
 
@@ -241,7 +296,9 @@ final class Runner: ObservableObject {
     func adopt(_ live: LiveSession) {
         repsDone = live.reps
         weights = live.weights
+        startedAt = live.startedAt
         WKInterfaceDevice.current().play(.success)
+        pushLive()
     }
 }
 
@@ -250,6 +307,7 @@ final class Runner: ObservableObject {
 struct RootView: View {
     @ObservedObject var conn = Connectivity.shared
     @StateObject var runner = Runner()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -264,13 +322,22 @@ struct RootView: View {
                     OffDayView(plan: plan)
                 }
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Image(systemName: "iphone.and.arrow.forward")
                         .font(.title2).foregroundColor(lime)
-                    Text("Open Supero on your iPhone to sync today's plan.")
+                    Text("Syncing today's plan from your iPhone…")
                         .font(.footnote).multilineTextAlignment(.center)
+                    Button("Sync now") { conn.requestRefresh() }
+                        .buttonStyle(.bordered)
                 }
             }
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .active else { return }
+            // Raising the wrist re-pulls the plan and re-broadcasts any
+            // in-progress wrist session to the phone.
+            conn.requestRefresh()
+            runner.pushLive()
         }
     }
 }
@@ -278,6 +345,7 @@ struct RootView: View {
 struct PlanView: View {
     let plan: WatchPlan
     @ObservedObject var runner: Runner
+    @AppStorage("autoWorkout") private var autoWorkout = true
 
     private var anyLogged: Bool {
         plan.exercises.contains { runner.done($0) > 0 }
@@ -335,6 +403,19 @@ struct PlanView: View {
                 }
                 .listRowBackground(RoundedRectangle(cornerRadius: 10).fill(lime))
                 .foregroundColor(.black)
+            }
+            // Opt-out for people who track lifts with another workout app —
+            // our HKWorkoutSession would end theirs (watchOS allows one live).
+            Section {
+                Toggle(isOn: $autoWorkout) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Workout tracking")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(autoWorkout ? "Live HR + ring credit" : "Won't interrupt other workout apps")
+                            .font(.system(size: 10)).foregroundColor(.secondary)
+                    }
+                }
+                .tint(lime)
             }
         }
         .navigationDestination(for: WatchExercise.self) { ex in

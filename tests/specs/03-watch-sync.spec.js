@@ -55,6 +55,32 @@ run('guard: drain skips a session the phone already logged', async () => {
   } finally { await app.close(); }
 });
 
+run('live wrist mirror: banner follows watchLive events', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    await app.page.waitForFunction(() => window.__mock.listeners.some((l) => l.name === 'watchLive'), { timeout: 8000 });
+    const shown = await app.page.evaluate(() => {
+      const fire = (p) => window.__mock.listeners
+        .filter((l) => l.name === 'watchLive')
+        .forEach((l) => l.fn({ json: JSON.stringify(p) }));
+      fire({ dayName: 'Push', startedAt: Date.now(), reps: { 'Barbell Bench Press': [8, 8] }, weights: {}, ended: false });
+      // #screen holds the rendered UI — body.textContent would also match the
+      // page's own inline script source.
+      const t = document.getElementById('screen').textContent;
+      return t.includes('LIVE ON WATCH') && t.includes('2 sets');
+    });
+    assert(shown, 'banner appears with the live set count');
+    const cleared = await app.page.evaluate(() => {
+      window.__mock.listeners
+        .filter((l) => l.name === 'watchLive')
+        .forEach((l) => l.fn({ json: JSON.stringify({ dayName: 'Push', startedAt: Date.now(), reps: {}, weights: {}, ended: true }) }));
+      return !document.getElementById('screen').textContent.includes('LIVE ON WATCH');
+    });
+    assert(cleared, 'ended payload clears the banner');
+    assert(app.errors.length === 0, 'no page errors, got: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
 run('guard: phone finish replaces the watch copy', async () => {
   const iso = todayLocal();
   const app = await boot({ native: true, seed: { kt_sessions: phoneSession(iso, 'From Apple Watch') } });

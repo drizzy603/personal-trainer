@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260726-2"/>
+<meta name="build" content="20260727-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3525,13 +3525,26 @@ function renderTodayEditorial(){
   }
   var debriefCard=_renderDebriefCard();
 
+  // Live wrist mirror — the watch streams per-set state while its runner is
+  // going; this is the most current thing happening, so it outranks resume.
+  var watchLiveBanner='';
+  if(_watchLive && _watchLive.sets>0){
+    watchLiveBanner='<div class="kt-resume-banner">'+
+      '<div><div class="kt-resume-eyebrow">LIVE ON WATCH ⌚</div>'+
+      '<div class="kt-resume-ttl">'+_esc(((SESS[_watchLive.dayName]&&SESS[_watchLive.dayName].label)||_watchLive.dayName))+' · '+_watchLive.sets+' set'+(_watchLive.sets===1?'':'s')+' from your wrist. Lands here when you finish.</div></div>'+
+      '<div class="kt-resume-actions">'+
+        '<button class="kt-resume-discard" onclick="hideWatchLive()">Hide</button>'+
+      '</div></div>';
+  }
+
   // Slot system (screen 04): at most ONE banner above the hero; everything
   // else that qualifies collapses into a chip on the utility strip. Tapping a
   // chip promotes it into the banner slot for this render (todayBannerOverride).
-  // Priority: resume > welcome-back > Watch quick-log > review > plateau >
-  // recovery > progression > wrapped > debrief.
+  // Priority: live-on-watch > resume > welcome-back > Watch quick-log >
+  // review > plateau > recovery > progression > wrapped > debrief.
   var watchCard=_healthCardSlot(true);
   var cands=[];
+  if(watchLiveBanner) cands.push({id:'watchlive', label:'ON WRIST', dot:'var(--accent-ink)', html:watchLiveBanner});
   if(resumeBanner) cands.push({id:'resume', label:'IN PROGRESS', dot:'var(--accent-ink)', html:resumeBanner});
   if(lapseBanner) cands.push({id:'lapse', label:'WELCOME BACK', dot:'var(--accent-ink)', html:lapseBanner});
   if(watchCard) cands.push({id:'watch', label:'APPLE WATCH', dot:'var(--accent-ink)', html:watchCard});
@@ -10827,6 +10840,12 @@ setTimeout(refreshReadiness, 1100);
   var TWch=_plug('TrovoWatch');
   if(TWch && TWch.addListener){
     try{ TWch.addListener('watchSession', function(){ setTimeout(drainWatchSessions, 200); }); }catch(e){}
+    try{ TWch.addListener('watchLive', function(ev){ _onWatchLive(ev&&ev.json); }); }catch(e){}
+  }
+  // The wrist may already be mid-session when this layer boots — pull the
+  // native cache so the live banner doesn't wait for the next set.
+  if(TWch && TWch.getLiveState){
+    try{ TWch.getLiveState().then(function(r){ if(r&&r.json) _onWatchLive(r.json); }).catch(function(){}); }catch(e){}
   }
 })();
 if(localStorage.getItem('kt_autolog_runs')==='1') setTimeout(checkRecentHealthRun, 1200);
@@ -11023,6 +11042,25 @@ function _pushWatchPlan(){
     TWch.updateContext({json:json, live:liveJson}).catch(function(){});
   }catch(e){}
 }
+// Real-time mirror of the wrist runner — the watch pushes per-set state over
+// the instant message channel while it logs. In-memory only; the finished
+// session still arrives through the guaranteed pending queue below.
+var _watchLive=null;
+function _onWatchLive(json){
+  var s; try{ s=typeof json==='string'?JSON.parse(json):json; }catch(e){ return; }
+  if(!s || !s.dayName) return;
+  var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
+  if(s.ended || !fresh){
+    _watchLive=null;
+    // The finished session follows on the guaranteed channel moments later.
+    if(s.ended){ setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000); }
+  } else {
+    var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
+    _watchLive={ dayName:String(s.dayName), sets:n, at:Date.now() };
+  }
+  if(currentTab==='log') render();
+}
+function hideWatchLive(){ _watchLive=null; render(); }
 function drainWatchSessions(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions) return;
@@ -11071,6 +11109,7 @@ function drainWatchSessions(){
     });
     TWch.clearPendingSessions().catch(function(){});
     if(added){
+      _watchLive=null;
       invalidateCoachCard();
       showToast('Watch session'+(added>1?'s':'')+' synced ⌚');
       haptic('light');
