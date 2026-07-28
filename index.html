@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260727-8"/>
+<meta name="build" content="20260728-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -705,23 +705,24 @@ select option{background:var(--bg);}
 .kt-act-tile-badge{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:18px;font-weight:800;letter-spacing:-.5px;color:#0b0b0d;}
 .kt-act-tile-lbl{font-size:11px;font-weight:700;color:#0b0b0d;letter-spacing:-.1px;text-align:center;line-height:1.1;}
 
-.kt-act-logcard{background:var(--card);border-radius:24px;padding:var(--pad-card);margin-bottom:24px;color:var(--text);transition:background .35s ease;position:relative;overflow:hidden;}
-.kt-act-logcard.morph{color:#0b0b0d;}
-.kt-act-logcard-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--lite);margin-bottom:6px;}
-.kt-act-logcard.morph .kt-act-logcard-eyebrow{color:rgba(0,0,0,.6);}
-.kt-act-logcard-ttl{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
-.kt-act-logcard-name{font-size:24px;font-weight:700;letter-spacing:-.4px;}
-.kt-act-logcard-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
-.kt-act-field-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px;}
-.kt-act-logcard.morph .kt-act-field-lbl{color:rgba(0,0,0,.55);}
-.kt-act-input{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.12);color:inherit;font-size:24px;font-weight:700;letter-spacing:-.6px;font-family:inherit;padding:6px 0 8px;outline:none;}
-.kt-act-logcard.morph .kt-act-input{border-bottom-color:rgba(0,0,0,.18);}
-.kt-act-logcard.morph .kt-act-input::placeholder{color:rgba(255,255,255,.85);font-weight:600;}
-.kt-act-logcard.morph .kt-act-input::-webkit-input-placeholder{color:rgba(255,255,255,.85);font-weight:600;}
-.kt-act-input:focus{border-bottom-color:currentColor;}
-.kt-act-input.notes{font-size:16px;font-weight:500;letter-spacing:-.011em;}
-.kt-act-save{width:100%;background:#0b0b0d;color:var(--accent);border:none;border-radius:14px;padding:15px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px;-webkit-tap-highlight-color:transparent;}
-.kt-act-logcard.morph .kt-act-save{background:#0b0b0d;color:#fff;}
+.kt-act-logcard{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:var(--pad-card);margin-bottom:24px;color:var(--text);position:relative;overflow:hidden;}
+.kt-act-logcard-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+/* Field wells — the app's .ex-field pattern: label inside, transparent border
+   so the sport-hex focus ring paints with zero layout shift. */
+.kt-sport-well{background:var(--card2);border:1px solid transparent;border-radius:14px;padding:11px 14px;min-height:44px;box-sizing:border-box;position:relative;}
+.kt-sport-well:focus-within{border-color:var(--sport-hex,var(--accent));}
+.kt-sport-well-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;white-space:nowrap;}
+.kt-sport-well-input{width:100%;background:transparent;border:none;outline:none;color:var(--text);font-size:20px;font-weight:700;letter-spacing:-.5px;font-family:inherit;padding:0;}
+.kt-sport-well-input::placeholder{color:var(--muted);font-weight:600;}
+.kt-sport-well-input.notes{font-size:14px;font-weight:500;letter-spacing:-.011em;}
+select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
+.kt-well-caret{position:absolute;right:12px;bottom:14px;color:var(--muted);font-size:11px;pointer-events:none;}
+/* Duration is the hero of the form; the date collapses to a chip beside it. */
+.kt-sport-durband{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:20px 0;}
+.kt-sport-dur-input{background:transparent;border:none;outline:none;color:var(--text);font-size:44px;font-weight:800;letter-spacing:-2px;font-family:inherit;padding:0;width:92px;}
+.kt-sport-dur-input::placeholder{color:var(--muted);}
+.kt-sport-date{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--lite);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;outline:none;flex-shrink:0;margin-bottom:6px;}
+.kt-act-save{width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px;-webkit-tap-highlight-color:transparent;}
 .kt-act-saved{background:var(--accent-soft);border:1px solid var(--accent-soft);color:var(--text);border-radius:18px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;font-size:14px;font-weight:600;}
 .kt-act-saved-undo{background:rgba(0,0,0,.4);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 /* B7 — Resume-in-progress banner on Today. */
@@ -778,7 +779,7 @@ select option{background:var(--bg);}
 .kt-coach-empty{padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.03);font-size:12px;color:var(--muted);text-align:center;}
 .kt-marquee{margin-top:28px;}
 .kt-marquee-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;margin-bottom:14px;font-weight:600;}
-.kt-marquee-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+.kt-marquee-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
 .kt-marquee-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
 .kt-marquee-left{display:flex;align-items:baseline;gap:14px;flex:1;min-width:0;}
 .kt-marquee-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:600;flex-shrink:0;color:var(--muted);}
@@ -6235,63 +6236,66 @@ function renderSportEditorial(){
       'color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">CUSTOMIZE TABS →</button>'+
   '</div>';
 
-  // Log card — morphs to selected sport colour. Layout: duration + date fixed,
-  // then the activity's own fields (built-in defaults or the user's custom set).
+  // Log card — token surface (spec: sport color survives as exactly two
+  // accents, the header badge and the focused well's border). Duration is the
+  // form's hero; every other field is a well on the .ex-field pattern.
   if(!d.f) d.f = {};
   var sync = ' oninput="sportLogDraft.';
-  function _edField(f){
+  function _wellField(f, span){
     var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(f.unit).toUpperCase()):'');
     var fSync = ' oninput="sportLogDraft.f[\''+f.id+'\']=this.value"';
     var val = d.f[f.id]!=null?String(d.f[f.id]):'';
+    var spanStyle = span?' style="grid-column:1/-1;"':'';
     if(f.type==='select'){
-      return '<div><label class="kt-act-field-lbl">'+lblTxt+'</label>'+
-        '<select class="kt-act-input" onchange="sportLogDraft.f[\''+f.id+'\']=this.value">'+
+      return '<div class="kt-sport-well"'+spanStyle+'><label class="kt-sport-well-lbl">'+lblTxt+'</label>'+
+        '<select class="kt-sport-well-input" onchange="sportLogDraft.f[\''+f.id+'\']=this.value">'+
         '<option value=""'+(val===''?' selected':'')+'>—</option>'+
         (f.opts||[]).map(function(o){return '<option'+(val===o?' selected':'')+'>'+_esc(o)+'</option>';}).join('')+
-        '</select></div>';
+        '</select><span class="kt-well-caret">▾</span></div>';
     }
     var typ = f.type==='number'?'number':'text';
-    return '<div><label class="kt-act-field-lbl">'+lblTxt+'</label>'+
-      '<input class="kt-act-input" type="'+typ+'"'+
+    return '<div class="kt-sport-well"'+spanStyle+'><label class="kt-sport-well-lbl">'+lblTxt+'</label>'+
+      '<input class="kt-sport-well-input" type="'+typ+'"'+
       (typ==='number'?' inputmode="decimal" min="0"'+(f.step?' step="'+f.step+'"':''):'')+
-      ' placeholder="'+_esc(f.ph||'')+'" value="'+_esc(val)+'"'+fSync+'/></div>';
+      ' placeholder="'+_esc(f.ph||'—')+'" value="'+_esc(val)+'"'+fSync+'/></div>';
   }
-  var fixedRow = '<div><label class="kt-act-field-lbl">DURATION · MIN</label>'+
-      '<input class="kt-act-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/></div>'+
-    '<div><label class="kt-act-field-lbl">DATE</label>'+
-      '<input class="kt-act-input" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>';
+  var durBand = '<div class="kt-sport-durband">'+
+    '<div><label class="kt-sport-well-lbl" style="margin-bottom:4px;">DURATION</label>'+
+      '<div style="display:flex;align-items:baseline;gap:6px;">'+
+        '<input class="kt-sport-dur-input" type="number" inputmode="numeric" min="0" placeholder="45" value="'+_esc(d.duration)+'"'+sync+'duration=this.value"/>'+
+        '<span style="font-size:15px;font-weight:600;color:var(--muted);">min</span>'+
+      '</div></div>'+
+    '<input class="kt-sport-date" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/>'+
+  '</div>';
   var sportFields = getSportFields(logSportType);
   var fieldRows = '', fi = 0;
   while(fi < sportFields.length){
     var f1 = sportFields[fi], f2 = sportFields[fi+1];
     var solo = (f1.type==='text') || !f2;
     if(solo){
-      fieldRows += '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;">'+_edField(f1)+'</div>';
+      fieldRows += '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;">'+_wellField(f1, false)+'</div>';
       fi++;
     } else {
-      fieldRows += '<div class="kt-act-logcard-grid">'+_edField(f1)+_edField(f2)+'</div>';
+      fieldRows += '<div class="kt-act-logcard-grid">'+_wellField(f1, false)+_wellField(f2, false)+'</div>';
       fi += 2;
     }
   }
-  var card = '<div class="kt-act-logcard morph" style="background:'+sport.color+';">'+
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'+
-      '<div class="kt-act-chip-badge" style="background:rgba(0,0,0,.18);width:38px;height:38px;'+
-        'border-radius:12px;font-size:15px;color:#0b0b0d;">'+_esc(sport.icon)+'</div>'+
-      '<div>'+
-        '<div style="font-size:17px;font-weight:800;color:#0b0b0d;line-height:1.1;letter-spacing:-.3px;">'+_esc(sport.id)+'</div>'+
-        '<div style="font-size:11px;font-weight:600;color:rgba(0,0,0,.4);text-transform:uppercase;'+
-          'letter-spacing:.05em;">'+weekday+' · WK '+String(currentWeek).padStart(2,'0')+'</div>'+
-      '</div>'+
-      '<button onclick="openSportFieldsEditor(logSportType)" style="margin-left:auto;background:rgba(0,0,0,.18);'+
-        'border:none;border-radius:10px;padding:8px 12px;font-size:10px;font-weight:800;letter-spacing:.08em;'+
-        'color:#0b0b0d;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">EDIT FIELDS</button>'+
+  var card = '<div class="kt-act-logcard" style="--sport-hex:'+sport.color+';">'+
+    '<div style="display:flex;align-items:center;gap:10px;">'+
+      '<div class="kt-act-chip-badge" style="background:'+sport.color+';width:34px;height:34px;'+
+        'border-radius:11px;font-size:13px;">'+_esc(sport.icon)+'</div>'+
+      '<div style="font-size:17px;font-weight:800;color:var(--text);letter-spacing:-.3px;">'+_esc(sport.id)+'</div>'+
+      '<button onclick="openSportFieldsEditor(logSportType)" style="margin-left:auto;background:var(--card2);'+
+        'border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin:-4px 0;'+
+        'font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.08em;'+
+        'color:var(--lite);cursor:pointer;-webkit-tap-highlight-color:transparent;">EDIT FIELDS</button>'+
     '</div>'+
-    '<div class="kt-act-logcard-grid">'+fixedRow+'</div>'+
+    durBand+
     fieldRows+
-    (logSportType==='CrossFit'?_renderCFMovesBlock(true):'')+
-    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:18px;">'+
-      '<div><label class="kt-act-field-lbl">NOTES · OPTIONAL</label>'+
-        '<input class="kt-act-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
+    (logSportType==='CrossFit'?_renderCFMovesBlock():'')+
+    '<div class="kt-act-logcard-grid" style="grid-template-columns:1fr;margin-bottom:20px;">'+
+      '<div class="kt-sport-well"><label class="kt-sport-well-lbl">NOTES · OPTIONAL</label>'+
+        '<input class="kt-sport-well-input notes" type="text" placeholder="How it felt, partner, course…" value="'+_esc(d.notes)+'"'+sync+'notes=this.value"/></div>'+
     '</div>'+
     '<button class="kt-act-save" onclick="saveSportEditorial()">Save '+_esc(sport.id)+' →</button>'+
   '</div>';
@@ -6315,7 +6319,7 @@ function renderSportEditorial(){
             '</div>'+
           '</div>'+
           '<div class="kt-marquee-right" style="gap:6px;">'+
-            '<span class="kt-marquee-reps" style="color:var(--muted);">'+_esc(when)+'</span>'+
+            '<span style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;">'+_esc(when)+'</span>'+
             '<button onclick="deleteSportLog('+l.id+')" style="background:none;border:none;'+
               'color:var(--muted);font-size:15px;padding:10px 8px;margin:-8px -4px;cursor:pointer;line-height:1;'+
               '-webkit-tap-highlight-color:transparent;">✕</button>'+
@@ -6456,7 +6460,7 @@ function renderSportSection(forcedSportId){
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
     _renderSportFields(sport)+
-    (sport.id==='CrossFit'?_renderCFMovesBlock(false):'')+
+    (sport.id==='CrossFit'?_renderCFMovesBlock():'')+
     '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
       '<textarea id="spNotes" rows="2" placeholder="How did it go?" style="'+inp+';resize:vertical;"></textarea></div>'+
     '<button onclick="saveSportLog()" style="width:100%;padding:14px;background:'+sport.color+';color:#000;'+
@@ -10325,34 +10329,30 @@ function closeSportFieldsEditor(){
 // ── CrossFit session builder ─────────────────────────────────────────────────
 // A movements list under the CrossFit log form: pick from the library sheet,
 // set reps/weight inline, saved into rec.data.movements.
-function _renderCFMovesBlock(dark){
-  // dark=true → editorial colored card (black-on-color); else neutral card.
-  var lblStyle = dark
-    ? 'font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(0,0,0,.4);'
-    : 'font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;';
-  var rowBg = dark ? 'rgba(0,0,0,.12)' : 'var(--card2)';
-  var txt = dark ? '#0b0b0d' : 'var(--text)';
-  var inpStyle = 'width:100%;background:'+(dark?'rgba(255,255,255,.55)':'var(--bg)')+';border:1px solid '+
-    (dark?'transparent':'var(--border)')+';border-radius:8px;padding:7px 8px;color:#0b0b0d;'+
-    (dark?'':'color:var(--text);')+'font-size:14px;box-sizing:border-box;font-family:inherit;';
+function _renderCFMovesBlock(){
+  // Neutral token variant only — the black-on-color card is gone (spec: rows
+  // on --card2, input wells on --bg, 64×44 to clear the tap-target floor).
+  var inpStyle = 'width:64px;height:44px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);'+
+    'border-radius:10px;color:var(--text);font-size:16px;font-weight:700;text-align:center;'+
+    'box-sizing:border-box;font-family:inherit;outline:none;';
   var rows = cfDraftMoves.map(function(m, i){
-    return '<div style="display:flex;align-items:center;gap:8px;background:'+rowBg+';border-radius:12px;padding:8px 10px;margin-bottom:6px;">'+
-      '<div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:'+txt+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(m.name)+'</div>'+
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--card2);border-radius:12px;padding:8px 10px;margin-bottom:6px;">'+
+      '<div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(m.name)+'</div>'+
       '<input type="number" inputmode="numeric" placeholder="reps" value="'+_esc(m.reps||'')+'" '+
-        'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'width:64px;flex-shrink:0;"/>'+
+        'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'"/>'+
       '<input type="number" inputmode="decimal" placeholder="lb" value="'+_esc(m.weight||'')+'" '+
-        'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'width:64px;flex-shrink:0;"/>'+
-      '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:'+
-        (dark?'rgba(0,0,0,.5)':'var(--muted)')+';font-size:15px;cursor:pointer;padding:4px;flex-shrink:0;'+
+        'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'"/>'+
+      '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:var(--muted);'+
+        'font-size:15px;cursor:pointer;padding:12px 8px;margin:-8px -4px;flex-shrink:0;'+
         'font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>';
   }).join('');
-  return '<div style="margin-bottom:14px;">'+
-    '<div style="'+lblStyle+'margin-bottom:8px;">MOVEMENTS'+(cfDraftMoves.length?' · '+cfDraftMoves.length:'')+'</div>'+
+  return '<div style="margin:0 0 8px;">'+
+    '<div class="kt-sport-well-lbl" style="margin-bottom:8px;">MOVEMENTS'+(cfDraftMoves.length?' · '+cfDraftMoves.length:'')+'</div>'+
     rows+
-    '<button onclick="openCFMovePicker()" style="width:100%;padding:10px;border-radius:12px;border:1.5px dashed '+
-      (dark?'rgba(0,0,0,.35)':'var(--border)')+';background:transparent;color:'+(dark?'#0b0b0d':'var(--lite)')+';'+
-      'font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+ Add movement</button>'+
+    '<button onclick="openCFMovePicker()" style="width:100%;height:48px;border-radius:12px;border:1.5px dashed var(--border);'+
+      'background:transparent;color:var(--lite);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;'+
+      '-webkit-tap-highlight-color:transparent;">+ Add movement</button>'+
   '</div>';
 }
 var _cfPickerQuery='';
