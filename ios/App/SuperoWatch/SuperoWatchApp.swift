@@ -11,6 +11,11 @@ import WidgetKit
 
 private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
 
+// Weights step in 2.5 lb — show the half only when it's there (145, 147.5).
+private func fmtWeight(_ v: Double) -> String {
+    v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v)
+}
+
 // MARK: - Plan model (mirrors the JSON the web app sends)
 
 struct WatchExercise: Codable, Identifiable, Hashable {
@@ -380,7 +385,7 @@ struct PlanView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ex.name).font(.system(size: 14, weight: .semibold)).lineLimit(2)
-                                Text("\(runner.done(ex))/\(ex.sets) sets · \(Int(runner.weight(for: ex))) lb")
+                                Text("\(runner.done(ex))/\(ex.sets) sets · \(fmtWeight(runner.weight(for: ex))) lb")
                                     .font(.system(size: 11)).foregroundColor(.secondary)
                             }
                             Spacer()
@@ -441,15 +446,17 @@ struct ExerciseView: View {
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(.secondary)
                     LiveHRChip()
-                    HStack(spacing: 12) {
-                        Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 5) } label: { Text("−5") }
+                    HStack(spacing: 8) {
+                        Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 2.5) } label: { Text("−2.5") }
                             .buttonStyle(.bordered)
                         VStack(spacing: 0) {
-                            Text("\(Int(runner.weight(for: ex)))")
+                            Text(fmtWeight(runner.weight(for: ex)))
                                 .font(.system(size: 26, weight: .heavy, design: .rounded))
+                                .lineLimit(1).minimumScaleFactor(0.6)
                             Text("LB").font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
                         }
-                        Button { runner.weights[ex.name] = runner.weight(for: ex) + 5 } label: { Text("+5") }
+                        .frame(minWidth: 44)
+                        Button { runner.weights[ex.name] = runner.weight(for: ex) + 2.5 } label: { Text("+2.5") }
                             .buttonStyle(.bordered)
                     }
                     Stepper(value: $reps, in: 0...50) {
