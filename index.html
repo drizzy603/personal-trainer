@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260728-3"/>
+<meta name="build" content="20260728-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -722,6 +722,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-sport-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;}
 .kt-sport-tile-ctx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--accent-ink);}
 .kt-sport-allrow{width:100%;height:52px;border-radius:16px;padding:0 16px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-sport-mini{height:34px;border-radius:17px;padding:0 12px;background:var(--card2);border:1px solid var(--border);display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--lite);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
 .kt-sport-durband{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:20px 0;}
 .kt-sport-dur-input{background:transparent;border:none;outline:none;color:var(--text);font-size:44px;font-weight:800;letter-spacing:-2px;font-family:inherit;padding:0;width:92px;}
 .kt-sport-dur-input::placeholder{color:var(--muted);}
@@ -1078,6 +1079,10 @@ var histExpandedId = null;   // session id open in the Session History accordion
 var strengthChartOpen = null; // lift name expanded to a full e1RM chart
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', notes:'', date:'', f:{}};
+// + tab decision state: before the first pick of a visit the screen shows only
+// the decision (tiles + catalogue route, no form). Session-only, reset on
+// every entry to the tab and after each save.
+var sportTabPicked = false;
 
 // ── 12-Week Programme ─────────────────────────────────────────────────────────
 
@@ -5357,7 +5362,7 @@ function switchLogSub(sub) {
   if(sub !== 'body' && bwLogConfirmed){ bwLogConfirmed = null; }
   // Fresh entry to the + tab starts a fresh dated draft (typed field values
   // are kept — only a stale date from a previous day is brought current).
-  if(sub === 'sport' && logSubTab !== 'sport') sportLogDraft.date = todayISO();
+  if(sub === 'sport' && logSubTab !== 'sport'){ sportLogDraft.date = todayISO(); sportTabPicked = false; }
   logSubTab = sub;
   if(sub==='workout') requestWakeLock(); else releaseWakeLock();
   render();
@@ -5903,7 +5908,9 @@ function moveSport(id,newDate){
 }
 function pickSport(id){
   if(id!=='CrossFit') cfDraftMoves=[];
-  logSportType=id; render();
+  logSportType=id;
+  sportTabPicked=true;   // + tab decision made — show the form (state B/C)
+  render();
 }
 
 function saveSportLog(){
@@ -6259,9 +6266,14 @@ function renderSportEditorial(){
   }
   var card = '<div class="kt-act-logcard" style="--sport-hex:'+sport.color+';">'+
     '<div style="display:flex;align-items:center;gap:10px;">'+
-      '<div class="kt-act-chip-badge" style="background:'+sport.color+';width:34px;height:34px;'+
-        'border-radius:11px;font-size:13px;">'+_esc(sport.icon)+'</div>'+
-      '<div style="font-size:17px;font-weight:800;color:var(--text);letter-spacing:-.3px;">'+_esc(sport.id)+'</div>'+
+      '<button onclick="openSportCatalogSheet()" style="display:flex;align-items:center;gap:10px;min-height:44px;'+
+        'background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left;'+
+        '-webkit-tap-highlight-color:transparent;">'+
+        '<span class="kt-act-chip-badge" style="background:'+sport.color+';width:34px;height:34px;'+
+          'border-radius:11px;font-size:13px;">'+_esc(sport.icon)+'</span>'+
+        '<span style="font-size:17px;font-weight:800;color:var(--text);letter-spacing:-.3px;">'+_esc(sport.id)+
+          ' <span style="color:var(--muted);font-size:12px;">▾</span></span>'+
+      '</button>'+
       '<button onclick="openSportFieldsEditor(logSportType)" style="margin-left:auto;background:var(--card2);'+
         'border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin:-4px 0;'+
         'font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.08em;'+
@@ -6285,7 +6297,7 @@ function renderSportEditorial(){
       '<div class="kt-marquee-hd">RECENT</div>'+
       logs.slice(0,5).map(function(l){
         var s = sMap[l.type] || {color:'#888', icon:'+'};
-        var when = l.date ? fmtDate(l.date) : '';
+        var when = l.date===todayISO() ? 'TODAY' : (l.date ? fmtDate(l.date) : '');
         var summary = buildSportSummary(l) || (l.duration ? l.duration+' min' : '—');
         return '<div class="kt-marquee-row" style="position:relative;">'+
           '<div class="kt-marquee-left" onclick="openSportLogEditor('+l.id+')" style="cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
@@ -6309,8 +6321,24 @@ function renderSportEditorial(){
   // Editorial statement — the tab's identity, present in every state. The
   // watch quick-log card is the screen's single emphasis slot, directly under
   // it; the confirm/undo strip stays above (transient, toast rules).
-  var hero = '<div class="kt-sport-hero">Not on the plan?<br>Still counts.</div>';
-  return meta + renderSportSavedStrip() + hero + _healthCardSlot() + strip + card + recentHTML;
+  var hero = '<div class="kt-sport-hero"'+(sportTabPicked?' style="margin-bottom:20px;"':'')+'>Not on the plan?<br>Still counts.</div>';
+  // State A — nothing picked yet this visit: the screen IS the decision.
+  if(!sportTabPicked){
+    return meta + renderSportSavedStrip() + hero + _healthCardSlot() + strip + recentHTML;
+  }
+  // State B/C — picked: suggestions collapse to a mini strip, the form appears.
+  var mini = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">'+
+    sugg.filter(function(it){ return it.sport.id!==logSportType; }).map(function(it){
+      var s=it.sport;
+      return '<button class="kt-sport-mini" onclick="pickSport(\''+_esc(s.id)+'\')">'+
+        '<span style="font-size:14px;line-height:1;">'+(s.emoji||'')+'</span>'+
+        '<span>'+_esc(s.id)+'</span>'+
+        (it.context?'<span class="kt-sport-tile-ctx" style="font-size:9px;">'+_esc(String(it.context).toUpperCase())+'</span>':'')+
+      '</button>';
+    }).join('')+
+    '<button class="kt-sport-mini" onclick="openSportCatalogSheet()">All ›</button>'+
+  '</div>';
+  return meta + renderSportSavedStrip() + hero + _healthCardSlot() + mini + card + recentHTML;
 }
 function saveSportEditorial(){
   var sport = SPORTS.find(function(s){return s.id===logSportType;}) || SPORTS[0];
@@ -6345,7 +6373,9 @@ function saveSportEditorial(){
   // Reset draft for next entry.
   sportLogDraft = {duration:'', notes:'', date:todayISO(), f:{}};
   cfDraftMoves = [];
-  // Same ✓-logged / UNDO strip the run and body tabs get.
+  // Same ✓-logged / UNDO strip the run and body tabs get. The screen returns
+  // to the decision state — new log tops RECENT, confirm strip above the hero.
+  sportTabPicked = false;
   sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
   render();
 }
