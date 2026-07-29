@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260728-6"/>
+<meta name="build" content="20260728-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -716,7 +716,6 @@ select option{background:var(--bg);}
 .kt-sport-well-input::placeholder{color:var(--muted);font-weight:600;}
 .kt-sport-well-input.notes{font-size:14px;font-weight:500;letter-spacing:-.011em;}
 select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
-.kt-well-caret{position:absolute;right:12px;bottom:14px;color:var(--muted);font-size:11px;pointer-events:none;}
 /* Duration is the hero of the form; the date collapses to a chip beside it. */
 .kt-sport-hero{font-size:32px;font-weight:800;letter-spacing:-1.4px;line-height:1.05;color:var(--text);margin-bottom:24px;}
 .kt-sport-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;}
@@ -6239,17 +6238,22 @@ function renderSportEditorial(){
     var val = d.f[f.id]!=null?String(d.f[f.id]):'';
     var spanStyle = span?' style="grid-column:1/-1;"':'';
     if(f.type==='select'){
+      // Caret rides the value line (baseline flex), not the well's corner.
       return '<div class="kt-sport-well"'+spanStyle+'><label class="kt-sport-well-lbl">'+lblTxt+'</label>'+
-        '<select class="kt-sport-well-input" onchange="sportLogDraft.f[\''+f.id+'\']=this.value">'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+        '<select class="kt-sport-well-input" style="flex:1;" onchange="sportLogDraft.f[\''+f.id+'\']=this.value">'+
         '<option value=""'+(val===''?' selected':'')+'>—</option>'+
         (f.opts||[]).map(function(o){return '<option'+(val===o?' selected':'')+'>'+_esc(o)+'</option>';}).join('')+
-        '</select><span class="kt-well-caret">▾</span></div>';
+        '</select><span style="font-size:12px;color:var(--muted);pointer-events:none;">▾</span></div></div>';
     }
     var typ = f.type==='number'?'number':'text';
+    // Honest empties: numeric ghosts are gone — an empty well shows — in
+    // muted; only typed values render in text color.
+    var ph = typ==='number' ? '—' : (f.ph||'—');
     return '<div class="kt-sport-well"'+spanStyle+'><label class="kt-sport-well-lbl">'+lblTxt+'</label>'+
       '<input class="kt-sport-well-input" type="'+typ+'"'+
       (typ==='number'?' inputmode="decimal" min="0"'+(f.step?' step="'+f.step+'"':''):'')+
-      ' placeholder="'+_esc(f.ph||'—')+'" value="'+_esc(val)+'"'+fSync+'/></div>';
+      ' placeholder="'+_esc(ph)+'" value="'+_esc(val)+'"'+fSync+'/></div>';
   }
   var durBand = '<div class="kt-sport-durband">'+
     '<div><label class="kt-sport-well-lbl" style="margin-bottom:4px;">DURATION</label>'+
