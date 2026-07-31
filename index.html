@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260729-1"/>
+<meta name="build" content="20260730-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1894,7 +1894,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -1940,6 +1940,78 @@ function renderBackupNudge(){
       '<button onclick="snoozeBackupNudge()" style="'+btn+'background:var(--card2);color:var(--lite);">Later</button>'+
       '<button onclick="exportData()" style="'+btn+'background:var(--accent);color:#000;">Export</button>'+
     '</div>'+
+  '</div>';
+}
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+// Lifetime markers, celebrated once each with the PR-style gold toast and
+// kept on a trophy shelf on Progress. Fully deterministic, no settings.
+// kt_milestones maps key → dateISO (earned live) or 1 (baselined silently on
+// first run so long-time users don't get a toast barrage).
+var MILESTONE_DEFS = [
+  {k:'sess',   label:function(v){return v+' sessions logged';},        steps:[10,25,50,100,200,365],
+   value:function(){return getSessions().length;}},
+  {k:'vol',    label:function(v){return (v/1000)+'k lb lifted all-time';}, steps:[50000,100000,250000,500000,1000000],
+   value:function(){var t=0;getSessions().forEach(function(s){t+=calcVolume(s.exercises||[]);});return t;}},
+  {k:'km',     label:function(v){return v+' km run all-time';},        steps:[25,50,100,250,500],
+   value:function(){var t=0;getRuns().forEach(function(r){t+=parseFloat(r.distance||r.dist)||0;});return t;}},
+  {k:'streak', label:function(v){return v+'-day streak';},             steps:[7,14,30,60],
+   value:function(){return calcDayStreak();}},
+  {k:'pr',     label:function(v){return v+' PRs on file';},            steps:[5,10,25,50],
+   value:function(){return Object.keys(getPRs()).length;}}
+];
+function getMilestones(){ return lsGet('kt_milestones')||null; }
+// opts.quiet — record without celebrating (boot baseline).
+// opts.delayToast — ms to hold the toast (so a PR toast finishes first).
+function checkMilestones(opts){
+  opts = opts||{};
+  var earned = getMilestones();
+  var firstRun = earned===null;
+  if(firstRun) earned = {};
+  var fresh = [];
+  MILESTONE_DEFS.forEach(function(def){
+    var v = def.value();
+    def.steps.forEach(function(step){
+      var key = def.k+'-'+step;
+      if(v >= step && !earned[key]){
+        earned[key] = (firstRun||opts.quiet) ? 1 : todayISO();
+        if(!firstRun && !opts.quiet) fresh.push(def.label(step));
+      }
+    });
+  });
+  lsSet('kt_milestones', earned);
+  if(fresh.length){
+    var msg = 'Milestone · '+fresh[fresh.length-1];
+    var fire = function(){
+      haptic('success');
+      showToast(msg, 'pr');
+    };
+    if(opts.delayToast) setTimeout(fire, opts.delayToast); else fire();
+  }
+  return fresh;
+}
+function renderMilestones(){
+  var earned = getMilestones();
+  if(!earned) return '';
+  var pills = [];
+  MILESTONE_DEFS.forEach(function(def){
+    def.steps.forEach(function(step){
+      var key = def.k+'-'+step;
+      if(!earned[key]) return;
+      var when = earned[key]===1 ? '' : earned[key];
+      pills.push({label:def.label(step), when:when});
+    });
+  });
+  if(!pills.length) return '';
+  var html = pills.map(function(p){
+    return '<span style="display:inline-flex;align-items:baseline;gap:6px;background:var(--accent-dim);border:1px solid var(--accent-soft);border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;">'+
+      _esc(p.label)+
+      (p.when?'<span class="kt-mono" style="font-size:9px;color:var(--muted);font-weight:600;">'+fmtDate(p.when)+'</span>':'')+
+    '</span>';
+  }).join('');
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card-sm);margin-bottom:12px;">'+
+    '<div class="kt-mono" style="font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-bottom:10px;">MILESTONES · '+pills.length+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;">'+html+'</div>'+
   '</div>';
 }
 
@@ -2351,6 +2423,7 @@ function logPendingHealthRun(){
   } else {
     var rec = _logHealthRun(r);
     runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  checkMilestones({delayToast:600});
   }
   render();
 }
@@ -4066,6 +4139,7 @@ function saveInlineRun(){
   invalidateCoachCard();
   runLogOpen = false;
   runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+  checkMilestones({delayToast:600});
   render();
 }
 function undoLastRun(){
@@ -4700,6 +4774,8 @@ function runnerFinishSession(){
   } else {
     showToast('Session logged');
   }
+  // Milestones fire after the PR / session toast has had its moment.
+  checkMilestones({delayToast: newPRs.length ? 3800 : 2500});
   closeDeckRunner();
   render();
 }
@@ -5851,6 +5927,7 @@ function saveRun() {
   runs.unshift({id:Date.now(),distance:dist,time:time,date:date,week:weekForDate(date),note:note,hr:hr,type:type});
   lsSet('kt_runs',runs);
   invalidateCoachCard();
+  checkMilestones({delayToast:2500});
   var pace=calcPace(dist,time);
   var txt='['+fmtDate(date)+'] — Run (Week '+currentWeek+')\n';
   txt+='Distance: '+dist+'km | Time: '+time+' | Pace: '+pace+'/km';
@@ -5933,6 +6010,7 @@ function saveSportLog(){
   invalidateCoachCard();
   cfDraftMoves=[];
   sportLogConfirmed={id:rec.id,type:logSportType,label:sport.id+(dur?' · '+dur+' min':'')};
+  checkMilestones({delayToast:600});
   render();
 }
 function undoLastSportLog(){
@@ -6394,6 +6472,7 @@ function saveSportEditorial(){
   // to the decision state — new log tops RECENT, confirm strip above the hero.
   sportTabPicked = false;
   sportLogConfirmed = {id:rec.id, type:logSportType, label:sport.id+(dur?' · '+dur+' min':'')};
+  checkMilestones({delayToast:600});
   render();
 }
 // Catalogue sheet — the full taxonomy, demoted off the surface. Category
@@ -7777,7 +7856,7 @@ function renderProgress() {
       (liftOnly ? eyebrow('Records') + liftOnly : '');
   }
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) +
-    eyebrow('Overview') + toggle + stats +
+    eyebrow('Overview') + toggle + stats + renderMilestones() +
     midGroups + renderRetroCard(sessions) +
     eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
@@ -10869,6 +10948,9 @@ if(_awayDays >= 10 && currentWeek > _weekBeforeAdvance && hasCustomRoutine()){
   lapsePending = {from:_weekBeforeAdvance, to:currentWeek, days:_awayDays};
 }
 lsSet('kt_last_open', Date.now());
+// Baseline milestones silently on first run; later boots record quietly
+// (an imported backup must not fire a toast barrage).
+checkMilestones({quiet:true});
 // Ask the browser not to evict our storage — best-effort, silently ignored
 // where unsupported. localStorage is the only copy of the user's data.
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
