@@ -9,5 +9,6 @@
     "LocalNotifications": {
       "presentationOptions": []
     }
-  }
+  },
+  "backgroundColor": "#0b0b0d"
 }
