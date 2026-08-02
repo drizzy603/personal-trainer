@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260802-1"/>
+<meta name="build" content="20260802-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -5402,6 +5402,194 @@ function renderWeekHeader() {
     '</div>';
 }
 
+// ── Starter programme (no API key required) ──────────────────────────────────
+// Five taps assemble a deterministic 8-week block from EXERCISE_DB, entirely
+// on-device. Kills the API-key wall for first-run users (and App Review);
+// the AI Coach stays the upgrade path for custom programmes and edits.
+var _si=null;   // {step, answers} while the intake overlay is open
+
+var STARTER_POOLS={
+  full:{
+    push:['Barbell Bench Press','Incline Dumbbell Press','DB Lateral Raise','Tricep Pushdown','Cable Fly'],
+    pull:['Barbell Row','Lat Pulldown','Seated Cable Row','Face Pull','Barbell Curl'],
+    legs:['Barbell Back Squat','Romanian Deadlift','Leg Press','Seated Leg Curl','Standing Calf Raise'],
+    arms:['Close Grip Bench Press','Barbell Curl','Skull Crushers','Hammer Curl','Cable Crunch'],
+    legs2:['Hip Thrust','Bulgarian Split Squat','Leg Extension','Lying Leg Curl','Hanging Leg Raise']
+  },
+  db:{
+    push:['DB Bench Press','Arnold Press','DB Lateral Raise','Incline DB Fly','Push Up'],
+    pull:['Single Arm DB Row','Chest Supported Row','Hammer Curl','Incline DB Curl','Rear Delt Fly'],
+    legs:['Goblet Squat','Romanian Deadlift','Walking Lunge','Step Up','Standing Calf Raise'],
+    arms:['Hammer Curl','Concentration Curl','Single-Arm DB Tricep Kickback','Incline DB Curl','Crunch'],
+    legs2:['Bulgarian Split Squat','Reverse Lunge','Step Up','Sumo Squat','Lying Leg Raise']
+  },
+  bw:{
+    push:['Push Up','Dips','Plank','Mountain Climber'],
+    pull:['Pull Up','Chin Up','Hollow Body Hold','Side Plank'],
+    legs:['Reverse Lunge','Walking Lunge','Step Up','V-Up'],
+    arms:['Dips','Push Up','Crunch','Bicycle Crunch'],
+    legs2:['Walking Lunge','Step Up','Lying Leg Raise','Mountain Climber']
+  }
+};
+// Conservative starting loads for main lifts only — accessories stay 0
+// (bodyweight, or set on first session). Tiers: new / a year / several.
+var STARTER_W={
+  'Barbell Bench Press':[65,95,135],'Barbell Row':[65,95,135],
+  'Barbell Back Squat':[65,115,185],'Close Grip Bench Press':[55,85,115],
+  'Hip Thrust':[65,135,185],'DB Bench Press':[25,40,60],
+  'Single Arm DB Row':[25,40,60],'Goblet Squat':[25,40,60],
+  'Hammer Curl':[15,25,35],'Bulgarian Split Squat':[15,25,40]
+};
+// [reps, rpe, main-lift sets] per block, per goal.
+var STARTER_SCHEME={
+  muscle:  {BASE:[10,7,3], BUILD:[8,8,4],  PEAK:[6,8,4],  DELOAD:[5,5,3]},
+  strength:{BASE:[8,7,4],  BUILD:[5,8,4],  PEAK:[3,9,5],  DELOAD:[5,5,3]},
+  lean:    {BASE:[12,7,3], BUILD:[12,8,3], PEAK:[10,8,3], DELOAD:[10,5,2]},
+  moving:  {BASE:[12,6,3], BUILD:[12,7,3], PEAK:[10,7,3], DELOAD:[10,5,2]}
+};
+function _starterBlocks(){return [
+  {r:[1,3],name:'BASE',color:'#c8ff00',note:'Groove the movements. Leave two reps in the tank every set.'},
+  {r:[4,6],name:'BUILD',color:'#60a5fa',note:'Load climbs each week. Same bar speed, more weight.'},
+  {r:[7,7],name:'PEAK',color:'#f97316',note:'Heaviest week of the block. Rest long, move sharp.'},
+  {r:[8,8],name:'DELOAD',color:'#a78bfa',note:'Light on purpose. Absorb the work — next block starts fresh.'}
+];}
+function _starterWeekPlan(days,runs){
+  var plan;
+  if(days<=2) plan=['Push','Rest','Pull','Rest','Rest','Rest','Rest'];
+  else if(days===3) plan=['Push','Rest','Pull','Rest','Legs','Rest','Rest'];
+  else if(days===4) plan=['Push','Pull','Rest','Legs','Arms','Rest','Rest'];
+  else plan=['Push','Pull','Rest','Legs','Arms','Legs2','Rest'];
+  var prefs=days>=4?[2,6]:[5,1], placed=0;
+  prefs.forEach(function(i){ if(placed<runs&&plan[i]==='Rest'){plan[i]='Run';placed++;} });
+  for(var i=0;i<7&&placed<runs;i++){ if(plan[i]==='Rest'){plan[i]='Run';placed++;} }
+  return plan;
+}
+// a = {goal, days, runs, equip, exp}. Pure — spec 11 asserts on the output.
+function buildStarterRoutine(a){
+  var pool=STARTER_POOLS[a.equip]||STARTER_POOLS.full;
+  var plan=_starterWeekPlan(a.days||3, a.runs||0);
+  var scheme=STARTER_SCHEME[a.goal]||STARTER_SCHEME.muscle;
+  var used={};
+  plan.forEach(function(t){ var k=String(t).toLowerCase(); if(pool[k]) used[k]=true; });
+  var weeks=[];
+  _starterBlocks().forEach(function(b,bi){
+    for(var wk=b.r[0]; wk<=b.r[1]; wk++){
+      var sc=scheme[b.name];
+      var w={wk:wk, block:bi+1, bName:b.name, bColor:b.color, wkNote:b.note, runs:{}};
+      Object.keys(used).forEach(function(k){
+        w[k]=pool[k].map(function(name,i){
+          var isMain=i===0, weight=0;
+          if(isMain&&STARTER_W[name]){
+            var w0=STARTER_W[name][a.exp||0];
+            var step=_isBarbellLift(name)?5:2.5;
+            if(b.name==='BUILD') weight=w0+step*(wk-3);
+            else if(b.name==='PEAK') weight=w0+step*4;
+            else if(b.name==='DELOAD') weight=Math.round(((w0+step*3)*0.6)/step)*step;
+            else weight=w0;
+          }
+          return {name:name, isMain:isMain, sets:(isMain?sc[2]:(b.name==='DELOAD'?2:3)),
+            reps:sc[0], rpe:sc[1], weight:weight};
+        });
+      });
+      var rn=0;
+      plan.forEach(function(t,dow){
+        if(t!=='Run') return;
+        rn++;
+        var km=(rn===2&&b.name!=='DELOAD')?5:3;
+        w.runs[DOW_NAMES[dow]]={km:km, type:'easy', note:'Conversational pace. Walk breaks are fine.'};
+      });
+      weeks.push(w);
+    }
+  });
+  // 'Your' is on getUserFirstName's placeholder list, so this name never
+  // leaks into greetings or the avatar.
+  return {name:'Your starter block', weekPlan:plan, weeks:weeks};
+}
+var STARTER_QS=[
+  {k:'goal', q:'What are you chasing?', opts:[
+    {v:'muscle', t:'Build muscle', s:'Hypertrophy focus · 8-12 reps'},
+    {v:'strength', t:'Get stronger', s:'Heavier bar · 3-8 reps'},
+    {v:'lean', t:'Lean out', s:'Higher reps, extra conditioning'},
+    {v:'moving', t:'Just get moving', s:'Sustainable, forgiving pace'}]},
+  {k:'days', q:'Lifting days per week?', opts:[
+    {v:2, t:'2 days', s:'Push + Pull'},
+    {v:3, t:'3 days', s:'Push · Pull · Legs'},
+    {v:4, t:'4 days', s:'Push · Pull · Legs · Arms'},
+    {v:5, t:'5 days', s:'The full split'}]},
+  {k:'runs', q:'Running too?', opts:[
+    {v:0, t:'Not for me', s:'Lifting only'},
+    {v:1, t:'One run a week', s:'Easy 3 km'},
+    {v:2, t:'Two runs', s:'3 km + 5 km, easy pace'}]},
+  {k:'equip', q:'What gear do you have?', opts:[
+    {v:'full', t:'Full gym', s:'Barbells, machines, cables'},
+    {v:'db', t:'Dumbbells', s:'DBs and a bench'},
+    {v:'bw', t:'Bodyweight', s:'A pull-up bar helps'}]},
+  {k:'exp', q:'How long have you trained?', opts:[
+    {v:0, t:'New to lifting', s:'Conservative starting loads'},
+    {v:1, t:'A year or so', s:'Moderate starting loads'},
+    {v:2, t:'Several years', s:'Heavier starting loads'}]}
+];
+function openStarterIntake(){ _si={step:0, answers:{}}; _siPaint(); }
+function closeStarterIntake(){ var el=document.getElementById('starterOverlay'); if(el) el.remove(); _si=null; }
+function _siBack(){ if(!_si) return; if(_si.step===0){ closeStarterIntake(); return; } _si.step--; _siPaint(); }
+function _siPick(v){ if(!_si) return; _si.answers[STARTER_QS[_si.step].k]=v; _si.step++; _siPaint(); }
+function applyStarterIntake(){ if(_si) applyStarterRoutine(_si.answers); }
+function applyStarterRoutine(a){
+  var r=buildStarterRoutine(a);
+  if(getCustomRoutine()) archiveCurrentRoutine();
+  setCustomRoutine(r);
+  currentWeek=1; lsSet('kt_week',1);
+  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  invalidateCoachCard();
+  closeStarterIntake();
+  logSubTab='workout'; switchTab('log');
+  showToast('Starter block ready — week 1 starts now');
+  haptic('success');
+}
+function _siPaint(){
+  if(!_si) return;
+  var el=document.getElementById('starterOverlay');
+  if(!el){
+    el=document.createElement('div');
+    el.id='starterOverlay';
+    el.style.cssText='position:fixed;inset:0;z-index:3000;background:var(--bg);color:var(--text);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top) + 14px) 20px 40px;';
+    document.body.appendChild(el);
+  }
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:26px;">'+
+    '<button onclick="_siBack()" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:8px 8px 8px 0;-webkit-tap-highlight-color:transparent;">‹ Back</button>'+
+    '<button onclick="closeStarterIntake()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:8px;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
+  '</div>';
+  if(_si.step<STARTER_QS.length){
+    var q=STARTER_QS[_si.step];
+    html+='<div class="kt-mono" style="font-size:11px;color:var(--accent);letter-spacing:.12em;font-weight:600;margin-bottom:12px;">STARTER PLAN · '+(_si.step+1)+' / '+STARTER_QS.length+'</div>'+
+      '<h1 style="font-size:32px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin-bottom:24px;">'+q.q+'</h1>'+
+      q.opts.map(function(o){
+        var arg=JSON.stringify(o.v).replace(/"/g,'&quot;');
+        return '<button onclick="_siPick('+arg+')" style="display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card-sm);margin-bottom:10px;cursor:pointer;font-family:inherit;color:var(--text);-webkit-tap-highlight-color:transparent;">'+
+          '<div><div style="font-size:16px;font-weight:700;letter-spacing:-.2px;">'+o.t+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+o.s+'</div></div>'+
+          '<span style="color:var(--muted);font-size:16px;flex-shrink:0;margin-left:10px;">›</span>'+
+        '</button>';
+      }).join('');
+  } else {
+    var a=_si.answers;
+    var runsBit=a.runs?(' · '+a.runs+' run'+(a.runs>1?'s':'')):'';
+    var equipBit=a.equip==='full'?'full gym':a.equip==='db'?'dumbbells':'bodyweight';
+    html+='<div class="kt-mono" style="font-size:11px;color:var(--accent);letter-spacing:.12em;font-weight:600;margin-bottom:12px;">STARTER PLAN · READY</div>'+
+      '<h1 style="font-size:38px;font-weight:800;letter-spacing:-1.5px;line-height:1.0;margin-bottom:18px;">8 weeks,<span style="display:block;color:var(--accent);">built.</span></h1>'+
+      '<div style="font-size:14px;color:var(--lite);line-height:1.6;margin-bottom:26px;max-width:330px;">'+
+        a.days+' lifting day'+(a.days>1?'s':'')+' a week'+runsBit+' · '+equipBit+'. '+
+        'Base, build, peak, deload — loads climb from week 4. Everything is editable, '+
+        'and the AI Coach can rebuild it into a custom programme whenever you connect a key.</div>'+
+      '<button class="kt-cta" onclick="applyStarterIntake()">'+
+        '<div style="text-align:left;"><div class="kt-cta-label">GO</div>'+
+        '<div class="kt-cta-title">Start week 1</div></div>'+
+        '<div class="kt-cta-arrow">→</div></button>';
+  }
+  el.innerHTML=html;
+  el.scrollTop=0;
+}
+
 // ── LOG ───────────────────────────────────────────────────────────────────────
 // ── Customizable Log sub-tabs ────────────────────────────────────────────────
 // kt_log_tabs holds the user's pinned middle tabs ('run', 'body', or a sport
@@ -5528,9 +5716,16 @@ function renderLog() {
     var _av = (String(_firstName)[0] || '?').toUpperCase();
     var _weekdayE = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
     var _hasKey = !!getApiKey();
-    var _ctaAction = _hasKey
-      ? "switchTab('coach');startRoutineIntake();"
-      : "switchTab('coach');";
+    // With a key, the AI's custom intake stays the headline; without one the
+    // built-in starter plan is — nobody dead-ends on a key they don't have.
+    var _ctaAction = _hasKey ? "switchTab('coach');startRoutineIntake();" : "openStarterIntake();";
+    var _ctaTitle  = _hasKey ? 'Meet your coach' : 'Build my starter plan';
+    var _heroBody  = _hasKey
+      ? 'Ten questions, two minutes. The Coach writes a 12-week plan around your gear, your schedule, your sports — then this tab runs it.'
+      : 'Five taps, no account, no key. A starter block built on your phone — or connect the AI Coach for a fully custom programme.';
+    var _altLine = _hasKey
+      ? 'In a hurry? <button onclick="openStarterIntake()" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Quick starter plan →</button>'
+      : 'Want it custom? <button onclick="switchTab(\'coach\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Set up the AI Coach →</button>';
     var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : getGreeting()+'.';
     return subBar +
       '<div class="kt-meta-row">'+
@@ -5540,16 +5735,17 @@ function renderLog() {
       '<div class="kt-hero">'+
         '<div class="kt-hero-greet">'+_greet+'</div>'+
         '<h1 class="kt-hero-headline">Let\'s build<span class="kt-line2 accent">your programme.</span></h1>'+
-        '<div style="font-size:13px;color:var(--lite);line-height:1.6;max-width:320px;margin-top:18px;">Ten questions, two minutes. The Coach writes a 12-week plan around your gear, your schedule, your sports — then this tab runs it.</div>'+
+        '<div style="font-size:13px;color:var(--lite);line-height:1.6;max-width:320px;margin-top:18px;">'+_heroBody+'</div>'+
       '</div>'+
       '<button class="kt-cta" onclick="'+_ctaAction+'">'+
         '<div style="text-align:left;">'+
           '<div class="kt-cta-label">START</div>'+
-          '<div class="kt-cta-title">'+(_hasKey?'Meet your coach':'Set up coach')+'</div>'+
+          '<div class="kt-cta-title">'+_ctaTitle+'</div>'+
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:-10px;">Already trained with Supero? '+
+      '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:-10px;">'+_altLine+'</div>'+
+      '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:10px;">Already trained with Supero? '+
         '<button onclick="switchTab(\'settings\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Restore a backup →</button>'+
       '</div>';
   }
@@ -9467,7 +9663,12 @@ function renderCoach(){
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>';
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>'+
+      (!hasCustomRoutine()
+        ? '<div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">'+
+            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
+          '</div>'
+        : '');
   }
 
   // ── Home menu ─────────────────────────────────────────────────────────────
@@ -11495,7 +11696,7 @@ function runAutoBackupNow(){
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">02</span><h2>Your programme</h2></div>
-      <p class="ed-lede">No built-in plan. The Coach builds yours during a short intake — then it appears in Log automatically.</p>
+      <p class="ed-lede">Two ways in: five taps build a starter block right on your phone — no account, no key — or the AI Coach writes a fully custom programme during a short intake. Either way it appears in Log automatically.</p>
       <div class="ed-steps">
         <div class="ed-step">
           <div class="ed-step-rail"><div class="ed-step-num">1</div><div class="ed-step-line"></div></div>

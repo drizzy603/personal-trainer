@@ -32,8 +32,8 @@ A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS sh
 - Four tabs: Log, Progress, Coach, Settings.
 - All data stored in browser/WKWebView `localStorage` — no server, no accounts.
 - AI Coach uses the Anthropic API (user supplies their own key in Settings). Responses are **non-streaming** — WKWebView SSE was unreliable in the iOS PWA shell (see commit `8eea4c5`).
-- Coach supports: persistent chat history, intake flow to build a custom programme, native tool calls for routine edits, image input. Programme is AI-generated per user via a 10-question intake — until generated, the Log tab shows an empty-state CTA pointing to the Coach.
-- Log tab reads exercises from `kt_routine` via `getSessionExercises()` / `getWkData()`. There is no built-in fallback programme.
+- Coach supports: persistent chat history, intake flow to build a custom programme, native tool calls for routine edits, image input. Programmes come from two paths: a built-in 5-tap starter intake (openStarterIntake / buildStarterRoutine — deterministic, on-device, no API key) and the Coach's AI intake for custom plans. Until one exists, the Log tab shows an empty-state CTA offering both.
+- Log tab reads exercises from `kt_routine` via `getSessionExercises()` / `getWkData()`. There is no silent fallback programme — but the keyless starter intake can create `kt_routine` without the AI.
 - User name is dynamic (pulled from their AI-generated routine) — no hardcoded names anywhere.
 - **iOS native shell only:** Settings → Data → Import from Apple Health pulls running workouts from HealthKit into `kt_runs`, with dedup against `kt_hk_imported`. Read-only — Supero never writes to HealthKit.
 
