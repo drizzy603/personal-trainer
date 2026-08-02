@@ -8,6 +8,9 @@ run('slot system packs the Today stack', async () => {
     const out = await app.page.evaluate(() => {
       lsSet('kt_readiness', { date: todayISO(), score: 64, zone: 'steady', parts: { sleep: 6.1, hrvDelta: -8, rhrDelta: 0 } });
       lsSet('kt_debrief', { id: 7, date: todayISO(), text: 'Solid session.' });
+      // Pin the date-dependent monthly-wrap candidate — it legitimately fires
+      // during the first week of any month and would add a third chip.
+      lsSet('kt_last_wrap', _wrapMonthKey());
       lapsePending = { days: 5, to: 7, from: 6 };
       switchLogSub('workout'); render();
       const q = (sel) => document.querySelectorAll(sel).length;
