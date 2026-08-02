@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260730-2"/>
+<meta name="build" content="20260802-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4650,8 +4650,10 @@ function runnerCompleteSet(){
         haptic('success');
         var _rc=document.getElementById('runner-root');
         if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
+        paintRunner();
+        return;
       }
-      paintRunner();
+      _paintRestClock();
     }, 1000);
   } else {
     // Exercise complete — leave engaged off so the Done body shows.
@@ -4718,7 +4720,18 @@ function runnerAddRest(delta){
   // accidentally fly past the timer or get into negative territory.
   if(!runnerResting) return;
   runnerRestLeft = Math.max(5, Math.min(600, runnerRestLeft + delta));
-  paintRunner();
+  _paintRestClock();
+}
+// Tick the countdown in place. A full paintRunner() every second rebuilt the
+// overlay DOM, throwing away the focus and typed value of any past-set edit
+// in progress — the clock digits are the only thing that changes per tick,
+// so only they get touched. Falls back to a full paint if the clock isn't
+// mounted (tab switched away mid-rest).
+function _paintRestClock(){
+  var el = document.querySelector('#runner-root .kt-rest-time');
+  if(!el){ paintRunner(); return; }
+  var m = Math.floor(runnerRestLeft/60), s = runnerRestLeft%60;
+  el.textContent = m+':'+String(s).padStart(2,'0');
 }
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){

@@ -1,4 +1,4 @@
-var CACHE = 'kt-v29';
+var CACHE = 'kt-v30';
 // './index.html' must be precached alongside './' — the manifest's start_url
 // is ./index.html and the offline fallback matches by exact URL, so a fresh
 // install can't launch offline without it.
