@@ -38,8 +38,8 @@ struct WatchPlan: Codable {
     let exercises: [WatchExercise]
 }
 
-// In-progress phone runner state — offered as "Continue from iPhone".
-struct LiveSession: Codable {
+// In-progress phone runner state — merged live into the wrist runner.
+struct LiveSession: Codable, Equatable {
     let dayName: String
     let startedAt: Double       // ms since epoch
     let reps: [String: [Int]]
@@ -325,13 +325,37 @@ final class Runner: ObservableObject {
         timer?.invalidate()
     }
 
-    // Mid-session handoff: pick up exactly where the phone runner left off.
-    func adopt(_ live: LiveSession) {
-        repsDone = live.reps
-        weights = live.weights
-        startedAt = live.startedAt
-        WKInterfaceDevice.current().play(.success)
-        pushLive()
+    // Live mirror: merge phone runner state into the wrist session. Monotone
+    // — the longer per-exercise rep log wins — so repeated exchanges between
+    // the two runners converge instead of ping-ponging. Runs on every live
+    // payload the phone pushes, mid-session or not.
+    func merge(_ live: LiveSession) {
+        var changed = false
+        var localAhead = false
+        for (name, arr) in live.reps {
+            let localDone = repsDone[name]?.count ?? 0
+            if arr.count > localDone {
+                repsDone[name] = arr
+                if let w = live.weights[name], w > 0 { weights[name] = w }
+                changed = true
+            } else if localDone > arr.count {
+                localAhead = true
+            }
+        }
+        if repsDone.contains(where: { !$0.value.isEmpty && live.reps[$0.key] == nil }) {
+            localAhead = true
+        }
+        // Adopt phone weights for lifts we haven't started.
+        for (name, w) in live.weights where w > 0 && (repsDone[name]?.count ?? 0) == 0 && weights[name] == nil {
+            weights[name] = w
+        }
+        if changed {
+            if startedAt == 0 { startedAt = live.startedAt }
+            WKInterfaceDevice.current().play(.click)
+        }
+        // The phone is missing sets we have — send ours back once; its own
+        // merge adopts them and the next exchange finds nothing to do.
+        if localAhead { pushLive() }
     }
 }
 
@@ -372,6 +396,19 @@ struct RootView: View {
             conn.requestRefresh()
             runner.pushLive()
         }
+        // Real-time mirror: every live payload from the phone merges straight
+        // into the wrist runner — sets logged there tick here as they happen.
+        .onChange(of: conn.live) { newLive in
+            guard let live = newLive, let plan = conn.plan,
+                  live.dayName == plan.dayName, live.isFresh else { return }
+            runner.merge(live)
+        }
+        .onAppear {
+            if let live = conn.live, let plan = conn.plan,
+               live.dayName == plan.dayName, live.isFresh {
+                runner.merge(live)
+            }
+        }
     }
 }
 
@@ -384,29 +421,8 @@ struct PlanView: View {
         plan.exercises.contains { runner.done($0) > 0 }
     }
 
-    private var handoff: LiveSession? {
-        guard let live = Connectivity.shared.live,
-              live.dayName == plan.dayName, live.isFresh, live.setsDone > 0,
-              !anyLogged else { return nil }
-        return live
-    }
-
     var body: some View {
         List {
-            if let live = handoff {
-                Button {
-                    runner.adopt(live)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Continue from iPhone")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("\(live.setsDone) set\(live.setsDone == 1 ? "" : "s") already in")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .listRowBackground(RoundedRectangle(cornerRadius: 10).fill(lime.opacity(0.18)))
-            }
             Section {
                 ForEach(plan.exercises) { ex in
                     NavigationLink(value: ex) {

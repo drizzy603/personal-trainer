@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260730-1"/>
+<meta name="build" content="20260730-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -11245,8 +11245,51 @@ function _onWatchLive(json){
   _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
   if(s.ended || !fresh){
     _watchLive=null;
-    // The finished session follows on the guaranteed channel moments later.
-    if(s.ended){ setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000); }
+    if(s.ended){
+      // The wrist finished this session — the authoritative record arrives on
+      // the guaranteed queue. If our runner is open on the same day, close it
+      // so a second finish can't double-log the workout.
+      if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName) closeDeckRunner();
+      setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000);
+    }
+  } else if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName){
+    // Live mirror: merge wrist sets straight into the open runner. Monotone —
+    // the longer per-exercise rep log wins — so repeated exchanges between
+    // the two runners converge instead of ping-ponging.
+    _watchLive=null;
+    var changed=false, localAhead=false;
+    var known={}; (runnerSession.exercises||[]).forEach(function(ex){ known[ex.name]=true; });
+    Object.keys(s.reps||{}).forEach(function(name){
+      if(!known[name]) return;
+      var inc=(s.reps[name]||[]).map(function(r){ return parseInt(r)||0; });
+      var loc=runnerRepsLog[name]||[];
+      if(inc.length>loc.length){
+        runnerRepsLog[name]=inc;
+        runnerCompleted[name]=inc.length;
+        var wv=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
+        if(wv>0){
+          runnerWeights[name]=wv;
+          // Pad only the tail — phone-logged sets keep their own weights.
+          var wl=runnerWeightsLog[name]||[];
+          while(wl.length<inc.length) wl.push(wv);
+          runnerWeightsLog[name]=wl;
+        }
+        changed=true;
+      } else if(loc.length>inc.length){
+        localAhead=true;
+      }
+    });
+    Object.keys(runnerRepsLog).forEach(function(name){
+      if((runnerRepsLog[name]||[]).length && !(s.reps&&s.reps[name])) localAhead=true;
+    });
+    if(changed){
+      haptic('light');
+      _saveRunnerDraft();
+      paintRunner();
+    }
+    // The wrist is missing sets we have — the debounced push carries them
+    // back; its own merge adopts and the next exchange finds nothing to do.
+    if(localAhead) _scheduleNativeSync();
   } else {
     _watchLive={ dayName:String(s.dayName), sets:n, at:Date.now() };
   }
