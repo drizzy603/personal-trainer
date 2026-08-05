@@ -28,10 +28,11 @@ struct WatchExercise: Codable, Identifiable, Hashable {
     let sets: Int
     let reps: Int
     let weight: Double
+    let rest: Int?              // seconds — phone resolves per-exercise/default
     var id: String { name }
 }
 
-struct WatchPlan: Codable {
+struct WatchPlan: Codable, Equatable {
     let week: Int
     let dayName: String
     let type: String            // "lift" | "run" | "sport" | "rest"
@@ -265,7 +266,7 @@ final class Runner: ObservableObject {
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
         pushLive()
-        if arr.count < ex.sets { startRest() }
+        if arr.count < ex.sets { startRest(seconds: ex.rest ?? 90) }
     }
 
     // Mirror this session to the phone in real time — Today shows a live
@@ -286,9 +287,9 @@ final class Runner: ObservableObject {
         Connectivity.shared.sendLive(json)
     }
 
-    func startRest() {
+    func startRest(seconds: Int = 90) {
         resting = true
-        restLeft = 90
+        restLeft = max(5, min(600, seconds))
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return }
@@ -323,6 +324,17 @@ final class Runner: ObservableObject {
         repsDone = [:]; weights = [:]; synced = false; resting = false
         startedAt = 0
         timer?.invalidate()
+    }
+
+    // A new plan may have renamed or swapped exercises mid-session — rows
+    // keyed by names that no longer exist can never render or sync again,
+    // and each one re-flagged localAhead on every merge. Drop them.
+    func prune(to plan: WatchPlan) {
+        let names = Set(plan.exercises.map { $0.name })
+        let before = repsDone.count
+        repsDone = repsDone.filter { names.contains($0.key) }
+        weights = weights.filter { names.contains($0.key) }
+        if repsDone.count != before { pushLive() }
     }
 
     // Live mirror: merge phone runner state into the wrist session. Monotone
@@ -395,6 +407,10 @@ struct RootView: View {
             // in-progress wrist session to the phone.
             conn.requestRefresh()
             runner.pushLive()
+        }
+        // Fresh plan → drop wrist rows for exercises that no longer exist.
+        .onChange(of: conn.plan) { newPlan in
+            if let plan = newPlan { runner.prune(to: plan) }
         }
         // Real-time mirror: every live payload from the phone merges straight
         // into the wrist runner — sets logged there tick here as they happen.

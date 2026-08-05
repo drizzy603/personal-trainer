@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260802-5"/>
+<meta name="build" content="20260803-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1469,6 +1469,12 @@ var EXERCISE_DB = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Local Y-M-D for a Date. toISOString() converts to UTC first, which turns
+// local Monday 00:00 into Sunday for every UTC+ timezone — week boundaries
+// (auto-advance, weekly buckets) must never be serialized through UTC.
+function _ymdLocal(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function todayISO() {
   var d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1605,7 +1611,7 @@ function startNewProgramme(){
     intakeMode=false;
     clearCoachHistory();
     switchTab('coach'); render();
-    showToast('Programme archived. Ask the Coach to build your new one');
+    showToast(getApiKey() ? 'Programme archived. Ask the Coach to build your new one' : 'Programme archived. Build a starter plan or connect the Coach');
   }});
 }
 function getWkData(){
@@ -2509,7 +2515,7 @@ function _mostRecentMonday(){
   var d=new Date(todayISO()+'T00:00:00');
   var dow=(d.getDay()+6)%7;
   d.setDate(d.getDate()-dow);
-  return d.toISOString().slice(0,10);
+  return _ymdLocal(d);
 }
 function autoAdvanceWeek(){
   var total=getTotalWeeks();
@@ -2789,11 +2795,11 @@ function getMondayISO() {
   var t = new Date(); t.setHours(0,0,0,0);
   var dow = (t.getDay()+6)%7;
   t.setDate(t.getDate()-dow);
-  return t.toISOString().slice(0,10);
+  return _ymdLocal(t);
 }
 function addDays(iso, n) {
   var d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n);
-  return d.toISOString().slice(0,10);
+  return _ymdLocal(d);
 }
 
 // Returns the next due session type, carrying over skipped days.
@@ -2943,6 +2949,7 @@ function _todayLiftExercises(sessionType){
       sets: ex.sets || 3,
       reps: ex.reps || '8-10',
       rpe: ex.rpe || 7,
+      rest: (typeof ex.rest === 'number' ? ex.rest : undefined),
       weight: presc || 0,
       lastWeight: lastW,
       lastReps: lastR
@@ -4711,6 +4718,9 @@ function runnerSkipRest(){
   runnerRestLeft = 90;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
+  // The rest-done alert is still pending for the original moment — without
+  // this it fires mid-set after the user already skipped.
+  cancelRestNotification();
   paintRunner();
 }
 function getRestDefault(){ return parseInt(localStorage.getItem('kt_rest_default'))||90; }
@@ -4724,6 +4734,16 @@ function runnerAddRest(delta){
   // accidentally fly past the timer or get into negative territory.
   if(!runnerResting) return;
   runnerRestLeft = Math.max(5, Math.min(600, runnerRestLeft + delta));
+  // The lock screen must follow the adjustment: restart the Live Activity
+  // countdown and re-schedule the rest-done alert (same id — iOS replaces
+  // the pending one, so no cancel/schedule race). Without this both kept
+  // the original clock and the alert fired early or late.
+  var ex = _runnerEx();
+  if(ex){
+    var nextSet = (runnerCompleted[ex.name]||0) + 1;
+    _trovoTimerStart(ex, nextSet);
+    scheduleRestNotification(ex, nextSet, runnerRestLeft);
+  }
   _paintRestClock();
 }
 // Tick the countdown in place. A full paintRunner() every second rebuilt the
@@ -6032,7 +6052,7 @@ function renderRunsSection(opts) {
   if (scheduled.length) {
     runCards = scheduled.map(function(s){ return runCard(s.run, FULL_DAY[s.dow]); }).join('');
   } else if (hasCustomRoutine()) {
-    runCards = '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No runs scheduled this week.<br><span style="color:var(--lite);font-size:12px;">Ask the Coach to add running days.</span></div>';
+    runCards = '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No runs scheduled this week.<br><span style="color:var(--lite);font-size:12px;">'+(getApiKey()?'Ask the Coach to add running days.':'Add running days via Edit split on the Workout tab.')+'</span></div>';
   } else {
     runCards = '';
   }
@@ -6802,7 +6822,7 @@ function renderSportSection(forcedSportId){
         '</div>';
       }).join('');
     } else {
-      rows='<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No '+sport.id+' scheduled this week.<br><span style="color:var(--lite);font-size:12px;">Ask the Coach to add it to your routine.</span></div>';
+      rows='<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5;">No '+sport.id+' scheduled this week.<br><span style="color:var(--lite);font-size:12px;">'+(getApiKey()?'Ask the Coach to add it to your routine.':'Add it via Edit split on the Workout tab.')+'</span></div>';
     }
     scheduleCard='<div class="card"><h2>Week '+currentWeek+' '+sport.id+' Schedule</h2>'+rows+'</div>';
   }
@@ -7516,7 +7536,9 @@ function renderProgress() {
         '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">No data yet</div>'+
         '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px;line-height:1.15;margin-bottom:12px;">Nothing to show —<br><span style="color:var(--accent);">yet.</span></div>'+
         '<div style="font-size:13px;color:var(--muted);line-height:1.6;max-width:280px;margin:0 auto 24px;">Log your first session or run and this tab starts charting weights, pace and PRs.</div>'+
-        '<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Go to Coach →</button>'+
+        (getApiKey()||getCustomRoutine()
+          ?'<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Go to Coach →</button>'
+          :'<button onclick="switchTab(\'log\');openStarterIntake();" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Build a plan →</button>')+
       '</div>';
   }
 
@@ -7800,7 +7822,7 @@ function renderProgress() {
     var rd=new Date(r.date+'T00:00:00');
     var dow=(rd.getDay()+6)%7; // 0=Mon
     var mon=new Date(rd); mon.setDate(rd.getDate()-dow);
-    var wkey=mon.toISOString().slice(0,10);
+    var wkey=_ymdLocal(mon);
     _weekBuckets[wkey]=(_weekBuckets[wkey]||0)+dist;
   });
   var weeklyDistData=Object.keys(_weekBuckets).sort().slice(-10).map(function(wk){
@@ -8981,6 +9003,22 @@ function executeCoachTool(name,input){
       if(!key) key=String(input.name);
       weights[key]=newW;
       lsSet('kt_weights',weights);
+      // The cache alone never reaches Today when the programme prescribes an
+      // explicit weight (the prescription wins in _todayLiftExercises) — so
+      // also update the current week's prescription. Future weeks keep their
+      // programmed progression; update_routine_weeks is the tool for those.
+      var crW=getCustomRoutine();
+      if(crW&&crW.weeks&&crW.weeks[currentWeek-1]){
+        var wNow=crW.weeks[currentWeek-1], touched=false;
+        ['push','pull','legs','legs2','arms'].forEach(function(k){
+          (wNow[k]||[]).forEach(function(e){
+            if(String(e.name).toLowerCase()===String(input.name).toLowerCase()&&parseFloat(e.weight)>0){
+              e.weight=newW; touched=true;
+            }
+          });
+        });
+        if(touched) setCustomRoutine(crW);
+      }
       return {ok:true,message:key+' = '+newW+' lb'};
     }
     if(name==='set_bench_goal'){
@@ -11445,7 +11483,7 @@ function _pushWatchPlan(){
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
       var w=(liveRun && runnerWeights[ex.name]!=null)?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
       return { name:String(ex.name), sets:parseInt(ex.sets)||3,
-        reps:reps, weight:w };
+        reps:reps, weight:w, rest:_defaultRestFor(ex) };
     });
     var plan={ week:currentWeek,
       dayName:String(liveRun?(runnerSession.dayName||'Session'):(act.dayName||act.type||'Rest')),
