@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260802-3"/>
+<meta name="build" content="20260802-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3296,7 +3296,11 @@ function renderTodayEditorial(){
       var curW = parseFloat(main.weight) || 0;
       var loadHTML = curW > 0 ? '<b>'+main.weight+' lb</b>' : '<b>bodyweight</b>';
       var upBit = (curW > lastW && lastW > 0) ? ' is up at '+loadHTML : ' at '+loadHTML;
-      var rpeBit = main.rpe ? ' — last week was clean at RPE '+main.rpe+'.' : '.';
+      // "Last week" only exists once this lift has actually been logged —
+      // brand-new users (starter block, fresh AI programme) get the target.
+      var rpeBit = main.rpe
+        ? (last ? ' — last week was clean at RPE '+main.rpe+'.' : ' — target RPE '+main.rpe+'.')
+        : '.';
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
         main.name+upBit+rpeBit;
