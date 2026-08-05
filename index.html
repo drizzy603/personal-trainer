@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260802-4"/>
+<meta name="build" content="20260802-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -11433,14 +11433,23 @@ function _pushWatchPlan(){
   if(!TWch || !TWch.updateContext) return;
   try{
     var act=getTodayActivity();
-    var exs=(act.type==='lift'&&act.exercises?act.exercises:[]).map(function(ex){
+    // While a session is being run, the wrist must mirror THAT session —
+    // exercises edited or swapped mid-workout live only on runnerSession
+    // (never the routine), and ad-hoc sessions run on off days. Without
+    // this, the watch keeps showing the routine's original list.
+    var liveRun = runnerOpen && runnerSession && (runnerSession.exercises||[]).length;
+    var srcExs = liveRun ? runnerSession.exercises
+      : (act.type==='lift'&&act.exercises?act.exercises:[]);
+    var exs=srcExs.map(function(ex){
       var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
+      var w=(liveRun && runnerWeights[ex.name]!=null)?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
       return { name:String(ex.name), sets:parseInt(ex.sets)||3,
-        reps:reps, weight:parseFloat(ex.weight)||0 };
+        reps:reps, weight:w };
     });
-    var plan={ week:currentWeek, dayName:String(act.dayName||act.type||'Rest'),
-      type:String(act.type||'rest'), exercises:exs };
+    var plan={ week:currentWeek,
+      dayName:String(liveRun?(runnerSession.dayName||'Session'):(act.dayName||act.type||'Rest')),
+      type:liveRun?'lift':String(act.type||'rest'), exercises:exs };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
     var liveJson=live?JSON.stringify(live):'';

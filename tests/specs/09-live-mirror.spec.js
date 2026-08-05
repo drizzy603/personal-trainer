@@ -50,6 +50,39 @@ run('wrist live state merges into the open phone runner', async () => {
   } finally { await app.close(); }
 });
 
+run('mid-workout exercise edits reach the watch plan payload', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      openDeckRunner('Push');
+      const oldName = runnerSession.exercises[runnerSession.exercises.length - 1].name;
+      // Rename the last exercise mid-session, exactly like the edit sheet does.
+      openRunnerExEdit(runnerSession.exercises.length - 1);
+      _rExEditName = 'Landmine Press';
+      _rExEditSets = 3; _rExEditReps = 10; _rExEditWeight = 55;
+      saveRunnerExEdit();
+      window.__mock.updateContext.length = 0;
+      await new Promise(r => setTimeout(r, 1100)); // debounced push
+      const pushes = window.__mock.updateContext;
+      const last = pushes.length ? JSON.parse(pushes[pushes.length - 1].json) : null;
+      return {
+        oldName,
+        pushed: !!last,
+        names: last ? last.exercises.map(e => e.name) : [],
+        dayName: last ? last.dayName : '',
+        type: last ? last.type : '',
+        weight: last ? last.exercises[last.exercises.length - 1].weight : -1,
+      };
+    });
+    assert(out.pushed, 'edit triggers a plan push');
+    assert(out.names.includes('Landmine Press'), 'new exercise reaches the watch: ' + out.names);
+    assert(!out.names.includes(out.oldName), 'old exercise is gone from the payload');
+    assert(out.dayName === 'Push' && out.type === 'lift', 'payload describes the running session');
+    assert(out.weight === 55, 'edited weight rides along, got ' + out.weight);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
 run('wrist banner still shows when the phone runner is closed', async () => {
   const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
   try {
