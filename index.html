@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260804-1"/>
+<meta name="build" content="20260805-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -638,7 +638,7 @@ select option{background:var(--bg);}
 .kt-marquee-delta.down{color:var(--lite);}
 .kt-marquee-row.kt-tap{cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-marquee-row.kt-tap:active{background:rgba(255,255,255,.03);}
-.kt-marquee-spark{display:flex;align-items:center;gap:12px;padding:2px 0 14px 34px;border-bottom:1px solid rgba(255,255,255,.07);}
+.kt-marquee-spark{display:flex;align-items:center;gap:12px;padding:2px 0 14px;border-bottom:1px solid rgba(255,255,255,.07);}
 .kt-marquee-spark span{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);}
 .kt-run-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.07);}
 .kt-run-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
@@ -785,9 +785,30 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-marquee-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;margin-bottom:14px;font-weight:600;}
 .kt-marquee-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
 .kt-marquee-row:first-child{border-top:1px solid rgba(255,255,255,.07);}
-.kt-marquee-left{display:flex;align-items:baseline;gap:14px;flex:1;min-width:0;}
+.kt-marquee-left{display:flex;align-items:center;gap:8px;flex:1;min-width:0;}
 .kt-marquee-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:600;flex-shrink:0;color:var(--muted);}
 .kt-marquee-idx.main{color:var(--accent-ink);}
+/* ── Premium Performance grammar — ledger headers, MAIN tag, hairline stat
+   bands, and the shared bar-chart look (Progress volume, run splits). Lists
+   are hairline rows; cards are reserved for live/tappable surfaces. ─────── */
+.kt-ledger-hd{display:flex;justify-content:space-between;align-items:center;}
+.kt-ledger-hd span{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);}
+.kt-ledger-hd .l{letter-spacing:.12em;}
+.kt-ledger-hd .r{letter-spacing:.08em;}
+.kt-main-tag{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink);border:1px solid var(--accent-soft);border-radius:999px;padding:3px 7px;flex-shrink:0;}
+.kt-statband{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px 0;margin-bottom:16px;}
+.kt-statband>div:nth-child(2){text-align:center;}
+.kt-statband>div:nth-child(3){text-align:right;}
+.kt-statband-val{font-size:22px;font-weight:800;letter-spacing:-.7px;color:var(--text);line-height:1.1;}
+.kt-statband-val .u{font-size:13px;color:var(--muted);font-weight:600;margin-left:2px;letter-spacing:0;}
+.kt-statband-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-top:3px;text-transform:uppercase;}
+.kt-bars{display:flex;align-items:flex-end;gap:7px;height:86px;}
+.kt-bars .bar{flex:1;background:color-mix(in srgb,var(--text) 13%,transparent);border-radius:5px 5px 2px 2px;position:relative;min-height:3px;}
+.kt-bars .bar.cur{background:var(--accent);}
+.kt-bars .bar .pr-dot{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--yellow);}
+.kt-bars .bar .val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;color:var(--accent-ink);white-space:nowrap;}
+.kt-streak-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border);flex-shrink:0;}
+.kt-streak-chip .lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--lite);white-space:nowrap;}
 .kt-marquee-name{font-size:16px;font-weight:600;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
 .kt-marquee-right{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:10px;}
 .kt-marquee-delta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-ink);font-weight:600;}
@@ -2363,6 +2384,14 @@ function _readinessChip(){
     '<span style="font-size:10px;font-weight:700;color:'+col+';text-transform:uppercase;letter-spacing:.04em;">'+_esc(r.zone)+'</span>'+
   '</button>';
 }
+// Quiet streak chip beside readiness (screen A1). Informational only — not a
+// slot-system candidate, so it carries its own class and never counts as a
+// promotable chip.
+function _streakChip(){
+  var s = calcStreak(getSessions());
+  if(!(s >= 1)) return '';
+  return '<span class="kt-streak-chip"><span class="lbl">'+s+'-WEEK STREAK</span></span>';
+}
 
 // ── Health write (lifting sessions → Apple Health) ───────────────────────────
 // Opt-in via Settings (kt_health_write). Only live, same-day sessions are
@@ -3467,22 +3496,15 @@ function renderTodayEditorial(){
   // Coach card
   var coachHTML = renderCoachCard(act);
 
-  // Session marquee — only on lift days. Tapping a row peeks the exercise's
-  // logged-weight trend (last 8 sessions) without leaving the screen.
+  // Session plan ledger — only on lift days. Hairline rows: name (+ MAIN tag)
+  // left, plan targets in mono right. Tapping a row still peeks the
+  // exercise's logged-weight trend (last 8 sessions) without leaving the
+  // screen. Deltas moved out of the list (lime stays scarce); the sparkline
+  // carries the trend story on demand.
   var marquee = '';
   if(act.type === 'lift' && act.exercises && act.exercises.length){
     var rows = '';
     act.exercises.forEach(function(ex, i){
-      var last = getLastSessionData(ex.name);
-      var delta = 0;
-      if(last && parseFloat(last.weight) > 0 && parseFloat(ex.weight) > 0){
-        delta = parseFloat(ex.weight) - parseFloat(last.weight);
-      }
-      // Show ↓ deltas during deload (addendum 0e: don't hide the drop —
-      // it's expected and informative).
-      var deltaHTML = '';
-      if(delta > 0) deltaHTML = '<span class="kt-marquee-delta">↑'+delta+'</span>';
-      else if(delta < 0) deltaHTML = '<span class="kt-marquee-delta down">↓'+Math.abs(delta)+'</span>';
       var open = todaySparkEx === ex.name;
       var spark = '';
       if(open){
@@ -3499,22 +3521,37 @@ function renderTodayEditorial(){
           spark = '<div class="kt-marquee-spark"><span>No logged history yet.</span></div>';
         }
       }
+      var exW = parseFloat(ex.weight) || 0;
+      var wLbl = exW > 0 ? ex.weight+' lb' : 'BW';
       rows += '<div class="kt-marquee-row kt-tap" onclick="toggleTodaySparkIdx('+i+')"'+(open?' style="border-bottom:none;"':'')+'>'+
         '<div class="kt-marquee-left">'+
-          '<span class="kt-marquee-idx'+(ex.isMain?' main':'')+'">'+
-            String(i+1).padStart(2,'0')+
-          '</span>'+
           '<span class="kt-marquee-name">'+_esc(ex.name)+'</span>'+
+          (ex.isMain?'<span class="kt-main-tag">MAIN</span>':'')+
         '</div>'+
         '<div class="kt-marquee-right">'+
-          deltaHTML+
-          '<span class="kt-marquee-reps">'+ex.sets+'×'+ex.reps+'</span>'+
+          '<span class="kt-marquee-reps">'+ex.sets+'×'+ex.reps+' · '+wLbl+'</span>'+
         '</div>'+
         '</div>'+spark;
     });
+    // Tomorrow preview — quiet footer row so the ledger answers "and then?"
+    var tomPlan = getWeekPlan()[(((new Date().getDay()+6)%7)+1)%7];
+    var tomLbl = '';
+    if(tomPlan){
+      tomLbl = tomPlan.isRest ? 'Rest'
+        : tomPlan.isRun ? 'Run'
+        : ((SESS[tomPlan.type]&&SESS[tomPlan.type].label)||tomPlan.type||'');
+    }
+    var tomorrowRow = tomLbl
+      ? '<div style="display:flex;justify-content:flex-end;padding:12px 0 0;">'+
+          '<span class="kt-marquee-reps" style="color:var(--muted);font-size:10px;">TOMORROW · '+_esc(String(tomLbl).toUpperCase())+'</span>'+
+        '</div>'
+      : '';
     marquee = '<div class="kt-marquee">'+
-      '<div class="kt-marquee-hd">THE SESSION</div>'+
-      rows+'</div>';
+      '<div class="kt-ledger-hd" style="margin-bottom:12px;">'+
+        '<span class="l">TODAY\u2019S LIFTS · '+act.exercises.length+'</span>'+
+        '<span class="r">PLAN</span>'+
+      '</div>'+
+      rows+tomorrowRow+'</div>';
   }
 
   // B7: Resume banner — if a runner draft was restored on cold launch, the
@@ -3650,13 +3687,16 @@ function renderTodayEditorial(){
   var activeSlot=null;
   for(var ci=0;ci<cands.length;ci++){ if(cands[ci].id===todayBannerOverride){ activeSlot=cands[ci]; break; } }
   if(!activeSlot) activeSlot=cands[0]||null;
-  var chipsHtml=_readinessChip()+cands.filter(function(c){ return !activeSlot || c.id!==activeSlot.id; }).map(function(c){
+  var chipsHtml=_readinessChip()+_streakChip()+cands.filter(function(c){ return !activeSlot || c.id!==activeSlot.id; }).map(function(c){
     return '<button class="kt-util-chip" onclick="promoteTodayItem(\''+c.id+'\')">'+
       '<span class="dot" style="background:'+c.dot+';"></span>'+
       '<span class="lbl">'+c.label+'</span></button>';
   }).join('');
   var strip=chipsHtml?'<div class="kt-util-strip">'+chipsHtml+'</div>':'';
-  return meta + strip + (activeSlot?activeSlot.html:'') + hero + cta + adhocPicker + coachHTML + marquee;
+  // Screen A1 order: banner (most-current thing) stays on top; the utility
+  // chips read as part of the day's status, so they sit between the statement
+  // and the Start CTA.
+  return meta + (activeSlot?activeSlot.html:'') + hero + strip + cta + adhocPicker + coachHTML + marquee;
 }
 var todayBannerOverride=null;
 function promoteTodayItem(id){ todayBannerOverride=id; render(); }
