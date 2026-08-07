@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260805-1"/>
+<meta name="build" content="20260805-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2020,25 +2020,52 @@ function checkMilestones(opts){
 function renderMilestones(){
   var earned = getMilestones();
   if(!earned) return '';
-  var pills = [];
+  var rows = [];
   MILESTONE_DEFS.forEach(function(def){
     def.steps.forEach(function(step){
       var key = def.k+'-'+step;
       if(!earned[key]) return;
       var when = earned[key]===1 ? '' : earned[key];
-      pills.push({label:def.label(step), when:when});
+      rows.push({label:def.label(step), when:when});
     });
   });
-  if(!pills.length) return '';
-  var html = pills.map(function(p){
-    return '<span style="display:inline-flex;align-items:baseline;gap:6px;background:var(--accent-dim);border:1px solid var(--accent-soft);border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;">'+
-      _esc(p.label)+
-      (p.when?'<span class="kt-mono" style="font-size:9px;color:var(--muted);font-weight:600;">'+fmtDate(p.when)+'</span>':'')+
-    '</span>';
+  if(!rows.length) return '';
+  // Newest earned first; baselined (dateless) entries sink to the end.
+  rows.sort(function(a,b){
+    if(!!a.when !== !!b.when) return a.when ? -1 : 1;
+    return a.when > b.when ? -1 : a.when < b.when ? 1 : 0;
+  });
+  var shown = rows.slice(0,5);
+  // The single nearest unearned milestone renders as an honest ○ row with
+  // its distance — the shelf points forward, not only back.
+  var next=null;
+  MILESTONE_DEFS.forEach(function(def){
+    var v=def.value();
+    for(var i=0;i<def.steps.length;i++){
+      var step=def.steps[i];
+      if(v>=step) continue;
+      var pct=Math.min(99,Math.round(v/step*100));
+      if(!next || pct>next.pct) next={label:def.label(step), pct:pct};
+      break;
+    }
+  });
+  var html = shown.map(function(p){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;height:42px;border-bottom:1px solid var(--border);">'+
+      '<span style="font-size:13.5px;font-weight:600;"><span style="color:var(--accent-ink);">✓</span>&nbsp; '+_esc(p.label)+'</span>'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">'+(p.when?fmtDate(p.when).toUpperCase():'')+'</span>'+
+    '</div>';
   }).join('');
-  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--pad-card-sm);margin-bottom:12px;">'+
-    '<div class="kt-mono" style="font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-bottom:10px;">MILESTONES · '+pills.length+'</div>'+
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;">'+html+'</div>'+
+  var nextRow = next
+    ? '<div style="display:flex;align-items:center;justify-content:space-between;height:42px;">'+
+        '<span style="font-size:13.5px;font-weight:600;color:var(--lite);">○&nbsp; '+_esc(next.label)+'</span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">'+next.pct+'% THERE</span>'+
+      '</div>'
+    : '';
+  return '<div style="margin-bottom:12px;">'+
+    '<div class="kt-ledger-hd"><span class="l">MILESTONES · '+rows.length+'</span>'+
+      (rows.length>shown.length?'<span class="r">+'+(rows.length-shown.length)+' EARLIER</span>':'')+
+    '</div>'+
+    html + nextRow +
   '</div>';
 }
 
@@ -7714,11 +7741,11 @@ function renderProgress() {
   var avgPaceSec = totDist>0 ? Math.round(totSec/totDist) : 0;
   var lastRun = runs[0];
 
-  // "This week" as a calendar-week dot strip — one dot per day Mon→Sun,
-  // filled when anything was trained (lift, run, or sport), today ringed,
-  // planned rest days muted. Calendar-based so it always agrees with the
+  // "This week" as a slim calendar-week dot row under the summary band —
+  // one dot per day Mon→Sun, filled when anything was trained (lift, run,
+  // or sport), today ringed. Calendar-based so it always agrees with the
   // Sunday recap card, unlike the old programme-week session count.
-  function _weekDotsCard(){
+  function _weekDotsRow(){
     var mon=getMondayISO(), todayS=todayISO();
     var trained={};
     sessions.forEach(function(s){ if(s.date) trained[s.date]=1; });
@@ -7730,74 +7757,41 @@ function renderProgress() {
     var done=0, dots='';
     for(var i=0;i<7;i++){
       var d=new Date(m); d.setDate(m.getDate()+i);
-      var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      var iso=_ymdLocal(d);
       var isDone=!!trained[iso]; if(isDone) done++;
       var isToday=iso===todayS;
       var isRest=plan[i]&&plan[i].isRest;
-      dots+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">'+
-        '<div style="width:11px;height:11px;border-radius:50%;box-sizing:border-box;'+
-          'background:'+(isDone?'var(--accent)':'transparent')+';'+
-          'border:1.5px solid '+(isDone?'var(--accent)':(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)')))+';'+
-        '"></div>'+
-        '<div style="font-size:9px;font-weight:700;letter-spacing:.03em;color:'+(isToday?'var(--text)':'var(--muted)')+';">'+
-          ['M','T','W','T','F','S','S'][i]+'</div>'+
-      '</div>';
+      dots+='<span style="width:8px;height:8px;border-radius:50%;box-sizing:border-box;flex-shrink:0;'+
+        'background:'+(isDone?'var(--accent)':'transparent')+';'+
+        (isDone?'':'border:1.5px solid '+(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)'))+';')+
+      '"></span>';
     }
     var met=planned>0&&done>=planned;
-    return '<div class="stat">'+
-      '<div class="stat-lbl">This week</div>'+
-      '<div><span class="stat-val" style="color:'+(met?'var(--green)':'var(--text)')+'">'+done+'</span>'+
-        '<span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">/ '+planned+' days</span></div>'+
-      '<div style="display:flex;gap:2px;margin-top:8px;">'+dots+'</div>'+
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);">THIS WEEK</span>'+
+      '<div style="display:flex;align-items:center;gap:5px;">'+dots+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;color:'+(met?'var(--green)':'var(--muted)')+';margin-left:4px;">'+done+' / '+planned+' DAYS</span>'+
+      '</div>'+
     '</div>';
   }
 
-  // PRs at a glance — count plus the heaviest lift on record.
-  var _prMap=getPRs();
-  var _prNames=Object.keys(_prMap).sort(function(a,b){return _prMap[b]-_prMap[a];});
-  var prStatCard='<div class="stat">'+
-    '<div class="stat-lbl">PRs</div>'+
-    '<div class="stat-val" style="color:var(--yellow)">'+_prNames.length+'</div>'+
-    (_prNames.length
-      ? '<div class="stat-delta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(_prNames[0])+' · '+_prMap[_prNames[0]]+' lb</div>'
-      : '<div class="stat-delta">all-time bests</div>')+
-  '</div>';
+  // Summary bands — hairline stat trios instead of the identical-card grid.
+  // The PR count moves to the gold Records card below; numbers stay in the
+  // default text color so the screen keeps one emphasis.
+  var weekVol=0;
+  sessions.forEach(function(s){ if(s.week===currentWeek) weekVol+=calcVolume(s.exercises||[]); });
 
-  var liftStats = '<div class="stat-row">'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Sessions</div>'+
-      '<div class="stat-val">'+sessions.length+'</div>'+
-      (lastVol?'<div class="stat-delta">'+lastVol.toLocaleString()+' lb last</div>':'<div class="stat-delta">all-time</div>')+
-    '</div>'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Streak</div>'+
-      '<div class="stat-val" style="color:var(--accent)">'+streak+'</div>'+
-      '<div class="stat-delta">'+(streak===1?'week':'weeks')+'</div>'+
-    '</div>'+
-    _weekDotsCard()+
-    prStatCard+
-    '</div>';
+  var liftStats = '<div class="kt-statband">'+
+    '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
+    '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(weekVol).toLocaleString():'—')+'</div><div class="kt-statband-lbl">lb · this week</div></div>'+
+    '<div><div class="kt-statband-val">'+streak+'<span class="u">wk</span></div><div class="kt-statband-lbl">Streak</div></div>'+
+    '</div>'+_weekDotsRow();
 
-  var runStats = '<div class="stat-row">'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Runs</div>'+
-      '<div class="stat-val">'+runs.length+'</div>'+
-      (lastRun ? '<div class="stat-delta">'+(parseFloat(lastRun.distance||lastRun.dist)||0)+' km last</div>' : '<div class="stat-delta">all-time</div>')+
-    '</div>'+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Distance</div>'+
-      '<div><span class="stat-val" style="color:var(--accent)">'+(Math.round(totalKm*10)/10)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">km</span></div>'+
-      (weekKm>0 ? '<div class="stat-delta">'+(Math.round(weekKm*10)/10)+' km this wk</div>' : '<div class="stat-delta">all-time</div>')+
-    '</div>'+
-    _weekDotsCard()+
-    '<div class="stat">'+
-      '<div class="stat-lbl">Avg pace</div>'+
-      (avgPaceSec>0
-        ? '<div><span class="stat-val">'+secToPace(avgPaceSec)+'</span><span style="font-size:14px;color:var(--muted);margin-left:4px;font-weight:500;">/km</span></div>'+
-          '<div class="stat-delta">all runs</div>'
-        : '<div class="stat-val" style="color:var(--muted)">—</div><div class="stat-delta">log a run</div>')+
-    '</div>'+
-    '</div>';
+  var runStats = '<div class="kt-statband">'+
+    '<div><div class="kt-statband-val">'+runs.length+'</div><div class="kt-statband-lbl">Runs</div></div>'+
+    '<div><div class="kt-statband-val">'+(Math.round(totalKm*10)/10)+'<span class="u">km</span></div><div class="kt-statband-lbl">'+(weekKm>0?(Math.round(weekKm*10)/10)+' km this wk':'all-time')+'</div></div>'+
+    '<div><div class="kt-statband-val">'+(avgPaceSec>0?secToPace(avgPaceSec):'—')+(avgPaceSec>0?'<span class="u">/km</span>':'')+'</div><div class="kt-statband-lbl">Avg pace</div></div>'+
+    '</div>'+_weekDotsRow();
 
   var stats = progressTab === 'runs' ? runStats : (progressTab === 'sports' ? '' : liftStats);
 
@@ -8011,14 +8005,75 @@ function renderProgress() {
     ? '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">'+blockLabel+' · strength progression</div></div></div>'+liftRows+'</div>'
     : '';
 
-  // PR strip — compact gold pills instead of a full row-per-lift card.
+  // One chart — weekly training volume in the shared bar grammar: neutral
+  // fills, current week lime with its value, PR weeks gold-dotted.
+  var _volBuckets={}, _prWeeks={};
+  sessions.forEach(function(s){
+    if(!s.date) return;
+    var v=calcVolume(s.exercises||[]);
+    if(!(v>0)) return;
+    var sd=new Date(s.date+'T00:00:00');
+    var sdow=(sd.getDay()+6)%7;
+    var smon=new Date(sd); smon.setDate(sd.getDate()-sdow);
+    var wk=_ymdLocal(smon);
+    _volBuckets[wk]=(_volBuckets[wk]||0)+v;
+    if((s.prs||[]).length) _prWeeks[wk]=1;
+  });
+  var _volWeeks=Object.keys(_volBuckets).sort().slice(-8);
+  var weeklyVolCard='';
+  if(_volWeeks.length>=2){
+    var _volMax=0; _volWeeks.forEach(function(w){ if(_volBuckets[w]>_volMax) _volMax=_volBuckets[w]; });
+    var _curWkKey=getMondayISO();
+    var _volBars=_volWeeks.map(function(w){
+      var v=_volBuckets[w];
+      var h=Math.max(4,Math.round(v/_volMax*100));
+      var isCur=w===_curWkKey;
+      return '<div class="bar'+(isCur?' cur':'')+'" style="height:'+h+'%;" '+
+        'onclick="showToast(\'Week of '+fmtDate(w)+' · '+Math.round(v).toLocaleString()+' lb\')">'+
+        (isCur?'<span class="val">'+_fmtChartVal(v)+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
+      '</div>';
+    }).join('');
+    var _vFirst=_volBuckets[_volWeeks[0]], _vLast=_volBuckets[_volWeeks[_volWeeks.length-1]];
+    var _vPct=_vFirst>0?Math.round((_vLast-_vFirst)/_vFirst*100):0;
+    var _vDelta=_vPct!==0
+      ? ' · <span style="color:'+(_vPct>0?'var(--accent-ink)':'var(--muted)')+';">'+(_vPct>0?'+':'')+_vPct+'%</span>'
+      : '';
+    weeklyVolCard='<div class="chart-card">'+
+      '<div class="kt-ledger-hd">'+
+        '<span class="l">WEEKLY VOLUME · LB</span>'+
+        '<span class="r">'+_volWeeks.length+'W'+_vDelta+'</span>'+
+      '</div>'+
+      '<div class="kt-bars" style="margin-top:20px;">'+_volBars+'</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:8px;">'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_fmtChartVal(_vFirst)+'</span>'+
+        (Object.keys(_prWeeks).length?'<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">● PR WEEK</span>':'')+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">THIS WK</span>'+
+      '</div>'+
+    '</div>';
+  }
+
+  // Records — one gold surface: count + latest PR, with the pill shelf
+  // behind the ALL → toggle. Gold stays scarce (border + dot, not a gold
+  // number per card).
   var prData = getPRs();
   var prNames = Object.keys(prData).sort(function(a,b){return prData[b]-prData[a];});
   var prCard = '';
   if(prNames.length){
-    var PR_LIMIT = 12;
-    var visiblePRs = showAllPRs ? prNames : prNames.slice(0, PR_LIMIT);
-    var prPills = visiblePRs.map(function(n){
+    var latestPR=null;
+    for(var _pi=0;_pi<sessions.length && !latestPR;_pi++){
+      var _psess=sessions[_pi];
+      if((_psess.prs||[]).length){
+        var _p0=_psess.prs[0];
+        latestPR={ex:_p0.ex||_p0.name||'', weight:_p0.weight, reps:_p0.reps, date:_psess.date};
+      }
+    }
+    var latestLine = latestPR && latestPR.ex
+      ? 'latest '+_esc(latestPR.ex)+' '+latestPR.weight
+      : 'best '+_esc(prNames[0])+' '+prData[prNames[0]];
+    var latestSub = latestPR && latestPR.ex
+      ? fmtDate(latestPR.date).toUpperCase()+(latestPR.reps?' · ×'+latestPR.reps:'')
+      : 'ALL-TIME BESTS · LB';
+    var prPills = prNames.map(function(n){
       return '<div style="display:inline-flex;align-items:baseline;gap:5px;'+
         'background:color-mix(in srgb,var(--yellow) 9%,transparent);'+
         'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);'+
@@ -8027,11 +8082,22 @@ function renderProgress() {
         '<span style="font-size:12px;font-weight:800;color:var(--yellow);">'+prData[n]+'</span>'+
       '</div>';
     }).join('');
-    var prToggle = prNames.length > PR_LIMIT
-      ? '<button onclick="showAllPRs='+(!showAllPRs)+';render()" style="width:100%;margin-top:10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+(showAllPRs?'Show less ↑':'Show all '+prNames.length+' →')+'</button>'
-      : '';
-    prCard = '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Personal Records · all-time bests · lb</div></div></div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+prPills+'</div>'+prToggle+'</div>';
+    prCard = '<div onclick="showAllPRs='+(!showAllPRs)+';render()" style="background:var(--card);'+
+      'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:16px;'+
+      'padding:13px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;'+
+      'cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'+
+        '<span style="width:8px;height:8px;border-radius:50%;background:var(--yellow);flex-shrink:0;"></span>'+
+        '<div style="min-width:0;">'+
+          '<div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+prNames.length+' PR'+(prNames.length>1?'s':'')+' · '+latestLine+'</div>'+
+          '<div class="kt-mono" style="font-size:9.5px;color:var(--muted);margin-top:2px;">'+latestSub+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--yellow);flex-shrink:0;margin-left:10px;">'+(showAllPRs?'HIDE ↑':'ALL →')+'</span>'+
+    '</div>'+
+    (showAllPRs
+      ? '<div class="chart-card"><div style="display:flex;flex-wrap:wrap;gap:8px;">'+prPills+'</div></div>'
+      : '');
   }
 
   // Filter the detail charts + lift-only sections based on the toggle.
@@ -8108,7 +8174,7 @@ function renderProgress() {
     '</div>'+
     '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">'+
       '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
-      '<span style="font-size:18px;font-weight:800;color:var(--accent);min-width:22px;text-align:center;">'+currentWeek+'</span>'+
+      '<span style="font-size:18px;font-weight:800;min-width:22px;text-align:center;">'+currentWeek+'</span>'+
       '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
     '</div>'+
   '</div>';
@@ -8126,13 +8192,13 @@ function renderProgress() {
   } else if(progressTab==='sports'){
     midGroups = eyebrow('Activity') + detailCharts + renderSportProgress();
   } else {
-    midGroups = eyebrow('Strength') + goals + detailCharts + bwChart +
+    midGroups = eyebrow('Strength') + weeklyVolCard + goals + detailCharts + bwChart +
       eyebrow('Goals') + liftGoals +
       (liftOnly ? eyebrow('Records') + liftOnly : '');
   }
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) +
-    eyebrow('Overview') + toggle + stats + renderMilestones() +
-    midGroups + renderRetroCard(sessions) +
+    eyebrow('Overview') + toggle + stats +
+    midGroups + renderMilestones() + renderRetroCard(sessions) +
     eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
