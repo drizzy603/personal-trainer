@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260805-6"/>
+<meta name="build" content="20260805-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -8157,7 +8157,12 @@ function renderProgress() {
         (isCur?'<span class="val">'+_fmtChartVal(v)+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
       '</div>';
     }).join('');
-    var _vFirst=_volBuckets[_volWeeks[0]], _vLast=_volBuckets[_volWeeks[_volWeeks.length-1]];
+    // The newest bucket may be an in-progress (partial) week — the trend %
+    // compares completed weeks only, and the footer caption only claims
+    // THIS WK when the newest bucket actually is the current calendar week.
+    var _lastIsCur=_volWeeks[_volWeeks.length-1]===_curWkKey;
+    var _vRefIdx=(_lastIsCur && _volWeeks.length>=3)?_volWeeks.length-2:_volWeeks.length-1;
+    var _vFirst=_volBuckets[_volWeeks[0]], _vLast=_volBuckets[_volWeeks[_vRefIdx]];
     var _vPct=_vFirst>0?Math.round((_vLast-_vFirst)/_vFirst*100):0;
     var _vDelta=_vPct!==0
       ? ' · <span style="color:'+(_vPct>0?'var(--accent-ink)':'var(--muted)')+';">'+(_vPct>0?'+':'')+_vPct+'%</span>'
@@ -8171,7 +8176,8 @@ function renderProgress() {
       '<div style="display:flex;justify-content:space-between;margin-top:8px;">'+
         '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_fmtChartVal(_vFirst)+'</span>'+
         (Object.keys(_prWeeks).length?'<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">● PR WEEK</span>':'')+
-        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">THIS WK</span>'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+
+          (_lastIsCur?'THIS WK':'WK OF '+_esc(fmtDate(_volWeeks[_volWeeks.length-1]).toUpperCase()))+'</span>'+
       '</div>'+
     '</div>';
   }
