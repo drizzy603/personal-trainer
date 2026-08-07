@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260805-4"/>
+<meta name="build" content="20260805-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4302,7 +4302,75 @@ function renderRunSavedStrip(){
   return '<div class="kt-rconfirm">'+
     '<div>✓ Run saved · '+_esc(c.km)+' km in '+_esc(c.time)+'</div>'+
     '<button class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button>'+
+    '</div>'+
+    renderRunReview(c.km, c.time, c.id);
+}
+
+// Post-run review (screen C): the goal-pace delta renders as the screen's one
+// lime data chip (only when the goal was actually beaten), then a VS RECENT
+// ledger of comparable runs — same ±10% distance, oldest at the top so today
+// reads as the finish line. BEST is lime only when it's true.
+function _runSecsOf(t){
+  var p=String(t||'').split(':').map(Number);
+  if(!p.length || p.some(isNaN)) return 0;
+  return p.length===3 ? p[0]*3600+p[1]*60+(p[2]||0) : p[0]*60+(p[1]||0);
+}
+function _fmtRunSecs(s){
+  var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=Math.round(s%60);
+  return (h?h+':'+String(m).padStart(2,'0'):String(m))+':'+String(ss).padStart(2,'0');
+}
+function renderRunReview(km, time, excludeId){
+  var d=parseFloat(km)||0, secs=_runSecsOf(time);
+  if(!(d>0) || !(secs>0)) return '';
+  var paceSec=Math.round(secs/d);
+  var out='';
+  var goalStr=(getRunGoal()||'').trim();
+  var goalSec=paceToSec(goalStr);
+  if(goalSec>0){
+    var dp=paceSec-goalSec; // negative = faster than goal
+    var good=dp<=0;
+    out+='<div style="display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:14px;margin:12px 0 2px;'+
+      (good?'background:var(--accent-dim);border:1px solid var(--accent-soft);':'background:var(--card);border:1px solid var(--border);')+'">'+
+      '<span class="kt-mono" style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:'+(good?'var(--accent-ink)':'var(--muted)')+';">'+
+        'GOAL '+_esc(goalStr)+' → '+secToPace(paceSec)+' · '+(dp<=0?'−':'+')+Math.abs(dp)+' S/KM</span>'+
     '</div>';
+  }
+  var comps=[];
+  getRuns().forEach(function(r){
+    if(comps.length>=3) return;
+    if(excludeId!=null && r.id===excludeId) return;
+    var rd=parseFloat(r.distance||r.dist)||0;
+    var rs=_runSecsOf(r.time);
+    if(!(rd>0) || !(rs>0)) return;
+    if(Math.abs(rd-d)/d>0.1) return;
+    comps.push({date:r.date, secs:rs, health:r.notes==='From Apple Health'});
+  });
+  if(comps.length){
+    comps.reverse(); // storage is newest-first; ledger runs oldest → today
+    var best=comps.every(function(c){ return secs<=c.secs; });
+    var bestSecs=Math.min.apply(null,comps.map(function(c){ return c.secs; }));
+    var rows=comps.map(function(c){
+      var dd=c.secs-secs; // + = that run was slower than today
+      return '<div style="display:flex;align-items:center;justify-content:space-between;height:42px;border-bottom:1px solid var(--border);">'+
+        '<span style="font-size:13.5px;font-weight:600;color:var(--lite);display:inline-flex;align-items:center;gap:8px;">'+fmtDate(c.date)+
+          (c.health?'<span class="kt-mono" style="font-size:8px;font-weight:800;letter-spacing:.06em;color:var(--cyan);border:1px solid color-mix(in srgb,var(--cyan) 35%,transparent);border-radius:999px;padding:2px 7px;">HEALTH</span>':'')+
+        '</span>'+
+        '<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+_fmtRunSecs(c.secs)+' · '+(dd>=0?'+':'−')+Math.abs(dd)+'S</span>'+
+      '</div>';
+    }).join('');
+    var todayRight=best
+      ? '<span class="kt-mono" style="font-size:11px;font-weight:800;color:var(--accent-ink);">'+_fmtRunSecs(secs)+' · BEST</span>'
+      : '<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+_fmtRunSecs(secs)+' · +'+(secs-bestSecs)+'S VS BEST</span>';
+    var distLbl=d>=2.5 ? Math.round(d)+'Ks' : 'runs';
+    out+='<div style="margin:14px 0 4px;">'+
+      '<div class="kt-ledger-hd"><span class="l">VS RECENT '+distLbl.toUpperCase()+'</span></div>'+
+      rows+
+      '<div style="display:flex;align-items:center;justify-content:space-between;height:42px;">'+
+        '<span style="font-size:13.5px;font-weight:700;">Today</span>'+todayRight+
+      '</div>'+
+    '</div>';
+  }
+  return out;
 }
 
 // GOAL · 6:00/km line + inline edit (addendum 0e). Replaces the legacy goal
@@ -4409,7 +4477,8 @@ function renderRunSegment(){
   } else if(_todayStoredRun){
     slot = '<div class="kt-rconfirm">'+
       '<div>✓ Run logged · '+_esc(_todayStoredRun.distance)+' km in '+_esc(_todayStoredRun.time)+'</div>'+
-      '</div>';
+      '</div>'+
+      renderRunReview(_todayStoredRun.distance, _todayStoredRun.time, _todayStoredRun.id);
   } else if(runLogOpen){
     slot = renderInlineRunLog();
   } else {
