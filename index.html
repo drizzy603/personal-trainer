@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260805-2"/>
+<meta name="build" content="20260805-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7231,14 +7231,34 @@ function renderBodyEditorial(){
     '</div>'+
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
+  // Screen D — the statement does the math: current weight + direction in
+  // the headline, rate and distance-to-goal in the subline. The card below
+  // stops repeating the trend.
   var bws = getBodyWeights();
-  var line1, line2;
+  var line1, line2, heroBody;
   if(bws.length){
-    line1 = bws[0].weight+' lb';
-    line2 = 'on the scale.';
+    var trendH = calcBWTrend(bws);
+    var goalH = getBWGoal();
+    line1 = bws[0].weight+' lb,';
+    line2 = trendH===null ? 'on the scale.'
+      : trendH<=-0.1 ? 'trending down.'
+      : trendH>=0.1 ? 'trending up.'
+      : 'holding steady.';
+    var bits=[];
+    if(trendH!==null && Math.abs(trendH)>=0.1){
+      bits.push((trendH>0?'+':'−')+Math.abs(trendH)+' lb a week');
+    }
+    if(goalH>0){
+      var toGoal=Math.round(Math.abs(goalH-bws[0].weight)*10)/10;
+      bits.push(toGoal>0 ? toGoal+' lb to goal' : 'at your goal');
+    }
+    heroBody = bits.length
+      ? bits.join(' · ')+'.'
+      : 'Body weight + measurements. Trends, goals, and history all live here.';
   } else {
     line1 = 'Log your';
     line2 = 'first weigh-in.';
+    heroBody = 'Body weight + measurements. Trends, goals, and history all live here.';
   }
   var hero = '<div class="kt-hero">'+
     (firstName
@@ -7247,13 +7267,13 @@ function renderBodyEditorial(){
     '<h1 class="kt-hero-headline">'+_esc(line1)+
       '<span class="kt-line2 accent">'+_esc(line2)+'</span>'+
     '</h1>'+
-    '<div class="kt-hero-body">Body weight + measurements. Trends, goals, and history all live here.</div>'+
+    '<div class="kt-hero-body">'+heroBody+'</div>'+
     '</div>';
   return meta + hero + renderBodySection();
 }
 
 function renderBodySection(){
-  var bws=getBodyWeights(), bwGoal=getBWGoal(), trend=calcBWTrend(bws);
+  var bws=getBodyWeights(), bwGoal=getBWGoal();
   var currentW=bws.length?bws[0].weight:0, startW=bws.length?bws[bws.length-1].weight:0;
 
   // Chart
@@ -7266,37 +7286,23 @@ function renderBodySection(){
       '</div></div>'+svgChart(bwData,'var(--cyan)',bwGoal)+'</div>'
     :'';
 
-  // Goal bar
+  // START / NOW / GOAL hairline band + a slim body-hue progress track —
+  // replaces the scattered goal-bar labels (screen D). The hero already
+  // states the trend, so the old TREND row is gone.
   var goalSection='';
-  if(bwGoal>0){
+  if(bwGoal>0 && bws.length){
     var cutting=bwGoal<startW, total=Math.abs(bwGoal-startW);
     var covered=cutting?Math.max(0,startW-currentW):Math.max(0,currentW-startW);
     var pct=total>0?Math.min(100,Math.round(covered/total*100)):0;
-    var toLogo=Math.abs(bwGoal-currentW).toFixed(1);
-    var barColor=pct>=100?'var(--green)':pct>=50?'var(--accent)':'var(--yellow)';
-    goalSection='<div style="padding:12px 0 4px;border-top:1px solid var(--border);margin-top:4px;">'+
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">'+
-        '<div style="font-size:11px;color:var(--muted);font-weight:600;">GOAL '+bwGoal+' lb</div>'+
-        (pct>=100?'<div style="font-size:11px;color:var(--green);font-weight:700;">✓ Goal reached!</div>':
-          '<div style="font-size:11px;color:var(--lite);font-weight:600;">'+toLogo+' lb to go · '+pct+'%</div>')+
-      '</div>'+
-      '<div style="background:var(--bg);border-radius:3px;height:6px;">'+
-        '<div style="height:6px;border-radius:3px;background:'+barColor+';width:'+pct+'%;transition:width .4s;"></div>'+
-      '</div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-weight:600;margin-top:5px;">'+
-        '<span>'+startW+' lb start</span><span>'+bwGoal+' lb goal</span>'+
-      '</div></div>';
-  }
-
-  // Trend
-  var trendSection='';
-  if(trend!==null){
-    var tUp=trend>0, tColor=tUp?'var(--orange)':'var(--cyan)';
-    trendSection='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border);margin-top:4px;">'+
-      '<div style="font-size:11px;color:var(--muted);font-weight:600;">TREND</div>'+
-      '<div style="font-size:14px;font-weight:700;color:'+tColor+';">'+(tUp?'↑ +':'↓ ')+Math.abs(trend)+' lb/week</div>'+
-      '<div style="font-size:11px;color:var(--muted);">avg over last '+Math.min(bws.length,8)+' weigh-ins</div>'+
-    '</div>';
+    goalSection='<div class="kt-statband" style="margin-top:14px;margin-bottom:10px;">'+
+      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--muted);">'+startW+'</div><div class="kt-statband-lbl">Start</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;">'+currentW+'</div><div class="kt-statband-lbl">Now</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--cyan);">'+bwGoal+'</div><div class="kt-statband-lbl">Goal</div></div>'+
+    '</div>'+
+    '<div style="height:4px;background:var(--card2);border-radius:2px;">'+
+      '<div style="width:'+pct+'%;height:4px;background:var(--cyan);border-radius:2px;transition:width .4s;"></div>'+
+    '</div>'+
+    (pct>=100?'<div style="font-size:11px;color:var(--green);font-weight:700;margin-top:6px;">✓ Goal reached</div>':'');
   }
 
   // BW history
@@ -7316,6 +7322,52 @@ function renderBodySection(){
   var msInputs='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">';
   msFields.forEach(function(f){msInputs+='<div class="field" style="margin:0;"><label>'+f[1]+' (in)</label><input type="number" id="'+f[0]+'" placeholder="—" step="0.25" min="0"/></div>';});
   msInputs+='</div>';
+
+  // Per-metric ledger (screen D): latest value + delta vs the previous log
+  // of that metric. Improvement reads lime (waist/hips down, the rest up);
+  // a stale metric shows its age honestly instead of a fake zero. Metrics
+  // never logged don't get a row at all.
+  var msLedger='';
+  (function(){
+    var defs=[['waist','Waist',-1],['chest','Chest',1],['arms','Arms',1],['hips','Hips',-1],['thighs','Thighs',1]];
+    var nowD=new Date(todayISO()+'T00:00:00');
+    var rows='';
+    defs.forEach(function(md){
+      var k=md[0], label=md[1], goodDir=md[2];
+      var latest=null, prev=null;
+      for(var i=0;i<ms.length;i++){
+        var mv=parseFloat(ms[i][k]);
+        if(!(mv>0)) continue;
+        if(!latest) latest=ms[i];
+        else { prev=ms[i]; break; }
+      }
+      if(!latest) return;
+      var v=parseFloat(latest[k]);
+      var ageDays=Math.round((nowD-new Date(latest.date+'T00:00:00'))/86400000);
+      var right;
+      if(ageDays>=28){
+        var wks=Math.round(ageDays/7);
+        right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.7;">— · LAST LOGGED '+wks+' WK'+(wks===1?'':'S')+' AGO</span>';
+      } else {
+        var deltaHtml='';
+        if(prev){
+          var d=Math.round((v-parseFloat(prev[k]))*100)/100;
+          if(d!==0){
+            var good=(d*goodDir)>0;
+            deltaHtml=' · <span style="color:'+(good?'var(--accent-ink)':'var(--muted)')+';">'+(d>0?'+':'−')+Math.abs(d)+'</span>';
+          }
+        }
+        right='<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+v+' IN'+deltaHtml+'</span>';
+      }
+      rows+='<div style="display:flex;align-items:center;justify-content:space-between;height:46px;border-bottom:1px solid var(--border);">'+
+        '<span style="font-size:14px;font-weight:700;'+(ageDays>=28?'color:var(--lite);':'')+'">'+label+'</span>'+
+        right+
+      '</div>';
+    });
+    if(rows) msLedger='<div style="margin-bottom:14px;">'+
+      '<div class="kt-ledger-hd"><span class="l">MEASUREMENTS</span><span class="r">VS LAST LOG</span></div>'+
+      rows+'</div>';
+  })();
 
   var msItems='';
   ms.slice(0,5).forEach(function(e,i){
@@ -7347,11 +7399,12 @@ function renderBodySection(){
         '<input type="number" id="bwGoalInput" placeholder="e.g. 175" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal||'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
-      goalSection+trendSection+
+      goalSection+
       (bwItems?bwItems:'<div class="empty" style="padding:24px 0 8px;"><p>No weigh-ins yet.<br><span style="font-size:12px;">Log your weight above to start tracking.</span></p></div>')+
     '</div>'+
     '<div class="card"><h2>Measurements</h2>'+
       '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Log any you track — leave others blank.</p>'+
+      msLedger+
       msInputs+
       '<div class="field" style="margin-bottom:10px;"><label>Date</label><input type="date" id="msDate" value="'+todayISO()+'"/></div>'+
       '<button class="btn btn-green btn-full" onclick="saveMeasurement()">Save Measurements</button>'+
