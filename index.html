@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260805-5"/>
+<meta name="build" content="20260805-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3437,14 +3437,13 @@ function renderTodayEditorial(){
       },0);
       var _prc=(_ts.prs||[]).length;
       var _sl=(SESS[_ts.type]||{label:_ts.type}).label;
-      var _ps='background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;padding:8px 12px;text-align:center;flex:1;min-width:0;';
-      var _pills='<div style="display:flex;gap:8px;margin:12px 0 14px;">'+
-        '<div style="'+_ps+'"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;">'+_sets+'</div>'+
-          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">Sets</div></div>'+
-        (_vol>0?'<div style="'+_ps+'"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;">'+Math.round(_vol).toLocaleString()+'</div>'+
-          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">lb volume</div></div>':'')+
-        (_prc?'<div style="'+_ps+';border-color:rgba(255,230,0,.35);"><div style="font-size:20px;font-weight:800;letter-spacing:-.5px;color:var(--yellow);">'+_prc+'</div>'+
-          '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;">PR'+(_prc>1?'s':'')+'</div></div>':'')+
+      // Completion summary as a hairline stat band (screen 09) — the PR cell
+      // is the only colored number, and only when one actually happened.
+      var _pills='<div class="kt-statband" style="margin:12px 0 0;border-bottom:none;padding-bottom:6px;'+
+        ((_vol>0&&_prc)?'':'grid-template-columns:1fr 1fr;')+'">'+
+        '<div><div class="kt-statband-val" style="font-size:18px;">'+_sets+'</div><div class="kt-statband-lbl">Sets</div></div>'+
+        (_vol>0?'<div><div class="kt-statband-val" style="font-size:18px;">'+Math.round(_vol).toLocaleString()+'</div><div class="kt-statband-lbl">lb volume</div></div>':'')+
+        (_prc?'<div><div class="kt-statband-val" style="font-size:18px;color:var(--yellow);">'+_prc+'</div><div class="kt-statband-lbl">PR'+(_prc>1?'s':'')+'</div></div>':'')+
       '</div>';
       cta='<div class="kt-session-done" style="flex-direction:column;align-items:stretch;gap:0;">'+
         '<div style="display:flex;align-items:center;gap:14px;">'+
