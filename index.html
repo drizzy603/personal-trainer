@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260806-1"/>
+<meta name="build" content="20260806-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10706,9 +10706,32 @@ function closeErrorLogSheet(){
 function copyErrorLog(){
   var txt='Supero '+APP_BUILD+' error log\n'+(localStorage.getItem('kt_err_log')||'[]')+
     '\n\nwatch sync\n'+(localStorage.getItem('kt_wch_log')||'[]');
+  // WKWebView rejects the async clipboard API on the capacitor:// scheme, so
+  // the legacy textarea + execCommand path goes first — it works inside the
+  // tap gesture everywhere the shell runs (readonly keeps the iOS keyboard
+  // closed). Async API second, and the share sheet as the last resort so the
+  // log can always leave the device.
+  var ok=false;
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=txt;
+    ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, ta.value.length);
+    ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+  }catch(e){ ok=false; }
+  if(ok){ showToast('Error log copied'); return; }
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(txt).then(function(){ showToast('Error log copied'); }).catch(function(){ showToast('Copy failed'); });
-  } else { showToast('Copy not supported here'); }
+    navigator.clipboard.writeText(txt).then(function(){ showToast('Error log copied'); }).catch(function(){ _shareErrorLog(txt); });
+  } else { _shareErrorLog(txt); }
+}
+function _shareErrorLog(txt){
+  if(navigator.share){
+    navigator.share({text:txt}).catch(function(){});
+  } else { showToast('Copy failed'); }
 }
 function clearErrorLog(){
   localStorage.removeItem('kt_err_log');
