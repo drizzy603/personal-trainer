@@ -444,9 +444,9 @@ struct PlanView: View {
                     NavigationLink(value: ex) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ex.name).font(.system(size: 14, weight: .semibold)).lineLimit(2)
+                                Text(ex.name).font(.system(size: 14, weight: .bold)).lineLimit(2)
                                 Text("\(runner.done(ex))/\(ex.sets) sets · \(fmtWeight(runner.weight(for: ex))) lb")
-                                    .font(.system(size: 11)).foregroundColor(.secondary)
+                                    .font(.system(size: 11, design: .monospaced)).foregroundColor(.secondary)
                             }
                             Spacer()
                             if runner.isComplete(ex) {
@@ -456,8 +456,11 @@ struct PlanView: View {
                     }
                 }
             } header: {
-                Text("\(plan.dayName) · WK \(plan.week)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                // Statement grammar: the day is the lime mono eyebrow.
+                Text("\(plan.dayName.uppercased()) · WK \(plan.week)")
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .kerning(0.8)
+                    .foregroundColor(lime)
             }
             if anyLogged {
                 Button {
@@ -505,7 +508,8 @@ struct ExerciseView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     Text("SET \(min(runner.done(ex) + 1, ex.sets)) OF \(ex.sets)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                        .kerning(0.8)
                         .foregroundColor(.secondary)
                     LiveHRChip()
                     HStack(spacing: 8) {

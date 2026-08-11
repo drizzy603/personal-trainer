@@ -92,15 +92,17 @@ struct LockScreenView: View {
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("REST TIMER")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                Text("REST")
+                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                    .kerning(1.0)
                     .foregroundColor(.secondary)
                 Text(context.attributes.exerciseName)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 17, weight: .heavy))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                Text("SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                Text("NEXT · SET \(context.state.nextSet) OF \(context.state.totalSets)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(0.5)
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -210,17 +212,26 @@ struct SuperoTodayView: View {
         return s.days[entry.dayIndex]
     }
 
+    // Statement grammar (spec 09): the headline speaks in the app's voice —
+    // "Pull day." — and the subline is a mono data line, not a sentence.
     private var headline: String {
-        guard let d = day else { return "Open Supero" }
-        if d.done { return "\(d.type) done" }
-        return d.isRest ? "Rest day" : "\(d.type) day"
+        guard let d = day else { return "Open Supero." }
+        if d.done { return "\(d.type), done." }
+        return d.isRest ? "Rest day." : "\(d.type) day."
     }
 
     private var subline: String {
-        guard let d = day, let s = entry.summary else { return "to set up your plan" }
-        if d.done { return "Nice work · Week \(s.week)" }
-        if d.isRest { return "Recover well" }
-        return d.lifts > 0 ? "\(d.lifts) lifts · ~\(d.lifts * 8) min" : "Log it when done"
+        guard let d = day, let s = entry.summary else { return "SET UP YOUR PLAN" }
+        if d.done { return "NICE WORK · WK \(s.week)" }
+        if d.isRest { return "RECOVER WELL" }
+        return d.lifts > 0 ? "\(d.lifts) LIFTS · ~\(d.lifts * 8) MIN" : "LOG IT WHEN DONE"
+    }
+
+    private var metaLine: String {
+        let f = DateFormatter(); f.dateFormat = "EEE"
+        let dow = f.string(from: entry.date).uppercased()
+        guard let s = entry.summary else { return "SUPERO" }
+        return "\(dow) · WK \(s.week) / \(s.totalWeeks)"
     }
 
     // Lock Screen circular: glyph + compressed day label.
@@ -260,28 +271,30 @@ struct SuperoTodayView: View {
     private var homeBody: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                if let s = entry.summary {
-                    Text("WK \(s.week)/\(s.totalWeeks)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("SUPERO")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
+                Text(metaLine)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(0.8)
+                    .foregroundColor(.secondary)
                 Spacer()
-                Image(systemName: day?.done == true ? "checkmark.circle.fill" : "dumbbell.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(lime)
+                if day?.done == true {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(lime)
+                } else {
+                    Circle().fill(lime).frame(width: 6, height: 6)
+                }
             }
             Spacer(minLength: 0)
+            // One emphasis per surface: the statement stays white; lime is the
+            // status dot and the Start capsule.
             Text(headline)
-                .font(.system(size: family == .systemMedium ? 24 : 20, weight: .heavy))
-                .foregroundColor((day?.isRest == true || day?.done == true) ? .white : lime)
+                .font(.system(size: family == .systemMedium ? 26 : 20, weight: .heavy))
+                .foregroundColor(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(subline)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .kerning(0.5)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             if family == .systemMedium, let s = entry.summary {
@@ -298,9 +311,18 @@ struct SuperoTodayView: View {
                         }
                     }
                     Spacer()
-                    Text("STREAK \(s.streak)W")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    if let d = day, !d.done, !d.isRest {
+                        Text("Start →")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(lime))
+                    } else {
+                        Text("STREAK \(s.streak)W")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(.top, 4)
             }
