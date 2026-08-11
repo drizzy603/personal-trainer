@@ -21,7 +21,7 @@ AI-built training programmes
 **Promotional Text** *(170 char limit, editable any time without review)*
 
 ```
-Your AI coach builds a custom plan, tracks every set, and syncs your Apple Watch workouts. No accounts. No subscriptions. Your data stays on your phone.
+Start in five taps — no account, no key needed. Your AI coach builds a custom plan, tracks every set, and mirrors your Apple Watch live. Data stays on your phone.
 ```
 
 **Description** *(4000 char limit)*
@@ -29,19 +29,21 @@ Your AI coach builds a custom plan, tracks every set, and syncs your Apple Watch
 ```
 Supero is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
 
-Tell the coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a full multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
+Start lifting in five taps: the built-in starter programme writes an 8-week block on your phone — no account, no API key, nothing to sign up for. Or tell the AI coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a fully custom multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
 ━━━━━━━━━━━━━━━━━━━━
 WHAT'S INSIDE
 ━━━━━━━━━━━━━━━━━━━━
 
+• Starter programme — Five questions, zero setup: an 8-week block built on-device around your gear and schedule
 • AI Coach — Conversational programme building, weekly reviews, mid-cycle tweaks, honest RPE-based progression
 • Log — Workout runner with rest timer on your Lock Screen, plus runs, body tracking, and 14 sports with fully customizable fields
+• Apple Watch — Log sets from your wrist; phone and watch mirror each other set by set, live
 • CrossFit — Build WODs from a 56-movement library and track your repeated benchmarks
 • Apple Health — Watch workouts (runs, rides, swims, pickleball, and more) land in your log automatically; finished lifts can count toward your rings
 • Progress — Streaks, strength trends, PRs, weekly volume, activity mix, repeated-WOD bests
 • Widgets — Today's session on your Home Screen and Lock Screen
-• Library — 80 exercises with muscles worked, form tips, and cues
+• Library — 80 exercises with your history, PRs, form cues, and per-exercise notes
 • Programme — Visual training plan with week-by-week notes and PR attempts
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -56,8 +58,8 @@ The AI Coach uses your own Anthropic API key — your conversations go directly 
 WHAT YOU NEED
 ━━━━━━━━━━━━━━━━━━━━
 
-• An Anthropic API key (free to create at console.anthropic.com)
-• That's it.
+• Nothing. The starter programme, logging, progress charts, watch app, and widgets all work out of the box.
+• Optional: your own Anthropic API key (console.anthropic.com) unlocks the AI Coach.
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -130,7 +132,7 @@ Report any layout glitches, crashes, or AI Coach errors.
 - Notes for reviewer:
 
 ```
-This app requires the user to provide their own Anthropic API key for the AI Coach feature. To test the Coach: open Settings → API key, paste a valid Anthropic key. Without a key, the Coach tab shows an empty state but the rest of the app (Log, Progress, Library) is fully functional.
+No account or API key is required to use the app: the built-in starter intake (Log tab → "Build my starter plan", five taps) generates a full 8-week programme on-device, and logging, progress, the watch app, and widgets all work without any credentials. The optional AI Coach uses the reviewer's/user's own Anthropic API key: open Settings → AI Coach, paste a valid Anthropic key. Without a key, the Coach tab shows a connect screen (with a pointer to the starter programme) but everything else is fully functional.
 ```
 
 ## What's New in 1.2 (release notes — paste at submission)
