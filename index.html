@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260810-1"/>
+<meta name="build" content="20260810-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -11519,19 +11519,16 @@ logSession = SESS[_next] ? _next : 'Push';
 render();
 // Auto-log any new Apple Watch runs on open (opt-in, Settings → Data).
 setTimeout(drainPendingHealth, 900);
-setTimeout(function(){
-  try{
-    var LN=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications;
-    if(LN){ ['requestPermissions','schedule','cancel','checkPermissions','registerActionTypes'].forEach(function(m){
-      var orig=LN[m]; if(!orig) return;
-      LN[m]=function(){ _trapErr('DBG LN.'+m+' :: '+String(new Error().stack||'').replace(/\n/g,' | ').slice(0,350)); return orig.apply(LN,arguments); };
-    }); }
-    if(window.Notification&&Notification.requestPermission){
-      var onp=Notification.requestPermission;
-      Notification.requestPermission=function(){ _trapErr('DBG WebNotification.requestPermission'); return onp.apply(Notification,arguments); };
-    }
-  }catch(e){}
-}, 200);
+// The July notification-prompt hunt shipped a debug tap here that logged
+// every LocalNotifications call into kt_err_log as 'DBG LN.*'. That bug is
+// long fixed, and the chatter was evicting real errors from the 30-entry
+// ring. The tap is gone; this scrubs its leftovers from logs already
+// sitting on devices so the sheet reads quiet-unless-something-broke.
+try{
+  var _elRaw=JSON.parse(localStorage.getItem('kt_err_log')||'[]');
+  var _elClean=_elRaw.filter(function(en){ return !(en&&typeof en.m==='string'&&en.m.indexOf('DBG ')===0); });
+  if(_elClean.length!==_elRaw.length) localStorage.setItem('kt_err_log', JSON.stringify(_elClean));
+}catch(e){}
 setTimeout(drainWatchSessions, 1000);
 setTimeout(refreshReadiness, 1100);
 // Live nudge when the watch syncs while the app is open.
