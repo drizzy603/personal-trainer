@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260810-3"/>
+<meta name="build" content="20260810-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1950,7 +1950,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -5085,6 +5085,68 @@ function renderDeckRunner(){
 
   return hd + deckWrap + strip;
 }
+// ── In-workout cue sheet (screen 12·K) ───────────────────────────────────────
+// Opens as the standard sheet over the paused workout: numbered cues from the
+// library, last session's note for context, one note well for today. The
+// primary action returns to the set — the sheet never ends the workout.
+// Notes persist per exercise in kt_ex_notes {name: {text, date}}.
+function openRunnerCueSheet(){
+  var ex=_runnerEx(); if(!ex) return;
+  var lib=getAllExercises().find(function(e){ return e.name.toLowerCase()===String(ex.name).toLowerCase(); });
+  var tips=(lib&&lib.tips)||[];
+  var notes=lsGet('kt_ex_notes')||{};
+  var note=notes[ex.name];
+  var todayNote=(note&&note.date===todayISO())?note.text:'';
+  var lastNote=(note&&note.date!==todayISO())?note:null;
+  var cuesHTML=tips.length
+    ? tips.map(function(tip,i){
+        return '<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;">'+
+          '<span class="kt-mono" style="font-size:11px;font-weight:800;color:var(--accent-ink);margin-top:1px;flex-shrink:0;">'+(i+1)+'</span>'+
+          '<span style="font-size:14.5px;line-height:1.45;color:var(--text);">'+_esc(tip)+'</span></div>';
+      }).join('')
+    : '<div style="font-size:13px;color:var(--muted);padding:6px 0 2px;line-height:1.5;">No cues on file for this one — add some from the Exercise library.</div>';
+  var existing=document.getElementById('runnerCueOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='runnerCueOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">'+_esc(ex.name)+' · cues &amp; notes</div>'+
+      '<button class="kt-sheet-x" onclick="closeRunnerCueSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">CUES</div>'+
+    cuesHTML+
+    (lastNote
+      ?'<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin:14px 0 6px;">LAST NOTE · '+_esc(fmtDate(lastNote.date).toUpperCase())+'</div>'+
+       '<div style="font-size:13.5px;line-height:1.5;color:var(--lite);">'+_esc(lastNote.text)+'</div>'
+      :'')+
+    '<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:14px 0;">'+
+      '<div class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:5px;">NOTE FOR TODAY</div>'+
+      '<input id="runnerCueNote" type="text" value="'+_esc(todayNote)+'" placeholder="Grip, setup, how it felt…" maxlength="200" '+
+        'style="width:100%;background:none;border:none;color:var(--text);font-size:14px;font-weight:500;padding:0;box-sizing:border-box;font-family:inherit;"/>'+
+    '</div>'+
+    '<button onclick="closeRunnerCueSheet()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Back to the set →</button>'+
+    '<button onclick="closeRunnerCueSheet();openExLib(\''+_esc(ex.name)+'\')" style="display:block;width:100%;background:none;border:none;padding:10px 0 0;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">FULL HISTORY &amp; PRS · OPEN IN LIBRARY →</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeRunnerCueSheet);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeRunnerCueSheet();});
+  _a11yPass();
+}
+function closeRunnerCueSheet(){
+  // Whatever's in the well persists — closing is saving.
+  var ex=_runnerEx();
+  var inp=document.getElementById('runnerCueNote');
+  if(ex && inp){
+    var t=inp.value.trim();
+    var notes=lsGet('kt_ex_notes')||{};
+    if(t){ notes[ex.name]={text:t, date:todayISO()}; lsSet('kt_ex_notes', notes); }
+    else if(notes[ex.name] && notes[ex.name].date===todayISO()){ delete notes[ex.name]; lsSet('kt_ex_notes', notes); }
+  }
+  var el=document.getElementById('runnerCueOverlay');
+  if(el)el.remove();
+}
 function runnerStartEditSet(idx){
   var ex=_runnerEx(); if(!ex) return;
   runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
@@ -5166,7 +5228,10 @@ function _renderRunnerIdleBody(ex, next){
       lastBlock+
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'+
         '<div class="kt-r-card-name" style="flex:1;">'+_esc(ex.name)+'</div>'+
-        '<button onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="flex-shrink:0;margin-top:6px;padding:5px 12px;border-radius:8px;'+editBtnStyle+'font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;">Edit</button>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0;margin-top:6px;">'+
+          '<button onclick="event.stopPropagation();openRunnerCueSheet()" style="padding:5px 12px;border-radius:8px;'+editBtnStyle+'font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;">Cues</button>'+
+          '<button onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="padding:5px 12px;border-radius:8px;'+editBtnStyle+'font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;">Edit</button>'+
+        '</div>'+
       '</div>'+
       targetLine+
       _renderCompletedSets(ex)+
@@ -11333,8 +11398,10 @@ function saveCustomExercise(ex){ var a=getCustomExercises();a.push(ex);lsSet('kt
 function deleteCustomExercise(name){ lsSet('kt_custom_ex',getCustomExercises().filter(function(e){return e.name!==name;})); }
 function getAllExercises(){ return EXERCISE_DB.concat(getCustomExercises()); }
 
-function openExLib(){
-  _libFilter='All';_libSearch='';_libExpanded='';_libAddOpen=false;_libAddLoading=false;_libAddCat='Push';
+function openExLib(prefill){
+  // Optional prefill (cue sheet's "open in library"): search + expand the
+  // named exercise so its detail is already open when the sheet appears.
+  _libFilter='All';_libSearch=prefill||'';_libExpanded=prefill||'';_libAddOpen=false;_libAddLoading=false;_libAddCat='Push';
   var existing=document.getElementById('exlibOverlay');
   if(existing)existing.remove();
   var overlay=document.createElement('div');
@@ -11369,6 +11436,27 @@ function _updateExLibList(){
   var el=document.getElementById('exlibList');
   if(el)el.innerHTML=_renderExLibList();
 }
+// Per-exercise session history, newest first: date · session type · sets ×
+// first-set reps · weight · RPE. Handles both the flat runner shape and the
+// legacy nested sets[] shape. Powers the library rows and the detail ledger.
+function _exSessionHistory(name, n){
+  var out=[];
+  var sessions=getSessions();
+  for(var i=0;i<sessions.length && out.length<n;i++){
+    var s=sessions[i];
+    (s.exercises||[]).forEach(function(ex){
+      if(ex.name!==name || out.length>=n) return;
+      var w=parseFloat(ex.weight);
+      var setsN=Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||0);
+      var reps=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+      if(!(w>0) && Array.isArray(ex.sets) && ex.sets[0]){
+        w=parseFloat(ex.sets[0].weight); reps=ex.sets[0].reps;
+      }
+      out.push({date:s.date, type:s.type, sets:setsN, reps:reps, w:(w>0?w:0), rpe:ex.rpe});
+    });
+  }
+  return out;
+}
 function _renderExLibList(){
   var q=_libSearch.trim().toLowerCase();
   var all=getAllExercises();
@@ -11378,41 +11466,127 @@ function _renderExLibList(){
     return catMatch&&searchMatch;
   });
   if(!filtered.length)return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:14px;">No exercises found</div>';
-  var catColors={Push:'#f97316',Pull:'#60a5fa',Legs:'#a78bfa',Core:'#34d399',Arms:'#f59e0b'};
-  return filtered.map(function(ex){
+  // MAIN tags carry over from the current week's programme (screen 12·I).
+  var mains={};
+  var wdL=getWkData();
+  if(wdL) ['push','pull','legs','legs2','arms'].forEach(function(k){
+    (wdL[k]||[]).forEach(function(e){ if(e.isMain) mains[String(e.name).toLowerCase()]=1; });
+  });
+  var todayD=new Date(todayISO()+'T00:00:00');
+  function rowHTML(ex){
     var expanded=_libExpanded===ex.name;
-    var color=catColors[ex.cat]||'var(--accent)';
     var safeN=ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     var isCustom=!!ex._custom;
-    var html='<div onclick="toggleLibEx(\''+safeN+'\')" style="padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;'+(expanded?'background:var(--card2);':'')+'">';
-    html+='<div style="display:flex;align-items:center;gap:8px;">';
-    html+='<div style="flex:1;min-width:0;">';
-    html+='<div style="font-size:15px;font-weight:700;color:var(--text);">'+ex.name+'</div>';
-    html+='<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+ex.muscles+'</div>';
-    html+='</div>';
-    html+='<span style="flex-shrink:0;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:'+color+'22;color:'+color+';">'+ex.cat+'</span>';
-    if(isCustom)html+='<button onclick="event.stopPropagation();deleteCustomEx(\''+safeN+'\')" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>';
-    html+='<span style="flex-shrink:0;color:var(--muted);font-size:13px;">'+(expanded?'▲':'▼')+'</span>';
-    html+='</div>';
-    if(expanded){
-      html+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">';
-      if(isCustom)html+='<div style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:20px;background:var(--accent)22;color:var(--accent);margin-bottom:8px;">Your exercise</div>';
-      html+='<div style="font-size:12px;color:var(--muted);margin-bottom:8px;"><span style="color:var(--text);font-weight:600;">Equipment:</span> '+ex.equip+'</div>';
-      if(ex.desc)html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+ex.desc+'</p>';
-      if(ex.tips&&ex.tips.length){
-        html+='<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Coaching Cues</div>';
-        html+='<div style="display:flex;flex-direction:column;gap:6px;">';
-        ex.tips.forEach(function(tip){
-          html+='<div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--lite);line-height:1.5;">'+
-            '<span style="flex-shrink:0;color:var(--accent);margin-top:1px;">▸</span>'+tip+'</div>';
-        });
-        html+='</div>';
+    var hist=_exSessionHistory(ex.name, 6);
+    // Right column: last-used + load in mono; stale goes dimmer (no load).
+    var right;
+    if(hist.length){
+      var age=Math.round((todayD-new Date(hist[0].date+'T00:00:00'))/86400000);
+      if(age>=21){
+        right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.6;">'+Math.round(age/7)+' WKS AGO</span>';
+      } else {
+        var when=age===0?'TODAY':fmtDate(hist[0].date).toUpperCase();
+        right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+when+(hist[0].w>0?' · '+hist[0].w+' LB':'')+'</span>';
       }
-      html+='</div>';
+    } else {
+      right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
     }
+    var html='<div onclick="toggleLibEx(\''+safeN+'\')" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
+    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    html+='<div style="flex:1;min-width:0;">';
+    html+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.name)+'</span>'+
+      (mains[ex.name.toLowerCase()]?'<span class="kt-main-tag">MAIN</span>':'')+'</div>';
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.equip)+' · '+_esc(ex.muscles.toLowerCase())+'</div>';
+    html+='</div>';
+    html+=right;
+    if(isCustom)html+='<button onclick="event.stopPropagation();deleteCustomEx(\''+safeN+'\')" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    html+='</div>';
+    if(expanded) html+=_exDetailHTML(ex, hist, isCustom);
     html+='</div>';
     return html;
-  }).join('');
+  }
+  // Browsing groups by category under mono eyebrows; searches render flat.
+  if(q || _libFilter!=='All') return filtered.map(rowHTML).join('');
+  var order=['Push','Pull','Legs','Core','Arms'];
+  var out='';
+  order.forEach(function(cat){
+    var group=filtered.filter(function(ex){ return ex.cat===cat; });
+    if(!group.length) return;
+    out+='<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);padding:16px 18px 6px;">'+cat.toUpperCase()+'</div>';
+    out+=group.map(rowHTML).join('');
+  });
+  var rest=filtered.filter(function(ex){ return order.indexOf(ex.cat)===-1; });
+  if(rest.length){
+    out+='<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);padding:16px 18px 6px;">OTHER</div>';
+    out+=rest.map(rowHTML).join('');
+  }
+  return out;
+}
+// Exercise detail (screen 12·J): top-set hero + delta chip, six-session
+// top-set bars in the shared grammar, one gold PR row, cues as typography,
+// then a history ledger.
+function _exDetailHTML(ex, hist, isCustom){
+  var html='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);" onclick="event.stopPropagation();">';
+  if(isCustom)html+='<div class="kt-mono" style="display:inline-block;font-size:9px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink);border:1px solid var(--accent-soft);border-radius:999px;padding:3px 8px;margin-bottom:10px;">YOUR EXERCISE</div>';
+  var weighted=hist.filter(function(h){ return h.w>0; });
+  if(weighted.length){
+    var latest=weighted[0], oldest=weighted[weighted.length-1];
+    var delta=latest.w-oldest.w;
+    html+='<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px;">'+
+      '<div>'+
+        '<div class="kt-mono" style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:4px;">TOP SET · LAST LOGGED</div>'+
+        '<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:34px;font-weight:800;letter-spacing:-1.4px;line-height:1;">'+latest.w+'</span>'+
+        '<span style="font-size:13px;font-weight:600;color:var(--muted);">lb'+(latest.reps?' × '+_esc(String(latest.reps)):'')+'</span></div>'+
+      '</div>'+
+      (delta!==0 && weighted.length>=2
+        ?'<span class="kt-mono" style="font-size:9px;font-weight:800;letter-spacing:.06em;padding:5px 10px;border-radius:12px;'+
+          (delta>0?'color:var(--accent-ink);background:var(--accent-dim);border:1px solid var(--accent-soft);':'color:var(--muted);background:var(--card);border:1px solid var(--border);')+'">'+
+          (delta>0?'+':'−')+Math.abs(delta)+' LB · '+weighted.length+' SESSIONS</span>'
+        :'')+
+    '</div>';
+    if(weighted.length>=2){
+      var asc=weighted.slice().reverse();
+      var mx=0; asc.forEach(function(h){ if(h.w>mx) mx=h.w; });
+      html+='<div class="kt-bars" style="height:56px;margin:16px 0 4px;">'+asc.map(function(h,i){
+        var isLast=i===asc.length-1;
+        return '<div class="bar'+(isLast?' cur':'')+'" style="height:'+Math.max(6,Math.round(h.w/mx*100))+'%;">'+
+          (isLast?'<span class="val">'+h.w+'</span>':'')+'</div>';
+      }).join('')+'</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:12px;">'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+fmtDate(asc[0].date).toUpperCase()+'</span>'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">LAST</span>'+
+      '</div>';
+    }
+  }
+  var prW=getPRs()[ex.name];
+  if(prW){
+    html+='<div style="background:var(--card);border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:14px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'+
+      '<span style="font-size:13px;font-weight:700;"><span style="color:var(--yellow);">●</span>&nbsp; PR · '+prW+' lb</span>'+
+      '<span class="kt-mono" style="font-size:9px;color:var(--muted);">ALL-TIME</span>'+
+    '</div>';
+  }
+  html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;"><span style="color:var(--text);font-weight:600;">Equipment:</span> '+_esc(ex.equip)+'</div>';
+  if(ex.desc)html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+_esc(ex.desc)+'</p>';
+  if(ex.tips&&ex.tips.length){
+    html+='<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:8px;">CUES</div>';
+    ex.tips.forEach(function(tip,ti){
+      html+='<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;">'+
+        '<span class="kt-mono" style="font-size:11px;font-weight:800;color:var(--accent-ink);margin-top:1px;flex-shrink:0;">'+(ti+1)+'</span>'+
+        '<span style="font-size:13.5px;line-height:1.45;color:var(--text);">'+_esc(tip)+'</span></div>';
+    });
+  }
+  if(hist.length){
+    html+='<div class="kt-ledger-hd" style="margin-top:12px;"><span class="l">HISTORY</span><span class="r">SETS · TOP</span></div>';
+    hist.forEach(function(h,i){
+      var lbl=(SESS[h.type]&&SESS[h.type].label)||h.type||'';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;height:40px;'+(i<hist.length-1?'border-bottom:1px solid var(--border);':'')+'">'+
+        '<span style="font-size:13px;font-weight:600;color:var(--lite);">'+fmtDate(h.date)+(lbl?' · '+_esc(lbl):'')+'</span>'+
+        '<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+h.sets+'×'+_esc(String(h.reps||'?'))+' · '+(h.w>0?h.w+' LB':'BW')+(h.rpe?' @ RPE '+fmtRpe(h.rpe):'')+'</span>'+
+      '</div>';
+    });
+  }
+  html+='</div>';
+  return html;
 }
 function _buildExLibHTML(){
   var cats=['All','Push','Pull','Legs','Core','Arms'];
@@ -11434,7 +11608,7 @@ function _buildExLibHTML(){
       '<button class="ex-modal-close" onclick="closeExLib()">✕</button>'+
     '</div>'+
     '<div style="padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;">'+
-      '<input id="exlibSearch" type="text" placeholder="Search exercises or muscles…" autocomplete="off" '+
+      '<input id="exlibSearch" type="text" placeholder="Search exercises or muscles…" autocomplete="off" value="'+_esc(_libSearch)+'" '+
         'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;"/>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+pillsHTML+'</div>'+
     '</div>'+
