@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260810-2"/>
+<meta name="build" content="20260810-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -99,6 +99,10 @@ window.addEventListener('unhandledrejection', function(e){
   --accent-ink:#c8ff00;
   --green:#c8ff00;--yellow:#ffd60a;
   --red:#ff453a;--orange:#fb923c;--cyan:#60a5fa;
+  /* AI-voice hue (coach message blocks, programme generation). Third and
+     final per-room map exception after gold.yellow and --accent-ink —
+     Paper deepens it for contrast on white. */
+  --purple:#a78bfa;
   /* --muted promoted from #525259 (3.6:1 fail) to #6e6e76 (4.7:1 pass) so
      small-size labels meet WCAG AA on the dark background. */
   --text:#fafafa;--muted:#808089;--lite:#9ca3af;
@@ -812,6 +816,28 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-bars .bar .val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;color:var(--accent-ink);white-space:nowrap;}
 .kt-streak-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border);flex-shrink:0;}
 .kt-streak-chip .lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--lite);white-space:nowrap;}
+/* ── Coach message blocks (spec 07) — the coach speaks in blocks, not
+   bubbles: purple eyebrow → short paragraphs on the background → metric
+   rows in one card → takeaway → max two action chips. Only the user's
+   messages bubble. ─────────────────────────────────────────────────────── */
+.kt-cmb{margin-bottom:16px;max-width:100%;}
+.kt-cmb-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--purple);margin-bottom:8px;text-transform:uppercase;}
+.kt-cmb-para{font-size:14px;line-height:1.55;color:var(--text);margin-bottom:12px;letter-spacing:-.1px;}
+.kt-cmb-metrics{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px;}
+.kt-cmb-mrow{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:10px;}
+.kt-cmb-mrow:last-child{border-bottom:none;}
+.kt-cmb-mlabel{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.04em;}
+.kt-cmb-mval{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--text);text-align:right;}
+.kt-cmb-mref{color:var(--muted);opacity:.8;}
+.kt-cmb-delta-good{color:var(--accent-ink);font-weight:800;}
+.kt-cmb-delta-warn{color:var(--orange);font-weight:800;}
+.kt-cmb-take{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
+.kt-cmb-take-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);margin-bottom:5px;}
+.kt-cmb-take-body{font-size:13.5px;line-height:1.5;color:var(--text);}
+.kt-cmb-actions{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 4px;}
+.kt-cmb-chip{height:38px;padding:0 14px;border-radius:19px;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-cmb-chip.primary{background:var(--card2);border-color:var(--accent-soft);color:var(--accent-ink);font-weight:700;}
+.kt-cmb-chip:active{opacity:.7;}
 .kt-marquee-name{font-size:16px;font-weight:600;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
 .kt-marquee-right{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:10px;}
 .kt-marquee-delta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-ink);font-weight:600;}
@@ -8838,6 +8864,86 @@ function md(text){
   return result;
 }
 
+// ── Coach message blocks (spec 07) ───────────────────────────────────────────
+// The coach can structure numeric answers with line markers (%%type,
+// %%metric, %%takeaway, %%action — taught in buildSystemPrompt). Marked
+// messages render full-width as blocks: purple eyebrow → paragraphs on the
+// background → metric rows in one card → takeaway → action chips (max 2,
+// first is primary and sends its message through the normal chat flow).
+// Messages without markers keep the classic bubble — history stays intact.
+function _hasCoachBlocks(text){
+  return /^%%(type|metric|takeaway|action):/m.test(String(text||''));
+}
+function _coachBlocksHTML(text){
+  var lines=String(text||'').split('\n');
+  var typeTag='', paras=[], out='', metricBuf=[], actions=[], takeaways=[];
+  function flushParas(){
+    paras.forEach(function(pl){ out+='<div class="kt-cmb-para">'+md(pl)+'</div>'; });
+    paras=[];
+  }
+  function flushMetrics(){
+    if(!metricBuf.length) return;
+    out+='<div class="kt-cmb-metrics">'+metricBuf.map(function(m){
+      var toneCls=m.tone==='good'?'kt-cmb-delta-good':m.tone==='warn'?'kt-cmb-delta-warn':'kt-cmb-mref';
+      return '<div class="kt-cmb-mrow">'+
+        '<span class="kt-cmb-mlabel">'+_esc(m.label.toUpperCase())+'</span>'+
+        '<span class="kt-cmb-mval">'+_esc(m.value)+
+          (m.ref?' <span class="kt-cmb-mref">'+_esc(m.ref)+'</span>':'')+
+          (m.delta?' · <span class="'+toneCls+'">'+_esc(m.delta)+'</span>':'')+
+        '</span>'+
+      '</div>';
+    }).join('')+'</div>';
+    metricBuf=[];
+  }
+  lines.forEach(function(line){
+    var mm=line.match(/^%%(type|metric|takeaway|action):\s*(.*)$/);
+    if(!mm){
+      flushMetrics();
+      var t=line.trim();
+      if(t) paras.push(t); else flushParas();
+      return;
+    }
+    var kind=mm[1], body=mm[2];
+    if(kind==='type'){ typeTag=body.trim(); return; }
+    if(kind==='metric'){
+      flushParas();
+      var parts=body.split('|').map(function(x){ return x.trim(); });
+      if(parts[0]) metricBuf.push({label:parts[0], value:parts[1]||'', ref:parts[2]||'', delta:parts[3]||'',
+        tone:(parts[4]||'').toLowerCase()});
+      return;
+    }
+    flushParas(); flushMetrics();
+    if(kind==='takeaway'){ if(takeaways.length<1){ takeaways.push(body.trim()); out+=_cmbTakeHTML(body.trim()); } return; }
+    if(kind==='action' && actions.length<2){
+      var ap=body.split('|').map(function(x){ return x.trim(); });
+      if(ap[0]) actions.push({label:ap[0], msg:ap[1]||ap[0]});
+    }
+  });
+  flushParas(); flushMetrics();
+  if(actions.length){
+    out+='<div class="kt-cmb-actions">'+actions.map(function(a,i){
+      return '<button class="kt-cmb-chip'+(i===0?' primary':'')+'" data-msg="'+_esc(a.msg)+'" '+
+        'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
+    }).join('')+'</div>';
+  }
+  var eyebrow='<div class="kt-cmb-eyebrow">COACH'+(typeTag?' · '+_esc(typeTag):'')+'</div>';
+  return eyebrow+out;
+}
+function _cmbTakeHTML(t){
+  return '<div class="kt-cmb-take">'+
+    '<div class="kt-cmb-take-eyebrow">TAKEAWAY</div>'+
+    '<div class="kt-cmb-take-body">'+_esc(t)+'</div>'+
+  '</div>';
+}
+function coachBlockAction(el){
+  var m=el.getAttribute('data-msg')||'';
+  if(!m || coachLoading) return;
+  var inp=document.getElementById('coach-input');
+  if(!inp) return;
+  inp.value=m;
+  sendCoachMessage();
+}
+
 function getCoachChips(){
   var sessions=getSessions();
   var chips=[];
@@ -9684,6 +9790,15 @@ function buildSystemPrompt(){
   p+='Format responses with **bold** for key points and - bullet points for lists. ';
   p+='Keep responses under 200 words unless detail is explicitly requested. Always use actual numbers from the logs.\n\n';
 
+  p+='STRUCTURED ANSWERS — when your reply reports or compares numbers (run analysis, strength review, recovery check-in, programme adjustment, technique notes, weekly review), build it from these line markers instead of prose tables. Each marker sits alone on its own line:\n';
+  p+='%%type: Run analysis\n';
+  p+='%%metric: PACE | 8:07 | vs 8:15 goal | -8s | good\n';
+  p+='(metric fields: LABEL | value | reference | delta | tone. Tone is good, warn, or plain. Use 2-4 consecutive %%metric lines so they group into one table.)\n';
+  p+='%%takeaway: One or two sentences with the single conclusion. (max one per reply)\n';
+  p+='%%action: Set goal pace to 8:05 | Set my run goal pace to 8:05/km\n';
+  p+='(action fields: chip label | the exact chat message I receive when tapped. Max two; the first is the primary. Only offer actions you can actually do with your tools or answer well.)\n';
+  p+='Plain lines between markers render as short paragraphs — keep each to two sentences or fewer. For casual conversation, skip the markers entirely and answer in plain prose.\n\n';
+
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
   if(cr&&cr.name)p+=' ('+cr.name+')';
@@ -10099,7 +10214,10 @@ function renderCoach(){
         imgHTML='<div style="font-size:11px;color:rgba(0,0,0,.5);margin-bottom:4px;">📷 Image</div>';
       }
       var displayText=(typeof text==='string'?text:'').trim();
-      if(displayText||imgHTML){
+      if(m.role==='assistant' && _hasCoachBlocks(displayText)){
+        // Structured answer — full-width blocks, no bubble (spec 07).
+        bubbles+='<div class="kt-cmb">'+imgHTML+_coachBlocksHTML(displayText)+'</div>';
+      } else if(displayText||imgHTML){
         var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         bubbles+='<div class="coach-bubble '+m.role+'">'+imgHTML+rendered+'</div>';
       }
@@ -10209,19 +10327,19 @@ function renderCoach(){
 // with a subtle hue tint and swaps the accent. Light exists mainly so Auto
 // can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
-  dark:     {name:'Lime',     room:'Studio',    textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)','accent-ink':'#c8ff00',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af'},
-  midnight: {name:'Midnight', room:'Night ops', textColor:'#eaf4ff',bg:'#050a14',card:'#0c1524',card2:'#142033',border:'rgba(125,211,252,.14)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.14)','accent-dim':'rgba(125,211,252,.07)','accent-ink':'#7dd3fc',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#eaf4ff',muted:'#6b81a6',lite:'#8ba3c7'},
-  carbon:   {name:'Carbon',   room:'Wireframe', textColor:'#ffffff',bg:'#060607',card:'#060607',card2:'#161618',border:'rgba(255,255,255,.16)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.10)','accent-dim':'rgba(255,255,255,.05)','accent-ink':'#ffffff',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#ffffff',muted:'#7f7f85',lite:'#ababb2'},
-  ember:    {name:'Ember',    room:'Forge',     textColor:'#fff1e8',bg:'#120a06',card:'#1e130c',card2:'#2a1a11',border:'rgba(255,140,90,.12)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.16)','accent-dim':'rgba(255,92,56,.08)','accent-ink':'#ff5c38',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff1e8',muted:'#9a7d6d',lite:'#c2a08e'},
-  violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6'},
-  gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088'},
-  light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c'},
+  dark:     {name:'Lime',     room:'Studio',    textColor:'#fafafa',bg:'#0b0b0d',card:'#16161a',card2:'#1f1f24',border:'rgba(255,255,255,.07)',accent:'#c8ff00','accent-soft':'rgba(200,255,0,.12)','accent-dim':'rgba(200,255,0,.06)','accent-ink':'#c8ff00',green:'#c8ff00',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fafafa',muted:'#808089',lite:'#9ca3af',purple:'#a78bfa'},
+  midnight: {name:'Midnight', room:'Night ops', textColor:'#eaf4ff',bg:'#050a14',card:'#0c1524',card2:'#142033',border:'rgba(125,211,252,.14)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.14)','accent-dim':'rgba(125,211,252,.07)','accent-ink':'#7dd3fc',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#eaf4ff',muted:'#6b81a6',lite:'#8ba3c7',purple:'#a78bfa'},
+  carbon:   {name:'Carbon',   room:'Wireframe', textColor:'#ffffff',bg:'#060607',card:'#060607',card2:'#161618',border:'rgba(255,255,255,.16)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.10)','accent-dim':'rgba(255,255,255,.05)','accent-ink':'#ffffff',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#ffffff',muted:'#7f7f85',lite:'#ababb2',purple:'#a78bfa'},
+  ember:    {name:'Ember',    room:'Forge',     textColor:'#fff1e8',bg:'#120a06',card:'#1e130c',card2:'#2a1a11',border:'rgba(255,140,90,.12)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.16)','accent-dim':'rgba(255,92,56,.08)','accent-ink':'#ff5c38',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff1e8',muted:'#9a7d6d',lite:'#c2a08e',purple:'#c4a7fd'},
+  violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6',purple:'#c4b5fd'},
+  gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088',purple:'#b7a3f7'},
+  light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
 };
 
 function applyTheme(name) {
   var t=THEMES[name]; if(!t) return;
   var r=document.documentElement;
-  ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','green','yellow','red','orange','cyan','text','muted','lite'].forEach(function(k){
+  ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','green','yellow','red','orange','cyan','text','muted','lite','purple'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
   localStorage.setItem('kt_theme',name);
