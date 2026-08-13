@@ -7,6 +7,12 @@ run('library rows, grouping, and detail render from logs', async () => {
   const app = await boot();
   try {
     const out = await app.page.evaluate(() => {
+      // Pin a fresh session so the last-used column is exercised regardless
+      // of how old the seed dump has grown (rows go stale past 21 days).
+      const sessions = getSessions();
+      sessions.unshift({ id: 991, date: todayISO(), type: 'Push', week: currentWeek,
+        exercises: [{ name: 'Barbell Bench Press', sets: 4, reps: [8,8,8,8], weight: 160, rpe: 8, isMain: true }] });
+      lsSet('kt_sessions', sessions);
       openExLib();
       const list = document.getElementById('exlibList');
       const flat = list.innerHTML;
@@ -45,6 +51,12 @@ run('cue sheet opens over the runner and persists a note', async () => {
     const out = await app.page.evaluate(() => {
       openDeckRunner('Push');
       const ex = _runnerEx();
+      // Inline cues live on the fresh idle card and yield once a set logs.
+      const root = () => document.getElementById('runner-root').innerHTML;
+      const cuesOnCard = root().indexOf('CUES') !== -1;
+      runnerCompleted[ex.name] = 1; paintRunner();
+      const cuesGoneAfterSet = root().indexOf('CUES') === -1;
+      runnerCompleted[ex.name] = 0; paintRunner();
       openRunnerCueSheet();
       const sheet = document.getElementById('runnerCueOverlay');
       const opened = !!sheet && sheet.textContent.indexOf('CUES') !== -1;
@@ -62,8 +74,11 @@ run('cue sheet opens over the runner and persists a note', async () => {
       const cleared = !(lsGet('kt_ex_notes') || {})[ex.name];
       closeDeckRunner();
       return { opened, hasBack, saved: saved && saved.text, savedDate: saved && saved.date, refill, noLast, cleared,
+        cuesOnCard, cuesGoneAfterSet,
         inBackup: BACKUP_KEYS.indexOf('kt_ex_notes') !== -1 };
     });
+    assert(out.cuesOnCard, 'fresh idle card carries inline cues');
+    assert(out.cuesGoneAfterSet, 'inline cues yield to logged-set rows');
     assert(out.opened && out.hasBack, 'sheet opens with cues + back-to-set CTA');
     assert(out.saved === 'Chalked up, felt strong' && out.savedDate, 'closing saves the note with a date');
     assert(out.refill === 'Chalked up, felt strong' && out.noLast, 'same-day note prefills the well, not LAST NOTE');

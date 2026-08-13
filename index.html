@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260810-5"/>
+<meta name="build" content="20260812-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -5085,6 +5085,31 @@ function renderDeckRunner(){
 
   return hd + deckWrap + strip;
 }
+// Library lookup for a routine exercise. Routines don't always carry the
+// DB's exact names ("Bench Press" vs "Barbell Bench Press"), so after an
+// exact match this falls back to containment either way. Best match =
+// fewest extra words; ties prefer the barbell variant (an unqualified
+// lift name means the barbell lift by gym convention), then the shorter
+// name. Names under 4 chars never fuzzy-match.
+function _exLibEntry(name){
+  var n=String(name||'').toLowerCase().trim();
+  if(!n) return null;
+  var all=getAllExercises();
+  var hit=all.find(function(e){ return e.name.toLowerCase()===n; });
+  if(hit || n.length<4) return hit||null;
+  var qTokens=n.split(/\s+/).length;
+  var best=null, bestScore=1/0;
+  all.forEach(function(e){
+    var en=e.name.toLowerCase();
+    if(en.indexOf(n)===-1 && n.indexOf(en)===-1) return;
+    var score=Math.abs(en.split(/\s+/).length-qTokens)*10 +
+      (en.indexOf('barbell')===-1?1:0);
+    if(score<bestScore || (score===bestScore && best && e.name.length<best.name.length)){
+      best=e; bestScore=score;
+    }
+  });
+  return best;
+}
 // ── In-workout cue sheet (screen 12·K) ───────────────────────────────────────
 // Opens as the standard sheet over the paused workout: numbered cues from the
 // library, last session's note for context, one note well for today. The
@@ -5092,7 +5117,7 @@ function renderDeckRunner(){
 // Notes persist per exercise in kt_ex_notes {name: {text, date}}.
 function openRunnerCueSheet(){
   var ex=_runnerEx(); if(!ex) return;
-  var lib=getAllExercises().find(function(e){ return e.name.toLowerCase()===String(ex.name).toLowerCase(); });
+  var lib=_exLibEntry(ex.name);
   var tips=(lib&&lib.tips)||[];
   var notes=lsGet('kt_ex_notes')||{};
   var note=notes[ex.name];
@@ -5220,6 +5245,27 @@ function _renderRunnerIdleBody(ex, next){
       (targetW>0?targetW+' <span style="font-size:18px;font-weight:600;opacity:.7;">lb</span>':'BW')+
     '</div>'+
     '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+targetR+' reps</div>';
+  // Cues live on the card while it's still fresh (no sets logged yet) — the
+  // moment they matter most. Opacity-only styling inherits the card ink, so
+  // it reads on both the lime main-lift card and the dark one. Once logging
+  // starts, the completed-set rows take the space back; the Cues button
+  // keeps the full sheet (notes, library link).
+  var cuesInline = '';
+  if(!(runnerCompleted[ex.name] > 0)){
+    var libIdle = _exLibEntry(ex.name);
+    var tipsIdle = (libIdle && libIdle.tips) || [];
+    if(tipsIdle.length){
+      cuesInline = '<div style="margin-top:18px;">'+
+        '<div style="opacity:.45;font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;">CUES</div>'+
+        tipsIdle.slice(0,3).map(function(t,ti){
+          return '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;">'+
+            '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:800;opacity:.5;margin-top:2px;flex-shrink:0;">'+(ti+1)+'</span>'+
+            '<span style="font-size:12.5px;line-height:1.45;font-weight:500;opacity:.75;">'+_esc(t)+'</span>'+
+          '</div>';
+        }).join('')+
+      '</div>';
+    }
+  }
   var editBtnStyle=ex.isMain
     ?'background:rgba(0,0,0,.18);border:1px solid rgba(0,0,0,.2);color:rgba(0,0,0,.6);'
     :'background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);';
@@ -5234,6 +5280,7 @@ function _renderRunnerIdleBody(ex, next){
         '</div>'+
       '</div>'+
       targetLine+
+      cuesInline+
       _renderCompletedSets(ex)+
     '</div>'+
     '<div class="kt-r-card-foot">'+
