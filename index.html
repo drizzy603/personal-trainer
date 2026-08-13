@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260812-2"/>
+<meta name="build" content="20260812-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2424,21 +2424,74 @@ function toggleReadiness(){
   }).catch(function(){ showToast('Apple Health access failed'); });
 }
 function _readinessChip(){
-  // Slot-system chip (screen 04): score + zone on the strip; the detail bits
-  // (sleep / HRV / RHR) surface in a toast on tap. Never occupies the banner.
+  // Slot-system chip (screen 04): score + zone on the strip; tapping opens
+  // the detail sheet with the inputs behind the score. Never occupies the
+  // banner.
   var r=lsGet('kt_readiness');
   if(!r || r.date!==todayISO()) return '';
   var col = r.score>=80?'var(--green)':r.score>=60?'var(--yellow)':'var(--red)';
-  var bits=[];
-  if(r.parts.sleep!=null) bits.push(r.parts.sleep+'h sleep');
-  if(r.parts.hrvDelta!=null) bits.push('HRV '+(r.parts.hrvDelta>=0?'+':'')+r.parts.hrvDelta+'%');
-  if(r.parts.rhrDelta!=null && r.parts.rhrDelta!==0) bits.push('RHR '+(r.parts.rhrDelta>0?'+':'')+r.parts.rhrDelta+'%');
-  var tap = bits.length?' onclick="showToast(\''+_esc(bits.join(' · '))+'\')"':'';
-  return '<button class="kt-util-chip"'+tap+'>'+
+  return '<button class="kt-util-chip" onclick="openReadinessSheet()">'+
     '<span class="dot" style="background:'+col+';"></span>'+
     '<span class="lbl" style="color:var(--text);">READINESS '+r.score+'</span>'+
     '<span style="font-size:10px;font-weight:700;color:'+col+';text-transform:uppercase;letter-spacing:.04em;">'+_esc(r.zone)+'</span>'+
   '</button>';
+}
+// Readiness detail sheet — the A2 readiness-block grammar (score hero +
+// sleep/HRV/RHR input cells) as a sheet off the chip, since Today ships as
+// A1. Shows only the inputs the engine actually had this morning.
+function openReadinessSheet(){
+  var r=lsGet('kt_readiness');
+  if(!r || r.date!==todayISO()) return;
+  var col = r.score>=80?'var(--green)':r.score>=60?'var(--yellow)':'var(--red)';
+  var advice = r.score>=80
+    ? 'Primed — train as planned. Green light for the top sets.'
+    : r.score>=60
+      ? 'Steady — run the session as written, just don\u2019t chase extra top-set weight today.'
+      : 'Run it easy — lighten the loads (about 10% off, cap RPE 7) or swap in an easier day. The coach can make the edit for you.';
+  var cells=[];
+  if(r.parts.sleep!=null){
+    var _sh=Math.floor(r.parts.sleep), _sm=Math.round((r.parts.sleep-_sh)*60);
+    if(_sm===60){ _sh++; _sm=0; }
+    cells.push(['SLEEP', _sh+'h '+String(_sm).padStart(2,'0')+'m']);
+  }
+  if(r.parts.hrvDelta!=null) cells.push(['HRV VS 30D', (r.parts.hrvDelta>=0?'+':'')+r.parts.hrvDelta+'%']);
+  if(r.parts.rhrDelta!=null) cells.push(['REST HR VS 30D', (r.parts.rhrDelta>0?'+':'')+r.parts.rhrDelta+'%']);
+  var cellsHTML=cells.length
+    ? '<div style="display:grid;grid-template-columns:repeat('+cells.length+',1fr);gap:6px;margin:16px 0 14px;">'+
+      cells.map(function(c){
+        return '<div style="background:var(--card2);border-radius:10px;padding:10px 12px;">'+
+          '<div class="kt-mono" style="font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--muted);">'+c[0]+'</div>'+
+          '<div style="font-size:15px;font-weight:700;margin-top:3px;">'+_esc(c[1])+'</div>'+
+        '</div>';
+      }).join('')+'</div>'
+    : '<div style="margin:12px 0;"></div>';
+  var existing=document.getElementById('readinessOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='readinessOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Readiness</div>'+
+      '<button class="kt-sheet-x" onclick="closeReadinessSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:6px;">TODAY</div>'+
+    '<div style="display:flex;align-items:baseline;gap:10px;">'+
+      '<span style="font-size:44px;font-weight:800;letter-spacing:-2px;line-height:1;">'+r.score+'</span>'+
+      '<span class="kt-mono" style="font-size:11px;font-weight:800;letter-spacing:.08em;color:'+col+';text-transform:uppercase;">'+_esc(r.zone)+'</span>'+
+    '</div>'+
+    cellsHTML+
+    '<div style="font-size:13.5px;line-height:1.55;color:var(--lite);">'+advice+'</div>'+
+    '<div class="kt-mono" style="font-size:9px;color:var(--muted);margin-top:16px;line-height:1.6;">COMPUTED ON-DEVICE FROM APPLE HEALTH · 30-DAY BASELINE · REFRESHES EACH MORNING</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeReadinessSheet);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeReadinessSheet();});
+  _a11yPass();
+}
+function closeReadinessSheet(){
+  var el=document.getElementById('readinessOverlay');
+  if(el)el.remove();
 }
 // Quiet streak chip beside readiness (screen A1). Informational only — not a
 // slot-system candidate, so it carries its own class and never counts as a

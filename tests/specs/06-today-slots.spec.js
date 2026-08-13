@@ -21,14 +21,27 @@ run('slot system packs the Today stack', async () => {
       lapsePending = null; todayBannerOverride = null;
       lsSet('kt_debrief_seen', 7); render();
       const s3 = { chips: q('.kt-util-chip'), banners: q('.kt-resume-banner') };
+      // Readiness chip opens the detail sheet (A2 grammar: score + inputs).
+      openReadinessSheet();
+      const sheet = document.getElementById('readinessOverlay');
+      const s4 = {
+        open: !!sheet,
+        score: sheet ? sheet.textContent.indexOf('64') !== -1 : false,
+        sleep: sheet ? sheet.textContent.indexOf('SLEEP') !== -1 : false,
+        hrv: sheet ? sheet.textContent.indexOf('HRV VS 30D') !== -1 : false,
+      };
+      closeReadinessSheet();
+      s4.closed = !document.getElementById('readinessOverlay');
       lsDel('kt_readiness'); lsDel('kt_debrief'); lsDel('kt_debrief_seen'); render();
-      return { s1, s2, s3 };
+      return { s1, s2, s3, s4 };
     });
     assert(out.s1.strips === 1 && out.s1.banners === 1, 'one strip, one banner');
     assert(out.s1.text.indexOf('WELCOME BACK') > -1, 'lapse outranks debrief');
     assert(out.s1.chips === 2, 'readiness + debrief chips, got ' + out.s1.chips);
     assert(out.s2.banners === 1 && out.s2.text.indexOf('DEBRIEF') > -1, 'chip promotion swaps the banner');
     assert(out.s3.banners === 0 && out.s3.chips === 1, 'dismissed item drops its chip');
+    assert(out.s4.open && out.s4.score && out.s4.sleep && out.s4.hrv, 'readiness sheet shows score + inputs');
+    assert(out.s4.closed, 'readiness sheet closes');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
