@@ -6,7 +6,27 @@ App Store Connect requires:
 
 If you only ship 6.7" shots, App Store Connect upscales them for 6.9" — acceptable but slightly less crisp.
 
-## Workflow
+## Automated workflow (preferred — regenerates all ten in ~3 min)
+
+Drives the NATIVE app in the simulator via the `kt_dev_nav` boot hook, with
+demo data injected straight into the WKWebView's localstorage sqlite. No
+taps, no Web Inspector.
+
+```bash
+# From the repo root:
+npm run build:web && npx cap copy ios
+xcodebuild build -project ios/App/App.xcodeproj -scheme App \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/supero-dd
+node screenshots/make-seed.js          # demo data + store fixups → out/store-seed.json
+python3 screenshots/shoot.py           # all ten → screenshots/out/*.png
+python3 screenshots/shoot.py log coach # or just some
+```
+
+Shoot the set the same day the seed was generated (make-seed pins "today"
+as a Pull day for the hero shot). Then eyeball every PNG before uploading.
+
+## Manual workflow (PWA in Safari — legacy)
 
 ```bash
 # 1. Boot simulator + open the PWA URL
