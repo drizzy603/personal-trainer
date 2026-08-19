@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260812-5"/>
+<meta name="build" content="20260818-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1085,6 +1085,11 @@ var runnerEngaged     = false;      // false=idle/done, true=engaged or resting
 var runnerResting     = false;
 var runnerRestLeft    = 90;
 var runnerRestTick    = null;
+// Wall-clock deadline for the current rest. iOS suspends WKWebView timers
+// when the phone locks between sets, so the countdown derives from this
+// timestamp instead of counting ticks — keeping it in lockstep with the
+// Live Activity and the rest-done alert, which were always wall-time.
+var runnerRestEndsAt  = 0;
 var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
@@ -1696,11 +1701,16 @@ function getPRs() {
 }
 function getBodyWeights() { return lsGet('kt_bw')||[]; }
 function weekForDate(dateStr){
+  // Programme weeks advance on Mondays (autoAdvanceWeek anchors to
+  // kt_week_monday), so week membership is Monday-boundary math — a rolling
+  // 7-day window from today put Sunday's backdated session in the wrong
+  // week whenever today was early in the new week.
   if(!dateStr) return currentWeek;
   var d=new Date(dateStr+'T00:00:00');
-  var today=new Date(todayISO()+'T00:00:00');
-  var diffDays=Math.round((today-d)/86400000);
-  var weeksAgo=Math.max(0,Math.floor(diffDays/7));
+  var dow=(d.getDay()+6)%7;
+  var mon=new Date(d); mon.setDate(d.getDate()-dow);
+  var monNow=new Date(_mostRecentMonday()+'T00:00:00');
+  var weeksAgo=Math.max(0, Math.round((monNow-mon)/(7*86400000)));
   return Math.max(1,currentWeek-weeksAgo);
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
@@ -1908,23 +1918,26 @@ function getProgressHero(){
 }
 
 function calcStreak(sessions) {
+  // Weeks are keyed by their Monday's local date (same grammar as the
+  // volume buckets). The old year+week-number key split the week spanning
+  // New Year into two keys, resetting every streak each January.
   if(!sessions.length) return 0;
+  function monKey(d){
+    var dow=(d.getDay()+6)%7;
+    var m=new Date(d); m.setDate(d.getDate()-dow);
+    return _ymdLocal(m);
+  }
   var weeks={};
   sessions.forEach(function(s){
-    var d=new Date(s.date+'T00:00:00');
-    var jan1=new Date(d.getFullYear(),0,1);
-    var wk=Math.ceil(((d-jan1)/86400000+jan1.getDay()+1)/7);
-    weeks[d.getFullYear()+'-'+wk]=true;
+    if(!s.date) return;
+    weeks[monKey(new Date(s.date+'T00:00:00'))]=true;
   });
   var streak=0;
-  var today=new Date();
+  var cursor=new Date();
   for(var w=0;w<26;w++){
-    var check=new Date(today); check.setDate(check.getDate()-w*7);
-    var jan1=new Date(check.getFullYear(),0,1);
-    var wk=Math.ceil(((check-jan1)/86400000+jan1.getDay()+1)/7);
-    var key=check.getFullYear()+'-'+wk;
-    if(weeks[key]) streak++;
+    if(weeks[monKey(cursor)]) streak++;
     else if(w>0) break;
+    cursor.setDate(cursor.getDate()-7);
   }
   return streak;
 }
@@ -4868,21 +4881,12 @@ function runnerCompleteSet(){
   if(done < ex.sets){
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
+    runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
     if(runnerRestTick) clearInterval(runnerRestTick);
     _trovoTimerStart(ex, done + 1);
     runnerRestTick = setInterval(function(){
-      runnerRestLeft -= 1;
-      if(runnerRestLeft <= 0){
-        clearInterval(runnerRestTick); runnerRestTick=null;
-        runnerResting = false; runnerRestLeft = 90;
-        _trovoTimerEnd();
-        if(navigator.vibrate) navigator.vibrate([80,40,80]);
-        haptic('success');
-        var _rc=document.getElementById('runner-root');
-        if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
-        paintRunner();
-        return;
-      }
+      runnerRestLeft = Math.max(0, Math.round((runnerRestEndsAt - Date.now())/1000));
+      if(runnerRestLeft <= 0){ _restFinish(); return; }
       _paintRestClock();
     }, 1000);
   } else {
@@ -4935,11 +4939,25 @@ function _confirmRunnerLogAll(){
 function runnerSkipRest(){
   runnerResting = false;
   runnerRestLeft = 90;
+  runnerRestEndsAt = 0;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
   // The rest-done alert is still pending for the original moment — without
   // this it fires mid-set after the user already skipped.
   cancelRestNotification();
+  paintRunner();
+}
+// Rest reached zero — shared by the ticking interval and the resume resync
+// (the interval never fires while the phone is locked, so the wall clock can
+// cross zero in the background and only be noticed on visibilitychange).
+function _restFinish(){
+  if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+  runnerResting = false; runnerRestLeft = 90; runnerRestEndsAt = 0;
+  _trovoTimerEnd();
+  if(navigator.vibrate) navigator.vibrate([80,40,80]);
+  haptic('success');
+  var _rc=document.getElementById('runner-root');
+  if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
   paintRunner();
 }
 function getRestDefault(){ return parseInt(localStorage.getItem('kt_rest_default'))||90; }
@@ -4952,7 +4970,11 @@ function runnerAddRest(delta){
   // Tap +30s / -15s buttons inside the rest body. Clamp 5..600s so we can't
   // accidentally fly past the timer or get into negative territory.
   if(!runnerResting) return;
-  runnerRestLeft = Math.max(5, Math.min(600, runnerRestLeft + delta));
+  // Adjust against the wall-clock remainder, then re-anchor the deadline so
+  // the derived countdown and the native surfaces agree on the new end.
+  var _remain = runnerRestEndsAt ? Math.round((runnerRestEndsAt - Date.now())/1000) : runnerRestLeft;
+  runnerRestLeft = Math.max(5, Math.min(600, _remain + delta));
+  runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
   // The lock screen must follow the adjustment: restart the Live Activity
   // countdown and re-schedule the rest-done alert (same id — iOS replaces
   // the pending one, so no cancel/schedule race). Without this both kept
@@ -11998,6 +12020,7 @@ document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){
     var s=document.getElementById('screen');
     if(s && !s.innerHTML.trim()) { window.location.reload(); return; }
+    _resumeDayAndRest();
     setTimeout(checkPendingShare, 600);
     setTimeout(drainPendingHealth, 700);
     setTimeout(drainWatchSessions, 750);
@@ -12005,6 +12028,25 @@ document.addEventListener('visibilitychange', function(){
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
   }
 });
+// Day stamp for the rollover check — set at boot, bumped on resume.
+var _lastSeenDay = todayISO();
+// Runs on every return to foreground. iOS keeps this webview alive for
+// days: a resident app crossing midnight (or Monday) would otherwise show
+// yesterday's plan and stamp sessions with last week's number until the
+// next cold boot — and the wall-clock rest countdown needs a resync because
+// its interval froze while the phone was locked (finish fires here if the
+// rest already elapsed in the background).
+function _resumeDayAndRest(){
+  if(todayISO() !== _lastSeenDay){
+    _lastSeenDay = todayISO();
+    autoAdvanceWeek();
+    render();
+  }
+  if(runnerOpen && runnerResting && runnerRestEndsAt){
+    runnerRestLeft = Math.max(0, Math.round((runnerRestEndsAt - Date.now())/1000));
+    if(runnerRestLeft <= 0) _restFinish(); else _paintRestClock();
+  }
+}
 
 // ── Keyboard / assistive-tech access for clickable divs ──────────────────────
 // Rendered markup uses onclick divs in places (calendar days, settings rows).
