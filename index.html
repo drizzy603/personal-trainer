@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-1"/>
+<meta name="build" content="20260818-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2707,6 +2707,14 @@ function render() {
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
   // wipe what the user has typed.
   if(runLogOpen) _snapshotRunLogForm();
+  // Same guard for the chat composer: mid-turn tool-loop renders land while
+  // the user is typing their next message (programme builds run 10-60s),
+  // and the innerHTML swap would destroy the draft.
+  var _ci = document.getElementById('coach-input');
+  if(_ci){
+    _coachDraft = { v:_ci.value, s:_ci.selectionStart||0, e:_ci.selectionEnd||0,
+      focus:document.activeElement===_ci };
+  }
   var screen = document.getElementById('screen');
   // Only reset scroll on an actual nav change (tab or log sub-tab). In-tab
   // re-renders (saving a set, dismissing the coach card, ticking a goal)
@@ -2717,7 +2725,7 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
+  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
   screen.scrollTop = routeChanged ? 0 : prevScroll;
   _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
@@ -4748,14 +4756,18 @@ function closeDeckRunner(){
 function confirmCloseRunner(){
   var hasProg = runnerExIdx > 0 || Object.keys(runnerCompleted||{}).length > 0;
   if(!hasProg){ closeDeckRunner(); return; }
+  // Leaving the gym early is normal — logged sets deserve a save path, not
+  // just discard. The save button only appears once a set actually exists.
+  var hasSets = Object.keys(runnerCompleted||{}).some(function(k){ return runnerCompleted[k] > 0; });
   var el = document.createElement('div');
   el.id = 'kt-close-runner-sheet';
   el.className = 'kt-close-sheet';
   el.onclick = function(e){ if(e.target===el) el.remove(); };
   el.innerHTML = '<div class="kt-close-sheet-inner">'+
     '<div class="kt-close-sheet-ttl">Leave workout?</div>'+
-    '<div class="kt-close-sheet-sub">Logged sets so far won\'t be saved.</div>'+
+    '<div class="kt-close-sheet-sub">'+(hasSets?'Save what you\u2019ve done, or discard it.':'Logged sets so far won\'t be saved.')+'</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-close-runner-sheet\').remove()">Keep working</button>'+
+    (hasSets?'<button class="kt-close-sheet-btn" style="background:var(--accent);color:#000;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();runnerFinishSession();">Save &amp; finish early</button>':'')+
     '<button class="kt-close-sheet-btn" style="background:var(--red);color:#000;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
   '</div>';
   document.body.appendChild(el);
@@ -12030,6 +12042,23 @@ document.addEventListener('visibilitychange', function(){
 });
 // Day stamp for the rollover check — set at boot, bumped on resume.
 var _lastSeenDay = todayISO();
+// Chat composer draft, captured at the top of render() and re-applied after
+// the coach view's innerHTML swap. sendCoachMessage clears the input before
+// sending, so a sent message never resurrects.
+var _coachDraft = { v:'', s:0, e:0, focus:false };
+function _restoreCoachDraft(){
+  // Guard the boot render: this var's initializer lives after the first
+  // render() call in the boot sequence, so it can still be undefined here.
+  if(!_coachDraft || !_coachDraft.v) return;
+  var el = document.getElementById('coach-input');
+  if(!el || el.value) return;
+  el.value = _coachDraft.v;
+  el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
+  if(_coachDraft.focus){
+    el.focus();
+    try{ el.setSelectionRange(_coachDraft.s, _coachDraft.e); }catch(e){}
+  }
+}
 // Runs on every return to foreground. iOS keeps this webview alive for
 // days: a resident app crossing midnight (or Monday) would otherwise show
 // yesterday's plan and stamp sessions with last week's number until the
