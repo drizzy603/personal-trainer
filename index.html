@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260812-4"/>
+<meta name="build" content="20260812-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3249,7 +3249,8 @@ function fetchCoachCard(activity){
       'Last 5 sessions: ' + JSON.stringify(recent) + '\n\n'+
       'Write ONE proactive note (2-3 sentences max) the user should see this morning.\n'+
       'Be specific to the data — name an exercise, a number, a pattern.\n'+
-      'Don\'t be generic. Don\'t pep-talk. Talk like you\'ve coached them for a year.\n\n'+
+      'Don\'t be generic. Don\'t pep-talk. Talk like you\'ve coached them for a year.\n'+
+      'Any weight you suggest must be a multiple of 2.5 lb (smallest bump ±2.5, barbells ±5) — never fractional loads like 1.3 lb.\n\n'+
       'Then propose two action labels (≤ 3 words each).\n\n'+
       'Return STRICT JSON only — no prose, no code fences:\n'+
       '{"message":"...","actions":[{"label":"...","primary":false},{"label":"...","primary":true}]}';
@@ -4025,7 +4026,8 @@ function _requestDebrief(sess){
     return ex.name+' '+ex.sets+'×['+reps+'] @ '+ex.weight+' lb'+(ex.rpe?' RPE '+ex.rpe:'');
   }).join('; ');
   var prompt='You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
-    'and one cue for next time about this just-finished '+sess.type+' session. No greetings, no fluff.\n'+
+    'and one cue for next time about this just-finished '+sess.type+' session. No greetings, no fluff. '+
+    'Any weight you suggest must be a multiple of 2.5 lb.\n'+
     'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'');
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
@@ -5364,6 +5366,14 @@ function _plateMath(total){
   if(!out.length) return '';
   return out.join(' + ')+(rem>0.26?' +'+(Math.round(rem*10)/10):'')+' / side';
 }
+// Gyms rack in 2.5 lb steps — every PRESCRIBED or AI-written load snaps to
+// the nearest 2.5 so the app never asks for a 1.3 lb plate that doesn't
+// exist. User-LOGGED weights are never touched.
+function _snap25(w){
+  w=parseFloat(w);
+  if(!(w>0)) return w;
+  return Math.round(Math.round(w/2.5)*2.5*10)/10;
+}
 // Deterministic progression hint — works offline, no API key. If the last
 // logged session of this exercise hit the target reps on every set at
 // RPE ≤ 7, the weight was too easy: suggest a small bump (+5 bar / +2.5
@@ -5377,7 +5387,8 @@ function _overloadSuggestion(ex){
   var reps=(Array.isArray(last.reps)?last.reps:[last.reps]).map(function(x){return parseInt(x)||0;});
   if(!reps.length || Math.min.apply(null,reps)<targetLow) return null;
   var inc=_isBarbellLift(ex.name)?5:2.5;
-  return {to:lastW+inc, from:lastW, reps:Math.min.apply(null,reps), rpe:rpe};
+  // Snap the target so a fractional logged weight can't propose 153.7.
+  return {to:_snap25(lastW+inc), from:lastW, reps:Math.min.apply(null,reps), rpe:rpe};
 }
 function runnerApplySuggestion(w){
   var ex=_runnerEx(); if(!ex) return;
@@ -9392,6 +9403,13 @@ function executeCoachTool(name,input){
         };
         if(Array.isArray(w.legs2)&&w.legs2.length) weekObj.legs2=w.legs2;
         if(Array.isArray(w.arms)&&w.arms.length) weekObj.arms=w.arms;
+        // Model-written loads land on real plates: snap every prescribed
+        // weight to 2.5 lb before it reaches storage.
+        ['push','pull','legs','legs2','arms'].forEach(function(sk){
+          (weekObj[sk]||[]).forEach(function(e){
+            if(e && parseFloat(e.weight)>0) e.weight=_snap25(e.weight);
+          });
+        });
         // Preferred: runs:{Mon:{...},Wed:{...},...}. Legacy fallback: runTue/runSat.
         if(w.runs&&typeof w.runs==='object'&&!Array.isArray(w.runs)){
           var runsOut={};
@@ -9505,6 +9523,7 @@ function executeCoachTool(name,input){
       var weights=getWeights();
       var newW=parseFloat(input.weight);
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
+      newW=_snap25(newW);
       if(!input.name) return {ok:false,error:'name required'};
       var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
       if(!key) key=String(input.name);
@@ -9964,6 +9983,7 @@ function buildSystemPrompt(){
   p+='(action fields: chip label | the exact chat message I receive when tapped. Max two; the first is the primary. Only offer actions you can actually do with your tools or answer well.)\n';
   p+='Plain lines between markers render as short paragraphs — keep each to two sentences or fewer. For casual conversation, skip the markers entirely and answer in plain prose.\n\n';
 
+  p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of 2.5 lb (2.5, 5, 7.5, 10 …). The smallest meaningful change is ±2.5 lb (±5 lb on barbell lifts). Never suggest fractional bumps like +1.3 lb — gyms cannot load them.\n';
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
   if(cr&&cr.name)p+=' ('+cr.name+')';
@@ -11905,6 +11925,30 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
   window.addEventListener('scroll', _kbSnapSoon);
 })();
 loadCoachHistory();
+// One-time sweep: older AI-written programmes can carry fractional loads
+// (151.3 lb) that no gym can rack — snap every prescription already on this
+// phone to 2.5 lb. Idempotent; writes only when something actually moved.
+// Logged session history is deliberately untouched.
+(function(){
+  try{
+    var _mig=getCustomRoutine();
+    if(!_mig || !Array.isArray(_mig.weeks)) return;
+    var moved=false;
+    _mig.weeks.forEach(function(wkO){
+      if(!wkO) return;
+      ['push','pull','legs','legs2','arms'].forEach(function(sk){
+        (wkO[sk]||[]).forEach(function(e){
+          var ew=parseFloat(e&&e.weight);
+          if(ew>0){
+            var snapped=_snap25(ew);
+            if(snapped!==ew){ e.weight=snapped; moved=true; }
+          }
+        });
+      });
+    });
+    if(moved) setCustomRoutine(_mig);
+  }catch(e){}
+})();
 _restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
