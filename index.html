@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-3"/>
+<meta name="build" content="20260818-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9376,6 +9376,23 @@ var COACH_TOOLS=[
        note:{type:'string',description:'Short note (optional).'}
      },
      required:['distance_km','time']}},
+  {name:'log_session',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list. Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
+   input_schema:{type:'object',
+     properties:{
+       type:{type:'string',enum:['Push','Pull','Legs','Legs2','Arms'],description:'Session type.'},
+       date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
+       exercises:{type:'array',minItems:1,items:{type:'object',properties:{
+         name:{type:'string'},
+         sets:{type:'integer',minimum:1},
+         reps:{description:'Reps per set — one integer (same every set) or an array like [8,8,6].'},
+         weight:{type:'number',description:'Weight in lb — 0 for bodyweight.'},
+         rpe:{type:'number',description:'RPE if the user gave one (optional).'},
+         isMain:{type:'boolean',description:'True on the primary compound.'}
+       },required:['name','sets','reps']}},
+       note:{type:'string',description:'Short note (optional).'}
+     },
+     required:['type','exercises']}},
   {name:'log_sport',
    description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day.',
    input_schema:{type:'object',
@@ -9644,6 +9661,51 @@ function executeCoachTool(name,input){
       render();
       return {ok:true,message:'Run logged: '+rkm+'km in '+rtime+' on '+rdate};
     }
+    if(name==='log_session'){
+      // The one loggable thing the coach previously had to refuse: a lift
+      // session done off-app. Mirrors runnerFinishSession's record shape —
+      // reps as a per-set array, prs as names from checkAndUpdatePRs, and
+      // the working-weight cache follows real work. Logged weights are the
+      // user's truth: no plate snapping here.
+      var gtype=String(input.type||'').trim();
+      if(['Push','Pull','Legs','Legs2','Arms'].indexOf(gtype)===-1) return {ok:false,error:'type must be Push, Pull, Legs, Legs2, or Arms'};
+      var gexsIn=Array.isArray(input.exercises)?input.exercises:[];
+      if(!gexsIn.length) return {ok:false,error:'exercises array required'};
+      var gdate=String(input.date||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(gdate)) gdate=todayISO();
+      var gclean=[];
+      for(var gi=0; gi<gexsIn.length; gi++){
+        var ge=gexsIn[gi]||{};
+        var gname=String(ge.name||'').trim();
+        var gsets=parseInt(ge.sets)||0;
+        if(!gname || !(gsets>0)) return {ok:false,error:'each exercise needs a name and sets >= 1'};
+        var greps=Array.isArray(ge.reps)
+          ? ge.reps.map(function(x){ return parseInt(x)||0; }).slice(0,gsets)
+          : [];
+        if(!greps.length){
+          var gr1=parseInt(ge.reps)||0;
+          for(var gs=0; gs<gsets; gs++) greps.push(gr1);
+        }
+        while(greps.length<gsets) greps.push(greps[greps.length-1]||0);
+        var grpe=parseFloat(ge.rpe);
+        gclean.push({name:gname, sets:gsets, reps:greps,
+          weight:parseFloat(ge.weight)||0,
+          rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
+      }
+      var gPRs=checkAndUpdatePRs(gclean);
+      var gsessions=getSessions();
+      gsessions.unshift({id:Date.now(), date:gdate, week:weekForDate(gdate),
+        type:gtype, exercises:gclean,
+        note:String(input.note||'').trim(), prs:gPRs});
+      lsSet('kt_sessions',gsessions);
+      var gwts=getWeights();
+      gclean.forEach(function(e){ if(e.weight>0) gwts[e.name]=e.weight; });
+      lsSet('kt_weights',gwts);
+      invalidateCoachCard();
+      checkMilestones({quiet:false, delayToast:600});
+      render();
+      return {ok:true,message:gtype+' session logged for '+gdate+' — '+gclean.length+' exercise'+(gclean.length===1?'':'s')+(gPRs.length?', '+gPRs.length+' PR'+(gPRs.length===1?'':'s'):'')};
+    }
     if(name==='log_sport'){
       var stype=String(input.type||'Other').trim();
       var sdur=parseInt(input.duration)||0;
@@ -9787,9 +9849,13 @@ async function runCoachTurn(systemPrompt,model,maxTok){
           body:JSON.stringify({
             model:model,
             max_tokens:maxTok,
-            system:systemPrompt,
+            // Prompt caching: the system prompt and tool schemas are
+            // identical across every round of this loop (and across
+            // messages within 5 minutes) — cache breakpoints cut the
+            // re-billed prefix to a fraction on the user's own key.
+            system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],
             messages:apiMsgs,
-            tools:COACH_TOOLS
+            tools:_cachedCoachTools()
           })
         }),intakeMode?300000:180000,'fetch');
       }catch(e){
@@ -9943,6 +10009,7 @@ function toolCallLabel(tc){
     return 'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws)+' updated';
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
+  if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
   if(n==='set_exercise_weight') return i.name+' → '+i.weight+' lb';
   if(n==='set_bench_goal') return 'Bench goal '+i.weight+' lb';
   if(n==='set_squat_goal') return 'Squat goal '+i.weight+' lb';
@@ -10002,7 +10069,23 @@ function saveApiKey(){
   if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
   setApiKey(k);
   showToast('API key saved');
+  _pingApiKey(k);
   render();
+}
+// Fire-and-forget 1-token ping so a typo'd or revoked key surfaces NOW,
+// not as a raw 401 bubble on the first real message. Rate-limit responses
+// still prove the key is live; network failure keeps the neutral toast.
+function _pingApiKey(k){
+  try{
+    fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'hi'}]})
+    }).then(function(r){
+      if(r.ok||r.status===429||r.status===529) showToast('Key verified ✓');
+      else if(r.status===401||r.status===403) showToast('Anthropic rejected this key — check for typos');
+    }).catch(function(){});
+  }catch(e){}
 }
 
 function clearApiKey(){
@@ -10177,6 +10260,7 @@ function buildSystemPrompt(){
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
+  p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance_km, time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight (lb) and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
@@ -10202,17 +10286,54 @@ function triggerImagePicker(){
   inp.type='file';inp.accept='image/*';
   inp.onchange=function(e){
     var file=e.target.files[0];if(!file)return;
-    if(file.size>4*1024*1024){showToast('Image too large — keep it under 4 MB');return;}
     var reader=new FileReader();
     reader.onload=function(ev){
-      var dataUrl=ev.target.result;
-      var comma=dataUrl.indexOf(',');
-      pendingImage={data:dataUrl.slice(comma+1),mediaType:file.type||'image/jpeg',previewUrl:dataUrl};
-      render();scrollChatBottom();
+      // Downscale before anything touches the API: the model downsamples
+      // past ~1568px anyway, so a 4MB camera photo bought nothing but a
+      // multi-second LTE upload, maximum image tokens on every tool round,
+      // and the exact request size that trips the iOS fetch timeout. The
+      // old path flat-rejected >4MB — most iPhone photos.
+      _downscaleImage(ev.target.result, function(dataUrl, mediaType){
+        var comma=dataUrl.indexOf(',');
+        pendingImage={data:dataUrl.slice(comma+1),mediaType:mediaType,previewUrl:dataUrl};
+        render();scrollChatBottom();
+      });
     };
     reader.readAsDataURL(file);
   };
   inp.click();
+}
+// Cap the long edge at 1568px and re-encode as JPEG. Falls back to the
+// original when decoding fails (corrupt file, unsupported format).
+function _downscaleImage(dataUrl, cb){
+  var img=new Image();
+  img.onload=function(){
+    try{
+      var MAX=1568;
+      var w=img.naturalWidth, h=img.naturalHeight;
+      var scale=Math.min(1, MAX/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+      var c=document.createElement('canvas');
+      c.width=cw; c.height=ch;
+      c.getContext('2d').drawImage(img,0,0,cw,ch);
+      cb(c.toDataURL('image/jpeg',0.82),'image/jpeg');
+    }catch(e){ cb(dataUrl, (dataUrl.slice(5).split(';')[0])||'image/jpeg'); }
+  };
+  img.onerror=function(){ cb(dataUrl, (dataUrl.slice(5).split(';')[0])||'image/jpeg'); };
+  img.src=dataUrl;
+}
+// The last tool schema carries the cache breakpoint — schemas are the
+// biggest stable prefix chunk in every coach request.
+function _cachedCoachTools(){
+  var t=COACH_TOOLS.slice();
+  if(t.length){
+    var last=t[t.length-1];
+    var copy={};
+    Object.keys(last).forEach(function(k){ copy[k]=last[k]; });
+    copy.cache_control={type:'ephemeral'};
+    t[t.length-1]=copy;
+  }
+  return t;
 }
 function clearPendingImage(){pendingImage=null;render();}
 
@@ -10389,7 +10510,11 @@ function renderCoach(){
         var tb=lastMsg.content.find(function(b){return b&&b.type==='text';});
         contentStr=tb?tb.text:'[Image]';
       }
-      var raw=contentStr.replace(/\n/g,' ');
+      // Structured replies carry %%-marker lines — the preview shows the
+      // first plain sentence, never the raw grammar.
+      var raw=contentStr.split('\n').filter(function(l){
+        return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
+      }).join(' ');
       lastPreview=raw.length>65?raw.slice(0,65)+'…':raw;
     }
     var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
@@ -11183,6 +11308,7 @@ function saveApiKeyFromSettings(){
   if(!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
   setApiKey(k);
   showToast('API key saved');
+  _pingApiKey(k);
   render();
 }
 // Same confirmation sheet as the Coach tab — one accidental tap must not
