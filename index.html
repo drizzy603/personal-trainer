@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-9"/>
+<meta name="build" content="20260818-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3772,7 +3772,7 @@ function renderTodayEditorial(){
           (ex.isMain?'<span class="kt-main-tag">MAIN</span>':'')+
         '</div>'+
         '<div class="kt-marquee-right">'+
-          '<span class="kt-marquee-reps">'+ex.sets+'×'+ex.reps+' · '+wLbl+'</span>'+
+          '<span class="kt-marquee-reps">'+ex.sets+'×'+_fmtRepTarget(ex.reps)+' · '+wLbl+'</span>'+
         '</div>'+
         '</div>'+spark;
     });
@@ -4765,7 +4765,8 @@ function openDeckRunner(overrideType){
   _ssReturnIdx = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
-    runnerWeights[ex.name] = parseFloat(ex.weight) || 0;
+    runnerWeights[ex.name] = Array.isArray(ex.weights) && parseFloat(ex.weights[0])>0
+      ? parseFloat(ex.weights[0]) : (parseFloat(ex.weight) || 0);
     var firstRep = Array.isArray(ex.reps) ? ex.reps[0] : ex.reps;
     runnerReps[ex.name] = parseInt(firstRep) || (typeof firstRep==='string' ? parseInt(firstRep.split('-')[0])||0 : 0);
     runnerRpe[ex.name] = parseInt(ex.rpe) || 7;
@@ -4896,6 +4897,14 @@ function skipRunnerExercise(){
     runnerFinishSession();
   }
 }
+// "8" / "8-10" / per-set arrays → "(3/8/8)"; uniform arrays collapse.
+function _fmtRepTarget(reps){
+  if(Array.isArray(reps)){
+    var same=reps.length&&reps.every(function(r){ return r===reps[0]; });
+    return same?String(reps[0]):'('+reps.join('/')+')';
+  }
+  return String(reps);
+}
 function _runnerEx(){ return runnerSession ? runnerSession.exercises[runnerExIdx] : null; }
 function _runnerNext(){ return runnerSession ? runnerSession.exercises[runnerExIdx+1] : null; }
 function _runnerNext2(){ return runnerSession ? runnerSession.exercises[runnerExIdx+2] : null; }
@@ -4997,11 +5006,17 @@ function runnerCompleteSet(){
   runnerWeightsLog[ex.name].push(w);
   if(!runnerRpeLog[ex.name]) runnerRpeLog[ex.name] = [];
   runnerRpeLog[ex.name].push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
-  // Reset reps to target so next set starts fresh (user must confirm actual reps).
-  var targetRep = Array.isArray(ex.reps) ? ex.reps[0] : ex.reps;
-  runnerReps[ex.name] = parseInt(targetRep) || 0;
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
+  // Reset targets for the NEXT set (index = done). Per-set arrays make
+  // top-set/back-off schemes real: [3,8,8] reps with [225,185,185] loads.
+  var _ti = Math.min(done, ex.sets - 1);
+  var targetRep = Array.isArray(ex.reps) ? ex.reps[Math.min(_ti, ex.reps.length-1)] : ex.reps;
+  runnerReps[ex.name] = parseInt(targetRep) || 0;
+  if(Array.isArray(ex.weights) && done < ex.sets){
+    var _tw = parseFloat(ex.weights[Math.min(_ti, ex.weights.length-1)]);
+    if(_tw > 0) runnerWeights[ex.name] = _tw;
+  }
   if(navigator.vibrate) navigator.vibrate(40);
   haptic('light');
   // Superset flow (ex.ss = paired with the NEXT exercise): a set of the
@@ -5280,7 +5295,7 @@ function renderDeckRunner(){
   var top = '<div class="kt-r-card-top">'+
     '<div class="kt-r-card-idx">'+String(runnerExIdx+1).padStart(2,'0')+'</div>'+
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">'+
-      '<span class="kt-r-card-pill">'+ex.sets+'×'+ex.reps+(ex.rpe?' · RPE '+ex.rpe:'')+'</span>'+
+      '<span class="kt-r-card-pill">'+ex.sets+'×'+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:'')+'</span>'+
       (ex.isMain ? '<span class="kt-r-card-main">◆ MAIN LIFT</span>' : '')+
       ((ex.ss&&next)||(runnerExIdx>0&&runnerSession.exercises[runnerExIdx-1].ss)
         ? '<span class="kt-r-card-main">⇄ SUPERSET</span>' : '')+
@@ -5484,7 +5499,7 @@ function _renderRunnerIdleBody(ex, next){
     '<div style="font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin-top:4px;opacity:.7;">'+
       (targetW>0?targetW+' <span style="font-size:18px;font-weight:600;opacity:.7;">lb</span>':'BW')+
     '</div>'+
-    '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+targetR+' reps</div>';
+    '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+_fmtRepTarget(ex.reps)+' reps</div>';
   // Cues live on the card while it's still fresh (no sets logged yet) — the
   // moment they matter most. Opacity-only styling inherits the card ink, so
   // it reads on both the lime main-lift card and the dark one. Once logging
@@ -9572,8 +9587,9 @@ var _exerciseSchema={
     isMain:{type:'boolean',description:'True on the primary compound of the session'},
     ss:{type:'boolean',description:'Superset: this exercise is paired with the NEXT one in the array (alternate sets, one shared rest after the pair)'},
     sets:{type:'integer',minimum:1},
-    reps:{description:'Integer reps (e.g. 8) or string range (e.g. "8-10" or "Max")'},
+    reps:{description:'Integer reps (e.g. 8), string range (e.g. "8-10" or "Max"), or an ARRAY of per-set targets like [3,8,8] for top-set/back-off schemes'},
     weight:{type:'number',description:'Weight in lb — use 0 for bodyweight'},
+    weights:{type:'array',items:{type:'number'},description:'Optional per-set target loads like [225,185,185] — pairs with a reps array for top-set/back-off. weight stays the headline load.'},
     rpe:{type:'number',description:'Rating of perceived exertion, typically 6–10'}
   },
   required:['name','sets','reps','weight','rpe']
@@ -9758,6 +9774,9 @@ function executeCoachTool(name,input){
         ['push','pull','legs','legs2','arms'].forEach(function(sk){
           (weekObj[sk]||[]).forEach(function(e){
             if(e && parseFloat(e.weight)>0) e.weight=_snap25(e.weight);
+            if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
+              var v=parseFloat(x); return v>0?_snap25(v):x;
+            });
           });
         });
         // Preferred: runs:{Mon:{...},Wed:{...},...}. Legacy fallback: runTue/runSat.
