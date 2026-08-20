@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-4"/>
+<meta name="build" content="20260818-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3478,23 +3478,35 @@ function renderTodayEditorial(){
       body = 'Tap to start when you\'re ready.';
     }
   } else if(act.type === 'run'){
-    line1 = 'No workout';
+    // A run day HAS a workout — the old "No workout today." greeted runners
+    // with the wrong voice (seen live in the simulator).
+    line1 = act.km > 0 ? act.km+' km run' : 'Run day';
     line2 = 'today.';
     line2Class = 'accent';
-    body = act.km > 0
-      ? 'Today is a '+act.km+' km run. Switch to the Run tab to log it.'
-      : 'Today is a run day. Switch to the Run tab to log it.';
+    body = 'No lifts scheduled — log the run from the Run tab.';
   } else if(act.type === 'sport'){
-    line1 = 'No workout';
+    line1 = _esc(act.dayName);
     line2 = 'today.';
     line2Class = 'accent';
-    body = 'Today is '+_esc(act.dayName)+'. Log it from the + tab.';
+    body = 'No lifts scheduled — log it from the + tab.';
   } else {
     line1 = 'Rest day.';
     line2 = 'No workout.';
     line2Class = '';
     body = 'Recover well — walk, stretch, eat well.';
   }
+  // Surface the week's focus note (spec: the one sentence explaining WHY
+  // this week looks the way it does lived only in the programme modal).
+  // Shown on the first training day of the programme week and on rest days.
+  var _wdNote = (function(){
+    var w=getWkData();
+    var n=w&&w.wkNote?String(w.wkNote).trim():'';
+    if(!n) return '';
+    if(act.type==='rest') return n;
+    var wkStarted=getSessions().some(function(s){ return s.week===currentWeek; });
+    return wkStarted ? '' : n;
+  })();
+  if(_wdNote) body += ' <b>This week:</b> '+_esc(_wdNote);
   // ◆ DELOAD WEEK · 60% LOADS micro-label — Workout tab only shows it on
   // lift days (the only day type where the badge is contextually meaningful
   // here; non-lift days route the user to a different sub-tab).
@@ -5069,6 +5081,9 @@ function runnerFinishSession(){
   }
   // Milestones fire after the PR / session toast has had its moment.
   checkMilestones({delayToast: newPRs.length ? 3800 : 2500});
+  // The day's training reaches disk tonight, not tomorrow — the backup gate
+  // is content-aware, so this rewrites Files/iCloud with the new session.
+  setTimeout(_autoBackupIfDue, 2500);
   closeDeckRunner();
   render();
 }
@@ -8401,7 +8416,16 @@ function renderProgress() {
     // THIS WK when the newest bucket actually is the current calendar week.
     var _lastIsCur=_volWeeks[_volWeeks.length-1]===_curWkKey;
     var _vRefIdx=(_lastIsCur && _volWeeks.length>=3)?_volWeeks.length-2:_volWeeks.length-1;
-    var _vFirst=_volBuckets[_volWeeks[0]], _vLast=_volBuckets[_volWeeks[_vRefIdx]];
+    // A partial FIRST week (everyone's first logging week) made the trend
+    // scream +404% — when the opening bucket is an outlier vs the window
+    // median, baseline from the second bucket instead.
+    var _vBaseIdx=0;
+    if(_volWeeks.length>=3){
+      var _sorted=_volWeeks.map(function(w){ return _volBuckets[w]; }).sort(function(a,b){ return a-b; });
+      var _med=_sorted[Math.floor(_sorted.length/2)];
+      if(_volBuckets[_volWeeks[0]] < _med*0.4) _vBaseIdx=1;
+    }
+    var _vFirst=_volBuckets[_volWeeks[_vBaseIdx]], _vLast=_volBuckets[_volWeeks[_vRefIdx]];
     var _vPct=_vFirst>0?Math.round((_vLast-_vFirst)/_vFirst*100):0;
     var _vDelta=_vPct!==0
       ? ' · <span style="color:'+(_vPct>0?'var(--accent-ink)':'var(--muted)')+';">'+(_vPct>0?'+':'')+_vPct+'%</span>'
@@ -8680,8 +8704,10 @@ function renderCalDetail(sessions,runs,sports){
   var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
   var daySports=sports.filter(function(sp){return sp.date===calSelectedDate;});
   if(!daySessions.length&&!dayRuns.length&&!daySports.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
+  // Destructive ✕ next to a date input needs a real hit area: visual stays
+  // compact, padding+negative-margin grows the target past 40px.
   var actBtnStyle='background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;padding:3px 8px;-webkit-tap-highlight-color:transparent;';
-  var dateInpStyle='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;font-family:inherit;padding:3px 6px;cursor:pointer;';
+  var dateInpStyle='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;font-family:inherit;padding:8px 6px;cursor:pointer;';
   var html='';
   daySessions.forEach(function(s){
     var def=SESS[s.type]||{icon:'',label:s.type};
@@ -8692,7 +8718,7 @@ function renderCalDetail(sessions,runs,sports){
         '<div style="font-size:14px;font-weight:800;letter-spacing:-.2px;">'+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+s.date+'" style="'+dateInpStyle+'" onchange="moveSession('+s.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteSession('+s.id+')" title="Delete session">✕</button>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteSession('+s.id+')" title="Delete session">✕</button>'+
         '</div>'+
       '</div>'+
       exRows+
@@ -8707,7 +8733,7 @@ function renderCalDetail(sessions,runs,sports){
         '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
         '</div>'+
       '</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
@@ -8735,7 +8761,7 @@ function renderCalDetail(sessions,runs,sports){
         '</div>'+
         '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
           '<input type="date" value="'+sp.date+'" style="'+dateInpStyle+'" onchange="moveSport('+sp.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:2px 6px;" onclick="deleteSportLog('+sp.id+')" title="Delete session">✕</button>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteSportLog('+sp.id+')" title="Delete session">✕</button>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -12262,6 +12288,9 @@ document.addEventListener('visibilitychange', function(){
     setTimeout(drainPendingHealth, 700);
     setTimeout(drainWatchSessions, 750);
     setTimeout(refreshReadiness, 800);
+    // Content-aware: re-writes only when data changed since the last backup,
+    // so the day's training is on disk after the next app open at the latest.
+    setTimeout(_autoBackupIfDue, 1500);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
   }
 });
@@ -12645,13 +12674,30 @@ function _runNativeSync(){
 // Supero, so it survives a lost or dead phone.
 function _autoBackupIfDue(){
   var FS=_plug('Filesystem'); if(!FS) return;
-  if(localStorage.getItem('kt_last_autobackup')===todayISO()) return;
+  // Content-aware gate: the old date-only check meant the first render of
+  // the day backed up and everything logged AFTER it (the day's actual
+  // training) waited until tomorrow — while Settings said "Backed up
+  // today". Re-write whenever the payload hash moved.
   var payload=JSON.stringify(buildBackupJSON());
+  var hash=_hashStr(payload);
+  if(localStorage.getItem('kt_last_autobackup')===todayISO()
+     && localStorage.getItem('kt_last_autobackup_hash')===hash) return;
   var dow=['mon','tue','wed','thu','fri','sat','sun'][(new Date().getDay()+6)%7];
   FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
     .then(function(){ return FS.writeFile({path:'Supero/auto-backup-'+dow+'.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
-    .then(function(){ localStorage.setItem('kt_last_autobackup', todayISO()); _backupToICloud(payload, dow); })
+    .then(function(){
+      localStorage.setItem('kt_last_autobackup', todayISO());
+      localStorage.setItem('kt_last_autobackup_hash', hash);
+      _backupToICloud(payload, dow);
+    })
     .catch(function(){});
+}
+// djb2 over the backup payload — collision risk is irrelevant here (worst
+// case: one redundant file write).
+function _hashStr(s){
+  var h=5381;
+  for(var i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))|0; }
+  return String(h);
 }
 function _backupToICloud(payload, dow){
   var TS=_plug('TrovoShare');
@@ -12668,6 +12714,7 @@ function runAutoBackupNow(){
   var FS=_plug('Filesystem');
   if(!FS){ showToast('Available in the iOS app'); return; }
   localStorage.removeItem('kt_last_autobackup');
+  localStorage.removeItem('kt_last_autobackup_hash');
   _autoBackupIfDue();
   showToast('Backed up to Files → Supero');
   setTimeout(render, 400);
