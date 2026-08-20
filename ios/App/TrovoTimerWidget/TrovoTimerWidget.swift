@@ -27,6 +27,25 @@ extension Color {
     }
 }
 
+// Every timer text builds Date.now...endDate — once rest expires while the
+// phone is locked, JS never ends the activity and the next render would
+// construct an INVALID range. Guarded views render a done state instead.
+private func restTimerText(_ end: Date, size: CGFloat, color: Color, width: CGFloat? = nil) -> some View {
+    Group {
+        if end > .now {
+            Text(timerInterval: Date.now...end, countsDown: true)
+                .font(.system(size: size, weight: .bold, design: .monospaced))
+                .foregroundColor(color)
+                .monospacedDigit()
+        } else {
+            Text("DONE")
+                .font(.system(size: size * 0.8, weight: .heavy, design: .monospaced))
+                .foregroundColor(color)
+        }
+    }
+    .frame(width: width)
+}
+
 struct TrovoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TrovoTimerAttributes.self) { context in
@@ -48,10 +67,7 @@ struct TrovoTimerLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(timerInterval: Date.now...context.state.endDate, countsDown: true)
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundColor(lime)
-                        .monospacedDigit()
+                    restTimerText(context.state.endDate, size: 22, color: lime)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.exerciseName)
@@ -68,16 +84,9 @@ struct TrovoTimerLiveActivity: Widget {
                     .foregroundColor(lime)
                     .font(.system(size: 13))
             } compactTrailing: {
-                Text(timerInterval: Date.now...context.state.endDate, countsDown: true)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(lime)
-                    .monospacedDigit()
-                    .frame(width: 44)
+                restTimerText(context.state.endDate, size: 13, color: lime, width: 44)
             } minimal: {
-                Text(timerInterval: Date.now...context.state.endDate, countsDown: true)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(lime)
-                    .monospacedDigit()
+                restTimerText(context.state.endDate, size: 11, color: lime)
             }
             .keylineTint(lime)
         }
@@ -106,12 +115,8 @@ struct LockScreenView: View {
                     .foregroundColor(.secondary)
             }
             Spacer()
-            Text(timerInterval: Date.now...context.state.endDate, countsDown: true)
-                .font(.system(size: 48, weight: .bold, design: .monospaced))
-                .foregroundColor(lime)
-                .monospacedDigit()
+            restTimerText(context.state.endDate, size: 48, color: lime, width: 110)
                 .minimumScaleFactor(0.6)
-                .frame(width: 110, alignment: .trailing)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -143,13 +148,26 @@ func loadSummary() -> WidgetSummary? {
             .string(forKey: "superoWidgetSummary"),
           let data = json.data(using: .utf8) else { return nil }
     let summary = try? JSONDecoder().decode(WidgetSummary.self, from: data)
-    return summary.map(applyPendingWorkouts)
+    return summary.map(applyPendingWorkouts).map(applyWatchDone)
 }
 
 // Workouts harvested by background delivery but not yet drained by the app
 // live in the App Group as pendingHealthWorkouts. Overlay them so a cardio
 // day flips to "done" right after the watch workout ends, even if the app
 // hasn't been opened since.
+// Wrist-finished lift sessions land in standard defaults (invisible here)
+// until the phone app drains them — the plugin mirrors their DATES into the
+// App Group so lift days flip to done immediately.
+private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
+    guard let done = UserDefaults(suiteName: "group.app.kt.trainer")?
+            .stringArray(forKey: "pendingWatchDone"), !done.isEmpty else { return summary }
+    let days = summary.days.map { d -> SummaryDay in
+        guard !d.done, done.contains(d.date) else { return d }
+        return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
+    }
+    return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
+                         streak: summary.streak, days: days)
+}
 private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     guard let data = UserDefaults(suiteName: "group.app.kt.trainer")?
             .data(forKey: "pendingHealthWorkouts"),

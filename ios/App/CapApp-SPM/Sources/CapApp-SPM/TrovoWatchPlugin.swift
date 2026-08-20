@@ -1,6 +1,7 @@
 import Foundation
 import Capacitor
 import WatchConnectivity
+import WidgetKit
 import os.log
 
 // Debug trace for the watch bridge — `log stream` / Console.app filtered on
@@ -89,6 +90,14 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     @objc func clearPendingSessions(_ call: CAPPluginCall) {
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+        // The widget's wrist-done overlay pairs with the pending queue —
+        // once the app has drained the sessions into kt_sessions, the real
+        // summary carries the done flags and the overlay must not linger.
+        UserDefaults(suiteName: "group.app.kt.trainer")?
+            .removeObject(forKey: "pendingWatchDone")
+        if #available(iOS 14.0, *) {
+            WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
+        }
         call.resolve()
     }
 
@@ -120,6 +129,29 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
             var arr = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
             arr.append(json)
             UserDefaults.standard.set(arr, forKey: Self.pendingKey)
+            // The Home Screen widget said "Start →" all day after a wrist
+            // finish: pending sessions live in standard defaults where the
+            // widget extension can't see them. Mirror just the DATE into the
+            // App Group so lift days flip to done immediately.
+            if let data = json.data(using: .utf8),
+               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+               let loggedAt = obj["loggedAt"] as? String {
+                let iso = ISO8601DateFormatter()
+                iso.formatOptions = [.withInternetDateTime]
+                if let d = iso.date(from: loggedAt),
+                   let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
+                    let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                    var done = shared.stringArray(forKey: "pendingWatchDone") ?? []
+                    let day = fmt.string(from: d)
+                    if !done.contains(day) {
+                        done.append(day)
+                        shared.set(done, forKey: "pendingWatchDone")
+                    }
+                    if #available(iOS 14.0, *) {
+                        WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
+                    }
+                }
+            }
             // Nudge the web layer if it's live right now.
             self.notifyListeners("watchSession", data: [:])
         }

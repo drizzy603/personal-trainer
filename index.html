@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-11"/>
+<meta name="build" content="20260818-12"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -12811,9 +12811,10 @@ function _pushWatchPlan(){
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
       var w=(liveRun && runnerWeights[ex.name]!=null)?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
       return { name:String(ex.name), sets:parseInt(ex.sets)||3,
-        reps:reps, weight:w, rest:_defaultRestFor(ex) };
+        reps:reps, weight:w, rest:_defaultRestFor(ex),
+        rpe:parseInt(ex.rpe)||0 };
     });
-    var plan={ week:currentWeek,
+    var plan={ week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(runnerSession.dayName||'Session'):(act.dayName||act.type||'Rest')),
       type:liveRun?'lift':String(act.type||'rest'), exercises:exs };
     var json=JSON.stringify(plan);
@@ -12907,7 +12908,8 @@ function drainWatchSessions(){
         var reps=(ex.reps||[]).map(function(r){ return parseInt(r)||0; });
         var w=parseFloat(ex.weight)||0;
         return { name:String(ex.name), isMain:!!mainByName[ex.name], sets:reps.length,
-          reps:reps, weight:w, weightLog:reps.map(function(){ return w; }), rpe:'' };
+          reps:reps, weight:w, weightLog:reps.map(function(){ return w; }),
+          rpe:(parseFloat(ex.rpe)>0?parseFloat(ex.rpe):'') };
       }).filter(function(ex){ return ex.sets>0; });
       if(!exsOut.length) return;
       var d=s.loggedAt?new Date(s.loggedAt):new Date();

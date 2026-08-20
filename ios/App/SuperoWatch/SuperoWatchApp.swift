@@ -29,11 +29,13 @@ struct WatchExercise: Codable, Identifiable, Hashable {
     let reps: Int
     let weight: Double
     let rest: Int?              // seconds — phone resolves per-exercise/default
+    let rpe: Int?               // target RPE from the programme (0/nil = none)
     var id: String { name }
 }
 
 struct WatchPlan: Codable, Equatable {
     let week: Int
+    let date: String?           // yyyy-MM-dd the phone built this plan for
     let dayName: String
     let type: String            // "lift" | "run" | "sport" | "rest"
     let exercises: [WatchExercise]
@@ -251,6 +253,13 @@ final class Runner: ObservableObject {
     @Published var resting = false
     @Published var restLeft = 90
     @Published var synced = false
+    // Wall-clock deadline: the 1s Timer suspends whenever the app loses
+    // background runtime (workout tracking off / HK denied), freezing the
+    // old tick-counted clock. Wrist-raise now derives from this date.
+    @Published var restEndsAt: Date? = nil
+    // Chosen RPE per exercise — without it, drained wrist sessions carried
+    // rpe:'' and could never earn the +5 lb progression banner.
+    var rpes: [String: Int] = [:]
     private var timer: Timer?
     private var startedAt: Double = 0   // ms since epoch, set on first logged set
 
@@ -290,27 +299,44 @@ final class Runner: ObservableObject {
     func startRest(seconds: Int = 90) {
         resting = true
         restLeft = max(5, min(600, seconds))
+        restEndsAt = Date().addingTimeInterval(Double(restLeft))
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return }
-            self.restLeft -= 1
+            self.restLeft = max(0, Int((self.restEndsAt?.timeIntervalSinceNow ?? 0).rounded()))
             if self.restLeft <= 0 {
                 t.invalidate()
                 self.resting = false
+                self.restEndsAt = nil
                 WKInterfaceDevice.current().play(.notification)
             }
+        }
+    }
+
+    // Wrist-raise after a suspension: fire the finish that the frozen timer
+    // missed, or fall back in line with the wall clock.
+    func resyncRest() {
+        guard resting, let ends = restEndsAt else { return }
+        restLeft = max(0, Int(ends.timeIntervalSinceNow.rounded()))
+        if restLeft <= 0 {
+            timer?.invalidate()
+            resting = false
+            restEndsAt = nil
+            WKInterfaceDevice.current().play(.notification)
         }
     }
 
     func skipRest() {
         timer?.invalidate()
         resting = false
+        restEndsAt = nil
     }
 
     func finish(plan: WatchPlan) {
         let exs: [[String: Any]] = plan.exercises.compactMap { ex in
             guard let reps = repsDone[ex.name], !reps.isEmpty else { return nil }
-            return ["name": ex.name, "weight": weight(for: ex), "reps": reps]
+            return ["name": ex.name, "weight": weight(for: ex), "reps": reps,
+                    "rpe": rpes[ex.name] ?? ex.rpe ?? 0]
         }
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs)
@@ -321,7 +347,7 @@ final class Runner: ObservableObject {
     }
 
     func reset() {
-        repsDone = [:]; weights = [:]; synced = false; resting = false
+        repsDone = [:]; weights = [:]; rpes = [:]; synced = false; resting = false
         startedAt = 0
         timer?.invalidate()
     }
@@ -334,6 +360,7 @@ final class Runner: ObservableObject {
         let before = repsDone.count
         repsDone = repsDone.filter { names.contains($0.key) }
         weights = weights.filter { names.contains($0.key) }
+        rpes = rpes.filter { names.contains($0.key) }
         if repsDone.count != before { pushLive() }
     }
 
@@ -407,6 +434,7 @@ struct RootView: View {
             // in-progress wrist session to the phone.
             conn.requestRefresh()
             runner.pushLive()
+            runner.resyncRest()
         }
         // Fresh plan → drop wrist rows for exercises that no longer exist.
         .onChange(of: conn.plan) { newPlan in
@@ -437,8 +465,30 @@ struct PlanView: View {
         plan.exercises.contains { runner.done($0) > 0 }
     }
 
+    // The wrist had no midnight rollover: with the phone unreachable it kept
+    // showing yesterday's plan as if it were today's. The payload now carries
+    // its date — say so instead of lying.
+    private var staleDay: Bool {
+        guard let d = plan.date else { return false }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return d != f.string(from: Date())
+    }
+
     var body: some View {
         List {
+            if staleDay {
+                Button { Connectivity.shared.requestRefresh() } label: {
+                    HStack {
+                        Text("PLAN FROM \(plan.date ?? "?") — SYNC")
+                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
             Section {
                 ForEach(plan.exercises) { ex in
                     NavigationLink(value: ex) {
@@ -497,6 +547,7 @@ struct ExerciseView: View {
     let ex: WatchExercise
     @ObservedObject var runner: Runner
     @State private var reps: Int = 0
+    @State private var rpe: Int = 7
     @State private var editingWeight = false
     @State private var weightText = ""
     @Environment(\.dismiss) private var dismiss
@@ -535,7 +586,14 @@ struct ExerciseView: View {
                     Stepper(value: $reps, in: 0...50) {
                         Text("\(reps) reps").font(.system(size: 15, weight: .semibold))
                     }
+                    // RPE from the wrist — without it, watch-logged weeks
+                    // could never earn the +5 lb progression banner.
+                    Stepper(value: $rpe, in: 5...10) {
+                        Text("RPE \(rpe)").font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                     Button {
+                        runner.rpes[ex.name] = rpe
                         runner.logSet(ex, reps: reps)
                         if runner.isComplete(ex) { dismiss() }
                     } label: {
@@ -550,7 +608,10 @@ struct ExerciseView: View {
                 }
             }
             .navigationTitle(ex.name)
-            .onAppear { if reps == 0 { reps = ex.reps } }
+            .onAppear {
+                if reps == 0 { reps = ex.reps }
+                rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
+            }
             .sheet(isPresented: $editingWeight) {
                 VStack(spacing: 12) {
                     Text("WEIGHT · LB")
@@ -585,9 +646,18 @@ struct RestView: View {
             Text("REST")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.secondary)
-            Text("\(runner.restLeft / 60):\(String(format: "%02d", runner.restLeft % 60))")
-                .font(.system(size: 40, weight: .heavy, design: .monospaced))
-                .foregroundColor(lime)
+            if let ends = runner.restEndsAt, ends > .now {
+                // Wall-clock text stays correct on wrist-raise even while the
+                // 1s timer was suspended.
+                Text(timerInterval: Date.now...ends, countsDown: true)
+                    .font(.system(size: 40, weight: .heavy, design: .monospaced))
+                    .foregroundColor(lime)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("\(runner.restLeft / 60):\(String(format: "%02d", runner.restLeft % 60))")
+                    .font(.system(size: 40, weight: .heavy, design: .monospaced))
+                    .foregroundColor(lime)
+            }
             LiveHRChip()
             Button("Skip") { runner.skipRest() }
                 .buttonStyle(.bordered)
