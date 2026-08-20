@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-2"/>
+<meta name="build" content="20260818-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1055,6 +1055,9 @@ var calMonth = new Date().getMonth(); // 0-indexed
 var calSelectedDate = null;
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
+// Generation counter for the Stop button — bumping it makes any in-flight
+// runCoachTurn abandon at its next await checkpoint without committing.
+var _coachGen     = 0;
 var streamingContent = '';
 var coachModel    = (function(){
   var m = localStorage.getItem('kt_coach_model')||'claude-sonnet-5';
@@ -9716,7 +9719,9 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   // connections that pushes the request well past the 60s timeout. Text
   // history is preserved so the model still has context.
   var raw=coachMessages.slice(-20).filter(function(m){
-    return !m._toolResults;
+    // _local messages (error bubbles, Stop notices) are UI-only — replaying
+    // them to the API polluted the conversation with our own error strings.
+    return !m._toolResults && !m._local;
   });
   var stripBefore=Math.max(0,raw.length-4);
   var apiMsgs=raw.map(function(m,i){
@@ -9735,6 +9740,15 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   var totalText='';
   var allToolCalls=[];
   var hadError=false;
+  // Error copy is deferred to after the loop so partial work (text + already
+  // executed tool calls) can be committed FIRST — a dropped connection used
+  // to hide programme edits that had actually happened.
+  var errText='';
+  // max_tokens cutoffs get up to two "continue" nudges instead of a silent stop.
+  var _mtContinues=0;
+  // Stop button support: bumping _coachGen abandons this turn at the next
+  // await checkpoint without committing anything further.
+  var myGen=_coachGen;
 
   // Promise.race-based timeout. iOS PWA WKWebView is known to drop
   // AbortSignal on long fetches, so the race is the only way to
@@ -9751,55 +9765,71 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     },function(e){ clearTimeout(timer); throw e; });
   }
 
-  for(var t=0;t<MAX_TURNS;t++){
+  turnLoop: for(var t=0;t<MAX_TURNS;t++){
     streamingContent='';
     var finishedBlocks=[]; // order-preserving list of completed blocks from this turn
     var stopReason='';
     var res;
-    try{
-      // Non-streaming: iOS PWA WKWebView has reliable issues consuming
-      // chunked SSE responses (silent stalls past the 60s timeout). The
-      // single-JSON path is slower to *feel* but actually completes.
-      res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{
-          'content-type':'application/json',
-          'x-api-key':getApiKey(),
-          'anthropic-version':'2023-06-01',
-          'anthropic-dangerous-direct-browser-access':'true'
-        },
-        body:JSON.stringify({
-          model:model,
-          max_tokens:maxTok,
-          system:systemPrompt,
-          messages:apiMsgs,
-          tools:COACH_TOOLS
-        })
-      }),intakeMode?300000:180000,'fetch');
-    }catch(e){
-      hadError=true;
-      var msg=String(e&&e.message||'');
-      var errMsg=msg.indexOf('TIMEOUT:')===0
-        ?'Response is taking too long — Anthropic may be busy. Try again. If generating a programme, try asking for a shorter one first (e.g. 4 weeks).'
-        :'Could not connect. Check your internet connection.';
-      coachMessages.push({role:'assistant',content:errMsg});
-      break;
-    }
-    if(!res.ok){
+    var _apiRetry=0;
+    while(true){
+      try{
+        // Non-streaming: iOS PWA WKWebView has reliable issues consuming
+        // chunked SSE responses (silent stalls past the 60s timeout). The
+        // single-JSON path is slower to *feel* but actually completes.
+        res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-api-key':getApiKey(),
+            'anthropic-version':'2023-06-01',
+            'anthropic-dangerous-direct-browser-access':'true'
+          },
+          body:JSON.stringify({
+            model:model,
+            max_tokens:maxTok,
+            system:systemPrompt,
+            messages:apiMsgs,
+            tools:COACH_TOOLS
+          })
+        }),intakeMode?300000:180000,'fetch');
+      }catch(e){
+        if(myGen!==_coachGen) return;
+        hadError=true;
+        var msg=String(e&&e.message||'');
+        errText=msg.indexOf('TIMEOUT:')===0
+          ?'Response is taking too long — Anthropic may be busy. If generating a programme, try asking for a shorter one first (e.g. 4 weeks).'
+          :'Could not connect. Check your internet connection.';
+        break turnLoop;
+      }
+      if(myGen!==_coachGen) return;
+      if(res.ok) break;
+      // 429/503/529 are transient — honor Retry-After and take up to two
+      // more shots before surfacing an error.
+      if((res.status===429||res.status===503||res.status===529) && _apiRetry<2){
+        _apiRetry++;
+        var _ra=0;
+        try{ _ra=parseInt(res.headers.get('retry-after'))||0; }catch(e){}
+        var _waitMs=Math.min(30000, Math.max(2000, _ra ? _ra*1000 : 2500*_apiRetry));
+        await new Promise(function(r){ setTimeout(r,_waitMs); });
+        if(myGen!==_coachGen) return;
+        continue;
+      }
       var ed;
       try{ ed=await _withTimeout(res.json(),5000,'errjson'); }catch(e){ ed={}; }
-      coachMessages.push({role:'assistant',content:(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status});
+      errText=(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status;
       hadError=true;
-      break;
+      break turnLoop;
     }
     var data;
     try{ data=await _withTimeout(res.json(),30000,'json'); }
     catch(e){
+      if(myGen!==_coachGen) return;
       hadError=true;
       var jMsg=String(e&&e.message||'');
-      coachMessages.push({role:'assistant',content:jMsg.indexOf('TIMEOUT:')===0?'Response stalled — try again.':'Couldn\'t read response.'});
+      errText=jMsg.indexOf('TIMEOUT:')===0?'Response stalled.':'Couldn\'t read response.';
       break;
     }
+    if(myGen!==_coachGen) return;
     if(data && Array.isArray(data.content)){
       finishedBlocks=data.content.map(function(b){
         if(b && b.type==='tool_use') return {type:'tool_use',id:b.id,name:b.name,input:b.input||{}};
@@ -9824,7 +9854,17 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // is rejected by the API.
     if(finishedBlocks.length) apiMsgs.push({role:'assistant',content:finishedBlocks});
 
-    if(!toolUses.length||stopReason!=='tool_use'){
+    // A max_tokens cutoff used to end the turn silently — mid-programme
+    // during intake. With no tools pending, nudge the model to continue
+    // (twice at most); with tools pending, executing them below resumes
+    // the turn through the tool_result continuation anyway.
+    if(stopReason==='max_tokens' && !toolUses.length && _mtContinues<2){
+      _mtContinues++;
+      apiMsgs.push({role:'user',content:'You were cut off (max_tokens). Continue exactly where you left off'+(intakeMode?' — finish the remaining weeks with a single update_routine_weeks call':'')+'.'});
+      render(); scrollChatBottom();
+      continue;
+    }
+    if(!toolUses.length||(stopReason!=='tool_use'&&stopReason!=='max_tokens')){
       streamingContent='';
       break;
     }
@@ -9849,13 +9889,19 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
   _runningTools=[];
   _streamingTool=null;
-  // Commit the final combined assistant message (text + tool summary metadata)
-  if(!hadError){
+  // Commit the final combined assistant message (text + tool summary
+  // metadata). Executed tool calls are real even when the turn later died —
+  // committing them with any partial text keeps programme edits visible
+  // instead of hiding them behind a bare error bubble.
+  if(!hadError || totalText.trim() || allToolCalls.length){
     coachMessages.push({
       role:'assistant',
-      content:totalText.trim(),
+      content:totalText.trim() || (hadError&&allToolCalls.length?'I made these changes before the connection dropped:':''),
       _tools:allToolCalls.length?allToolCalls:null
     });
+  }
+  if(errText){
+    coachMessages.push({role:'assistant',content:errText,_error:true,_local:true});
   }
   // Auto-exit intake mode once the AI has shipped at least one fully-defined
   // week (every existing slot has bName). With variable-length programmes we
@@ -10207,7 +10253,7 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Send the message again, or check your API key in Settings.'});
+        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
     coachLoading=false;
@@ -10222,6 +10268,52 @@ function sendCoachChip(txt){
   var inp=document.getElementById('coach-input');
   if(inp){inp.value=txt;}
   sendCoachMessage();
+}
+
+// Stop an in-flight coach turn: bump the generation so runCoachTurn abandons
+// at its next await checkpoint. Tool calls that already executed are real —
+// the note says so instead of pretending nothing happened.
+function coachStop(){
+  if(!coachLoading) return;
+  _coachGen++;
+  coachLoading=false;
+  streamingContent='';
+  var hadTools=_runningTools.length>0;
+  if(hadTools){
+    coachMessages.push({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true});
+  } else {
+    coachMessages.push({role:'assistant',content:'Stopped.',_local:true});
+  }
+  _runningTools=[];
+  _streamingTool=null;
+  saveCoachHistory();
+  render(); scrollChatBottom();
+}
+
+// Re-run the last turn after a failure: drop trailing local bubbles so the
+// API sees the real history, then kick the turn again.
+async function coachRetryLast(){
+  if(coachLoading) return;
+  while(coachMessages.length && coachMessages[coachMessages.length-1]._local){
+    coachMessages.pop();
+  }
+  if(!coachMessages.length) return;
+  saveCoachHistory();
+  coachLoading=true; streamingContent='';
+  render(); scrollChatBottom();
+  var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
+  var model=intakeMode?'claude-sonnet-5':coachModel;
+  var maxTok=intakeMode?24576:16384;
+  try{
+    await runCoachTurn(systemPrompt,model,maxTok);
+  }catch(err){
+    coachMessages.push({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
+    saveCoachHistory();
+  }finally{
+    coachLoading=false;
+    streamingContent='';
+    render(); scrollChatBottom();
+  }
 }
 
 function scrollChatBottom(){
@@ -10440,6 +10532,12 @@ function renderCoach(){
         var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         bubbles+='<div class="coach-bubble '+m.role+'">'+imgHTML+rendered+'</div>';
       }
+      // A failed turn ends in a dead end without this: the input was already
+      // cleared, so the user had to retype. Retry re-runs the turn on the
+      // existing history. Chip only on the trailing error.
+      if(m.role==='assistant' && m._error && m===coachMessages[coachMessages.length-1] && !coachLoading){
+        bubbles+='<div style="margin:-4px 0 12px;"><button class="kt-cmb-chip primary" onclick="coachRetryLast()">Try again →</button></div>';
+      }
       // Tool-call pills under the assistant bubble
       if(m.role==='assistant'&&Array.isArray(m._tools)&&m._tools.length){
         var pills=m._tools.map(function(tc){
@@ -10488,6 +10586,7 @@ function renderCoach(){
       bubbles+='<div class="typing-wrap">'+
         '<span style="font-size:12px;color:var(--lite);margin-right:8px;">Thinking…</span>'+
         '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
+        '<button onclick="coachStop()" style="margin-left:12px;background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:11px;font-weight:700;padding:6px 13px;border-radius:11px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Stop</button>'+
       '</div>';
     }
     msgsHTML='<div class="coach-msgs-wrap">'+bubbles+'</div>';
