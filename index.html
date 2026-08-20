@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-7"/>
+<meta name="build" content="20260818-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1742,6 +1742,33 @@ function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else local
 function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
 function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'); }
 
+// Bodyweight movements were invisible to every analytics surface: weight 0
+// meant no volume, no e1RM, no trend — and logging just the belt weight fed
+// Epley garbage (an "e1RM" of 25 lb for weighted pull-ups). Effective load
+// = the lifter's most recent logged body weight + the added load. With no
+// weigh-in on file we stay honest and keep the old behavior rather than
+// inventing a body. (Latest BW is an approximation for old sessions —
+// good enough for trends, and consistent across every consumer.)
+var _bwLiftCache={};
+function _isBodyweightLift(name){
+  var n=String(name||'').toLowerCase();
+  if(_bwLiftCache[n]!==undefined) return _bwLiftCache[n];
+  var lib=getAllExercises().find(function(e){ return e.name.toLowerCase()===n; });
+  var isBW=(lib && /bodyweight/i.test(String(lib.equip||''))) ||
+    /pull.?up|chin.?up|\bdips?\b|push.?up|muscle.?up|pistol squat|inverted row|nordic/.test(n);
+  _bwLiftCache[n]=isBW;
+  return isBW;
+}
+function _bwNow(){
+  var bws=getBodyWeights();
+  return bws.length?(parseFloat(bws[0].weight)||0):0;
+}
+function _effLoad(name, added){
+  added=parseFloat(added)||0;
+  if(!_isBodyweightLift(name)) return added;
+  var bw=_bwNow();
+  return bw>0 ? bw+added : added;
+}
 function calcVolume(exercises) {
   var vol=0;
   exercises.forEach(function(ex){
@@ -1749,16 +1776,16 @@ function calcVolume(exercises) {
     // old backups. Same normalization as _buildHistExRows / the session card.
     if(Array.isArray(ex.sets)){
       ex.sets.forEach(function(st){
-        vol += (parseFloat(st&&st.weight)||0) * (parseInt(st&&st.reps)||0);
+        vol += _effLoad(ex.name, st&&st.weight) * (parseInt(st&&st.reps)||0);
       });
       return;
     }
     var repsArr = Array.isArray(ex.reps) ? ex.reps : [];
     var wLog = Array.isArray(ex.weightLog) ? ex.weightLog : [];
     if(wLog.length && repsArr.length){
-      for(var i=0;i<repsArr.length;i++) vol += (wLog[i]||0) * (repsArr[i]||0);
+      for(var i=0;i<repsArr.length;i++) vol += _effLoad(ex.name, wLog[i]) * (repsArr[i]||0);
     } else {
-      var w=parseFloat(ex.weight)||0; if(w<=0) return;
+      var w=_effLoad(ex.name, ex.weight); if(w<=0) return;
       var reps=repsArr.length?repsArr.reduce(function(a,b){return a+b;},0):(parseInt(ex.reps)||0)*(ex.sets||1);
       vol+=w*reps;
     }
@@ -8016,14 +8043,14 @@ function _e1rmSeries(){
       var best=0;
       if(Array.isArray(ex.sets)){                  // legacy nested shape
         ex.sets.forEach(function(st){
-          var w=parseFloat(st&&st.weight)||0, r=parseInt(st&&st.reps)||0;
+          var w=_effLoad(ex.name, st&&st.weight), r=parseInt(st&&st.reps)||0;
           if(w>0&&r>0) best=Math.max(best,_epley(w,r));
         });
       } else {
         var reps=Array.isArray(ex.reps)?ex.reps:[ex.reps];
         var wl=(Array.isArray(ex.weightLog)&&ex.weightLog.length)?ex.weightLog:null;
         for(var k=0;k<reps.length;k++){
-          var w2=wl?(parseFloat(wl[k])||0):(parseFloat(ex.weight)||0);
+          var w2=_effLoad(ex.name, wl?wl[k]:ex.weight);
           var r2=parseInt(reps[k])||0;
           if(w2>0&&r2>0) best=Math.max(best,_epley(w2,r2));
         }
