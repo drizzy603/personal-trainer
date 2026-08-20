@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-10"/>
+<meta name="build" content="20260818-11"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1569,6 +1569,11 @@ var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, k
 // restores all used to break it — enforcing at the single write choke
 // point covers every writer, present and future.
 var _DATE_SORTED_KEYS = { kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1 };
+// Write-version for the training log + bodyweight (bodyweight feeds the
+// effective-load math). Memoized analytics key off it — in-place mutations
+// followed by lsSet keep the same array reference, so reference identity
+// alone can't detect change.
+var _logsVersion = 0;
 function lsSet(k,v) {
   if(_DATE_SORTED_KEYS[k] && Array.isArray(v)){
     v.sort(function(a,b){
@@ -1577,6 +1582,7 @@ function lsSet(k,v) {
       return ((b&&b.id)||0)-((a&&a.id)||0);
     });
   }
+  if(k==='kt_sessions' || k==='kt_bw') _logsVersion++;
   _lsCache[k] = v;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
@@ -8099,7 +8105,12 @@ function renderWeekRecap(sessions,runs){
 // Powers the Strength card on Progress, the plateau flags, and the Coach's
 // plateau awareness. Handles both session shapes (runner + legacy nested).
 function _epley(w, r){ return r>0 ? w*(1+r/30) : w; }
+// Every render of Today and Progress recomputed this from scratch — a full
+// sessions x exercises x sets Epley scan (the proactive-banner predicates
+// call it even on the no-plateau happy path). Memoized on the log version.
+var _e1rmMemo=null, _e1rmMemoV=-1;
 function _e1rmSeries(){
+  if(_e1rmMemo && _e1rmMemoV===_logsVersion) return _e1rmMemo;
   var out={};
   var sessions=getSessions();
   for(var i=sessions.length-1;i>=0;i--){          // stored newest-first
@@ -8124,6 +8135,7 @@ function _e1rmSeries(){
       if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10}); }
     });
   }
+  _e1rmMemo=out; _e1rmMemoV=_logsVersion;
   return out;
 }
 // Lifts still being trained whose e1RM peak is 21+ days old.
