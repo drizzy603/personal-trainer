@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-6"/>
+<meta name="build" content="20260818-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6646,8 +6646,130 @@ function deleteSportLog(id){
 function deleteSession(id){
   _ktConfirm({title:'Delete this session?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
     lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
+    recomputePRs();
     calSelectedDate=null; render();
   }});
+}
+// Rebuild kt_prs from the full session log. checkAndUpdatePRs only ever
+// raises records, so a fat-fingered 1,850 lb set used to be a PERMANENT PR
+// — editing or deleting the session now recomputes the truth. Handles both
+// the flat runner shape and the legacy nested sets[] shape. Per-session
+// prs arrays stay as written: they record what was a PR at the time.
+function recomputePRs(){
+  var prs={};
+  getSessions().forEach(function(s){
+    (s.exercises||[]).forEach(function(ex){
+      var w=parseFloat(ex.weight)||0;
+      if(Array.isArray(ex.weightLog)) ex.weightLog.forEach(function(x){ var v=parseFloat(x); if(v>w) w=v; });
+      if(Array.isArray(ex.sets)) ex.sets.forEach(function(st){ var v=parseFloat(st&&st.weight); if(v>w) w=v; });
+      if(!(w>0)) return;
+      if(!prs[ex.name] || w>prs[ex.name]) prs[ex.name]=w;
+    });
+  });
+  lsSet('kt_prs', prs);
+  return prs;
+}
+// ── Session set editor (history) ─────────────────────────────────────────────
+// A typo in a finished session could never be corrected — only whole-session
+// delete existed. The sheet edits reps/weight per set (add/remove stays out
+// of scope), normalizes legacy nested sets[] to the flat shape on save, and
+// recomputes PRs so a bogus record doesn't outlive its session.
+var _sessEditId=null;
+function openSessionEditor(id){
+  var s=getSessions().find(function(x){ return x.id===id; });
+  if(!s || !(s.exercises||[]).length) return;
+  _sessEditId=id;
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:11px 8px;color:var(--text);font-size:16px;font-weight:600;box-sizing:border-box;font-family:inherit;text-align:center;';
+  var rows='';
+  s.exercises.forEach(function(ex,ei){
+    var pair=_exSetPairs(ex);
+    rows+='<div style="margin-bottom:16px;">'+
+      '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">'+_esc(ex.name)+'</div>'+
+      '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;margin-bottom:6px;">'+
+        '<span></span>'+
+        '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">REPS</span>'+
+        '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">LB</span>'+
+      '</div>'+
+      pair.map(function(p,si){
+        return '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center;margin-bottom:6px;">'+
+          '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SET '+(si+1)+'</span>'+
+          '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+p[1]+'" style="'+inp+'"/>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  });
+  var existing=document.getElementById('sessEditOverlay');
+  if(existing)existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='sessEditOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head">'+
+      '<div class="kt-sheet-title">Edit sets · '+_esc(fmtDate(s.date))+'</div>'+
+      '<button class="kt-sheet-x" onclick="closeSessionEditor()" aria-label="Close">✕</button>'+
+    '</div>'+
+    rows+
+    '<button onclick="saveSessionEdit()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeSessionEditor);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeSessionEditor();});
+  _a11yPass();
+}
+// [reps, weight] per set for either session shape.
+function _exSetPairs(ex){
+  var out=[];
+  if(Array.isArray(ex.sets)){
+    ex.sets.forEach(function(st){ out.push([parseInt(st&&st.reps)||0, parseFloat(st&&st.weight)||0]); });
+    return out;
+  }
+  var n=parseInt(ex.sets)||0;
+  var ra=Array.isArray(ex.reps)?ex.reps:[ex.reps];
+  var wl=Array.isArray(ex.weightLog)?ex.weightLog:[];
+  for(var i=0;i<n;i++){
+    out.push([
+      parseInt(ra[i]!=null?ra[i]:ra[ra.length-1])||0,
+      parseFloat(wl[i]!=null?wl[i]:ex.weight)||0
+    ]);
+  }
+  return out;
+}
+function closeSessionEditor(){
+  _sessEditId=null;
+  var el=document.getElementById('sessEditOverlay');
+  if(el)el.remove();
+}
+function saveSessionEdit(){
+  var sessions=getSessions();
+  var s=sessions.find(function(x){ return x.id===_sessEditId; });
+  if(!s){ closeSessionEditor(); return; }
+  s.exercises=(s.exercises||[]).map(function(ex,ei){
+    var pair=_exSetPairs(ex);
+    var reps=[], wts=[];
+    pair.forEach(function(p,si){
+      var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
+      var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
+      reps.push(Math.max(0, parseInt(rEl&&rEl.value)||0));
+      wts.push(Math.max(0, parseFloat(wEl&&wEl.value)||0));
+    });
+    var top=wts.length?Math.max.apply(null,wts):0;
+    // Normalize to the flat runner shape on save (legacy nested included).
+    return {name:ex.name, isMain:!!ex.isMain, sets:reps.length, reps:reps,
+      weight:top, weightLog:wts,
+      rpe:(Array.isArray(ex.sets)?(ex.sets[0]&&ex.sets[0].rpe)||'':(ex.rpe!=null?ex.rpe:'')),
+      rpeLog:Array.isArray(ex.rpeLog)?ex.rpeLog:undefined};
+  });
+  lsSet('kt_sessions', sessions);
+  // The working-weight cache and PR book follow the corrected truth.
+  var wts2=getWeights();
+  s.exercises.forEach(function(ex){ if(parseFloat(ex.weight)>0) wts2[ex.name]=parseFloat(ex.weight); });
+  lsSet('kt_weights', wts2);
+  recomputePRs();
+  invalidateCoachCard();
+  closeSessionEditor();
+  showToast('Session updated');
+  render();
 }
 function _calNavToDate(dateStr){
   var p=dateStr.split('-');
@@ -9076,6 +9198,7 @@ function renderHistory() {
           (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
           '<div style="display:flex;gap:8px;margin-top:10px;">'+
           '<button onclick="event.stopPropagation();shareSessionCard('+s.id+')" style="background:var(--accent);border:none;border-radius:10px;color:#000;font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share card →</button>'+
+          '<button onclick="event.stopPropagation();openSessionEditor('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Edit sets</button>'+
           '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
           '</div>'+
         '</div>'
