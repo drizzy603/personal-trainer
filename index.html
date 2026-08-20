@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-8"/>
+<meta name="build" content="20260818-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1105,6 +1105,9 @@ var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
 var _rExEditName      = '';
+var _rExEditSS        = false;      // "superset with next" toggle in the sheet
+// Index to jump back to when a superset pair's rest ends (B rested, A next).
+var _ssReturnIdx      = null;
 var _rExEditSets      = 0;
 var _rExEditReps      = 0;
 var _rExEditWeight    = 0;
@@ -4759,6 +4762,7 @@ function openDeckRunner(overrideType){
   runnerEditSetIdx = null;
   runnerEditSetEx = null;
   runnerSessionDate = null;
+  _ssReturnIdx = null;
   // Seed stepper state from prescribed targets.
   runnerSession.exercises.forEach(function(ex){
     runnerWeights[ex.name] = parseFloat(ex.weight) || 0;
@@ -5000,12 +5004,27 @@ function runnerCompleteSet(){
   runnerCompleted[ex.name] = done;
   if(navigator.vibrate) navigator.vibrate(40);
   haptic('light');
-  if(done < ex.sets){
+  // Superset flow (ex.ss = paired with the NEXT exercise): a set of the
+  // first movement hands off to the partner with NO rest — even on its own
+  // last set, since the partner may still have work. The partner's set
+  // rests once (also after ITS last set while the first still has sets),
+  // and _restFinish/skip return to the first movement.
+  var _ssNext=_runnerNext();
+  if(ex.ss && _ssNext && (runnerCompleted[_ssNext.name]||0) < _ssNext.sets){
+    runnerGoTo(runnerExIdx+1);
+    runnerEngaged=true;
+    paintRunner();
+    return;
+  }
+  var _ssPrev=runnerExIdx>0?runnerSession.exercises[runnerExIdx-1]:null;
+  var _prevOpen=!!(_ssPrev && _ssPrev.ss && (runnerCompleted[_ssPrev.name]||0) < _ssPrev.sets);
+  if(done < ex.sets || _prevOpen){
+    if(_prevOpen) _ssReturnIdx=runnerExIdx-1;
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
     runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
     if(runnerRestTick) clearInterval(runnerRestTick);
-    _trovoTimerStart(ex, done + 1);
+    _trovoTimerStart(ex, Math.min(done + 1, ex.sets));
     runnerRestTick = setInterval(function(){
       runnerRestLeft = Math.max(0, Math.round((runnerRestEndsAt - Date.now())/1000));
       if(runnerRestLeft <= 0){ _restFinish(); return; }
@@ -5067,6 +5086,7 @@ function runnerSkipRest(){
   // The rest-done alert is still pending for the original moment — without
   // this it fires mid-set after the user already skipped.
   cancelRestNotification();
+  _ssJumpBack();
   paintRunner();
 }
 // Rest reached zero — shared by the ticking interval and the resume resync
@@ -5080,7 +5100,18 @@ function _restFinish(){
   haptic('success');
   var _rc=document.getElementById('runner-root');
   if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
+  _ssJumpBack();
   paintRunner();
+}
+// After a superset pair's shared rest, land back on the first movement.
+function _ssJumpBack(){
+  if(_ssReturnIdx==null || !runnerSession) return;
+  var idx=_ssReturnIdx; _ssReturnIdx=null;
+  var ex=runnerSession.exercises[idx];
+  if(ex && (runnerCompleted[ex.name]||0) < ex.sets){
+    runnerGoTo(idx);
+    runnerEngaged=true;
+  }
 }
 function getRestDefault(){ return parseInt(localStorage.getItem('kt_rest_default'))||90; }
 function setRestDefault(secs){ localStorage.setItem('kt_rest_default', String(parseInt(secs)||90)); }
@@ -5136,8 +5167,12 @@ function runnerFinishSession(){
     var rpeArr = (runnerRpeLog[ex.name] || []).slice(0, doneSets);
     while(rpeArr.length < doneSets) rpeArr.push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
     var rpeAvg = rpeArr.length ? Math.round(rpeArr.reduce(function(a,b){return a+b;},0)/rpeArr.length) : (parseInt(ex.rpe)||'');
-    return {name:ex.name, isMain:!!ex.isMain, sets:doneSets, reps:repsArr, weight:w, weightLog:weightsArr, rpe:rpeAvg, rpeLog:rpeArr};
+    return {name:ex.name, isMain:!!ex.isMain, ss:!!ex.ss, sets:doneSets, reps:repsArr, weight:w, weightLog:weightsArr, rpe:rpeAvg, rpeLog:rpeArr};
   }).filter(Boolean);
+  // History rail (SS markers): indices of pair-starting exercises, computed
+  // on the FILTERED list so skipped zero-set entries can't shift them.
+  var _ssIdx=[];
+  exsOut.forEach(function(e,i){ if(e.ss && i<exsOut.length-1) _ssIdx.push(i); });
   if(!exsOut.length){
     // Nothing logged — just exit without recording.
     closeDeckRunner();
@@ -5157,7 +5192,8 @@ function runnerFinishSession(){
     return !(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch');
   });
   sessions.unshift({id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
-    week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs});
+    week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs,
+    supersets:(_ssIdx.length?_ssIdx:undefined)});
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
   _saveLiftToHealth(runnerSession, exsOut, _sessionDate);
@@ -5246,6 +5282,8 @@ function renderDeckRunner(){
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">'+
       '<span class="kt-r-card-pill">'+ex.sets+'×'+ex.reps+(ex.rpe?' · RPE '+ex.rpe:'')+'</span>'+
       (ex.isMain ? '<span class="kt-r-card-main">◆ MAIN LIFT</span>' : '')+
+      ((ex.ss&&next)||(runnerExIdx>0&&runnerSession.exercises[runnerExIdx-1].ss)
+        ? '<span class="kt-r-card-main">⇄ SUPERSET</span>' : '')+
     '</div>'+
     '</div>';
 
@@ -5679,6 +5717,7 @@ function openRunnerExEdit(idx){
   _rExEditSets   =ex.sets;
   _rExEditReps   =Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
   _rExEditWeight =parseFloat(ex.weight)||0;
+  _rExEditSS     =!!ex.ss;
   runnerExPickerQ='';
   var overlay=document.createElement('div');
   overlay.id='runner-ex-edit-modal';
@@ -5727,6 +5766,12 @@ function _buildRunnerExEditHTML(){
       _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
       _runnerExStepHTML('runner-ex-weight-input','Weight · lb',_rExEditWeight,'runnerExEditStepWeight','runnerExEditSetWeight',2.5)+
     '</div>'+
+    (runnerExEditIdx!=null && runnerSession && runnerExEditIdx<runnerSession.exercises.length-1
+      ?'<button onclick="event.stopPropagation();runnerExEditToggleSS()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditSS?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditSS?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+        '<span style="font-size:13px;font-weight:700;color:var(--text);">Superset with '+_esc(runnerSession.exercises[runnerExEditIdx+1].name)+'</span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditSS?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditSS?'ON':'OFF')+'</span>'+
+      '</button>'
+      :'')+
     '<button onclick="event.stopPropagation();saveRunnerExEdit()" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.02em;-webkit-tap-highlight-color:transparent;">Save Changes</button>'+
   '</div>';
 }
@@ -5813,6 +5858,11 @@ function runnerExEditStepWeight(d){
   var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=_rExEditWeight;
 }
 function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,parseFloat(v)||0); }
+function runnerExEditToggleSS(){
+  _rExEditSS=!_rExEditSS;
+  var sheet=document.getElementById('runner-ex-edit-sheet');
+  if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
@@ -5822,6 +5872,7 @@ function saveRunnerExEdit(){
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
   ex.reps   =parseInt(_rExEditReps)||ex.reps;
   ex.weight =parseFloat(_rExEditWeight)||0;
+  ex.ss     =_rExEditSS && runnerExEditIdx<runnerSession.exercises.length-1;
   runnerWeights[newName]=ex.weight;
   runnerReps[newName]=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
   if(oldName!==newName){
@@ -9519,6 +9570,7 @@ var _exerciseSchema={
   properties:{
     name:{type:'string'},
     isMain:{type:'boolean',description:'True on the primary compound of the session'},
+    ss:{type:'boolean',description:'Superset: this exercise is paired with the NEXT one in the array (alternate sets, one shared rest after the pair)'},
     sets:{type:'integer',minimum:1},
     reps:{description:'Integer reps (e.g. 8) or string range (e.g. "8-10" or "Max")'},
     weight:{type:'number',description:'Weight in lb — use 0 for bodyweight'},
