@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-5"/>
+<meta name="build" content="20260818-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1560,7 +1560,20 @@ function lsDel(k) { delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(
 // was saved. We now route real save failures to a toast so the user knows
 // to export and prune. The cached-HTML key never warns (it's allowed to fail).
 var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1};
+// Newest-first is a real invariant on the training logs: charts take
+// slice(0,N), "last session" hints scan from the front, and the plateau
+// engine trusts order. Backdated logs, calendar date-moves, and old
+// restores all used to break it — enforcing at the single write choke
+// point covers every writer, present and future.
+var _DATE_SORTED_KEYS = { kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1 };
 function lsSet(k,v) {
+  if(_DATE_SORTED_KEYS[k] && Array.isArray(v)){
+    v.sort(function(a,b){
+      var ad=String((a&&a.date)||''), bd=String((b&&b.date)||'');
+      if(ad!==bd) return ad<bd?1:-1;
+      return ((b&&b.id)||0)-((a&&a.id)||0);
+    });
+  }
   _lsCache[k] = v;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
@@ -1964,9 +1977,9 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_debrief_seen'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -2139,14 +2152,41 @@ function importData() {
   };
   inp.click();
 }
+// Keys whose value must be an Array / a plain object — a corrupt or
+// hand-edited backup used to be applied verbatim and brick every render
+// (e.g. kt_sessions as a string throws in .filter on the next paint, and
+// since it persisted, the app stayed broken across reloads).
+var _BACKUP_ARRAY_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_bw','kt_measurements','kt_custom_ex','kt_skips','kt_coach_msgs','kt_hk_imported','kt_routine_archive'];
+var _BACKUP_OBJECT_KEYS = ['kt_weights','kt_prs','kt_routine','kt_routine_backup','kt_milestones','kt_sport_fields','kt_log_tabs','kt_ex_notes'];
+function _backupValueOk(k, v){
+  if(_BACKUP_ARRAY_KEYS.indexOf(k) !== -1) return Array.isArray(v);
+  if(_BACKUP_OBJECT_KEYS.indexOf(k) !== -1) return v && typeof v === 'object' && !Array.isArray(v);
+  return true;
+}
 function _applyImportedData(data) {
-  var count = 0;
+  var count = 0, dropped = [];
   BACKUP_KEYS.forEach(function(k){
-    if (data[k] !== undefined) { lsSet(k, data[k]); count++; }
+    if (data[k] !== undefined) {
+      if (!_backupValueOk(k, data[k])) { dropped.push(k); return; }
+      lsSet(k, data[k]); count++;
+    } else {
+      // The restore dialog promises a REPLACE — keys the backup doesn't
+      // carry must not silently survive from this device (kt_log_tabs is
+      // an exception below via kt_hk_imported-style pairing rules only
+      // where staleness is harmful; a true replace is the honest default).
+      lsDel(k);
+    }
   });
   RAW_STRING_KEYS.forEach(function(k){
     if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
+    // Absent raw keys: only data-ish ones are cleared. Device-capability
+    // opt-ins (Health write, notifications, readiness, theme…) belong to
+    // THIS phone — an old backup must not silently switch them off.
+    else if (k === 'kt_run_goal' || k === 'kt_user_name') localStorage.removeItem(k);
   });
+  if (dropped.length) {
+    showToast('Skipped corrupt entries: ' + dropped.join(', '));
+  }
   // Backups from before Health-import dedup was exported carry no
   // kt_hk_imported. Keeping this device's newer dedup set would make Apple
   // Health re-import silently skip the runs this restore just rolled back.
@@ -2218,6 +2258,8 @@ function importFromHealth(){
       var localISO = d.getFullYear()+'-'+
         String(d.getMonth()+1).padStart(2,'0')+'-'+
         String(d.getDate()).padStart(2,'0');
+      // Already logged by hand → mark seen, never import the twin.
+      if(_manualRunDupe(localISO, r.distanceKm)){ seen.add(r.uuid); return; }
       existing.unshift({
         id: Date.now()+added,
         distance: Math.round(r.distanceKm*100)/100,
@@ -2287,8 +2329,10 @@ function checkRecentHealthRun(sinceOverride){
     var fresh = runs.filter(function(r){
       if(!r || !r.uuid || seen.has(r.uuid)) return false;
       // Sports only need a duration (indoor rides / court sports can lack
-      // distance); runs still need distance to be loggable.
-      return _hkSportId(r) ? r.durationSec > 0 : r.distanceKm > 0;
+      // distance); runs still need distance to be loggable — and a run the
+      // user already logged by hand must not be offered as new.
+      if(_hkSportId(r)) return r.durationSec > 0;
+      return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm);
     });
     if(!fresh.length) return;
     if(localStorage.getItem('kt_autolog_runs')==='1'){
@@ -2329,9 +2373,31 @@ function drainPendingHealth(){
   }).catch(function(){});
 }
 // Shared by the one-tap card and auto-log: writes the run + dedup marker.
-function _logHealthRun(r){
+// A run the user already typed in by hand has no HealthKit UUID, so the
+// UUID-only dedup imported the same watch-tracked run twice — double-counting
+// weekly km, milestones, and VS RECENT rows. Same local date + distance
+// within 5% (and not itself a Health import) reads as the same run.
+function _manualRunDupe(dateISO, km){
+  km = parseFloat(km)||0;
+  if(!(km>0)) return false;
+  return getRuns().some(function(r){
+    if(r.note==='From Apple Health') return false;
+    if(String(r.date)!==String(dateISO)) return false;
+    var rd=parseFloat(r.distance||r.dist)||0;
+    return rd>0 && Math.abs(rd-km)/Math.max(rd,km) <= 0.05;
+  });
+}
+function _hkLocalISO(r){
   var d = new Date(r.startDate);
-  var localISO = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _logHealthRun(r){
+  var localISO = _hkLocalISO(r);
+  var seen = lsGet('kt_hk_imported')||[];
+  // Mark seen either way — a manual duplicate must never re-offer.
+  if(seen.indexOf(r.uuid)===-1){ seen.push(r.uuid); lsSet('kt_hk_imported', seen); }
+  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  if(_manualRunDupe(localISO, r.distanceKm)) return null;
   var rec = {
     id: Date.now(),
     distance: Math.round(r.distanceKm*100)/100,
@@ -2343,8 +2409,6 @@ function _logHealthRun(r){
     type: 'easy'
   };
   var runs = getRuns(); runs.unshift(rec); lsSet('kt_runs', runs);
-  var seen = lsGet('kt_hk_imported')||[]; seen.push(r.uuid); lsSet('kt_hk_imported', seen);
-  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
   invalidateCoachCard();
   return rec;
 }
@@ -2582,8 +2646,12 @@ function logPendingHealthRun(){
     showToast(sid+' logged from Apple Health');
   } else {
     var rec = _logHealthRun(r);
-    runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
-  checkMilestones({delayToast:600});
+    if(rec){
+      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+      checkMilestones({delayToast:600});
+    } else {
+      showToast('Already logged by hand — skipped the duplicate');
+    }
   }
   render();
 }
