@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-4"/>
+<meta name="build" content="20260820-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1216,6 +1216,11 @@ var _runnerPrBeat     = null;       // {ex, setIdx, w, r, best, at} or null
 // M-07 tracker: the exercise index painted last, so the deck can tell a real
 // card advance from a same-card state repaint. null = runner not on screen.
 var _lastPaintExIdx   = null;
+// R1·E wrist-mirror: set when wrist sets merge into the open runner while
+// the phone isn't engaged — the card becomes a passive ledger until the user
+// takes over, navigates, or the link goes quiet for 5 minutes.
+var _wristMirror      = null;       // {at} or null
+var _wristStamps      = {};         // {exName: {setIdx: arrivalEpochMs}}
 var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
@@ -4929,6 +4934,8 @@ function openDeckRunner(overrideType){
   runnerRestTotal = 0;
   _runnerPrBeat = null;
   _justLoggedSet = null;
+  _wristMirror = null;
+  _wristStamps = {};
   runnerCompleted = {};
   runnerWeights = {};
   runnerReps = {};
@@ -5103,6 +5110,7 @@ function runnerGoTo(i){
   runnerResting = false;
   runnerRestLeft = 90;
   _runnerPrBeat = null;
+  _wristMirror = null;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   paintRunner();
 }
@@ -5113,6 +5121,7 @@ function runnerToggleEngaged(){
   var done = runnerCompleted[ex.name] || 0;
   if(done >= ex.sets) return; // exercise already complete; require explicit Next
   runnerEngaged = !runnerEngaged;
+  if(runnerEngaged) _wristMirror = null;   // touching the card takes over
   paintRunner();
 }
 function runnerStepWeight(delta){
@@ -5505,11 +5514,17 @@ function renderDeckRunner(){
   var hueClass = 'dark';
   var nextHue = 'dark';
   var next2Hue = 'dark';
+  // R1·E — the wrist is logging: passive mirror unless the user is mid-set
+  // here. Dies on take-over, navigation, or 5 quiet minutes.
+  var mirroring = !!(_wristMirror && (Date.now()-_wristMirror.at) < 5*60*1000
+    && !runnerEngaged && !runnerResting && !exerciseDone);
 
   var hd = '<div class="kt-r-hd">'+
     '<div class="kt-r-hd-row">'+
       '<button class="kt-r-back" onclick="confirmCloseRunner()">← Today</button>'+
-      '<div class="kt-r-day">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName).toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>'+
+      (mirroring
+        ?'<div class="kt-r-day" style="display:flex;align-items:center;gap:6px;"><span class="kt-live-dot"></span>ON WRIST</div>'
+        :'<div class="kt-r-day">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName).toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>')+
       '<div class="kt-r-pct" data-m05="r-pct">'+pct+'%</div>'+
     '</div>'+
     '<div class="kt-r-bar"><div class="kt-r-bar-fill" style="width:'+pct+'%"></div></div>'+
@@ -5523,6 +5538,8 @@ function renderDeckRunner(){
     body = _renderRunnerRestingBody(ex, done);
   } else if(runnerEngaged){
     body = _renderRunnerEngagedBody(ex, done);
+  } else if(mirroring){
+    body = _renderRunnerMirrorBody(ex, done);
   } else {
     body = _renderRunnerIdleBody(ex, next);
   }
@@ -5543,6 +5560,9 @@ function renderDeckRunner(){
       '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerCueSheet()">Cues</button>'+
       '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit</button>'+
     '</div>';
+  } else if(mirroring){
+    topL = idxStr+' · SET '+(done+1)+' OF '+ex.sets;
+    topR = '<span class="kt-r-card-meta">MIRRORING</span>';
   } else {
     topL = idxStr;
     topR = '<span class="kt-r-card-meta">'+ex.sets+' × '+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:'')+' · REST '+_defaultRestFor(ex)+'S</span>';
@@ -5720,10 +5740,17 @@ function _renderCompletedSets(ex){
       var _washed=_justLoggedSet && _justLoggedSet.ex===ex.name && i===_justLoggedSet.idx
         && (Date.now()-_justLoggedSet.at) < 900;
       var _gold=best>0 && parseFloat(w)>best;
+      // Wrist-arrived rows carry a ⌚ stamp in the action slot; tapping it
+      // still opens the same edit.
+      var _stamp=(_wristStamps[ex.name]||{})[i];
+      var _act=_stamp
+        ? '⌚ '+_stampFmt(_stamp)
+        : 'EDIT';
+      var _actStyle=_stamp && (Date.now()-_stamp)<90000 ? ' style="color:var(--accent-ink);opacity:1;"' : '';
       rows+='<div class="kt-lr'+(_gold?' gold':'')+(_washed?' kt-row-wash':'')+'" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
         '<span class="kt-lr-val">'+(w!=null?w:'—')+' × '+(r!=null?r:'—')+(_gold?' ◆':'')+'</span>'+
-        '<button class="kt-lr-act" onclick="event.stopPropagation();runnerStartEditSet('+i+')">EDIT</button>'+
+        '<button class="kt-lr-act"'+_actStyle+' onclick="event.stopPropagation();runnerStartEditSet('+i+')">'+_act+'</button>'+
       '</div>';
     }
   }
@@ -6011,6 +6038,38 @@ function _renderRunnerRestingBody(ex, done){
     _renderCompletedSets(ex)+
     foot+
     '</div>';
+}
+// R1·E — passive wrist-mirror body: statement name, mono target line, the
+// ledger with ⌚ stamps (same tap-to-edit), and an explicit take-over. No
+// fake rest clock — the wrist owns its own timer and we don't see it.
+function _renderRunnerMirrorBody(ex, done){
+  var _nW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
+  var _nR = Array.isArray(ex.reps) ? ex.reps[Math.min(done, ex.reps.length-1)] : ex.reps;
+  var _last = getLastSessionData(ex.name);
+  var _lastW = _last ? parseFloat(_last.weight)||0 : 0;
+  var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
+  return '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
+    '<div class="kt-r-card-name" style="margin-top:6px;">'+_esc(ex.name)+'</div>'+
+    '<div class="kt-eng-target" style="margin-top:8px;">TARGET '+(_nW>0?_nW:'BW')+' × '+_nR+
+      (_lastW>0?' · LAST '+_lastW+' × '+_lastR:'')+'</div>'+
+    _renderCompletedSets(ex)+
+    '<div style="flex:1;"></div>'+
+    '<div style="font-size:12.5px;line-height:1.55;opacity:.55;">Logging on the wrist. This screen mirrors — take over any time and the steppers wake.</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">'+
+      '<button onclick="event.stopPropagation();_takeOverPhone()" style="background:none;border:none;padding:8px 0;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--lite);cursor:pointer;-webkit-tap-highlight-color:transparent;">TAKE OVER ON PHONE</button>'+
+      '<button class="kt-r-skip-ex" onclick="event.stopPropagation();skipRunnerExercise()">Skip →</button>'+
+    '</div>'+
+    '</div>';
+}
+function _takeOverPhone(){
+  _wristMirror=null;
+  runnerEngaged=true;
+  paintRunner();
+}
+// ⌚ stamp copy: fresh arrivals read JUST NOW, older ones the arrival time.
+function _stampFmt(t){
+  if(Date.now()-t < 90000) return 'JUST NOW';
+  return new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}).replace(/\s/g,'').toUpperCase();
 }
 function _renderRunnerDoneBody(ex, isLast){
   var label = isLast ? 'Finish session' : 'Next exercise →';
@@ -13269,6 +13328,10 @@ function _onWatchLive(json){
       var inc=(s.reps[name]||[]).map(function(r){ return parseInt(r)||0; });
       var loc=runnerRepsLog[name]||[];
       if(inc.length>loc.length){
+        // R1·E: stamp the wrist-arrived indices and wash the newest row.
+        if(!_wristStamps[name]) _wristStamps[name]={};
+        for(var wi=loc.length; wi<inc.length; wi++) _wristStamps[name][wi]=Date.now();
+        _justLoggedSet={ex:name, idx:inc.length-1, at:Date.now()};
         runnerRepsLog[name]=inc;
         runnerCompleted[name]=inc.length;
         var wv=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
@@ -13289,6 +13352,9 @@ function _onWatchLive(json){
     });
     if(changed){
       haptic('light');
+      // The wrist is the logging surface — the phone card goes passive
+      // ledger unless the user is mid-set here.
+      if(!runnerEngaged) _wristMirror={at:Date.now()};
       _saveRunnerDraft();
       paintRunner();
     }
