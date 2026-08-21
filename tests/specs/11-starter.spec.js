@@ -83,7 +83,8 @@ run('five-tap walk lands a working programme', async () => {
     assert(!out.before && out.after, 'walk creates the routine');
     assert(out.overlayUp && out.overlayGone, 'overlay opens and closes');
     assert(out.q1.indexOf('chasing') > -1, 'first question renders: ' + out.q1);
-    assert(out.readyCopy.indexOf('8 weeks') > -1, 'ready screen renders: ' + out.readyCopy);
+    // M&M F1·B: the reveal names the split instead of the block length.
+    assert(out.readyCopy.indexOf('4 days a week') > -1, 'ready screen renders: ' + out.readyCopy);
     assert(out.pushCount >= 4, 'Push day has exercises, got ' + out.pushCount);
     assert(out.week === 1 && out.tab === 'log' && out.sub === 'workout', 'lands on Today, week 1');
     assert(out.firstName === '', 'starter name never leaks into greetings, got "' + out.firstName + '"');
