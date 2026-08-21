@@ -90,14 +90,10 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     @objc func clearPendingSessions(_ call: CAPPluginCall) {
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
-        // The widget's wrist-done overlay pairs with the pending queue —
-        // once the app has drained the sessions into kt_sessions, the real
-        // summary carries the done flags and the overlay must not linger.
-        UserDefaults(suiteName: "group.app.kt.trainer")?
-            .removeObject(forKey: "pendingWatchDone")
-        if #available(iOS 14.0, *) {
-            WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
-        }
+        // The wrist-done overlay is NOT cleared here: the drain runs before
+        // the debounced summary write, and clearing early flashed the widget
+        // back to "Start →". TrovoWidgetPlugin.updateSummary retires overlay
+        // dates once the summary actually carries them as done.
         call.resolve()
     }
 
@@ -140,7 +136,11 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
                 iso.formatOptions = [.withInternetDateTime]
                 if let d = iso.date(from: loggedAt),
                    let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
-                    let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                    let fmt = DateFormatter()
+                    // POSIX pin: device Buddhist/Japanese calendars would emit
+                    // years that never match the JS-side Gregorian dates.
+                    fmt.locale = Locale(identifier: "en_US_POSIX")
+                    fmt.dateFormat = "yyyy-MM-dd"
                     var done = shared.stringArray(forKey: "pendingWatchDone") ?? []
                     let day = fmt.string(from: d)
                     if !done.contains(day) {

@@ -176,6 +176,7 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     let iso = ISO8601DateFormatter()
     iso.formatOptions = [.withInternetDateTime]
     let dayFmt = DateFormatter()
+    dayFmt.locale = Locale(identifier: "en_US_POSIX")
     dayFmt.dateFormat = "yyyy-MM-dd"
     let pendingDays = Set(arr.compactMap { entry -> String? in
         guard let s = entry["startDate"] as? String, let d = iso.date(from: s) else { return nil }
@@ -349,7 +350,7 @@ struct SuperoTodayView: View {
     }
 
     private func shortDow(_ iso: String) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
         guard let d = f.date(from: iso) else { return "" }
         let out = DateFormatter(); out.dateFormat = "EE"
         return out.string(from: d).uppercased()

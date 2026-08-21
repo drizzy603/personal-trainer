@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260818-12"/>
+<meta name="build" content="20260818-13"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1557,7 +1557,7 @@ function lsGet(k) {
   _lsCache[k] = v;
   return v;
 }
-function lsDel(k) { delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(e){} }
+function lsDel(k) { if(k==='kt_sessions'||k==='kt_bw') _logsVersion++; delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(e){} }
 // R4 — surface localStorage quota / serialization failures. The previous
 // silent catch meant the user would see "Session logged" even when nothing
 // was saved. We now route real save failures to a toast so the user knows
@@ -2192,8 +2192,8 @@ function importData() {
 // hand-edited backup used to be applied verbatim and brick every render
 // (e.g. kt_sessions as a string throws in .filter on the next paint, and
 // since it persisted, the app stayed broken across reloads).
-var _BACKUP_ARRAY_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_bw','kt_measurements','kt_custom_ex','kt_skips','kt_coach_msgs','kt_hk_imported','kt_routine_archive'];
-var _BACKUP_OBJECT_KEYS = ['kt_weights','kt_prs','kt_routine','kt_routine_backup','kt_milestones','kt_sport_fields','kt_log_tabs','kt_ex_notes'];
+var _BACKUP_ARRAY_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_bw','kt_measurements','kt_custom_ex','kt_skips','kt_coach_msgs','kt_hk_imported','kt_routine_archive','kt_log_tabs'];
+var _BACKUP_OBJECT_KEYS = ['kt_weights','kt_prs','kt_routine','kt_routine_backup','kt_milestones','kt_sport_fields','kt_ex_notes'];
 function _backupValueOk(k, v){
   if(_BACKUP_ARRAY_KEYS.indexOf(k) !== -1) return Array.isArray(v);
   if(_BACKUP_OBJECT_KEYS.indexOf(k) !== -1) return v && typeof v === 'object' && !Array.isArray(v);
@@ -2230,7 +2230,7 @@ function _applyImportedData(data) {
     lsDel('kt_hk_imported');
     localStorage.removeItem('kt_hk_last_sync');
   }
-  if (data.kt_week) currentWeek = data.kt_week;
+  currentWeek = parseInt(data.kt_week) || 1;
   // Re-anchor the week clock like every other week-setting path — a stale
   // anchor makes autoAdvanceWeek silently jump the restored week forward on
   // the next boot, with no welcome-back banner to undo it.
@@ -2295,7 +2295,7 @@ function importFromHealth(){
         String(d.getMonth()+1).padStart(2,'0')+'-'+
         String(d.getDate()).padStart(2,'0');
       // Already logged by hand → mark seen, never import the twin.
-      if(_manualRunDupe(localISO, r.distanceKm)){ seen.add(r.uuid); return; }
+      if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ seen.add(r.uuid); return; }
       existing.unshift({
         id: Date.now()+added,
         distance: Math.round(r.distanceKm*100)/100,
@@ -2368,7 +2368,7 @@ function checkRecentHealthRun(sinceOverride){
       // distance); runs still need distance to be loggable — and a run the
       // user already logged by hand must not be offered as new.
       if(_hkSportId(r)) return r.durationSec > 0;
-      return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm);
+      return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec);
     });
     if(!fresh.length) return;
     if(localStorage.getItem('kt_autolog_runs')==='1'){
@@ -2413,14 +2413,20 @@ function drainPendingHealth(){
 // UUID-only dedup imported the same watch-tracked run twice — double-counting
 // weekly km, milestones, and VS RECENT rows. Same local date + distance
 // within 5% (and not itself a Health import) reads as the same run.
-function _manualRunDupe(dateISO, km){
+function _manualRunDupe(dateISO, km, durationSec){
   km = parseFloat(km)||0;
   if(!(km>0)) return false;
+  var hkSec = parseFloat(durationSec)||0;
   return getRuns().some(function(r){
     if(r.note==='From Apple Health') return false;
     if(String(r.date)!==String(dateISO)) return false;
     var rd=parseFloat(r.distance||r.dist)||0;
-    return rd>0 && Math.abs(rd-km)/Math.max(rd,km) <= 0.05;
+    if(!(rd>0) || Math.abs(rd-km)/Math.max(rd,km) > 0.05) return false;
+    // Two genuinely different same-distance runs in one day exist (track
+    // repeats) — when both sides know their duration, it must agree too.
+    var rSec=_runSecsOf(r.time);
+    if(hkSec>0 && rSec>0) return Math.abs(rSec-hkSec)/Math.max(rSec,hkSec) <= 0.15;
+    return true;
   });
 }
 function _hkLocalISO(r){
@@ -2433,7 +2439,7 @@ function _logHealthRun(r){
   // Mark seen either way — a manual duplicate must never re-offer.
   if(seen.indexOf(r.uuid)===-1){ seen.push(r.uuid); lsSet('kt_hk_imported', seen); }
   localStorage.setItem('kt_hk_last_sync', String(Date.now()));
-  if(_manualRunDupe(localISO, r.distanceKm)) return null;
+  if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)) return null;
   var rec = {
     id: Date.now(),
     distance: Math.round(r.distanceKm*100)/100,
@@ -3212,6 +3218,10 @@ function _todayLiftExercises(sessionType){
     return {
       name: ex.name,
       isMain: !!ex.isMain,
+      // Programme superset pairs and per-set target loads must reach the
+      // runner — this mapping silently dropped both.
+      ss: !!ex.ss,
+      weights: (Array.isArray(ex.weights) && ex.weights.length ? ex.weights : undefined),
       sets: ex.sets || 3,
       reps: ex.reps || '8-10',
       rpe: ex.rpe || 7,
@@ -4770,6 +4780,13 @@ function openDeckRunner(overrideType){
   runnerSessionDate = null;
   _ssReturnIdx = null;
   // Seed stepper state from prescribed targets.
+  // Supersets are strictly PAIRS: an exercise whose predecessor already
+  // carries ss loses its own flag, otherwise chains drop the first movement
+  // from the alternation entirely.
+  runnerSession.exercises.forEach(function(ex, i){
+    if(ex.ss && i>0 && runnerSession.exercises[i-1].ss) ex.ss=false;
+    if(ex.ss && i===runnerSession.exercises.length-1) ex.ss=false;
+  });
   runnerSession.exercises.forEach(function(ex){
     runnerWeights[ex.name] = Array.isArray(ex.weights) && parseFloat(ex.weights[0])>0
       ? parseFloat(ex.weights[0]) : (parseFloat(ex.weight) || 0);
@@ -4916,6 +4933,9 @@ function _runnerNext(){ return runnerSession ? runnerSession.exercises[runnerExI
 function _runnerNext2(){ return runnerSession ? runnerSession.exercises[runnerExIdx+2] : null; }
 function runnerGoTo(i){
   if(!runnerSession || i<0 || i>=runnerSession.exercises.length) return;
+  // Any navigation invalidates a pending superset return — _ssJumpBack
+  // nulls it BEFORE calling here, so the pair flow is unaffected.
+  _ssReturnIdx = null;
   if(runnerResting) _trovoTimerEnd();
   runnerExIdx = i;
   runnerEngaged = false;
@@ -5071,14 +5091,22 @@ function runnerCompleteSet(){
 }
 function runnerLogAllAtTarget(){
   var ex = _runnerEx(); if(!ex) return;
-  var targetRep = Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
-  var targetRepNum = parseInt(targetRep)||0;
   var curW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var targetRpe = parseInt(ex.rpe)||7;
   runnerRepsLog[ex.name] = [];
   runnerWeightsLog[ex.name] = [];
   runnerRpeLog[ex.name] = [];
-  for(var i=0;i<ex.sets;i++){ runnerRepsLog[ex.name].push(targetRepNum); runnerWeightsLog[ex.name].push(curW); runnerRpeLog[ex.name].push(targetRpe); }
+  // Per-set target arrays make "at target" mean each SET's target — a
+  // [3,8,8]@[225,185,185] scheme must not record 9 reps at 225.
+  for(var i=0;i<ex.sets;i++){
+    var r_i = Array.isArray(ex.reps) ? ex.reps[Math.min(i, ex.reps.length-1)] : ex.reps;
+    var w_i = Array.isArray(ex.weights)
+      ? (parseFloat(ex.weights[Math.min(i, ex.weights.length-1)]) || curW)
+      : curW;
+    runnerRepsLog[ex.name].push(parseInt(r_i)||0);
+    runnerWeightsLog[ex.name].push(w_i);
+    runnerRpeLog[ex.name].push(targetRpe);
+  }
   runnerCompleted[ex.name] = ex.sets;
   runnerEngaged = false;
   runnerResting = false;
@@ -5155,9 +5183,8 @@ function runnerAddRest(delta){
   // the original clock and the alert fired early or late.
   var ex = _runnerEx();
   if(ex){
-    var nextSet = (runnerCompleted[ex.name]||0) + 1;
-    _trovoTimerStart(ex, nextSet);
-    scheduleRestNotification(ex, nextSet, runnerRestLeft);
+    var nextSet = Math.min((runnerCompleted[ex.name]||0) + 1, ex.sets);
+    _trovoTimerStart(ex, nextSet); // schedules the rest-done alert too
   }
   _paintRestClock();
 }
@@ -5212,13 +5239,15 @@ function runnerFinishSession(){
   sessions = sessions.filter(function(x){
     return !(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch');
   });
-  sessions.unshift({id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
+  var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs,
-    supersets:(_ssIdx.length?_ssIdx:undefined)});
+    supersets:(_ssIdx.length?_ssIdx:undefined)};
+  sessions.unshift(_newRec);
   lsSet('kt_sessions', sessions);
   invalidateCoachCard();
   _saveLiftToHealth(runnerSession, exsOut, _sessionDate);
-  _requestDebrief(sessions[0]);
+  // lsSet date-sorts in place — a backdated save is no longer at [0].
+  _requestDebrief(_newRec);
   haptic('success');
   runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
@@ -5893,6 +5922,9 @@ function saveRunnerExEdit(){
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
   ex.reps   =parseInt(_rExEditReps)||ex.reps;
   ex.weight =parseFloat(_rExEditWeight)||0;
+  // The sheet edits scalars — stale per-set target arrays would silently
+  // reseed the pre-edit loads on every completed set.
+  delete ex.weights;
   ex.ss     =_rExEditSS && runnerExEditIdx<runnerSession.exercises.length-1;
   runnerWeights[newName]=ex.weight;
   runnerReps[newName]=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
@@ -9354,10 +9386,8 @@ function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);
 function loadCoachHistory(){
   try{
     var s=localStorage.getItem('kt_coach_msgs');
-    if(s){
-      coachMessages=JSON.parse(s);
-    }
-  }catch(e){}
+    coachMessages = s ? JSON.parse(s) : [];
+  }catch(e){ coachMessages=[]; }
 }
 function clearCoachHistory(){
   coachMessages=[];streamingContent='';
@@ -9784,11 +9814,14 @@ function executeCoachTool(name,input){
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
         ['push','pull','legs','legs2','arms'].forEach(function(sk){
-          (weekObj[sk]||[]).forEach(function(e){
+          var _grp=weekObj[sk]||[];
+          _grp.forEach(function(e,ei){
             if(e && parseFloat(e.weight)>0) e.weight=_snap25(e.weight);
             if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
               var v=parseFloat(x); return v>0?_snap25(v):x;
             });
+            // Supersets are pairs — normalize chains and a dangling last-ss.
+            if(e && e.ss && (ei===_grp.length-1 || (ei>0 && _grp[ei-1] && _grp[ei-1].ss))) e.ss=false;
           });
         });
         // Preferred: runs:{Mon:{...},Wed:{...},...}. Legacy fallback: runTue/runSat.
@@ -10071,6 +10104,7 @@ function executeCoachTool(name,input){
         var dlSess=getSessions();
         var dlBefore3=dlSess.length;
         lsSet('kt_sessions',dlSess.filter(function(s){return s.id!==dlId;}));
+        recomputePRs();
         if(getSessions().length===dlBefore3) return {ok:false,error:'session id not found'};
         invalidateCoachCard(); render();
         return {ok:true,message:'Session deleted'};
@@ -10125,6 +10159,11 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     if(!stripped.length) stripped=[{type:'text',text:'(image omitted)'}];
     return {role:apiM.role,content:stripped};
   });
+  // Retry-after-partial-commit leaves the last real message as assistant;
+  // the API rejects trailing-assistant (prefill) — bridge with a user turn.
+  if(apiMsgs.length && apiMsgs[apiMsgs.length-1].role==='assistant'){
+    apiMsgs.push({role:'user',content:'(The connection dropped mid-reply. Continue from where you left off, or briefly summarize what you already did.)'});
+  }
   var MAX_TURNS=15;
   var totalText='';
   var allToolCalls=[];
@@ -10209,6 +10248,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       }
       var ed;
       try{ ed=await _withTimeout(res.json(),5000,'errjson'); }catch(e){ ed={}; }
+      if(myGen!==_coachGen) return;
       errText=(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status;
       hadError=true;
       break turnLoop;
@@ -10431,6 +10471,10 @@ function saveCoachHistory(){
       var out={role:m.role};
       if(m._hadImage) out._hadImage=true;
       if(m._tools) out._tools=m._tools;
+      // Hygiene flags must survive reloads: without them, error bubbles and
+      // Stop notices re-enter the API history after the next boot.
+      if(m._local) out._local=true;
+      if(m._error) out._error=true;
       if(Array.isArray(m.content)){
         // Storage projection: collapse multimodal/tool-use content to text +
         // a _hadImage flag. The rich in-memory version is preserved.
@@ -10695,20 +10739,26 @@ async function sendCoachMessage(){
   // Intake gets extra headroom: adaptive thinking + programme JSON under the
   // Sonnet 5 tokenizer can overflow 16K.
   var maxTok=intakeMode?24576:16384;
+  // A Stopped turn's pending await can resolve minutes later — its finally
+  // must not clear the loading state of a NEWER turn the user has started.
+  var myGen=_coachGen;
   try{
     await runCoachTurn(systemPrompt,model,maxTok);
   }catch(err){
+    if(myGen!==_coachGen) return;
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
         coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
     try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
   }finally{
-    coachLoading=false;
-    streamingContent='';
-    render();
-    scrollChatBottom();
-    setTimeout(function(){var i=document.getElementById('coach-input');if(i&&!intakeMode)i.focus();},80);
+    if(myGen===_coachGen){
+      coachLoading=false;
+      streamingContent='';
+      render();
+      scrollChatBottom();
+      setTimeout(function(){var i=document.getElementById('coach-input');if(i&&!intakeMode)i.focus();},80);
+    }
   }
 }
 
@@ -10752,15 +10802,19 @@ async function coachRetryLast(){
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?'claude-sonnet-5':coachModel;
   var maxTok=intakeMode?24576:16384;
+  var myGen=_coachGen;
   try{
     await runCoachTurn(systemPrompt,model,maxTok);
   }catch(err){
+    if(myGen!==_coachGen) return;
     coachMessages.push({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
     saveCoachHistory();
   }finally{
-    coachLoading=false;
-    streamingContent='';
-    render(); scrollChatBottom();
+    if(myGen===_coachGen){
+      coachLoading=false;
+      streamingContent='';
+      render(); scrollChatBottom();
+    }
   }
 }
 

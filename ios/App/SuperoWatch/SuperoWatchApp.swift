@@ -16,6 +16,35 @@ private let wchLog = Logger(subsystem: "app.kt.trainer", category: "watch")
 
 private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
 
+// The plan payload's yyyy-MM-dd is Gregorian (JS todayISO) — pin the
+// comparison formatter so Buddhist/Japanese device calendars can't make
+// every plan read stale (or never stale). nil date = legacy cache, trusted.
+private func planIsStale(_ plan: WatchPlan) -> Bool {
+    guard let d = plan.date else { return false }
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd"
+    return d != f.string(from: Date())
+}
+
+// Orange "plan is old" row — tap pulls a fresh plan from the phone.
+private struct StalePlanRow: View {
+    let date: String?
+    var body: some View {
+        Button { Connectivity.shared.requestRefresh() } label: {
+            HStack {
+                Text("PLAN FROM \(date ?? "?") — SYNC")
+                    .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                    .foregroundColor(.orange)
+                Spacer()
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.orange)
+            }
+        }
+    }
+}
+
 // Weights step in 2.5 lb — show the half only when it's there (145, 147.5).
 private func fmtWeight(_ v: Double) -> String {
     v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v)
@@ -336,7 +365,7 @@ final class Runner: ObservableObject {
         let exs: [[String: Any]] = plan.exercises.compactMap { ex in
             guard let reps = repsDone[ex.name], !reps.isEmpty else { return nil }
             return ["name": ex.name, "weight": weight(for: ex), "reps": reps,
-                    "rpe": rpes[ex.name] ?? ex.rpe ?? 0]
+                    "rpe": rpes[ex.name] ?? 0]
         }
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs)
@@ -465,29 +494,10 @@ struct PlanView: View {
         plan.exercises.contains { runner.done($0) > 0 }
     }
 
-    // The wrist had no midnight rollover: with the phone unreachable it kept
-    // showing yesterday's plan as if it were today's. The payload now carries
-    // its date — say so instead of lying.
-    private var staleDay: Bool {
-        guard let d = plan.date else { return false }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return d != f.string(from: Date())
-    }
-
     var body: some View {
         List {
-            if staleDay {
-                Button { Connectivity.shared.requestRefresh() } label: {
-                    HStack {
-                        Text("PLAN FROM \(plan.date ?? "?") — SYNC")
-                            .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                            .foregroundColor(.orange)
-                        Spacer()
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.orange)
-                    }
-                }
+            if planIsStale(plan) {
+                StalePlanRow(date: plan.date)
             }
             Section {
                 ForEach(plan.exercises) { ex in
@@ -688,15 +698,23 @@ struct OffDayView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text(emoji)
-                .font(.system(size: 34))
-            Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
-                .font(.system(size: 17, weight: .heavy))
-            Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Supero picks it up from Health.")
-                .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
+        // A stale rest/run plan masquerading as today is exactly as wrong as
+        // a stale lift plan — same banner, same one-tap sync.
+        ScrollView {
+            VStack(spacing: 8) {
+                if planIsStale(plan) {
+                    StalePlanRow(date: plan.date)
+                        .padding(.bottom, 4)
+                }
+                Text(emoji)
+                    .font(.system(size: 34))
+                Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
+                    .font(.system(size: 17, weight: .heavy))
+                Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Supero picks it up from Health.")
+                    .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 6)
         }
-        .padding(.horizontal, 6)
     }
 }
 

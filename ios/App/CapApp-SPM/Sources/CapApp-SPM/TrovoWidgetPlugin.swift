@@ -24,6 +24,19 @@ public class TrovoWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         defaults.set(json, forKey: "superoWidgetSummary")
+        // Retire wrist-done overlay dates the summary itself now marks done —
+        // clearing them any earlier (e.g. at drain time) raced the debounced
+        // summary write and flashed the widget back to "Start →".
+        if var pending = defaults.stringArray(forKey: "pendingWatchDone"), !pending.isEmpty,
+           let data = json.data(using: .utf8),
+           let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let days = obj["days"] as? [[String: Any]] {
+            let doneDates = Set(days.compactMap { d -> String? in
+                (d["done"] as? Bool) == true ? d["date"] as? String : nil
+            })
+            pending.removeAll { doneDates.contains($0) }
+            defaults.set(pending, forKey: "pendingWatchDone")
+        }
         if #available(iOS 14.0, *) {
             WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
         }
