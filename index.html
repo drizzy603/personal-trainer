@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-5"/>
+<meta name="build" content="20260820-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2232,12 +2232,25 @@ function checkMilestones(opts){
   if(fresh.length){
     var msg = 'Milestone · '+fresh[fresh.length-1];
     var fire = function(){
-      haptic('success');
+      haptic('heavy');   // C1·B: one heavy haptic — the celebration grammar
       showToast(msg, 'pr');
     };
     if(opts.delayToast) setTimeout(fire, opts.delayToast); else fire();
   }
   return fresh;
+}
+// Milestones whose date stamp is today — they gild the surfaces where their
+// numbers already live (C1·B) for the rest of the day, then stand down.
+function _milestonesToday(){
+  var earned = getMilestones();
+  if(!earned) return [];
+  var out = [];
+  MILESTONE_DEFS.forEach(function(def){
+    def.steps.forEach(function(step){
+      if(earned[def.k+'-'+step]===todayISO()) out.push({k:def.k, step:step, label:def.label(step)});
+    });
+  });
+  return out;
 }
 function renderMilestones(){
   var earned = getMilestones();
@@ -2749,6 +2762,13 @@ function closeReadinessSheet(){
 function _streakChip(){
   var s = calcStreak(getSessions());
   if(!(s >= 1)) return '';
+  // C1·B: a streak threshold crossed today turns the chip gold for the day —
+  // ◆ + gold type where the number already lives, nothing modal.
+  var goldToday = _milestonesToday().some(function(m){ return m.k==='streak'; });
+  if(goldToday){
+    return '<span class="kt-streak-chip" style="border-color:color-mix(in srgb,var(--yellow) 45%,transparent);">'+
+      '<span class="lbl kt-milestone-tick" style="color:var(--yellow);">◆ '+s+'-WEEK STREAK</span></span>';
+  }
   return '<span class="kt-streak-chip"><span class="lbl">'+s+'-WEEK STREAK</span></span>';
 }
 
@@ -3829,6 +3849,27 @@ function renderTodayEditorial(){
         (_vol>0?'<div><div class="kt-statband-val" style="font-size:18px;" data-m05="today-vol">'+Math.round(_vol).toLocaleString()+'</div><div class="kt-statband-lbl">lb volume</div></div>':'')+
         (_prc?'<div><div class="kt-statband-val" style="font-size:18px;color:var(--yellow);" data-m05="today-prs">'+_prc+'</div><div class="kt-statband-lbl">PR'+(_prc>1?'s':'')+'</div></div>':'')+
       '</div>';
+      // C1·B — a milestone crossed today gilds the done card in place: gold
+      // mono eyebrow + one factual context line. No interstitial, no
+      // adjectives; the M-10 tick pulses the eyebrow once on mount.
+      var _mst=_milestonesToday();
+      var _mstHTML='';
+      if(_mst.length){
+        // On a session card the session-count milestone outranks the rest.
+        var _m=null;
+        for(var _mi=0;_mi<_mst.length;_mi++){ if(_mst[_mi].k==='sess'){ _m=_mst[_mi]; break; } }
+        if(!_m) _m=_mst[_mst.length-1];
+        var _ctx='';
+        if(_m.k==='sess'){
+          var _all=getSessions();
+          var _first=_all.length?_all[_all.length-1].date:null;
+          if(_first) _ctx=_m.step+' sessions since '+new Date(_first+'T00:00:00').toLocaleString([],{month:'long', year:'numeric'})+'.';
+        }
+        _mstHTML='<div style="border-top:1px solid var(--border);padding:11px 0 1px;">'+
+          '<div class="kt-mono kt-milestone-tick" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--yellow);">◆ '+_esc(_m.label.toUpperCase())+'</div>'+
+          (_ctx?'<div style="font-size:12.5px;line-height:1.5;color:var(--lite);margin-top:5px;">'+_esc(_ctx)+'</div>':'')+
+        '</div>';
+      }
       cta='<div class="kt-session-done" style="flex-direction:column;align-items:stretch;gap:0;">'+
         '<div style="display:flex;align-items:center;gap:14px;">'+
           '<div class="kt-session-done-ic">✓</div>'+
@@ -3838,6 +3879,7 @@ function renderTodayEditorial(){
           '</div>'+
         '</div>'+
         _pills+
+        _mstHTML+
         '<div style="border-top:1px solid var(--border);padding-top:12px;">'+
           _buildHistExRows(_ts.exercises,_ts.prs,_ts.supersets)+
         '</div>'+
