@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-6"/>
+<meta name="build" content="20260820-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2143,7 +2143,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_debrief_seen'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -4108,6 +4108,45 @@ function renderTodayEditorial(){
         '<button class="kt-resume-cta" onclick="shareMonthlyCard()">Share it →</button>'+
       '</div></div>';
   }
+  // C1·C — Sunday evening, the week wraps as a Today block (never a
+  // takeover): statement headline states facts, the PR count is the only
+  // gold, the week strip reuses the bar grammar. Share renders the export;
+  // Dismiss retires it for the week.
+  var weekWrapCard='';
+  if(_weekWrapDue()){
+    var _ww=_weekStats();
+    var _wwNum=['Zero','One','Two','Three','Four','Five','Six','Seven'];
+    var _wwLine1=(_ww.planned>0 && _ww.count===_ww.planned && _ww.count<=7)
+      ? _wwNum[_ww.count]+' for '+_wwNum[_ww.count].toLowerCase()+'.'
+      : _ww.count+' session'+(_ww.count===1?'':'s')+' banked.';
+    var _wwLine2=_ww.heaviest?'Heaviest week yet.':'';
+    var _wwMax=Math.max.apply(null,_ww.dayVol.concat([1]));
+    var _wwBars=_ww.dayVol.map(function(v){
+      var h=v>0?Math.max(8,Math.round(v/_wwMax*100)):0;
+      return '<div style="flex:1;display:flex;align-items:flex-end;height:44px;">'+
+        (v>0?'<div style="width:100%;height:'+h+'%;border-radius:3px 3px 0 0;background:'+
+          (v===_wwMax?'var(--accent)':'color-mix(in srgb,var(--text) 14%,transparent)')+';"></div>':'')+
+      '</div>';
+    }).join('');
+    weekWrapCard='<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;">'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">WEEK '+currentWeek+' · WRAPPED</span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SUPERO</span>'+
+      '</div>'+
+      '<div style="font-size:28px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin-top:12px;">'+_wwLine1+(_wwLine2?'<br>'+_wwLine2:'')+'</div>'+
+      '<div class="kt-statband" style="margin:16px 0 0;">'+
+        '<div><div class="kt-statband-val" style="font-size:19px;">'+_ww.count+(_ww.planned>0?'<span class="u">/'+_ww.planned+'</span>':'')+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
+        '<div><div class="kt-statband-val" style="font-size:19px;">'+(_ww.volume>=1000?(Math.round(_ww.volume/100)/10)+'<span class="u">k</span>':Math.round(_ww.volume))+'</div><div class="kt-statband-lbl">Volume lb</div></div>'+
+        '<div><div class="kt-statband-val" style="font-size:19px;'+(_ww.prs?'color:var(--yellow);':'')+'">'+_ww.prs+'</div><div class="kt-statband-lbl">New PR'+(_ww.prs===1?'':'s')+'</div></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;margin-top:14px;">'+_wwBars+'</div>'+
+      '<div class="kt-mono" style="display:flex;justify-content:space-between;font-size:8px;letter-spacing:.08em;color:var(--muted);opacity:.7;margin-top:6px;"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>'+
+      '<div style="display:flex;gap:10px;margin-top:16px;">'+
+        '<button onclick="_shareWeekCard()" style="flex:1;background:var(--accent);border:none;border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:#000;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share</button>'+
+        '<button onclick="dismissWeekWrap()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:13px;font-size:13px;font-weight:700;color:var(--lite);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Dismiss</button>'+
+      '</div>'+
+    '</div>';
+  }
   var debriefCard=_renderDebriefCard();
 
   // Live wrist mirror — the watch streams per-set state while its runner is
@@ -4137,7 +4176,8 @@ function renderTodayEditorial(){
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
   if(progressionBanner) cands.push({id:'progression', label:'+5 LB', dot:'var(--accent-ink)', html:progressionBanner});
-  if(wrapBanner) cands.push({id:'wrap', label:'WRAPPED', dot:'var(--accent-ink)', html:wrapBanner});
+  if(weekWrapCard) cands.push({id:'weekwrap', label:'WRAPPED', dot:'var(--accent-ink)', html:weekWrapCard});
+  if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
   var activeSlot=null;
   for(var ci=0;ci<cands.length;ci++){ if(cands[ci].id===todayBannerOverride){ activeSlot=cands[ci]; break; } }
@@ -4293,6 +4333,120 @@ function _wrapDue(){
   var mk=_wrapMonthKey();
   if(String(lsGet('kt_last_wrap'))===mk) return false;
   return _monthStats(mk).total>=4;
+}
+// ── C1·C — Sunday wrapped week ───────────────────────────────────────────────
+// Facts about the calendar week ending today: lift sessions, volume, PRs,
+// per-day volume for the bar strip, and whether this was truly the heaviest
+// week on record ("Heaviest week yet" is earned, never asserted).
+function _weekStats(){
+  var mon=_mostRecentMonday();
+  var count=0, volume=0, prs=0, dayVol=[0,0,0,0,0,0,0];
+  var byWeek={};
+  getSessions().forEach(function(s){
+    if(!s.date) return;
+    var d=new Date(s.date+'T00:00:00');
+    var dow=(d.getDay()+6)%7;
+    var wkMon=new Date(d); wkMon.setDate(wkMon.getDate()-dow);
+    var wk=_ymdLocal(wkMon);
+    var v=calcVolume(s.exercises||[]);
+    byWeek[wk]=(byWeek[wk]||0)+v;
+    if(wk!==mon) return;
+    count++; volume+=v; prs+=(s.prs||[]).length;
+    dayVol[dow]+=v;
+  });
+  var heaviest=volume>0;
+  Object.keys(byWeek).forEach(function(wk){
+    if(wk!==mon && byWeek[wk]>=volume) heaviest=false;
+  });
+  var planned=0;
+  var cr=getCustomRoutine();
+  if(cr && Array.isArray(cr.weekPlan)){
+    cr.weekPlan.forEach(function(t){ if(t && _planEntry(t).isLift) planned++; });
+  }
+  return {count:count, volume:Math.round(volume), prs:prs, dayVol:dayVol,
+    heaviest:heaviest, planned:planned, monday:mon};
+}
+function _weekWrapDue(){
+  if(new Date().getDay()!==0) return false;   // Sunday evening block
+  var key=_mostRecentMonday();
+  if(String(lsGet('kt_last_weekwrap'))===key) return false;
+  return _weekStats().count>=1;
+}
+function dismissWeekWrap(){ lsSet('kt_last_weekwrap', _mostRecentMonday()); render(); }
+function _shareWeekCard(){
+  var st=_weekStats();
+  lsSet('kt_last_weekwrap', st.monday);
+  var css=getComputedStyle(document.documentElement);
+  var accent=(css.getPropertyValue('--accent')||'#c8ff00').trim()||'#c8ff00';
+  if(accent.toLowerCase()==='#5b8a00') accent='#c8ff00';
+  document.fonts.ready.then(function(){ _drawWeekCard(st, accent); });
+  render();
+}
+function _drawWeekCard(st, accent){
+  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', RULE='#1f1f24', GOLD='#ffd60a', DIM='#2a2a30';
+  var W=1080,H=1350,M=88,R=992;
+  var c=document.createElement('canvas'); c.width=W; c.height=H;
+  var x=c.getContext('2d');
+  function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
+  x.fillStyle=BG; x.fillRect(0,0,W,H);
+  x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
+  x.fillText('SUPERO · WEEK '+currentWeek+' · WRAPPED', M, 136);
+  var nums=['Zero','One','Two','Three','Four','Five','Six','Seven'];
+  var line1=(st.planned>0 && st.count===st.planned && st.count<=7)
+    ? nums[st.count]+' for '+nums[st.count].toLowerCase()+'.'
+    : st.count+' session'+(st.count===1?'':'s')+' banked.';
+  x.font='800 118px Inter, sans-serif'; ls('-4px');
+  x.fillStyle=INK; x.fillText(line1, M, 312);
+  if(st.heaviest){ x.fillStyle=accent; x.fillText('Heaviest week yet.', M, 434); }
+  ls('0px');
+  x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
+  var volStr=st.volume?st.volume.toLocaleString():'0';
+  x.textAlign='left'; x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
+  x.fillText(String(st.count)+(st.planned>0?'/'+st.planned:''), M, 664);
+  x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
+  x.fillText(volStr, 400, 664);
+  x.textAlign='right'; x.fillStyle=st.prs?GOLD:MUTED;
+  x.font='800 100px Inter, sans-serif';
+  x.fillText(String(st.prs), R, 664);
+  ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
+  x.fillText(st.prs===1?'PR':'PRS', R, 722);
+  x.textAlign='left'; x.fillStyle=MUTED;
+  x.fillText('SESSIONS', M, 722);
+  x.fillText('LB VOLUME', 400, 722);
+  ls('0px');
+  // Week strip — the bar grammar at poster scale; the heaviest day is lime.
+  var maxV=Math.max.apply(null, st.dayVol.concat([1]));
+  var bw=110, gap=(904-7*bw)/6, base=1120, maxH=240;
+  for(var i=0;i<7;i++){
+    var v=st.dayVol[i];
+    var bx=M+i*(bw+gap);
+    if(v>0){
+      var bh=Math.max(18, Math.round(v/maxV*maxH));
+      x.fillStyle=(v===maxV)?accent:DIM;
+      x.fillRect(bx, base-bh, bw, bh);
+    } else {
+      x.fillStyle=RULE; x.fillRect(bx, base-2, bw, 2);
+    }
+  }
+  ls('2px'); x.fillStyle=MUTED; x.font='700 24px "JetBrains Mono", ui-monospace, monospace';
+  var days=['M','T','W','T','F','S','S'];
+  for(var j=0;j<7;j++){ x.fillText(days[j], M+j*(bw+gap)+bw/2-8, 1168); }
+  x.fillStyle=accent; x.fillRect(M,1242,20,20);
+  x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
+  x.fillText('SUPERO', 122, 1262);
+  x.textAlign='right'; x.fillStyle=MUTED;
+  x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
+  x.fillText('AI TRAINER', R, 1262);
+  x.textAlign='left'; ls('0px');
+  c.toBlob(function(blob){
+    if(!blob){ showToast('Could not build card'); return; }
+    var file=new File([blob], 'supero-week-'+st.monday+'-wrapped.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file]}).catch(function(){});
+    } else {
+      showToast('Sharing not supported here');
+    }
+  }, 'image/png');
 }
 function dismissWrap(){ lsSet('kt_last_wrap', _wrapMonthKey()); render(); }
 function shareMonthlyCard(){
