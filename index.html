@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-7"/>
+<meta name="build" content="20260820-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4328,6 +4328,53 @@ function _wrapMonthKey(){
   var prev=new Date(now.getFullYear(), now.getMonth()-1, 1);
   return prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0');
 }
+// C1·D — days in a month with any real activity (session, run, sport). The
+// attendance grid draws exactly these: data as the graphic, never decoration.
+function _monthActiveDays(mk){
+  var days={};
+  getSessions().concat(getRuns(), getSportLogs()).forEach(function(x){
+    if(x && x.date && String(x.date).slice(0,7)===mk) days[String(x.date).slice(0,10)]=1;
+  });
+  return days;
+}
+// The monthly poster lives in Progress once the last completed month has
+// data: thin mono numeral, lime attendance grid, three-stat footer where
+// PRs are the only gold. No summary sentence — the grid is the sentence.
+function _renderMonthPoster(){
+  var mk=_wrapMonthKey();
+  var st=_monthStats(mk);
+  if(st.total<1) return '';
+  var active=_monthActiveDays(mk);
+  var activeDays=Object.keys(active).length;
+  var first=new Date(mk+'-01T00:00:00');
+  var daysInMonth=new Date(first.getFullYear(), first.getMonth()+1, 0).getDate();
+  var lead=(first.getDay()+6)%7;
+  var cells='';
+  for(var b=0;b<lead;b++) cells+='<div></div>';
+  for(var d=1;d<=daysInMonth;d++){
+    var iso=mk+'-'+String(d).padStart(2,'0');
+    cells+='<div style="aspect-ratio:1;border-radius:4px;background:'+
+      (active[iso]?'var(--accent)':'color-mix(in srgb,var(--text) 7%,transparent)')+';"></div>';
+  }
+  var monthName=first.toLocaleString([],{month:'long'}).toUpperCase()+' '+mk.slice(0,4);
+  var streakWk=calcStreak(getSessions());
+  var volStr=st.volume>=1000?(Math.round(st.volume/100)/10)+'k':String(Math.round(st.volume));
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 20px;margin-bottom:16px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;">'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">'+monthName+'</span>'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SUPERO</span>'+
+    '</div>'+
+    '<div class="kt-mono" style="font-size:56px;font-weight:250;letter-spacing:-2px;line-height:1;margin-top:16px;font-variant-numeric:tabular-nums;">'+activeDays+'</div>'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--muted);margin-top:5px;">ACTIVE DAYS</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:18px;">'+cells+'</div>'+
+    '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:13px;margin-top:18px;">'+
+      '<div><div class="kt-mono" style="font-size:15px;font-weight:700;">'+volStr+'</div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">VOLUME LB</div></div>'+
+      '<div><div class="kt-mono" style="font-size:15px;font-weight:700;'+(st.prs?'color:var(--yellow);':'')+'">'+st.prs+'</div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">PR'+(st.prs===1?'':'S')+'</div></div>'+
+      '<div><div class="kt-mono" style="font-size:15px;font-weight:700;">'+streakWk+'<span style="font-size:10px;color:var(--muted);">wk</span></div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">STREAK</div></div>'+
+    '</div>'+
+    '<button onclick="shareMonthlyCard()" style="width:100%;margin-top:16px;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share the poster →</button>'+
+  '</div>';
+}
 function _wrapDue(){
   if(new Date().getDate()>7) return false;
   var mk=_wrapMonthKey();
@@ -4460,59 +4507,63 @@ function shareMonthlyCard(){
   render();
 }
 function _drawWrapCard(mk, st, accent){
-  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', LITE='#9ca3af', RULE='#1f1f24', GOLD='#ffd60a';
+  // C1·D poster grammar: one thin mono numeral, a lime attendance grid where
+  // every filled cell is a real active day, and a three-stat footer with PRs
+  // as the only gold. No summary sentence — the grid is the sentence.
+  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', RULE='#1f1f24', GOLD='#ffd60a', DIM='#212127';
   var W=1080,H=1350,M=88,R=992;
   var c=document.createElement('canvas'); c.width=W; c.height=H;
   var x=c.getContext('2d');
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
   var monthName=new Date(mk+'-01T00:00:00').toLocaleString([],{month:'long'});
   x.fillStyle=BG; x.fillRect(0,0,W,H);
-  x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
-  x.fillText('SUPERO · '+monthName.toUpperCase()+' '+mk.slice(0,4)+' · WRAPPED', M, 136);
-  x.font='800 136px Inter, sans-serif'; ls('-4px');
-  var y1=312, y2=444, line1=monthName+',';
-  if(x.measureText(line1).width>904){ x.font='800 112px Inter, sans-serif'; y1=300; y2=420; }
-  x.fillStyle=INK;   x.fillText(line1, M, y1);
-  x.fillStyle=accent; x.fillText('banked.', M, y2);
+  x.fillStyle=accent; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3.5px');
+  x.fillText(monthName.toUpperCase()+' '+mk.slice(0,4), M, 136);
+  x.textAlign='right'; x.fillStyle=MUTED; x.fillText('SUPERO', R, 136);
+  x.textAlign='left';
+  var active=_monthActiveDays(mk);
+  var activeDays=Object.keys(active).length;
+  x.fillStyle=INK; x.font='250 210px "JetBrains Mono", ui-monospace, monospace'; ls('-8px');
+  x.fillText(String(activeDays), M, 386);
+  ls('3.5px'); x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace';
+  x.fillText('ACTIVE DAYS', M, 442);
   ls('0px');
-  x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
+  // Attendance grid — Monday-first, one cell per real day.
+  var first=new Date(mk+'-01T00:00:00');
+  var daysInMonth=new Date(first.getFullYear(), first.getMonth()+1, 0).getDate();
+  var lead=(first.getDay()+6)%7;
+  var cell=90, gap=(904-7*cell)/6, vpitch=cell+14, gy=500;
+  for(var d=1;d<=daysInMonth;d++){
+    var idx=lead+d-1, col=idx%7, row=Math.floor(idx/7);
+    var iso=mk+'-'+String(d).padStart(2,'0');
+    x.fillStyle=active[iso]?accent:DIM;
+    var cx=M+col*(cell+gap), cy=gy+row*vpitch;
+    x.beginPath();
+    if(x.roundRect) x.roundRect(cx, cy, cell, cell, 12); else x.rect(cx, cy, cell, cell);
+    x.fill();
+  }
+  // Three-stat footer — PRs are the only gold. Fixed positions clear even a
+  // six-row month (grid bottom ≤ 1124).
+  x.fillStyle=RULE; x.fillRect(M, 1158, 904, 2);
   var volStr=st.volume?st.volume.toLocaleString():'0';
-  x.textAlign='left'; x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
-  x.fillText(String(st.total), M, 664);
-  x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
-  x.fillText(volStr, 400, 664);
-  x.textAlign='right'; x.fillStyle=st.prs?GOLD:MUTED;
-  x.font='800 100px Inter, sans-serif';
-  x.fillText(String(st.prs), R, 664);
+  var streakWk=calcStreak(getSessions());
+  x.fillStyle=INK; x.font='700 54px "JetBrains Mono", ui-monospace, monospace'; ls('-1px');
+  x.fillText(volStr, M, 1226);
+  x.textAlign='center'; x.fillStyle=st.prs?GOLD:MUTED;
+  x.fillText(String(st.prs), W/2, 1226);
+  x.textAlign='right'; x.fillStyle=INK;
+  x.fillText(streakWk+'wk', R, 1226);
   ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
-  x.fillText(st.prs===1?'PR':'PRS', R, 722);
-  x.textAlign='left'; x.fillStyle=MUTED;
-  x.fillText('ACTIVITIES', M, 722);
-  x.fillText('LB VOLUME', 400, 722);
-  ls('0px');
-  var rows=[];
-  if(st.topLift) rows.push([ 'Heaviest lift — '+st.topLift.name, st.topLift.weight+' LB' ]);
-  if(st.sessions) rows.push([ 'Gym sessions', String(st.sessions) ]);
-  if(st.km>0) rows.push([ 'Running', st.km+' KM' ]);
-  if(st.sports) rows.push([ 'Sport activities', String(st.sports) ]);
-  var ly=884;
-  rows.slice(0,5).forEach(function(row){
-    var name=row[0];
-    x.font='600 40px Inter, sans-serif';
-    while(x.measureText(name).width>620 && name.length>2){ name=name.slice(0,-2)+'…'; }
-    x.fillStyle=INK; x.fillText(name, M, ly);
-    x.textAlign='right'; x.fillStyle=LITE;
-    x.font='700 34px "JetBrains Mono", ui-monospace, monospace';
-    x.fillText(row[1], R, ly);
-    x.textAlign='left';
-    ly+=82;
-  });
-  x.fillStyle=accent; x.fillRect(M,1242,20,20);
+  x.textAlign='left'; x.fillStyle=MUTED; x.fillText('VOLUME LB', M, 1264);
+  x.textAlign='center'; x.fillText(st.prs===1?'PR':'PRS', W/2, 1264);
+  x.textAlign='right'; x.fillText('STREAK', R, 1264);
+  x.textAlign='left'; ls('0px');
+  x.fillStyle=accent; x.fillRect(M,1296,20,20);
   x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
-  x.fillText('SUPERO', 122, 1262);
+  x.fillText('SUPERO', 122, 1316);
   x.textAlign='right'; x.fillStyle=MUTED;
   x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
-  x.fillText('AI TRAINER', R, 1262);
+  x.fillText('AI TRAINER', R, 1316);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card'); return; }
@@ -9529,7 +9580,7 @@ function renderProgress() {
   }
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) +
     eyebrow('Overview') + toggle + stats +
-    midGroups + renderMilestones() + renderRetroCard(sessions) +
+    midGroups + renderMilestones() + _renderMonthPoster() + renderRetroCard(sessions) +
     eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
     (progressTab==='lifts' ? renderHistory() : '');
 }
