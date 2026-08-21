@@ -52,11 +52,17 @@ run('empty states speak the editorial voice', async () => {
       return {
         hero: logText.indexOf('your programme.') > -1,
         restore: logText.indexOf('Restore a backup') > -1,
-        prog: progText.indexOf('Nothing to show') > -1 && progText.indexOf('No data yet') > -1,
+        // M&M F1·D — honest day-zero: statement pair + dashed payoff ladder,
+        // and the planless CTA. No fake charts or sample numbers.
+        prog: progText.indexOf('Nothing yet.') > -1
+          && progText.indexOf('That’s correct.') > -1
+          && progText.indexOf('AFTER SESSION 1') > -1
+          && progText.indexOf('AFTER YOUR FIRST PR') > -1
+          && progText.indexOf('Build a plan') > -1,
       };
     });
     assert(out.hero && out.restore, 'log first-run hero + restore line');
-    assert(out.prog, 'progress empty state');
+    assert(out.prog, 'progress day-zero honest empty (F1·D)');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

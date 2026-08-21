@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-1"/>
+<meta name="build" content="20260820-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -847,29 +847,96 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-session-done-body{flex:1;}
 .kt-session-done-ttl{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.2px;}
 .kt-session-done-sub{font-size:12px;color:var(--lite);margin-top:2px;}
+/* Honest-empty contract (M&M F1·C/D) — a dashed promise of what the surface
+   will show once data exists. Never fakes numbers, charts, or streaks. */
+.kt-empty-contract{border:1px dashed color-mix(in srgb,var(--text) 16%,transparent);border-radius:20px;padding:18px;margin-top:14px;}
+.kt-empty-contract-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--muted);}
+.kt-empty-contract-body{font-size:12.5px;line-height:1.55;color:var(--muted);margin-top:6px;}
+.kt-empty-contract-body b{color:var(--lite);font-weight:700;}
+
+/* ── Motion language (M&M spec 02) — four durations, two easings, twelve
+   movements. Transform/opacity (plus two one-shot background washes) only;
+   motion marks a state change and stops. The only persistent motion is the
+   M-12 live dot. The reduced-motion block at the end strips travel — every
+   motion's information also exists as a static color/state. ─────────────── */
+:root{
+  --t-tap:120ms;--t-swap:200ms;--t-move:320ms;--t-reveal:600ms;
+  --ease-settle:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.32,1.25,.4,1);
+}
+@keyframes ktFadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes ktSettle{from{transform:translateY(10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+@keyframes ktSheetIn{from{transform:translateY(18px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+@keyframes ktBarGrow{from{transform:scaleY(.03);}to{transform:scaleY(1);}}
+@keyframes ktDotFill{0%{transform:scale(1);}45%{transform:scale(1.35);}100%{transform:scale(1);}}
+@keyframes ktRowWash{from{background-color:var(--accent-dim);}to{background-color:transparent;}}
+@keyframes ktLivePulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+/* M-01 sheet-spring — every bottom-sheet shell in the app. The scrim fades
+   over --t-swap while the sheet springs up over --t-move. */
+.kt-sheet-overlay,.kt-close-sheet,.ex-modal-bg,#runner-ex-edit-modal{animation:ktFadeIn var(--t-swap) ease-out;}
+.kt-sheet,.kt-close-sheet-inner,.ex-modal-sheet,#runner-ex-edit-sheet{animation:ktSheetIn var(--t-move) var(--ease-spring);}
+/* M-02 tab-crossfade + M-03 statement-settle + M-04 bars-grow — all gated by
+   the kt-tab-in class render() sets on #screen only when the route changed,
+   so in-tab repaints never replay them. Hero first, stat band 60ms later
+   (two elements max — never a list cascade); chart bars grow from the
+   baseline with a 40ms stagger, value labels fading in after they land. */
+#screen.kt-tab-in{animation:ktFadeIn var(--t-swap) var(--ease-settle);}
+#screen.kt-tab-in .kt-hero{animation:ktSettle var(--t-move) var(--ease-settle) both;}
+#screen.kt-tab-in .kt-statband{animation:ktSettle var(--t-move) var(--ease-settle) 60ms both;}
+#screen.kt-tab-in .kt-bars .bar{transform-origin:bottom;animation:ktBarGrow var(--t-reveal) var(--ease-settle) both;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(2){animation-delay:40ms;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(3){animation-delay:80ms;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(4){animation-delay:120ms;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(5){animation-delay:160ms;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(6){animation-delay:200ms;}
+#screen.kt-tab-in .kt-bars .bar:nth-child(n+7){animation-delay:240ms;}
+#screen.kt-tab-in .kt-bars .bar .val{animation:ktFadeIn var(--t-swap) var(--ease-settle) var(--t-reveal) both;}
+/* M-06 set-dot-fill + row wash — classes the runner paint attaches to the
+   just-logged strip dot and ledger row for one repaint. */
+.kt-dot-new{animation:ktDotFill var(--t-swap) var(--ease-spring);}
+.kt-row-wash{animation:ktRowWash 900ms var(--ease-settle);}
+/* M-11 press-down — universal press feedback. Class-level :active rules that
+   set their own scale (steppers, rest wells) win on specificity and keep it. */
+button{transition:transform var(--t-tap) var(--ease-settle);}
+button:active{transform:scale(.97);}
+/* M-12 live-dot — "live link" pulse; the only motion allowed to loop. */
+.kt-live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:ktLivePulse 2s ease-in-out infinite;flex-shrink:0;}
+/* The reduced-motion rule: same information, minus the travel. Sheets keep a
+   150ms fade; dots and washes fall back to their static color/state. */
+@media (prefers-reduced-motion: reduce){
+  :root{--t-tap:1ms;--t-swap:1ms;--t-move:1ms;--t-reveal:1ms;}
+  #screen.kt-tab-in,#screen.kt-tab-in .kt-hero,#screen.kt-tab-in .kt-statband,
+  #screen.kt-tab-in .kt-bars .bar,#screen.kt-tab-in .kt-bars .bar .val{animation:none;}
+  .kt-sheet-overlay,.kt-close-sheet,.ex-modal-bg,#runner-ex-edit-modal{animation:none;}
+  .kt-sheet,.kt-close-sheet-inner,.ex-modal-sheet,#runner-ex-edit-sheet{animation:ktFadeIn 150ms ease-out;}
+  .kt-dot-new{animation:none;}
+  .kt-row-wash{animation:none;}
+  .kt-live-dot{animation:none;}
+  button:active{transform:none;opacity:.85;}
+}
 
 /* Deck Runner — fullscreen route. z-index sits BELOW the floating tab bar
    (#tabs is z-index 100) so the tab bar stays visible per spec section 4. */
-#runner-root{position:fixed;top:0;left:0;right:0;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:#0b0b0d;z-index:50;color:var(--text);font-family:'Inter',-apple-system,system-ui,sans-serif;letter-spacing:-.011em;animation:kt-fade .25s ease;}
+#runner-root{position:fixed;top:0;left:0;right:0;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:var(--bg);z-index:50;color:var(--text);font-family:'Inter',-apple-system,system-ui,sans-serif;letter-spacing:-.011em;animation:kt-fade .25s ease;}
 @keyframes kt-fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .kt-r-hd{position:absolute;top:max(env(safe-area-inset-top),20px);left:24px;right:24px;z-index:30;}
 .kt-r-hd-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
-.kt-r-back{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);color:var(--text);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;}
+.kt-r-back{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 12px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;}
 .kt-r-day{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;}
 .kt-r-pct{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);}
-.kt-r-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;}
+.kt-r-bar{height:3px;background:color-mix(in srgb,var(--text) 10%,transparent);border-radius:2px;overflow:hidden;}
 .kt-r-bar-fill{height:100%;background:var(--accent);transition:width .35s;}
 .kt-r-deck{position:absolute;left:24px;right:24px;}
 .kt-r-card{position:absolute;inset:0;border-radius:var(--r-deck);padding:28px 26px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;box-shadow:0 30px 60px -20px rgba(0,0,0,.6);transition:background .25s;-webkit-tap-highlight-color:transparent;overflow:hidden;}
 .kt-r-card.peek1{transform:translateY(10px) scale(.96);opacity:.5;cursor:default;pointer-events:none;}
 .kt-r-card.peek2{transform:translateY(20px) scale(.92);opacity:.25;cursor:default;pointer-events:none;}
 .kt-r-card.lime{background:var(--accent);color:#0b0b0d;}
-.kt-r-card.dark{background:var(--card);color:var(--text);}
+.kt-r-card.dark{background:var(--card);color:var(--text);border:1px solid var(--border);}
 .kt-r-card-top{display:flex;justify-content:space-between;align-items:flex-start;}
 .kt-r-card-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:48px;font-weight:600;letter-spacing:-2px;opacity:.85;line-height:1;}
 .kt-r-card-pill{font-size:10px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap;}
 .kt-r-card.lime .kt-r-card-pill{background:rgba(0,0,0,.15);}
-.kt-r-card.dark .kt-r-card-pill{background:rgba(255,255,255,.1);}
+.kt-r-card.dark .kt-r-card-pill{background:var(--card2);border:1px solid var(--border);}
 .kt-r-card-main{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.1em;opacity:.75;white-space:nowrap;margin-top:8px;}
 .kt-r-card-last{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.05em;opacity:.6;margin-bottom:6px;display:flex;gap:8px;align-items:baseline;}
 .kt-r-card-last-delta{font-weight:700;opacity:.85;}
@@ -885,7 +952,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-eng-row{display:flex;flex-direction:column;gap:8px;}
 .kt-step{border-radius:14px;padding:8px 14px;}
 .kt-r-card.lime .kt-step{background:rgba(0,0,0,.08);}
-.kt-r-card.dark .kt-step{background:rgba(255,255,255,.06);}
+.kt-r-card.dark .kt-step{background:var(--card2);border:1px solid var(--border);}
 .kt-step-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.1em;margin-bottom:6px;}
 .kt-step-row{display:flex;align-items:baseline;gap:8px;}
 .kt-step-val{font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1;color:inherit;flex:1;min-width:0;}
@@ -901,23 +968,29 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
 .kt-r-card.lime .kt-step-btn{background:rgba(255,255,255,.12);}
-.kt-r-card.dark .kt-step-btn{background:rgba(255,255,255,.08);}
+.kt-r-card.dark .kt-step-btn{background:var(--card2);border:1px solid var(--border);}
 .kt-eng-done{padding:14px;border-radius:18px;border:none;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-eng-done{background:#0b0b0d;color:var(--accent);}
 .kt-r-card.dark .kt-eng-done{background:var(--accent);color:#000;}
 .kt-eng-logall{padding:7px 12px;border-radius:12px;border:none;color:inherit;opacity:.85;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-eng-logall{background:rgba(0,0,0,.08);}
-.kt-r-card.dark .kt-eng-logall{background:rgba(255,255,255,.06);}
-.kt-rest{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;}
-.kt-rest-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;margin-bottom:12px;letter-spacing:.1em;}
-.kt-rest-time{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:84px;font-weight:600;letter-spacing:-4px;line-height:1;margin-bottom:18px;}
-.kt-rest-adj{min-width:64px;height:44px;padding:0 14px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:700;letter-spacing:.04em;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-r-card.dark .kt-eng-logall{background:var(--card2);border:1px solid var(--border);}
+/* Rest state (M&M R1·C) — the clock owns the card: thin mono display numeral
+   with tabular figures, a draining accent bar (the state's one lime moment),
+   and ±15s / +30s / Skip as three equal token wells. */
+.kt-rest{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;flex:1;text-align:left;padding-top:8px;}
+.kt-rest-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;opacity:.6;letter-spacing:.12em;}
+.kt-rest-time{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:clamp(60px,23vw,88px);font-weight:250;letter-spacing:-3px;line-height:1;font-variant-numeric:tabular-nums;margin-top:4px;}
+.kt-rest-bar{height:3px;border-radius:2px;overflow:hidden;margin-top:14px;background:color-mix(in srgb,var(--text) 10%,transparent);}
+.kt-r-card.lime .kt-rest-bar{background:rgba(0,0,0,.15);}
+.kt-rest-bar-fill{height:100%;background:var(--accent);transition:width 1s linear;}
+.kt-r-card.lime .kt-rest-bar-fill{background:rgba(0,0,0,.6);}
+.kt-rest-controls{display:flex;gap:8px;margin-top:14px;}
+.kt-rest-adj{flex:1;min-width:0;height:44px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:inherit;opacity:.85;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-rest-adj{background:rgba(0,0,0,.12);}
-.kt-r-card.dark .kt-rest-adj{background:rgba(255,255,255,.08);}
+.kt-r-card.dark .kt-rest-adj{background:var(--card2);border:1px solid var(--border);}
 .kt-rest-adj:active{opacity:.7;transform:scale(.96);}
-.kt-rest-skip{margin-top:18px;padding:14px 28px;border-radius:14px;border:none;color:inherit;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-r-card.lime .kt-rest-skip{background:rgba(0,0,0,.15);}
-.kt-r-card.dark .kt-rest-skip{background:rgba(255,255,255,.08);}
+.kt-rest-adj.kt-rest-go{opacity:1;font-weight:800;}
 .kt-done{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;}
 .kt-done-check{font-size:64px;font-weight:600;letter-spacing:-2px;line-height:1;}
 .kt-done-name{font-size:18px;font-weight:600;opacity:.85;text-align:center;}
@@ -929,13 +1002,13 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 /* No justify-content:center here — centered flex + overflow-x pushes the
    leading pills into negative scroll space where they can never be reached
    or tapped. The first/last auto margins center the row only when it fits. */
-.kt-r-strip-inner{background:rgba(22,22,26,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
+.kt-r-strip-inner{background:color-mix(in srgb,var(--card) 97%,transparent);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:18px;padding:10px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
 .kt-r-pill:first-child{margin-left:auto;}
 .kt-r-pill:last-child{margin-right:auto;}
 .kt-r-strip-inner::-webkit-scrollbar{display:none;}
 .kt-r-pill{flex-shrink:0;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;-webkit-tap-highlight-color:transparent;}
 .kt-r-pill.active{background:var(--accent);color:#000;}
-.kt-r-pill.idle{background:rgba(255,255,255,.04);color:var(--text);}
+.kt-r-pill.idle{background:var(--card2);color:var(--text);}
 .kt-r-pill-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:600;letter-spacing:.05em;}
 .kt-r-pill.idle .kt-r-pill-idx{opacity:.6;}
 .kt-r-pill-dots{display:flex;gap:2px;}
@@ -1093,6 +1166,12 @@ var runnerRestTick    = null;
 // timestamp instead of counting ticks — keeping it in lockstep with the
 // Live Activity and the rest-done alert, which were always wall-time.
 var runnerRestEndsAt  = 0;
+// Seconds this rest was granted in total (extends if +30s pushes past it) —
+// denominator for the draining rest bar. 0 = no rest in flight.
+var runnerRestTotal   = 0;
+// M-06 marker: the set logged within the last second, so the repaint right
+// after logging can pulse its strip dot and wash its ledger row exactly once.
+var _justLoggedSet    = null;       // {ex, idx, at} or null
 var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
@@ -2815,6 +2894,18 @@ function getSessionExercises(type) {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 var _lastRenderedRoute = '';
+// M-02/M-03/M-04 gate: kt-tab-in arms the tab-entry animations (crossfade,
+// statement settle, bars grow) only when the route actually changed —
+// in-tab repaints (logging a set, dismissing a card) stay static.
+function _tabEnterMotion(screen, routeChanged){
+  if(routeChanged){
+    screen.classList.remove('kt-tab-in');
+    void screen.offsetWidth;   // restart the animation on back-to-back nav
+    screen.classList.add('kt-tab-in');
+  } else {
+    screen.classList.remove('kt-tab-in');
+  }
+}
 function render() {
   // Sync the inline run-log form into module state before rebuilding the
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
@@ -2838,7 +2929,8 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
+  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
+  _tabEnterMotion(screen, routeChanged);
   screen.scrollTop = routeChanged ? 0 : prevScroll;
   _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
@@ -3952,10 +4044,19 @@ function renderTodayEditorial(){
       '<span class="lbl">'+c.label+'</span></button>';
   }).join('');
   var strip=chipsHtml?'<div class="kt-util-strip">'+chipsHtml+'</div>':'';
+  // Day zero (M&M F1·C): until the first session exists, the space under the
+  // CTA is a dashed contract — it promises tonight's summary, never fakes it.
+  var firstContract='';
+  if(act.type==='lift' && !sessionDoneToday && !getSessions().length){
+    firstContract='<div class="kt-empty-contract">'+
+      '<div class="kt-empty-contract-lbl">THIS SPACE FILLS TONIGHT</div>'+
+      '<div class="kt-empty-contract-body">Your first session summary lands here — sets, volume, and the numbers next week gets built from.</div>'+
+    '</div>';
+  }
   // Screen A1 order: banner (most-current thing) stays on top; the utility
   // chips read as part of the day's status, so they sit between the statement
   // and the Start CTA.
-  return meta + (activeSlot?activeSlot.html:'') + hero + strip + cta + adhocPicker + coachHTML + marquee;
+  return meta + (activeSlot?activeSlot.html:'') + hero + strip + cta + firstContract + adhocPicker + coachHTML + marquee;
 }
 var todayBannerOverride=null;
 function promoteTodayItem(id){ todayBannerOverride=id; render(); }
@@ -5034,6 +5135,7 @@ function runnerCompleteSet(){
   runnerRpeLog[ex.name].push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
+  _justLoggedSet = {ex: ex.name, idx: done-1, at: Date.now()};
   // Reset targets for the NEXT set (index = done). Per-set arrays make
   // top-set/back-off schemes real: [3,8,8] reps with [225,185,185] loads.
   var _ti = Math.min(done, ex.sets - 1);
@@ -5063,6 +5165,7 @@ function runnerCompleteSet(){
     if(_prevOpen) _ssReturnIdx=runnerExIdx-1;
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
+    runnerRestTotal = runnerRestLeft;
     runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
     if(runnerRestTick) clearInterval(runnerRestTick);
     _trovoTimerStart(ex, Math.min(done + 1, ex.sets));
@@ -5130,6 +5233,7 @@ function runnerSkipRest(){
   runnerResting = false;
   runnerRestLeft = 90;
   runnerRestEndsAt = 0;
+  runnerRestTotal = 0;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
   // The rest-done alert is still pending for the original moment — without
@@ -5143,7 +5247,7 @@ function runnerSkipRest(){
 // cross zero in the background and only be noticed on visibilitychange).
 function _restFinish(){
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
-  runnerResting = false; runnerRestLeft = 90; runnerRestEndsAt = 0;
+  runnerResting = false; runnerRestLeft = 90; runnerRestEndsAt = 0; runnerRestTotal = 0;
   _trovoTimerEnd();
   if(navigator.vibrate) navigator.vibrate([80,40,80]);
   haptic('success');
@@ -5176,6 +5280,7 @@ function runnerAddRest(delta){
   // the derived countdown and the native surfaces agree on the new end.
   var _remain = runnerRestEndsAt ? Math.round((runnerRestEndsAt - Date.now())/1000) : runnerRestLeft;
   runnerRestLeft = Math.max(5, Math.min(600, _remain + delta));
+  if(runnerRestLeft > runnerRestTotal) runnerRestTotal = runnerRestLeft;
   runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
   // The lock screen must follow the adjustment: restart the Live Activity
   // countdown and re-schedule the rest-done alert (same id — iOS replaces
@@ -5198,6 +5303,11 @@ function _paintRestClock(){
   if(!el){ paintRunner(); return; }
   var m = Math.floor(runnerRestLeft/60), s = runnerRestLeft%60;
   el.textContent = m+':'+String(s).padStart(2,'0');
+  var bar = document.querySelector('#runner-root .kt-rest-bar-fill');
+  if(bar){
+    var total = runnerRestTotal > 0 ? runnerRestTotal : Math.max(runnerRestLeft, 1);
+    bar.style.width = Math.max(0, Math.min(100, runnerRestLeft/total*100))+'%';
+  }
 }
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){
@@ -5357,8 +5467,10 @@ function renderDeckRunner(){
       var on = d < dotsDone;
       var bg = isCurrent
         ? (on ? '#000' : 'rgba(0,0,0,.25)')
-        : (on ? 'var(--accent)' : 'rgba(255,255,255,.2)');
-      dots += '<span class="kt-r-dot" style="background:'+bg+';"></span>';
+        : (on ? 'var(--accent)' : 'color-mix(in srgb,var(--text) 22%,transparent)');
+      var fresh = _justLoggedSet && _justLoggedSet.ex===e.name && d===_justLoggedSet.idx
+        && (Date.now()-_justLoggedSet.at) < 900;
+      dots += '<span class="kt-r-dot'+(fresh?' kt-dot-new':'')+'" style="background:'+bg+';"></span>';
     }
     return '<button class="kt-r-pill '+(isCurrent?'active':'idle')+'" onclick="runnerGoTo('+i+')">'+
       '<span class="kt-r-pill-idx">'+String(i+1).padStart(2,'0')+'</span>'+
@@ -5481,9 +5593,11 @@ function runnerSaveEditSet(){
 function _renderCompletedSets(ex){
   var done=runnerCompleted[ex.name]||0; if(!done) return '';
   var isLime=ex.isMain;
-  var rowBg=isLime?'rgba(0,0,0,.1)':'rgba(255,255,255,.07)';
-  var inputBg=isLime?'rgba(0,0,0,.2)':'rgba(255,255,255,.12)';
-  var btnBg=isLime?'rgba(0,0,0,.18)':'rgba(255,255,255,.1)';
+  // Dark-card tints derive from --text so they hold in every room (Paper's
+  // ink is near-black; white tints vanished there). Lime keeps black tints.
+  var rowBg=isLime?'rgba(0,0,0,.1)':'color-mix(in srgb,var(--text) 7%,transparent)';
+  var inputBg=isLime?'rgba(0,0,0,.2)':'color-mix(in srgb,var(--text) 12%,transparent)';
+  var btnBg=isLime?'rgba(0,0,0,.18)':'color-mix(in srgb,var(--text) 10%,transparent)';
   var rows='';
   for(var i=0;i<done;i++){
     var w=(runnerWeightsLog[ex.name]||[])[i];
@@ -5499,7 +5613,9 @@ function _renderCompletedSets(ex){
         '<button onclick="event.stopPropagation();runnerCancelEditSet()" style="padding:4px 8px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;opacity:.6;">✕</button>'+
       '</div>';
     } else {
-      rows+='<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
+      var _washed=_justLoggedSet && _justLoggedSet.ex===ex.name && i===_justLoggedSet.idx
+        && (Date.now()-_justLoggedSet.at) < 900;
+      rows+='<div class="'+(_washed?'kt-row-wash':'')+'" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
         '<span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;opacity:.55;letter-spacing:.06em;">SET '+(i+1)+'</span>'+
         '<span style="font-size:13px;font-weight:600;">'+(r!=null?r:'—')+' reps × '+(w!=null?w:'—')+' lb</span>'+
         '<button onclick="event.stopPropagation();runnerStartEditSet('+i+')" style="padding:3px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">edit</button>'+
@@ -5558,7 +5674,7 @@ function _renderRunnerIdleBody(ex, next){
   }
   var editBtnStyle=ex.isMain
     ?'background:rgba(0,0,0,.18);border:1px solid rgba(0,0,0,.2);color:rgba(0,0,0,.6);'
-    :'background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);';
+    :'background:var(--card2);border:1px solid var(--border);color:var(--lite);';
   return '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">'+
     '<div>'+
       lastBlock+
@@ -5722,14 +5838,20 @@ function _renderRunnerEngagedBody(ex, done){
 }
 function _renderRunnerRestingBody(ex, done){
   var m = Math.floor(runnerRestLeft/60), s = runnerRestLeft%60;
+  // Draining bar = remaining fraction of the rest actually granted (extends
+  // when +30s pushes past the original total). The bar is this state's one
+  // accent moment.
+  var total = runnerRestTotal > 0 ? runnerRestTotal : Math.max(runnerRestLeft, 1);
+  var pct = Math.max(0, Math.min(100, Math.round(runnerRestLeft/total*100)));
   return '<div class="kt-rest">'+
     '<div class="kt-rest-hd">REST · NEXT SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-rest-time">'+m+':'+String(s).padStart(2,'0')+'</div>'+
-    '<div class="kt-rest-controls" style="display:flex;gap:10px;justify-content:center;margin-bottom:10px;">'+
+    '<div class="kt-rest-bar"><div class="kt-rest-bar-fill" style="width:'+pct+'%"></div></div>'+
+    '<div class="kt-rest-controls">'+
       '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(-15)" aria-label="Subtract 15 seconds">−15s</button>'+
       '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(30)" aria-label="Add 30 seconds">+30s</button>'+
+      '<button class="kt-rest-adj kt-rest-go" onclick="event.stopPropagation();runnerSkipRest()" aria-label="Skip rest">Skip →</button>'+
     '</div>'+
-    '<button class="kt-rest-skip" onclick="event.stopPropagation();runnerSkipRest()">Skip rest</button>'+
     _renderCompletedSets(ex)+
     '</div>';
 }
@@ -8301,17 +8423,43 @@ function renderProgress() {
   var runs=getRuns();
   var wd=getWkData();
 
-  if(!sessions.length && !runs.length && !getCustomRoutine()){
+  if(!sessions.length && !runs.length){
+    // Day zero (M&M F1·D): "Nothing yet. That's correct." The statement pair
+    // does the reassuring; three dashed contracts ladder the payoff. The
+    // ghost bars are 35%-opacity furniture — unmistakably not data. With no
+    // programme yet, the build CTA stays; with one, day zero earns no lime
+    // beyond the active tab.
+    var hasPlan = !!getCustomRoutine();
+    var ghostBars = '<div style="display:flex;align-items:flex-end;gap:8px;height:56px;margin-top:12px;opacity:.35;">'+
+      '<div style="flex:1;height:40%;background:color-mix(in srgb,var(--text) 14%,transparent);border-radius:4px 4px 0 0;"></div>'+
+      '<div style="flex:1;height:0;border-top:1px dashed color-mix(in srgb,var(--text) 20%,transparent);"></div>'+
+      '<div style="flex:1;height:0;border-top:1px dashed color-mix(in srgb,var(--text) 20%,transparent);"></div>'+
+      '<div style="flex:1;height:0;border-top:1px dashed color-mix(in srgb,var(--text) 20%,transparent);"></div>'+
+    '</div>';
     return '<div class="kt-meta-row"><div class="kt-meta-label">PROGRESS</div><div class="kt-meta-ava">?</div></div>'+
-      '<div style="text-align:center;padding:64px 24px 48px;">'+
-        '<div style="width:56px;height:56px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:16px;">📊</div>'+
-        '<div style="font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">No data yet</div>'+
-        '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px;line-height:1.15;margin-bottom:12px;">Nothing to show —<br><span style="color:var(--accent);">yet.</span></div>'+
-        '<div style="font-size:13px;color:var(--muted);line-height:1.6;max-width:280px;margin:0 auto 24px;">Log your first session or run and this tab starts charting weights, pace and PRs.</div>'+
-        (getApiKey()||getCustomRoutine()
-          ?'<button onclick="switchTab(\'coach\')" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Go to Coach →</button>'
-          :'<button onclick="switchTab(\'log\');openStarterIntake();" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Build a plan →</button>')+
-      '</div>';
+      '<div class="kt-hero" style="margin-bottom:24px;">'+
+        '<h1 class="kt-hero-headline">Nothing yet.<span class="kt-line2">That\u2019s correct.</span></h1>'+
+        '<div class="kt-hero-body">Charts need two sessions to mean anything. '+
+          (hasPlan?'Log your next two and this page starts talking.':'Build a plan, log two sessions, and this page starts talking.')+'</div>'+
+      '</div>'+
+      '<div class="kt-empty-contract" style="margin-top:0;">'+
+        '<div class="kt-empty-contract-lbl">AFTER SESSION 1</div>'+
+        '<div class="kt-empty-contract-body"><b>Volume by day appears here</b></div>'+
+        ghostBars+
+      '</div>'+
+      '<div class="kt-empty-contract">'+
+        '<div class="kt-empty-contract-lbl">AFTER WEEK 1</div>'+
+        '<div class="kt-empty-contract-body"><b>Estimated one-rep maxes per main lift</b></div>'+
+      '</div>'+
+      '<div class="kt-empty-contract">'+
+        '<div class="kt-empty-contract-lbl">AFTER YOUR FIRST PR</div>'+
+        '<div class="kt-empty-contract-body"><b>Records ledger, in <span style="color:var(--yellow);">gold</span></b></div>'+
+      '</div>'+
+      (hasPlan
+        ?''
+        :'<div style="text-align:center;margin-top:24px;">'+
+          '<button onclick="switchTab(\'log\');openStarterIntake();" class="btn" style="display:inline-block;width:auto;padding:13px 28px;border-radius:12px;">Build a plan →</button>'+
+         '</div>');
   }
 
   // Dynamic goals — find bests from logged data
