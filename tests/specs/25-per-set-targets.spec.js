@@ -19,7 +19,9 @@ run('top-set/back-off arrays drive the runner set by set', async () => {
       const set2 = { r: runnerReps[ex.name], w: runnerWeights[ex.name] };
       runnerCompleteSet(); runnerSkipRest();
       const set3 = { r: runnerReps[ex.name], w: runnerWeights[ex.name] };
-      const pill = document.getElementById('runner-root').innerHTML.indexOf('3×(3/8/8)') !== -1;
+      // The prescription pill became the idle card's mono meta line.
+      runnerEngaged = false; paintRunner();
+      const pill = document.getElementById('runner-root').innerHTML.indexOf('3 × (3/8/8)') !== -1;
       closeDeckRunner();
       const fmt = [_fmtRepTarget([8, 8, 8]), _fmtRepTarget([3, 8, 8]), _fmtRepTarget('8-10')].join('|');
       // Tool ingestion snaps per-set target arrays to plates.
@@ -33,7 +35,7 @@ run('top-set/back-off arrays drive the runner set by set', async () => {
     assert(out.set1.r === 3 && out.set1.w === 225, 'set 1 seeds the top set, got ' + JSON.stringify(out.set1));
     assert(out.set2.r === 8 && out.set2.w === 185, 'set 2 seeds the back-off, got ' + JSON.stringify(out.set2));
     assert(out.set3.r === 8 && out.set3.w === 185, 'set 3 holds the back-off, got ' + JSON.stringify(out.set3));
-    assert(out.pill, 'runner pill renders 3×(3/8/8)');
+    assert(out.pill, 'idle meta line renders 3 × (3/8/8)');
     assert(out.fmt === '8|(3/8/8)|8-10', 'formatter collapses uniform arrays, got ' + out.fmt);
     assert(out.ok && String(out.snapped) === '227.5,185,185' && out.topSnapped === 227.5, 'target arrays plate-snap, got ' + out.snapped);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));

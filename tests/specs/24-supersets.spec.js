@@ -12,8 +12,10 @@ run('superset alternates, shares one rest, and saves the rail', async () => {
       // Pair exercises 0+1 (2 sets each keeps the walk short).
       const A = runnerSession.exercises[0], B = runnerSession.exercises[1];
       A.ss = true; A.sets = 2; B.sets = 2;
-      runnerEngaged = true; paintRunner();
+      // The ⇄ chip lives on the idle card (M&M recomposition).
+      paintRunner();
       const tagged = document.getElementById('runner-root').innerHTML.indexOf('SUPERSET') !== -1;
+      runnerEngaged = true; paintRunner();
 
       // A set 1 → hands off to B with no rest.
       runnerCompleteSet();

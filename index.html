@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-2"/>
+<meta name="build" content="20260820-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -912,6 +912,8 @@ button:active{transform:scale(.97);}
   .kt-dot-new{animation:none;}
   .kt-row-wash{animation:none;}
   .kt-live-dot{animation:none;}
+  .kt-pr-eyebrow{animation:none;}
+  .kt-milestone-tick{animation:none;}
   button:active{transform:none;opacity:.85;}
 }
 
@@ -932,49 +934,57 @@ button:active{transform:scale(.97);}
 .kt-r-card.peek2{transform:translateY(20px) scale(.92);opacity:.25;cursor:default;pointer-events:none;}
 .kt-r-card.lime{background:var(--accent);color:#0b0b0d;}
 .kt-r-card.dark{background:var(--card);color:var(--text);border:1px solid var(--border);}
-.kt-r-card-top{display:flex;justify-content:space-between;align-items:flex-start;}
-.kt-r-card-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:48px;font-weight:600;letter-spacing:-2px;opacity:.85;line-height:1;}
-.kt-r-card-pill{font-size:10px;font-weight:600;padding:5px 10px;border-radius:999px;white-space:nowrap;}
-.kt-r-card.lime .kt-r-card-pill{background:rgba(0,0,0,.15);}
-.kt-r-card.dark .kt-r-card-pill{background:var(--card2);border:1px solid var(--border);}
-.kt-r-card-main{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.1em;opacity:.75;white-space:nowrap;margin-top:8px;}
+/* Card recomposition (M&M R1·A/B) — the 48px index numeral and the bordered
+   prescription pill collapse into one mono meta line; the lift name takes
+   statement scale and the target becomes the idle hero metric. */
+.kt-r-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:30px;}
+.kt-r-card-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:600;letter-spacing:.09em;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-r-mini-btn{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:7px 12px;font-size:11.5px;font-weight:700;color:var(--lite);cursor:pointer;font-family:inherit;line-height:1;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
 .kt-r-card-last{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:500;letter-spacing:.05em;opacity:.6;margin-bottom:6px;display:flex;gap:8px;align-items:baseline;}
-.kt-r-card-last-delta{font-weight:700;opacity:.85;}
-.kt-r-card-name{font-size:38px;font-weight:700;letter-spacing:-1.5px;line-height:1.05;}
+.kt-r-card-last-delta{font-weight:700;opacity:.85;color:var(--accent-ink);}
+.kt-r-card-name{font-size:clamp(32px,10.5vw,40px);font-weight:800;letter-spacing:-1.9px;line-height:1.02;overflow-wrap:break-word;}
+.kt-r-target-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;opacity:.55;margin-top:20px;}
+.kt-r-target{font-size:clamp(44px,16vw,54px);font-weight:800;letter-spacing:-2.4px;line-height:1;margin-top:6px;}
+.kt-r-target .u{font-size:20px;font-weight:600;letter-spacing:0;opacity:.55;margin-left:5px;}
+.kt-r-target-sets{font-size:14px;font-weight:600;opacity:.7;margin-top:8px;}
+.kt-r-target-plate{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.06em;opacity:.55;margin-top:5px;text-transform:uppercase;}
 .kt-r-card-foot{display:flex;justify-content:space-between;align-items:baseline;}
-.kt-r-card-hint{font-size:13px;opacity:.55;font-weight:500;}
+.kt-r-card-hint{font-size:13.5px;font-weight:700;color:var(--accent-ink);}
 .kt-r-card-next{font-size:11px;opacity:.5;text-align:right;max-width:140px;}
 .kt-r-card-next-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.1em;}
 .kt-r-card-next-name{font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Logged sets — hairline ledger rows (S1 · 165 × 8 · EDIT), shared by the
+   engaged, resting and done bodies. Gold rows mark sets that beat the
+   stored best — data, not celebration; it persists on the row. */
+.kt-ledger{width:100%;border-top:1px solid var(--border);margin-top:12px;}
+.kt-lr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);}
+.kt-lr-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:600;opacity:.55;letter-spacing:.06em;flex-shrink:0;}
+.kt-lr-val{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;opacity:.8;}
+.kt-lr.gold .kt-lr-idx,.kt-lr.gold .kt-lr-val{color:var(--yellow);opacity:1;font-weight:700;}
+.kt-lr-act{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.04em;color:inherit;opacity:.45;cursor:pointer;padding:4px 0 4px 12px;-webkit-tap-highlight-color:transparent;}
+/* Engaged (M&M R1·B) — both steppers keep their shipped tap targets; the
+   wells are the −/+ buttons (56px, --card2 on --card) and the numeral sits
+   naked between them at statement scale. */
 .kt-eng{display:flex;flex-direction:column;flex:1;min-height:0;justify-content:flex-start;padding-top:12px;gap:8px;}
-.kt-eng-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;}
-.kt-eng-name{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1.05;}
-.kt-eng-row{display:flex;flex-direction:column;gap:8px;}
-.kt-step{border-radius:14px;padding:8px 14px;}
-.kt-r-card.lime .kt-step{background:rgba(0,0,0,.08);}
-.kt-r-card.dark .kt-step{background:var(--card2);border:1px solid var(--border);}
-.kt-step-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.1em;margin-bottom:6px;}
-.kt-step-row{display:flex;align-items:baseline;gap:8px;}
-.kt-step-val{font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1;color:inherit;flex:1;min-width:0;}
+.kt-eng-name{font-size:26px;font-weight:800;letter-spacing:-1.1px;line-height:1;}
+.kt-eng-target{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;letter-spacing:.06em;opacity:.55;}
+.kt-eng-row{display:flex;flex-direction:column;gap:6px;}
+.kt-step{padding:0;}
+.kt-step-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.12em;margin-bottom:2px;}
+.kt-step-row{display:flex;align-items:center;gap:10px;}
+.kt-step-val{font-size:clamp(38px,14vw,56px);font-weight:800;letter-spacing:-2.5px;line-height:1;color:inherit;flex:1;min-width:0;text-align:center;}
+.kt-step.reps .kt-step-val{font-size:38px;letter-spacing:-1.6px;}
 .kt-step-input{background:none;border:none;outline:none;padding:0;margin:0;width:auto;-webkit-appearance:none;appearance:none;font-family:inherit;caret-color:var(--accent);}
 .kt-step-input::-webkit-inner-spin-button,.kt-step-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .kt-step-unit{font-size:13px;opacity:.5;margin-left:3px;font-weight:500;}
-.kt-plate-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.55;letter-spacing:.06em;margin-top:7px;text-transform:uppercase;}
+.kt-plate-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.5px;opacity:.5;letter-spacing:.06em;margin-top:4px;text-transform:uppercase;text-align:center;}
 .kt-warmup{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.6;letter-spacing:.05em;text-transform:uppercase;}
-.kt-overload{padding:9px 12px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:left;}
-.kt-r-card.lime .kt-overload{background:rgba(0,0,0,.12);color:#0b0b0d;}
-.kt-r-card.dark .kt-overload{background:var(--accent-soft);color:var(--accent);}
-.kt-step-btns{display:flex;gap:8px;flex-shrink:0;}
-.kt-step-btn{width:44px;height:44px;border-radius:12px;border:none;cursor:pointer;color:inherit;font-size:20px;font-weight:600;font-family:inherit;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+.kt-overload{padding:9px 12px;border-radius:12px;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:left;background:var(--accent-soft);color:var(--accent-ink);}
+.kt-step-btn{width:56px;height:56px;border-radius:16px;border:1px solid var(--border);background:var(--card2);cursor:pointer;color:var(--lite);font-size:22px;font-weight:700;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+.kt-step.reps .kt-step-btn{height:44px;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
-.kt-r-card.lime .kt-step-btn{background:rgba(255,255,255,.12);}
-.kt-r-card.dark .kt-step-btn{background:var(--card2);border:1px solid var(--border);}
-.kt-eng-done{padding:14px;border-radius:18px;border:none;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-r-card.lime .kt-eng-done{background:#0b0b0d;color:var(--accent);}
-.kt-r-card.dark .kt-eng-done{background:var(--accent);color:#000;}
-.kt-eng-logall{padding:7px 12px;border-radius:12px;border:none;color:inherit;opacity:.85;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-r-card.lime .kt-eng-logall{background:rgba(0,0,0,.08);}
-.kt-r-card.dark .kt-eng-logall{background:var(--card2);border:1px solid var(--border);}
+.kt-eng-done{padding:15px;border-radius:16px;border:none;font-size:15px;font-weight:800;letter-spacing:-.2px;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--accent);color:#000;}
+.kt-eng-logall{padding:7px 12px;border-radius:12px;border:1px solid var(--border);color:inherit;opacity:.85;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--card2);}
 /* Rest state (M&M R1·C) — the clock owns the card: thin mono display numeral
    with tabular figures, a draining accent bar (the state's one lime moment),
    and ±15s / +30s / Skip as three equal token wells. */
@@ -991,6 +1001,18 @@ button:active{transform:scale(.97);}
 .kt-r-card.dark .kt-rest-adj{background:var(--card2);border:1px solid var(--border);}
 .kt-rest-adj:active{opacity:.7;transform:scale(.96);}
 .kt-rest-adj.kt-rest-go{opacity:1;font-weight:800;}
+/* PR beat (M&M C1·A / M-09) — the logged number takes the rest display slot
+   in gold, the eyebrow names what was beaten, and the clock compresses to a
+   side line but keeps running. Gold is the moment; lime stays on the bar. */
+.kt-pr-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--yellow);margin-top:22px;animation:ktFadeIn 900ms var(--ease-settle);}
+.kt-pr-hero{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:clamp(44px,17vw,64px);font-weight:300;letter-spacing:-2px;line-height:1;color:var(--yellow);font-variant-numeric:tabular-nums;margin-top:8px;}
+.kt-pr-sub{font-size:13px;font-weight:600;opacity:.7;margin-top:10px;}
+.kt-rest-mini{display:flex;align-items:center;gap:10px;margin-top:18px;}
+.kt-rest-mini .kt-rest-time{font-size:34px;font-weight:250;letter-spacing:-1px;margin-top:0;flex-shrink:0;}
+.kt-rest-mini .kt-rest-bar{flex:1;margin-top:0;}
+/* M-10 milestone-tick — one 1.06 pulse on a numeral crossing a threshold. */
+@keyframes ktTickPulse{0%{transform:scale(1);}50%{transform:scale(1.06);}100%{transform:scale(1);}}
+.kt-milestone-tick{animation:ktTickPulse var(--t-swap) var(--ease-spring);}
 .kt-done{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;}
 .kt-done-check{font-size:64px;font-weight:600;letter-spacing:-2px;line-height:1;}
 .kt-done-name{font-size:18px;font-weight:600;opacity:.85;text-align:center;}
@@ -1037,9 +1059,7 @@ button:active{transform:scale(.97);}
 @keyframes kt-r-flash{0%{opacity:1;}20%{opacity:.3;}50%{opacity:.85;}80%{opacity:.4;}100%{opacity:1;}}
 .kt-r-flash{animation:kt-r-flash .7s ease-in-out;}
 /* Skip exercise */
-.kt-r-skip-ex{padding:6px 14px;border-radius:10px;border:none;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;}
-.kt-r-card.lime .kt-r-skip-ex{background:rgba(0,0,0,.1);color:rgba(0,0,0,.5);}
-.kt-r-card.dark .kt-r-skip-ex{background:rgba(255,255,255,.08);color:rgba(255,255,255,.4);}
+.kt-r-skip-ex{padding:8px 0 8px 16px;border:none;background:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.06em;color:inherit;opacity:.5;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 /* PR list */
 .kt-pr-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);}
 .kt-pr-row:last-child{border-bottom:none;padding-bottom:0;}
@@ -1172,6 +1192,10 @@ var runnerRestTotal   = 0;
 // M-06 marker: the set logged within the last second, so the repaint right
 // after logging can pulse its strip dot and wash its ledger row exactly once.
 var _justLoggedSet    = null;       // {ex, idx, at} or null
+// C1·A — the in-runner PR beat. Set when a logged set beats the stored best;
+// owns the rest display slot for exactly that rest, then dies. Presentational
+// only — kt_prs is still written at session finish.
+var _runnerPrBeat     = null;       // {ex, setIdx, w, r, best, at} or null
 var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
 var runnerReps        = {};         // {exId: currentReps} — stepper state
@@ -4869,6 +4893,9 @@ function openDeckRunner(overrideType){
   runnerEngaged = false;
   runnerResting = false;
   runnerRestLeft = 90;
+  runnerRestTotal = 0;
+  _runnerPrBeat = null;
+  _justLoggedSet = null;
   runnerCompleted = {};
   runnerWeights = {};
   runnerReps = {};
@@ -5042,6 +5069,7 @@ function runnerGoTo(i){
   runnerEngaged = false;
   runnerResting = false;
   runnerRestLeft = 90;
+  _runnerPrBeat = null;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   paintRunner();
 }
@@ -5136,6 +5164,15 @@ function runnerCompleteSet(){
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
   _justLoggedSet = {ex: ex.name, idx: done-1, at: Date.now()};
+  // PR beat — only when a stored best exists and this set beats it (a first-
+  // ever lift has nothing to beat, so it stays quiet). One heavy haptic; the
+  // gold surfaces render from state.
+  var _best = parseFloat(getPRs()[ex.name])||0;
+  var _isBeat = _best > 0 && w > _best;
+  if(_isBeat){
+    _runnerPrBeat = {ex: ex.name, setIdx: done-1, w: w,
+      r: runnerRepsLog[ex.name][done-1], best: _best, at: Date.now()};
+  }
   // Reset targets for the NEXT set (index = done). Per-set arrays make
   // top-set/back-off schemes real: [3,8,8] reps with [225,185,185] loads.
   var _ti = Math.min(done, ex.sets - 1);
@@ -5145,8 +5182,13 @@ function runnerCompleteSet(){
     var _tw = parseFloat(ex.weights[Math.min(_ti, ex.weights.length-1)]);
     if(_tw > 0) runnerWeights[ex.name] = _tw;
   }
-  if(navigator.vibrate) navigator.vibrate(40);
-  haptic('light');
+  if(_isBeat){
+    if(navigator.vibrate) navigator.vibrate(140);
+    haptic('heavy');
+  } else {
+    if(navigator.vibrate) navigator.vibrate(40);
+    haptic('light');
+  }
   // Superset flow (ex.ss = paired with the NEXT exercise): a set of the
   // first movement hands off to the partner with NO rest — even on its own
   // last set, since the partner may still have work. The partner's set
@@ -5234,6 +5276,7 @@ function runnerSkipRest(){
   runnerRestLeft = 90;
   runnerRestEndsAt = 0;
   runnerRestTotal = 0;
+  _runnerPrBeat = null;   // gold survives only on the ledger row
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
   // The rest-done alert is still pending for the original moment — without
@@ -5248,6 +5291,7 @@ function runnerSkipRest(){
 function _restFinish(){
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   runnerResting = false; runnerRestLeft = 90; runnerRestEndsAt = 0; runnerRestTotal = 0;
+  _runnerPrBeat = null;   // gold survives only on the ledger row
   _trovoTimerEnd();
   if(navigator.vibrate) navigator.vibrate([80,40,80]);
   haptic('success');
@@ -5412,9 +5456,12 @@ function renderDeckRunner(){
   var pct = Math.round((runnerExIdx/total)*100);
   var isLast = runnerExIdx === total - 1;
   var exerciseDone = done >= ex.sets;
-  var hueClass = ex.isMain ? 'lime' : 'dark';
-  var nextHue = next ? (next.isMain ? 'lime' : 'dark') : 'dark';
-  var next2Hue = next2 ? (next2.isMain ? 'lime' : 'dark') : 'dark';
+  // M&M R1 — one lime moment per state: the card surface never goes accent.
+  // Main lifts are marked by the ◆ MAIN LIFT chip instead of a lime card,
+  // which is also what lets the runner hold in Paper.
+  var hueClass = 'dark';
+  var nextHue = 'dark';
+  var next2Hue = 'dark';
 
   var hd = '<div class="kt-r-hd">'+
     '<div class="kt-r-hd-row">'+
@@ -5437,14 +5484,28 @@ function renderDeckRunner(){
     body = _renderRunnerIdleBody(ex, next);
   }
 
+  // One mono meta line replaces the 48px index numeral + prescription pill
+  // (R1 redlines); its right half is state-aware.
+  var idxStr = String(runnerExIdx+1).padStart(2,'0')+' / '+String(total).padStart(2,'0');
+  var topL, topR;
+  if(exerciseDone){
+    topL = idxStr;
+    topR = '<span class="kt-r-card-meta">'+ex.sets+'/'+ex.sets+' SETS LOGGED</span>';
+  } else if(runnerResting){
+    topL = idxStr+' · SET '+done+' LOGGED';
+    topR = '<span class="kt-r-card-meta">NEXT · SET '+(done+1)+'</span>';
+  } else if(runnerEngaged){
+    topL = idxStr+' · SET '+(done+1)+' OF '+ex.sets;
+    topR = '<div style="display:flex;gap:7px;flex-shrink:0;">'+
+      '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerCueSheet()">Cues</button>'+
+      '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit</button>'+
+    '</div>';
+  } else {
+    topL = idxStr;
+    topR = '<span class="kt-r-card-meta">'+ex.sets+' × '+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:'')+' · REST '+_defaultRestFor(ex)+'S</span>';
+  }
   var top = '<div class="kt-r-card-top">'+
-    '<div class="kt-r-card-idx">'+String(runnerExIdx+1).padStart(2,'0')+'</div>'+
-    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">'+
-      '<span class="kt-r-card-pill">'+ex.sets+'×'+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:'')+'</span>'+
-      (ex.isMain ? '<span class="kt-r-card-main">◆ MAIN LIFT</span>' : '')+
-      ((ex.ss&&next)||(runnerExIdx>0&&runnerSession.exercises[runnerExIdx-1].ss)
-        ? '<span class="kt-r-card-main">⇄ SUPERSET</span>' : '')+
-    '</div>'+
+    '<span class="kt-r-card-meta">'+topL+'</span>'+topR+
     '</div>';
 
   var deck = '';
@@ -5591,40 +5652,39 @@ function runnerSaveEditSet(){
   _saveRunnerDraft(); paintRunner();
 }
 function _renderCompletedSets(ex){
+  // Hairline ledger (M&M R1 redlines): S# · weight × reps · EDIT. A row that
+  // beats the stored best goes gold with a ◆ — computed live, so editing a
+  // set lower takes the gold back. Same tap-to-edit as always.
   var done=runnerCompleted[ex.name]||0; if(!done) return '';
-  var isLime=ex.isMain;
-  // Dark-card tints derive from --text so they hold in every room (Paper's
-  // ink is near-black; white tints vanished there). Lime keeps black tints.
-  var rowBg=isLime?'rgba(0,0,0,.1)':'color-mix(in srgb,var(--text) 7%,transparent)';
-  var inputBg=isLime?'rgba(0,0,0,.2)':'color-mix(in srgb,var(--text) 12%,transparent)';
-  var btnBg=isLime?'rgba(0,0,0,.18)':'color-mix(in srgb,var(--text) 10%,transparent)';
+  var inputBg='color-mix(in srgb,var(--text) 12%,transparent)';
+  var btnBg='color-mix(in srgb,var(--text) 10%,transparent)';
+  var best=parseFloat(getPRs()[ex.name])||0;
   var rows='';
   for(var i=0;i<done;i++){
     var w=(runnerWeightsLog[ex.name]||[])[i];
     var r=(runnerRepsLog[ex.name]||[])[i];
     if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
-      rows+='<div style="display:flex;align-items:center;gap:5px;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
-        '<span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;opacity:.55;flex-shrink:0;letter-spacing:.06em;">S'+(i+1)+'</span>'+
-        '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+(r!=null?r:'')+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
-        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">reps ×</span>'+
+      rows+='<div class="kt-lr" style="gap:5px;" onclick="event.stopPropagation()">'+
+        '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
         '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+(w!=null?w:'')+'" placeholder="lb" step="2.5" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
-        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">lb</span>'+
+        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">lb ×</span>'+
+        '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+(r!=null?r:'')+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">reps</span>'+
         '<button onclick="event.stopPropagation();runnerSaveEditSet()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;">✓</button>'+
         '<button onclick="event.stopPropagation();runnerCancelEditSet()" style="padding:4px 8px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;opacity:.6;">✕</button>'+
       '</div>';
     } else {
       var _washed=_justLoggedSet && _justLoggedSet.ex===ex.name && i===_justLoggedSet.idx
         && (Date.now()-_justLoggedSet.at) < 900;
-      rows+='<div class="'+(_washed?'kt-row-wash':'')+'" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:10px;background:'+rowBg+';" onclick="event.stopPropagation()">'+
-        '<span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;opacity:.55;letter-spacing:.06em;">SET '+(i+1)+'</span>'+
-        '<span style="font-size:13px;font-weight:600;">'+(r!=null?r:'—')+' reps × '+(w!=null?w:'—')+' lb</span>'+
-        '<button onclick="event.stopPropagation();runnerStartEditSet('+i+')" style="padding:3px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">edit</button>'+
+      var _gold=best>0 && parseFloat(w)>best;
+      rows+='<div class="kt-lr'+(_gold?' gold':'')+(_washed?' kt-row-wash':'')+'" onclick="event.stopPropagation()">'+
+        '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
+        '<span class="kt-lr-val">'+(w!=null?w:'—')+' × '+(r!=null?r:'—')+(_gold?' ◆':'')+'</span>'+
+        '<button class="kt-lr-act" onclick="event.stopPropagation();runnerStartEditSet('+i+')">EDIT</button>'+
       '</div>';
     }
   }
-  // width:100% — inside .kt-rest (column flex, align-items:center) this div
-  // otherwise shrink-wraps and the SET label / reps / edit chip overlap.
-  return '<div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;width:100%;">'+rows+'</div>';
+  return '<div class="kt-ledger">'+rows+'</div>';
 }
 function _renderRunnerIdleBody(ex, next){
   var lastW = ex.lastWeight != null ? ex.lastWeight : (function(){ var l=getLastSessionData(ex.name); return l ? parseFloat(l.weight)||0 : 0; })();
@@ -5646,11 +5706,25 @@ function _renderRunnerIdleBody(ex, next){
     : '';
   var targetW = parseFloat(ex.weight)||0;
   var targetR = Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
-  var targetLine = '<div style="margin-top:20px;opacity:.45;font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Target</div>'+
-    '<div style="font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin-top:4px;opacity:.7;">'+
-      (targetW>0?targetW+' <span style="font-size:18px;font-weight:600;opacity:.7;">lb</span>':'BW')+
+  // R1·A — the target is the idle hero metric, with plate math as a mono
+  // footnote (bar-loaded lifts only).
+  var plateIdle = _isBarbellLift(ex.name) ? _plateMath(targetW) : '';
+  var targetLine = '<div class="kt-r-target-lbl">TARGET</div>'+
+    '<div class="kt-r-target">'+
+      (targetW>0?targetW+'<span class="u">lb</span>':'BW')+
     '</div>'+
-    '<div style="font-size:15px;font-weight:700;opacity:.5;margin-top:4px;">'+ex.sets+' sets · '+_fmtRepTarget(ex.reps)+' reps</div>';
+    '<div class="kt-r-target-sets">'+ex.sets+' sets × '+_fmtRepTarget(ex.reps)+' reps</div>'+
+    (plateIdle?'<div class="kt-r-target-plate">'+plateIdle+'</div>':'');
+  // MAIN / SUPERSET markers live under the name as data chips, now that the
+  // card surface no longer changes hue for main lifts.
+  var chips='';
+  var inSS = (ex.ss&&next)||(runnerExIdx>0&&runnerSession.exercises[runnerExIdx-1].ss);
+  if(ex.isMain||inSS){
+    chips='<div style="display:flex;gap:6px;margin-top:10px;">'+
+      (ex.isMain?'<span class="kt-main-tag">◆ MAIN LIFT</span>':'')+
+      (inSS?'<span class="kt-main-tag">⇄ SUPERSET</span>':'')+
+    '</div>';
+  }
   // Cues live on the card while it's still fresh (no sets logged yet) — the
   // moment they matter most. Opacity-only styling inherits the card ink, so
   // it reads on both the lime main-lift card and the dark one. Once logging
@@ -5672,19 +5746,17 @@ function _renderRunnerIdleBody(ex, next){
       '</div>';
     }
   }
-  var editBtnStyle=ex.isMain
-    ?'background:rgba(0,0,0,.18);border:1px solid rgba(0,0,0,.2);color:rgba(0,0,0,.6);'
-    :'background:var(--card2);border:1px solid var(--border);color:var(--lite);';
   return '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">'+
     '<div>'+
       lastBlock+
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'+
         '<div class="kt-r-card-name" style="flex:1;">'+_esc(ex.name)+'</div>'+
-        '<div style="display:flex;gap:8px;flex-shrink:0;margin-top:4px;">'+
-          '<button onclick="event.stopPropagation();openRunnerCueSheet()" style="padding:9px 15px;border-radius:11px;'+editBtnStyle+'font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;line-height:1;">Cues</button>'+
-          '<button onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="padding:9px 15px;border-radius:11px;'+editBtnStyle+'font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:.04em;font-family:inherit;line-height:1;">Edit</button>'+
+        '<div style="display:flex;gap:7px;flex-shrink:0;margin-top:5px;">'+
+          '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerCueSheet()" style="padding:8px 13px;font-size:12px;">Cues</button>'+
+          '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="padding:8px 13px;font-size:12px;">Edit</button>'+
         '</div>'+
       '</div>'+
+      chips+
       targetLine+
       cuesInline+
       _renderCompletedSets(ex)+
@@ -5773,38 +5845,36 @@ function _warmupRamp(w, barbell){
 function _renderRunnerEngagedBody(ex, done){
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
+  // R1·B — the wells ARE the −/+ buttons; the numeral (still the same
+  // editable input) sits between them at statement scale.
   var stepperW = '<div class="kt-step">'+
-    '<div class="kt-step-lbl">WEIGHT · lb</div>'+
+    '<div class="kt-step-lbl">WEIGHT · LB</div>'+
     '<div class="kt-step-row">'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
       '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="2.5" min="0" value="'+w+'"'+
         ' onclick="event.stopPropagation();this.select()"'+
         ' oninput="event.stopPropagation();runnerSetWeight(this.value)"'+
         ' onchange="event.stopPropagation();runnerSetWeight(this.value)"/>'+
-      '<div class="kt-step-btns">'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
-      '</div>'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
     '</div>'+
     (_isBarbellLift(ex.name)&&_plateMath(w)
       ?'<div id="kt-plate-line" class="kt-plate-line">'+_plateMath(w)+'</div>'
       :'')+
     '</div>';
-  var stepperR = '<div class="kt-step">'+
+  var stepperR = '<div class="kt-step reps">'+
     '<div class="kt-step-lbl">REPS</div>'+
     '<div class="kt-step-row">'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(-1)">−</button>'+
       '<input class="kt-step-val kt-step-input" type="number" inputmode="numeric" step="1" min="0" value="'+r+'"'+
         ' onclick="event.stopPropagation();this.select()"'+
         ' oninput="event.stopPropagation();runnerSetReps(this.value)"'+
         ' onchange="event.stopPropagation();runnerSetReps(this.value)"/>'+
-      '<div class="kt-step-btns">'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(-1)">−</button>'+
-        '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
-      '</div>'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepReps(1)">+</button>'+
     '</div></div>';
   var targetRpe = parseInt(ex.rpe) || 7;
   var rpeLeft = 10 - targetRpe;
   var rpeHint = '<div style="margin-top:10px;font-size:10px;opacity:.35;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-align:center;text-transform:uppercase;">RPE '+targetRpe+' target · stop with ~'+rpeLeft+' rep'+(rpeLeft===1?'':'s')+' left</div>';
-  var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Done · Set '+(done+1)+'</button>';
+  var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Log set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
     var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
@@ -5827,9 +5897,22 @@ function _renderRunnerEngagedBody(ex, done){
         'TRY '+sugg.to+' LB → last '+sugg.from+' × '+sugg.reps+' @ RPE '+sugg.rpe+'</button>';
     }
   }
+  // R1·B header line: set position moved to the card's top meta line; the
+  // name compresses and a mono target/last line anchors the numbers. Logged
+  // sets render as the hairline ledger above the steppers (same tap-to-edit).
+  var _tW = Array.isArray(ex.weights)
+    ? (parseFloat(ex.weights[Math.min(done, ex.weights.length-1)]) || parseFloat(ex.weight) || 0)
+    : (parseFloat(ex.weight)||0);
+  var _tR = Array.isArray(ex.reps) ? ex.reps[Math.min(done, ex.reps.length-1)] : ex.reps;
+  var _last = getLastSessionData(ex.name);
+  var _lastW = _last ? parseFloat(_last.weight)||0 : 0;
+  var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
+  var targetLine = '<div class="kt-eng-target">TARGET '+(_tW>0?_tW:'BW')+' × '+_tR+
+    (_lastW>0?' · LAST '+_lastW+' × '+_lastR:'')+'</div>';
   return '<div class="kt-eng">'+
-    '<div class="kt-eng-hd">SET '+(done+1)+' OF '+ex.sets+'</div>'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
+    targetLine+
+    (done>0?_renderCompletedSets(ex):'')+
     warmup+
     '<div class="kt-eng-row">'+stepperW+stepperR+'</div>'+
     overload+
@@ -5843,16 +5926,47 @@ function _renderRunnerRestingBody(ex, done){
   // accent moment.
   var total = runnerRestTotal > 0 ? runnerRestTotal : Math.max(runnerRestLeft, 1);
   var pct = Math.max(0, Math.min(100, Math.round(runnerRestLeft/total*100)));
+  var wells = '<div class="kt-rest-controls">'+
+    '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(-15)" aria-label="Subtract 15 seconds">−15s</button>'+
+    '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(30)" aria-label="Add 30 seconds">+30s</button>'+
+    '<button class="kt-rest-adj kt-rest-go" onclick="event.stopPropagation();runnerSkipRest()" aria-label="Skip rest">Skip →</button>'+
+    '</div>';
+  // UP NEXT footer — the next set's real target (per-set arrays honored;
+  // the stepper value IS the seeded next-set weight).
+  var _nW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
+  var _nR = Array.isArray(ex.reps) ? ex.reps[Math.min(done, ex.reps.length-1)] : ex.reps;
+  var foot = '<div style="flex:1;"></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'+
+      '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:.1em;opacity:.4;">UP NEXT · SET '+(done+1)+'</div>'+
+      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+(_nW>0?_nW+' lb':'BW')+' × '+_nR+'</div></div>'+
+    '</div>';
+  // C1·A — the PR beat owns the display slot during the rest that follows
+  // the record set: gold eyebrow + gold numeral, clock compressed to a side
+  // line but still running. The celebration never costs a second of rest.
+  var beat = _runnerPrBeat && _runnerPrBeat.ex===ex.name && _runnerPrBeat.setIdx===done-1;
+  if(beat){
+    return '<div class="kt-rest">'+
+      '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
+      '<div class="kt-pr-eyebrow">◆ NEW RECORD · BEST WAS '+_runnerPrBeat.best+' LB</div>'+
+      '<div class="kt-pr-hero">'+_runnerPrBeat.w+' × '+_runnerPrBeat.r+'</div>'+
+      '<div class="kt-pr-sub">Rest is running. Nothing to tap — go breathe.</div>'+
+      '<div class="kt-rest-mini">'+
+        '<div class="kt-rest-time">'+m+':'+String(s).padStart(2,'0')+'</div>'+
+        '<div class="kt-rest-bar"><div class="kt-rest-bar-fill" style="width:'+pct+'%"></div></div>'+
+      '</div>'+
+      wells+
+      _renderCompletedSets(ex)+
+      foot+
+      '</div>';
+  }
   return '<div class="kt-rest">'+
-    '<div class="kt-rest-hd">REST · NEXT SET '+(done+1)+' OF '+ex.sets+'</div>'+
+    '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
+    '<div class="kt-rest-hd" style="margin-top:24px;">REST</div>'+
     '<div class="kt-rest-time">'+m+':'+String(s).padStart(2,'0')+'</div>'+
     '<div class="kt-rest-bar"><div class="kt-rest-bar-fill" style="width:'+pct+'%"></div></div>'+
-    '<div class="kt-rest-controls">'+
-      '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(-15)" aria-label="Subtract 15 seconds">−15s</button>'+
-      '<button class="kt-rest-adj" onclick="event.stopPropagation();runnerAddRest(30)" aria-label="Add 30 seconds">+30s</button>'+
-      '<button class="kt-rest-adj kt-rest-go" onclick="event.stopPropagation();runnerSkipRest()" aria-label="Skip rest">Skip →</button>'+
-    '</div>'+
+    wells+
     _renderCompletedSets(ex)+
+    foot+
     '</div>';
 }
 function _renderRunnerDoneBody(ex, isLast){
@@ -12869,6 +12983,7 @@ function haptic(kind){
   var H = _plug('Haptics'); if(!H) return;
   try{
     if(kind==='success')     H.notification({type:'SUCCESS'}).catch(function(){});
+    else if(kind==='heavy')  H.impact({style:'HEAVY'}).catch(function(){});
     else if(kind==='medium') H.impact({style:'MEDIUM'}).catch(function(){});
     else                     H.impact({style:'LIGHT'}).catch(function(){});
   }catch(e){}
