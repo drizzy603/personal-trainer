@@ -43,7 +43,7 @@ run('share card draws through toBlob', async () => {
 });
 
 run('empty states speak the editorial voice', async () => {
-  const app = await boot({ seed: { kt_routine: 'null', kt_sessions: '[]', kt_runs: '[]', kt_bw: '[]', kt_prs: '{}', kt_5k_goal: '0', kt_bench_goal: '0', kt_squat_goal: '0', kt_bw_goal: '0' } });
+  const app = await boot({ seed: { kt_routine: 'null', kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]', kt_bw: '[]', kt_prs: '{}', kt_5k_goal: '0', kt_bench_goal: '0', kt_squat_goal: '0', kt_bw_goal: '0' } });
   try {
     const out = await app.page.evaluate(() => {
       const logText = document.body.textContent;

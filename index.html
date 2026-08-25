@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0d0d0d"/>
-<meta name="build" content="20260820-8"/>
+<meta name="build" content="20260820-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -979,6 +979,10 @@ button:active{transform:scale(.97);}
 .kt-lr-val{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;opacity:.8;}
 .kt-lr.gold .kt-lr-idx,.kt-lr.gold .kt-lr-val{color:var(--yellow);opacity:1;font-weight:700;}
 .kt-lr-act{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.04em;color:inherit;opacity:.45;cursor:pointer;padding:4px 0 4px 12px;-webkit-tap-highlight-color:transparent;}
+/* Inside the fixed-height card bodies a tall ledger shrinks and scrolls so
+   the steppers, wells and CTA can never be pushed off (small screens,
+   five-set lifts). Idle keeps natural height. */
+.kt-eng .kt-ledger,.kt-rest .kt-ledger{min-height:44px;overflow-y:auto;flex-shrink:1;}
 /* Engaged (M&M R1·B) — both steppers keep their shipped tap targets; the
    wells are the −/+ buttons (56px, --card2 on --card) and the numeral sits
    naked between them at statement scale. */
@@ -1220,6 +1224,7 @@ var _lastPaintExIdx   = null;
 // the phone isn't engaged — the card becomes a passive ledger until the user
 // takes over, navigates, or the link goes quiet for 5 minutes.
 var _wristMirror      = null;       // {at} or null
+var _wristMirrorTO    = null;       // expiry timer — repaints when the link goes quiet
 var _wristStamps      = {};         // {exName: {setIdx: arrivalEpochMs}}
 var runnerCompleted   = {};         // {exId: setsDone}
 var runnerWeights     = {};         // {exId: currentWeight}  — stepper state
@@ -2759,16 +2764,27 @@ function closeReadinessSheet(){
 // Quiet streak chip beside readiness (screen A1). Informational only — not a
 // slot-system candidate, so it carries its own class and never counts as a
 // promotable chip.
+// M-10 fires once per crossing per app session — the gilded surfaces stay
+// static gold on later repaints instead of re-pulsing all day.
+var _m10Fired={};
+function _m10Once(key){
+  if(_m10Fired[key]) return '';
+  _m10Fired[key]=1;
+  return ' kt-milestone-tick';
+}
 function _streakChip(){
+  // C1·B: a streak threshold crossed today turns the chip gold for the day.
+  // The gilded number is the DAY streak the milestone actually measured —
+  // never the unrelated week count — and a day streak earned on runs or
+  // sports alone still gilds even when no gym-week streak exists.
+  var goldMs=null;
+  _milestonesToday().forEach(function(m){ if(m.k==='streak') goldMs=m; });
+  if(goldMs){
+    return '<span class="kt-streak-chip" style="border-color:color-mix(in srgb,var(--yellow) 45%,transparent);">'+
+      '<span class="lbl'+_m10Once('chip-streak-'+goldMs.step)+'" style="color:var(--yellow);">◆ '+goldMs.step+'-DAY STREAK</span></span>';
+  }
   var s = calcStreak(getSessions());
   if(!(s >= 1)) return '';
-  // C1·B: a streak threshold crossed today turns the chip gold for the day —
-  // ◆ + gold type where the number already lives, nothing modal.
-  var goldToday = _milestonesToday().some(function(m){ return m.k==='streak'; });
-  if(goldToday){
-    return '<span class="kt-streak-chip" style="border-color:color-mix(in srgb,var(--yellow) 45%,transparent);">'+
-      '<span class="lbl kt-milestone-tick" style="color:var(--yellow);">◆ '+s+'-WEEK STREAK</span></span>';
-  }
   return '<span class="kt-streak-chip"><span class="lbl">'+s+'-WEEK STREAK</span></span>';
 }
 
@@ -2965,9 +2981,12 @@ function getSessionExercises(type) {
 var _lastRenderedRoute = '';
 // M-05 number-tick: elements opt in with data-m05="stable-key"; after every
 // paint the pass compares each against the previous paint and pulses only a
-// real change — never the first mount, never an unchanged repaint.
+// real change — never the first mount, never an unchanged repaint. The map
+// resets on day rollover so a resident app can't tick yesterday's numbers.
 var _m05Prev = {};
+var _m05Day = null;
 function _m05Pass(rootEl){
+  if(_m05Day!==todayISO()){ _m05Prev={}; _m05Day=todayISO(); }
   var els=(rootEl||document).querySelectorAll('[data-m05]');
   for(var i=0;i<els.length;i++){
     var el=els[i], k=el.getAttribute('data-m05'), v=el.textContent;
@@ -3866,7 +3885,7 @@ function renderTodayEditorial(){
           if(_first) _ctx=_m.step+' sessions since '+new Date(_first+'T00:00:00').toLocaleString([],{month:'long', year:'numeric'})+'.';
         }
         _mstHTML='<div style="border-top:1px solid var(--border);padding:11px 0 1px;">'+
-          '<div class="kt-mono kt-milestone-tick" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--yellow);">◆ '+_esc(_m.label.toUpperCase())+'</div>'+
+          '<div class="kt-mono'+_m10Once('done-'+_m.k+'-'+_m.step)+'" style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--yellow);">◆ '+_esc(_m.label.toUpperCase())+'</div>'+
           (_ctx?'<div style="font-size:12.5px;line-height:1.5;color:var(--lite);margin-top:5px;">'+_esc(_ctx)+'</div>':'')+
         '</div>';
       }
@@ -4115,6 +4134,7 @@ function renderTodayEditorial(){
   var weekWrapCard='';
   if(_weekWrapDue()){
     var _ww=_weekStats();
+    _wwSnap=_ww;   // taps stamp/share THIS week even across midnight
     var _wwNum=['Zero','One','Two','Three','Four','Five','Six','Seven'];
     var _wwLine1=(_ww.planned>0 && _ww.count===_ww.planned && _ww.count<=7)
       ? _wwNum[_ww.count]+' for '+_wwNum[_ww.count].toLowerCase()+'.'
@@ -4401,14 +4421,18 @@ function _weekStats(){
     count++; volume+=v; prs+=(s.prs||[]).length;
     dayVol[dow]+=v;
   });
-  var heaviest=volume>0;
+  // "Heaviest week yet" needs at least one prior week to beat — a first-ever
+  // week earns nothing by default.
+  var heaviest=volume>0, hasPrior=false;
   Object.keys(byWeek).forEach(function(wk){
-    if(wk!==mon && byWeek[wk]>=volume) heaviest=false;
+    if(wk!==mon){ hasPrior=true; if(byWeek[wk]>=volume) heaviest=false; }
   });
+  heaviest=heaviest && hasPrior;
+  // Planned days come from the RESOLVED week plan (per-week cadence
+  // overrides included), since the card is framed as WEEK currentWeek.
   var planned=0;
-  var cr=getCustomRoutine();
-  if(cr && Array.isArray(cr.weekPlan)){
-    cr.weekPlan.forEach(function(t){ if(t && _planEntry(t).isLift) planned++; });
+  if(getCustomRoutine()){
+    getWeekPlanForWeek(currentWeek).forEach(function(p){ if(p.isLift) planned++; });
   }
   return {count:count, volume:Math.round(volume), prs:prs, dayVol:dayVol,
     heaviest:heaviest, planned:planned, monday:mon};
@@ -4419,9 +4443,16 @@ function _weekWrapDue(){
   if(String(lsGet('kt_last_weekwrap'))===key) return false;
   return _weekStats().count>=1;
 }
-function dismissWeekWrap(){ lsSet('kt_last_weekwrap', _mostRecentMonday()); render(); }
+// Snapshot of the week the card was RENDERED for — a tap just past Sunday
+// midnight must stamp and share that week, not recompute the new empty one.
+var _wwSnap=null;
+function dismissWeekWrap(){
+  lsSet('kt_last_weekwrap', (_wwSnap&&_wwSnap.monday)||_mostRecentMonday());
+  _wwSnap=null;
+  render();
+}
 function _shareWeekCard(){
-  var st=_weekStats();
+  var st=_wwSnap||_weekStats();
   lsSet('kt_last_weekwrap', st.monday);
   var css=getComputedStyle(document.documentElement);
   var accent=(css.getPropertyValue('--accent')||'#c8ff00').trim()||'#c8ff00';
@@ -4442,7 +4473,13 @@ function _drawWeekCard(st, accent){
   var line1=(st.planned>0 && st.count===st.planned && st.count<=7)
     ? nums[st.count]+' for '+nums[st.count].toLowerCase()+'.'
     : st.count+' session'+(st.count===1?'':'s')+' banked.';
-  x.font='800 118px Inter, sans-serif'; ls('-4px');
+  // Shrink to fit the 904px column — long headlines otherwise hard-clip off
+  // the exported PNG (the guard the old wrap card had).
+  var _fs=118;
+  x.font='800 '+_fs+'px Inter, sans-serif'; ls('-4px');
+  var _hLines=[line1]; if(st.heaviest) _hLines.push('Heaviest week yet.');
+  var _hMax=function(){ var m=0; _hLines.forEach(function(t){ m=Math.max(m, x.measureText(t).width); }); return m; };
+  while(_hMax()>904 && _fs>56){ _fs-=4; x.font='800 '+_fs+'px Inter, sans-serif'; }
   x.fillStyle=INK; x.fillText(line1, M, 312);
   if(st.heaviest){ x.fillStyle=accent; x.fillText('Heaviest week yet.', M, 434); }
   ls('0px');
@@ -5723,6 +5760,7 @@ function paintRunner(){
     root.innerHTML = '';
     if(seal) seal.style.display = 'none';
     _lastPaintExIdx = null;
+    delete _m05Prev['r-pct'];   // next runner open is a first mount, not a change
     return;
   }
   _saveRunnerDraft();
@@ -5797,7 +5835,7 @@ function renderDeckRunner(){
   var topL, topR;
   if(exerciseDone){
     topL = idxStr;
-    topR = '<span class="kt-r-card-meta">'+ex.sets+'/'+ex.sets+' SETS LOGGED</span>';
+    topR = '<span class="kt-r-card-meta">'+_esc(ex.sets+'/'+ex.sets+' SETS LOGGED')+'</span>';
   } else if(runnerResting){
     topL = idxStr+' · SET '+done+' LOGGED';
     topR = '<span class="kt-r-card-meta">NEXT · SET '+(done+1)+'</span>';
@@ -5812,7 +5850,9 @@ function renderDeckRunner(){
     topR = '<span class="kt-r-card-meta">MIRRORING</span>';
   } else {
     topL = idxStr;
-    topR = '<span class="kt-r-card-meta">'+ex.sets+' × '+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:'')+' · REST '+_defaultRestFor(ex)+'S</span>';
+    // reps/rpe ride in from the routine (AI tools, backup imports) — escape
+    // them like ex.name always was.
+    topR = '<span class="kt-r-card-meta">'+_esc(ex.sets+' × '+_fmtRepTarget(ex.reps)+(ex.rpe?' · RPE '+ex.rpe:''))+' · REST '+_defaultRestFor(ex)+'S</span>';
   }
   var top = '<div class="kt-r-card-top">'+
     '<span class="kt-r-card-meta">'+topL+'</span>'+topR+
@@ -5958,6 +5998,13 @@ function runnerSaveEditSet(){
   var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
   if(wEl){ var w=parseFloat(wEl.value); if(!isNaN(w)&&w>=0){ if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
   if(rEl){ var r=parseInt(rEl.value); if(!isNaN(r)&&r>0){ if(!runnerRepsLog[ex.name])runnerRepsLog[ex.name]=[]; runnerRepsLog[ex.name][runnerEditSetIdx]=r; } }
+  // A live PR beat must follow the edit: retract when the corrected weight
+  // no longer beats the old best, or track the corrected numbers.
+  if(_runnerPrBeat && _runnerPrBeat.ex===ex.name && _runnerPrBeat.setIdx===runnerEditSetIdx){
+    var _ew=(runnerWeightsLog[ex.name]||[])[runnerEditSetIdx];
+    if(!(parseFloat(_ew)>_runnerPrBeat.best)) _runnerPrBeat=null;
+    else { _runnerPrBeat.w=_ew; _runnerPrBeat.r=(runnerRepsLog[ex.name]||[])[runnerEditSetIdx]; }
+  }
   runnerEditSetIdx=null; runnerEditSetEx=null;
   _saveRunnerDraft(); paintRunner();
 }
@@ -6013,7 +6060,7 @@ function _renderRunnerIdleBody(ex, next){
     deltaStr = '<span class="kt-r-card-last-delta">'+(delta>0?'↑'+delta:'↓'+Math.abs(delta))+'</span>';
   }
   var lastBlock = lastW > 0
-    ? '<div class="kt-r-card-last">LAST · '+lastW+' × '+lastReps+' '+deltaStr+'</div>'
+    ? '<div class="kt-r-card-last">'+_esc('LAST · '+lastW+' × '+lastReps)+' '+deltaStr+'</div>'
     : '<div class="kt-r-card-last">FIRST TIME LOGGING</div>';
   var nextBlock = next
     ? '<div class="kt-r-card-next">'+
@@ -6030,7 +6077,7 @@ function _renderRunnerIdleBody(ex, next){
     '<div class="kt-r-target">'+
       (targetW>0?targetW+'<span class="u">lb</span>':'BW')+
     '</div>'+
-    '<div class="kt-r-target-sets">'+ex.sets+' sets × '+_fmtRepTarget(ex.reps)+' reps</div>'+
+    '<div class="kt-r-target-sets">'+_esc(ex.sets+' sets × '+_fmtRepTarget(ex.reps)+' reps')+'</div>'+
     (plateIdle?'<div class="kt-r-target-plate">'+plateIdle+'</div>':'');
   // MAIN / SUPERSET markers live under the name as data chips, now that the
   // card surface no longer changes hue for main lifts.
@@ -6224,8 +6271,8 @@ function _renderRunnerEngagedBody(ex, done){
   var _last = getLastSessionData(ex.name);
   var _lastW = _last ? parseFloat(_last.weight)||0 : 0;
   var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
-  var targetLine = '<div class="kt-eng-target">TARGET '+(_tW>0?_tW:'BW')+' × '+_tR+
-    (_lastW>0?' · LAST '+_lastW+' × '+_lastR:'')+'</div>';
+  var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?_tW:'BW')+' × '+_tR+
+    (_lastW>0?' · LAST '+_lastW+' × '+_lastR:''))+'</div>';
   return '<div class="kt-eng">'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
     targetLine+
@@ -6255,7 +6302,7 @@ function _renderRunnerRestingBody(ex, done){
   var foot = '<div style="flex:1;"></div>'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'+
       '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:.1em;opacity:.4;">UP NEXT · SET '+(done+1)+'</div>'+
-      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+(_nW>0?_nW+' lb':'BW')+' × '+_nR+'</div></div>'+
+      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+_esc((_nW>0?_nW+' lb':'BW')+' × '+_nR)+'</div></div>'+
     '</div>';
   // C1·A — the PR beat owns the display slot during the rest that follows
   // the record set: gold eyebrow + gold numeral, clock compressed to a side
@@ -6297,8 +6344,8 @@ function _renderRunnerMirrorBody(ex, done){
   var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
   return '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
     '<div class="kt-r-card-name" style="margin-top:6px;">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-eng-target" style="margin-top:8px;">TARGET '+(_nW>0?_nW:'BW')+' × '+_nR+
-      (_lastW>0?' · LAST '+_lastW+' × '+_lastR:'')+'</div>'+
+    '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?_nW:'BW')+' × '+_nR+
+      (_lastW>0?' · LAST '+_lastW+' × '+_lastR:''))+'</div>'+
     _renderCompletedSets(ex)+
     '<div style="flex:1;"></div>'+
     '<div style="font-size:12.5px;line-height:1.55;opacity:.55;">Logging on the wrist. This screen mirrors — take over any time and the steppers wake.</div>'+
@@ -6333,10 +6380,21 @@ function _renderRunnerDoneBody(ex, isLast){
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'
     : '';
+  // C1·A on a final-set record: there is no rest to own, so the beat renders
+  // here until the deck advances (runnerGoTo clears it; the ledger row keeps
+  // the gold ◆ forever).
+  var beatHTML='';
+  if(_runnerPrBeat && _runnerPrBeat.ex===ex.name){
+    beatHTML='<div style="text-align:center;">'+
+      '<div class="kt-pr-eyebrow" style="margin-top:0;">◆ NEW RECORD · BEST WAS '+_runnerPrBeat.best+' LB</div>'+
+      '<div class="kt-pr-hero" style="font-size:clamp(36px,13vw,48px);">'+_runnerPrBeat.w+' × '+_runnerPrBeat.r+'</div>'+
+    '</div>';
+  }
   return '<div class="kt-done">'+
     '<div class="kt-done-check">✓</div>'+
     '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-done-meta">'+ex.sets+'/'+ex.sets+' SETS LOGGED</div>'+
+    '<div class="kt-done-meta">'+_esc(ex.sets+'/'+ex.sets+' SETS LOGGED')+'</div>'+
+    beatHTML+
     _renderCompletedSets(ex)+
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
@@ -6808,7 +6866,7 @@ function _siPaint(){
       weekRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--border);">'+
         '<div style="display:flex;align-items:center;gap:10px;">'+
           '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);width:30px;">'+DOW_NAMES[dow].toUpperCase()+'</span>'+
-          '<span style="font-size:13.5px;font-weight:700;">'+lbl+'</span>'+
+          '<span style="font-size:13.5px;font-weight:700;">'+_esc(lbl)+'</span>'+
         '</div>'+
         '<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+(FOCUS[t]||'')+'</span>'+
       '</div>';
@@ -8937,7 +8995,7 @@ function renderProgress() {
   var runs=getRuns();
   var wd=getWkData();
 
-  if(!sessions.length && !runs.length){
+  if(!sessions.length && !runs.length && !getSportLogs().length){
     // Day zero (M&M F1·D): "Nothing yet. That's correct." The statement pair
     // does the reassuring; three dashed contracts ladder the payoff. The
     // ghost bars are 35%-opacity furniture — unmistakably not data. With no
@@ -13600,8 +13658,28 @@ function _onWatchLive(json){
     if(changed){
       haptic('light');
       // The wrist is the logging surface — the phone card goes passive
-      // ledger unless the user is mid-set here.
-      if(!runnerEngaged) _wristMirror={at:Date.now()};
+      // ledger unless the user is mid-set here. Mirror means mirror: the
+      // deck follows the wrist to the exercise it just logged, and a quiet
+      // link retires itself (nothing else repaints while mirroring, so the
+      // 5-minute window needs its own timer).
+      if(!runnerEngaged){
+        _wristMirror={at:Date.now()};
+        if(_justLoggedSet){
+          for(var _fi=0;_fi<(runnerSession.exercises||[]).length;_fi++){
+            if(runnerSession.exercises[_fi].name===_justLoggedSet.ex){
+              if(_fi!==runnerExIdx){ runnerExIdx=_fi; _ssReturnIdx=null; }
+              break;
+            }
+          }
+        }
+        if(_wristMirrorTO) clearTimeout(_wristMirrorTO);
+        _wristMirrorTO=setTimeout(function(){
+          if(_wristMirror && Date.now()-_wristMirror.at>=5*60*1000){
+            _wristMirror=null;
+            if(runnerOpen) paintRunner();
+          }
+        }, 5*60*1000+500);
+      }
       _saveRunnerDraft();
       paintRunner();
     }
