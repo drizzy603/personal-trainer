@@ -500,8 +500,11 @@ struct PlanView: View {
                 StalePlanRow(date: plan.date)
             }
             Section {
-                ForEach(plan.exercises) { ex in
-                    NavigationLink(value: ex) {
+                // Rows push their POSITION, not a value copy: an exercise edited or
+                // swapped on the phone mid-workout must re-render on the open
+                // wrist screen, not freeze as whatever the link was tapped with.
+                ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { idx, ex in
+                    NavigationLink(value: idx) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ex.name).font(.system(size: 14, weight: .bold)).lineLimit(2)
@@ -546,23 +549,66 @@ struct PlanView: View {
                 .tint(lime)
             }
         }
-        .navigationDestination(for: WatchExercise.self) { ex in
-            ExerciseView(ex: ex, runner: runner)
+        .navigationDestination(for: Int.self) { idx in
+            ExerciseView(index: idx, runner: runner)
         }
         .navigationTitle("Supero")
     }
 }
 
 struct ExerciseView: View {
-    let ex: WatchExercise
+    let index: Int
     @ObservedObject var runner: Runner
+    @ObservedObject private var conn = Connectivity.shared
     @State private var reps: Int = 0
     @State private var rpe: Int = 7
     @State private var editingWeight = false
     @State private var weightText = ""
+    // The exercise the steppers were last seeded for — a phone-side swap
+    // reseeds them and flags the change on screen.
+    @State private var seeded: WatchExercise? = nil
+    @State private var changedOnPhone = false
     @Environment(\.dismiss) private var dismiss
 
+    // Resolved live from the current plan by position. The phone pushes its
+    // in-session exercise list on every runner edit (Cues/Edit sheet, swaps),
+    // so this re-renders with the new name/sets/reps/weight as it lands.
+    private var ex: WatchExercise? {
+        guard let p = conn.plan, p.exercises.indices.contains(index) else { return nil }
+        return p.exercises[index]
+    }
+
     var body: some View {
+        if let ex = ex {
+            content(ex)
+        } else {
+            // The slot vanished — exercise removed on the phone, or the day
+            // changed under us. Nothing to log here any more.
+            VStack(spacing: 8) {
+                Image(systemName: "iphone").foregroundColor(.secondary)
+                Text("Changed on iPhone").font(.footnote).foregroundColor(.secondary)
+            }
+            .onAppear { dismiss() }
+        }
+    }
+
+    private func seed(_ ex: WatchExercise) {
+        if let prev = seeded, prev != ex {
+            // Swapped or edited on the phone while this screen was open:
+            // adopt the new targets and say so — silently changing the
+            // lift under the user's wrist would be worse than a banner.
+            reps = ex.reps
+            rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
+            changedOnPhone = prev.name != ex.name || prev.sets != ex.sets || prev.reps != ex.reps
+            if changedOnPhone { WKInterfaceDevice.current().play(.notification) }
+        } else if seeded == nil {
+            if reps == 0 { reps = ex.reps }
+            rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
+        }
+        seeded = ex
+    }
+
+    @ViewBuilder private func content(_ ex: WatchExercise) -> some View {
         if runner.resting {
             RestView(runner: runner)
         } else {
@@ -572,6 +618,12 @@ struct ExerciseView: View {
                         .font(.system(size: 11, weight: .heavy, design: .monospaced))
                         .kerning(0.8)
                         .foregroundColor(.secondary)
+                    if changedOnPhone {
+                        Text("UPDATED FROM IPHONE")
+                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                            .kerning(0.8)
+                            .foregroundColor(lime)
+                    }
                     LiveHRChip()
                     HStack(spacing: 8) {
                         Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 2.5) } label: { Text("−2.5") }
@@ -618,10 +670,8 @@ struct ExerciseView: View {
                 }
             }
             .navigationTitle(ex.name)
-            .onAppear {
-                if reps == 0 { reps = ex.reps }
-                rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
-            }
+            .onAppear { seed(ex) }
+            .onChange(of: ex) { newEx in seed(newEx) }
             .sheet(isPresented: $editingWeight) {
                 VStack(spacing: 12) {
                     Text("WEIGHT · LB")
