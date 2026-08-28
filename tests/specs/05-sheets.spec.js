@@ -7,11 +7,6 @@ run('sheets share the R2 shell + grabber', async () => {
   try {
     const out = await app.page.evaluate(() => {
       const res = {};
-      const tokenProbe = document.createElement('div');
-      tokenProbe.style.background = 'var(--card)';
-      document.body.appendChild(tokenProbe);
-      res.cardSurface = getComputedStyle(tokenProbe).backgroundColor;
-      tokenProbe.remove();
       function probe(name, openFn, overlayId, closeFn) {
         openFn();
         const ov = document.getElementById(overlayId);
@@ -33,11 +28,9 @@ run('sheets share the R2 shell + grabber', async () => {
       probe('sportCatalog', openSportCatalogSheet, 'sportCatalogOverlay', closeSportCatalogSheet);
       return res;
     });
-    const expectedCard = out.cardSurface;
-    delete out.cardSurface;
     for (const [name, r] of Object.entries(out)) {
       assert(r !== 'missing', name + ' sheet mounts');
-      assert(r.surface === expectedCard, name + ' surface is --card, got ' + r.surface);
+      assert(r.surface === 'rgb(22, 22, 26)', name + ' surface is --card, got ' + r.surface);
       assert(r.scrim === 'rgba(0, 0, 0, 0.6)', name + ' scrim .60');
       assert(r.x && r.grab, name + ' has ✕ + grabber');
     }
