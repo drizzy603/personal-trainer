@@ -1,0 +1,94 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "meta": {
+    "name": "Supero Consumer Design",
+    "version": "1.0.0",
+    "purpose": "Implementation handoff only. This file does not change the app.",
+    "updated": "2026-08-28"
+  },
+  "color": {
+    "canvas": { "value": "#F5F3EC", "role": "Warm default app background" },
+    "surface": { "value": "#FFFFFF", "role": "Primary cards and controls" },
+    "surfaceMuted": { "value": "#ECEBE5", "role": "Secondary rows and inactive controls" },
+    "ink": { "value": "#111411", "role": "Primary text and strong structure" },
+    "inkMuted": { "value": "#5F655E", "role": "Secondary copy; maintain 4.5:1 contrast" },
+    "line": { "value": "#D8D9D0", "role": "Quiet dividers and control outlines" },
+    "action": { "value": "#2457F5", "role": "Primary actions, current state, keyboard focus" },
+    "actionPressed": { "value": "#173DBB", "role": "Pressed primary actions" },
+    "actionSoft": { "value": "#E9EFFF", "role": "Selected low-emphasis surfaces" },
+    "outcome": { "value": "#A8E600", "role": "Completion, progress, PRs, success" },
+    "outcomeInk": { "value": "#234000", "role": "Text placed on the outcome color" },
+    "outcomeSoft": { "value": "#EFF8D8", "role": "Positive status surfaces" },
+    "danger": { "value": "#C83F36", "role": "Pain, destructive actions, blocking errors" },
+    "dangerSoft": { "value": "#FCE9E6", "role": "Danger and medical caution surfaces" }
+  },
+  "typography": {
+    "display": {
+      "family": "Impact, Arial Narrow, sans-serif",
+      "weight": 700,
+      "tracking": "-0.02em",
+      "usage": "Short screen titles only; never paragraph text"
+    },
+    "ui": {
+      "family": "-apple-system, BlinkMacSystemFont, Arial, sans-serif",
+      "weightRegular": 400,
+      "weightMedium": 600,
+      "weightBold": 750
+    },
+    "scalePx": {
+      "caption": 11,
+      "label": 12,
+      "body": 15,
+      "bodyStrong": 16,
+      "section": 20,
+      "title": 38,
+      "heroMetric": 64
+    },
+    "minimumEditableFieldPx": 16
+  },
+  "spacePx": {
+    "1": 4,
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 20,
+    "6": 24,
+    "8": 32,
+    "10": 40,
+    "12": 48
+  },
+  "radiusPx": {
+    "control": 14,
+    "card": 22,
+    "sheet": 30,
+    "pill": 999
+  },
+  "shadow": {
+    "card": "0 10px 28px rgba(17,20,17,0.08)",
+    "floating": "0 18px 48px rgba(17,20,17,0.14)"
+  },
+  "motionMs": {
+    "tap": 120,
+    "state": 220,
+    "sheet": 320,
+    "celebration": 520
+  },
+  "motionEasing": {
+    "standard": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "exit": "cubic-bezier(0.4, 0, 1, 1)"
+  },
+  "layout": {
+    "screenPaddingPx": 20,
+    "cardGapPx": 14,
+    "minimumTapTargetPx": 44,
+    "bottomActionClearancePx": 12,
+    "contentMaxWidthPx": 480
+  },
+  "semantics": {
+    "action": "Blue is the only high-emphasis action/current-state color.",
+    "outcome": "Lime communicates completion, progress, personal records, and positive status. It is not a default CTA color.",
+    "danger": "Red is reserved for pain/injury cautions, destructive actions, and blocking errors.",
+    "selection": "Never communicate selection using color alone; pair color with shape, weight, icon, or text.",
+    "charts": "Historical data is neutral. The current period is blue. Lime marks a goal hit or PR."
+  }
+}

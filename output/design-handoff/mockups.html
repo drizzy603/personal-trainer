@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supero consumer design mockups</title>
+  <style>
+    :root {
+      --su-canvas: #f5f3ec;
+      --su-surface: #ffffff;
+      --su-surface-muted: #ecebe5;
+      --su-ink: #111411;
+      --su-muted: #5f655e;
+      --su-line: #d8d9d0;
+      --su-blue: #2457f5;
+      --su-blue-pressed: #173dbb;
+      --su-blue-soft: #e9efff;
+      --su-lime: #a8e600;
+      --su-lime-ink: #234000;
+      --su-lime-soft: #eff8d8;
+      --su-red: #c83f36;
+      --su-red-soft: #fce9e6;
+      --su-shadow: 0 16px 48px rgba(17,20,17,.14);
+      --su-card-shadow: 0 10px 28px rgba(17,20,17,.07);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #deddd7;
+      color: var(--su-ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .mockup-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, 430px);
+      gap: 52px;
+      justify-content: center;
+      padding: 56px;
+    }
+    .mockup { display: grid; gap: 12px; justify-items: center; }
+    .mockup-label { width: 390px; font-size: 13px; font-weight: 760; letter-spacing: .02em; }
+    .phone {
+      position: relative;
+      width: 390px;
+      height: 844px;
+      overflow: hidden;
+      border: 1px solid rgba(17,20,17,.16);
+      border-radius: 48px;
+      background: var(--su-canvas);
+      box-shadow: var(--su-shadow);
+      isolation: isolate;
+    }
+    .phone::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.65);
+      pointer-events: none;
+      z-index: 99;
+    }
+    .statusbar {
+      height: 34px;
+      padding: 15px 23px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: .01em;
+    }
+    .status-icons { display: flex; gap: 5px; align-items: center; }
+    .status-icons i { width: 4px; height: 4px; border-radius: 50%; background: var(--su-ink); }
+    .status-icons .battery { width: 17px; height: 8px; border: 1.5px solid var(--su-ink); border-radius: 2px; background: transparent; position: relative; }
+    .status-icons .battery::before { content: ""; position: absolute; inset: 1.5px; background: var(--su-ink); border-radius: 1px; }
+    .status-icons .battery::after { content: ""; position: absolute; right: -3px; top: 2px; width: 2px; height: 3px; background: var(--su-ink); border-radius: 0 1px 1px 0; }
+    .appbar {
+      height: 62px;
+      padding: 8px 20px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand { font-size: 13px; font-weight: 850; letter-spacing: .22em; }
+    .appbar-title { font-size: 15px; font-weight: 760; }
+    .icon-button {
+      width: 42px;
+      height: 42px;
+      border: 0;
+      border-radius: 14px;
+      background: transparent;
+      display: grid;
+      place-items: center;
+      padding: 0;
+    }
+    .icon-button.soft { background: var(--su-surface); border: 1px solid var(--su-line); }
+    .icon { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .view {
+      height: calc(100% - 96px);
+      overflow: hidden;
+      padding: 0 20px 104px;
+    }
+    .view.no-nav { padding-bottom: 92px; }
+    .display {
+      margin: 3px 0 4px;
+      font-family: Impact, "Arial Narrow", sans-serif;
+      font-size: 42px;
+      line-height: .96;
+      letter-spacing: -.012em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .display.small { font-size: 34px; }
+    .eyebrow { color: var(--su-blue); font-size: 11px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    .muted { color: var(--su-muted); }
+    .small { font-size: 12px; line-height: 1.35; }
+    .body { font-size: 14px; line-height: 1.42; }
+    .section-head { margin: 20px 0 10px; display: flex; align-items: baseline; justify-content: space-between; }
+    .section-head h2 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+    .section-link { color: var(--su-blue); font-size: 12px; font-weight: 750; }
+    .card {
+      background: var(--su-surface);
+      border: 1px solid var(--su-line);
+      border-radius: 22px;
+      box-shadow: var(--su-card-shadow);
+    }
+    .card.flat { box-shadow: none; }
+    .card-pad { padding: 17px; }
+    .primary {
+      min-height: 50px;
+      border: 0;
+      border-radius: 15px;
+      background: var(--su-blue);
+      color: white;
+      font-size: 15px;
+      font-weight: 780;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 18px;
+    }
+    .secondary {
+      min-height: 46px;
+      border: 1px solid var(--su-line);
+      border-radius: 15px;
+      background: var(--su-surface);
+      font-size: 14px;
+      font-weight: 720;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 16px;
+    }
+    .ghost { border: 0; background: transparent; color: var(--su-blue); font-size: 13px; font-weight: 740; padding: 10px 12px; }
+    .full { width: 100%; }
+    .pill { min-height: 30px; padding: 0 12px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 780; }
+    .pill.blue { color: var(--su-blue); background: var(--su-blue-soft); }
+    .pill.lime { color: var(--su-lime-ink); background: var(--su-lime-soft); }
+    .pill.ink { color: white; background: var(--su-ink); }
+    .pill.red { color: var(--su-red); background: var(--su-red-soft); }
+    .nav {
+      position: absolute;
+      z-index: 20;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 88px;
+      padding: 9px 18px 22px;
+      border-top: 1px solid rgba(17,20,17,.09);
+      background: rgba(250,249,245,.96);
+      display: grid;
+      grid-template-columns: repeat(4,1fr);
+      gap: 4px;
+    }
+    .nav-item { border: 0; background: transparent; display: grid; justify-items: center; gap: 4px; color: var(--su-muted); font-size: 10px; font-weight: 690; padding: 2px; }
+    .nav-item .nav-icon { width: 30px; height: 27px; border-radius: 10px; display: grid; place-items: center; }
+    .nav-item.active { color: var(--su-blue); font-weight: 800; }
+    .nav-item.active .nav-icon { background: var(--su-blue-soft); }
+    .nav-item .icon { width: 18px; height: 18px; }
+    .date-row { margin: 18px -3px 17px; display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; }
+    .date { height: 58px; border-radius: 17px; display: grid; place-items: center; align-content: center; gap: 2px; color: var(--su-muted); font-size: 10px; font-weight: 750; }
+    .date strong { color: var(--su-ink); font-size: 16px; }
+    .date.active { background: var(--su-blue); color: rgba(255,255,255,.8); }
+    .date.active strong { color: white; }
+    .workout-hero { padding: 19px; position: relative; overflow: hidden; }
+    .workout-hero::after { content: ""; position: absolute; width: 150px; height: 150px; border-radius: 50%; background: var(--su-blue-soft); right: -70px; top: -64px; }
+    .hero-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; }
+    .hero-title { position: relative; z-index: 1; margin: 14px 0 5px; font-size: 26px; line-height: 1; letter-spacing: -.03em; }
+    .meta-row { position: relative; z-index: 1; margin: 10px 0 16px; display: flex; gap: 14px; color: var(--su-muted); font-size: 12px; }
+    .meta-item { display: flex; align-items: center; gap: 5px; }
+    .meta-item .icon { width: 14px; height: 14px; }
+    .focus-row { position: relative; z-index: 1; display: flex; gap: 9px; padding: 11px 0 16px; border-top: 1px solid var(--su-line); color: var(--su-muted); font-size: 12px; line-height: 1.35; }
+    .focus-row strong { color: var(--su-ink); }
+    .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mini-card { min-height: 118px; padding: 15px; }
+    .ring { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--su-lime) 0 75%, var(--su-surface-muted) 75% 100%); position: relative; }
+    .ring::after { content: ""; position: absolute; inset: 7px; background: var(--su-surface); border-radius: 50%; }
+    .ring strong { position: relative; z-index: 1; font-size: 13px; }
+    .sparkline { width: 100%; height: 38px; margin: 6px 0 4px; }
+    .sparkline polyline { stroke: var(--su-blue); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .sparkline circle { fill: var(--su-lime); stroke: var(--su-ink); stroke-width: 1.5; }
+    .list-card { overflow: hidden; }
+    .list-row { min-height: 62px; padding: 12px 15px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--su-line); }
+    .list-row:last-child { border-bottom: 0; }
+    .row-icon { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px; background: var(--su-surface-muted); display: grid; place-items: center; }
+    .row-icon.blue { background: var(--su-blue-soft); color: var(--su-blue); }
+    .row-icon.lime { background: var(--su-lime-soft); color: var(--su-lime-ink); }
+    .row-copy { min-width: 0; flex: 1; }
+    .row-title { font-size: 14px; font-weight: 760; }
+    .row-sub { margin-top: 3px; font-size: 11px; color: var(--su-muted); line-height: 1.25; }
+    .row-value { text-align: right; font-size: 13px; font-weight: 760; }
+    .row-value small { display: block; margin-top: 3px; color: var(--su-muted); font-size: 10px; font-weight: 650; }
+    .action-dock {
+      position: absolute;
+      z-index: 24;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      padding: 10px;
+      border: 1px solid rgba(17,20,17,.09);
+      border-radius: 24px;
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--su-shadow);
+    }
+    .action-dock.above-nav { bottom: 93px; }
+    .context-strip { display: flex; align-items: center; gap: 8px; color: var(--su-muted); font-size: 12px; margin: 3px 0 16px; }
+    .context-strip strong { color: var(--su-ink); }
+    .intent-card { padding: 15px; background: var(--su-blue-soft); border: 0; box-shadow: none; display: flex; gap: 12px; align-items: flex-start; }
+    .intent-mark { width: 34px; height: 34px; border-radius: 12px; background: var(--su-blue); color: white; display: grid; place-items: center; flex: 0 0 auto; }
+    .exercise-row { min-height: 72px; padding: 12px 14px; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 11px; border-bottom: 1px solid var(--su-line); }
+    .exercise-row:last-child { border-bottom: 0; }
+    .exercise-index { width: 32px; height: 32px; border-radius: 11px; background: var(--su-surface-muted); display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .exercise-row.active .exercise-index { color: white; background: var(--su-blue); }
+    .set-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 13px; }
+    .set-status .timer { color: var(--su-blue); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .metric-card { padding: 18px; }
+    .metric-head { display: flex; justify-content: space-between; align-items: center; }
+    .metric-label { color: var(--su-blue); font-size: 11px; font-weight: 820; letter-spacing: .1em; text-transform: uppercase; }
+    .metric-value { margin: 12px 0 15px; text-align: center; font-size: 59px; line-height: 1; font-weight: 840; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
+    .metric-value small { font-size: 20px; color: var(--su-muted); letter-spacing: 0; }
+    .stepper { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 11px; }
+    .stepper button { width: 52px; height: 48px; border-radius: 15px; border: 1px solid var(--su-line); background: var(--su-surface); font-size: 22px; font-weight: 650; }
+    .stepper button.plus { color: white; border-color: var(--su-blue); background: var(--su-blue); }
+    .step-note { text-align: center; color: var(--su-muted); font-size: 11px; }
+    .dual-metric { margin-top: 13px; display: grid; grid-template-columns: 1fr 1px 1fr; gap: 10px; align-items: center; text-align: center; }
+    .dual-metric .divider { width: 1px; height: 48px; background: var(--su-line); }
+    .dual-metric .value { font-size: 28px; font-weight: 820; }
+    .ledger { margin-top: 13px; }
+    .ledger-head, .ledger-row { display: grid; grid-template-columns: 40px 1fr 1fr 1fr 30px; align-items: center; text-align: center; }
+    .ledger-head { padding: 13px 14px 5px; color: var(--su-muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .ledger-row { padding: 8px 14px 14px; font-size: 13px; font-weight: 760; }
+    .complete-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--su-lime); color: var(--su-lime-ink); display: grid; place-items: center; justify-self: end; }
+    .cue { margin: 14px 3px 0; padding-left: 11px; border-left: 3px solid var(--su-lime); color: var(--su-muted); font-size: 12px; line-height: 1.4; }
+    .rest-center { text-align: center; padding-top: 12px; }
+    .timer-ring { width: 228px; height: 228px; margin: 22px auto 18px; border-radius: 50%; display: grid; place-items: center; position: relative; background: conic-gradient(var(--su-blue) 0 61%, var(--su-surface-muted) 61% 100%); }
+    .timer-ring::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--su-canvas); }
+    .timer-copy { position: relative; z-index: 1; }
+    .timer-copy strong { display: block; font-family: Impact, "Arial Narrow", sans-serif; font-size: 76px; line-height: .95; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+    .timer-copy span { display: block; margin-top: 7px; color: var(--su-muted); font-size: 12px; }
+    .next-card { padding: 15px 16px; display: flex; align-items: center; justify-content: space-between; text-align: left; }
+    .rest-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 10px; }
+    .celebration { position: relative; padding-top: 18px; text-align: center; }
+    .celebration .halo { width: 92px; height: 92px; margin: 0 auto 17px; border-radius: 30px; display: grid; place-items: center; color: var(--su-lime-ink); background: var(--su-lime); transform: rotate(-4deg); }
+    .celebration .halo .icon { width: 43px; height: 43px; stroke-width: 2.5; }
+    .celebration h1 { margin: 0; font-family: Impact, "Arial Narrow", sans-serif; font-size: 43px; line-height: .96; text-transform: uppercase; }
+    .stats { margin-top: 24px; padding: 16px 6px; display: grid; grid-template-columns: repeat(3,1fr); }
+    .stat { text-align: center; border-right: 1px solid var(--su-line); }
+    .stat:last-child { border-right: 0; }
+    .stat strong { display: block; font-size: 21px; letter-spacing: -.03em; }
+    .stat span { display: block; margin-top: 4px; color: var(--su-muted); font-size: 10px; font-weight: 740; text-transform: uppercase; letter-spacing: .07em; }
+    .highlight-card { margin-top: 13px; padding: 15px; display: flex; gap: 12px; align-items: center; text-align: left; background: var(--su-lime-soft); border-color: rgba(35,64,0,.14); box-shadow: none; }
+    .big-check { width: 42px; height: 42px; border-radius: 14px; background: var(--su-lime); color: var(--su-lime-ink); display: grid; place-items: center; flex: 0 0 auto; }
+    .period { margin: 17px 0 14px; padding: 4px; border-radius: 15px; background: var(--su-surface-muted); display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; }
+    .period button { height: 36px; border: 0; border-radius: 11px; background: transparent; color: var(--su-muted); font-size: 12px; font-weight: 760; }
+    .period button.active { background: var(--su-surface); color: var(--su-ink); box-shadow: 0 3px 10px rgba(17,20,17,.08); }
+    .insight { padding: 15px; display: flex; gap: 12px; align-items: flex-start; }
+    .insight-mark { width: 38px; height: 38px; border-radius: 14px; background: var(--su-lime); color: var(--su-lime-ink); display: grid; place-items: center; flex: 0 0 auto; }
+    .chart-card { margin-top: 13px; padding: 16px; }
+    .chart-top { display: flex; align-items: baseline; justify-content: space-between; }
+    .chart-top strong { font-size: 15px; }
+    .chart-top .chart-total { font-size: 17px; }
+    .bars { height: 155px; margin-top: 13px; display: grid; grid-template-columns: repeat(8,1fr); align-items: end; gap: 7px; }
+    .bar-wrap { height: 100%; display: grid; grid-template-rows: 1fr 17px; align-items: end; gap: 5px; }
+    .bar { border-radius: 7px 7px 3px 3px; background: #c9cbc4; align-self: end; }
+    .bar.current { background: var(--su-blue); }
+    .bar.pr { background: var(--su-lime); }
+    .bar-label { color: var(--su-muted); text-align: center; font-size: 9px; font-weight: 720; }
+    .records { margin-top: 13px; }
+    .record-row { min-height: 53px; padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--su-line); }
+    .record-row:last-child { border-bottom: 0; }
+    .coach-intro { padding: 18px; position: relative; overflow: hidden; }
+    .coach-orb { width: 48px; height: 48px; border-radius: 17px; display: grid; place-items: center; background: var(--su-lime); color: var(--su-lime-ink); }
+    .coach-intro h2 { margin: 17px 0 6px; font-size: 24px; line-height: 1.05; letter-spacing: -.03em; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .chip { min-height: 38px; padding: 0 14px; border: 1px solid var(--su-line); border-radius: 999px; background: var(--su-surface); font-size: 12px; font-weight: 720; }
+    .chip.active { color: var(--su-blue); border-color: var(--su-blue); background: var(--su-blue-soft); }
+    .coach-note { margin-top: 13px; padding: 14px; display: flex; gap: 11px; align-items: flex-start; }
+    .composer { position: absolute; z-index: 24; left: 14px; right: 14px; bottom: 94px; min-height: 62px; padding: 8px 8px 8px 15px; border: 1px solid var(--su-line); border-radius: 24px; background: var(--su-surface); box-shadow: var(--su-shadow); display: flex; align-items: center; gap: 8px; }
+    .composer .placeholder { flex: 1; color: var(--su-muted); font-size: 13px; }
+    .composer-send { width: 46px; height: 46px; border: 0; border-radius: 16px; background: var(--su-blue); color: white; display: grid; place-items: center; }
+    .chat { display: grid; gap: 11px; }
+    .bubble { max-width: 86%; padding: 13px 14px; border-radius: 17px; font-size: 13px; line-height: 1.38; }
+    .bubble.user { justify-self: end; color: white; background: var(--su-blue); border-bottom-right-radius: 6px; }
+    .bubble.coach { justify-self: start; background: var(--su-surface); border: 1px solid var(--su-line); border-bottom-left-radius: 6px; }
+    .caution { padding: 13px; display: flex; gap: 11px; align-items: flex-start; background: var(--su-red-soft); border-color: rgba(200,63,54,.22); box-shadow: none; }
+    .plan-change { padding: 16px; }
+    .change-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .diff { margin-top: 14px; display: grid; grid-template-columns: 1fr 24px 1fr; align-items: center; gap: 8px; }
+    .diff-side { min-height: 76px; padding: 11px; border-radius: 15px; background: var(--su-surface-muted); }
+    .diff-side.after { background: var(--su-lime-soft); }
+    .diff-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--su-muted); }
+    .diff-value { margin-top: 7px; font-size: 13px; font-weight: 760; }
+    .change-actions { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .week-strip { margin: 17px 0 14px; display: grid; grid-template-columns: repeat(8,1fr); gap: 5px; }
+    .week { height: 38px; border-radius: 11px; display: grid; place-items: center; background: var(--su-surface-muted); color: var(--su-muted); font-size: 11px; font-weight: 760; }
+    .week.active { color: white; background: var(--su-blue); }
+    .day-row { min-height: 71px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--su-line); }
+    .day-row:last-child { border-bottom: 0; }
+    .day-state { width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; background: var(--su-surface-muted); color: var(--su-muted); font-size: 12px; font-weight: 800; }
+    .day-row.done .day-state { background: var(--su-lime); color: var(--su-lime-ink); }
+    .day-row.next .day-state { color: white; background: var(--su-blue); }
+    .settings-group { margin-top: 14px; }
+    .settings-label { margin: 0 0 7px 6px; color: var(--su-blue); font-size: 10px; font-weight: 820; letter-spacing: .1em; text-transform: uppercase; }
+    .settings-row { min-height: 59px; padding: 10px 14px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--su-line); }
+    .settings-row:last-child { border-bottom: 0; }
+    .setting-copy { min-width: 0; flex: 1; }
+    .setting-name { font-size: 13px; font-weight: 730; }
+    .setting-detail { margin-top: 3px; color: var(--su-muted); font-size: 10px; }
+    .setting-value { color: var(--su-muted); font-size: 11px; font-weight: 680; }
+    .form-card { padding: 16px; }
+    .field-label { display: flex; justify-content: space-between; color: var(--su-muted); font-size: 11px; font-weight: 760; }
+    .field-value { margin-top: 8px; display: flex; align-items: baseline; gap: 5px; font-size: 42px; font-weight: 820; letter-spacing: -.05em; }
+    .field-value small { color: var(--su-muted); font-size: 16px; letter-spacing: 0; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+    .map-preview { height: 154px; margin-top: 13px; border-radius: 20px; overflow: hidden; position: relative; background: #e4e7dd; }
+    .map-preview::before { content: ""; position: absolute; inset: -30px; background: repeating-linear-gradient(32deg, transparent 0 36px, rgba(255,255,255,.75) 37px 45px), repeating-linear-gradient(120deg, transparent 0 48px, rgba(17,20,17,.07) 49px 51px); }
+    .route { position: absolute; left: 78px; top: 34px; width: 185px; height: 82px; border: 5px solid var(--su-blue); border-color: var(--su-blue) transparent var(--su-blue) var(--su-blue); border-radius: 50% 38% 48% 36%; transform: rotate(-9deg); }
+    .route::before, .route::after { content: ""; position: absolute; width: 13px; height: 13px; border-radius: 50%; border: 3px solid white; }
+    .route::before { left: -8px; bottom: 3px; background: var(--su-lime); }
+    .route::after { right: 9px; top: -8px; background: var(--su-blue); }
+    .intake-progress { display: grid; grid-template-columns: repeat(10,1fr); gap: 4px; margin: 12px 0 28px; }
+    .intake-progress i { height: 4px; border-radius: 999px; background: var(--su-surface-muted); }
+    .intake-progress i.done { background: var(--su-blue); }
+    .intake-question { margin: 0; font-size: 29px; line-height: 1.08; letter-spacing: -.04em; }
+    .choice-list { display: grid; gap: 10px; margin-top: 24px; }
+    .choice { min-height: 57px; padding: 0 15px; border: 1px solid var(--su-line); border-radius: 17px; background: var(--su-surface); display: flex; align-items: center; justify-content: space-between; text-align: left; font-size: 14px; font-weight: 720; }
+    .choice.selected { border-color: var(--su-blue); box-shadow: inset 0 0 0 1px var(--su-blue); background: var(--su-blue-soft); }
+    .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--su-line); display: grid; place-items: center; }
+    .selected .radio { border-color: var(--su-blue); }
+    .selected .radio::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--su-blue); }
+  </style>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5h-5.8v-7H9.3v7H3.5a.5.5 0 0 1-.5-.5z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20V7"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-dumbbell" viewBox="0 0 24 24"><path d="M6 8v8M3 10v4M18 8v8M21 10v4M6 12h12"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 1.7 5.3L19 9l-5.3 1.7L12 16l-1.7-5.3L5 9l5.3-1.7zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.2 8.5 8 10 4.8-1.5 8-5 8-10V6z"/><path d="m8.5 12 2.3 2.3 4.7-5"/></symbol>
+    <symbol id="i-attachment" viewBox="0 0 24 24"><path d="m20.5 11.5-8.7 8.7a6 6 0 0 1-8.5-8.5L13 2a4 4 0 0 1 5.7 5.7l-9.8 9.8a2 2 0 0 1-2.8-2.8l9-9"/></symbol>
+    <symbol id="i-run" viewBox="0 0 24 24"><circle cx="14" cy="4" r="2"/><path d="m10 8 3 2 2 4 4 2M8 21l3-6-3-3-4 4M13 10l-3 5 4 6"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><path d="M5 4h14l2 17H3z"/><path d="M9 9a3 3 0 0 1 6 0M12 9l2-2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7h-6V1M4 17h6v6M20 7a9 9 0 0 0-15-2M4 17a9 9 0 0 0 15 2"/></symbol>
+  </svg>
+
+  <main class="mockup-grid">
+    <section class="mockup">
+      <div class="mockup-label">01 - Today</div>
+      <article class="phone" data-screen="01-today">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><span class="brand">SUPERO</span><button class="icon-button soft" aria-label="Notifications"><svg class="icon"><use href="#i-bell"/></svg></button></header>
+        <div class="view">
+          <div class="eyebrow">Tuesday, August 28</div>
+          <h1 class="display">Ready when you are.</h1>
+          <div class="date-row">
+            <div class="date"><span>MON</span><strong>27</strong></div><div class="date active"><span>TUE</span><strong>28</strong></div><div class="date"><span>WED</span><strong>29</strong></div><div class="date"><span>THU</span><strong>30</strong></div><div class="date"><span>FRI</span><strong>31</strong></div>
+          </div>
+          <section class="card workout-hero">
+            <div class="hero-top"><span class="eyebrow">Week 6 of 8</span><span class="pill lime"><svg class="icon" style="width:14px;height:14px"><use href="#i-spark"/></svg>On track</span></div>
+            <h2 class="hero-title">Push A</h2>
+            <div class="meta-row"><span class="meta-item"><svg class="icon"><use href="#i-dumbbell"/></svg>7 exercises</span><span class="meta-item"><svg class="icon"><use href="#i-clock"/></svg>About 52 min</span></div>
+            <div class="focus-row"><strong>Today's focus</strong><span>Bench strength. Hold one rep in reserve.</span></div>
+            <button class="primary full">Start workout <svg class="icon"><use href="#i-arrow"/></svg></button>
+          </section>
+          <div class="section-head"><h2>This week</h2><span class="section-link">View progress</span></div>
+          <div class="overview-grid">
+            <section class="card mini-card flat"><div class="ring"><strong>3/4</strong></div><div class="small" style="margin-top:9px;font-weight:730">Sessions complete</div></section>
+            <section class="card mini-card flat"><div class="eyebrow">Volume</div><svg class="sparkline" viewBox="0 0 130 38"><polyline points="4,29 27,25 48,27 70,17 94,20 126,7"/><circle cx="126" cy="7" r="4"/></svg><div class="small"><strong>42,300 lb</strong> <span class="muted">+11%</span></div></section>
+          </div>
+        </div>
+        <nav class="nav"><button class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>Log</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-chart"/></svg></span>Progress</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-message"/></svg></span>Coach</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>Settings</button></nav>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">02 - Workout overview</div>
+      <article class="phone" data-screen="02-workout-overview">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="appbar-title">Today's workout</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div class="eyebrow">Week 6 / Push A</div><h1 class="display">Strong, clean reps.</h1>
+          <div class="context-strip"><span class="pill lime">Ready</span><span><strong>7 exercises</strong> / about 52 min</span></div>
+          <section class="card intent-card"><span class="intent-mark"><svg class="icon"><use href="#i-spark"/></svg></span><div><div class="row-title">Training intent</div><div class="row-sub">Bench leads. Add 5 lb only if the final warm-up moves quickly.</div></div></section>
+          <div class="section-head"><h2>Exercise order</h2><span class="section-link">Edit</span></div>
+          <section class="card list-card flat">
+            <div class="exercise-row active"><span class="exercise-index">1</span><div class="row-copy"><div class="row-title">Bench press</div><div class="row-sub">4 sets / 6-8 reps</div></div><div class="row-value">165 lb<small>working</small></div></div>
+            <div class="exercise-row"><span class="exercise-index">2</span><div class="row-copy"><div class="row-title">Incline dumbbell press</div><div class="row-sub">3 sets / 8-10 reps</div></div><div class="row-value">55 lb<small>each</small></div></div>
+            <div class="exercise-row"><span class="exercise-index">3</span><div class="row-copy"><div class="row-title">Cable fly</div><div class="row-sub">3 sets / 10-12 reps</div></div><div class="row-value">30 lb<small>each side</small></div></div>
+            <div class="exercise-row"><span class="exercise-index">4</span><div class="row-copy"><div class="row-title">Lateral raise</div><div class="row-sub">3 sets / 12-15 reps</div></div><div class="row-value">15 lb</div></div>
+          </section>
+        </div>
+        <div class="action-dock"><button class="primary full">Begin Push A <svg class="icon"><use href="#i-arrow"/></svg></button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">03 - Active set</div>
+      <article class="phone" data-screen="03-active-set">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="brand">SUPERO</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div class="set-status"><div><div class="eyebrow">Exercise 1 of 7</div><h1 class="display small" style="margin-top:7px">Bench press</h1></div><span class="timer">00:03:28</span></div>
+          <section class="card metric-card">
+            <div class="metric-head"><span class="metric-label">Set 2 of 4</span><span class="small muted">Last: 160 x 8</span></div>
+            <div class="metric-value">165 <small>lb</small></div>
+            <div class="stepper"><button aria-label="Decrease weight">-</button><div class="step-note">Adjust by 5 lb</div><button class="plus" aria-label="Increase weight">+</button></div>
+            <div class="dual-metric"><div><div class="metric-label">Reps</div><div class="value">8</div></div><div class="divider"></div><div><div class="metric-label">Target</div><div class="value">6-8</div></div></div>
+          </section>
+          <section class="card ledger flat">
+            <div class="ledger-head"><span>Set</span><span>Load</span><span>Reps</span><span>RPE</span><span></span></div>
+            <div class="ledger-row"><span>1</span><span>165</span><span>8</span><span>7</span><span class="complete-dot"><svg class="icon" style="width:13px;height:13px"><use href="#i-check"/></svg></span></div>
+          </section>
+          <p class="cue"><strong style="color:var(--su-ink)">Cue:</strong> Pin your shoulder blades, keep your feet heavy, and press smoothly.</p>
+        </div>
+        <div class="action-dock"><button class="primary full">Log set 2 <svg class="icon"><use href="#i-check"/></svg></button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">04 - Rest</div>
+      <article class="phone" data-screen="04-rest">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="appbar-title">Bench press</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div style="display:flex;justify-content:center"><span class="pill lime"><svg class="icon" style="width:14px;height:14px"><use href="#i-check"/></svg>Set 2 logged</span></div>
+          <div class="rest-center">
+            <div class="timer-ring"><div class="timer-copy"><strong>1:14</strong><span>of 2:00 rest</span></div></div>
+            <div class="small muted">Breathe slowly. Shake out your arms.</div>
+          </div>
+          <div class="section-head"><h2>Next set</h2><span class="pill blue">3 of 4</span></div>
+          <section class="card next-card flat"><div><div class="row-title">Bench press</div><div class="row-sub">Keep one rep in reserve</div></div><div class="row-value">165 lb x 8</div></section>
+          <div class="rest-actions"><button class="secondary">-15 sec</button><button class="secondary">+15 sec</button></div>
+        </div>
+        <div class="action-dock"><button class="primary full">Ready now <svg class="icon"><use href="#i-arrow"/></svg></button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">05 - Workout complete</div>
+      <article class="phone" data-screen="05-complete">
+        <div class="statusbar"><span>10:34</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><span class="brand">SUPERO</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <section class="celebration">
+            <div class="halo"><svg class="icon"><use href="#i-check"/></svg></div>
+            <h1>Workout complete.</h1>
+            <p class="body muted" style="margin:10px auto 0;max-width:280px">Push A is in the books. Strong finish and steady effort across every set.</p>
+          </section>
+          <section class="card stats flat"><div class="stat"><strong>52:18</strong><span>Duration</span></div><div class="stat"><strong>14,840</strong><span>Volume lb</span></div><div class="stat"><strong>19/19</strong><span>Sets</span></div></section>
+          <section class="card highlight-card"><span class="big-check"><svg class="icon"><use href="#i-spark"/></svg></span><div><div class="row-title">Bench press moved up</div><div class="row-sub">165 x 8 is 5 lb above your previous working set.</div></div></section>
+          <div class="section-head"><h2>How did it feel?</h2></div>
+          <div class="chips" style="margin-top:0"><button class="chip">Easy</button><button class="chip active">On target</button><button class="chip">Very hard</button></div>
+          <button class="secondary full" style="margin-top:14px">Add a session note</button>
+        </div>
+        <div class="action-dock"><button class="primary full">Done</button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">06 - Progress</div>
+      <article class="phone" data-screen="06-progress">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><span class="brand">SUPERO</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view">
+          <h1 class="display">Progress</h1>
+          <div class="period"><button>4 weeks</button><button class="active">8 weeks</button><button>12 weeks</button></div>
+          <section class="card insight flat"><span class="insight-mark"><svg class="icon"><use href="#i-spark"/></svg></span><div><div class="row-title">Volume is up 11%</div><div class="row-sub">Compared with your previous 8-week block. You completed 3 of 4 planned sessions this week.</div></div></section>
+          <section class="card chart-card flat">
+            <div class="chart-top"><div><div class="row-title">Weekly volume</div><div class="row-sub">Total load lifted</div></div><strong class="chart-total">42,300 lb</strong></div>
+            <div class="bars">
+              <div class="bar-wrap"><div class="bar" style="height:42%"></div><div class="bar-label">W1</div></div><div class="bar-wrap"><div class="bar" style="height:52%"></div><div class="bar-label">W2</div></div><div class="bar-wrap"><div class="bar" style="height:48%"></div><div class="bar-label">W3</div></div><div class="bar-wrap"><div class="bar" style="height:61%"></div><div class="bar-label">W4</div></div><div class="bar-wrap"><div class="bar" style="height:56%"></div><div class="bar-label">W5</div></div><div class="bar-wrap"><div class="bar" style="height:69%"></div><div class="bar-label">W6</div></div><div class="bar-wrap"><div class="bar pr" style="height:73%"></div><div class="bar-label">W7</div></div><div class="bar-wrap"><div class="bar current" style="height:82%"></div><div class="bar-label">W8</div></div>
+            </div>
+            <p class="small muted" style="margin:9px 0 0">Current week is blue. Week 7 includes a bench press PR.</p>
+          </section>
+          <div class="section-head"><h2>Recent records</h2><span class="section-link">See all</span></div>
+          <section class="card records flat"><div class="record-row"><div><div class="row-title">Bench press</div><div class="row-sub">Aug 26 / estimated 1RM</div></div><div class="row-value">209 lb <span class="pill lime" style="margin-left:5px;min-height:24px;padding:0 8px">PR</span></div></div><div class="record-row"><div><div class="row-title">Squat</div><div class="row-sub">Aug 22 / best set</div></div><div class="row-value">225 x 5</div></div></section>
+        </div>
+        <nav class="nav"><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>Log</button><button class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-chart"/></svg></span>Progress</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-message"/></svg></span>Coach</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>Settings</button></nav>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">07 - Coach home</div>
+      <article class="phone" data-screen="07-coach-home">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><span class="brand">SUPERO</span><span class="pill blue"><span style="width:7px;height:7px;border-radius:50%;background:var(--su-blue)"></span>Coach ready</span></header>
+        <div class="view">
+          <h1 class="display">Coach</h1>
+          <section class="card coach-intro flat">
+            <div class="coach-orb"><svg class="icon"><use href="#i-spark"/></svg></div>
+            <h2>What are we working on?</h2>
+            <p class="body muted" style="margin:0">Ask about today's session, adjust your programme, or get help making training fit your week.</p>
+            <div class="chips"><button class="chip active">Explain today</button><button class="chip">Swap an exercise</button><button class="chip">Short on time</button><button class="chip">Recovery</button></div>
+          </section>
+          <div class="section-head"><h2>Recent insight</h2></div>
+          <section class="card coach-note flat"><span class="row-icon lime"><svg class="icon"><use href="#i-chart"/></svg></span><div><div class="row-title">Pressing volume is trending up</div><div class="row-sub">Keep prioritizing sleep and leave one rep in reserve on your final bench set.</div></div></section>
+          <p class="small muted" style="margin:15px 5px 0;display:flex;gap:7px"><svg class="icon" style="width:15px;height:15px;flex:0 0 auto"><use href="#i-lock"/></svg>Your messages stay on this device. Coach uses the API key you provide.</p>
+        </div>
+        <div class="composer"><button class="icon-button" aria-label="Attach image"><svg class="icon"><use href="#i-attachment"/></svg></button><span class="placeholder">Ask your coach...</span><button class="composer-send" aria-label="Send"><svg class="icon"><use href="#i-up"/></svg></button></div>
+        <nav class="nav"><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>Log</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-chart"/></svg></span>Progress</button><button class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-message"/></svg></span>Coach</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>Settings</button></nav>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">08 - Coach plan change</div>
+      <article class="phone" data-screen="08-coach-plan-change">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="appbar-title">Coach</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div class="chat"><div class="bubble user">My shoulder feels a little tender. Can we make today easier?</div><section class="card caution"><span class="row-icon" style="background:var(--su-red-soft);color:var(--su-red)"><svg class="icon"><use href="#i-heart"/></svg></span><div><div class="row-title" style="color:var(--su-red)">Training caution</div><div class="row-sub">If pain is sharp, worsening, or limits normal movement, stop and consider professional care.</div></div></section><div class="bubble coach">Yes. I can reduce pressing load and replace dips today while keeping the session balanced.</div></div>
+          <section class="card plan-change flat" style="margin-top:13px">
+            <div class="change-head"><div><span class="eyebrow">Proposed change</span><h2 style="margin:6px 0 0;font-size:18px">Push A / today only</h2></div><span class="pill blue">Preview</span></div>
+            <div class="diff"><div class="diff-side"><div class="diff-label">Before</div><div class="diff-value">Bench press<br>165 lb x 8</div></div><svg class="icon" style="color:var(--su-blue)"><use href="#i-arrow"/></svg><div class="diff-side after"><div class="diff-label">After</div><div class="diff-value">Bench press<br>155 lb x 8</div></div></div>
+            <div class="diff"><div class="diff-side"><div class="diff-label">Before</div><div class="diff-value">Dips<br>3 x 8-10</div></div><svg class="icon" style="color:var(--su-blue)"><use href="#i-arrow"/></svg><div class="diff-side after"><div class="diff-label">After</div><div class="diff-value">Cable fly<br>3 x 12</div></div></div>
+            <p class="small muted" style="margin:13px 0 0"><strong style="color:var(--su-ink)">Reason:</strong> Reduce shoulder stress while keeping chest volume moderate.</p>
+            <div class="change-actions"><button class="secondary">Keep plan</button><button class="primary">Apply today</button></div>
+          </section>
+          <p class="small muted" style="margin:12px 4px 0">This change stays in history and can be undone from Programme or Settings.</p>
+        </div>
+        <div class="composer" style="bottom:14px"><button class="icon-button" aria-label="Attach image"><svg class="icon"><use href="#i-attachment"/></svg></button><span class="placeholder">Reply to Coach...</span><button class="composer-send" aria-label="Send"><svg class="icon"><use href="#i-up"/></svg></button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">09 - Programme</div>
+      <article class="phone" data-screen="09-programme">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="appbar-title">Programme</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div class="eyebrow">8-week strength block</div><h1 class="display">Week 6.</h1>
+          <div class="context-strip"><span class="pill lime">3 of 4 done</span><span>Updated by Coach 2 days ago</span></div>
+          <div class="week-strip"><span class="week">1</span><span class="week">2</span><span class="week">3</span><span class="week">4</span><span class="week">5</span><span class="week active">6</span><span class="week">7</span><span class="week">8</span></div>
+          <div class="section-head"><h2>This week's training</h2><span class="section-link">Library</span></div>
+          <section class="card list-card flat">
+            <div class="day-row done"><span class="day-state"><svg class="icon" style="width:16px;height:16px"><use href="#i-check"/></svg></span><div class="row-copy"><div class="row-title">Push A</div><div class="row-sub">Chest / shoulders / triceps</div></div><span class="pill lime">Done</span></div>
+            <div class="day-row done"><span class="day-state"><svg class="icon" style="width:16px;height:16px"><use href="#i-check"/></svg></span><div class="row-copy"><div class="row-title">Pull A</div><div class="row-sub">Back / biceps</div></div><span class="pill lime">Done</span></div>
+            <div class="day-row done"><span class="day-state"><svg class="icon" style="width:16px;height:16px"><use href="#i-check"/></svg></span><div class="row-copy"><div class="row-title">Legs A</div><div class="row-sub">Quads / hamstrings / calves</div></div><span class="pill lime">Done</span></div>
+            <div class="day-row next"><span class="day-state">4</span><div class="row-copy"><div class="row-title">Push B</div><div class="row-sub">Tomorrow / about 60 min</div></div><span class="pill blue">Up next</span></div>
+          </section>
+          <section class="card coach-note flat" style="margin-top:13px"><span class="row-icon blue"><svg class="icon"><use href="#i-refresh"/></svg></span><div><div class="row-title">Previous programme saved</div><div class="row-sub">Restore it any time if the current block is not working for you.</div></div></section>
+        </div>
+        <div class="action-dock"><button class="primary full">Edit with Coach</button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">10 - Settings</div>
+      <article class="phone" data-screen="10-settings">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><span class="brand">SUPERO</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view">
+          <h1 class="display">Settings</h1>
+          <section class="settings-group"><div class="settings-label">Preferences</div><div class="card list-card flat"><div class="settings-row"><span class="row-icon"><svg class="icon"><use href="#i-clock"/></svg></span><div class="setting-copy"><div class="setting-name">Default rest timer</div><div class="setting-detail">Used when an exercise has no custom rest</div></div><span class="setting-value">90 sec</span><svg class="icon"><use href="#i-chevron"/></svg></div><div class="settings-row"><span class="row-icon"><svg class="icon"><use href="#i-settings"/></svg></span><div class="setting-copy"><div class="setting-name">Appearance</div><div class="setting-detail">Warm light</div></div><svg class="icon"><use href="#i-chevron"/></svg></div></div></section>
+          <section class="settings-group"><div class="settings-label">Training plan</div><div class="card list-card flat"><div class="settings-row"><span class="row-icon lime"><svg class="icon"><use href="#i-dumbbell"/></svg></span><div class="setting-copy"><div class="setting-name">8-week Push / Pull / Legs</div><div class="setting-detail">Week 6 / 3 of 4 sessions complete</div></div><svg class="icon"><use href="#i-chevron"/></svg></div><div class="settings-row"><span class="row-icon blue"><svg class="icon"><use href="#i-refresh"/></svg></span><div class="setting-copy"><div class="setting-name">Restore previous programme</div><div class="setting-detail">Saved Aug 26</div></div><svg class="icon"><use href="#i-chevron"/></svg></div></div></section>
+          <section class="settings-group"><div class="settings-label">Connections</div><div class="card list-card flat"><div class="settings-row"><span class="row-icon"><svg class="icon"><use href="#i-heart"/></svg></span><div class="setting-copy"><div class="setting-name">Apple Health</div><div class="setting-detail">Runs only / last sync today at 8:15</div></div><span class="pill lime">On</span><svg class="icon"><use href="#i-chevron"/></svg></div><div class="settings-row"><span class="row-icon blue"><svg class="icon"><use href="#i-message"/></svg></span><div class="setting-copy"><div class="setting-name">AI Coach</div><div class="setting-detail">API key stored on this device</div></div><span class="pill blue">Ready</span><svg class="icon"><use href="#i-chevron"/></svg></div></div></section>
+          <section class="settings-group"><div class="settings-label">Data + privacy</div><div class="card list-card flat"><div class="settings-row"><span class="row-icon"><svg class="icon"><use href="#i-shield"/></svg></span><div class="setting-copy"><div class="setting-name">Backup, export, and privacy</div><div class="setting-detail">Your data stays on this device</div></div><svg class="icon"><use href="#i-chevron"/></svg></div></div></section>
+        </div>
+        <nav class="nav"><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-home"/></svg></span>Log</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-chart"/></svg></span>Progress</button><button class="nav-item"><span class="nav-icon"><svg class="icon"><use href="#i-message"/></svg></span>Coach</button><button class="nav-item active"><span class="nav-icon"><svg class="icon"><use href="#i-settings"/></svg></span>Settings</button></nav>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">11 - Run log</div>
+      <article class="phone" data-screen="11-run-log">
+        <div class="statusbar"><span>7:12</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Back"><svg class="icon"><use href="#i-back"/></svg></button><span class="appbar-title">Log a run</span><button class="icon-button" aria-label="More"><svg class="icon"><use href="#i-more"/></svg></button></header>
+        <div class="view no-nav">
+          <div class="eyebrow">Outdoor run</div><h1 class="display">Morning miles.</h1>
+          <div class="form-grid">
+            <section class="card form-card flat"><div class="field-label"><span>Distance</span><span>mi</span></div><div class="field-value">3.10 <small>mi</small></div></section>
+            <section class="card form-card flat"><div class="field-label"><span>Duration</span><span>hh:mm:ss</span></div><div class="field-value" style="font-size:35px">27:42</div></section>
+          </div>
+          <section class="card form-card flat" style="margin-top:11px"><div class="field-label"><span>Average pace</span><span>Calculated</span></div><div class="field-value">8:56 <small>/mi</small></div></section>
+          <div class="map-preview"><div class="route"></div></div>
+          <section class="card coach-note flat" style="margin-top:13px"><span class="row-icon blue"><svg class="icon"><use href="#i-heart"/></svg></span><div><div class="row-title">Import from Apple Health</div><div class="row-sub">Supero reads running workouts only and never writes health data.</div></div><svg class="icon" style="margin-left:auto"><use href="#i-chevron"/></svg></section>
+          <div class="section-head"><h2>How did it feel?</h2></div><div class="chips" style="margin-top:0"><button class="chip">Easy</button><button class="chip active">Steady</button><button class="chip">Hard</button></div>
+        </div>
+        <div class="action-dock"><button class="primary full">Save run</button></div>
+      </article>
+    </section>
+
+    <section class="mockup">
+      <div class="mockup-label">12 - Programme intake</div>
+      <article class="phone" data-screen="12-intake">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i><span class="battery"></span></span></div>
+        <header class="appbar"><button class="icon-button" aria-label="Close">x</button><span class="appbar-title">Build your programme</span><span class="small muted">3 of 10</span></header>
+        <div class="view no-nav">
+          <div class="intake-progress"><i class="done"></i><i class="done"></i><i class="done"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <span class="eyebrow">Your training week</span>
+          <h1 class="intake-question">How many days can you train consistently?</h1>
+          <p class="body muted">Choose the schedule you can keep on a busy week. Coach will build around it.</p>
+          <div class="choice-list"><button class="choice"><span>2 days</span><span class="radio"></span></button><button class="choice"><span>3 days</span><span class="radio"></span></button><button class="choice selected"><span>4 days</span><span class="radio"></span></button><button class="choice"><span>5 days</span><span class="radio"></span></button><button class="choice"><span>6 days</span><span class="radio"></span></button></div>
+          <section class="card coach-note flat" style="margin-top:19px"><span class="row-icon lime"><svg class="icon"><use href="#i-spark"/></svg></span><div><div class="row-title">Why this matters</div><div class="row-sub">A realistic schedule produces better exercise spacing, recovery, and adherence.</div></div></section>
+        </div>
+        <div class="action-dock"><button class="primary full">Continue <svg class="icon"><use href="#i-arrow"/></svg></button></div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
