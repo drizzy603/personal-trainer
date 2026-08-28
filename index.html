@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260825-1"/>
+<meta name="theme-color" content="#f7f5ef"/>
+<meta name="build" content="20260827-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -94,6 +94,12 @@ window.addEventListener('unhandledrejection', function(e){
   --accent:#c8ff00;
   --accent-soft:rgba(200,255,0,.12);
   --accent-dim:rgba(200,255,0,.06);
+  /* Interaction and achievement are intentionally separate. Blue means
+     tap/current/continue; lime means completed/earned/positive. */
+  --action:#0a43f5;
+  --action-soft:rgba(10,67,245,.11);
+  --action-dim:rgba(10,67,245,.06);
+  --action-ink:#ffffff;
   /* Text-only accent: equals --accent on dark themes; Light overrides to a
      darker green so small accent text passes AA on tinted surfaces. */
   --accent-ink:#c8ff00;
@@ -1206,6 +1212,136 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
   .tab{gap:4px;font-size:9px;padding-left:2px;padding-right:2px;}
   .tab svg{width:17px;height:17px;}
   .kt-hero-headline,.kt-prog-hero-num{font-size:41px;letter-spacing:-2.1px;}
+}
+
+/* ── HEAVYWEIGHT EDITORIAL · v5 ──────────────────────────────────────────
+   One calm hierarchy across every route. The warm paper room is the default,
+   but these rules also hold in the optional dark rooms. Blue owns actions and
+   current state; lime is reserved for completion, records and positive data. */
+:root{
+  --r-input:12px;--r-card:18px;--r-hero:22px;--r-deck:24px;
+  --pad-card:20px;--pad-card-sm:17px;
+  --shadow-card:0 18px 42px -36px rgba(30,25,12,.42);
+}
+html,body{letter-spacing:-.008em;}
+body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1,'tnum' 1;}
+#app::before{display:none;}
+#screen{padding-left:20px;padding-right:20px;}
+::selection{background:var(--action);color:#fff;}
+*:focus-visible{outline-color:var(--action);}
+
+/* A quiet, full-width navigation rail keeps content unobscured and gives the
+   selected destination color instead of another filled card. */
+#tabs{
+  left:0;right:0;bottom:0;border-radius:0;border-left:0;border-right:0;border-bottom:0;
+  padding:7px 14px calc(7px + var(--tab-bottom-clear));
+  background:color-mix(in srgb,var(--bg) 94%,transparent);
+  border-top:1px solid var(--border);box-shadow:0 -12px 30px -28px rgba(0,0,0,.45);
+}
+.tab{flex-direction:column;gap:3px;min-height:44px;padding:6px 4px;border-radius:10px;font-size:10px;font-weight:700;color:var(--muted);}
+.tab svg{width:20px;height:20px;}
+.tab.active{background:transparent;color:var(--action);box-shadow:none;}
+.tab.active svg{transform:none;stroke-width:2.3;}
+
+/* Editorial hierarchy: large statements stay bold, while utility screens use
+   a condensed poster cap rather than a second oversized sentence. */
+.kt-meta-row{padding:17px 0 25px;}
+.kt-meta-label{font-size:10px;font-weight:750;letter-spacing:.14em;color:var(--muted);}
+.kt-meta-label::before{width:6px;height:6px;border-radius:50%;background:var(--action);box-shadow:none;transform:none;}
+.kt-meta-ava,.screen-avatar,.profile-ava{background:var(--action);color:#fff;box-shadow:none;border-color:var(--action);}
+.kt-meta-ava{border-radius:50%;}
+.screen-avatar{border-radius:50%;}
+.kt-hero,.kt-prog-hero{margin-bottom:30px;}
+.kt-hero-greet,.kt-prog-hero-greet{font-size:14px;color:var(--lite);margin-bottom:14px;}
+.kt-hero-headline,.kt-prog-hero-num{font-size:clamp(43px,13vw,55px);font-weight:900;line-height:.91;letter-spacing:-2.7px;text-wrap:balance;}
+.kt-hero-headline .kt-line2.accent{color:var(--action);background:none;-webkit-background-clip:initial;background-clip:initial;-webkit-text-fill-color:initial;}
+.kt-prog-hero-num .accent{color:var(--accent-ink);background:none;-webkit-background-clip:initial;background-clip:initial;-webkit-text-fill-color:initial;}
+.kt-hero-body,.kt-prog-hero-body{font-size:14px;line-height:1.55;margin-top:18px;max-width:340px;}
+.screen-hd{padding:18px 0 10px;}
+.screen-eyebrow{font-size:10px;font-weight:750;letter-spacing:.14em;color:var(--action);}
+.screen-title{
+  font-family:Impact,'Arial Narrow','Helvetica Neue Condensed Black','Inter',sans-serif;
+  font-size:44px;font-weight:400;line-height:.92;letter-spacing:.1px;text-transform:uppercase;
+}
+.sect{padding-top:22px;}
+.sect-title{font-size:19px;font-weight:800;letter-spacing:-.45px;}
+.sect-link{color:var(--action);font-weight:700;}
+
+/* Segmented controls are neutral trays; blue marks the one current choice. */
+.log-subtabs,.kt-prog-toggle{padding:4px;gap:4px;border-radius:15px;background:var(--card2);border:1px solid var(--border);box-shadow:none;}
+.log-subtabs{margin:10px 0 22px;}
+.log-subtab,.kt-prog-toggle button{min-height:40px;border-radius:11px;color:var(--muted);font-weight:700;}
+.log-subtab.active,.kt-prog-toggle button.on,.rpe-pill.sel,.kt-r-pill.active{background:var(--action);border-color:var(--action);color:#fff;box-shadow:none;}
+.set-dot.current{background:var(--action-soft);border-color:var(--action);color:var(--action);}
+.set-dot.done{background:var(--accent);border-color:var(--accent);color:#000;}
+
+/* One visual verb for every primary action. Positive outcomes keep lime. */
+.kt-cta{
+  min-height:72px;padding:17px 19px;border-radius:16px;color:#fff;background:var(--action);
+  border:1px solid var(--action);box-shadow:0 16px 34px -26px rgba(10,67,245,.72);
+}
+.kt-cta-label{font-size:10px;font-weight:800;letter-spacing:.14em;opacity:.72;}
+.kt-cta-title{font-size:18px;font-weight:800;}
+.kt-cta-arrow{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16);}
+.btn-primary,.btn-trainer,.coach-send-btn,.kt-coach-btn.primary,.kt-eng-done,
+.kt-resume-cta,.kt-act-save,.kt-rlog-save{background:var(--action);color:#fff;border-color:var(--action);box-shadow:none;}
+.btn-green{background:var(--accent);color:#000;}
+.coach-bubble.user{background:var(--action);color:#fff;}
+.field input:focus,.field select:focus,.field textarea:focus,.coach-textarea:focus,.kt-coach-input:focus{border-color:var(--action);box-shadow:0 0 0 3px var(--action-soft);}
+
+/* Cards return to honest paper surfaces. Secondary content is carried by
+   hairlines and spacing, so a card means something is live or important. */
+.card,.hero-card,.ex-card,.chart-card,.hist-item,.stat,.today-card,.kt-act-logcard,
+.kt-coach-card,.settings-group,.kt-cmb-metrics,.kt-cmb-take,.profile-row,.kt-empty-contract{
+  background:var(--card);border-color:var(--border);box-shadow:var(--shadow-card);
+}
+.hero-card{background:var(--card);}
+.settings-group{border-radius:18px;margin-bottom:16px;}
+.settings-group-hd{font-size:10px;font-weight:800;letter-spacing:.14em;padding:16px 17px 9px;color:var(--action);}
+.settings-row{padding:15px 17px;gap:12px;border-color:var(--border);}
+.settings-row-title{font-size:14px;font-weight:750;}
+.settings-row-sub{font-size:12px;line-height:1.4;color:var(--muted);}
+.settings-row-ic{width:34px;height:34px;border-radius:50%;background:var(--action-soft)!important;border-color:transparent;color:var(--action)!important;}
+.profile-row{padding:16px;margin-bottom:20px;border-radius:18px;}
+.kt-empty-contract{border-style:dashed;border-radius:18px;padding:18px;}
+.kt-empty-contract-lbl{font-size:10px;color:var(--action);}
+.kt-main-tag{color:var(--action);border-color:var(--action-soft);background:var(--action-dim);}
+.kt-bars .bar.cur{background:var(--action);}
+.kt-bars .bar .val{color:var(--action);}
+.kt-session-done-ic,.kt-act-saved{background:var(--accent);color:#000;border-color:var(--accent);}
+
+/* The workout runner uses the same paper card and a more physical, readable
+   control language: blue plus wells, lime completion, bold rest clock. */
+#runner-root{font-family:'Inter',-apple-system,system-ui,sans-serif;}
+.kt-r-back{background:transparent;border-color:var(--border);color:var(--action);}
+.kt-r-bar-fill,.kt-rest-bar-fill{background:var(--action);}
+.kt-r-card{border-radius:24px;box-shadow:0 24px 60px -42px rgba(0,0,0,.6);}
+.kt-r-card.dark,.kt-r-card.lime{background:var(--card);color:var(--text);border:1px solid var(--border);}
+.kt-r-card-name{font-size:clamp(34px,11vw,43px);font-weight:900;line-height:.96;letter-spacing:-2px;}
+.kt-eng-name{font-size:28px;font-weight:900;letter-spacing:-1.2px;}
+.kt-step-row .kt-step-btn:last-child{background:var(--action);border-color:var(--action);color:#fff;}
+.kt-step-input{caret-color:var(--action);}
+.kt-rest-hd{font-family:Impact,'Arial Narrow','Helvetica Neue Condensed Black','Inter',sans-serif;font-size:44px;font-weight:400;line-height:.92;letter-spacing:.2px;opacity:1;}
+.kt-rest-time{font-family:'Inter',-apple-system,system-ui,sans-serif;font-weight:900;letter-spacing:-4px;}
+.kt-r-card.lime .kt-rest-bar{background:color-mix(in srgb,var(--text) 10%,transparent);}
+.kt-r-card.lime .kt-rest-bar-fill{background:var(--action);}
+.kt-r-card.lime .kt-rest-adj{background:var(--card2);border:1px solid var(--border);}
+.kt-r-card.lime .kt-done-btn,.kt-r-card.dark .kt-done-btn{background:var(--action);color:#fff;}
+.kt-r-pill.active .kt-r-dot{background:rgba(255,255,255,.36)!important;}
+.kt-r-pill.active .kt-r-dot.kt-dot-new{background:var(--accent)!important;}
+
+/* Coach and sheets stay conversational, but lose the glass-and-glow finish. */
+.coach-input-row{background:var(--card);border-color:var(--border);border-radius:16px;box-shadow:none;}
+.coach-bubble.assistant{background:var(--card);border-left-color:var(--accent);border-left-width:3px;}
+.kt-coach-card{border-left-color:var(--accent);}
+.kt-sheet,.ex-modal-sheet,.kt-close-sheet-inner{background:var(--card);border-color:var(--border);}
+.kt-sheet-title{font-size:20px;font-weight:850;}
+.kt-sheet-x{background:var(--card2);border-color:var(--border);}
+
+@media (max-width:360px){
+  #screen{padding-left:16px;padding-right:16px;}
+  .screen-title{font-size:40px;}
+  .kt-hero-headline,.kt-prog-hero-num{font-size:41px;letter-spacing:-2.2px;}
 }
 </style>
 </head>
@@ -6934,7 +7070,7 @@ function _siPaint(){
   var total=STARTER_QS.length;
   var html='<div style="min-height:100%;display:flex;flex-direction:column;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'+
-    '<button onclick="_siBack()" style="background:none;border:none;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:8px 8px 8px 0;-webkit-tap-highlight-color:transparent;">‹ Back</button>'+
+    '<button onclick="_siBack()" style="background:none;border:none;color:var(--action);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;padding:8px 8px 8px 0;-webkit-tap-highlight-color:transparent;">‹ Back</button>'+
     '<span class="kt-mono" style="font-size:11px;font-weight:600;color:var(--muted);">'+
       (_si.step<total?(_si.step+1)+' / '+total:'READY')+'</span>'+
     '<button onclick="closeStarterIntake()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:8px;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
@@ -6945,7 +7081,7 @@ function _siPaint(){
   for(var si=0;si<total;si++){
     segs+='<div style="flex:1;height:3px;border-radius:2px;background:'+
       (si<=Math.min(_si.step,total-1)&&_si.step<total||_si.step>=total
-        ?'var(--accent)':'color-mix(in srgb,var(--text) 10%,transparent)')+';"></div>';
+        ?'var(--action)':'color-mix(in srgb,var(--text) 10%,transparent)')+';"></div>';
   }
   html+='<div style="display:flex;gap:5px;margin-bottom:34px;">'+segs+'</div>';
   if(_si.step<total){
@@ -6990,7 +7126,7 @@ function _siPaint(){
       '</div>';
     });
     html+='<div class="kt-si-settle">'+
-      '<div class="kt-mono" style="font-size:10px;color:var(--accent-ink);letter-spacing:.14em;font-weight:700;">BUILT FOR YOU · JUST NOW</div>'+
+      '<div class="kt-mono" style="font-size:10px;color:var(--action);letter-spacing:.14em;font-weight:700;">BUILT FOR YOU · JUST NOW</div>'+
       '<h1 style="font-size:clamp(36px,11.5vw,44px);font-weight:800;letter-spacing:-2px;line-height:1;margin:12px 0 0;">'+splitName+',<br>'+a.days+' day'+(a.days>1?'s':'')+' a week.</h1>'+
       '<div style="font-size:13.5px;line-height:1.55;color:var(--lite);margin-top:14px;">'+equipBit+'. Starts light on purpose — the first week calibrates your numbers.'+
         (a.runs?' '+a.runs+' easy run'+(a.runs>1?'s':'')+' ride along.':'')+'</div>'+
@@ -7152,7 +7288,7 @@ function renderLog() {
       : 'Five taps, no account, no key. A starter block built on your phone — or connect the AI Coach for a fully custom programme.';
     var _altLine = _hasKey
       ? 'In a hurry? <button onclick="openStarterIntake()" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Quick starter plan →</button>'
-      : 'Want it custom? <button onclick="switchTab(\'coach\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Set up the AI Coach →</button>';
+      : 'Want it custom? <button onclick="switchTab(\'coach\')" style="background:none;border:none;padding:0;color:var(--action);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Set up the AI Coach →</button>';
     var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : getGreeting()+'.';
     return subBar +
       '<div class="kt-meta-row">'+
@@ -7173,7 +7309,7 @@ function renderLog() {
       '</button>'+
       '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:-10px;">'+_altLine+'</div>'+
       '<div style="text-align:center;font-size:13px;font-weight:600;color:var(--lite);margin-top:10px;">Already trained with Supero? '+
-        '<button onclick="switchTab(\'settings\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Restore a backup →</button>'+
+        '<button onclick="switchTab(\'settings\')" style="background:none;border:none;padding:0;color:var(--action);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Restore a backup →</button>'+
       '</div>';
   }
 
@@ -10210,7 +10346,7 @@ function showToast(msg, style){
   if(!t)return;
   t.textContent=msg;
   // 'pr' — gold PR-celebration variant, shown a beat longer.
-  t.style.background=style==='pr'?'var(--yellow)':'var(--green)';
+  t.style.background=style==='pr'?'var(--yellow)':'var(--accent)';
   t.style.color='#000';
   t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
@@ -11707,10 +11843,10 @@ function renderCoach(){
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>'+
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--action);font-weight:700;">console.anthropic.com</a></p>'+
       (!hasCustomRoutine()
         ? '<div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">'+
-            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
+            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--action);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
           '</div>'
         : '');
   }
@@ -11985,9 +12121,8 @@ function renderCoach(){
 }
 
 // ── Themes & Settings ─────────────────────────────────────────────────────────
-// Dark-first theme set: every variant keeps the near-black editorial base
-// with a subtle hue tint and swaps the accent. Light exists mainly so Auto
-// can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
+// Heavyweight keeps multiple rooms available, but Paper is the branded
+// default. Every room shares the blue-action / earned-accent semantics above.
 var THEMES = {
   dark:     {name:'Lime',     room:'Studio',    textColor:'#f7fff8',bg:'#080b09',card:'#111613',card2:'#1a211c',border:'rgba(216,255,99,.10)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.14)','accent-dim':'rgba(216,255,99,.07)','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f7fff8',muted:'#748077',lite:'#a6b0a8',purple:'#ad92ff'},
   midnight: {name:'Midnight', room:'Night ops', textColor:'#eaf4ff',bg:'#050a14',card:'#0c1524',card2:'#142033',border:'rgba(125,211,252,.14)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.14)','accent-dim':'rgba(125,211,252,.07)','accent-ink':'#7dd3fc',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#eaf4ff',muted:'#6b81a6',lite:'#8ba3c7',purple:'#a78bfa'},
@@ -11995,7 +12130,7 @@ var THEMES = {
   ember:    {name:'Ember',    room:'Forge',     textColor:'#fff1e8',bg:'#120a06',card:'#1e130c',card2:'#2a1a11',border:'rgba(255,140,90,.12)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.16)','accent-dim':'rgba(255,92,56,.08)','accent-ink':'#ff5c38',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff1e8',muted:'#9a7d6d',lite:'#c2a08e',purple:'#c4a7fd'},
   violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6',purple:'#c4b5fd'},
   gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088',purple:'#b7a3f7'},
-  light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
+  light:    {name:'Paper',    room:'Heavyweight',textColor:'#0a0a0a',bg:'#f7f5ef',card:'#fffdf9',card2:'#ebe7dd',border:'rgba(10,10,10,.14)',accent:'#b7f000','accent-soft':'rgba(183,240,0,.18)','accent-dim':'rgba(183,240,0,.09)','accent-ink':'#486500',green:'#7da800',yellow:'#a87300',red:'#c92a24',orange:'#c95b16',cyan:'#0a43f5',text:'#0a0a0a',muted:'#68655d',lite:'#47453f',purple:'#6434b5'},
 };
 
 function applyTheme(name) {
@@ -12004,6 +12139,8 @@ function applyTheme(name) {
   ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','green','yellow','red','orange','cyan','text','muted','lite','purple'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
+  var themeMeta=document.querySelector('meta[name="theme-color"]');
+  if(themeMeta) themeMeta.setAttribute('content',t.bg);
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
   if(document.getElementById('screen').innerHTML) render();
@@ -12012,29 +12149,29 @@ function applyTheme(name) {
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
 // themes can be compared without leaving the sheet.
 function _buildThemeRows(){
-  var order=['auto','dark','midnight','carbon','ember','violet','gold','light'];
+  var order=['auto','light','dark','midnight','carbon','ember','violet','gold'];
   return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">'+
     order.map(function(id){
       var sel=currentTheme===id;
       if(id==='auto'){
         return '<button onclick="setAutoTheme()" style="display:flex;align-items:center;gap:10px;padding:12px;'+
-          'border-radius:14px;border:1.5px solid '+(sel?'var(--accent)':'var(--border)')+';'+
-          'background:'+(sel?'var(--accent-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+          'border-radius:14px;border:1.5px solid '+(sel?'var(--action)':'var(--border)')+';'+
+          'background:'+(sel?'var(--action-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
           '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:linear-gradient(135deg,#0b0b0d 50%,#f2f2f7 50%);border:1px solid var(--border);"></span>'+
           '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">Auto</span>'+
           '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">follows phone</span></span>'+
-          (sel?'<span style="margin-left:auto;color:var(--accent-ink);font-weight:800;">✓</span>':'')+
+          (sel?'<span style="margin-left:auto;color:var(--action);font-weight:800;">✓</span>':'')+
         '</button>';
       }
       var t=THEMES[id];
       return '<button onclick="applyTheme(\''+id+'\')" style="display:flex;align-items:center;gap:10px;padding:12px;'+
-        'border-radius:14px;border:1.5px solid '+(sel?t.accent:'var(--border)')+';'+
-        'background:'+(sel?'var(--accent-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+        'border-radius:14px;border:1.5px solid '+(sel?'var(--action)':'var(--border)')+';'+
+        'background:'+(sel?'var(--action-soft)':'var(--card2)')+';cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
         '<span style="width:26px;height:26px;border-radius:9px;flex-shrink:0;background:'+t.bg+';border:1px solid rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;">'+
           '<span style="width:11px;height:11px;border-radius:50%;background:'+t.accent+';"></span></span>'+
         '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:800;color:var(--text);">'+t.name+'</span>'+
         '<span style="display:block;font-size:10px;color:var(--muted);font-weight:600;">'+(t.room||'dark')+'</span></span>'+
-        (sel?'<span style="margin-left:auto;color:var(--accent-ink);font-weight:800;">✓</span>':'')+
+        (sel?'<span style="margin-left:auto;color:var(--action);font-weight:800;">✓</span>':'')+
       '</button>';
     }).join('')+
   '</div>';
@@ -12180,7 +12317,7 @@ function renderSettings() {
       var schedHTML='';
       if(crSched){
         var wPlan=getWeekPlan();
-        var TYPE_COLOR={Push:'var(--accent)',Pull:'var(--cyan)',Legs:'var(--orange)',Legs2:'var(--orange)',Arms:'#f59e0b',Run:'var(--green)',Rest:'var(--muted)'};
+        var TYPE_COLOR={Push:'var(--action)',Pull:'var(--cyan)',Legs:'var(--orange)',Legs2:'var(--orange)',Arms:'#8a5b00',Run:'var(--green)',Rest:'var(--muted)'};
         var chips=DOW_NAMES.map(function(name,dow){
           var entry=wPlan[dow];
           var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
@@ -12208,7 +12345,7 @@ function renderSettings() {
         schedHTML+
         '<div class="settings-row" onclick="openProgrammeModal()">'+
           '<div class="settings-row-ic" style="background:#1a2e1a;">'+
-            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" width="17" height="17">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--action)" stroke-width="2" stroke-linecap="round" width="17" height="17">'+
               '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'+
             '</svg>'+
           '</div>'+
@@ -12263,9 +12400,9 @@ function renderSettings() {
         var lbl=s<60?s+'s':(s%60===0?(s/60)+'m':(Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s'));
         var active=curRest===s;
         return '<button onclick="event.stopPropagation();setRestDefault('+s+');render();" style="'+
-          'padding:7px 14px;border-radius:8px;border:1px solid '+(active?'var(--accent)':'var(--border)')+';'+
-          'background:'+(active?'var(--accent-soft)':'var(--card2)')+';'+
-          'color:'+(active?'var(--accent)':'var(--muted)')+';'+
+          'padding:7px 14px;border-radius:8px;border:1px solid '+(active?'var(--action)':'var(--border)')+';'+
+          'background:'+(active?'var(--action-soft)':'var(--card2)')+';'+
+          'color:'+(active?'var(--action)':'var(--muted)')+';'+
           'font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">'+lbl+'</button>';
       }).join('');
       var notifOn=localStorage.getItem('kt_notif_daily')==='1';
@@ -12302,7 +12439,7 @@ function renderSettings() {
     '<div class="settings-group">'+
     '<div class="settings-group-hd">AI Coach</div>'+
     '<div style="padding:16px 18px;">'+
-    '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. <span style="color:var(--accent)">console.anthropic.com</span></p>'+
+    '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. <span style="color:var(--action);font-weight:700;">console.anthropic.com</span></p>'+
     (apiKey
       ? '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:10px;font-family:monospace;">'+maskedKey+'</div>'+
         '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'+
@@ -13333,11 +13470,11 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
   });
 }
 // ── Start ─────────────────────────────────────────────────────────────────────
-currentTheme = localStorage.getItem('kt_theme') || 'dark';
-// Retired themes (ocean/sunset) and any unknown value migrate to dark.
+currentTheme = localStorage.getItem('kt_theme') || 'light';
+// Retired themes (ocean/sunset) and any unknown value migrate to Paper.
 if(currentTheme!=='auto' && !THEMES[currentTheme]){
-  currentTheme='dark';
-  localStorage.setItem('kt_theme','dark');
+  currentTheme='light';
+  localStorage.setItem('kt_theme','light');
 }
 if(currentTheme==='auto'){
   applyTheme(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
