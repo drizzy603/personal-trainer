@@ -22,7 +22,8 @@ run('theme rooms apply their tokens', async () => {
     assert(out.carbon.bg === '#060607', 'carbon near-black');
     assert(out.light.bg === '#f4f2ec' && out.light.ink === '#3f6a00', 'light paper + dark accent-ink');
     assert(out.gold.yellow === '#ffb340', 'gold PR-yellow exception');
-    assert(out.dark.ink === '#c8ff00', 'dark ink equals accent');
+    // Signal v4 (2026-08-25) retuned the Studio room's lime to #d8ff63.
+    assert(out.dark.ink === '#d8ff63', 'dark ink equals the Signal accent');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

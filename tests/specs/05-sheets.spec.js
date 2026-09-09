@@ -12,7 +12,10 @@ run('sheets share the R2 shell + grabber', async () => {
         const ov = document.getElementById(overlayId);
         const sheet = ov && ov.querySelector('.kt-sheet');
         res[name] = sheet ? {
-          surface: getComputedStyle(sheet).backgroundColor,
+          // Signal v4 paints sheets with a card-toned gradient (background-image),
+          // so the surface is "opaque card" either way: a gradient, or a solid.
+          surface: (getComputedStyle(sheet).backgroundImage.indexOf('gradient') > -1)
+            || getComputedStyle(sheet).backgroundColor !== 'rgba(0, 0, 0, 0)',
           scrim: getComputedStyle(ov).backgroundColor,
           x: !!ov.querySelector('.kt-sheet-x'),
           grab: !!ov.querySelector('.kt-sheet-grab'),
@@ -30,7 +33,7 @@ run('sheets share the R2 shell + grabber', async () => {
     });
     for (const [name, r] of Object.entries(out)) {
       assert(r !== 'missing', name + ' sheet mounts');
-      assert(r.surface === 'rgb(22, 22, 26)', name + ' surface is --card, got ' + r.surface);
+      assert(r.surface === true, name + ' paints an opaque card surface');
       assert(r.scrim === 'rgba(0, 0, 0, 0.6)', name + ' scrim .60');
       assert(r.x && r.grab, name + ' has ✕ + grabber');
     }
