@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260908-1"/>
+<meta name="build" content="20260909-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -812,6 +812,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-bars{display:flex;align-items:flex-end;gap:7px;height:86px;}
 .kt-bars .bar{flex:1;background:color-mix(in srgb,var(--text) 13%,transparent);border-radius:5px 5px 2px 2px;position:relative;min-height:3px;}
 .kt-bars .bar.cur{background:var(--accent);}
+.kt-bars .bar.empty{background:none;min-height:0;height:0!important;border-top:1px dashed color-mix(in srgb,var(--text) 22%,transparent);border-radius:0;}
 .kt-bars .bar .pr-dot{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--yellow);}
 .kt-bars .bar .val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;color:var(--accent-ink);white-space:nowrap;}
 .kt-streak-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;background:var(--card);border:1px solid var(--border);flex-shrink:0;}
@@ -1834,9 +1835,13 @@ function lsSet(k,v) {
     });
   }
   if(k==='kt_sessions' || k==='kt_bw') _logsVersion++;
+  var _hadPrev=(k in _lsCache), _prev=_lsCache[k];
   _lsCache[k] = v;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
+    // Roll the cache back: caching before the write meant a quota failure
+    // left the unsaved value as the in-session truth (phantom save).
+    if(_hadPrev) _lsCache[k]=_prev; else delete _lsCache[k];
     if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
       try{ showToast('Couldn\'t save — storage full. Export your data.'); }catch(_){}
     }
@@ -2095,8 +2100,7 @@ function _progressHeroVariants(){
     || sports.some(function(s){return s.date===todayStr;});
   var dayStreak = calcDayStreak();
   var pct = totalWks>0 ? Math.round((currentWeek/totalWks)*100) : 0;
-  var thisWeek = sessions.filter(function(s){return s.week===currentWeek;}).length
-    + runs.filter(function(r){return r.week===currentWeek;}).length;
+  var thisWeek = sessions.filter(_inThisCalWeek).length + runs.filter(_inThisCalWeek).length;
   var firstName = getUserFirstName();
   var who = firstName || '';
 
@@ -3374,6 +3378,15 @@ function getRunForDow(wd,dow){
   return (a&&a.isRun)?a.data:null;
 }
 
+// Calendar-week membership (Monday-anchored). Programme-week stamps (s.week)
+// freeze at the final week once the plan ends, so every "this week" number
+// must ask the calendar — exactly as the dots row and volume bars already do.
+function _inThisCalWeek(rec){ return !!(rec && rec.date && String(rec.date).slice(0,10)>=getMondayISO()); }
+function _mondayKeyOf(dateStr){
+  var d=new Date(String(dateStr).slice(0,10)+'T00:00:00');
+  var dow=(d.getDay()+6)%7; d.setDate(d.getDate()-dow);
+  return _ymdLocal(d);
+}
 function getMondayISO() {
   var t = new Date(); t.setHours(0,0,0,0);
   var dow = (t.getDay()+6)%7;
@@ -7710,10 +7723,19 @@ function saveSessionEdit(){
       rpeLog:Array.isArray(ex.rpeLog)?ex.rpeLog:undefined};
   });
   lsSet('kt_sessions', sessions);
-  // The working-weight cache and PR book follow the corrected truth.
-  var wts2=getWeights();
-  s.exercises.forEach(function(ex){ if(parseFloat(ex.weight)>0) wts2[ex.name]=parseFloat(ex.weight); });
-  lsSet('kt_weights', wts2);
+  // The working-weight cache follows the corrected truth — but only when the
+  // edited session is the NEWEST one for that lift. Fixing a typo in a
+  // weeks-old session must not regress today's prescription.
+  var wts2=getWeights(), wtsTouched=false;
+  s.exercises.forEach(function(ex){
+    var w=parseFloat(ex.weight); if(!(w>0)) return;
+    var newer=sessions.some(function(o){
+      return o!==s && String(o.date||'')>String(s.date||'') &&
+        (o.exercises||[]).some(function(e2){ return e2.name===ex.name; });
+    });
+    if(!newer){ wts2[ex.name]=w; wtsTouched=true; }
+  });
+  if(wtsTouched) lsSet('kt_weights', wts2);
   recomputePRs();
   invalidateCoachCard();
   closeSessionEditor();
@@ -9088,7 +9110,13 @@ function _buildWeekReviewMsg(){
   var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
   var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
   var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
-  var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){ prs.push(p.ex+' '+p.weight+'×'+p.reps); }); });
+  var _prBook=getPRs();
+  var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){
+    // Session prs are exercise-name strings (checkAndUpdatePRs); tolerate the
+    // object shape too rather than sending 'undefined undefined×undefined'.
+    if(typeof p==='string') prs.push(p+(_prBook[p]?' '+_prBook[p]+' lb':''));
+    else if(p&&p.ex) prs.push(p.ex+' '+(p.weight||'')+(p.reps?'×'+p.reps:''));
+  }); });
   var lines=['Review my last 7 days and adjust next week if needed.',
     'Done: '+sessions.length+' lifts'+(sessions.length?' ('+sessions.map(function(s){ return s.type; }).join(', ')+')':'')+
     (runs.length?', '+runs.length+' run'+(runs.length>1?'s':''):'')+
@@ -9114,6 +9142,13 @@ function startWeeklyReview(){
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
 
+// Sign-aware total delta for the working-weight charts ('↑ -10 lb' read as
+// a gain; a deload block is a drop and says so).
+function _fmtLbDelta(d){
+  d=Math.round(d*10)/10;
+  if(d===0) return 'flat over the window';
+  return (d>0?'↑ +':'↓ −')+Math.abs(d)+' lb total';
+}
 function renderProgress() {
   var sessions=getSessions();
   var runs=getRuns();
@@ -9169,10 +9204,13 @@ function renderProgress() {
   });
   runs.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
-    if(dist<4.5) return; // must be ~5k
+    if(Math.abs(dist-5)/5>0.1) return; // ~5k only (±10%, same window as the run review)
     var parts=(r.time||'').split(':').map(Number);
     var secs=parts.length===2?parts[0]*60+(parts[1]||0):parts[0]*3600+parts[1]*60+(parts[2]||0);
-    if(secs>0&&(bestRun5kSec===0||secs<bestRun5kSec)) bestRun5kSec=secs;
+    if(secs>0){
+      secs=Math.round(secs/dist*5);   // normalise a 4.6-5.4 km effort to 5 km
+      if(bestRun5kSec===0||secs<bestRun5kSec) bestRun5kSec=secs;
+    }
   });
 
   function goalBar(label,current,target,unit,lowerBetter){
@@ -9193,6 +9231,23 @@ function renderProgress() {
     '</div>';
   }
 
+  // Run-mode stats — total distance, this-week km, avg pace.
+  function _runSec(r){
+    var t=(r.time||'').split(':').map(Number);
+    return t.length===2 ? t[0]*60+(t[1]||0) : t[0]*3600+(t[1]||0)*60+(t[2]||0);
+  }
+  var totalKm=0, weekKm=0, totSec=0, totDist=0;
+  runs.forEach(function(r){
+    var d=parseFloat(r.distance||r.dist)||0;
+    if(d<=0) return;
+    totalKm+=d;
+    if(_inThisCalWeek(r)) weekKm+=d;
+    var s=_runSec(r);
+    if(s>0){ totSec+=s; totDist+=d; }
+  });
+  var avgPaceSec = totDist>0 ? Math.round(totSec/totDist) : 0;
+  // (hoisted above the goal cards: the pace bar read avgPaceSec before its
+  // declaration and never rendered)
   var run5kGoalSec=get5kGoal()||40*60;
   var benchGoal=getBenchGoal(), squatGoal=getSquatGoal();
   var goalInpStyle='width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;';
@@ -9270,24 +9325,9 @@ function renderProgress() {
   var prevBW = bws.length > 1 ? bws[1].weight : null;
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
   var streak = calcStreak(sessions);
-  var thisWeekCount = sessions.filter(function(s){return s.week===currentWeek;}).length;
+  var thisWeekCount = sessions.filter(_inThisCalWeek).length;
   var scheduledLiftDays = getWeekPlan().filter(function(p){return p.isLift;}).length;
 
-  // Run-mode stats — total distance, this-week km, avg pace.
-  function _runSec(r){
-    var t=(r.time||'').split(':').map(Number);
-    return t.length===2 ? t[0]*60+(t[1]||0) : t[0]*3600+(t[1]||0)*60+(t[2]||0);
-  }
-  var totalKm=0, weekKm=0, totSec=0, totDist=0;
-  runs.forEach(function(r){
-    var d=parseFloat(r.distance||r.dist)||0;
-    if(d<=0) return;
-    totalKm+=d;
-    if(r.week===currentWeek) weekKm+=d;
-    var s=_runSec(r);
-    if(s>0){ totSec+=s; totDist+=d; }
-  });
-  var avgPaceSec = totDist>0 ? Math.round(totSec/totDist) : 0;
   var lastRun = runs[0];
 
   // "This week" as a slim calendar-week dot row under the summary band —
@@ -9328,7 +9368,7 @@ function renderProgress() {
   // The PR count moves to the gold Records card below; numbers stay in the
   // default text color so the screen keeps one emphasis.
   var weekVol=0;
-  sessions.forEach(function(s){ if(s.week===currentWeek) weekVol+=calcVolume(s.exercises||[]); });
+  sessions.forEach(function(s){ if(_inThisCalWeek(s)) weekVol+=calcVolume(s.exercises||[]); });
 
   var liftStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
@@ -9371,14 +9411,14 @@ function renderProgress() {
   var benchChart=benchData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Bench Press · working weight</div>'+
       '<div><span class="chart-val">'+benchData[benchData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
-      (benchData.length>=2?'<div class="chart-delta">↑ '+(benchData[benchData.length-1].val-benchData[0].val)+' lb total</div>':'')+
+      (benchData.length>=2?'<div class="chart-delta">'+_fmtLbDelta(benchData[benchData.length-1].val-benchData[0].val)+'</div>':'')+
       '</div></div>'+svgChart(benchData,'var(--accent)')+'</div>'
     :'';
 
   var squatChart=squatData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Back Squat · working weight</div>'+
       '<div><span class="chart-val">'+squatData[squatData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
-      (squatData.length>=2?'<div class="chart-delta">↑ '+(squatData[squatData.length-1].val-squatData[0].val)+' lb total</div>':'')+
+      (squatData.length>=2?'<div class="chart-delta">'+_fmtLbDelta(squatData[squatData.length-1].val-squatData[0].val)+'</div>':'')+
       '</div></div>'+svgChart(squatData,'var(--orange)')+'</div>'
     :'';
 
@@ -9568,50 +9608,62 @@ function renderProgress() {
     _volBuckets[wk]=(_volBuckets[wk]||0)+v;
     if((s.prs||[]).length) _prWeeks[wk]=1;
   });
-  var _volWeeks=Object.keys(_volBuckets).sort().slice(-8);
+  // Calendar-anchored window: the last 8 Mondays ending this week, zero-
+  // filled. Bucketing only weeks WITH volume made a month off vanish and let
+  // "+5%" read as current momentum weeks after the last session.
+  var _curWkKey=getMondayISO();
+  var _volWeeks=[];
+  (function(){
+    var d=new Date(_curWkKey+'T00:00:00');
+    for(var i=7;i>=0;i--){ var m=new Date(d); m.setDate(d.getDate()-7*i); _volWeeks.push(_ymdLocal(m)); }
+  })();
+  var _dataWeeks=_volWeeks.filter(function(w){ return _volBuckets[w]>0; });
   var weeklyVolCard='';
-  if(_volWeeks.length>=2){
-    var _volMax=0; _volWeeks.forEach(function(w){ if(_volBuckets[w]>_volMax) _volMax=_volBuckets[w]; });
-    var _curWkKey=getMondayISO();
+  if(Object.keys(_volBuckets).length>=2 && _dataWeeks.length>=1){
+    var _volMax=0; _volWeeks.forEach(function(w){ if((_volBuckets[w]||0)>_volMax) _volMax=_volBuckets[w]; });
     var _volBars=_volWeeks.map(function(w){
-      var v=_volBuckets[w];
-      var h=Math.max(4,Math.round(v/_volMax*100));
+      var v=_volBuckets[w]||0;
+      var h=v>0?Math.max(4,Math.round(v/_volMax*100)):0;
       var isCur=w===_curWkKey;
-      return '<div class="bar'+(isCur?' cur':'')+'" style="height:'+h+'%;" '+
-        'onclick="showToast(\'Week of '+fmtDate(w)+' · '+Math.round(v).toLocaleString()+' lb\')">'+
-        (isCur?'<span class="val">'+_fmtChartVal(v)+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
+      return '<div class="bar'+(isCur?' cur':'')+(v>0?'':' empty')+'" style="height:'+h+'%;" '+
+        'onclick="showToast(\'Week of '+fmtDate(w)+' · '+(v>0?Math.round(v).toLocaleString()+' lb':'no lifts logged')+'\')">'+
+        (isCur&&v>0?'<span class="val">'+_fmtChartVal(v)+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
       '</div>';
     }).join('');
-    // The newest bucket may be an in-progress (partial) week — the trend %
-    // compares completed weeks only, and the footer caption only claims
-    // THIS WK when the newest bucket actually is the current calendar week.
-    var _lastIsCur=_volWeeks[_volWeeks.length-1]===_curWkKey;
-    var _vRefIdx=(_lastIsCur && _volWeeks.length>=3)?_volWeeks.length-2:_volWeeks.length-1;
-    // A partial FIRST week (everyone's first logging week) made the trend
-    // scream +404% — when the opening bucket is an outlier vs the window
-    // median, baseline from the second bucket instead.
+    // Trend: the most recent COMPLETED data week vs the first data week in
+    // the window — never the in-progress week, and no percentage at all with
+    // fewer than two completed weeks. A partial FIRST week (everyone's first
+    // logging week) made the trend scream +404% — when the opening bucket is
+    // an outlier vs the window median, baseline from the next one.
+    var _completed=_dataWeeks.filter(function(w){ return w!==_curWkKey; });
     var _vBaseIdx=0;
-    if(_volWeeks.length>=3){
-      var _sorted=_volWeeks.map(function(w){ return _volBuckets[w]; }).sort(function(a,b){ return a-b; });
+    if(_completed.length>=3){
+      var _sorted=_completed.map(function(w){ return _volBuckets[w]; }).sort(function(a,b){ return a-b; });
       var _med=_sorted[Math.floor(_sorted.length/2)];
-      if(_volBuckets[_volWeeks[0]] < _med*0.4) _vBaseIdx=1;
+      if(_volBuckets[_completed[0]] < _med*0.4) _vBaseIdx=1;
     }
-    var _vFirst=_volBuckets[_volWeeks[_vBaseIdx]], _vLast=_volBuckets[_volWeeks[_vRefIdx]];
-    var _vPct=_vFirst>0?Math.round((_vLast-_vFirst)/_vFirst*100):0;
+    var _vFirst=_completed.length?_volBuckets[_completed[_vBaseIdx]]:_volBuckets[_dataWeeks[0]];
+    var _vLast=_completed.length?_volBuckets[_completed[_completed.length-1]]:0;
+    var _vPct=(_completed.length-_vBaseIdx>=2 && _vFirst>0)?Math.round((_vLast-_vFirst)/_vFirst*100):0;
     var _vDelta=_vPct!==0
       ? ' · <span style="color:'+(_vPct>0?'var(--accent-ink)':'var(--muted)')+';">'+(_vPct>0?'+':'')+_vPct+'%</span>'
       : '';
+    // Right footer: THIS WK only when this week has volume; otherwise name
+    // the last week that did, so a gap is a gap.
+    var _lastData=_dataWeeks[_dataWeeks.length-1];
+    var _rightLbl=(_volBuckets[_curWkKey]>0)
+      ? 'THIS WK'
+      : 'LAST · WK OF '+_esc(fmtDate(_lastData).toUpperCase());
     weeklyVolCard='<div class="chart-card">'+
       '<div class="kt-ledger-hd">'+
         '<span class="l">WEEKLY VOLUME · LB</span>'+
-        '<span class="r">'+_volWeeks.length+'W'+_vDelta+'</span>'+
+        '<span class="r">8W'+_vDelta+'</span>'+
       '</div>'+
       '<div class="kt-bars" style="margin-top:20px;">'+_volBars+'</div>'+
       '<div style="display:flex;justify-content:space-between;margin-top:8px;">'+
         '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_fmtChartVal(_vFirst)+'</span>'+
         (Object.keys(_prWeeks).length?'<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">● PR WEEK</span>':'')+
-        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+
-          (_lastIsCur?'THIS WK':'WK OF '+_esc(fmtDate(_volWeeks[_volWeeks.length-1]).toUpperCase()))+'</span>'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_rightLbl+'</span>'+
       '</div>'+
     '</div>';
   }
@@ -9678,7 +9730,7 @@ function renderProgress() {
         if(d>_longest) _longest=d;
         var s=_runSec(r);
         if(s>0 && d>=2){ var p=s/d; if(!_bestPace||p<_bestPace) _bestPace=p; }
-        if(r.week!=null) _weekSums[r.week]=(_weekSums[r.week]||0)+d;
+        if(r.date){ var _wkk=_mondayKeyOf(r.date); _weekSums[_wkk]=(_weekSums[_wkk]||0)+d; }
       });
       var _bigWeek=0; Object.keys(_weekSums).forEach(function(w){ if(_weekSums[w]>_bigWeek) _bigWeek=_weekSums[w]; });
       var bb=function(v,l){ return '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+v+'</div>'+
@@ -11397,7 +11449,7 @@ function buildSystemPrompt(){
   if(wd){
     p+='BLOCK: '+wd.bName+' — '+wd.wkNote+'\n';
     p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
-    var thisWeekSessions=sessions.filter(function(s){return s.week===currentWeek;});
+    var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN:\n';
     ['push','pull','legs','legs2','arms'].forEach(function(sess){
@@ -12031,15 +12083,26 @@ var THEMES = {
   light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
 };
 
-function applyTheme(name) {
-  var t=THEMES[name]; if(!t) return;
+// Painting and persisting are separate: Auto paints the system room but must
+// keep kt_theme='auto' and currentTheme='auto'. The old single function
+// persisted whatever it painted, so Auto degraded to a fixed theme on the
+// next launch (and at sunset, when the listener repainted).
+function _paintTheme(name){
+  var t=THEMES[name]; if(!t) return false;
   var r=document.documentElement;
   ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','green','yellow','red','orange','cyan','text','muted','lite','purple'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
+  if(document.getElementById('screen').innerHTML) render();
+  return true;
+}
+function _systemTheme(){
+  return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+}
+function applyTheme(name) {
+  if(!_paintTheme(name)) return;
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
-  if(document.getElementById('screen').innerHTML) render();
 }
 
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
@@ -12141,9 +12204,7 @@ function closeThemeSheet(){
 function setAutoTheme(){
   currentTheme='auto';
   localStorage.setItem('kt_theme','auto');
-  applyTheme(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-  currentTheme='auto';
-  render();
+  _paintTheme(_systemTheme());
 }
 
 function openWorkflow(){
@@ -12233,7 +12294,7 @@ function renderSettings() {
         schedHTML='<div style="padding:14px 18px 16px;">'+
           '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Weekly schedule</div>'+
           '<div style="display:flex;gap:5px;">'+chips+'</div>'+
-          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap any day to cycle through workout types. Changes apply to all weeks.</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap any day to cycle through workout types. Changes apply to every week without its own cadence.</div>'+
         '</div>';
       }
       var progGroup='<div class="settings-group" id="settings-workout-group">'+
@@ -13373,14 +13434,13 @@ if(currentTheme!=='auto' && !THEMES[currentTheme]){
   localStorage.setItem('kt_theme','dark');
 }
 if(currentTheme==='auto'){
-  applyTheme(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-  currentTheme='auto';
-} else {
-  applyTheme(currentTheme);
+  _paintTheme(_systemTheme());
+} else if(!_paintTheme(currentTheme)){
+  applyTheme('dark');   // retired/unknown stored theme → the default room
 }
 try{
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){
-    if(currentTheme==='auto') applyTheme(e.matches?'dark':'light');
+    if(currentTheme==='auto') _paintTheme(e.matches?'dark':'light');
   });
 }catch(ex){}
 currentWeek = getWeek();
