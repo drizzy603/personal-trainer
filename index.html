@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260828-1"/>
+<meta name="build" content="20260908-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3781,8 +3781,8 @@ function handleCoachCardAsk(ev){
     // an empty "Thinking…" forever.
     coachLoading = false;
     streamingContent = '';
-        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.'});
-    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
+    coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
+    saveCoachHistory();
     render();
     scrollChatBottom();
   });
@@ -4782,18 +4782,24 @@ function renderCoachCard(activity){
   if(coachCardDismissed){
     return '<div class="kt-coach-empty">All clear. The coach will check in tomorrow.</div>';
   }
-  if(!coachCard){
+  // Paint from a LOCAL card. Assigning the fallback to the global here (the
+  // paint runs before render()'s lifecycle block) made coachCard non-null
+  // before loadCoachCardForToday() could run, so the Haiku card never
+  // fetched on a cold boot — every user saw the canned sentence.
+  var card = coachCard;
+  if(!card){
     if(coachCardLoading){
       return '<div class="kt-coach-card" style="opacity:.5;"><div class="kt-coach-head">'+
         '<div class="kt-coach-eyebrow">COACH · THINKING…</div></div>'+
         '<div class="kt-coach-msg">—</div></div>';
     }
-    // Synchronous fallback — useful when no API key.
-    coachCard = fallbackCoachCard(activity);
-    coachCard.loadedAt = Date.now();
-    coachCard.forDay = activity.type+'/'+activity.dayName;
+    // Synchronous fallback — the keyless answer, and the placeholder until
+    // the lifecycle block decides whether to fetch.
+    card = fallbackCoachCard(activity);
+    card.loadedAt = Date.now();
+    card.forDay = activity.type+'/'+activity.dayName;
   }
-  var actions = (coachCard.actions || []).slice(0,2).map(function(a){
+  var actions = (card.actions || []).slice(0,2).map(function(a){
     var cls = a.primary ? 'primary' : 'neutral';
     return '<button class="kt-coach-btn '+cls+'" onclick="dismissCoachCard()">'+_esc(a.label)+'</button>';
   }).join('');
@@ -4808,10 +4814,10 @@ function renderCoachCard(activity){
     : '';
   return '<div class="kt-coach-card" id="kt-coach-card">'+
     '<div class="kt-coach-head">'+
-      '<div class="kt-coach-eyebrow">'+_coachCardEyebrow(coachCard.loadedAt)+'</div>'+
+      '<div class="kt-coach-eyebrow">'+_coachCardEyebrow(card.loadedAt)+'</div>'+
       '<button class="kt-coach-x" onclick="dismissCoachCard()" aria-label="Dismiss coach card">×</button>'+
     '</div>'+
-    '<div class="kt-coach-msg">'+_esc(coachCard.message)+'</div>'+
+    '<div class="kt-coach-msg">'+_esc(card.message)+'</div>'+
     '<div class="kt-coach-actions">'+actions+ask+'</div>'+
     input+
     '</div>';
@@ -10446,8 +10452,8 @@ async function startRoutineIntake(){
     // truncating long intakes.
     await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-5',24576);
   }catch(err){
-    coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.'});
-    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
+    coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
+    saveCoachHistory();
   }finally{
     coachLoading=false;
     streamingContent='';
@@ -10608,7 +10614,19 @@ var COACH_TOOLS=[
 // Session-level flag — we back up kt_routine exactly once per page session, on
 // the first update_routine_weeks call, so the Restore Previous button rolls back
 // to the state before this conversation's edits.
-var _routineBackedUp=false;
+// Undo point for Coach edits. Deep-copies from the RAW stored string BEFORE
+// the tool mutates anything: getCustomRoutine() hands back the lsGet-cached
+// object, so snapshotting it after the in-place edit stored the already-
+// edited routine — Restore Previous was a no-op. Taken per mutating call
+// (not once per page session) so the last Coach change is always undoable.
+function _snapshotRoutineForUndo(){
+  try{
+    var raw=localStorage.getItem('kt_routine');
+    if(!raw) return;
+    var prev=JSON.parse(raw);
+    if(prev&&prev.weeks&&prev.weeks.length) lsSet('kt_routine_backup',prev);
+  }catch(e){}
+}
 
 function executeCoachTool(name,input){
   input=input||{};
@@ -10616,6 +10634,7 @@ function executeCoachTool(name,input){
     if(name==='update_routine_weeks'){
       var weeksIn=Array.isArray(input.weeks)?input.weeks:null;
       if(!weeksIn||!weeksIn.length) return {ok:false,error:'weeks array required'};
+      _snapshotRoutineForUndo();
       var cr=getCustomRoutine();
       if(!cr){
         cr={name:'Custom Programme',weeks:[]};
@@ -10705,15 +10724,6 @@ function executeCoachTool(name,input){
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
-      // Back up the pre-edit routine once per session, but only if we're
-      // actually about to write something.
-      if((written.length||planSupplied)&&!_routineBackedUp){
-        try{
-          var prev=lsGet('kt_routine');
-          if(prev&&prev.weeks) lsSet('kt_routine_backup',prev);
-        }catch(e){}
-        _routineBackedUp=true;
-      }
       if(written.length||planSupplied) setCustomRoutine(cr);
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
@@ -10738,6 +10748,7 @@ function executeCoachTool(name,input){
       return {ok:true,message:'current week set to '+w};
     }
     if(name==='swap_cadence_days'){
+      _snapshotRoutineForUndo();
       var dowA=DOW_FROM_NAME[input.dayA];
       var dowB=DOW_FROM_NAME[input.dayB];
       if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
@@ -10772,6 +10783,7 @@ function executeCoachTool(name,input){
       return {ok:false,error:'Could not swap (no routine for that week?)'};
     }
     if(name==='set_exercise_weight'){
+      _snapshotRoutineForUndo();
       var weights=getWeights();
       var newW=parseFloat(input.weight);
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
@@ -10979,11 +10991,15 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   // re-sent base64 screenshots from prior conversations; on iOS PWA + spotty
   // connections that pushes the request well past the 60s timeout. Text
   // history is preserved so the model still has context.
-  var raw=coachMessages.slice(-20).filter(function(m){
-    // _local messages (error bubbles, Stop notices) are UI-only — replaying
-    // them to the API polluted the conversation with our own error strings.
+  // Filter BEFORE windowing: local bubbles (errors, Stop notices) are UI-only,
+  // and slicing first let their odd count flip the window's parity so it
+  // opened on an assistant turn — the API rejects that (400) on every send
+  // until the chat was cleared.
+  var raw=coachMessages.filter(function(m){
     return !m._toolResults && !m._local;
-  });
+  }).slice(-20);
+  // The Messages API requires the first message to be a user turn.
+  while(raw.length && raw[0].role!=='user') raw.shift();
   var stripBefore=Math.max(0,raw.length-4);
   var apiMsgs=raw.map(function(m,i){
     var apiM=_toApiMsg(m);
@@ -11164,12 +11180,18 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   // metadata). Executed tool calls are real even when the turn later died —
   // committing them with any partial text keeps programme edits visible
   // instead of hiding them behind a bare error bubble.
-  if(!hadError || totalText.trim() || allToolCalls.length){
+  if(totalText.trim() || allToolCalls.length){
     coachMessages.push({
       role:'assistant',
-      content:totalText.trim() || (hadError&&allToolCalls.length?'I made these changes before the connection dropped:':''),
+      content:totalText.trim() || (hadError?'I made these changes before the connection dropped:':'Done — changes applied:'),
       _tools:allToolCalls.length?allToolCalls:null
     });
+  } else if(!hadError){
+    // A reply with no text and no tools (refusal, thinking-only, cap hit on a
+    // tool result) used to commit content:'' — invisible in the chat, and the
+    // API then rejected every later request ('non-empty content'). Say so
+    // locally instead; the Try again chip picks it up.
+    coachMessages.push({role:'assistant',content:'The coach returned no reply — tap Try again.',_error:true,_local:true});
   }
   if(errText){
     coachMessages.push({role:'assistant',content:errText,_error:true,_local:true});
@@ -11308,7 +11330,15 @@ function saveCoachHistory(){
       if(m._toolResults) return null;
       var out={role:m.role};
       if(m._hadImage) out._hadImage=true;
-      if(m._tools) out._tools=m._tools;
+      if(m._tools) out._tools=m._tools.map(function(t){
+        // The pill only needs name + result; a full update_routine_weeks
+        // input is the whole programme JSON and bloated history by 10s of KB.
+        if(t && t.name==='update_routine_weeks' && t.input){
+          return {name:t.name, result:t.result,
+            input:{weeks:(Array.isArray(t.input.weeks)?t.input.weeks:[]).map(function(w){ return {wk:w&&w.wk}; })}};
+        }
+        return t;
+      });
       // Hygiene flags must survive reloads: without them, error bubbles and
       // Stop notices re-enter the API history after the next boot.
       if(m._local) out._local=true;
@@ -11326,6 +11356,9 @@ function saveCoachHistory(){
       return out;
     }).filter(function(m){return m;});
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
+    // Backups read this key through lsGet — keep its cache coherent so an
+    // export taken tonight carries tonight's conversation, not launch-time's.
+    _lsCache['kt_coach_msgs']=msgs;
   }catch(e){}
 }
 
