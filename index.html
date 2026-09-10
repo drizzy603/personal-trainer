@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260909-1"/>
+<meta name="build" content="20260909-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1298,6 +1298,19 @@ var coachModel    = (function(){
   return m==='claude-sonnet-4-6' ? 'claude-sonnet-5' : m;
 }());
 var intakeMode    = false;   // true when generating a new routine
+// The intake spans minutes and iOS evicts the webview freely; the flag is
+// persisted so a reload mid-intake resumes as intake (Sonnet, intake prompt,
+// completion hand-off) instead of a plain chat turn. Cleared with the flag.
+try{
+  if(localStorage.getItem('kt_intake')==='1'){
+    var _rr=JSON.parse(localStorage.getItem('kt_routine')||'null');
+    if(!(_rr&&_rr.weeks&&_rr.weeks.length)) intakeMode=true; else localStorage.removeItem('kt_intake');
+  }
+}catch(e){}
+function _setIntakeMode(on){
+  intakeMode=!!on;
+  try{ if(on) localStorage.setItem('kt_intake','1'); else localStorage.removeItem('kt_intake'); }catch(e){}
+}
 var pendingImage   = null;   // {data, mediaType, previewUrl} waiting to be sent
 var _hkPendingRun  = null;   // most-recent unimported Health run while on Run tab
 var _hkPendingDismissed = false; // true once user dismisses the quick-log card this session
@@ -1944,7 +1957,7 @@ function startNewProgramme(){
     archiveCurrentRoutine();
     clearCustomRoutine();
     currentWeek=1; lsSet('kt_week',1);
-    intakeMode=false;
+    _setIntakeMode(false);
     clearCoachHistory();
     switchTab('coach'); render();
     showToast(getApiKey() ? 'Programme archived. Ask the Coach to build your new one' : 'Programme archived. Build a starter plan or connect the Coach');
@@ -3774,6 +3787,7 @@ function handleCoachCardAsk(ev){
   if(ev.key !== 'Enter') return;
   var v = (ev.target.value || '').trim();
   if(!v) return;
+  if(coachLoading) return;   // never start a second concurrent turn
   // Pipe the question into the Coach tab as a fresh user message.
   switchTab('coach');
   coachView = 'chat';
@@ -3784,7 +3798,9 @@ function handleCoachCardAsk(ev){
   streamingContent = '';
   render();
   scrollChatBottom();
+  var myGen=_coachGen;
   runCoachTurn(buildSystemPrompt(), coachModel, 16384).then(function(){
+    if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
     render();
@@ -3792,6 +3808,7 @@ function handleCoachCardAsk(ev){
   }).catch(function(err){
     // B8 — surface network / API errors instead of leaving the user staring at
     // an empty "Thinking…" forever.
+    if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
     coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
@@ -10286,6 +10303,11 @@ function loadCoachHistory(){
   }catch(e){ coachMessages=[]; }
 }
 function clearCoachHistory(){
+  // Abandon any in-flight turn: only coachStop bumped the generation, so a
+  // turn still awaiting fetch would later append its reply (and run its
+  // tool calls) into the freshly cleared or intake conversation.
+  _coachGen++;
+  coachLoading=false; _runningTools=[]; _streamingTool=null;
   coachMessages=[];streamingContent='';
   lsDel('kt_coach_msgs');
   render();
@@ -10294,7 +10316,7 @@ function _confirmClearChat(){
   _ktConfirm({title:'Clear chat history?',body:'Your routine, sessions, and all logged data are kept.',confirmLabel:'Clear',onConfirm:function(){clearCoachHistory();showToast('Chat history cleared');}});
 }
 function _confirmCancelIntake(){
-  _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){intakeMode=false;clearCoachHistory();render();}});
+  _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){_setIntakeMode(false);clearCoachHistory();render();}});
 }
 
 function md(text){
@@ -10487,7 +10509,7 @@ function buildIntakeSystemPrompt(){
 }
 
 async function startRoutineIntake(){
-  intakeMode=true;
+  _setIntakeMode(true);
   // Reset to week 1 so the executor doesn't silently drop weeks before
   // currentWeek when the AI sends the freshly-generated 12.
   currentWeek=1;
@@ -10699,6 +10721,10 @@ function executeCoachTool(name,input){
       var written=[];
       var skipped=[];
       var errored=null;
+      // Ascending order so a single call carrying weeks 13-16 fills them in
+      // sequence; a week beyond length+1 would otherwise be padded with bare
+      // {wk} placeholders that render as 'undefined Block' with no lifts.
+      weeksIn=weeksIn.slice().sort(function(a,b){ return (parseInt(a&&a.wk)||0)-(parseInt(b&&b.wk)||0); });
       for(var wi=0;wi<weeksIn.length;wi++){
         var w=weeksIn[wi]||{};
         var wk=parseInt(w.wk);
@@ -10707,7 +10733,10 @@ function executeCoachTool(name,input){
         // Past weeks are history — the user has already lived them, so silently
         // drop any attempt to rewrite weeks before currentWeek.
         if(wk<currentWeek){ skipped.push(wk); continue; }
-        while(cr.weeks.length<wk) cr.weeks.push({wk:cr.weeks.length+1});
+        if(wk>cr.weeks.length+1){
+          errored='week '+wk+' would leave weeks '+(cr.weeks.length+1)+'-'+(wk-1)+' undefined — the programme has '+cr.weeks.length+' weeks; write the gap first or in the same call';
+          break;
+        }
         var weekObj={
           wk:wk,
           block:parseInt(w.block)||Math.ceil(wk/4),
@@ -10723,7 +10752,19 @@ function executeCoachTool(name,input){
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
         ['push','pull','legs','legs2','arms'].forEach(function(sk){
-          var _grp=weekObj[sk]||[];
+          // The tool schema isn't enforced by the API: drop null/nameless
+          // entries (they threw inside render() and blanked the Log tab) and
+          // coerce the basics so every stored row is renderable.
+          var _grp=(weekObj[sk]||[]).filter(function(e){
+            return e && typeof e==='object' && typeof e.name==='string' && e.name.trim();
+          });
+          _grp.forEach(function(e){
+            e.name=e.name.trim();
+            e.sets=parseInt(e.sets)||3;
+            if(e.reps==null||e.reps==='') e.reps='8-10';
+          });
+          if(sk==='legs2'||sk==='arms'){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
+          else weekObj[sk]=_grp;
           _grp.forEach(function(e,ei){
             if(e && parseFloat(e.weight)>0) e.weight=_snap25(e.weight);
             if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
@@ -11256,7 +11297,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var _cr=getCustomRoutine();
     var _complete=!!(_cr&&_cr.weeks&&_cr.weeks.length>=1&&_cr.weeks.every(function(w){return w&&w.bName;}));
     if(_complete){
-      intakeMode=false;
+      _setIntakeMode(false);
       currentWeek=1;
       lsSet('kt_week',1);
       var _n=getNextSession();
@@ -11321,7 +11362,7 @@ function confirmLoadRoutine(){
   setCustomRoutine(pendingRoutine);
   currentWeek=1;
   lsSet('kt_week',1);
-  intakeMode=false;
+  _setIntakeMode(false);
   pendingRoutine=null;
   clearCoachHistory();
   var _next=getNextSession();
@@ -11334,7 +11375,7 @@ function resetCustomRoutine(){
   _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
     clearCustomRoutine();
     currentWeek=1; lsSet('kt_week',1);
-    intakeMode=false; clearCoachHistory();
+    _setIntakeMode(false); clearCoachHistory();
     render(); showToast('Programme reset. You can generate a new one anytime.');
   }});
 }
