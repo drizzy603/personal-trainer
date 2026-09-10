@@ -90,7 +90,17 @@ echo "  shot: $OUT/boot.png"
 echo "── Watch app on the paired watch"
 boot "$WATCH"
 xcrun simctl install "$WATCH" "$WATCH_APP"
-xcrun simctl launch "$WATCH" $WATCH_ID >/dev/null; sleep 8
+xcrun simctl launch "$WATCH" $WATCH_ID >/dev/null
+# The sim bridge answers the watch's plan pull ~10-15s after launch (the
+# phone replies in ~2s; delivery is the slow half). Shooting at 8s captured
+# the previous cached plan and read as a sync failure — wait for the pull.
+for i in $(seq 1 25); do
+  sleep 1
+  if xcrun simctl spawn "$WATCH" log show --last 1m --info --predicate 'subsystem == "app.kt.trainer"' 2>/dev/null \
+     | grep -q "refresh: reply received"; then
+    echo "  watch pulled today's plan after ${i}s"; sleep 1; break
+  fi
+done
 xcrun simctl io "$WATCH" screenshot "$OUT/watch.png" >/dev/null 2>&1
 echo "  shot: $OUT/watch.png"
 

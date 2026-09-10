@@ -20,7 +20,9 @@ private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
 // comparison formatter so Buddhist/Japanese device calendars can't make
 // every plan read stale (or never stale). nil date = legacy cache, trusted.
 private func planIsStale(_ plan: WatchPlan) -> Bool {
-    guard let d = plan.date else { return false }
+    // A plan with no date was cached by an older build — it cannot be
+    // vouched for, so it is stale until a dated plan arrives.
+    guard let d = plan.date else { return true }
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
     f.dateFormat = "yyyy-MM-dd"
