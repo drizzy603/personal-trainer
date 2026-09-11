@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-10"/>
+<meta name="build" content="20260910-11"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -339,6 +339,7 @@ select option{background:var(--bg);}
   z-index:9999;transform:translateY(20px);opacity:0;
   transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 #toast.show{transform:translateY(0);opacity:1;}
+.kt-toast-undo{margin-left:12px;background:var(--accent);color:var(--on-accent);border:none;border-radius:9px;font:inherit;font-weight:800;font-size:12px;letter-spacing:.02em;padding:6px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 /* ── Empty states ────────────────────────────────────────────────────────── */
 .empty{text-align:center;padding:52px 20px;color:var(--muted);}
@@ -4040,7 +4041,20 @@ function renderTodayEditorial(){
     : '<div class="kt-hero-greet">'+getGreeting()+'.</div>';
   var line1, line2, line2Class, body;
   var deload = isDeloadWeek();
-  if(act.type === 'lift'){
+  // Once today's session is on the ledger the hero speaks in the past tense
+  // — "Today is pull day." over a finished workout read like a nag.
+  var _doneRec = (act.type === 'lift') ? getSessions().find(function(s){ return s.date === _todayKey() && s.type === act.dayName; }) : null;
+  if(act.type === 'lift' && (_doneRec || runnerJustFinishedKey === _todayKey()+'-'+act.type+'-'+(act.dayName||''))){
+    var _dl=((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'');
+    line1 = _dl.charAt(0).toUpperCase()+_dl.slice(1).toLowerCase()+' day,';
+    line2 = 'done.';
+    line2Class = 'accent';
+    var _dsets=_doneRec ? (_doneRec.exercises||[]).reduce(function(n,ex){ return n+(Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||0)); },0) : 0;
+    var _dvol=_doneRec ? Math.round(calcVolume(_doneRec.exercises||[])) : 0;
+    var _dprs=_doneRec ? (_doneRec.prs||[]).length : 0;
+    body = (_dsets ? _plural(_dsets,'set')+' logged'+(_dvol>0?' \u00b7 '+_dvol.toLocaleString()+' lb':'')+(_dprs?' \u00b7 '+_plural(_dprs,'PR'):'')+'. ' : 'Session logged. ')+
+      'Nothing left to do today but recover.';
+  } else if(act.type === 'lift'){
     line1 = 'Today is';
     line2 = ((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'').toLowerCase()+' day.';
     line2Class = 'accent';
@@ -5298,10 +5312,10 @@ function undoLastRun(){
   render();
 }
 function deleteRun(id){
-  _ktConfirm({title:'Delete this run?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
-    lsSet('kt_runs',getRuns().filter(function(r){return r.id!==id;}));
-    calSelectedDate=null; render();
-  }});
+  var gone=getRuns().find(function(r){return r.id===id;}); if(!gone) return;
+  lsSet('kt_runs',getRuns().filter(function(r){return r.id!==id;}));
+  calSelectedDate=null; render();
+  showUndoToast('Run deleted', function(){ var rs=getRuns(); rs.unshift(gone); lsSet('kt_runs',rs); render(); });
 }
 // Surgical pill-class swap — re-rendering would wipe in-progress input
 // values, so update DOM in place instead.
@@ -7930,17 +7944,17 @@ function saveRun() {
 // ── SPORTS ───────────────────────────────────────────────────────────────────
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
-  _ktConfirm({title:'Delete this activity?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
-    lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
-    calSelectedDate=null; render();
-  }});
+  var gone=getSportLogs().find(function(l){return l.id===id;}); if(!gone) return;
+  lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+  calSelectedDate=null; render();
+  showUndoToast((gone.type||'Activity')+' deleted', function(){ var ls=getSportLogs(); ls.unshift(gone); lsSet('kt_sports',ls); render(); });
 }
 function deleteSession(id){
-  _ktConfirm({title:'Delete this session?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
-    lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
-    recomputePRs();
-    calSelectedDate=null; render();
-  }});
+  var gone=getSessions().find(function(s){return s.id===id;}); if(!gone) return;
+  lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
+  recomputePRs();
+  calSelectedDate=null; render();
+  showUndoToast('Session deleted', function(){ var ss=getSessions(); ss.unshift(gone); lsSet('kt_sessions',ss); recomputePRs(); render(); });
 }
 // Rebuild kt_prs from the full session log. checkAndUpdatePRs only ever
 // raises records, so a fat-fingered 1,850 lb set used to be a PERMANENT PR
@@ -8844,9 +8858,9 @@ function renderBwSavedStrip(){
     '</div>';
 }
 function deleteBodyWeight(idx){
-  _ktConfirm({title:'Delete this weight entry?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
-    var bws=getBodyWeights();bws.splice(idx,1);lsSet('kt_bw',bws);render();
-  }});
+  var bws=getBodyWeights(); var gone=bws[idx]; if(!gone) return;
+  bws.splice(idx,1); lsSet('kt_bw',bws); render();
+  showUndoToast('Weight entry deleted', function(){ var b=getBodyWeights(); b.unshift(gone); lsSet('kt_bw',b); render(); });
 }
 function saveBWGoal(){
   var el=document.getElementById('bwGoalInput');
@@ -8869,9 +8883,9 @@ function saveMeasurement(){
   showToast('Measurements saved');render();
 }
 function deleteMeasurement(idx){
-  _ktConfirm({title:'Delete this measurement?',body:'This cannot be undone.',confirmLabel:'Delete',onConfirm:function(){
-    var ms=getMeasurements();ms.splice(idx,1);lsSet('kt_measurements',ms);render();
-  }});
+  var ms=getMeasurements(); var gone=ms[idx]; if(!gone) return;
+  ms.splice(idx,1); lsSet('kt_measurements',ms); render();
+  showUndoToast('Measurement deleted', function(){ var m=getMeasurements(); m.unshift(gone); lsSet('kt_measurements',m); render(); });
 }
 function calcBWTrend(bws){
   if(bws.length<2)return null;
@@ -10607,9 +10621,33 @@ function renderHistory() {
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 var _toastTimer=null;
+// Toast with an Undo action — the row is already gone; the strip is the
+// safety net. One live undo at a time; a new toast retires the old one.
+var _toastUndoFn=null;
+function showUndoToast(msg, onUndo){
+  var t=document.getElementById('toast');
+  if(!t)return;
+  _toastUndoFn=onUndo;
+  t.innerHTML=_esc(msg)+'<button class="kt-toast-undo" onclick="_toastUndo()">Undo</button>';
+  t.style.background='var(--card2)'; t.style.color='var(--text)';
+  t.setAttribute('aria-live','polite');
+  t.classList.add('show');
+  if(_toastTimer)clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(function(){
+    t.classList.remove('show'); _toastTimer=null; _toastUndoFn=null;
+    setTimeout(function(){ if(!_toastTimer) t.textContent=''; }, 400);
+  },6000);
+}
+function _toastUndo(){
+  var fn=_toastUndoFn; _toastUndoFn=null;
+  var t=document.getElementById('toast');
+  if(t){ t.classList.remove('show'); if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer=null; } }
+  if(fn){ try{ fn(); }catch(e){} }
+}
 function showToast(msg, style){
   var t=document.getElementById('toast');
   if(!t)return;
+  _toastUndoFn=null;
   t.textContent=msg;
   // 'pr' — gold PR-celebration variant, shown a beat longer.
   // 'err' — failures were painted in success green; red, longer, assertive.

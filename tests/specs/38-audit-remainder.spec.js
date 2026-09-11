@@ -71,3 +71,34 @@ run('coach-card buttons route: acknowledge dismisses, See pace opens Runs, AI la
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('deletes are immediate with a 6s Undo; the hero speaks in the past tense once logged', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      const before = getSessions().length, id = getSessions()[0].id;
+      deleteSession(id);
+      const afterDelete = getSessions().length;
+      const t = document.getElementById('toast');
+      const hasUndo = !!t.querySelector('.kt-toast-undo') && /deleted/.test(t.textContent);
+      _toastUndo();
+      const restored = getSessions().length;
+      const backOnTop = getSessions().some(s => s.id === id);
+      // Hero past tense: log a session for today's lift day and re-render.
+      const act = getTodayActivity();
+      let hero = null;
+      if (act.type === 'lift') {
+        const ss = getSessions(); ss.unshift({ id: Date.now(), date: todayISO(), type: act.dayName, week: currentWeek,
+          exercises: [{ name: act.exercises[0].name, sets: 3, reps: [8, 8, 8], weight: 100, weightLog: [100, 100, 100], rpe: 7 }] });
+        lsSet('kt_sessions', ss);
+        switchTab('log'); switchLogSub('workout');
+        hero = document.querySelector('.kt-hero') ? document.querySelector('.kt-hero').textContent : document.body.textContent;
+      }
+      return { before, afterDelete, hasUndo, restored, backOnTop, liftDay: act.type === 'lift', hero };
+    });
+    assert(out.afterDelete === out.before - 1 && out.hasUndo, 'delete is immediate and offers Undo');
+    assert(out.restored === out.before && out.backOnTop, 'Undo brings the session back');
+    if (out.liftDay) assert(/done\./.test(out.hero) && /Nothing left to do today/.test(out.hero), 'hero turns past tense: ' + (out.hero || '').slice(0, 160));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
