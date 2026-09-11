@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-1"/>
+<meta name="build" content="20260910-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2494,7 +2494,13 @@ function _applyImportedData(data) {
       lsDel(k);
     }
   });
+  // Device-capability opt-ins mirror native state (HealthKit write auth,
+  // background observer, notification permission) that a restore cannot
+  // establish — importing them as 'On' showed working switches that did
+  // nothing. They stay whatever THIS phone has.
+  var DEVICE_OPTIN_KEYS=['kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_autolog_runs'];
   RAW_STRING_KEYS.forEach(function(k){
+    if (DEVICE_OPTIN_KEYS.indexOf(k)>=0) return;
     if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
     // Absent raw keys: only data-ish ones are cleared. Device-capability
     // opt-ins (Health write, notifications, readiness, theme…) belong to
@@ -2622,6 +2628,15 @@ function resetHealthImport(){
     lsSet('kt_runs',kept);
     lsDel('kt_hk_imported');
     localStorage.removeItem('kt_hk_last_sync');
+    // The three toggles below are hidden until the next import — a hidden
+    // switch must not stay armed (background delivery kept waking the app,
+    // readiness kept querying sleep/HRV, with no control to reach).
+    localStorage.setItem('kt_autolog_runs','0');
+    localStorage.setItem('kt_readiness_on','0');
+    localStorage.setItem('kt_bg_sync','0');
+    lsDel('kt_readiness');
+    var _TH=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.TrovoHealth;
+    if(_TH&&_TH.setBackgroundSync) Promise.resolve(_TH.setBackgroundSync({enabled:false})).catch(function(){});
     if(removed) invalidateCoachCard();
     showToast(removed?(removed+' import'+(removed>1?'s':'')+' removed'):'Import reset');
     render();
@@ -2982,13 +2997,13 @@ function logPendingHealthRun(){
   var sid = _hkSportId(r);
   if(sid){
     var srec = _logHealthSport(r, sid);
-    sportLogConfirmed = {id: srec.id, type: sid,
+    sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
       label: sid+(srec.duration?' · '+srec.duration+' min':'')};
     showToast(sid+' logged from Apple Health');
   } else {
     var rec = _logHealthRun(r);
     if(rec){
-      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time};
+      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
       checkMilestones({delayToast:600});
     } else {
       showToast('Already logged by hand — skipped the duplicate');
@@ -5067,13 +5082,25 @@ function saveInlineRun(){
   checkMilestones({delayToast:600});
   render();
 }
+// A Health quick-log marks the workout's UUID as imported before the record
+// exists; undoing the record alone left the marker, so the workout could
+// never be offered or imported again ('Already up to date' forever).
+function _unmarkHealthUuid(uuid){
+  if(!uuid) return;
+  var imp=lsGet('kt_hk_imported');
+  if(Array.isArray(imp)) lsSet('kt_hk_imported', imp.filter(function(u){ return u!==uuid; }));
+  else if(imp && typeof imp==='object' && imp[uuid]){ delete imp[uuid]; lsSet('kt_hk_imported', imp); }
+  _hkPendingDismissed=false;
+  if(typeof checkRecentHealthRun==='function') setTimeout(checkRecentHealthRun, 300);
+}
 function undoLastRun(){
   if(!runLogConfirmed) return;
-  var id = runLogConfirmed.id;
+  var id = runLogConfirmed.id, uuid = runLogConfirmed.hkUuid;
   var runs = getRuns().filter(function(r){ return r.id !== id; });
   lsSet('kt_runs', runs);
   invalidateCoachCard();
   runLogConfirmed = null;
+  _unmarkHealthUuid(uuid);
   render();
 }
 function deleteRun(id){
@@ -7409,7 +7436,11 @@ function openProgrammeModal(){
   });
 
   var emptyHTML=!weeks.length
-    ? '<div style="padding:24px 16px;text-align:center;color:var(--lite);font-size:14px;line-height:1.6;">No programme yet — head to the AI Coach tab to build one tailored to you.</div>'
+    ? '<div style="padding:24px 16px;text-align:center;color:var(--lite);font-size:14px;line-height:1.6;">No programme yet.</div>'+
+      '<div style="text-align:center;padding:0 16px 22px;">'+
+        '<button class="btn btn-primary" style="width:auto;display:inline-block;padding:12px 24px;border-radius:12px;" onclick="closeProgrammeModal();switchTab(\'log\');openStarterIntake();">Build a starter plan →</button>'+
+        '<div style="margin-top:10px;font-size:12px;color:var(--lite);">Five taps, no key. Or set up the AI Coach for a custom programme.</div>'+
+      '</div>'
     : '';
 
   var blocksHTML=blocks.map(function(bl){
@@ -7831,9 +7862,10 @@ function saveSportLog(){
 }
 function undoLastSportLog(){
   if(!sportLogConfirmed) return;
-  var id=sportLogConfirmed.id;
+  var id=sportLogConfirmed.id, uuid=sportLogConfirmed.hkUuid;
   lsSet('kt_sports',getSportLogs().filter(function(s){return s.id!==id;}));
   sportLogConfirmed=null;
+  _unmarkHealthUuid(uuid);
   render();
 }
 function renderSportSavedStrip(){
@@ -9074,7 +9106,13 @@ function _forecastLift(pts){
   var target=Math.ceil((cur+1)/10)*10;
   var days=(target-cur)/slope;
   if(days<3||days>180) return null;
-  var d=new Date(); d.setDate(d.getDate()+Math.round(days));
+  // Project from the LAST data point, not today, and say nothing for a
+  // lift that has stopped being trained (mirrors _plateauLifts' 14-day gate)
+  // or whose projected date has already passed.
+  var last=new Date(recent[recent.length-1].date+'T00:00:00');
+  if((Date.now()-last.getTime())/86400000>14) return null;
+  var d=new Date(last); d.setDate(d.getDate()+Math.round(days));
+  if(d.getTime()<Date.now()) return null;
   return {target:target, date:d.toLocaleDateString([],{month:'short',day:'numeric'})};
 }
 function renderStrengthTrends(extraHTML){
@@ -9484,22 +9522,18 @@ function renderProgress() {
   var weeklyDistChart=weeklyDistData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Weekly distance · km</div>'+
-        '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">km this wk</span></div>'+
+        '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">'+
+          (weeklyDistData[weeklyDistData.length-1].date===getMondayISO()?'km this wk':'km · wk of '+_esc(fmtDate(weeklyDistData[weeklyDistData.length-1].date)))+'</span></div>'+
       '</div></div>'+svgChart(weeklyDistData,'var(--cyan)')+'</div>'
     :'';
 
   // 1RM calculator (Epley)
-  var bestBenchRM=0, bestSquatRM=0;
-  sessions.forEach(function(s){
-    (s.exercises||[]).forEach(function(ex){
-      var w=parseFloat(ex.weight)||0; if(!w) return;
-      var repsArr=Array.isArray(ex.reps)?ex.reps:[ex.reps];
-      var avgReps=repsArr.reduce(function(a,b){return a+(parseFloat(b)||0);},0)/(repsArr.length||1);
-      var rm=Math.round(w*(1+avgReps/30));
-      if(ex.name==='Barbell Bench Press'&&rm>bestBenchRM) bestBenchRM=rm;
-      if((ex.name==='Barbell Back Squat'||ex.name==='Back Squat')&&rm>bestSquatRM) bestSquatRM=rm;
-    });
-  });
+  // Read the memoized per-set series: the bespoke max-weight × average-reps
+  // loop disagreed with the Strength card by 10-20 lb for any ascending or
+  // top-set session and skipped legacy nested-shape sessions entirely.
+  var _rmSer=_e1rmSeries();
+  function _bestRM(names){ var b=0; names.forEach(function(nm){ (_rmSer[nm]||[]).forEach(function(pt){ if(pt.e1rm>b) b=pt.e1rm; }); }); return Math.round(b); }
+  var bestBenchRM=_bestRM(['Barbell Bench Press']), bestSquatRM=_bestRM(['Barbell Back Squat','Back Squat']);
   var rmSection=(bestBenchRM||bestSquatRM)?
     '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Est. 1RM (Epley formula)</div></div></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">'+
@@ -12374,7 +12408,7 @@ function renderSettings() {
           '<div class="settings-row-body">'+
             '<div class="settings-row-title">Training plan</div>'+
           '</div>'+
-          '<span class="settings-row-val">WEEK '+currentWeek+' OF '+totalWks+'</span>'+
+          '<span class="settings-row-val">'+(getCustomRoutine()?'WEEK '+currentWeek+' OF '+totalWks:'NOT SET')+'</span>'+
           '<span class="settings-row-chev">›</span>'+
         '</div>'+
         '<div class="settings-row" onclick="startNewProgramme()">'+
