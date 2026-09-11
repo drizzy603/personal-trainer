@@ -301,8 +301,14 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
 // MARK: - Runner state
 
 final class Runner: ObservableObject {
-    @Published var repsDone: [String: [Int]] = [:]     // exercise → logged reps per set
-    @Published var weights: [String: Double] = [:]
+    // Every mutation persists (didSet) — watchOS quietly terminates the app
+    // mid-workout (long rest, wrist down, phone call) and a 40-minute session
+    // used to come back as an empty runner. Restored in init() when < 6h old.
+    @Published var repsDone: [String: [Int]] = [:] { didSet { persist() } }     // exercise → logged reps per set
+    @Published var weights: [String: Double] = [:] { didSet { persist() } }
+    // Per-set weight, so a top-set/back-off day reaches the phone ledger as
+    // what was actually lifted, not one number for the whole exercise.
+    @Published var weightLog: [String: [Double]] = [:] { didSet { persist() } }
     @Published var resting = false
     @Published var restLeft = 90
     @Published var synced = false
@@ -312,9 +318,40 @@ final class Runner: ObservableObject {
     @Published var restEndsAt: Date? = nil
     // Chosen RPE per exercise — without it, drained wrist sessions carried
     // rpe:'' and could never earn the +5 lb progression banner.
-    var rpes: [String: Int] = [:]
+    var rpes: [String: Int] = [:] { didSet { persist() } }
     private var timer: Timer?
     private var startedAt: Double = 0   // ms since epoch, set on first logged set
+    private var restoring = false
+    private static let stateKey = "runnerState"
+
+    init() { restore() }
+
+    private func persist() {
+        if restoring { return }
+        let d = UserDefaults.standard
+        if repsDone.values.allSatisfy({ $0.isEmpty }) { d.removeObject(forKey: Self.stateKey); return }
+        let obj: [String: Any] = ["repsDone": repsDone, "weights": weights, "weightLog": weightLog,
+                                  "rpes": rpes, "startedAt": startedAt,
+                                  "savedAt": Date().timeIntervalSince1970 * 1000]
+        if let data = try? JSONSerialization.data(withJSONObject: obj) { d.set(data, forKey: Self.stateKey) }
+    }
+
+    private func restore() {
+        guard let data = UserDefaults.standard.data(forKey: Self.stateKey),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let savedAt = obj["savedAt"] as? Double,
+              Date().timeIntervalSince1970 * 1000 - savedAt < 6 * 3600 * 1000 else {
+            UserDefaults.standard.removeObject(forKey: Self.stateKey)
+            return
+        }
+        restoring = true
+        repsDone = (obj["repsDone"] as? [String: [Int]]) ?? [:]
+        weights = (obj["weights"] as? [String: Double]) ?? [:]
+        weightLog = (obj["weightLog"] as? [String: [Double]]) ?? [:]
+        rpes = (obj["rpes"] as? [String: Int]) ?? [:]
+        startedAt = (obj["startedAt"] as? Double) ?? 0
+        restoring = false
+    }
 
     func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.weight }
     func done(_ ex: WatchExercise) -> Int { repsDone[ex.name]?.count ?? 0 }
@@ -326,6 +363,10 @@ final class Runner: ObservableObject {
         if startedAt == 0 { startedAt = Date().timeIntervalSince1970 * 1000 }
         var arr = repsDone[ex.name] ?? []
         arr.append(reps)
+        var wl = weightLog[ex.name] ?? []
+        while wl.count < arr.count - 1 { wl.append(weight(for: ex)) }   // sets merged from the phone
+        wl.append(weight(for: ex))
+        weightLog[ex.name] = wl
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
         pushLive()
@@ -389,8 +430,11 @@ final class Runner: ObservableObject {
     func finish(plan: WatchPlan) {
         let exs: [[String: Any]] = plan.exercises.compactMap { ex in
             guard let reps = repsDone[ex.name], !reps.isEmpty else { return nil }
-            return ["name": ex.name, "weight": weight(for: ex), "reps": reps,
-                    "rpe": rpes[ex.name] ?? 0]
+            var wl = weightLog[ex.name] ?? []
+            while wl.count < reps.count { wl.append(weight(for: ex)) }
+            if wl.count > reps.count { wl = Array(wl.prefix(reps.count)) }
+            return ["name": ex.name, "weight": wl.max() ?? weight(for: ex), "reps": reps,
+                    "weightLog": wl, "rpe": rpes[ex.name] ?? 0]
         }
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs, startedAt: startedAt)
@@ -401,9 +445,10 @@ final class Runner: ObservableObject {
     }
 
     func reset() {
-        repsDone = [:]; weights = [:]; rpes = [:]; synced = false; resting = false
+        repsDone = [:]; weights = [:]; weightLog = [:]; rpes = [:]; synced = false; resting = false
         startedAt = 0
         timer?.invalidate()
+        UserDefaults.standard.removeObject(forKey: Self.stateKey)
     }
 
     // A new plan may have renamed or swapped exercises mid-session — rows
@@ -414,6 +459,7 @@ final class Runner: ObservableObject {
         let before = repsDone.count
         repsDone = repsDone.filter { names.contains($0.key) }
         weights = weights.filter { names.contains($0.key) }
+        weightLog = weightLog.filter { names.contains($0.key) }
         rpes = rpes.filter { names.contains($0.key) }
         if repsDone.count != before { pushLive() }
     }
@@ -430,6 +476,12 @@ final class Runner: ObservableObject {
             if arr.count > localDone {
                 repsDone[name] = arr
                 if let w = live.weights[name], w > 0 { weights[name] = w }
+                // The phone's live payload carries one weight per exercise;
+                // extend the per-set log with it for the sets we adopted.
+                var wl = weightLog[name] ?? []
+                let fill = (live.weights[name] ?? weights[name]) ?? 0
+                while wl.count < arr.count { wl.append(fill) }
+                weightLog[name] = wl
                 changed = true
             } else if localDone > arr.count {
                 localAhead = true

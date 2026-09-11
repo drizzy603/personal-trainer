@@ -8,8 +8,11 @@ run('log_run rejects unparseable times; blank sport logs are refused', async () 
   try {
     const out = await app.page.evaluate(() => {
       const before = getRuns().length;
-      const bad = executeCoachTool('log_run', { distance_km: 5, time: '25 min' });
+      const bad = executeCoachTool('log_run', { distance_km: 5, time: 'fast' });
       const good = executeCoachTool('log_run', { distance_km: 5, time: '25:00' });
+      // Human phrasing is normalised, not refused.
+      const mins = executeCoachTool('log_run', { distance_km: 5, time: '25 min' });
+      const minsTime = getRuns()[0].time;
       const runsAfter = getRuns().length;
       switchTab('log'); switchLogSub('sport');
       pickSport('Yoga');
@@ -17,11 +20,11 @@ run('log_run rejects unparseable times; blank sport logs are refused', async () 
       ['spDuration', 'spNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       saveSportLog();
       const toast = document.getElementById('toast').textContent;
-      return { badOk: bad.ok, badErr: bad.error, goodOk: good.ok, runsAdded: runsAfter - before,
+      return { badOk: bad.ok, badErr: bad.error, goodOk: good.ok, minsOk: mins.ok, minsTime, runsAdded: runsAfter - before,
         sportsAdded: getSportLogs().length - sportsBefore, toast };
     });
-    assert(out.badOk === false && /MM:SS/.test(out.badErr), '"25 min" refused: ' + out.badErr);
-    assert(out.goodOk === true && out.runsAdded === 1, 'MM:SS accepted and logged once');
+    assert(out.badOk === false && /MM:SS/.test(out.badErr), '"fast" refused: ' + out.badErr);
+    assert(out.goodOk === true && out.minsOk === true && out.minsTime === '25:00' && out.runsAdded === 2, 'MM:SS accepted; "25 min" stored as 25:00');
     assert(out.sportsAdded === 0 && /duration or a detail/.test(out.toast), 'empty sport log refused with a toast: ' + out.toast);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

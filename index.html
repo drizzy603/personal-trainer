@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-8"/>
+<meta name="build" content="20260910-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -686,6 +686,7 @@ select option{background:var(--bg);}
 
 /* Inline Log-Run form (addendum 0e) — editorial, no nested card. */
 .kt-rlog{transform-origin:top center;animation:kt-rlog-in .35s ease-out;margin-bottom:24px;}
+.kt-rlog-pace{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted);min-height:14px;margin:-4px 0 10px;}
 @keyframes kt-rlog-in{
   from{opacity:0;transform:translateY(-8px) scaleY(.96);}
   to{opacity:1;transform:translateY(0) scaleY(1);}
@@ -961,6 +962,10 @@ button:active{transform:scale(.97);}
   .kt-r-card.kt-card-in{animation:ktFadeIn 150ms ease-out;}
   .kt-rest-time.kt-final10{animation:none;}
   .kt-si-settle{animation:none;}
+  /* Gaps the block claimed to cover: run-log slide-in, confirm strips, the
+     set-logged flash, the typing dots. */
+  .kt-rlog,.kt-rconfirm,.kt-act-saved,.kt-sport-confirm,.kt-r-flash{animation:none;}
+  .typing-dot{animation:none;opacity:.6;}
   button:active{transform:none;opacity:.85;}
 }
 
@@ -5315,6 +5320,39 @@ function discardRunLog(){
   _resetRunLogDraft();
   render();
 }
+// Accepts what people actually type — 28:30, 28.30, 28 30, 28m30s, 1h02m,
+// 1:02:30, or just 28 (minutes) — and returns canonical M:SS / H:MM:SS, or
+// null when it isn't a duration at all.
+function _normRunTime(raw){
+  var t=String(raw||'').trim().toLowerCase().replace(/\s+/g,' ');
+  if(!t) return null;
+  var h=0,m=0,sec=0,x;
+  if((x=t.match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})$/))){ h=+x[1]; m=+x[2]; sec=+x[3]; }
+  else if((x=t.match(/^(\d{1,3})[:. ](\d{2})$/))){ m=+x[1]; sec=+x[2]; }
+  else if((x=t.match(/^(?:(\d{1,2})\s*h)?\s*(\d{1,3})\s*m(?:in)?s?\s*(?:(\d{1,2})\s*s(?:ec)?s?)?$/))){ h=+(x[1]||0); m=+x[2]; sec=+(x[3]||0); }
+  else if((x=t.match(/^(\d{1,2})\s*h\s*(\d{1,2})?$/))){ h=+x[1]; m=+(x[2]||0); }
+  else if((x=t.match(/^(\d{1,3})[.,](\d)$/))){ m=+x[1]; sec=Math.round(+x[2]*6); }
+  else if((x=t.match(/^(\d{1,3})$/))){ m=+x[1]; }
+  else return null;
+  if(sec>59 || m>59 && h>0) return null;
+  var total=h*3600+m*60+sec;
+  if(!(total>0) || total>24*3600) return null;
+  h=Math.floor(total/3600); m=Math.floor((total%3600)/60); sec=total%60;
+  var pad=function(n){ return (n<10?'0':'')+n; };
+  return h>0 ? h+':'+pad(m)+':'+pad(sec) : m+':'+pad(sec);
+}
+function _rlogPaceText(dist, time){
+  var d=parseFloat(dist), norm=_normRunTime(time);
+  if(!(d>0) || !norm) return '';
+  var parts=norm.split(':').map(Number), secs=parts.length===3?parts[0]*3600+parts[1]*60+parts[2]:parts[0]*60+parts[1];
+  var p=Math.round(secs/d), pad=function(n){ return (n<10?'0':'')+n; };
+  return 'PACE \u2248 '+Math.floor(p/60)+':'+pad(p%60)+' /KM'+(norm!==String(time).trim()?' \u00b7 READ AS '+norm:'');
+}
+function _rlogPacePreview(){
+  var el=document.getElementById('kt-rlog-pace'); if(!el) return;
+  var d=document.getElementById('kt-rlog-dist'), t=document.getElementById('kt-rlog-time');
+  el.textContent=_rlogPaceText(d&&d.value, t&&t.value);
+}
 function saveInlineRun(){
   _snapshotRunLogForm();
   var dist = parseFloat(runLogDraft.dist);
@@ -5323,10 +5361,12 @@ function saveInlineRun(){
     showToast('Enter distance and time');
     return;
   }
-  if(!/^\d{1,2}:\d{2}(:\d{2})?$/.test(time)){
-    showToast('Time format: mm:ss (e.g. 28:30)');
+  var _norm=_normRunTime(time);
+  if(!_norm){
+    showToast('Time reads like 28:30 (or 1:02:30, 28m30s)','err');
     return;
   }
+  time=_norm;
   var hr = parseInt(runLogDraft.hr) || 0;
   var date = (runLogDraft.date||'').trim() || todayISO();
   var note = (runLogDraft.note||'').trim();
@@ -5410,10 +5450,11 @@ function renderInlineRunLog(){
     '</div>'+
     '<div class="kt-rlog-row">'+
       '<div><label class="kt-rlog-field-lbl">DISTANCE · KM</label>'+
-        '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0" value="'+_esc(d.dist)+'"'+sync+'dist=this.value"/></div>'+
+        '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0" value="'+_esc(d.dist)+'"'+sync+'dist=this.value;_rlogPacePreview()"/></div>'+
       '<div><label class="kt-rlog-field-lbl">TIME · MM:SS</label>'+
-        '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="text" placeholder="28:30" value="'+_esc(d.time)+'"'+sync+'time=this.value"/></div>'+
+        '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="text" placeholder="28:30" value="'+_esc(d.time)+'"'+sync+'time=this.value;_rlogPacePreview()"/></div>'+
     '</div>'+
+    '<div id="kt-rlog-pace" class="kt-rlog-pace">'+_esc(_rlogPaceText(d.dist,d.time))+'</div>'+
     '<div class="kt-rlog-row">'+
       '<div><label class="kt-rlog-field-lbl">AVG HR · BPM</label>'+
         '<input id="kt-rlog-hr" class="kt-rlog-input small" type="number" inputmode="numeric" min="0" max="220" placeholder="148" value="'+_esc(d.hr)+'"'+sync+'hr=this.value"/></div>'+
@@ -11371,7 +11412,9 @@ function executeCoachTool(name,input){
       if(!(rkm>0)) return {ok:false,error:'distance_km must be > 0'};
       var rtime=String(input.time||'').trim();
       if(!rtime) return {ok:false,error:'time required as MM:SS'};
-      if(!/^\d{1,2}:\d{2}(:\d{2})?$/.test(rtime)) return {ok:false,error:'time must be MM:SS or H:MM:SS (got "'+rtime+'")'};
+      var _rn=_normRunTime(rtime);
+      if(!_rn) return {ok:false,error:'time must be MM:SS or H:MM:SS (got "'+rtime+'")'};
+      rtime=_rn;
       var rdate=String(input.date||'').trim()||todayISO();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(rdate)) rdate=todayISO();
       var rtype=input.type||'easy';
@@ -14464,8 +14507,13 @@ function drainWatchSessions(){
       var exsOut=s.exercises.map(function(ex){
         var reps=(ex.reps||[]).map(function(r){ return parseInt(r)||0; });
         var w=parseFloat(ex.weight)||0;
+        // Newer watch builds send per-set weights; older ones one number.
+        var wl=(Array.isArray(ex.weightLog)&&ex.weightLog.length===reps.length)
+          ? ex.weightLog.map(function(x){ return parseFloat(x)||w; })
+          : reps.map(function(){ return w; });
+        if(wl.length) w=Math.max.apply(null, wl.concat([w]));
         return { name:String(ex.name), isMain:!!mainByName[ex.name], sets:reps.length,
-          reps:reps, weight:w, weightLog:reps.map(function(){ return w; }),
+          reps:reps, weight:w, weightLog:wl,
           rpe:(parseFloat(ex.rpe)>0?parseFloat(ex.rpe):'') };
       }).filter(function(ex){ return ex.sets>0; });
       if(!exsOut.length) return;

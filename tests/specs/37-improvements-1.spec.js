@@ -124,3 +124,22 @@ run('the dock is exactly --tab-h tall, so every clearance built from the token i
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('run times are read forgivingly and the form previews pace', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => ({
+      a: _normRunTime('28:30'), b: _normRunTime('28.30'), c: _normRunTime('28 30'), d: _normRunTime('28m30s'),
+      e: _normRunTime('1h02m'), f: _normRunTime('1:02:30'), g: _normRunTime('28'), h: _normRunTime('28.5'),
+      bad1: _normRunTime('fast'), bad2: _normRunTime('28:75'),
+      pace: _rlogPaceText('5', '25:00'), paceRead: _rlogPaceText('10', '50'),
+    }));
+    assert(out.a === '28:30' && out.b === '28:30' && out.c === '28:30' && out.d === '28:30', 'mm:ss variants normalise: ' + JSON.stringify(out));
+    assert(out.e === '1:02:00' && out.f === '1:02:30', 'hours forms normalise');
+    assert(out.g === '28:00' && out.h === '28:30', 'bare minutes and decimal minutes');
+    assert(out.bad1 === null && out.bad2 === null, 'garbage and 75 seconds rejected');
+    assert(/5:00 \/KM/.test(out.pace), 'pace preview: ' + out.pace);
+    assert(/5:00 \/KM .* READ AS 50:00/.test(out.paceRead), 'preview says how a bare number was read: ' + out.paceRead);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
