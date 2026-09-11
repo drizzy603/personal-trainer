@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260909-2"/>
+<meta name="build" content="20260910-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1941,7 +1941,7 @@ function restoreArchivedRoutine(id){
     archiveCurrentRoutine();
     setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
     setCustomRoutine(entry.routine);
-    currentWeek=1; lsSet('kt_week',1);
+    _setWeek(1);
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();
   }});
@@ -1956,7 +1956,7 @@ function startNewProgramme(){
   _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
     archiveCurrentRoutine();
     clearCustomRoutine();
-    currentWeek=1; lsSet('kt_week',1);
+    _setWeek(1);
     _setIntakeMode(false);
     clearCoachHistory();
     switchTab('coach'); render();
@@ -3067,6 +3067,13 @@ function switchTab(tab) {
 }
 
 function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.weeks.length:12; }
+// Every path that sets the programme week re-anchors the Monday: a stale
+// anchor (frozen while the previous plan sat on its last week) made
+// autoAdvanceWeek leap a freshly restored/built plan forward by weeks.
+function _setWeek(n){
+  currentWeek=n; lsSet('kt_week',n);
+  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+}
 function adjustWeek(delta) {
   currentWeek = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
   lsSet('kt_week', currentWeek);
@@ -3082,9 +3089,15 @@ function _mostRecentMonday(){
 }
 function autoAdvanceWeek(){
   var total=getTotalWeeks();
-  if(!total||currentWeek>=total) return;
   var stored=localStorage.getItem('kt_week_monday');
   var thisMonday=_mostRecentMonday();
+  if(!total||currentWeek>=total){
+    // Parked on the final week: nothing to advance, but the anchor must
+    // still follow the calendar — a frozen anchor made the next restore,
+    // rebuild or extension jump forward by every week spent parked here.
+    localStorage.setItem('kt_week_monday',thisMonday);
+    return;
+  }
   if(!stored){ localStorage.setItem('kt_week_monday',thisMonday); return; }
   if(stored===thisMonday) return;
   var d1=new Date(stored+'T00:00:00'), d2=new Date(thisMonday+'T00:00:00');
@@ -6950,7 +6963,7 @@ function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
   if(getCustomRoutine()) archiveCurrentRoutine();
   setCustomRoutine(r);
-  currentWeek=1; lsSet('kt_week',1);
+  _setWeek(1);
   localStorage.setItem('kt_week_monday', _mostRecentMonday());
   invalidateCoachCard();
   closeStarterIntake();
@@ -10820,7 +10833,12 @@ function executeCoachTool(name,input){
       if(written.length||planSupplied) setCustomRoutine(cr);
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
-        return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-12 can be changed.',skipped:skipped};
+        if(planSupplied){
+          // The cadence WAS written above — reporting failure told the model
+          // (and the user) nothing changed while the Log tab already showed it.
+          return {ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone.',weeks:[],skipped:skipped};
+        }
+        return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-'+getTotalWeeks()+' can be changed.',skipped:skipped};
       }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
@@ -10857,6 +10875,12 @@ function executeCoachTool(name,input){
         // Also re-align runs/sports on every week so planning data follows
         // the activity, not the day, across the whole programme.
         (crG.weeks||[]).forEach(function(w){
+          // A week carrying its own cadence keeps it — but swapped, or the
+          // moved run/sport data lands on a day the override still calls
+          // something else and shows as a plan with no distance.
+          if(w && Array.isArray(w.weekPlan) && w.weekPlan.length===7){
+            var _tw=w.weekPlan[dowA]; w.weekPlan[dowA]=w.weekPlan[dowB]; w.weekPlan[dowB]=_tw;
+          }
           ['runs','sports'].forEach(function(field){
             if(!w||!w[field]||typeof w[field]!=='object') return;
             var nameA=DOW_NAMES[dowA], nameB=DOW_NAMES[dowB];
@@ -11330,7 +11354,7 @@ function toolCallLabel(tc){
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
-  if(n==='set_exercise_weight') return i.name+' → '+i.weight+' lb';
+  if(n==='set_exercise_weight') return i.name+' → '+_snap25(i.weight)+' lb';
   if(n==='set_bench_goal') return 'Bench goal '+i.weight+' lb';
   if(n==='set_squat_goal') return 'Squat goal '+i.weight+' lb';
   if(n==='set_run_goal') return 'Pace goal '+i.pace+'/km';
@@ -11352,7 +11376,7 @@ function restoreRoutineBackup(){
     setCustomRoutine(b);
     if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
     var total=(b.weeks||[]).length||1;
-    if(currentWeek<1||currentWeek>total){ currentWeek=1; lsSet('kt_week',1); }
+    if(currentWeek<1||currentWeek>total){ _setWeek(1); }
     showToast('Previous programme restored'); render();
   }});
 }
@@ -11374,7 +11398,7 @@ function confirmLoadRoutine(){
 function resetCustomRoutine(){
   _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
     clearCustomRoutine();
-    currentWeek=1; lsSet('kt_week',1);
+    _setWeek(1);
     _setIntakeMode(false); clearCoachHistory();
     render(); showToast('Programme reset. You can generate a new one anytime.');
   }});
@@ -13763,7 +13787,7 @@ function _syncReminders(){
     var at=new Date(d.date+'T09:00:00');
     if(at.getTime() <= Date.now()) continue;
     toSched.push({ id:9101+j,
-      title:'Today is '+String(d.type).toLowerCase()+' day',
+      title:'Today is '+(((SESS[d.type]&&SESS[d.type].label)||String(d.type))).toLowerCase()+' day',
       body: d.lifts>0 ? d.lifts+' lifts planned · ~'+(d.lifts*8)+' min' : 'Time to move.',
       schedule:{ at: at }, sound:'default' });
   }
@@ -14040,14 +14064,14 @@ function _autoBackupIfDue(){
   if(localStorage.getItem('kt_last_autobackup')===todayISO()
      && localStorage.getItem('kt_last_autobackup_hash')===hash) return;
   var dow=['mon','tue','wed','thu','fri','sat','sun'][(new Date().getDay()+6)%7];
-  FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
+  return FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
     .then(function(){ return FS.writeFile({path:'Supero/auto-backup-'+dow+'.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
     .then(function(){
       localStorage.setItem('kt_last_autobackup', todayISO());
       localStorage.setItem('kt_last_autobackup_hash', hash);
       _backupToICloud(payload, dow);
     })
-    .catch(function(){});
+    .catch(function(e){ throw e; });
 }
 // djb2 over the backup payload — collision risk is irrelevant here (worst
 // case: one redundant file write).
@@ -14072,9 +14096,12 @@ function runAutoBackupNow(){
   if(!FS){ showToast('Available in the iOS app'); return; }
   localStorage.removeItem('kt_last_autobackup');
   localStorage.removeItem('kt_last_autobackup_hash');
-  _autoBackupIfDue();
-  showToast('Backed up to Files → Supero');
-  setTimeout(render, 400);
+  // Toast on the RESULT — the old success toast fired before (and regardless
+  // of) the write, so a failed write still read 'Backed up'.
+  var pr=_autoBackupIfDue();
+  if(!pr || typeof pr.then!=='function'){ showToast('Backup failed — use Export session log'); return; }
+  pr.then(function(){ showToast('Backed up to Files → Supero'); render(); })
+    .catch(function(){ showToast('Backup failed — use Export session log'); render(); });
 }
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
