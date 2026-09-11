@@ -86,8 +86,17 @@ run('Heavyweight room: scoped by attribute, poster type, two colours, reversible
         ctaBg: (function(){ const c = document.querySelector('.kt-cta') || document.querySelector('.log-subtab.active'); return c ? getComputedStyle(c).backgroundColor : null; })(),
         stored: localStorage.getItem('kt_theme'),
       };
+      switchTab('settings');
+      const pill = document.querySelector('.kt-rest-pill:not(.on)'), on = document.querySelector('.kt-rest-pill.on'), chip = document.querySelector('.kt-day-chip:not(.rest)');
+      hw.pillBg = pill ? getComputedStyle(pill).backgroundColor : null;
+      hw.onBg = on ? getComputedStyle(on).backgroundColor : null;
+      hw.chipBg = chip ? getComputedStyle(chip).backgroundColor : null;
+      hw.chipInk = chip ? getComputedStyle(chip.querySelector('.kt-day-chip-t')).color : null;
       applyTheme('dark');
-      const back = {
+      const dpill = document.querySelector('.kt-rest-pill:not(.on)');
+      const darkPillBg = dpill ? getComputedStyle(dpill).backgroundColor : null;
+      switchTab('log');
+      const back = { darkPillBg,
         room: document.documentElement.getAttribute('data-room'),
         earned: getComputedStyle(document.documentElement).getPropertyValue('--earned').trim(),
         heroFont: hero ? getComputedStyle(document.querySelector('.kt-hero-headline')).fontFamily : '',
@@ -101,6 +110,9 @@ run('Heavyweight room: scoped by attribute, poster type, two colours, reversible
     assert(/Archivo/.test(out.hw.bodyFont), 'body is Archivo');
     assert(out.hw.tabsLeft === 0 && out.hw.tabsBottom === 0, 'tab bar is fixed full-width at the bottom');
     assert(out.hw.ctaBg === 'rgb(10, 67, 245)', 'the action surface is blue: ' + out.hw.ctaBg);
+    assert(out.hw.pillBg === 'rgb(255, 255, 255)' && out.hw.onBg === 'rgb(10, 67, 245)', 'rest pills: white on hairline, selected solid blue (' + out.hw.pillBg + ' / ' + out.hw.onBg + ')');
+    assert(out.hw.chipBg === 'rgb(255, 255, 255)' && out.hw.chipInk === 'rgb(15, 15, 15)', 'day chips lose their tinted wash: ' + out.hw.chipBg + ' / ' + out.hw.chipInk);
+    assert(out.back.darkPillBg === 'rgb(26, 33, 28)', 'dark room keeps its card2 pills: ' + out.back.darkPillBg);
     assert(out.back.room === 'dark' && out.back.earned === '#d8ff63' && !/Anton/.test(out.back.heroFont) && out.back.tabsLeft > 0, 'switching back removes every room rule');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
