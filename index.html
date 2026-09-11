@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-5"/>
+<meta name="build" content="20260910-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
   padding:10px 4px;background:none;border:none;border-radius:18px;
   color:var(--muted);cursor:pointer;font-size:10px;font-weight:500;
   -webkit-tap-highlight-color:transparent;transition:all .2s;font-family:inherit;}
-.tab:focus,.tab:focus-visible{outline:none;}
+.tab:focus:not(:focus-visible){outline:none;}
 .tab.active{background:var(--card2);color:var(--accent-ink);}
 .tab svg{width:20px;height:20px;}
 
@@ -1008,7 +1008,7 @@ button:active{transform:scale(.97);}
 .kt-lr-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:600;opacity:.55;letter-spacing:.06em;flex-shrink:0;}
 .kt-lr-val{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;font-weight:600;opacity:.8;}
 .kt-lr.gold .kt-lr-idx,.kt-lr.gold .kt-lr-val{color:var(--yellow);opacity:1;font-weight:700;}
-.kt-lr-act{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.04em;color:inherit;opacity:.45;cursor:pointer;padding:4px 0 4px 12px;-webkit-tap-highlight-color:transparent;}
+.kt-lr-act{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.04em;color:inherit;opacity:.45;cursor:pointer;min-height:44px;padding:0 0 0 14px;display:inline-flex;align-items:center;margin:-11px 0;-webkit-tap-highlight-color:transparent;}
 /* Inside the fixed-height card bodies a tall ledger shrinks and scrolls so
    the steppers, wells and CTA can never be pushed off (small screens,
    five-set lifts). Idle keeps natural height. */
@@ -1261,7 +1261,7 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings
   </button>
 </nav>
-<div id="toast">Copied!</div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="runner-root" style="display:none;"></div>
 <div id="runner-seal" style="display:none;position:fixed;bottom:0;left:0;right:0;height:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:var(--bg);z-index:49;pointer-events:none;"></div>
 <script>
@@ -1295,12 +1295,14 @@ function checkForLiveUpdate(){
       try{
         localStorage.setItem('kt_cached_html', html);
         localStorage.setItem('kt_cached_build', liveBuild);
+        localStorage.removeItem('kt_cached_err');
       }catch(e){
         try{
           localStorage.removeItem('kt_cached_html');
           localStorage.setItem('kt_cached_html', html);
           localStorage.setItem('kt_cached_build', liveBuild);
-        }catch(e2){}
+          localStorage.removeItem('kt_cached_err');
+        }catch(e2){ try{ localStorage.setItem('kt_cached_err','quota'); }catch(e3){} }
       }
     }
   }).catch(function(){});
@@ -1385,6 +1387,7 @@ var _runnerPrBeat     = null;       // {ex, setIdx, w, r, best, at} or null
 // M-07 tracker: the exercise index painted last, so the deck can tell a real
 // card advance from a same-card state repaint. null = runner not on screen.
 var _lastPaintExIdx   = null;
+var _lastRunnerSig    = '';         // state signature of the last runner paint
 // Pending exercise-complete auto-advance; cleared when a ledger edit opens.
 var _runnerAdvanceTO  = null;
 // R1·E wrist-mirror: set when wrist sets merge into the open runner while
@@ -1864,6 +1867,10 @@ function lsDel(k) { if(k==='kt_sessions'||k==='kt_bw') _logsVersion++; delete _l
 // was saved. We now route real save failures to a toast so the user knows
 // to export and prune. The cached-HTML key never warns (it's allowed to fail).
 var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1};
+// Set by every lsSet (and the chat writer); cleared after a successful
+// auto-backup. Stops the whole history being stringified + hashed after
+// every render and every runner keystroke.
+var _backupDirty = true;
 // Newest-first is a real invariant on the training logs: charts take
 // slice(0,N), "last session" hints scan from the front, and the plateau
 // engine trusts order. Backdated logs, calendar date-moves, and old
@@ -1886,13 +1893,22 @@ function lsSet(k,v) {
   if(k==='kt_sessions' || k==='kt_bw') _logsVersion++;
   var _hadPrev=(k in _lsCache), _prev=_lsCache[k];
   _lsCache[k] = v;
+  _backupDirty = true;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
+    // User data outranks the OTA page cache (~1.7MB of the same quota):
+    // evict it and retry once before giving up.
+    if(!_LS_SILENT_KEYS[k]){
+      try{
+        localStorage.removeItem('kt_cached_html'); localStorage.removeItem('kt_cached_build');
+        localStorage.setItem(k,JSON.stringify(v)); return true;
+      }catch(e2){}
+    }
     // Roll the cache back: caching before the write meant a quota failure
     // left the unsaved value as the in-session truth (phantom save).
     if(_hadPrev) _lsCache[k]=_prev; else delete _lsCache[k];
     if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
-      try{ showToast('Couldn\'t save — storage full. Export your data.'); }catch(_){}
+      try{ showToast('Couldn\'t save — storage full. Export your data.','err'); }catch(_){}
     }
     return false;
   }
@@ -1972,7 +1988,7 @@ function closeRoutineArchiveModal(){
 function restoreArchivedRoutine(id){
   var arr=getRoutineArchive();
   var entry=arr.find(function(e){return e.id===id;});
-  if(!entry){showToast('Programme not found');return;}
+  if(!entry){showToast('Programme not found','err');return;}
   _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     archiveCurrentRoutine();
     setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
@@ -2273,6 +2289,14 @@ function getProgressHero(){
   return pick;
 }
 
+// Every logged training day — lifts, runs, sports. A run-heavy week is a
+// training week; the streak used to break on it.
+function _trainingDays(){
+  var out=getSessions().slice();
+  getRuns().forEach(function(r){ if(r&&r.date) out.push({date:r.date}); });
+  getSportLogs().forEach(function(x){ if(x&&x.date) out.push({date:x.date}); });
+  return out;
+}
 function calcStreak(sessions) {
   // Weeks are keyed by their Monday's local date (same grammar as the
   // volume buckets). The old year+week-number key split the week spanning
@@ -2328,7 +2352,42 @@ function buildBackupJSON() {
   RAW_STRING_KEYS.forEach(function(k){
     var v = localStorage.getItem(k); if (v) data[k] = v;
   });
+  // Manifest: which app/build wrote this and when — shown in the restore
+  // confirm so a two-year-old file is recognised before it wipes today.
+  data._manifest = { app:'Supero', build:APP_BUILD, exportedAt:new Date().toISOString(),
+    device:isNativeIOS()?'ios':'web',
+    counts:{ sessions:(data.kt_sessions||[]).length, runs:(data.kt_runs||[]).length, sports:(data.kt_sports||[]).length } };
   return data;
+}
+// Undo the last restore: swap back the snapshot _applyImportedData kept.
+function _undoLastRestore(){
+  var snap=null; try{ snap=JSON.parse(localStorage.getItem('kt_pre_restore')||'null'); }catch(e){}
+  if(!snap||!snap.data){ showToast('Nothing to undo','err'); return; }
+  var sess=(snap.data.kt_sessions||[]).length, runs=(snap.data.kt_runs||[]).length;
+  _ktConfirm({title:'Undo the last restore?',
+    body:'Brings back '+_plural(sess,'session')+' and '+_plural(runs,'run')+' from '+fmtDate(_ymdLocal(new Date(snap.at)))+', replacing what the restore put here.',
+    confirmLabel:'Undo restore', confirmStyle:'var(--accent)',
+    onConfirm:function(){ _applyImportedData(snap.data); try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} }});
+}
+// 38/56 — storage meter. localStorage is ~5 MB in WKWebView and the app used
+// to discover the ceiling only when a save failed.
+function _storageBytes(){
+  var total=0, cache=0, chat=0;
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i), v=localStorage.getItem(k)||'';
+      var b=(k.length+v.length)*2;
+      total+=b;
+      if(k==='kt_cached_html') cache+=b;
+      else if(k==='kt_coach_msgs'||k==='kt_coach_card') chat+=b;
+    }
+  }catch(e){}
+  return {total:total, cache:cache, chat:chat, data:Math.max(0,total-cache-chat)};
+}
+function _fmtMB(b){ return b>=1048576 ? (Math.round(b/104857.6)/10)+' MB' : Math.max(1,Math.round(b/1024))+' KB'; }
+function _showStorageBreakdown(){
+  var st=_storageBytes();
+  showToast('Training data '+_fmtMB(st.data)+' · Chat '+_fmtMB(st.chat)+' · Page cache '+_fmtMB(st.cache));
 }
 function exportData() {
   var data = buildBackupJSON();
@@ -2491,13 +2550,15 @@ function importData() {
     reader.onload = function(ev) {
       var data;
       try { data = JSON.parse(ev.target.result); }
-      catch(err) { showToast('Import failed — invalid file'); return; }
+      catch(err) { showToast('Import failed — invalid file','err'); return; }
       var known = BACKUP_KEYS.concat(RAW_STRING_KEYS).filter(function(k){ return data[k] !== undefined; });
-      if (!known.length) { showToast('Import failed — not a Supero backup'); return; }
+      if (!known.length) { showToast('Import failed — not a Supero backup','err'); return; }
       var sess = (data.kt_sessions || []).length;
       var runs = (data.kt_runs || []).length;
+      var m = data._manifest && typeof data._manifest==='object' ? data._manifest : null;
+      var origin = m && m.exportedAt ? ' Exported '+fmtDate(String(m.exportedAt).slice(0,10))+(m.build?' · build '+m.build:'')+'.' : '';
       _ktConfirm({title:'Restore this backup?',
-        body:sess+' sessions and '+runs+' runs will replace the data currently on this phone. This cannot be undone.',
+        body:sess+' sessions and '+runs+' runs will replace the data currently on this phone.'+origin+' You can undo this from Settings for 7 days.',
         confirmLabel:'Restore', confirmStyle:'var(--accent)',
         onConfirm:function(){ _applyImportedData(data); }});
     };
@@ -2517,6 +2578,12 @@ function _backupValueOk(k, v){
   return true;
 }
 function _applyImportedData(data) {
+  // Safety net: the restore REPLACES everything, so keep what was here for a
+  // week. Settings → Data shows "Undo last restore" while it exists.
+  try{
+    var _snap=buildBackupJSON(); delete _snap._manifest;
+    if(Object.keys(_snap).length) localStorage.setItem('kt_pre_restore', JSON.stringify({at:Date.now(), data:_snap}));
+  }catch(e){}
   var count = 0, dropped = [];
   BACKUP_KEYS.forEach(function(k){
     if (data[k] !== undefined) {
@@ -2583,14 +2650,19 @@ function importFromHealth(){
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH){ showToast('Available in the iOS app only'); return; }
   Promise.resolve(TH.isAvailable()).then(function(r){
-    if(!r||!r.available){ showToast('Apple Health not available on this device'); return null; }
+    if(!r||!r.available){ showToast('Apple Health not available on this device','err'); return null; }
     return TH.requestAuth();
   }).then(function(authRes){
     if(authRes==null) return null;
     // requestAuth resolves whether or not the user granted — Apple deliberately
     // doesn't tell apps whether read access was approved. We just attempt the
     // fetch; if denied, it returns an empty array.
+    // Overlap the cursor by 72h: workouts whose START precedes the cursor
+    // but which reach HealthKit later (Watch out of range, Garmin/Strava
+    // sync) were skipped forever. kt_hk_imported dedups by UUID, so the
+    // overlap is free.
     var sinceMs = parseInt(localStorage.getItem('kt_hk_last_sync'))||0;
+    if(sinceMs>0) sinceMs=Math.max(0, sinceMs-72*3600*1000);
     return TH.fetchRuns({sinceMs:sinceMs});
   }).then(function(res){
     if(res==null) return;
@@ -2875,7 +2947,7 @@ function toggleReadiness(){
     showToast('Readiness on — score appears each morning');
     refreshReadiness();
     render();
-  }).catch(function(){ showToast('Apple Health access failed'); });
+  }).catch(function(){ showToast('Apple Health access failed','err'); });
 }
 function _readinessChip(){
   // Slot-system chip (screen 04): score + zone on the strip; tapping opens
@@ -2969,7 +3041,7 @@ function _streakChip(){
     return '<span class="kt-streak-chip" style="border-color:color-mix(in srgb,var(--yellow) 45%,transparent);">'+
       '<span class="lbl'+_m10Once('chip-streak-'+goldMs.step)+'" style="color:var(--yellow);">◆ '+goldMs.step+'-DAY STREAK</span></span>';
   }
-  var s = calcStreak(getSessions());
+  var s = calcStreak(_trainingDays());
   if(!(s >= 1)) return '';
   return '<span class="kt-streak-chip"><span class="lbl">'+s+'-WEEK STREAK</span></span>';
 }
@@ -3002,11 +3074,18 @@ function toggleHealthWrite(){
   }
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.requestWriteAuth){ showToast('Update Supero from TestFlight first'); return; }
-  TH.requestWriteAuth().then(function(){
+  TH.requestWriteAuth().then(function(r){
+    // Older shells resolve with no granted flag (the sheet was shown, that's
+    // all they knew); newer ones report the real sharing status.
+    if(r && r.granted===false){
+      showToast('Apple Health declined \u2014 allow Workouts under Health \u203a Sharing \u203a Apps \u203a Supero','err');
+      render();
+      return;
+    }
     localStorage.setItem('kt_health_write','1');
     showToast('Finished lifts will be saved to Apple Health');
     render();
-  }).catch(function(){ showToast('Apple Health access failed'); });
+  }).catch(function(){ showToast('Apple Health access failed','err'); });
 }
 // ── Background Watch sync (Level 2) ──────────────────────────────────────────
 // HealthKit background delivery wakes the app when a workout lands; the native
@@ -3110,7 +3189,9 @@ function switchTab(tab) {
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
-    t.classList.toggle('active', t.getAttribute('data-tab')===tab);
+    var _sel=t.getAttribute('data-tab')===tab;
+    t.classList.toggle('active', _sel);
+    if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
   });
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
   render();
@@ -3220,6 +3301,17 @@ function render() {
       focus:document.activeElement===_ci };
   }
   var screen = document.getElementById('screen');
+  // Snapshot every typed-but-unsaved form value in #screen (body weight,
+  // measurements, sport wells…) — async renders (watch drain, Health auto-
+  // log, coach card) wiped them mid-typing. Restored after the paint only
+  // where the fresh markup left the field empty.
+  var _formSnap={}, _formFocus=null, _formSel=null;
+  screen.querySelectorAll('input[id],textarea[id]').forEach(function(el){
+    if(el.type==='checkbox'||el.type==='radio'||el.type==='hidden'||el.type==='file') return;
+    if(el.id==='coach-input'||el.id.indexOf('kt-rlog-')===0) return;   // already handled
+    if(el.value!=='' && el.value!==el.defaultValue) _formSnap[el.id]=el.value;
+    if(document.activeElement===el){ _formFocus=el.id; try{ _formSel=[el.selectionStart,el.selectionEnd]; }catch(e){} }
+  });
   // Only reset scroll on an actual nav change (tab or log sub-tab). In-tab
   // re-renders (saving a set, dismissing the coach card, ticking a goal)
   // preserve scroll position so the user doesn't snap to the top mid-task.
@@ -3229,9 +3321,19 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); paintRunner(); return; }
+  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); _scheduleNativeSync(); paintRunner(); return; }
   _tabEnterMotion(screen, routeChanged);
   _m05Pass(screen);
+  if(!routeChanged){
+    Object.keys(_formSnap).forEach(function(id){
+      var el=document.getElementById(id);
+      if(el && el.value==='') el.value=_formSnap[id];
+    });
+    if(_formFocus){
+      var fe=document.getElementById(_formFocus);
+      if(fe){ fe.focus(); if(_formSel){ try{ fe.setSelectionRange(_formSel[0],_formSel[1]); }catch(e){} } }
+    }
+  }
   // First successful paint disarms the OTA one-strike breaker: this page
   // (bundled or swapped-in live) provably boots.
   if(!_otaConfirmed){ _otaConfirmed=true; try{ localStorage.removeItem('kt_ota_attempt'); }catch(e){} }
@@ -3679,6 +3781,20 @@ function getTodayActivity(){
 // Two storage shapes coexist: the top-level {weight, reps:[…]} written by
 // the deck runner, and an older {sets:[{weight,reps,rpe}…]} shape used by
 // the screenshot seed and pre-runner imports. Normalize both.
+// The record's `weight` is the session max; pair it with the reps of the set
+// that actually lifted it (top-set/back-off days used to read '175 × 8').
+function _lastPair(l){
+  if(!l) return null;
+  var reps=Array.isArray(l.reps)?l.reps:[l.reps];
+  var w=parseFloat(l.weight)||0, r=reps[0];
+  var wl=Array.isArray(l.weightLog)?l.weightLog:null;
+  if(wl && wl.length===reps.length && wl.length){
+    var bi=0;
+    for(var i=1;i<wl.length;i++){ if((parseFloat(wl[i])||0)>(parseFloat(wl[bi])||0)) bi=i; }
+    w=parseFloat(wl[bi])||w; r=reps[bi];
+  }
+  return {w:w, r:r};
+}
 function getLastSessionData(exName){
   var sessions = getSessions();
   for(var i=0;i<sessions.length;i++){
@@ -4063,17 +4179,9 @@ function renderTodayEditorial(){
       var _sets=(_ts.exercises||[]).reduce(function(n,ex){
         return n+(Array.isArray(ex.sets)?ex.sets.length:(ex.sets||0));
       },0);
-      var _vol=(_ts.exercises||[]).reduce(function(n,ex){
-        if(Array.isArray(ex.sets)){
-          return n+ex.sets.reduce(function(a,st){
-            return a+(parseInt(st&&st.reps)||0)*(parseFloat(st&&st.weight)||0);
-          },0);
-        }
-        var w=parseFloat(ex.weight)||0; if(!w) return n;
-        var ra=Array.isArray(ex.reps)?ex.reps:[ex.reps];
-        var ravg=ra.reduce(function(a,b){return a+(parseInt(b)||0);},0)/(ra.length||1);
-        return n+(ex.sets||0)*ravg*w;
-      },0);
+      // Same formula as history/Progress (per-set weightLog, bodyweight
+      // effective load) — the tile used to disagree with the ledger row.
+      var _vol=calcVolume(_ts.exercises||[]);
       var _prc=(_ts.prs||[]).length;
       var _sl=(SESS[_ts.type]||{label:_ts.type}).label;
       // Completion summary as a hairline stat band (screen 09) — the PR cell
@@ -4131,7 +4239,7 @@ function renderTodayEditorial(){
     cta = '<button class="kt-cta" onclick="openDeckRunner()">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">'+_esc((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName)+' · '+act.exercises.length+' exercises</div>'+
+        '<div class="kt-cta-title">'+_esc((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName)+' · '+_plural(act.exercises.length,'exercise')+'</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
@@ -4349,7 +4457,7 @@ function renderTodayEditorial(){
   // Dismiss retires it for the week.
   var weekWrapCard='';
   if(_weekWrapDue()){
-    var _ww=_weekStats();
+    var _ww=_weekStats(_wwDueMon, _wwDueWeek);
     _wwSnap=_ww;   // taps stamp/share THIS week even across midnight
     var _wwNum=['Zero','One','Two','Three','Four','Five','Six','Seven'];
     var _wwLine1=(_ww.planned>0 && _ww.count===_ww.planned && _ww.count<=7)
@@ -4366,7 +4474,7 @@ function renderTodayEditorial(){
     }).join('');
     weekWrapCard='<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
-        '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">WEEK '+currentWeek+' · WRAPPED</span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">WEEK '+_ww.weekNo+' · WRAPPED</span>'+
         '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SUPERO</span>'+
       '</div>'+
       '<div style="font-size:28px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin-top:12px;">'+_wwLine1+(_wwLine2?'<br>'+_wwLine2:'')+'</div>'+
@@ -4388,6 +4496,7 @@ function renderTodayEditorial(){
   // Live wrist mirror — the watch streams per-set state while its runner is
   // going; this is the most current thing happening, so it outranks resume.
   var watchLiveBanner='';
+  if(_watchLive && (Date.now()-(_watchLive.at||0))>6*3600*1000) _watchLive=null;   // abandoned wrist session
   if(_watchLive && _watchLive.sets>0){
     watchLiveBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow">LIVE ON WATCH ⌚</div>'+
@@ -4593,7 +4702,7 @@ function _renderMonthPoster(){
       (active[iso]?'var(--accent)':'color-mix(in srgb,var(--text) 7%,transparent)')+';"></div>';
   }
   var monthName=first.toLocaleString([],{month:'long'}).toUpperCase()+' '+mk.slice(0,4);
-  var streakWk=calcStreak(getSessions());
+  var streakWk=calcStreak(_trainingDays());
   var volStr=st.volume>=1000?(Math.round(st.volume/100)/10)+'k':String(Math.round(st.volume));
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 20px;margin-bottom:16px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:baseline;">'+
@@ -4621,8 +4730,9 @@ function _wrapDue(){
 // Facts about the calendar week ending today: lift sessions, volume, PRs,
 // per-day volume for the bar strip, and whether this was truly the heaviest
 // week on record ("Heaviest week yet" is earned, never asserted).
-function _weekStats(){
-  var mon=_mostRecentMonday();
+function _weekStats(monKey, weekNo){
+  var mon=monKey||_mostRecentMonday();
+  var wkNo=weekNo||currentWeek;
   var count=0, volume=0, prs=0, dayVol=[0,0,0,0,0,0,0];
   var byWeek={};
   getSessions().forEach(function(s){
@@ -4648,16 +4758,38 @@ function _weekStats(){
   // overrides included), since the card is framed as WEEK currentWeek.
   var planned=0;
   if(getCustomRoutine()){
-    getWeekPlanForWeek(currentWeek).forEach(function(p){ if(p.isLift) planned++; });
+    getWeekPlanForWeek(wkNo).forEach(function(p){ if(p.isLift) planned++; });
   }
   return {count:count, volume:Math.round(volume), prs:prs, dayVol:dayVol,
-    heaviest:heaviest, planned:planned, monday:mon};
+    heaviest:heaviest, planned:planned, monday:mon, weekNo:wkNo};
 }
+function _loggedOn(dateStr){
+  return getSessions().some(function(s){ return s.date===dateStr; })
+    || getRuns().some(function(r){ return r.date===dateStr; })
+    || getSportLogs().some(function(x){ return x.date===dateStr; });
+}
+// Which week the wrap card is for (Monday key + programme week). Sunday
+// shows this week — but not before Sunday's own session (a log today, a
+// rest day, or the evening). A wrap nobody saw on Sunday survives through
+// Monday instead of vanishing at midnight.
+var _wwDueMon=null, _wwDueWeek=null;
 function _weekWrapDue(){
-  if(new Date().getDay()!==0) return false;   // Sunday evening block
-  var key=_mostRecentMonday();
-  if(String(lsGet('kt_last_weekwrap'))===key) return false;
-  return _weekStats().count>=1;
+  var now=new Date(), dow=now.getDay(), stamped=String(lsGet('kt_last_weekwrap'));
+  var thisMon=_mostRecentMonday();
+  if(dow===0){
+    if(stamped===thisMon) return false;
+    var act=null; try{ act=getTodayActivity(); }catch(e){}
+    if(!_loggedOn(todayISO()) && act && act.type!=='rest' && now.getHours()<17) return false;
+    if(_weekStats(thisMon).count>=1){ _wwDueMon=thisMon; _wwDueWeek=currentWeek; return true; }
+    return false;
+  }
+  if(dow===1){
+    var lm=new Date(thisMon+'T00:00:00'); lm.setDate(lm.getDate()-7); var lastMon=_ymdLocal(lm);
+    if(stamped===lastMon || stamped===thisMon) return false;
+    var wk=Math.max(1,currentWeek-1);
+    if(_weekStats(lastMon, wk).count>=1){ _wwDueMon=lastMon; _wwDueWeek=wk; return true; }
+  }
+  return false;
 }
 // Snapshot of the week the card was RENDERED for — a tap just past Sunday
 // midnight must stamp and share that week, not recompute the new empty one.
@@ -4739,12 +4871,12 @@ function _drawWeekCard(st, accent){
   x.fillText('AI TRAINER', R, 1262);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
-    if(!blob){ showToast('Could not build card'); return; }
+    if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-week-'+st.monday+'-wrapped.png', {type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({files:[file]}).catch(function(){});
     } else {
-      showToast('Sharing not supported here');
+      showToast('Sharing not supported here','err');
     }
   }, 'image/png');
 }
@@ -4799,7 +4931,7 @@ function _drawWrapCard(mk, st, accent){
   // six-row month (grid bottom ≤ 1124).
   x.fillStyle=RULE; x.fillRect(M, 1158, 904, 2);
   var volStr=st.volume?st.volume.toLocaleString():'0';
-  var streakWk=calcStreak(getSessions());
+  var streakWk=calcStreak(_trainingDays());
   x.fillStyle=INK; x.font='700 54px "JetBrains Mono", ui-monospace, monospace'; ls('-1px');
   x.fillText(volStr, M, 1226);
   x.textAlign='center'; x.fillStyle=st.prs?GOLD:MUTED;
@@ -4819,12 +4951,12 @@ function _drawWrapCard(mk, st, accent){
   x.fillText('AI TRAINER', R, 1316);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
-    if(!blob){ showToast('Could not build card'); return; }
+    if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-'+mk+'-wrapped.png', {type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({files:[file]}).catch(function(){});
     } else {
-      showToast('Sharing not supported here');
+      showToast('Sharing not supported here','err');
     }
   }, 'image/png');
 }
@@ -5434,12 +5566,12 @@ function openDeckRunner(overrideType){
     sessExs = _todayLiftExercises(overrideType);
     dayName = overrideType;
     if(!sessExs.length){
-      showToast('No '+overrideType+' exercises in your routine');
+      showToast('No '+overrideType+' exercises in your routine','err');
       return;
     }
   } else {
     if(act.type !== 'lift' || !act.exercises || !act.exercises.length){
-      showToast('No lift session scheduled today');
+      showToast('No lift session scheduled today','err');
       return;
     }
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
@@ -5483,9 +5615,18 @@ function openDeckRunner(overrideType){
   runnerOpen = true;
   paintRunner();
 }
+var _draftTO=null;
 function _saveRunnerDraft(){
   if(!runnerOpen||!runnerSession) return;
   _scheduleNativeSync();   // live handoff state rides the debounced watch push
+  // Coalesce: every paint (rest ticks, stepper taps) used to serialise the
+  // whole session synchronously. One write per 250ms, flushed on hide.
+  if(_draftTO) return;
+  _draftTO=setTimeout(_flushRunnerDraft, 250);
+}
+function _flushRunnerDraft(){
+  if(_draftTO){ clearTimeout(_draftTO); _draftTO=null; }
+  if(!runnerOpen||!runnerSession) return;
   try{
     localStorage.setItem('kt_runner_draft', JSON.stringify({
       date: todayISO(),
@@ -5504,8 +5645,14 @@ function _saveRunnerDraft(){
   }catch(e){}
 }
 function _clearRunnerDraft(){
+  // A pending debounced write would resurrect the draft right after finish.
+  if(_draftTO){ clearTimeout(_draftTO); _draftTO=null; }
   lsDel('kt_runner_draft');
 }
+try{
+  window.addEventListener('pagehide', _flushRunnerDraft);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') _flushRunnerDraft(); });
+}catch(e){}
 function _restoreRunnerDraft(){
   try{
     var raw=localStorage.getItem('kt_runner_draft');
@@ -5719,6 +5866,12 @@ function _trovoTimerEnd(){
 function runnerCompleteSet(){
   var ex = _runnerEx(); if(!ex) return;
   var r = runnerReps[ex.name] != null ? runnerReps[ex.name] : (Array.isArray(ex.reps)?ex.reps[0]:parseInt(ex.reps)||0);
+  if(!(parseInt(r)>0)){
+    // AMRAP / 'Max' targets seed the stepper at 0 — a tap here used to log a
+    // 0-rep set that counted toward completion and polluted e1RM history.
+    showToast('Set the reps first \u2014 a 0-rep set can\u2019t be logged','err');
+    return;
+  }
   if(!runnerRepsLog[ex.name]) runnerRepsLog[ex.name] = [];
   runnerRepsLog[ex.name].push(typeof r === 'number' ? r : parseInt(r)||0);
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
@@ -5980,7 +6133,12 @@ function runnerFinishSession(){
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs,
     supersets:(_ssIdx.length?_ssIdx:undefined)};
   sessions.unshift(_newRec);
-  lsSet('kt_sessions', sessions);
+  if(!lsSet('kt_sessions', sessions)){
+    // Storage full: keep the runner (and its draft) so nothing is lost —
+    // celebrating an unsaved session was the worst possible outcome.
+    showToast('Couldn\u2019t save the session \u2014 storage full. Export your data, then finish again.','err');
+    return;
+  }
   invalidateCoachCard();
   _saveLiftToHealth(runnerSession, exsOut, _sessionDate);
   // lsSet date-sorts in place — a backdated save is no longer at [0].
@@ -6024,6 +6182,16 @@ function paintRunner(){
     return;
   }
   _saveRunnerDraft();
+  // A render() from elsewhere (coach card landing, watch drain, Health auto-
+  // log, resume) used to rebuild the overlay and kill the weight/reps input
+  // the user was typing into. Skip the swap when runner state is unchanged
+  // and a runner input owns focus.
+  var _sig=JSON.stringify([runnerExIdx,runnerEngaged,runnerResting,runnerCompleted,runnerWeights,runnerReps,runnerRpe,
+    runnerEditSetIdx,runnerEditSetEx,_wristMirror&&_wristMirror.at,_runnerPrBeat&&_runnerPrBeat.at,
+    runnerSession&&runnerSession.exercises.map(function(e){ return e.name+'|'+e.sets+'|'+e.reps+'|'+e.weight+'|'+(e.ss?1:0); })]);
+  var _ae=document.activeElement;
+  if(_sig===_lastRunnerSig && root.style.display==='block' && _ae && root.contains(_ae) && /^(INPUT|TEXTAREA)$/.test(_ae.tagName)) return;
+  _lastRunnerSig=_sig;
   root.style.display = 'block';
   if(seal) seal.style.display = 'block';
   root.innerHTML = renderDeckRunner();
@@ -6315,7 +6483,7 @@ function _renderCompletedSets(ex){
 }
 function _renderRunnerIdleBody(ex, next){
   var lastW = ex.lastWeight != null ? ex.lastWeight : (function(){ var l=getLastSessionData(ex.name); return l ? parseFloat(l.weight)||0 : 0; })();
-  var lastReps = ex.lastReps != null ? ex.lastReps : (function(){ var l=getLastSessionData(ex.name); return l ? (Array.isArray(l.reps)?l.reps[0]:l.reps) : ex.reps; })();
+  var lastReps = ex.lastReps != null ? ex.lastReps : (function(){ var l=getLastSessionData(ex.name); return l ? _lastPair(l).r : ex.reps; })();
   var curW = parseFloat(ex.weight) || 0;
   var delta = curW - lastW;
   var deltaStr = '';
@@ -6340,7 +6508,7 @@ function _renderRunnerIdleBody(ex, next){
     '<div class="kt-r-target">'+
       (targetW>0?targetW+'<span class="u">lb</span>':'BW')+
     '</div>'+
-    '<div class="kt-r-target-sets">'+_esc(ex.sets+' sets × '+_fmtRepTarget(ex.reps)+' reps')+'</div>'+
+    '<div class="kt-r-target-sets">'+_esc(_plural(ex.sets,'set')+' × '+_fmtRepTarget(ex.reps)+' reps')+'</div>'+
     (plateIdle?'<div class="kt-r-target-plate">'+plateIdle+'</div>':'');
   // MAIN / SUPERSET markers live under the name as data chips, now that the
   // card surface no longer changes hue for main lifts.
@@ -6505,7 +6673,7 @@ function _renderRunnerEngagedBody(ex, done){
   var logAllBtn = '';
   if(done === 0){
     var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
-    logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+ex.sets+' sets at target →</button>';
+    logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+_plural(ex.sets,'set')+' at target →</button>';
   }
   // Warm-up ramp — main lift only, only before the first working set.
   var warmup='';
@@ -6532,8 +6700,8 @@ function _renderRunnerEngagedBody(ex, done){
     : (parseFloat(ex.weight)||0);
   var _tR = Array.isArray(ex.reps) ? ex.reps[Math.min(done, ex.reps.length-1)] : ex.reps;
   var _last = getLastSessionData(ex.name);
-  var _lastW = _last ? parseFloat(_last.weight)||0 : 0;
-  var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
+  var _lastW = _last ? _lastPair(_last).w : 0;
+  var _lastR = _last ? _lastPair(_last).r : null;
   var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?_tW:'BW')+' × '+_tR+
     (_lastW>0?' · LAST '+_lastW+' × '+_lastR:''))+'</div>';
   return '<div class="kt-eng">'+
@@ -6603,8 +6771,8 @@ function _renderRunnerMirrorBody(ex, done){
   var _nW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var _nR = Array.isArray(ex.reps) ? ex.reps[Math.min(done, ex.reps.length-1)] : ex.reps;
   var _last = getLastSessionData(ex.name);
-  var _lastW = _last ? parseFloat(_last.weight)||0 : 0;
-  var _lastR = _last ? (Array.isArray(_last.reps)?_last.reps[0]:_last.reps) : null;
+  var _lastW = _last ? _lastPair(_last).w : 0;
+  var _lastR = _last ? _lastPair(_last).r : null;
   return '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
     '<div class="kt-r-card-name" style="margin-top:6px;">'+_esc(ex.name)+'</div>'+
     '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?_nW:'BW')+' × '+_nR+
@@ -6824,7 +6992,7 @@ function runnerExEditToggleSS(){
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
-  if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1');return;}
+  if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1','err');return;}
   var oldName=ex.name, newName=_rExEditName;
   ex.name   =newName;
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
@@ -9116,7 +9284,10 @@ function renderWeekRecap(sessions,runs){
 // Epley estimate (w × (1 + reps/30)) from the best set of each logged session.
 // Powers the Strength card on Progress, the plateau flags, and the Coach's
 // plateau awareness. Handles both session shapes (runner + legacy nested).
-function _epley(w, r){ return r>0 ? w*(1+r/30) : w; }
+// Reps capped at 10: Epley overstates badly beyond that, so a 20-rep burnout
+// set at 95 lb (e1RM 158) used to beat a real 150 × 3 (165) — and drive the
+// plateau + forecast readouts with it.
+function _epley(w, r){ r=Math.min(r||0,10); return r>0 ? w*(1+r/30) : w; }
 // Every render of Today and Progress recomputed this from scratch — a full
 // sessions x exercises x sets Epley scan (the proactive-banner predicates
 // call it even on the no-plateau happy path). Memoized on the log version.
@@ -9201,10 +9372,13 @@ function renderStrengthTrends(extraHTML){
   var plateaus={}; _plateauLifts().forEach(function(p){ plateaus[p.name]=p; });
   var rows=names.map(function(n){
     var pts=series[n], cur=pts[pts.length-1].e1rm;
-    var cutoff=Date.now()-28*86400000, base=pts[0].e1rm;
+    var cutoff=Date.now()-28*86400000, base=pts[0].e1rm, hasBase=false;
     for(var i=pts.length-1;i>=0;i--){
-      if(new Date(pts[i].date+'T00:00:00').getTime() < cutoff){ base=pts[i].e1rm; break; }
+      if(new Date(pts[i].date+'T00:00:00').getTime() < cutoff){ base=pts[i].e1rm; hasBase=true; break; }
     }
+    // No point older than four weeks: the delta is "since your first
+    // session", so label it with its real age instead of a made-up 4w.
+    var spanLbl=hasBase?'4w':(Math.max(1,Math.round((Date.now()-new Date(pts[0].date+'T00:00:00').getTime())/86400000))+'d');
     var delta=Math.round((cur-base)*10)/10;
     var deltaStr=delta>0?'<span style="color:var(--green);">↑'+delta+'</span>'
       :delta<0?'<span style="color:var(--red);">↓'+Math.abs(delta)+'</span>'
@@ -9226,7 +9400,7 @@ function renderStrengthTrends(extraHTML){
         '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:'+(open?'var(--accent)':'var(--text)')+';">'+_esc(n)+'</div>'+flag+'</div>'+
         (open?'':_sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)'))+
         '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(cur)+'<span style="font-size:10px;color:var(--muted);"> lb</span></div>'+
-        '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">4w</span></div></div>'+
+        '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">'+spanLbl+'</span></div></div>'+
       '</div>'+
       full+
     '</div>';
@@ -9290,6 +9464,9 @@ function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); rende
 
 // Sign-aware total delta for the working-weight charts ('↑ -10 lb' read as
 // a gain; a deload block is a drop and says so).
+// '1 set', '2 sets' — the app is full of singular edge cases (AMRAP
+// finishers, top singles, one-session backups).
+function _plural(n,word){ n=parseInt(n)||0; return n+' '+word+(n===1?'':'s'); }
 function _fmtLbDelta(d){
   d=Math.round(d*10)/10;
   if(d===0) return 'flat over the window';
@@ -9470,7 +9647,7 @@ function renderProgress() {
   var latestBW = bws.length ? bws[0].weight : null;
   var prevBW = bws.length > 1 ? bws[1].weight : null;
   var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
-  var streak = calcStreak(sessions);
+  var streak = calcStreak(_trainingDays());
   var thisWeekCount = sessions.filter(_inThisCalWeek).length;
   var scheduledLiftDays = getWeekPlan().filter(function(p){return p.isLift;}).length;
 
@@ -10336,12 +10513,12 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
   x.fillText('AI TRAINER', R, 1262);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
-    if(!blob){ showToast('Could not build card'); return; }
+    if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-'+s.date+'.png', {type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({files:[file]}).catch(function(){});
     } else {
-      showToast('Sharing not supported here');
+      showToast('Sharing not supported here','err');
     }
   }, 'image/png');
 }
@@ -10410,11 +10587,17 @@ function showToast(msg, style){
   if(!t)return;
   t.textContent=msg;
   // 'pr' — gold PR-celebration variant, shown a beat longer.
-  t.style.background=style==='pr'?'var(--yellow)':'var(--green)';
+  // 'err' — failures were painted in success green; red, longer, assertive.
+  t.style.background=style==='pr'?'var(--yellow)':(style==='err'?'var(--red)':'var(--green)');
   t.style.color='#000';
+  t.setAttribute('aria-live', style==='err'?'assertive':'polite');
   t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
-  _toastTimer=setTimeout(function(){t.classList.remove('show');_toastTimer=null;},style==='pr'?3500:2200);
+  _toastTimer=setTimeout(function(){
+    t.classList.remove('show'); _toastTimer=null;
+    // Clear after the fade so the stale text isn't left in the a11y tree.
+    setTimeout(function(){ if(!_toastTimer) t.textContent=''; }, 400);
+  },style==='pr'?3500:(style==='err'?3500:2200));
 }
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
@@ -11248,6 +11431,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     apiMsgs.push({role:'user',content:'(The connection dropped mid-reply. Continue from where you left off, or briefly summarize what you already did.)'});
   }
   var MAX_TURNS=15;
+  var _cutShort=false;
   var totalText='';
   var allToolCalls=[];
   var hadError=false;
@@ -11380,6 +11564,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       render(); scrollChatBottom();
       continue;
     }
+    if(stopReason==='max_tokens' && !toolUses.length) _cutShort=true;   // third cutoff: stop nudging, but say so
     if(!toolUses.length||(stopReason!=='tool_use'&&stopReason!=='max_tokens')){
       streamingContent='';
       break;
@@ -11405,6 +11590,9 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
   _runningTools=[];
   _streamingTool=null;
+  // Silent truncation looked like a finished answer. Name it.
+  if(!errText && t>=MAX_TURNS) errText='The coach used up its '+MAX_TURNS+' turns before finishing \u2014 this reply may be incomplete. Tap Try again or ask it to continue.';
+  else if(!errText && _cutShort) errText='That reply hit the length limit and may be incomplete \u2014 ask the coach to continue.';
   // Commit the final combined assistant message (text + tool summary
   // metadata). Executed tool calls are real even when the turn later died —
   // committing them with any partial text keeps programme edits visible
@@ -11522,7 +11710,7 @@ function saveApiKey(){
   var inp=document.getElementById('coach-key-input');
   if(!inp)return;
   var k=inp.value.trim();
-  if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
+  if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-','err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -11585,6 +11773,7 @@ function saveCoachHistory(){
       return out;
     }).filter(function(m){return m;});
     localStorage.setItem('kt_coach_msgs',JSON.stringify(msgs));
+    _backupDirty=true;
     // Backups read this key through lsGet — keep its cache coherent so an
     // export taken tonight carries tonight's conversation, not launch-time's.
     _lsCache['kt_coach_msgs']=msgs;
@@ -11850,7 +12039,7 @@ async function sendCoachMessage(){
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
         coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
-    try{ localStorage.setItem('kt_coach_msgs', JSON.stringify(coachMessages)); }catch(_){}
+    saveCoachHistory();
   }finally{
     if(myGen===_coachGen){
       coachLoading=false;
@@ -12635,6 +12824,31 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Import backup</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    (function(){
+      var snap=null; try{ snap=JSON.parse(localStorage.getItem('kt_pre_restore')||'null'); }catch(e){}
+      if(!snap||!snap.at||Date.now()-snap.at>7*86400000) return '';
+      return '<div class="settings-row" onclick="_undoLastRestore()">'+
+        '<div class="settings-row-ic" style="background:#2a1a0d;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Undo last restore</div><div class="settings-row-sub">Brings back what was here on '+_esc(fmtDate(_ymdLocal(new Date(snap.at))))+'</div></div>'+
+        '<span class="settings-row-chev">›</span>'+
+      '</div>';
+    })()+
+    (function(){
+      var st=_storageBytes(), warn=st.total>4*1048576;
+      return '<div class="settings-row" onclick="_showStorageBreakdown()">'+
+        '<div class="settings-row-ic" style="background:#12201a;">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+            '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'+
+          '</svg>'+
+        '</div>'+
+        '<div class="settings-row-body"><div class="settings-row-title">Storage</div><div class="settings-row-sub">'+(warn?'Near the 5 MB limit \u2014 clear old chats or export':'Of about 5 MB on this phone \u00b7 tap for a breakdown')+'</div></div>'+
+        '<span class="settings-row-val"'+(warn?' style="color:var(--orange);"':'')+'>'+_esc(_fmtMB(st.total).toUpperCase())+'</span>'+
+      '</div>';
+    })()+
     '</div>'+
 
     '<div class="settings-group">'+
@@ -12672,6 +12886,7 @@ function renderSettings() {
       var cachedBuild=localStorage.getItem('kt_cached_build')||'';
       var status;
       if(buildNewer(cachedBuild,APP_BUILD)) status='Update ready · restarts on next launch';
+      else if(buildNewer(liveBuild,APP_BUILD) && localStorage.getItem('kt_cached_err')) status='Update couldn\u2019t be stored \u2014 free space (export, clear chat) and reopen';
       else if(buildNewer(liveBuild,APP_BUILD)) status='Update available · downloading…';
       else if(liveBuild)                       status='Up to date';
       else                                     status='Checking for updates…';
@@ -12795,7 +13010,7 @@ function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
   if(!el||!el.value.trim()){showToast('Enter a key first');return;}
   var k=el.value.trim();
-  if(!k.startsWith('sk-')){showToast('Invalid key — must start with sk-');return;}
+  if(!k.startsWith('sk-')){showToast('Invalid key — must start with sk-','err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -13593,8 +13808,18 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
     // If it was, a controllerchange means a NEW SW just took over → reload.
     // If not (first install), skip the reload to avoid a pointless bounce.
     var hadController = !!navigator.serviceWorker.controller;
+    // Reload only when nothing would be lost: not mid-workout, not while
+    // the coach is answering, not with a half-typed field. Re-checks every
+    // 15s until it's safe.
+    var _swSafeReload=function(){
+      var ae=document.activeElement, typing=!!(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.value);
+      if((typeof runnerOpen!=='undefined' && runnerOpen) || (typeof coachLoading!=='undefined' && coachLoading) || typing){
+        setTimeout(_swSafeReload, 15000); return;
+      }
+      window.location.reload();
+    };
     navigator.serviceWorker.addEventListener('controllerchange', function(){
-      if(hadController) window.location.reload();
+      if(hadController) _swSafeReload();
     });
     navigator.serviceWorker.register('sw.js').then(function(reg){
       // Force the browser to check for an updated sw.js on every page load
@@ -13721,6 +13946,9 @@ setTimeout(refreshReadiness, 1100);
   if(TWch && TWch.addListener){
     try{ TWch.addListener('watchSession', function(){ _wchLog('event: session arrived'); setTimeout(drainWatchSessions, 200); }); }catch(e){}
     try{ TWch.addListener('watchLive', function(ev){ _onWatchLive(ev&&ev.json); }); }catch(e){}
+    // The watch pulled the plan: the plugin replied from its cache (whatever
+    // we pushed last, maybe yesterday's day). Recompute and push a fresh one.
+    try{ TWch.addListener('watchPlanRequest', function(){ _wchLog('event: watch pulled plan \u2192 refresh'); _scheduleNativeSync(); }); }catch(e){}
   }
   // The wrist may already be mid-session when this layer boots — pull the
   // native cache so the live banner doesn't wait for the next set.
@@ -13745,7 +13973,7 @@ window.addEventListener('pageshow', function(e){
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){
     var s=document.getElementById('screen');
-    if(s && !s.innerHTML.trim()) { window.location.reload(); return; }
+    if(s && !s.firstElementChild) { window.location.reload(); return; }
     _resumeDayAndRest();
     setTimeout(checkPendingShare, 600);
     setTimeout(drainPendingHealth, 700);
@@ -13804,6 +14032,8 @@ function _a11yPass(){
   for(var i=0;i<els.length;i++){
     var el=els[i], t=el.tagName;
     if(t==='BUTTON'||t==='A'||t==='INPUT'||t==='SELECT'||t==='TEXTAREA') continue;
+    // Rows whose only handler swallows the tap are not controls.
+    if(/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(el.getAttribute('onclick')||'')) continue;
     if(!el.hasAttribute('role')) el.setAttribute('role','button');
     if(!el.hasAttribute('tabindex')) el.setAttribute('tabindex','0');
   }
@@ -14010,7 +14240,16 @@ function _onWatchLive(json){
       // The wrist finished this session — the authoritative record arrives on
       // the guaranteed queue. If our runner is open on the same day, close it
       // so a second finish can't double-log the workout.
-      if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName) closeDeckRunner();
+      if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName){
+        // Only step aside when the wrist knows everything the phone knows —
+        // otherwise the drained watch record would silently drop phone sets.
+        var _ahead=false;
+        Object.keys(runnerRepsLog||{}).forEach(function(nm){
+          if((runnerRepsLog[nm]||[]).length > ((s.reps&&s.reps[nm])||[]).length) _ahead=true;
+        });
+        if(_ahead) showToast('Watch finished, but this phone holds extra sets \u2014 finish here to keep them.');
+        else closeDeckRunner();
+      }
       setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000);
     }
   } else if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName){
@@ -14108,7 +14347,11 @@ function drainWatchSessions(){
           rpe:(parseFloat(ex.rpe)>0?parseFloat(ex.rpe):'') };
       }).filter(function(ex){ return ex.sets>0; });
       if(!exsOut.length) return;
-      var d=s.loggedAt?new Date(s.loggedAt):new Date();
+      // Date by START (a session finishing after midnight belongs to the day it
+      // began); the payload's own day type decides main-lift flags, not
+      // whatever today happens to be.
+      var d=s.startedAt?new Date(s.startedAt):(s.loggedAt?new Date(s.loggedAt):new Date());
+      if(s.dayName){ var _dayExs=getSessionExercises(s.dayName); if(_dayExs.length){ mainByName={}; _dayExs.forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; }); } }
       var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
       var dayType=s.dayName||'Session';
       // Double-log guard: the same session may already be in the log — phone-
@@ -14155,7 +14398,7 @@ function _runNativeSync(){
       : currentTheme;
     var _acc=(_appliedT==='light'||!THEMES[_appliedT])?THEMES.dark.accent:THEMES[_appliedT].accent;
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(getSessions()), days:_nativeSummaryDays(), accent:_acc };
+      streak:calcStreak(_trainingDays()), days:_nativeSummaryDays(), accent:_acc };
     var json=JSON.stringify(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;
@@ -14177,16 +14420,19 @@ function _autoBackupIfDue(){
   // the day backed up and everything logged AFTER it (the day's actual
   // training) waited until tomorrow — while Settings said "Backed up
   // today". Re-write whenever the payload hash moved.
-  var payload=JSON.stringify(buildBackupJSON());
-  var hash=_hashStr(payload);
+  if(!_backupDirty && localStorage.getItem('kt_last_autobackup')===todayISO()) return;
+  var _bk=buildBackupJSON();
+  var payload=JSON.stringify(_bk);
+  var hash=_hashStr(JSON.stringify(Object.assign({}, _bk, {_manifest:null})));
   if(localStorage.getItem('kt_last_autobackup')===todayISO()
-     && localStorage.getItem('kt_last_autobackup_hash')===hash) return;
+     && localStorage.getItem('kt_last_autobackup_hash')===hash){ _backupDirty=false; return; }
   var dow=['mon','tue','wed','thu','fri','sat','sun'][(new Date().getDay()+6)%7];
   return FS.writeFile({path:'Supero/auto-backup-latest.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true})
     .then(function(){ return FS.writeFile({path:'Supero/auto-backup-'+dow+'.json', data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
     .then(function(){
       localStorage.setItem('kt_last_autobackup', todayISO());
       localStorage.setItem('kt_last_autobackup_hash', hash);
+      _backupDirty=false;
       _backupToICloud(payload, dow);
     })
     .catch(function(e){ throw e; });
@@ -14217,9 +14463,9 @@ function runAutoBackupNow(){
   // Toast on the RESULT — the old success toast fired before (and regardless
   // of) the write, so a failed write still read 'Backed up'.
   var pr=_autoBackupIfDue();
-  if(!pr || typeof pr.then!=='function'){ showToast('Backup failed — use Export session log'); return; }
+  if(!pr || typeof pr.then!=='function'){ showToast('Backup failed — use Export session log','err'); return; }
   pr.then(function(){ showToast('Backed up to Files → Supero'); render(); })
-    .catch(function(){ showToast('Backup failed — use Export session log'); render(); });
+    .catch(function(){ showToast('Backup failed — use Export session log','err'); render(); });
 }
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so

@@ -1,7 +1,8 @@
 // Live mirror: wrist per-set state merges into the open phone runner in real
 // time, a local lead is pushed back over the debounced channel, stale wrist
 // payloads never shrink local state, and a wrist "ended" closes the phone
-// runner so the queued session can't double-log.
+// runner (so the queued session can't double-log) only when the wrist saw
+// every phone set — otherwise the phone keeps its fuller record.
 const { boot, assert, run } = require('../lib/harness');
 
 run('wrist live state merges into the open phone runner', async () => {
@@ -36,16 +37,22 @@ run('wrist live state merges into the open phone runner', async () => {
       // Re-firing the now-stale wrist state must not shrink local progress.
       fire({ dayName: 'Push', startedAt: Date.now(), reps, weights });
       const afterStale = runnerCompleted[ex];
-      // Wrist finishes the session — the phone runner closes.
+      // Wrist finishes while the phone is a set AHEAD — the runner must stay
+      // open (closing would let the thinner watch record win the ledger).
       fire({ dayName: 'Push', startedAt: Date.now(), reps, weights, ended: true });
-      return { merged, pushedReps, afterStale, closed: !runnerOpen };
+      const stayedOpen = runnerOpen;
+      // Wrist finishes knowing every phone set — now the phone steps aside.
+      const full = {}; full[ex] = [8, 8, 8];
+      fire({ dayName: 'Push', startedAt: Date.now(), reps: full, weights, ended: true });
+      return { merged, pushedReps, afterStale, stayedOpen, closed: !runnerOpen };
     });
     assert(out.merged.done === 2, 'adopts both wrist sets, got ' + out.merged.done);
     assert(out.merged.log === '8,8', 'rep log mirrors the wrist: ' + out.merged.log);
     assert(out.merged.weight === 100, 'adopts the wrist weight, got ' + out.merged.weight);
     assert(out.pushedReps === 3, 'push after the local set carries 3 reps, got ' + out.pushedReps);
     assert(out.afterStale === 3, 'stale wrist state never shrinks local, got ' + out.afterStale);
-    assert(out.closed, 'wrist finish closes the phone runner');
+    assert(out.stayedOpen, 'wrist finish behind the phone keeps the runner open');
+    assert(out.closed, 'wrist finish that covers every phone set closes the runner');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

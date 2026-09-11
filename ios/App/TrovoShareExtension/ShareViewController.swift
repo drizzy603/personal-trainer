@@ -176,18 +176,39 @@ class ShareViewController: UIViewController {
     }
 
     @objc private func send() {
-        guard let image = pendingImage,
-              let jpeg = image.jpegData(compressionQuality: 0.75) else {
+        // Downscale first: a 12MP camera JPEG is 3–5MB, and the old path
+        // stuffed it base64-encoded into UserDefaults (a plist that is read
+        // whole on every access) — the Coach only needs ~1600px anyway.
+        guard let image = pendingImage.map({ Self.downscaled($0, maxEdge: 1600) }),
+              let jpeg = image.jpegData(compressionQuality: 0.8) else {
             extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             return
         }
-        if let defaults = UserDefaults(suiteName: "group.app.kt.trainer") {
-            defaults.set(jpeg.base64EncodedString(), forKey: "pendingShareImage")
+        let group = "group.app.kt.trainer"
+        if let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
+            let url = dir.appendingPathComponent("pendingShare.jpg")
+            try? jpeg.write(to: url, options: .atomic)
+        }
+        if let defaults = UserDefaults(suiteName: group) {
+            defaults.removeObject(forKey: "pendingShareImage")   // legacy base64 slot
             defaults.set(commentField.text ?? "", forKey: "pendingShareComment")
             defaults.synchronize()
         }
         openTrovo()
         extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+    }
+
+    private static func downscaled(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
+        let pw = image.size.width * image.scale, ph = image.size.height * image.scale
+        let longest = max(pw, ph)
+        guard longest > maxEdge, longest > 0 else { return image }
+        let k = maxEdge / longest
+        let size = CGSize(width: floor(pw * k), height: floor(ph * k))
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 
     private func openTrovo() {

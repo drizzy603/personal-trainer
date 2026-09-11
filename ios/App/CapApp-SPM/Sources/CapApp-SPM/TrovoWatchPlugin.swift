@@ -90,6 +90,8 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
 
     @objc func clearPendingSessions(_ call: CAPPluginCall) {
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+        // The drained sessions supersede any live snapshot still cached here.
+        lastLive = nil
         // The wrist-done overlay is NOT cleared here: the drain runs before
         // the debounced summary write, and clearing early flashed the widget
         // back to "Start →". TrovoWidgetPlugin.updateSummary retires overlay
@@ -122,6 +124,10 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
         guard let json = userInfo["session"] as? String else { return }
         wchLog.info("finished session arrived from watch")
         DispatchQueue.main.async {
+            // A finished session makes the in-progress snapshot stale: the web
+            // layer's boot pull otherwise resurrected a "live" wrist banner
+            // for a workout that ended hours ago.
+            self.lastLive = nil
             var arr = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
             arr.append(json)
             UserDefaults.standard.set(arr, forKey: Self.pendingKey)
@@ -164,6 +170,9 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
             let cached = UserDefaults.standard.dictionary(forKey: Self.contextKey) ?? [:]
             wchLog.info("watch pulled plan → replying (cached: \(!cached.isEmpty))")
             replyHandler(cached)
+            // The cache is whatever the web layer last pushed — possibly
+            // yesterday's plan. Ask it to recompute and push a fresh one.
+            DispatchQueue.main.async { self.notifyListeners("watchPlanRequest", data: [:]) }
             return
         }
         handleLive(message)
@@ -179,7 +188,8 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin, WCSessionDelegate {
     private func handleLive(_ message: [String: Any]) {
         guard let json = message["wlive"] as? String else { return }
         wchLog.info("wrist live state received (\(json.count) bytes)")
-        lastLive = json
+        // An 'ended' payload is a one-shot signal, not state to replay later.
+        lastLive = json.contains("\"ended\":true") ? nil : json
         DispatchQueue.main.async {
             self.notifyListeners("watchLive", data: ["json": json])
         }

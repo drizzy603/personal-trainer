@@ -11,8 +11,24 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     @objc public func getPendingShare(_ call: CAPPluginCall) {
-        guard let defaults = UserDefaults(suiteName: "group.app.kt.trainer"),
-              let base64 = defaults.string(forKey: "pendingShareImage") else {
+        let group = "group.app.kt.trainer"
+        guard let defaults = UserDefaults(suiteName: group) else {
+            call.resolve(["imageBase64": NSNull(), "comment": ""])
+            return
+        }
+        // The extension now drops a downscaled JPEG in the App Group
+        // container; the base64 UserDefaults slot is read for one release so
+        // a share made before updating still lands.
+        var base64: String? = nil
+        if let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
+            let url = dir.appendingPathComponent("pendingShare.jpg")
+            if let data = try? Data(contentsOf: url) {
+                base64 = data.base64EncodedString()
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        if base64 == nil { base64 = defaults.string(forKey: "pendingShareImage") }
+        guard let img = base64 else {
             call.resolve(["imageBase64": NSNull(), "comment": ""])
             return
         }
@@ -20,7 +36,7 @@ public class TrovoSharePlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.removeObject(forKey: "pendingShareImage")
         defaults.removeObject(forKey: "pendingShareComment")
         defaults.synchronize()
-        call.resolve(["imageBase64": base64, "comment": comment])
+        call.resolve(["imageBase64": img, "comment": comment])
     }
 
     // Writes a text file into the app's iCloud Drive folder (Documents), so

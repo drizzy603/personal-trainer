@@ -94,8 +94,12 @@ public final class HealthKitReader {
             completion(false, nil)
             return
         }
-        store.requestAuthorization(toShare: shareTypes, read: readTypes) { success, error in
-            DispatchQueue.main.async { completion(success, error) }
+        store.requestAuthorization(toShare: shareTypes, read: readTypes) { [weak self] success, error in
+            // `success` only means the sheet was presented. Sharing status is
+            // the one HealthKit answer that is not hidden, so report it.
+            let granted = success
+                && self?.store.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized
+            DispatchQueue.main.async { completion(granted, error) }
         }
     }
 
@@ -245,12 +249,27 @@ public final class HealthKitReader {
             group.enter()
             let pred = HKQuery.predicateForSamples(withStart: cal.date(byAdding: .day, value: -30, to: now), end: now, options: [])
             let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
-            let q = HKSampleQuery(sampleType: t, predicate: pred, limit: 200, sortDescriptors: [sort]) { _, samples, _ in
+            let q = HKSampleQuery(sampleType: t, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
                 defer { group.leave() }
                 guard let qs = samples as? [HKQuantitySample], !qs.isEmpty else { return }
-                let vals = qs.map { $0.quantity.doubleValue(for: unit) }
-                let latest = vals[0]
-                let base = vals.reduce(0, +) / Double(vals.count)
+                // Daily means: a night yields many HRV readings and the single
+                // "latest" sample was whichever outlier came last. The baseline
+                // is the MEDIAN of the other days — today's own reading no
+                // longer drags the bar it is measured against.
+                var byDay: [Date: [Double]] = [:]
+                for smp in qs {
+                    byDay[cal.startOfDay(for: smp.startDate), default: []].append(smp.quantity.doubleValue(for: unit))
+                }
+                let daily = byDay.keys.sorted(by: >).map { d -> Double in
+                    let v = byDay[d] ?? []
+                    return v.reduce(0, +) / Double(max(1, v.count))
+                }
+                guard let latest = daily.first else { return }
+                let rest = Array(daily.dropFirst()).sorted()
+                let base: Double
+                if rest.isEmpty { base = latest }
+                else if rest.count % 2 == 1 { base = rest[rest.count / 2] }
+                else { base = (rest[rest.count / 2 - 1] + rest[rest.count / 2]) / 2 }
                 outQ.sync {
                     out[latestKey] = (latest * 10).rounded() / 10
                     out[baseKey] = (base * 10).rounded() / 10
@@ -343,6 +362,11 @@ public final class HealthKitReader {
         if let data = defaults?.data(forKey: Self.anchorKey) {
             anchor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: data)
         }
+        // With no stored anchor HealthKit hands back EVERY workout on file.
+        // That first run only primes the cursor — queueing years of history
+        // flooded the pending queue and imported it all as "new" runs.
+        let priming = (anchor == nil)
+        let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
         let query = HKAnchoredObjectQuery(type: HKObjectType.workoutType(),
                                           predicate: Self.workoutPredicate,
                                           anchor: anchor,
@@ -353,7 +377,8 @@ public final class HealthKitReader {
                let data = try? NSKeyedArchiver.archivedData(withRootObject: newAnchor, requiringSecureCoding: true) {
                 defaults?.set(data, forKey: Self.anchorKey)
             }
-            let workouts = ((samples as? [HKWorkout]) ?? []).filter { !Self.isOwnWorkout($0) }
+            if priming { return }
+            let workouts = ((samples as? [HKWorkout]) ?? []).filter { !Self.isOwnWorkout($0) && $0.startDate >= cutoff }
             guard !workouts.isEmpty else { return }
             var pending = Self.readPending()
             let known = Set(pending.compactMap { $0["uuid"] as? String })

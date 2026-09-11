@@ -34,7 +34,10 @@ public class TrovoWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             let doneDates = Set(days.compactMap { d -> String? in
                 (d["done"] as? Bool) == true ? d["date"] as? String : nil
             })
-            pending.removeAll { doneDates.contains($0) }
+            // Dates that fell off the summary window can never be retired by
+            // it — drop them too, or the overlay list grows forever.
+            let firstDate = days.compactMap { $0["date"] as? String }.min()
+            pending.removeAll { d in doneDates.contains(d) || (firstDate != nil && d < firstDate!) }
             defaults.set(pending, forKey: "pendingWatchDone")
         }
         if #available(iOS 14.0, *) {

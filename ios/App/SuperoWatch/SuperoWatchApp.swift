@@ -149,6 +149,11 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         ingest(message)
     }
+    // The phone came back into range: pull whatever changed while apart.
+    // applicationContext is eventual; this is the instant path.
+    func sessionReachabilityDidChange(_ session: WCSession) {
+        if session.isReachable { requestRefresh() }
+    }
 
     // Pull the latest plan from the phone. sendMessage wakes the iOS app in
     // the background and its plugin replies from a native cache — the user no
@@ -183,14 +188,17 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         })
     }
 
-    func sendSession(dayName: String, exercises: [[String: Any]]) {
+    func sendSession(dayName: String, exercises: [[String: Any]], startedAt: Double = 0) {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "dayName": dayName,
             "loggedAt": iso.string(from: Date()),
             "exercises": exercises,
         ]
+        // The phone dates the ledger row by START — a session that crosses
+        // midnight belongs to the evening it began.
+        if startedAt > 0 { payload["startedAt"] = iso.string(from: Date(timeIntervalSince1970: startedAt / 1000)) }
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         WCSession.default.transferUserInfo(["session": json])
@@ -210,6 +218,18 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
     private var builder: HKLiveWorkoutBuilder?
     @Published var heartRate: Int = 0
     @Published var active = false
+    // No set for 90 minutes means the runner was abandoned mid-gym — end the
+    // Health workout so a forgotten wrist session never writes a 6-hour lift
+    // (and stops draining the battery keeping the sensors up).
+    private var idleTimer: Timer?
+    static let idleLimit: TimeInterval = 90 * 60
+    func touch() {
+        idleTimer?.invalidate(); idleTimer = nil
+        guard session != nil else { return }
+        idleTimer = Timer.scheduledTimer(withTimeInterval: Self.idleLimit, repeats: false) { [weak self] _ in
+            self?.end()
+        }
+    }
 
     func requestAuth() {
         guard HKHealthStore.isHealthDataAvailable() else { return }
@@ -240,13 +260,14 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
             let startDate = Date()
             s.startActivity(with: startDate)
             b.beginCollection(withStart: startDate) { _, _ in }
-            DispatchQueue.main.async { self.active = true }
+            DispatchQueue.main.async { self.active = true; self.touch() }
         } catch {
             // Health unavailable (auth denied, etc.) — the runner works without it.
         }
     }
 
     func end() {
+        idleTimer?.invalidate(); idleTimer = nil
         guard let s = session, let b = builder else { return }
         session = nil
         builder = nil
@@ -301,6 +322,7 @@ final class Runner: ObservableObject {
 
     func logSet(_ ex: WatchExercise, reps: Int) {
         WorkoutManager.shared.start()   // no-op while a session is already live
+        WorkoutManager.shared.touch()   // each set resets the abandonment clock
         if startedAt == 0 { startedAt = Date().timeIntervalSince1970 * 1000 }
         var arr = repsDone[ex.name] ?? []
         arr.append(reps)
@@ -371,7 +393,7 @@ final class Runner: ObservableObject {
                     "rpe": rpes[ex.name] ?? 0]
         }
         guard !exs.isEmpty else { return }
-        Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs)
+        Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs, startedAt: startedAt)
         WorkoutManager.shared.end()
         pushLive(ended: true)
         synced = true
