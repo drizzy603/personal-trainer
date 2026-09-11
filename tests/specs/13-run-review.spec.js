@@ -10,7 +10,7 @@ run('post-run review compares honestly', async () => {
       localStorage.setItem('kt_run_goal', '8:15');
       lsSet('kt_runs', [
         { id: 1, date: '2026-07-15', distance: 5.0, time: '40:55' },
-        { id: 2, date: '2026-07-22', distance: 5.1, time: '41:12', notes: 'From Apple Health' },
+        { id: 2, date: '2026-07-22', distance: 5.1, time: '41:12', note: 'From Apple Health' },
         { id: 3, date: '2026-07-08', distance: 10.0, time: '84:00' }, // not comparable
       ]);
       // 5.01 km in 40:38 → 487 s/km pace vs 495 goal → beat it by 8 s/km.

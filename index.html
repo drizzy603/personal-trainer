@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-6"/>
+<meta name="build" content="20260910-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1856,8 +1856,15 @@ function fmtDate(iso) {
 var _lsCache = {};
 function lsGet(k) {
   if (k in _lsCache) return _lsCache[k];
-  var v = null;
-  try{ var s=localStorage.getItem(k); v = s?JSON.parse(s):null; }catch(e){ v = null; }
+  var v = null, s = null;
+  try{ s=localStorage.getItem(k); v = s?JSON.parse(s):null; }
+  catch(e){
+    // Corrupt JSON used to read as "no data" and the next lsSet overwrote
+    // it for good. Park the raw text under <key>_corrupt for recovery.
+    v = null;
+    try{ if(s && !localStorage.getItem(k+'_corrupt')) localStorage.setItem(k+'_corrupt', s); }catch(_){}
+    try{ showToast('Some saved data was unreadable and set aside ('+k+') \u2014 export a backup','err'); }catch(_){}
+  }
   _lsCache[k] = v;
   return v;
 }
@@ -1876,7 +1883,7 @@ var _backupDirty = true;
 // engine trusts order. Backdated logs, calendar date-moves, and old
 // restores all used to break it — enforcing at the single write choke
 // point covers every writer, present and future.
-var _DATE_SORTED_KEYS = { kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1 };
+var _DATE_SORTED_KEYS = { kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements:1 };
 // Write-version for the training log + bodyweight (bodyweight feeds the
 // effective-load math). Memoized analytics key off it — in-place mutations
 // followed by lsSet keep the same array reference, so reference identity
@@ -2391,6 +2398,21 @@ function _showStorageBreakdown(){
 }
 function exportData() {
   var data = buildBackupJSON();
+  var FS = isNativeIOS() ? _plug('Filesystem') : null;
+  if(FS && FS.writeFile){
+    var name='supero-backup-'+todayISO()+'.json', payload=JSON.stringify(data,null,2);
+    Promise.resolve(FS.mkdir({path:'Supero', directory:'DOCUMENTS', recursive:true})).catch(function(){})
+      .then(function(){ return FS.writeFile({path:'Supero/'+name, data:payload, directory:'DOCUMENTS', encoding:'utf8', recursive:true}); })
+      .then(function(){
+        lsSet('kt_last_export', Date.now());
+        showToast('Saved to Files \u203a On My iPhone \u203a Supero \u203a '+name);
+        var TS=_plug('TrovoShare');
+        if(TS && TS.saveToICloud) Promise.resolve(TS.saveToICloud({name:name, content:payload})).catch(function(){});
+        render();
+      })
+      .catch(function(e){ showToast('Export failed \u2014 '+((e&&e.message)||'could not write the file'),'err'); });
+    return;
+  }
   var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -3119,6 +3141,8 @@ function logPendingHealthRun(){
     var rec = _logHealthRun(r);
     if(rec){
       runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
+      // The undo strip lives on the Run tab; say so when logging from elsewhere.
+      if(!(currentTab==='log' && logSubTab==='run')) showToast(rec.distance+' km run logged from Apple Health \u2014 undo on the Run tab');
       checkMilestones({delayToast:600});
     } else {
       showToast('Already logged by hand — skipped the duplicate');
@@ -3851,6 +3875,26 @@ function invalidateCoachCard(){
     doomed.forEach(function(k){ localStorage.removeItem(k); });
   }catch(e){}
 }
+// A card button used to be a second Dismiss whatever it said. "Adjust
+// target" opens today's runner (weights edit there), "See pace" goes to the
+// Run tab, acknowledgements dismiss, and anything the AI wrote becomes a
+// chat turn so the coach actually does it.
+function coachCardAction(label){
+  var l=String(label||'').trim();
+  dismissCoachCard();
+  var low=l.toLowerCase();
+  if(!low || /^(got it|ok|okay|thanks|noted|dismiss|later)\b/.test(low)) return;
+  if(/adjust|target|weight|load/.test(low)){
+    var act=getTodayActivity();
+    if(act && act.type==='lift' && act.dayName){ openDeckRunner(act.dayName); return; }
+  }
+  if(/pace|run/.test(low)){ switchTab('log'); switchLogSub('run'); return; }
+  coachView='chat'; currentTab='coach'; render();
+  setTimeout(function(){
+    var ta=document.getElementById('coach-input');
+    if(ta){ ta.value=l; sendCoachMessage(); }
+  }, 250);
+}
 // Local-only fallback that never blocks the screen.
 function fallbackCoachCard(activity){
   if(activity.type === 'lift' && activity.exercises && activity.exercises.length){
@@ -4092,27 +4136,34 @@ function renderTodayEditorial(){
     line1 = 'Today is';
     line2 = ((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'').toLowerCase()+' day.';
     line2Class = 'accent';
+    var main = (act.exercises && act.exercises.length) ? (act.exercises.find(function(e){return e.isMain;}) || act.exercises[0]) : null;
+    var last = main ? getLastSessionData(main.name) : null;
+    var lastW = last ? parseFloat(last.weight) || 0 : 0;
+    var curW = main ? parseFloat(main.weight) || 0 : 0;
     if(deload){
-      // C3 — on a deload week the eyebrow ("◆ DELOAD WEEK · 60% LOADS")
-      // already owns the accent. Drop the line-2 accent so we don't have
-      // two lime emphases competing in the same hero.
+      // C3 — on a deload week the eyebrow already owns the accent. Drop the
+      // line-2 accent so we don't have two lime emphases competing.
       line2Class = '';
-      body = 'Deload — drop to 60% of working weights, 3×5, RPE 5–6. Let the body absorb the work.';
-    } else if(act.exercises && act.exercises.length){
-      var main = act.exercises.find(function(e){return e.isMain;}) || act.exercises[0];
-      var last = getLastSessionData(main.name);
-      var lastW = last ? parseFloat(last.weight) || 0 : 0;
-      var curW = parseFloat(main.weight) || 0;
+      // Copy from the plan's real numbers — the old line promised "60% ·
+      // 3×5" whatever the programme actually prescribed.
+      body = main
+        ? 'Deload \u2014 '+_esc(main.name)+' at '+(curW>0?'<b>'+curW+' lb</b>':'<b>bodyweight</b>')+' for '+main.sets+'\u00d7'+_esc(_fmtRepTarget(main.reps))+
+          (lastW>0 && curW>0 && curW<lastW ? ' ('+Math.round(curW/lastW*100)+'% of your last '+lastW+')' : '')+'. Let the body absorb the work.'
+        : 'Deload \u2014 lighter loads, same movements. Let the body absorb the work.';
+    } else if(main){
       var loadHTML = curW > 0 ? '<b>'+main.weight+' lb</b>' : '<b>bodyweight</b>';
       var upBit = (curW > lastW && lastW > 0) ? ' is up at '+loadHTML : ' at '+loadHTML;
-      // "Last week" only exists once this lift has actually been logged —
-      // brand-new users (starter block, fresh AI programme) get the target.
-      var rpeBit = main.rpe
-        ? (last ? ' — last week was clean at RPE '+main.rpe+'.' : ' — target RPE '+main.rpe+'.')
-        : '.';
+      // The effort line quotes what was LOGGED (rpe on the record), dated
+      // honestly: "last week" only if it really was last week.
+      var lastRpe = last ? parseFloat(last.rpe) : 0;
+      var lastAge = (last && last.date) ? Math.round((Date.now()-new Date(last.date+'T00:00:00').getTime())/86400000) : 999;
+      var whenBit = lastAge<=10 ? 'last week' : 'last time';
+      var rpeBit = (last && lastRpe>0)
+        ? (lastRpe<=7 ? ' \u2014 '+whenBit+' was clean at RPE '+lastRpe+'.' : ' \u2014 '+whenBit+' hit RPE '+lastRpe+', so no grinding.')
+        : (main.rpe ? ' \u2014 target RPE '+main.rpe+'.' : '.');
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
-        main.name+upBit+rpeBit;
+        _esc(main.name)+upBit+rpeBit;
     } else {
       body = 'Tap to start when you\'re ready.';
     }
@@ -4149,8 +4200,9 @@ function renderTodayEditorial(){
   // ◆ DELOAD WEEK · 60% LOADS micro-label — Workout tab only shows it on
   // lift days (the only day type where the badge is contextually meaningful
   // here; non-lift days route the user to a different sub-tab).
+  var _dlPct = (deload && act.type==='lift' && typeof lastW!=='undefined' && lastW>0 && curW>0 && curW<lastW) ? Math.round(curW/lastW*100) : 0;
   var deloadBadge = (deload && act.type === 'lift')
-    ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
+    ? '<div class="kt-hero-deload">◆ DELOAD WEEK'+(_dlPct?' · '+_dlPct+'% LOADS':'')+'</div>'
     : '';
   var hero = '<div class="kt-hero">'+greet+
     '<h1 class="kt-hero-headline">'+_esc(line1)+
@@ -4166,7 +4218,10 @@ function renderTodayEditorial(){
   var sessionDoneToday = runnerJustFinishedKey === todayKey
     || (act.type === 'lift' && getSessions().some(function(s){
         return s.date === _todayKey() && s.type === act.dayName;
-      }));
+      }))
+    // Off-plan lift on a run/rest day: acknowledge it instead of re-offering
+    // the ad-hoc picker as if nothing happened.
+    || (act.type !== 'lift' && getSessions().some(function(s){ return s.date === _todayKey(); }));
   if(sessionDoneToday){
     var _ts = getSessions().find(function(s){
       return s.date===_todayKey() && (act.type!=='lift'||s.type===act.dayName);
@@ -4217,7 +4272,7 @@ function renderTodayEditorial(){
         '<div style="display:flex;align-items:center;gap:14px;">'+
           '<div class="kt-session-done-ic">✓</div>'+
           '<div class="kt-session-done-body">'+
-            '<div class="kt-session-done-ttl">'+_sl+'</div>'+
+            '<div class="kt-session-done-ttl">'+_esc(_sl)+'</div>'+
             '<div class="kt-session-done-sub">Session complete'+(_ts.week?' · Week '+_ts.week:'')+'</div>'+
           '</div>'+
         '</div>'+
@@ -4332,7 +4387,12 @@ function renderTodayEditorial(){
         '</div>'+spark;
     });
     // Tomorrow preview — quiet footer row so the ledger answers "and then?"
-    var tomPlan = getWeekPlan()[(((new Date().getDay()+6)%7)+1)%7];
+    var _dowIdx = (new Date().getDay()+6)%7, _tomIdx = (_dowIdx+1)%7;
+    var _tomWeek = getWeekPlan();
+    if(_dowIdx===6){   // Sunday: tomorrow is NEXT week's Monday (its own cadence)
+      try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
+    }
+    var tomPlan = _tomWeek[_tomIdx];
     var tomLbl = '';
     if(tomPlan){
       tomLbl = tomPlan.isRest ? 'Rest'
@@ -4581,15 +4641,24 @@ function _progressionLifts(){
   if(!hasCustomRoutine()) return [];
   var lastWk=currentWeek-1;
   if(lastWk<1) return [];
+  // Last CALENDAR week (the record's programme-week number drifts after a
+  // reset or a parked final week), and only sets that met the plan's reps.
+  var lm=new Date(_mostRecentMonday()+'T00:00:00'); lm.setDate(lm.getDate()-7);
+  var lastMon=_ymdLocal(lm);
   var best={};
   getSessions().forEach(function(sess){
-    if(sess.week!==lastWk) return;
+    if(!sess.date || _mondayKeyOf(sess.date)!==lastMon) return;
+    var planExs=[]; try{ planExs=getSessionExercises(sess.type)||[]; }catch(e){}
     (sess.exercises||[]).forEach(function(ex){
       if(!ex.isMain) return;
-      var rpe=parseFloat(ex.rpe);
+      // Per-set RPE log is the honest effort; the summary rpe can be a default.
+      var rpe=Array.isArray(ex.rpeLog)&&ex.rpeLog.length ? Math.max.apply(null, ex.rpeLog.map(function(x){ return parseFloat(x)||0; })) : parseFloat(ex.rpe);
       var w=parseFloat(ex.weight)||0;
       var sets=Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||0);
       if(!(rpe>0) || rpe>7 || sets<3 || !(w>0)) return;
+      var plan=planExs.find(function(p){ return p.name===ex.name; });
+      var tgt=plan ? parseInt(Array.isArray(plan.reps)?plan.reps[plan.reps.length-1]:String(plan.reps).split('-')[0]) : 0;
+      if(tgt>0 && Array.isArray(ex.reps) && ex.reps.some(function(r){ return (parseInt(r)||0)<tgt; })) return;   // a missed set is not "clean"
       if(!best[ex.name] || w>best[ex.name].weight) best[ex.name]={name:ex.name, weight:w, rpe:rpe, sets:sets};
     });
   });
@@ -5031,7 +5100,7 @@ function renderCoachCard(activity){
   }
   var actions = (card.actions || []).slice(0,2).map(function(a){
     var cls = a.primary ? 'primary' : 'neutral';
-    return '<button class="kt-coach-btn '+cls+'" onclick="dismissCoachCard()">'+_esc(a.label)+'</button>';
+    return '<button class="kt-coach-btn '+cls+'" onclick="coachCardAction(this.textContent)">'+_esc(a.label)+'</button>';
   }).join('');
   var ask = '<button class="kt-coach-ask" onclick="toggleCoachCardAsk()" title="Ask the coach">'+
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'+
@@ -5386,7 +5455,7 @@ function renderRunReview(km, time, excludeId){
     var rs=_runSecsOf(r.time);
     if(!(rd>0) || !(rs>0)) return;
     if(Math.abs(rd-d)/d>0.1) return;
-    comps.push({date:r.date, secs:rs, health:r.notes==='From Apple Health'});
+    comps.push({date:r.date, secs:rs, health:r.note==='From Apple Health'});
   });
   if(comps.length){
     comps.reverse(); // storage is newest-first; ledger runs oldest → today
@@ -8077,6 +8146,7 @@ function moveSport(id,newDate){
 }
 function pickSport(id){
   if(id!=='CrossFit') cfDraftMoves=[];
+  if(id!==logSportType) sportLogDraft.f={};   // Yoga's "style" must not ride into Swimming's save
   logSportType=id;
   sportTabPicked=true;   // + tab decision made — show the form (state B/C)
   render();
@@ -8095,6 +8165,11 @@ function saveSportLog(){
   if(logSportType==='CrossFit'){
     var _mv=_cfMovesForSave();
     if(_mv) data.movements=_mv;
+  }
+  if(!dur && !notes && !Object.keys(data).length){
+    // An empty tap used to file a blank "Yoga · 0 min" row into the ledger.
+    showToast('Add a duration or a detail first','err');
+    return;
   }
   var rec={id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes};
   var logs=getSportLogs();
@@ -11270,6 +11345,7 @@ function executeCoachTool(name,input){
       if(!(rkm>0)) return {ok:false,error:'distance_km must be > 0'};
       var rtime=String(input.time||'').trim();
       if(!rtime) return {ok:false,error:'time required as MM:SS'};
+      if(!/^\d{1,2}:\d{2}(:\d{2})?$/.test(rtime)) return {ok:false,error:'time must be MM:SS or H:MM:SS (got "'+rtime+'")'};
       var rdate=String(input.date||'').trim()||todayISO();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(rdate)) rdate=todayISO();
       var rtype=input.type||'easy';
@@ -13455,10 +13531,11 @@ function saveSportLogEdit(id){
   var logs = getSportLogs();
   var rec = logs.find(function(l){ return l.id===id; });
   if(!rec){ closeSportLogEditor(); return; }
-  var dur = parseInt((document.getElementById('sleDuration')||{value:''}).value)||0;
+  var durEl = document.getElementById('sleDuration');
   var date = (document.getElementById('sleDate')||{value:''}).value;
   var notes = ((document.getElementById('sleNotes')||{value:''}).value||'').trim();
-  if(dur>0) rec.duration = dur;
+  // Blank = clear (a wrong duration could never be removed, only replaced).
+  if(durEl) rec.duration = parseInt(durEl.value)||0;
   if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)) rec.date = date;
   rec.notes = notes;
   rec.data = rec.data||{};
@@ -14014,6 +14091,9 @@ function _resumeDayAndRest(){
   if(todayISO() !== _lastSeenDay){
     _lastSeenDay = todayISO();
     autoAdvanceWeek();
+    // Yesterday's dismissals and banner choice are yesterday's.
+    coachCardDismissed=false; coachCardAskOpen=false; todayBannerOverride=null;
+    try{ invalidateCoachCard(); }catch(e){}
     render();
   }
   if(runnerOpen && runnerResting && runnerRestEndsAt){
