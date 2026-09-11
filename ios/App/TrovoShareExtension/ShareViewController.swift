@@ -53,12 +53,12 @@ class ShareViewController: UIViewController {
         bar.addSubview(cancelBtn)
 
         let icon = UIImageView(image: UIImage(systemName: "figure.strengthtraining.traditional"))
-        icon.tintColor = .systemGreen
+        icon.tintColor = UIColor(red: 0.85, green: 1.0, blue: 0.39, alpha: 1)   // Supero lime
         icon.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(icon)
 
         let title = UILabel()
-        title.text = "Trovo"
+        title.text = "Supero"
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(title)

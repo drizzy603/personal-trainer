@@ -78,6 +78,7 @@ struct LiveSession: Codable, Equatable {
     let startedAt: Double       // ms since epoch
     let reps: [String: [Int]]
     let weights: [String: Double]
+    let ended: Bool?            // phone finished/closed the session
     var setsDone: Int { reps.values.reduce(0) { $0 + $1.count } }
     var isFresh: Bool { Date().timeIntervalSince1970 - startedAt / 1000 < 6 * 3600 }
 }
@@ -434,6 +435,7 @@ final class Runner: ObservableObject {
 struct RootView: View {
     @ObservedObject var conn = Connectivity.shared
     @StateObject var runner = Runner()
+    @State private var lastPlanDate: String? = nil
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -467,15 +469,25 @@ struct RootView: View {
             runner.pushLive()
             runner.resyncRest()
         }
-        // Fresh plan → drop wrist rows for exercises that no longer exist.
+        // Fresh plan → drop wrist rows for exercises that no longer exist,
+        // and a plan for a NEW DAY starts a clean runner: yesterday's logged
+        // sets used to survive under reused exercise names and get re-sent.
         .onChange(of: conn.plan) { newPlan in
-            if let plan = newPlan { runner.prune(to: plan) }
+            guard let plan = newPlan else { return }
+            if let d = plan.date, d != lastPlanDate {
+                if lastPlanDate != nil { runner.reset(); WorkoutManager.shared.end() }
+                lastPlanDate = d
+            }
+            runner.prune(to: plan)
         }
         // Real-time mirror: every live payload from the phone merges straight
         // into the wrist runner — sets logged there tick here as they happen.
+        // A phone 'ended' payload closes the wrist side too (the HKWorkout
+        // session used to keep running until the user noticed).
         .onChange(of: conn.live) { newLive in
-            guard let live = newLive, let plan = conn.plan,
-                  live.dayName == plan.dayName, live.isFresh else { return }
+            guard let live = newLive, let plan = conn.plan, live.dayName == plan.dayName else { return }
+            if live.ended == true { runner.reset(); WorkoutManager.shared.end(); return }
+            guard live.isFresh else { return }
             runner.merge(live)
         }
         .onAppear {

@@ -313,16 +313,22 @@ public final class HealthKitReader {
         if enabled {
             startBackgroundObserver()
         } else {
+            if let q = observerQuery { store.stop(q); observerQuery = nil }
             store.disableAllBackgroundDelivery { _, _ in }
         }
     }
 
+    private var observerQuery: HKObserverQuery?
     public func startBackgroundObserver() {
         guard HKHealthStore.isHealthDataAvailable() else { return }
+        // Toggling sync on/off/on used to stack a fresh observer each time
+        // (none were ever stopped) — every workout then harvested N times.
+        if let q = observerQuery { store.stop(q) }
         let type = HKObjectType.workoutType()
         let query = HKObserverQuery(sampleType: type, predicate: Self.workoutPredicate) { [weak self] _, completionHandler, _ in
             self?.harvestNewWorkouts { completionHandler() }
         }
+        observerQuery = query
         store.execute(query)
         store.enableBackgroundDelivery(for: type, frequency: .immediate) { _, _ in }
     }

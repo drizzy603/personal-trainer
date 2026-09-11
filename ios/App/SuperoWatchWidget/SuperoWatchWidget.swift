@@ -32,8 +32,15 @@ struct ComplicationProvider: TimelineProvider {
         completion(loadEntry())
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<ComplicationEntry>) -> Void) {
-        // The watch app reloads timelines whenever a new plan arrives.
-        completion(Timeline(entries: [loadEntry()], policy: .never))
+        // The watch app reloads timelines whenever a new plan arrives — but
+        // the plan is a DAY's plan: at midnight it becomes yesterday's, so
+        // roll the face to an honest 'open Supero' state until a new one lands.
+        let now = Date()
+        let cal = Calendar.current
+        let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(86400)
+        let today = loadEntry()
+        let stale = ComplicationEntry(date: midnight, day: "Supero", type: "", week: today.week)
+        completion(Timeline(entries: [today, stale], policy: .after(midnight.addingTimeInterval(60))))
     }
 }
 

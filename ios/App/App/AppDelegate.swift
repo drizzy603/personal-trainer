@@ -27,6 +27,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if HealthKitReader.backgroundSyncEnabled {
             healthObserver.startBackgroundObserver()
         }
+        // A rest Live Activity only had an in-memory handle: if the app was
+        // killed mid-rest the banner lingered ('DONE') and the next rest
+        // stacked a second one. Sweep survivors at launch.
+        if #available(iOS 16.2, *) {
+            Task {
+                for act in Activity<TrovoTimerAttributes>.activities {
+                    await act.end(nil, dismissalPolicy: .immediate)
+                }
+            }
+        }
         return true
     }
 
