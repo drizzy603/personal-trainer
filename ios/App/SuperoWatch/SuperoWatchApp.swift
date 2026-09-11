@@ -89,6 +89,10 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = Connectivity()
     @Published var plan: WatchPlan? = nil
     @Published var live: LiveSession? = nil
+    // Finished sessions still queued in WatchConnectivity. "Synced" used to
+    // show the instant transferUserInfo was CALLED — with the phone out of
+    // range for a day the session hadn't gone anywhere yet.
+    @Published var pendingUploads = 0
     // The phone mirrors pushes over context + message, so the same payload
     // often lands twice — skip the repeat (WidgetCenter reloads are budgeted).
     private var lastIngestSig = ""
@@ -138,7 +142,17 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         wchLog.info("session activated (state: \(state.rawValue))")
         ingest(session.receivedApplicationContext)
+        refreshPendingUploads()
         requestRefresh()
+    }
+    func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+        if let e = error { wchLog.error("session transfer failed: \(e.localizedDescription, privacy: .public)") }
+        else { wchLog.info("session transfer delivered to phone") }
+        refreshPendingUploads()
+    }
+    private func refreshPendingUploads() {
+        let n = WCSession.default.outstandingUserInfoTransfers.count
+        DispatchQueue.main.async { self.pendingUploads = n }
     }
     func session(_ session: WCSession, didReceiveApplicationContext context: [String: Any]) {
         ingest(context)
@@ -202,6 +216,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         WCSession.default.transferUserInfo(["session": json])
+        refreshPendingUploads()
     }
 }
 
@@ -858,12 +873,15 @@ struct OffDayView: View {
 
 struct SyncedView: View {
     @ObservedObject var runner: Runner
+    @ObservedObject var conn = Connectivity.shared
     var body: some View {
+        let delivered = conn.pendingUploads == 0
         VStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 40)).foregroundColor(lime)
-            Text("Synced to iPhone").font(.system(size: 15, weight: .bold))
-            Text("Session lands in your log next time Supero opens.")
+            Image(systemName: delivered ? "checkmark.circle.fill" : "arrow.up.circle")
+                .font(.system(size: 40)).foregroundColor(delivered ? lime : .secondary)
+            Text(delivered ? "Synced to iPhone" : "Saved on watch").font(.system(size: 15, weight: .bold))
+            Text(delivered ? "Session lands in your log next time Supero opens."
+                           : "Sends to your iPhone when it\u{2019}s back in range.")
                 .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
             Button("New session") { runner.reset() }
                 .buttonStyle(.bordered)

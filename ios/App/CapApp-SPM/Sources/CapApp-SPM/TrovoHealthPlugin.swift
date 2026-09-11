@@ -16,12 +16,24 @@ public class TrovoHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getReadiness",         returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPendingWorkouts",   returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearPendingWorkouts", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getState",             returnType: CAPPluginReturnPromise),
     ]
 
     private let reader = HealthKitReader()
 
     @objc func isAvailable(_ call: CAPPluginCall) {
         call.resolve(["available": HKHealthStore.isHealthDataAvailable()])
+    }
+
+    // Native truth for the Settings → Apple Health sheet: the observer flag
+    // and whether workout sharing is still authorized (read status is hidden
+    // by HealthKit design, so only the write side can be reported).
+    @objc func getState(_ call: CAPPluginCall) {
+        call.resolve([
+            "available": HKHealthStore.isHealthDataAvailable(),
+            "backgroundSync": HealthKitReader.backgroundSyncEnabled,
+            "writeAuthorized": reader.writeAuthorized,
+        ])
     }
 
     @objc func requestAuth(_ call: CAPPluginCall) {

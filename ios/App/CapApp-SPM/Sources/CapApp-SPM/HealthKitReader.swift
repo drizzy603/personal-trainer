@@ -89,6 +89,11 @@ public final class HealthKitReader {
         }
     }
 
+    public var writeAuthorized: Bool {
+        HKHealthStore.isHealthDataAvailable()
+            && store.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized
+    }
+
     public func requestWriteAuthorization(completion: @escaping (Bool, Error?) -> Void) {
         guard HKHealthStore.isHealthDataAvailable() else {
             completion(false, nil)
@@ -136,7 +141,14 @@ public final class HealthKitReader {
         // HKStatisticsQuery completions fire on arbitrary background threads;
         // serialise all appends through this queue to avoid a data race on `out`.
         let serialQ = DispatchQueue(label: "trovo.enrich.serial")
+        // Only the newest 60 get an HR query — a first import of years of
+        // workouts used to fire hundreds of statistics queries at once.
+        let enrichSet = Set(workouts.prefix(60).map { $0.uuid })
         for workout in workouts {
+            guard enrichSet.contains(workout.uuid) else {
+                serialQ.sync { out.append(serialize(workout: workout, avgHr: nil)) }
+                continue
+            }
             group.enter()
             avgHeartRate(for: workout) { bpm in
                 let entry = self.serialize(workout: workout, avgHr: bpm)
