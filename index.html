@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-11"/>
+<meta name="build" content="20260910-12"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2225,6 +2225,27 @@ function calcStreak(sessions) {
 }
 
 // Returns array of exercise names that set new PRs
+// When (and for how many reps) a record was set — derived from the log, so
+// the kt_prs {name: weight} shape stays untouched. Newest session at that
+// weight wins; the heaviest set's own reps via _lastPair.
+function _prMeta(name, weight){
+  var w=parseFloat(weight); if(!(w>0)) return null;
+  var sessions=getSessions();
+  for(var i=0;i<sessions.length;i++){
+    var s=sessions[i], exs=s.exercises||[];
+    for(var j=0;j<exs.length;j++){
+      var ex=exs[j]; if(ex.name!==name) continue;
+      var top=parseFloat(ex.weight)||0;
+      if(Array.isArray(ex.weightLog)&&ex.weightLog.length) top=Math.max(top, Math.max.apply(null, ex.weightLog.map(function(x){ return parseFloat(x)||0; })));
+      if(Array.isArray(ex.sets)) ex.sets.forEach(function(st){ top=Math.max(top, parseFloat(st&&st.weight)||0); });
+      if(Math.abs(top-w)<0.01){
+        var pair=_lastPair(ex);
+        return {date:s.date, reps:pair&&pair.r!=null?parseInt(pair.r)||0:0};
+      }
+    }
+  }
+  return null;
+}
 function checkAndUpdatePRs(exercises) {
   var prs = getPRs();
   var newPRs = [];
@@ -10052,12 +10073,14 @@ function renderProgress() {
       ? fmtDate(latestPR.date).toUpperCase()+(latestPR.reps?' · ×'+latestPR.reps:'')
       : 'ALL-TIME BESTS · LB';
     var prPills = prNames.map(function(n){
+      var meta=_prMeta(n, prData[n]);
       return '<div style="display:inline-flex;align-items:baseline;gap:5px;'+
         'background:color-mix(in srgb,var(--yellow) 9%,transparent);'+
         'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);'+
         'border-radius:12px;padding:6px 11px;">'+
         '<span style="font-size:12px;font-weight:700;">'+_esc(n)+'</span>'+
         '<span style="font-size:12px;font-weight:800;color:var(--yellow);">'+prData[n]+'</span>'+
+        (meta ? '<span class="kt-mono" style="font-size:9.5px;color:var(--muted);">'+(meta.reps?'\u00d7'+meta.reps+' \u00b7 ':'')+_esc(fmtDate(meta.date).toUpperCase())+'</span>' : '')+
       '</div>';
     }).join('');
     prCard = '<div onclick="showAllPRs='+(!showAllPRs)+';render()" style="background:var(--card);'+

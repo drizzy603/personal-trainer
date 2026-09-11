@@ -143,3 +143,19 @@ run('run times are read forgivingly and the form previews pace', async () => {
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('Records pills carry the PR reps and date from the log', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      const prs = getPRs(); const name = Object.keys(prs)[0];
+      const meta = _prMeta(name, prs[name]);
+      showAllPRs = true; switchTab('progress');
+      const html = document.body.innerHTML;
+      return { name, w: prs[name], meta, shown: meta ? html.indexOf(fmtDate(meta.date).toUpperCase()) > -1 : null };
+    });
+    assert(out.meta && out.meta.date, 'meta resolves a date for ' + out.name + ' @ ' + out.w + ': ' + JSON.stringify(out.meta));
+    assert(out.shown, 'the pill shows that date');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
