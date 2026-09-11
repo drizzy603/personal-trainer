@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-2"/>
+<meta name="build" content="20260910-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1042,7 +1042,11 @@ button:active{transform:scale(.97);}
 .kt-done-btn{margin-top:8px;padding:14px 24px;border-radius:14px;border:none;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-done-btn{background:#0b0b0d;color:var(--accent);}
 .kt-r-card.dark .kt-done-btn{background:var(--accent);color:#000;}
-.kt-r-strip{position:absolute;left:0;right:0;z-index:60;padding:0 16px;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 14px);}
+/* #runner-root already stops at the dock (its bottom is the tab clearance),
+   so children must NOT add that clearance again — the strip floated ~100px
+   above the dock and the deck lost 86px, clipping the idle card's footer on
+   every phone and half the card on 667pt devices. */
+.kt-r-strip{position:absolute;left:0;right:0;z-index:60;padding:0 16px;bottom:14px;}
 /* No justify-content:center here — centered flex + overflow-x pushes the
    leading pills into negative scroll space where they can never be reached
    or tapped. The first/last auto margins center the row only when it fits. */
@@ -6088,7 +6092,9 @@ function renderDeckRunner(){
   // Deck — leave room for the header above and the strip + tab bar below.
   // The strip is var(--tab-h) + ~36px tall and sits 14px above the tab bar,
   // so deck bottom = (tab area) + (strip space) ≈ tab-h + tab-gap + tab-bottom-clear + 96px.
-  var deckWrap = '<div class="kt-r-deck" style="top:calc(max(env(safe-area-inset-top),20px) + 70px); bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 96px);">'+deck+'</div>';
+  // Deck bottom = strip (14px inset + ~60px tall) + 22px breathing room,
+  // measured from #runner-root's bottom, which already clears the dock.
+  var deckWrap = '<div class="kt-r-deck" style="top:calc(max(env(safe-area-inset-top),20px) + 70px); bottom:96px;">'+deck+'</div>';
 
   return hd + deckWrap + strip;
 }
@@ -6304,8 +6310,8 @@ function _renderRunnerIdleBody(ex, next){
       '</div>';
     }
   }
-  return '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">'+
-    '<div>'+
+  return '<div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;">'+
+    '<div style="min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;">'+
       lastBlock+
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'+
         '<div class="kt-r-card-name" style="flex:1;">'+_esc(ex.name)+'</div>'+
