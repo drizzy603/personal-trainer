@@ -39,7 +39,7 @@ run('monthly poster: real days only, lives in Progress, exports', async () => {
       _drawWrapCard(mk, _monthStats(mk), '#c8ff00');
       await new Promise(r => setTimeout(r, 800));
       const toast = document.getElementById('toast');
-      const exported = toast && toast.textContent === 'Sharing not supported here';
+      const exported = !!(toast && /^Saved as supero-|^Sharing not supported here$/.test(toast.textContent));
       return { absent, distinct, shows, cellCount, dim, exported };
     });
     assert(out.absent, 'no data, no poster');

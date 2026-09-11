@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-7"/>
+<meta name="build" content="20260910-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1147,11 +1147,12 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
 /* Signal dock */
 #tabs{
   left:14px;right:14px;bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));
+  height:var(--tab-h);box-sizing:border-box;align-items:stretch;
   padding:7px;background:color-mix(in srgb,var(--card) 88%,transparent);
   border-color:color-mix(in srgb,var(--text) 9%,transparent);border-radius:22px;
   box-shadow:0 24px 60px -24px rgba(0,0,0,.95),inset 0 1px 0 rgba(255,255,255,.045);
 }
-.tab{flex-direction:row;justify-content:center;gap:6px;padding:13px 4px;border-radius:15px;font-size:10px;font-weight:700;letter-spacing:-.01em;}
+.tab{flex-direction:row;justify-content:center;align-items:center;gap:6px;padding:0 4px;border-radius:15px;font-size:10px;font-weight:700;letter-spacing:-.01em;}
 .tab svg{width:18px;height:18px;transition:transform var(--t-swap) var(--ease-settle);}
 .tab.active{background:var(--accent);color:var(--on-accent);box-shadow:0 10px 28px -14px color-mix(in srgb,var(--accent) 72%,transparent);}
 .tab.active svg{stroke-width:2.4;transform:translateY(-1px);}
@@ -1868,7 +1869,7 @@ function lsGet(k) {
   _lsCache[k] = v;
   return v;
 }
-function lsDel(k) { if(k==='kt_sessions'||k==='kt_bw') _logsVersion++; delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(e){} }
+function lsDel(k) { if(k==='kt_sessions'||k==='kt_bw') _logsVersion++; _todayActMemo=null; delete _lsCache[k]; try{ localStorage.removeItem(k); }catch(e){} }
 // R4 — surface localStorage quota / serialization failures. The previous
 // silent catch meant the user would see "Session logged" even when nothing
 // was saved. We now route real save failures to a toast so the user knows
@@ -1901,6 +1902,7 @@ function lsSet(k,v) {
   var _hadPrev=(k in _lsCache), _prev=_lsCache[k];
   _lsCache[k] = v;
   _backupDirty = true;
+  _todayActMemo=null;
   try{ localStorage.setItem(k,JSON.stringify(v)); return true; }
   catch(e){
     // User data outranks the OTA page cache (~1.7MB of the same quota):
@@ -3312,6 +3314,7 @@ function _tabEnterMotion(screen, routeChanged){
   }
 }
 function render() {
+  _todayActMemo=null;
   // Sync the inline run-log form into module state before rebuilding the
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
   // wipe what the user has typed.
@@ -3765,7 +3768,14 @@ function _todayLiftExercises(sessionType){
 }
 // Returns a normalized snapshot of today's scheduled activity:
 //   {type:'lift'|'run'|'rest'|'sport', dayName, weekday, exercises?, km?, hr?, sportType?}
+var _todayActMemo=null;   // cleared at render start and on every lsSet/lsDel
 function getTodayActivity(){
+  if(_todayActMemo && _todayActMemo.day===todayISO()) return JSON.parse(_todayActMemo.json);
+  var v=_computeTodayActivity();
+  try{ _todayActMemo={day:todayISO(), json:JSON.stringify(v)}; }catch(e){ _todayActMemo=null; }
+  return v;
+}
+function _computeTodayActivity(){
   var weekPlan = getWeekPlan();
   var todayDow = (new Date().getDay()+6)%7;
   var plan = weekPlan[todayDow];
@@ -3969,9 +3979,15 @@ function fetchCoachCard(activity){
       if(!match) throw new Error('no json');
       var card = JSON.parse(match[0]);
       if(!card.message || !Array.isArray(card.actions)) throw new Error('bad shape');
-      card.loadedAt = Date.now(); card.forDay = _forDay;
+      card.loadedAt = Date.now(); card.forDay = _forDay; card.fromApi = true;
       saveCachedCoachCard(card);
       resolve(card);
+      // If the 8s timer already resolved the fallback, swap the real note in
+      // (same day, not dismissed) — it used to sit unseen in the cache.
+      if(coachCard && !coachCard.fromApi && coachCard.forDay===_forDay && !coachCardDismissed){
+        coachCard = card;
+        if(currentTab === 'log' && logSubTab === 'workout') render();
+      }
     }).catch(function(){
       clearTimeout(_cardTimer);
       var fb = fallbackCoachCard(activity);
@@ -4942,12 +4958,26 @@ function _drawWeekCard(st, accent){
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-week-'+st.monday+'-wrapped.png', {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file]}).catch(function(){});
-    } else {
-      showToast('Sharing not supported here','err');
-    }
+    _shareFile(file);
   }, 'image/png');
+}
+// Share sheet where it takes files; otherwise a plain PNG download (desktop
+// browsers). The native shell's WKWebView supports Web Share with files.
+function _shareFile(file){
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({files:[file]}).catch(function(){});
+    return;
+  }
+  if(!isNativeIOS()){
+    try{
+      var url=URL.createObjectURL(file), a=document.createElement('a');
+      a.href=url; a.download=file.name; document.body.appendChild(a); a.click();
+      document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      showToast('Saved as '+file.name);
+      return;
+    }catch(e){}
+  }
+  showToast('Sharing not supported here','err');
 }
 function dismissWrap(){ lsSet('kt_last_wrap', _wrapMonthKey()); render(); }
 function shareMonthlyCard(){
@@ -5022,11 +5052,7 @@ function _drawWrapCard(mk, st, accent){
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-'+mk+'-wrapped.png', {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file]}).catch(function(){});
-    } else {
-      showToast('Sharing not supported here','err');
-    }
+    _shareFile(file);
   }, 'image/png');
 }
 
@@ -10590,11 +10616,7 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
     var file=new File([blob], 'supero-'+s.date+'.png', {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file]}).catch(function(){});
-    } else {
-      showToast('Sharing not supported here','err');
-    }
+    _shareFile(file);
   }, 'image/png');
 }
 function renderHistory() {
@@ -10677,6 +10699,10 @@ function showToast(msg, style){
 
 // ── AI COACH ─────────────────────────────────────────────────────────────────
 function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
+// Touch keyboards have no Shift+Enter: Return used to fire the message, so a
+// two-line question was impossible on the phone. There, Return is a newline
+// and the send button sends; desktop keeps Enter-to-send.
+function _coarsePointer(){ try{ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }catch(e){ return false; } }
 function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();}
 
 function loadCoachHistory(){
@@ -12484,7 +12510,7 @@ function renderCoach(){
         '</button>'
       :'')+
     '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" rows="1" '+
-      'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendCoachMessage();}" '+
+      'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey&&!_coarsePointer()){event.preventDefault();sendCoachMessage();}" '+
       'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>'+
     '<button class="coach-send-btn" onclick="sendCoachMessage()" '+(coachLoading?'disabled':'')+'>'+
       '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
@@ -12828,7 +12854,7 @@ function renderSettings() {
               '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>'+
             '</svg>'+
           '</div>'+
-          '<div class="settings-row-body"><div class="settings-row-title">Training-day reminder</div><div class="settings-row-sub">'+(notifOn?'9:00 on training days':'Off — rest-timer alerts always on')+'</div></div>'+
+          '<div class="settings-row-body"><div class="settings-row-title">Training-day reminder</div><div class="settings-row-sub">'+(notifOn?'9:00 on training days \u00b7 next 7 days, refreshed each time you open Supero':'Off \u2014 rest-timer alerts always on')+'</div></div>'+
           '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(notifOn?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(notifOn?'On':'Off')+'</span>'+
         '</div>' : '')+
       '</div>';
@@ -14113,7 +14139,13 @@ function _a11yPass(){
     var el=els[i], t=el.tagName;
     if(t==='BUTTON'||t==='A'||t==='INPUT'||t==='SELECT'||t==='TEXTAREA') continue;
     // Rows whose only handler swallows the tap are not controls.
-    if(/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(el.getAttribute('onclick')||'')) continue;
+    var _oc=el.getAttribute('onclick')||'';
+    if(/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(_oc)) continue;
+    // Settings toggle rows (toggleX() + an On/Off pill) are switches, not buttons.
+    if(/^\s*toggle\w+\(\)/.test(_oc) && el.classList.contains('settings-row')){
+      var _pill=el.querySelector('span:last-child'), _on=/^on$/i.test(((_pill&&_pill.textContent)||'').trim());
+      el.setAttribute('role','switch'); el.setAttribute('aria-checked', _on?'true':'false');
+    }
     if(!el.hasAttribute('role')) el.setAttribute('role','button');
     if(!el.hasAttribute('tabindex')) el.setAttribute('tabindex','0');
   }
@@ -14145,12 +14177,22 @@ function haptic(kind){
   }catch(e){}
 }
 var REST_NOTIF_ID = 9001;
+var _notifDeniedToasted=false;
 function _notifPermission(cb){
   var LN = _plug('LocalNotifications'); if(!LN){ cb(false); return; }
   LN.checkPermissions().then(function(p){
     if(p.display==='granted'){ cb(true); return; }
-    if(p.display==='denied'){ cb(false); return; }
-    LN.requestPermissions().then(function(r){ cb(r.display==='granted'); }).catch(function(){ cb(false); });
+    if(p.display==='denied'){
+      // Silent before: rest alerts simply never came. Say so once per launch.
+      if(!_notifDeniedToasted){ _notifDeniedToasted=true; showToast('Rest alerts are off \u2014 allow notifications for Supero in iOS Settings'); }
+      cb(false); return;
+    }
+    // iOS shows its own dialog with no context; one line first.
+    showToast('Supero will ask to notify you when a rest ends');
+    LN.requestPermissions().then(function(r){
+      if(r.display!=='granted' && !_notifDeniedToasted){ _notifDeniedToasted=true; showToast('Rest alerts stay off \u2014 change it any time in iOS Settings'); }
+      cb(r.display==='granted');
+    }).catch(function(){ cb(false); });
   }).catch(function(){ cb(false); });
 }
 function scheduleRestNotification(ex, nextSet, seconds){

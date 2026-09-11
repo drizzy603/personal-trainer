@@ -86,3 +86,41 @@ run('week streak counts runs and sports as training days', async () => {
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('getTodayActivity is memoised per paint and hands out fresh copies', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      const a = getTodayActivity(), b = getTodayActivity();
+      const same = JSON.stringify(a) === JSON.stringify(b);
+      const distinct = a !== b;
+      a.type = 'mutated';
+      const c = getTodayActivity();
+      render();
+      const d = getTodayActivity();
+      return { same, distinct, cUnaffected: c.type !== 'mutated', dSame: JSON.stringify(d) === JSON.stringify(b),
+        enterSends: !_coarsePointer() };
+    });
+    assert(out.same && out.distinct, 'memo returns equal content, distinct objects');
+    assert(out.cUnaffected, 'a caller mutating its copy cannot poison the next caller');
+    assert(out.dSame, 'render() clears the memo without changing the answer');
+    assert(out.enterSends, 'headless (fine pointer) keeps Enter-to-send');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('the dock is exactly --tab-h tall, so every clearance built from the token is true', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      const tabs = document.getElementById('tabs');
+      const token = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h'));
+      const r = tabs.getBoundingClientRect();
+      const tabH = [...tabs.querySelectorAll('.tab')].map(t => Math.round(t.getBoundingClientRect().height));
+      return { token, dock: Math.round(r.height), tabH, bottomGap: Math.round(window.innerHeight - r.bottom) };
+    });
+    assert(out.dock === out.token, 'dock height ' + out.dock + ' equals --tab-h ' + out.token);
+    assert(out.tabH.every(h => h >= 44), 'every tab stays a 44pt target: ' + out.tabH.join(','));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

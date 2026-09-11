@@ -6,13 +6,21 @@ import SwiftUI
 // Group summary (Light sends Lime — these surfaces render on dark). Falls
 // back to the classic lime when no summary exists yet.
 private let limeDefault = Color(red: 0.78, green: 1.0, blue: 0.0)
+// Parsed once per distinct summary string: every view body read `lime`
+// several times and each read re-parsed the whole summary JSON.
+private var _limeCache: (json: String, color: Color)? = nil
 private var lime: Color {
     guard let json = UserDefaults(suiteName: "group.app.kt.trainer")?
-            .string(forKey: "superoWidgetSummary"),
-          let data = json.data(using: .utf8),
-          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-          let hex = obj["accent"] as? String else { return limeDefault }
-    return Color(hex: hex) ?? limeDefault
+            .string(forKey: "superoWidgetSummary") else { return limeDefault }
+    if let c = _limeCache, c.json == json { return c.color }
+    var color = limeDefault
+    if let data = json.data(using: .utf8),
+       let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+       let hex = obj["accent"] as? String, let parsed = Color(hex: hex) {
+        color = parsed
+    }
+    _limeCache = (json, color)
+    return color
 }
 
 extension Color {
