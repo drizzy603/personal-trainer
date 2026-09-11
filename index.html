@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-14"/>
+<meta name="build" content="20260911-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -111,6 +111,10 @@ window.addEventListener('unhandledrejection', function(e){
 @font-face{font-family:'Inter';font-style:normal;font-weight:400 900;font-display:swap;src:url('assets/fonts/inter-var-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('assets/fonts/jbm-var-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('assets/fonts/jbm-var-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Anton';font-style:normal;font-weight:400;font-display:swap;src:url('assets/fonts/anton-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
+@font-face{font-family:'Anton';font-style:normal;font-weight:400;font-display:swap;src:url('assets/fonts/anton-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:400 900;font-display:swap;src:url('assets/fonts/archivo-latin-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:400 900;font-display:swap;src:url('assets/fonts/archivo-latin.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#0b0b0d;--card:#16161a;--card2:#1f1f24;--border:rgba(255,255,255,.07);
@@ -148,6 +152,7 @@ window.addEventListener('unhandledrejection', function(e){
      parser bug that returns invalid → bottom:auto → bar mid-screen.
      30px clears the home indicator on every modern iPhone. */
   --tab-h:64px;
+  --earned:#d8ff63;--earned-ink:#d8ff63;
   --tab-gap:8px;
   --tab-bottom-clear:14px;
 }
@@ -210,7 +215,7 @@ h3{font-size:12px;font-weight:500;color:var(--lite);margin-bottom:14px;letter-sp
 .screen-eyebrow{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:2px;}
 .screen-title{font-size:32px;font-weight:700;letter-spacing:-1px;line-height:1.05;}
 .screen-avatar{width:36px;height:36px;border-radius:50%;
-  background:var(--accent);color:#000;
+  background:var(--accent);color:var(--on-accent);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
@@ -219,8 +224,8 @@ h3{font-size:12px;font-weight:500;color:var(--lite);margin-bottom:14px;letter-sp
   letter-spacing:-.1px;
   -webkit-tap-highlight-color:transparent;transition:opacity .15s,transform .1s;}
 .btn:active{opacity:.8;transform:scale(.98);}
-.btn-primary{background:var(--accent);color:#000;}
-.btn-green{background:var(--green);color:#000;}
+.btn-primary{background:var(--accent);color:var(--on-accent);}
+.btn-green{background:var(--green);color:var(--on-accent);}
 .btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--border);}
 
 .btn-full{width:100%;}
@@ -333,7 +338,7 @@ select option{background:var(--bg);}
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 #toast{position:fixed;bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + 8px);left:20px;right:20px;
-  background:var(--green);color:#000;padding:14px 20px;border-radius:14px;
+  background:var(--green);color:var(--on-accent);padding:14px 20px;border-radius:14px;
   border:1px solid rgba(0,0,0,.15);
   font-size:13px;font-weight:700;line-height:1.4;text-align:center;
   z-index:9999;transform:translateY(20px);opacity:0;
@@ -362,7 +367,7 @@ select option{background:var(--bg);}
 .wk-row.current{background:var(--accent-dim);}
 .wk-row-num{font-size:12px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.02em;}
 .wk-row-num.current{color:var(--accent-ink);}
-.wk-row-now{background:var(--accent);color:#000;font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;}
+.wk-row-now{background:var(--accent);color:var(--on-accent);font-size:9px;font-weight:700;padding:2px 6px;border-radius:99px;letter-spacing:.04em;flex-shrink:0;}
 .wk-row-note{font-size:13px;color:var(--lite);line-height:1.5;flex:1;min-width:0;}
 .wk-row-chev{flex-shrink:0;color:var(--muted);transition:transform .2s;align-self:center;}
 .wk-row.open .wk-row-chev{transform:rotate(180deg);color:var(--accent);}
@@ -428,7 +433,7 @@ select option{background:var(--bg);}
 /* ── Profile header (settings) ───────────────────────────────────────────── */
 .profile-row{display:flex;align-items:center;gap:14px;padding:8px 0 20px;}
 .profile-ava{width:54px;height:54px;border-radius:50%;
-  background:var(--accent);color:#000;
+  background:var(--accent);color:var(--on-accent);
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex-shrink:0;}
 .profile-name{font-size:18px;font-weight:600;letter-spacing:-.2px;}
 .profile-meta{font-size:13px;color:var(--lite);margin-top:2px;}
@@ -442,7 +447,7 @@ select option{background:var(--bg);}
 .coach-head-r{display:flex;align-items:center;gap:8px;}
 .coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
-.coach-bubble.user{align-self:flex-end;background:var(--accent);color:#000;border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
+.coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
 .coach-bubble.assistant{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--accent);color:var(--text);border-bottom-left-radius:5px;font-weight:500;}
 .coach-msgs-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
 
@@ -464,7 +469,7 @@ select option{background:var(--bg);}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
 .coach-textarea::placeholder{color:var(--muted);}
-.coach-send-btn{background:var(--accent);border:none;border-radius:22px;color:#000;
+.coach-send-btn{background:var(--accent);border:none;border-radius:22px;color:var(--on-accent);
   width:44px;height:44px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .coach-send-btn:active{opacity:.7;}
@@ -568,7 +573,7 @@ select option{background:var(--bg);}
 .kt-mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-meta-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0 22px;}
 .kt-meta-label{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;font-weight:500;}
-.kt-meta-ava{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#000;font-weight:700;font-size:13px;}
+.kt-meta-ava{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:var(--on-accent);font-weight:700;font-size:13px;}
 .kt-hero{margin-bottom:30px;}
 .kt-hero-greet{font-size:13px;color:var(--lite);font-weight:500;margin-bottom:14px;letter-spacing:-.011em;}
 .kt-hero-headline{font-size:clamp(38px,12vw,48px);font-weight:800;letter-spacing:-2px;line-height:.94;color:var(--text);margin:0;overflow-wrap:break-word;}
@@ -608,15 +613,15 @@ select option{background:var(--bg);}
 .kt-rlog-input:focus{border-bottom-color:var(--accent);}
 .kt-rlog-pills{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 10px;}
 .kt-rlog-pill{padding:7px 12px;border-radius:999px;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-rlog-pill.on{background:var(--accent);color:#000;}
+.kt-rlog-pill.on{background:var(--accent);color:var(--on-accent);}
 .kt-rlog-pill.off{background:rgba(255,255,255,.05);color:var(--lite);}
 .kt-rlog-actions{display:flex;gap:10px;margin-top:8px;}
 .kt-rlog-discard{background:transparent;border:1px solid rgba(255,255,255,.12);color:var(--lite);font-family:inherit;font-size:14px;font-weight:600;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-rlog-save{flex:1;background:var(--accent);color:#0b0b0d;border:none;font-family:inherit;font-size:14px;font-weight:700;padding:15px 22px;border-radius:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
-.kt-rconfirm{background:var(--accent);color:#000;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
+.kt-rconfirm{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
 @keyframes kt-rconfirm-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
-.kt-rconfirm-undo{background:rgba(0,0,0,.18);color:#000;border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rconfirm-undo{background:rgba(0,0,0,.18);color:var(--on-accent);border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-goal-line input{background:transparent;border:none;border-bottom:1px solid color-mix(in srgb,var(--text) 22%,transparent);color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
@@ -660,7 +665,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-sport-dur-input{background:transparent;border:none;outline:none;color:var(--text);font-size:44px;font-weight:800;letter-spacing:-2px;font-family:inherit;padding:0;min-width:1.2ch;}
 .kt-sport-dur-input::placeholder{color:var(--muted);}
 .kt-sport-date{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--lite);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;outline:none;flex-shrink:0;margin-bottom:6px;}
-.kt-act-save{width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px;-webkit-tap-highlight-color:transparent;}
+.kt-act-save{width:100%;background:var(--accent);color:var(--on-accent);border:none;border-radius:14px;padding:16px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px;-webkit-tap-highlight-color:transparent;}
 
 /* B7 — Resume-in-progress banner on Today. */
 .kt-resume-banner{background:var(--accent-soft);border:1px solid var(--accent-soft);border-radius:var(--r-card);padding:14px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
@@ -668,7 +673,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-resume-ttl{font-size:15px;font-weight:700;letter-spacing:-.2px;color:var(--text);}
 .kt-resume-actions{display:flex;gap:8px;align-items:center;}
 .kt-resume-discard{background:transparent;border:1px solid var(--border);color:var(--lite);padding:9px 14px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-resume-cta{background:var(--accent);color:#000;border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-resume-cta{background:var(--accent);color:var(--on-accent);border:none;padding:9px 16px;border-radius:999px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-resume-cta:active,.kt-resume-discard:active{opacity:.7;}
 /* Screen 04 — Today slot system: one utility strip, at most one banner.
    Chips are remount-safe (no entrance animation by design). */
@@ -680,7 +685,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 
 /* Smart suggestion chips — show ABOVE the recently-logged row. */
 
-.kt-cta{width:100%;padding:22px;border-radius:var(--r-hero);border:none;background:var(--accent);color:#000;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;transition:transform .15s,opacity .15s;}
+.kt-cta{width:100%;padding:22px;border-radius:var(--r-hero);border:none;background:var(--accent);color:var(--on-accent);cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:inherit;margin-bottom:24px;-webkit-tap-highlight-color:transparent;transition:transform .15s,opacity .15s;}
 .kt-cta:active{opacity:.9;transform:scale(.985);}
 .kt-cta-label{font-size:11px;font-weight:600;opacity:.6;letter-spacing:.05em;margin-bottom:4px;font-family:'JetBrains Mono',ui-monospace,monospace;}
 .kt-cta-title{font-size:18px;font-weight:700;letter-spacing:-.4px;}
@@ -702,7 +707,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-coach-msg{font-size:15px;line-height:1.5;margin-bottom:14px;letter-spacing:-.1px;color:var(--text);}
 .kt-coach-actions{display:flex;gap:8px;}
 .kt-coach-btn{flex:1;padding:11px;border-radius:12px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;-webkit-tap-highlight-color:transparent;}
-.kt-coach-btn.primary{background:var(--accent);color:#000;}
+.kt-coach-btn.primary{background:var(--accent);color:var(--on-accent);}
 .kt-coach-btn.neutral{background:var(--card2);color:var(--text);}
 .kt-coach-ask{padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--lite);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:5px;-webkit-tap-highlight-color:transparent;}
 .kt-coach-ask svg{width:13px;height:13px;}
@@ -765,7 +770,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 
 .kt-marquee-reps{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--lite);}
 .kt-session-done{background:var(--accent-dim);border:1px solid var(--accent-soft);border-radius:18px;padding:18px;display:flex;align-items:center;gap:14px;margin-bottom:24px;}
-.kt-session-done-ic{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0;}
+.kt-session-done-ic{width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0;}
 .kt-session-done-body{flex:1;}
 .kt-session-done-ttl{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.2px;}
 .kt-session-done-sub{font-size:12px;color:var(--lite);margin-top:2px;}
@@ -930,7 +935,7 @@ button:active{transform:scale(.97);}
 .kt-step-btn{width:56px;height:56px;border-radius:16px;border:1px solid var(--border);background:var(--card2);cursor:pointer;color:var(--lite);font-size:22px;font-weight:700;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
 .kt-step.reps .kt-step-btn{height:44px;}
 .kt-step-btn:active{opacity:.7;transform:scale(.94);}
-.kt-eng-done{padding:15px;border-radius:16px;border:none;font-size:15px;font-weight:800;letter-spacing:-.2px;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--accent);color:#000;}
+.kt-eng-done{padding:15px;border-radius:16px;border:none;font-size:15px;font-weight:800;letter-spacing:-.2px;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--accent);color:var(--on-accent);}
 .kt-eng-logall{padding:7px 12px;border-radius:12px;border:1px solid var(--border);color:inherit;opacity:.85;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;background:var(--card2);}
 /* Rest state (M&M R1·C) — the clock owns the card: thin mono display numeral
    with tabular figures, a draining accent bar (the state's one lime moment),
@@ -966,7 +971,7 @@ button:active{transform:scale(.97);}
 .kt-done-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;letter-spacing:.1em;}
 .kt-done-btn{margin-top:8px;padding:14px 24px;border-radius:14px;border:none;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-r-card.lime .kt-done-btn{background:#0b0b0d;color:var(--accent);}
-.kt-r-card.dark .kt-done-btn{background:var(--accent);color:#000;}
+.kt-r-card.dark .kt-done-btn{background:var(--accent);color:var(--on-accent);}
 /* #runner-root already stops at the dock (its bottom is the tab clearance),
    so children must NOT add that clearance again — the strip floated ~100px
    above the dock and the deck lost 86px, clipping the idle card's footer on
@@ -980,7 +985,7 @@ button:active{transform:scale(.97);}
 .kt-r-pill:last-child{margin-right:auto;}
 .kt-r-strip-inner::-webkit-scrollbar{display:none;}
 .kt-r-pill{flex-shrink:0;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;-webkit-tap-highlight-color:transparent;}
-.kt-r-pill.active{background:var(--accent);color:#000;}
+.kt-r-pill.active{background:var(--accent);color:var(--on-accent);}
 .kt-r-pill.idle{background:var(--card2);color:var(--text);}
 .kt-r-pill-idx{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:600;letter-spacing:.05em;}
 .kt-r-pill.idle .kt-r-pill-idx{opacity:.6;}
@@ -1135,6 +1140,100 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
   .tab svg{width:17px;height:17px;}
   .kt-hero-headline,.kt-prog-hero-num{font-size:41px;letter-spacing:-2.1px;}
 }
+
+/* ── HEAVYWEIGHT ROOM ────────────────────────────────────────────────────
+   Opt-in theme (Settings → Theme). Paper ground, Anton poster caps, Archivo
+   body, flat white cards on hairlines, a fixed tab bar. Two colours only:
+   blue is the action, lime is the earned state. Everything below is scoped
+   to the room attribute — pick any other room and none of it applies. */
+html[data-room="heavyweight"] body{font-family:'Archivo','Inter',-apple-system,system-ui,sans-serif;font-feature-settings:normal;}
+html[data-room="heavyweight"] #app::before{display:none;}
+html[data-room="heavyweight"] body::before{background:var(--bg);}
+html[data-room="heavyweight"] ::selection{color:#fff;}
+/* Poster caps */
+html[data-room="heavyweight"] .kt-hero-headline,
+html[data-room="heavyweight"] .kt-prog-hero-num,
+html[data-room="heavyweight"] .screen-title,
+html[data-room="heavyweight"] .kt-r-card-name,
+html[data-room="heavyweight"] .kt-eng-name,
+html[data-room="heavyweight"] .kt-rest-time,
+html[data-room="heavyweight"] .kt-r-target{font-family:'Anton',Impact,'Arial Narrow',sans-serif;font-weight:400;text-transform:uppercase;letter-spacing:0;}
+html[data-room="heavyweight"] .kt-hero-headline,html[data-room="heavyweight"] .kt-prog-hero-num{font-size:clamp(54px,17vw,74px);line-height:.9;}
+html[data-room="heavyweight"] .kt-hero-headline .accent,html[data-room="heavyweight"] .kt-prog-hero-num .accent,
+html[data-room="heavyweight"] .kt-hero-headline .kt-line2.accent{background:none;-webkit-background-clip:initial;background-clip:initial;-webkit-text-fill-color:currentColor;color:var(--text);}
+html[data-room="heavyweight"] .screen-title{font-size:44px;letter-spacing:0;}
+html[data-room="heavyweight"] .kt-r-card-name{font-size:clamp(36px,12vw,46px);line-height:.95;}
+html[data-room="heavyweight"] .kt-eng-name{font-size:30px;}
+html[data-room="heavyweight"] .kt-rest-time{font-size:clamp(84px,30vw,112px);letter-spacing:.01em;font-variant-numeric:tabular-nums;}
+html[data-room="heavyweight"] .kt-r-target{font-size:clamp(50px,18vw,62px);}
+html[data-room="heavyweight"] .kt-r-target .u{font-family:'Archivo',sans-serif;font-weight:600;font-size:20px;opacity:.55;text-transform:none;}
+html[data-room="heavyweight"] .kt-hero-greet,html[data-room="heavyweight"] .kt-prog-hero-greet{font-size:15px;color:var(--lite);margin-bottom:10px;}
+html[data-room="heavyweight"] .kt-hero-body{font-size:15px;color:var(--lite);}
+html[data-room="heavyweight"] .kt-hero-body b{color:var(--text);}
+/* Eyebrows: blue section labels, Archivo caps instead of mono */
+html[data-room="heavyweight"] .kt-ledger-hd span,html[data-room="heavyweight"] .settings-group-hd,html[data-room="heavyweight"] .screen-eyebrow,
+html[data-room="heavyweight"] .kt-coach-eyebrow,html[data-room="heavyweight"] .kt-statband-lbl,html[data-room="heavyweight"] .kt-cta-label,
+html[data-room="heavyweight"] .kt-meta-label,html[data-room="heavyweight"] .kt-r-target-lbl,html[data-room="heavyweight"] .kt-step-lbl,
+html[data-room="heavyweight"] .kt-rest-hd,html[data-room="heavyweight"] .kt-empty-contract-lbl,html[data-room="heavyweight"] .kt-adhoc-lbl,
+html[data-room="heavyweight"] .field label{font-family:'Archivo',sans-serif;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
+html[data-room="heavyweight"] .settings-group-hd,html[data-room="heavyweight"] .kt-ledger-hd .l,html[data-room="heavyweight"] .kt-coach-eyebrow,
+html[data-room="heavyweight"] .screen-eyebrow,html[data-room="heavyweight"] .kt-r-target-lbl,html[data-room="heavyweight"] .kt-step-lbl{color:var(--accent);}
+html[data-room="heavyweight"] .kt-meta-label::before{box-shadow:none;border-radius:50%;transform:none;}
+/* Flat white cards on hairlines */
+html[data-room="heavyweight"] .card,html[data-room="heavyweight"] .hero-card,html[data-room="heavyweight"] .chart-card,html[data-room="heavyweight"] .stat,
+html[data-room="heavyweight"] .kt-coach-card,html[data-room="heavyweight"] .settings-group,html[data-room="heavyweight"] .kt-cmb-metrics,html[data-room="heavyweight"] .kt-cmb-take,
+html[data-room="heavyweight"] .profile-row,html[data-room="heavyweight"] .kt-empty-contract,html[data-room="heavyweight"] .kt-streak-chip,
+html[data-room="heavyweight"] .kt-sheet,html[data-room="heavyweight"] .ex-modal-sheet,html[data-room="heavyweight"] .kt-close-sheet-inner{
+  background:var(--card);border:1px solid var(--border);box-shadow:none;border-radius:14px;
+}
+html[data-room="heavyweight"] .kt-sheet,html[data-room="heavyweight"] .ex-modal-sheet{border-radius:20px 20px 0 0;}
+html[data-room="heavyweight"] .kt-coach-card{border-left:1px solid var(--border);}
+html[data-room="heavyweight"] .settings-row{border-color:var(--border);}
+html[data-room="heavyweight"] .settings-row-ic{background:var(--card2)!important;border:none;border-radius:10px;}
+html[data-room="heavyweight"] .kt-coach-ask,html[data-room="heavyweight"] .kt-coach-input{border-color:var(--border);}
+html[data-room="heavyweight"] .kt-coach-empty,html[data-room="heavyweight"] .kt-marquee-row.kt-tap:active{background:var(--card2);}
+html[data-room="heavyweight"] .kt-coach-btn.neutral{background:var(--card);border:1px solid var(--border);}
+/* Blue is the action */
+html[data-room="heavyweight"] .kt-cta{background:var(--accent);color:#fff;border:none;box-shadow:none;border-radius:12px;min-height:66px;}
+html[data-room="heavyweight"] .kt-cta-label{opacity:.78;}
+html[data-room="heavyweight"] .kt-cta-arrow{background:rgba(255,255,255,.18);border-radius:50%;}
+html[data-room="heavyweight"] .btn-primary,html[data-room="heavyweight"] .btn-green,html[data-room="heavyweight"] .coach-send-btn,
+html[data-room="heavyweight"] .kt-coach-btn.primary,html[data-room="heavyweight"] .kt-eng-done,html[data-room="heavyweight"] .kt-r-card.dark .kt-done-btn{background:var(--accent);color:#fff;box-shadow:none;border-radius:12px;}
+html[data-room="heavyweight"] .kt-toast-undo{background:var(--accent);color:#fff;}
+html[data-room="heavyweight"] .log-subtabs,html[data-room="heavyweight"] .kt-prog-toggle{background:var(--card2);border-color:transparent;box-shadow:none;border-radius:12px;}
+html[data-room="heavyweight"] .log-subtab.active,html[data-room="heavyweight"] .kt-prog-toggle button.on{background:var(--accent);color:#fff;box-shadow:none;border-radius:9px;}
+html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:#fff;}
+html[data-room="heavyweight"] .coach-bubble.assistant{background:var(--card);border:1px solid var(--border);border-left-width:1px;}
+html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
+html[data-room="heavyweight"] .kt-meta-ava,html[data-room="heavyweight"] .screen-avatar,html[data-room="heavyweight"] .profile-ava{background:var(--accent);color:#fff;box-shadow:none;border:none;border-radius:50%;}
+html[data-room="heavyweight"] .kt-step-btn{border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--text);}
+html[data-room="heavyweight"] .kt-step-row .kt-step-btn:last-child{background:var(--accent);border-color:var(--accent);color:#fff;}
+html[data-room="heavyweight"] .kt-rest-bar-fill{background:var(--accent);}
+html[data-room="heavyweight"] .kt-r-card.dark .kt-rest-bar-fill{background:var(--accent);}
+html[data-room="heavyweight"] .field input,html[data-room="heavyweight"] .field select,html[data-room="heavyweight"] .field textarea,
+html[data-room="heavyweight"] .coach-textarea,html[data-room="heavyweight"] .kt-coach-input{background:var(--card);border-color:var(--border);border-radius:10px;}
+/* Lime is the earned state */
+html[data-room="heavyweight"] .kt-bars .bar{background:var(--earned);}
+html[data-room="heavyweight"] .kt-bars .bar.cur{background:var(--accent);}
+html[data-room="heavyweight"] .kt-bars .bar .pr-dot{background:var(--earned-ink);}
+html[data-room="heavyweight"] .kt-lr.gold .kt-lr-idx,html[data-room="heavyweight"] .kt-lr.gold .kt-lr-val,
+html[data-room="heavyweight"] .kt-pr-eyebrow,html[data-room="heavyweight"] .kt-pr-hero{color:var(--earned-ink);}
+html[data-room="heavyweight"] .kt-r-card.lime{background:var(--earned);color:#0f0f0f;}
+html[data-room="heavyweight"] .kt-r-card.lime .kt-done-btn{background:var(--accent);color:#fff;}
+html[data-room="heavyweight"] .kt-r-card.lime .kt-rest-bar-fill{background:var(--accent);}
+html[data-room="heavyweight"] .kt-r-card.lime .kt-rest-bar{background:rgba(0,0,0,.12);}
+/* Runner cards: white on paper */
+html[data-room="heavyweight"] .kt-r-card{border-radius:16px;}
+html[data-room="heavyweight"] .kt-r-card.dark{background:var(--card);border:1px solid var(--border);box-shadow:0 18px 40px -28px rgba(0,0,0,.35);}
+html[data-room="heavyweight"] .kt-r-strip-inner{background:var(--card);border-color:var(--border);border-radius:14px;}
+/* Fixed tab bar with icon + label, hairline top */
+html[data-room="heavyweight"] #tabs{left:0;right:0;bottom:0;height:calc(var(--tab-h) + var(--tab-bottom-clear));padding:6px 8px calc(var(--tab-bottom-clear) + 6px);
+  border-radius:0;border:none;border-top:1px solid var(--border);background:var(--card);box-shadow:none;}
+html[data-room="heavyweight"] .tab{flex-direction:column;gap:3px;font-size:10px;font-weight:600;color:var(--muted);border-radius:0;}
+html[data-room="heavyweight"] .tab svg{width:20px;height:20px;}
+html[data-room="heavyweight"] .tab.active{background:none;color:var(--accent);box-shadow:none;}
+html[data-room="heavyweight"] .tab.active svg{transform:none;stroke-width:2.2;}
+html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom-clear) + 14px);}
 </style>
 </head>
 <body>
@@ -1865,7 +1964,7 @@ function openRoutineArchiveModal(){
           '</div>'+
           '<button onclick="deleteArchivedRoutine('+entry.id+')" style="padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;">Delete</button>'+
         '</div>'+
-        '<button onclick="restoreArchivedRoutine('+entry.id+')" style="width:100%;padding:12px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">Restore this programme</button>'+
+        '<button onclick="restoreArchivedRoutine('+entry.id+')" style="width:100%;padding:12px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">Restore this programme</button>'+
       '</div>';
     }).join('');
   }
@@ -2360,7 +2459,7 @@ function renderBackupNudge(){
     '</div>'+
     '<div style="display:flex;gap:8px;">'+
       '<button onclick="snoozeBackupNudge()" style="'+btn+'background:var(--card2);color:var(--lite);">Later</button>'+
-      '<button onclick="exportData()" style="'+btn+'background:var(--accent);color:#000;">Export</button>'+
+      '<button onclick="exportData()" style="'+btn+'background:var(--accent);color:var(--on-accent);">Export</button>'+
     '</div>'+
   '</div>';
 }
@@ -3119,7 +3218,7 @@ function renderHealthQuickLog(compact){
     '</div>'+
     '<div style="'+hlSize+'font-weight:800;color:var(--text);margin-bottom:4px;">'+_esc(headline)+'</div>'+
     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:'+metaSize+';color:var(--muted);margin-bottom:16px;">'+_esc(meta)+'</div>'+
-    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:#000;border:none;border-radius:14px;padding:'+ctaPad+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this '+_esc(ctaNoun)+' →</button>'+
+    '<button onclick="logPendingHealthRun()" style="width:100%;background:var(--accent);color:var(--on-accent);border:none;border-radius:14px;padding:'+ctaPad+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Log this '+_esc(ctaNoun)+' →</button>'+
   '</div>';
 }
 
@@ -4489,7 +4588,7 @@ function renderTodayEditorial(){
       '<div style="display:flex;gap:6px;margin-top:14px;">'+_wwBars+'</div>'+
       '<div class="kt-mono" style="display:flex;justify-content:space-between;font-size:8px;letter-spacing:.08em;color:var(--muted);opacity:.7;margin-top:6px;"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>'+
       '<div style="display:flex;gap:10px;margin-top:16px;">'+
-        '<button onclick="_shareWeekCard()" style="flex:1;background:var(--accent);border:none;border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:#000;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share</button>'+
+        '<button onclick="_shareWeekCard()" style="flex:1;background:var(--accent);border:none;border-radius:14px;padding:13px;font-size:13px;font-weight:800;color:var(--on-accent);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share</button>'+
         '<button onclick="dismissWeekWrap()" style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:13px;font-size:13px;font-weight:700;color:var(--lite);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Dismiss</button>'+
       '</div>'+
     '</div>';
@@ -5801,7 +5900,7 @@ function confirmCloseRunner(){
     '<div class="kt-close-sheet-ttl">Leave workout?</div>'+
     '<div class="kt-close-sheet-sub">'+(hasSets?'Save what you\u2019ve done, or discard it.':'Logged sets so far won\'t be saved.')+'</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-close-runner-sheet\').remove()">Keep working</button>'+
-    (hasSets?'<button class="kt-close-sheet-btn" style="background:var(--accent);color:#000;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();runnerFinishSession();">Save &amp; finish early</button>':'')+
+    (hasSets?'<button class="kt-close-sheet-btn" style="background:var(--accent);color:var(--on-accent);" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();runnerFinishSession();">Save &amp; finish early</button>':'')+
     '<button class="kt-close-sheet-btn" style="background:var(--red);color:#000;" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
   '</div>';
   document.body.appendChild(el);
@@ -6452,7 +6551,7 @@ function openRunnerCueSheet(){
       '<input id="runnerCueNote" type="text" value="'+_esc(todayNote)+'" placeholder="Grip, setup, how it felt…" maxlength="200" '+
         'style="width:100%;background:none;border:none;color:var(--text);font-size:14px;font-weight:500;padding:0;box-sizing:border-box;font-family:inherit;"/>'+
     '</div>'+
-    '<button onclick="closeRunnerCueSheet()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Back to the set →</button>'+
+    '<button onclick="closeRunnerCueSheet()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Back to the set →</button>'+
     '<button onclick="closeRunnerCueSheet();openExLib(\''+_esc(String(ex.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'"))+'\')" style="display:block;width:100%;background:none;border:none;padding:10px 0 0;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">FULL HISTORY &amp; PRS · OPEN IN LIBRARY →</button>'+
   '</div>';
   document.body.appendChild(overlay);
@@ -6956,7 +7055,7 @@ function _buildRunnerExEditHTML(){
         '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditSS?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditSS?'ON':'OFF')+'</span>'+
       '</button>'
       :'')+
-    '<button onclick="event.stopPropagation();saveRunnerExEdit()" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.02em;-webkit-tap-highlight-color:transparent;">Save Changes</button>'+
+    '<button onclick="event.stopPropagation();saveRunnerExEdit()" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.02em;-webkit-tap-highlight-color:transparent;">Save Changes</button>'+
   '</div>';
 }
 function _openRunnerExPicker(){
@@ -8037,7 +8136,7 @@ function openSessionEditor(id){
       '<button class="kt-sheet-x" onclick="closeSessionEditor()" aria-label="Close">✕</button>'+
     '</div>'+
     rows+
-    '<button onclick="saveSessionEdit()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
+    '<button onclick="saveSessionEdit()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
   '</div>';
   document.body.appendChild(overlay);
   _sheetDrag(overlay, closeSessionEditor);
@@ -10611,7 +10710,7 @@ function renderHistory() {
           _buildHistExRows(exs,sessionPRs,s.supersets)+
           (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
           '<div style="display:flex;gap:8px;margin-top:10px;">'+
-          '<button onclick="event.stopPropagation();shareSessionCard('+s.id+')" style="background:var(--accent);border:none;border-radius:10px;color:#000;font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share card →</button>'+
+          '<button onclick="event.stopPropagation();shareSessionCard('+s.id+')" style="background:var(--accent);border:none;border-radius:10px;color:var(--on-accent);font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share card →</button>'+
           '<button onclick="event.stopPropagation();openSessionEditor('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Edit sets</button>'+
           '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
           '</div>'+
@@ -12540,6 +12639,7 @@ var THEMES = {
   violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','on-accent':'#0b0716','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6',purple:'#c4b5fd'},
   gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','on-accent':'#080601','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088',purple:'#b7a3f7'},
   light:    {name:'Light',    room:'Paper',     textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','on-accent':'#000000','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
+  heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#5f8500',green:'#3d7a00',yellow:'#6f9a00',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#5b21b6'},
 };
 
 // Painting and persisting are separate: Auto paints the system room but must
@@ -12552,6 +12652,12 @@ function _paintTheme(name){
   ['bg','card','card2','border','accent','accent-soft','accent-dim','accent-ink','on-accent','green','yellow','red','orange','cyan','text','muted','lite','purple'].forEach(function(k){
     r.style.setProperty('--'+k, t[k]);
   });
+  // Two-colour rooms (Heavyweight) split "the action" from "the earned
+  // state"; single-accent rooms use their accent for both.
+  r.style.setProperty('--earned', t.earned||t.accent);
+  r.style.setProperty('--earned-ink', t['earned-ink']||t['accent-ink']);
+  // Room-scoped CSS (type, card grammar, dock shape) hangs off this attribute.
+  r.setAttribute('data-room', name);
   if(document.getElementById('screen').innerHTML) render();
   return true;
 }
@@ -12567,7 +12673,7 @@ function applyTheme(name) {
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
 // themes can be compared without leaving the sheet.
 function _buildThemeRows(){
-  var order=['auto','dark','midnight','carbon','ember','violet','gold','light'];
+  var order=['auto','heavyweight','dark','midnight','carbon','ember','violet','gold','light'];
   return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">'+
     order.map(function(id){
       var sel=currentTheme===id;
@@ -12846,7 +12952,7 @@ function renderSettings() {
             '</svg>'+
           '</div>'+
           '<div class="settings-row-body"><div class="settings-row-title">Training-day reminder</div><div class="settings-row-sub">'+(notifOn?'9:00 on training days \u00b7 next 7 days, refreshed each time you open Supero':'Off \u2014 rest-timer alerts always on')+'</div></div>'+
-          '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(notifOn?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(notifOn?'On':'Off')+'</span>'+
+          '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(notifOn?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(notifOn?'On':'Off')+'</span>'+
         '</div>' : '')+
       '</div>';
       return progGroup+workoutGroup;
@@ -13051,7 +13157,7 @@ function openErrorLogSheet(){
     rows+wchRows+
     ((log.length||wch.length)?'<div style="display:flex;gap:10px;margin-top:14px;">'+
       '<button onclick="clearErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Clear</button>'+
-      '<button onclick="copyErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Copy</button>'+
+      '<button onclick="copyErrorLog()" style="flex:1;padding:14px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Copy</button>'+
     '</div>':'')+
   '</div>';
   document.body.appendChild(overlay);
@@ -13133,7 +13239,7 @@ function _buildHealthRows(){
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Auto-log Watch workouts</div><div class="settings-row-sub">'+(localStorage.getItem('kt_autolog_runs')==='1'?'New Watch workouts log when you open Supero':'Off — confirm each workout with a tap')+'</div></div>'+
-      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_autolog_runs')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_autolog_runs')==='1'?'On':'Off')+'</span>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_autolog_runs')==='1'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_autolog_runs')==='1'?'On':'Off')+'</span>'+
     '</div>' : '')+
   (localStorage.getItem('kt_hk_last_sync')?
     '<div class="settings-row" onclick="toggleReadiness()">'+
@@ -13143,7 +13249,7 @@ function _buildHealthRows(){
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Readiness score</div><div class="settings-row-sub">'+(localStorage.getItem('kt_readiness_on')==='1'?((lsGet('kt_readiness')&&lsGet('kt_readiness').date===todayISO())?'Today: '+lsGet('kt_readiness').score+' · '+lsGet('kt_readiness').zone:'Sleep, HRV & resting HR each morning'):'Off — recovery-aware training')+'</div></div>'+
-      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_readiness_on')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_readiness_on')==='1'?'On':'Off')+'</span>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_readiness_on')==='1'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_readiness_on')==='1'?'On':'Off')+'</span>'+
     '</div>' : '')+
   (localStorage.getItem('kt_hk_last_sync')?
     '<div class="settings-row" onclick="toggleBgSync()">'+
@@ -13153,7 +13259,7 @@ function _buildHealthRows(){
         '</svg>'+
       '</div>'+
       '<div class="settings-row-body"><div class="settings-row-title">Background Watch sync</div><div class="settings-row-sub">'+(localStorage.getItem('kt_bg_sync')==='1'?'Workouts sync even when Supero is closed':'Off — workouts sync when you open Supero')+'</div></div>'+
-      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_bg_sync')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_bg_sync')==='1'?'On':'Off')+'</span>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_bg_sync')==='1'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_bg_sync')==='1'?'On':'Off')+'</span>'+
     '</div>' : '')+
   '<div class="settings-row" onclick="toggleHealthWrite()">'+
     '<div class="settings-row-ic" style="background:#2a0d14;">'+
@@ -13162,7 +13268,7 @@ function _buildHealthRows(){
       '</svg>'+
     '</div>'+
     '<div class="settings-row-body"><div class="settings-row-title">Save lifts to Apple Health</div><div class="settings-row-sub">'+(localStorage.getItem('kt_health_write')==='1'?'Finished sessions count toward your rings':'Off — Supero never writes to Health')+'</div></div>'+
-    '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_health_write')==='1'?'background:var(--accent);color:#000;':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_health_write')==='1'?'On':'Off')+'</span>'+
+    '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_health_write')==='1'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_health_write')==='1'?'On':'Off')+'</span>'+
   '</div>'+
   ((lsGet('kt_hk_imported')||[]).length?
     '<div class="settings-row" onclick="resetHealthImport()">'+
@@ -13313,7 +13419,7 @@ function _buildSportFieldsSheet(){
         ? '<input id="sfUnit" type="text" placeholder="Unit — e.g. km, reps (optional)" maxlength="10" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>' : '')+
       (_sfType==='select'
         ? '<input id="sfOpts" type="text" placeholder="Options, comma-separated — e.g. Easy, Medium, Hard" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>' : '')+
-      '<button onclick="_sfAdd()" style="width:100%;padding:11px;border-radius:12px;border:none;background:var(--accent);color:#000;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">Add field</button>'+
+      '<button onclick="_sfAdd()" style="width:100%;padding:11px;border-radius:12px;border:none;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">Add field</button>'+
     '</div>';
   var resetBtn = isSportFieldsCustomized(_sfSport)
     ? '<button onclick="_sfReset()" style="width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--lite);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Reset to defaults</button>'
@@ -13855,7 +13961,7 @@ function _renderExLibAddForm(){
     '<textarea id="exAddTips" placeholder="Coaching cues — one per line (optional)" rows="3" style="'+inp+';resize:vertical;font-family:inherit;margin-bottom:12px;"></textarea>'+
     '<div style="display:flex;gap:8px;">'+
       (hasKey?'<button id="exlibAIBtn" onclick="fillExWithAI()" style="flex:1;padding:11px;border:1.5px solid var(--accent);background:transparent;color:var(--accent);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">Fill with AI</button>':'')+
-      '<button onclick="saveCustomEx()" style="flex:1;padding:11px;border:none;background:var(--accent);color:#000;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">Save</button>'+
+      '<button onclick="saveCustomEx()" style="flex:1;padding:11px;border:none;background:var(--accent);color:var(--on-accent);border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">Save</button>'+
     '</div>'+
   '</div>';
 }

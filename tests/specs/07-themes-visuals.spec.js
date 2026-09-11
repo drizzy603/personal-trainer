@@ -24,6 +24,7 @@ run('theme rooms apply their tokens', async () => {
     assert(out.gold.yellow === '#ffb340', 'gold PR-yellow exception');
     // Signal v4 (2026-08-25) retuned the Studio room's lime to #d8ff63.
     assert(out.dark.ink === '#d8ff63', 'dark ink equals the Signal accent');
+    assert(out.heavyweight.bg === '#f7f5ef' && out.heavyweight.ink === '#0a43f5', 'Heavyweight is paper + blue');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
@@ -64,6 +65,43 @@ run('empty states speak the editorial voice', async () => {
     });
     assert(out.hero && out.restore, 'log first-run hero + restore line');
     assert(out.prog, 'progress day-zero honest empty (F1·D)');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Heavyweight room: scoped by attribute, poster type, two colours, reversible', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      applyTheme('heavyweight');
+      const cs = getComputedStyle(document.documentElement);
+      const hero = document.querySelector('.kt-hero-headline');
+      const tabs = document.getElementById('tabs');
+      const hw = {
+        room: document.documentElement.getAttribute('data-room'),
+        earned: cs.getPropertyValue('--earned').trim(), earnedInk: cs.getPropertyValue('--earned-ink').trim(),
+        heroFont: hero ? getComputedStyle(hero).fontFamily : '', heroTransform: hero ? getComputedStyle(hero).textTransform : '',
+        bodyFont: getComputedStyle(document.body).fontFamily,
+        tabsLeft: Math.round(tabs.getBoundingClientRect().left), tabsBottom: Math.round(innerHeight - tabs.getBoundingClientRect().bottom),
+        ctaBg: (function(){ const c = document.querySelector('.kt-cta') || document.querySelector('.log-subtab.active'); return c ? getComputedStyle(c).backgroundColor : null; })(),
+        stored: localStorage.getItem('kt_theme'),
+      };
+      applyTheme('dark');
+      const back = {
+        room: document.documentElement.getAttribute('data-room'),
+        earned: getComputedStyle(document.documentElement).getPropertyValue('--earned').trim(),
+        heroFont: hero ? getComputedStyle(document.querySelector('.kt-hero-headline')).fontFamily : '',
+        tabsLeft: Math.round(document.getElementById('tabs').getBoundingClientRect().left),
+      };
+      return { hw, back };
+    });
+    assert(out.hw.room === 'heavyweight' && out.hw.stored === 'heavyweight', 'room attribute + persisted choice');
+    assert(out.hw.earned === '#b7f000' && out.hw.earnedInk === '#5f8500', 'earned tokens split from the action colour');
+    assert(/Anton/.test(out.hw.heroFont) && out.hw.heroTransform === 'uppercase', 'hero wears Anton poster caps: ' + out.hw.heroFont);
+    assert(/Archivo/.test(out.hw.bodyFont), 'body is Archivo');
+    assert(out.hw.tabsLeft === 0 && out.hw.tabsBottom === 0, 'tab bar is fixed full-width at the bottom');
+    assert(out.hw.ctaBg === 'rgb(10, 67, 245)', 'the action surface is blue: ' + out.hw.ctaBg);
+    assert(out.back.room === 'dark' && out.back.earned === '#d8ff63' && !/Anton/.test(out.back.heroFont) && out.back.tabsLeft > 0, 'switching back removes every room rule');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
