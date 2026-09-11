@@ -117,3 +117,26 @@ run('Heavyweight room: scoped by attribute, poster type, two colours, reversible
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('paper rooms hand the Studio lime to dark-surface satellites; fonts ship with the bundle', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      applyTheme('heavyweight');
+      const hw = _posterAccent('#0a43f5');
+      applyTheme('light');
+      const light = _posterAccent('#5b8a00');
+      applyTheme('midnight');
+      const midnight = _posterAccent('#7dd3fc');
+      applyTheme('dark');
+      _lastNativeSummary = null; _runNativeSync();
+      await new Promise(r => setTimeout(r, 50));
+      const faces = [...document.styleSheets[0].cssRules].filter(r => r.constructor.name === 'CSSFontFaceRule').map(r => r.style.getPropertyValue('src'));
+      return { hw, light, midnight, faces: faces.length, fallback: faces.every(f => /drizzy603\.github\.io\/personal-trainer\/assets\/fonts/.test(f)) };
+    });
+    assert(out.hw === '#d8ff63' && out.light === '#d8ff63', 'paper rooms → Studio lime for posters/widgets');
+    assert(out.midnight === '#7dd3fc', 'dark rooms keep their own accent');
+    assert(out.faces === 8 && out.fallback, 'every bundled face has a network fallback src');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

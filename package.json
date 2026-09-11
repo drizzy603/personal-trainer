@@ -4,7 +4,7 @@
   "private": true,
   "description": "Supero iOS shell — wraps the PWA at drizzy603.github.io/personal-trainer/",
   "scripts": {
-    "build:web": "rm -rf www && mkdir -p www && cp index.html sw.js manifest.json app-icon-1024.png privacy.html www/",
+    "build:web": "rm -rf www && mkdir -p www && cp index.html sw.js manifest.json app-icon-1024.png privacy.html www/ && cp -R assets www/assets",
     "sync": "npm run build:web && cap sync",
     "open:ios": "cap open ios"
   },
