@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-12"/>
+<meta name="build" content="20260910-13"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -9642,7 +9642,7 @@ function renderProgress() {
     var bar=goalBar(label,current,target,unit,lowerBetter);
     var inp='<div style="display:flex;align-items:center;gap:6px;margin-top:-8px;margin-bottom:14px;">'+
       '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
-      '<input type="number" value="'+target+'" min="0" style="'+goalInpStyle+'"'+
+      '<input type="number" aria-label="'+_esc(label)+' goal target, '+_esc(unit)+'" value="'+target+'" min="0" style="'+goalInpStyle+'"'+
         ' onchange="'+setFn+'(parseFloat(this.value)||0);render();" />'+
       '<span style="font-size:11px;color:var(--muted);">'+unit+'</span>'+
     '</div>';
@@ -9651,7 +9651,7 @@ function renderProgress() {
   // Lift-mode goals: bench, squat, plus a 5k goal (always settable).
   var run5kGoalInp='<div style="display:flex;align-items:center;gap:6px;margin-top:-8px;margin-bottom:14px;">'+
     '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
-    '<input type="number" value="'+(run5kGoalSec/60||40)+'" min="1" step="0.5" style="'+goalInpStyle+'"'+
+    '<input type="number" aria-label="5k goal time, minutes" value="'+(run5kGoalSec/60||40)+'" min="1" step="0.5" style="'+goalInpStyle+'"'+
       ' onchange="set5kGoal(parseFloat(this.value)*60||0);render();" />'+
     '<span style="font-size:11px;color:var(--muted);">min</span>'+
   '</div>';
