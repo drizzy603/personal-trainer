@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260911-3"/>
+<meta name="build" content="20260911-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -250,11 +250,11 @@ select option{background:var(--bg);}
 .hero-block{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
   color:var(--accent-ink);background:var(--accent-soft);padding:5px 12px;border-radius:20px;margin-top:10px;}
 .hero-focus{font-size:14px;color:var(--lite);margin-top:12px;line-height:1.55;}
-.hero-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:18px;overflow:hidden;}
+.hero-bar{height:4px;background:color-mix(in srgb,var(--text) 8%,transparent);border-radius:2px;margin-top:18px;overflow:hidden;}
 .hero-fill{height:100%;background:var(--accent);border-radius:2px;}
 .hero-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px;font-weight:500;}
 .week-stepper{display:flex;align-items:center;gap:8px;margin-top:14px;}
-.wk-btn{background:rgba(255,255,255,.06);border:none;color:var(--text);
+.wk-btn{background:color-mix(in srgb,var(--text) 8%,transparent);border:none;color:var(--text);
   border-radius:12px;width:44px;height:44px;font-size:18px;font-weight:600;cursor:pointer;
   -webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;}
 .wk-btn:active{opacity:.7;}
@@ -1245,6 +1245,30 @@ html[data-room="heavyweight"] .kt-r-card.lime .kt-rest-bar{background:rgba(0,0,0
 html[data-room="heavyweight"] .kt-r-card{border-radius:16px;}
 html[data-room="heavyweight"] .kt-r-card.dark{background:var(--card);border:1px solid var(--border);box-shadow:0 18px 40px -28px rgba(0,0,0,.35);}
 html[data-room="heavyweight"] .kt-r-strip-inner{background:var(--card);border-color:var(--border);border-radius:14px;}
+/* Runner: the board is two faces only (H-02/H-03) — mono meta, ledger,
+   strip indices and inline eyebrows become Archivo caps; rest controls and
+   ledger values take Archivo without the caps/tracking (H-03 draws
+   "– 15s / + 30s / Skip rest" sentence-case). Skip keeps its go weight; the
+   PR numeral takes Anton like the rest clock. */
+html[data-room="heavyweight"] .kt-r-card-meta,html[data-room="heavyweight"] .kt-r-card-last,html[data-room="heavyweight"] .kt-r-day,html[data-room="heavyweight"] .kt-r-pct,
+html[data-room="heavyweight"] .kt-main-tag,html[data-room="heavyweight"] .kt-eng-target,html[data-room="heavyweight"] .kt-warmup,html[data-room="heavyweight"] .kt-plate-line,
+html[data-room="heavyweight"] .kt-r-target-plate,html[data-room="heavyweight"] .kt-lr-idx,html[data-room="heavyweight"] .kt-lr-act,html[data-room="heavyweight"] .kt-r-pill-idx,
+html[data-room="heavyweight"] .kt-r-card-next-lbl,html[data-room="heavyweight"] .kt-r-skip-ex,html[data-room="heavyweight"] .kt-pr-eyebrow,html[data-room="heavyweight"] .kt-done-meta,
+html[data-room="heavyweight"] #runner-root [style*="JetBrains"]{font-family:'Archivo',sans-serif!important;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+html[data-room="heavyweight"] .kt-rest-adj,html[data-room="heavyweight"] .kt-lr-val,html[data-room="heavyweight"] .kt-overload{font-family:'Archivo',sans-serif;letter-spacing:0;font-variant-numeric:tabular-nums;}
+html[data-room="heavyweight"] .kt-rest-adj{font-weight:600;}
+html[data-room="heavyweight"] .kt-rest-adj.kt-rest-go{font-weight:800;}
+html[data-room="heavyweight"] .kt-pr-hero{font-family:'Anton',Impact,'Arial Narrow',sans-serif;font-weight:400;letter-spacing:.01em;}
+/* Chrome-side mono (THIS WEEK, 13k, ALL →, PR dates, settings values, coach header) → Archivo, tabular figures */
+html[data-room="heavyweight"] .kt-mono,html[data-room="heavyweight"] .settings-row-val,html[data-room="heavyweight"] .coach-head-eyebrow,
+html[data-room="heavyweight"] .coach-head-meta{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;}
+/* Programme hero card (Bike/Run tab): Anton week number, visible track and −/+ wells */
+html[data-room="heavyweight"] .hero-num{font-family:'Anton',Impact,'Arial Narrow',sans-serif;font-weight:400;letter-spacing:0;}
+html[data-room="heavyweight"] .hero-bar{background:var(--card2);}
+html[data-room="heavyweight"] .wk-btn{background:var(--card);border:1px solid var(--border);}
+/* Charts: no gradient wash under the line, no halo on the last point */
+html[data-room="heavyweight"] #screen svg path[fill^="url("]{display:none;}
+html[data-room="heavyweight"] #screen svg circle[opacity=".18"]{display:none;}
 /* Fixed tab bar with icon + label, hairline top */
 html[data-room="heavyweight"] #tabs{left:0;right:0;bottom:0;height:calc(var(--tab-h) + var(--tab-bottom-clear));padding:6px 8px calc(var(--tab-bottom-clear) + 6px);
   border-radius:0;border:none;border-top:1px solid var(--border);background:var(--card);box-shadow:none;}
