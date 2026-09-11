@@ -207,15 +207,28 @@ struct SuperoTodayProvider: TimelineProvider {
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
         let summary = loadSummary()
-        var entries: [TodayEntry] = [TodayEntry(date: Date(), summary: summary, dayIndex: 0)]
+        let cal = Calendar.current
+        let now = Date()
+        // Align on the CALENDAR date, not array position: days[0] is the day
+        // the app last wrote the summary, so a timeline rebuilt on a later
+        // day (reboot, re-add, budgeted reload) used to show a shifted plan
+        // under a correct weekday label.
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let todayKey = f.string(from: now)
+        guard let s = summary, let start = s.days.firstIndex(where: { $0.date == todayKey }) else {
+            // Nothing the app wrote covers today — say so rather than guess,
+            // and ask again at midnight.
+            let nextMidnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(3600)
+            completion(Timeline(entries: [TodayEntry(date: now, summary: nil, dayIndex: 0)], policy: .after(nextMidnight)))
+            return
+        }
+        var entries: [TodayEntry] = [TodayEntry(date: now, summary: s, dayIndex: start)]
         // One entry per upcoming midnight, showing that day's plan.
-        if let s = summary {
-            let cal = Calendar.current
-            for i in 1..<min(s.days.count, 7) {
-                if let midnight = cal.date(byAdding: .day, value: i,
-                                           to: cal.startOfDay(for: Date())) {
-                    entries.append(TodayEntry(date: midnight, summary: s, dayIndex: i))
-                }
+        for i in (start + 1)..<min(s.days.count, start + 7) {
+            if let midnight = cal.date(byAdding: .day, value: i - start, to: cal.startOfDay(for: now)) {
+                entries.append(TodayEntry(date: midnight, summary: s, dayIndex: i))
             }
         }
         completion(Timeline(entries: entries, policy: .atEnd))

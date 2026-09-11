@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260910-3"/>
+<meta name="build" content="20260910-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1356,6 +1356,8 @@ var _runnerPrBeat     = null;       // {ex, setIdx, w, r, best, at} or null
 // M-07 tracker: the exercise index painted last, so the deck can tell a real
 // card advance from a same-card state repaint. null = runner not on screen.
 var _lastPaintExIdx   = null;
+// Pending exercise-complete auto-advance; cleared when a ledger edit opens.
+var _runnerAdvanceTO  = null;
 // R1·E wrist-mirror: set when wrist sets merge into the open runner while
 // the phone isn't engaged — the card becomes a passive ledger until the user
 // takes over, navigates, or the link goes quiet for 5 minutes.
@@ -1374,6 +1376,7 @@ var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
 var _rExEditName      = '';
+var _rExEditSeed=null;
 var _rExEditSS        = false;      // "superset with next" toggle in the sheet
 // Index to jump back to when a superset pair's rest ends (B rested, A next).
 var _ssReturnIdx      = null;
@@ -5475,7 +5478,12 @@ function _restoreRunnerDraft(){
     var raw=localStorage.getItem('kt_runner_draft');
     if(!raw) return false;
     var d=JSON.parse(raw);
-    if(!d||d.date!==todayISO()||!d.session) return false;
+    if(!d||!d.session) return false;
+    // A session started before midnight must still be resumable after it —
+    // gate on freshness (8h since the last paint) rather than the calendar
+    // date, and keep its day as the default log date.
+    var _fresh=(Date.now()-(d.savedAt||0)) < 8*3600*1000;
+    if(d.date!==todayISO() && !_fresh) return false;
     runnerSession=d.session;
     runnerExIdx=d.exIdx||0;
     runnerCompleted=d.completed||{};
@@ -5485,7 +5493,7 @@ function _restoreRunnerDraft(){
     runnerWeightsLog=d.weightsLog||{};
     runnerRpe=d.rpe||{};
     runnerRpeLog=d.rpeLog||{};
-    runnerSessionDate=d.sessionDate||null;
+    runnerSessionDate=d.sessionDate||(d.date!==todayISO()?d.date:null);
     runnerEngaged=false;
     runnerResting=false;
     runnerRestLeft=90;
@@ -5746,10 +5754,14 @@ function runnerCompleteSet(){
     runnerResting = false;
     if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
     _trovoTimerEnd();
-    // Auto-advance after 3s if not last.
+    // Auto-advance after 3s if not last — unless the user opened a ledger
+    // edit in that window (the deck rebuild discarded the typed correction).
     var idx = runnerExIdx;
     if(idx < runnerSession.exercises.length - 1){
-      setTimeout(function(){
+      if(_runnerAdvanceTO) clearTimeout(_runnerAdvanceTO);
+      _runnerAdvanceTO = setTimeout(function(){
+        _runnerAdvanceTO = null;
+        if(runnerEditSetIdx != null) return;
         if(runnerOpen && runnerExIdx === idx && (runnerCompleted[ex.name]||0) >= ex.sets){
           runnerGoTo(idx+1);
         }
@@ -5783,7 +5795,10 @@ function runnerLogAllAtTarget(){
   _trovoTimerEnd();
   var idx = runnerExIdx;
   if(idx < runnerSession.exercises.length - 1){
-    setTimeout(function(){
+    if(_runnerAdvanceTO) clearTimeout(_runnerAdvanceTO);
+    _runnerAdvanceTO = setTimeout(function(){
+      _runnerAdvanceTO = null;
+      if(runnerEditSetIdx != null) return;
       if(runnerOpen && runnerExIdx === idx && (runnerCompleted[ex.name]||0) >= ex.sets){
         runnerGoTo(idx+1);
       }
@@ -5899,7 +5914,17 @@ function runnerFinishSession(){
   // History rail (SS markers): indices of pair-starting exercises, computed
   // on the FILTERED list so skipped zero-set entries can't shift them.
   var _ssIdx=[];
-  exsOut.forEach(function(e,i){ if(e.ss && i<exsOut.length-1) _ssIdx.push(i); });
+  // Pair markers are decided on the UNFILTERED plan: a skipped partner used
+  // to make its neighbour look superset-paired with an unrelated lift.
+  var _pairedNames={};
+  runnerSession.exercises.forEach(function(e,i){
+    var nx=runnerSession.exercises[i+1];
+    if(e.ss && nx && (runnerCompleted[e.name]||0)>0 && (runnerCompleted[nx.name]||0)>0) _pairedNames[e.name]=1;
+  });
+  exsOut.forEach(function(e,i){
+    e.ss=!!(_pairedNames[e.name] && i<exsOut.length-1 && (runnerCompleted[exsOut[i+1].name]||0)>0);
+    if(e.ss) _ssIdx.push(i);
+  });
   if(!exsOut.length){
     // Nothing logged — just exit without recording.
     closeDeckRunner();
@@ -5928,7 +5953,9 @@ function runnerFinishSession(){
   // lsSet date-sorts in place — a backdated save is no longer at [0].
   _requestDebrief(_newRec);
   haptic('success');
-  runnerJustFinishedKey = _todayKey()+'-lift-'+runnerSession.dayName;
+  // Keyed by the date the session was FILED under — a backdated log must
+  // not mark today done and hide today's Start CTA.
+  runnerJustFinishedKey = _sessionDate+'-lift-'+runnerSession.dayName;
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
@@ -6165,7 +6192,7 @@ function openRunnerCueSheet(){
         'style="width:100%;background:none;border:none;color:var(--text);font-size:14px;font-weight:500;padding:0;box-sizing:border-box;font-family:inherit;"/>'+
     '</div>'+
     '<button onclick="closeRunnerCueSheet()" style="width:100%;padding:14px;border-radius:14px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Back to the set →</button>'+
-    '<button onclick="closeRunnerCueSheet();openExLib(\''+_esc(ex.name)+'\')" style="display:block;width:100%;background:none;border:none;padding:10px 0 0;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">FULL HISTORY &amp; PRS · OPEN IN LIBRARY →</button>'+
+    '<button onclick="closeRunnerCueSheet();openExLib(\''+_esc(String(ex.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'"))+'\')" style="display:block;width:100%;background:none;border:none;padding:10px 0 0;font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;">FULL HISTORY &amp; PRS · OPEN IN LIBRARY →</button>'+
   '</div>';
   document.body.appendChild(overlay);
   _sheetDrag(overlay, closeRunnerCueSheet);
@@ -6187,6 +6214,7 @@ function closeRunnerCueSheet(){
 }
 function runnerStartEditSet(idx){
   var ex=_runnerEx(); if(!ex) return;
+  if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
   runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
 }
 function runnerCancelEditSet(){
@@ -6576,6 +6604,7 @@ function _renderRunnerDoneBody(ex, isLast){
     ? '<div style="margin:14px 0 6px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
         '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
+        ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
         ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'
@@ -6608,8 +6637,9 @@ function openRunnerExEdit(idx){
   runnerExEditIdx=idx;
   _rExEditName   =ex.name;
   _rExEditSets   =ex.sets;
-  _rExEditReps   =Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
-  _rExEditWeight =parseFloat(ex.weight)||0;
+  _rExEditReps   =runnerReps[ex.name]!=null?runnerReps[ex.name]:(Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
+  _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
+  _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps};
   _rExEditSS     =!!ex.ss;
   runnerExPickerQ='';
   var overlay=document.createElement('div');
@@ -6769,12 +6799,19 @@ function saveRunnerExEdit(){
   // reseed the pre-edit loads on every completed set.
   delete ex.weights;
   ex.ss     =_rExEditSS && runnerExEditIdx<runnerSession.exercises.length-1;
-  runnerWeights[newName]=ex.weight;
-  runnerReps[newName]=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
+  // Only touch the live steppers when the sheet value actually changed —
+  // adding a 4th set used to snap a bumped 195 back to the prescribed 185.
+  var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
+  if(oldName!==newName || ex.weight!==_seedW) runnerWeights[newName]=ex.weight;
+  else if(runnerWeights[oldName]!=null) runnerWeights[newName]=runnerWeights[oldName];
+  var _newR=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
+  if(oldName!==newName || _newR!==parseInt(_seedR)) runnerReps[newName]=_newR;
+  else if(runnerReps[oldName]!=null) runnerReps[newName]=runnerReps[oldName];
   if(oldName!==newName){
-    if(runnerCompleted[oldName]){runnerCompleted[newName]=runnerCompleted[oldName];delete runnerCompleted[oldName];}
-    if(runnerWeightsLog[oldName]){runnerWeightsLog[newName]=runnerWeightsLog[oldName];delete runnerWeightsLog[oldName];}
-    if(runnerRepsLog[oldName]){runnerRepsLog[newName]=runnerRepsLog[oldName];delete runnerRepsLog[oldName];}
+    [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,_wristStamps].forEach(function(map){
+      if(map && map[oldName]!==undefined){ map[newName]=map[oldName]; delete map[oldName]; }
+    });
+    if(_runnerPrBeat && _runnerPrBeat.ex===oldName) _runnerPrBeat.ex=newName;
   }
   closeRunnerExEdit(); paintRunner();
 }
@@ -13953,7 +13990,9 @@ function _onWatchLive(json){
         if(!_wristStamps[name]) _wristStamps[name]={};
         for(var wi=loc.length; wi<inc.length; wi++) _wristStamps[name][wi]=Date.now();
         _justLoggedSet={ex:name, idx:inc.length-1, at:Date.now()};
-        runnerRepsLog[name]=inc;
+        var _loc=(runnerRepsLog[name]||[]).slice();
+        for(var _ri=_loc.length; _ri<inc.length; _ri++) _loc[_ri]=inc[_ri];
+        runnerRepsLog[name]=_loc;
         runnerCompleted[name]=inc.length;
         var wv=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
         if(wv>0){

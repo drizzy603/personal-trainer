@@ -199,10 +199,13 @@ public final class HealthKitReader {
         let now = Date()
         let cal = Calendar.current
 
-        // Last night's asleep time: samples from yesterday 15:00 → now.
+        // Last night's asleep time: samples from yesterday 18:00 → now. The
+        // old 'now − 33h' window reached back to the night BEFORE last on any
+        // morning check (07:00 − 33h = 22:00 two days ago) and summed both
+        // nights, so sleepHours read ~14-16h and readiness was flattered.
         if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
             group.enter()
-            let windowStart = cal.date(byAdding: .hour, value: -33, to: now)!
+            let windowStart = cal.date(byAdding: .hour, value: -6, to: cal.startOfDay(for: now))!
             let pred = HKQuery.predicateForSamples(withStart: windowStart, end: now, options: [])
             let q = HKSampleQuery(sampleType: sleepType, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
                 defer { group.leave() }
@@ -215,7 +218,8 @@ public final class HealthKitReader {
                 }
                 // Merge overlapping intervals (watch + phone often both record).
                 let intervals = cats.filter { asleepValues.contains($0.value) }
-                    .map { ($0.startDate, $0.endDate) }
+                    .map { (max($0.startDate, windowStart), min($0.endDate, now)) }
+                    .filter { $0.1 > $0.0 }
                     .sorted { $0.0 < $1.0 }
                 var total: TimeInterval = 0
                 var curStart: Date? = nil, curEnd: Date? = nil
