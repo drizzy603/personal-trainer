@@ -105,7 +105,7 @@ run('Heavyweight room: scoped by attribute, poster type, two colours, reversible
       return { hw, back };
     });
     assert(out.hw.room === 'heavyweight' && out.hw.stored === 'heavyweight', 'room attribute + persisted choice');
-    assert(out.hw.earned === '#b7f000' && out.hw.earnedInk === '#5f8500', 'earned tokens split from the action colour');
+    assert(out.hw.earned === '#b7f000' && out.hw.earnedInk === '#4f7000', 'earned tokens split from the action colour');
     assert(/Anton/.test(out.hw.heroFont) && out.hw.heroTransform === 'uppercase', 'hero wears Anton poster caps: ' + out.hw.heroFont);
     assert(/Archivo/.test(out.hw.bodyFont), 'body is Archivo');
     assert(out.hw.tabsLeft === 0 && out.hw.tabsBottom === 0, 'tab bar is fixed full-width at the bottom');
