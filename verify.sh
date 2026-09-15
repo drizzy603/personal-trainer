@@ -60,3 +60,11 @@ print('✓ all inline handlers resolve (%d checked)' % len(called))
 EOF
 
 echo "ALL CHECKS PASSED"
+
+# build.txt mirrors <meta build> — the native shell polls this 12-byte file
+# instead of downloading the whole page to learn whether an update exists.
+STAMP=$(grep -oE '<meta name="build" content="[0-9-]+"' index.html | grep -oE '[0-9]+-[0-9]+')
+if [ "$(cat build.txt 2>/dev/null | tr -d '[:space:]')" != "$STAMP" ]; then
+  echo "$STAMP" > build.txt
+  echo "✓ build.txt synced to $STAMP — stage it with index.html"
+fi

@@ -29,6 +29,7 @@ fi
 NEW_BUILD="${TODAY}-${NEXT_N}"
 sed -i.bak -E "s|<meta name=\"build\" content=\"[0-9]+-[0-9]+\"/>|<meta name=\"build\" content=\"${NEW_BUILD}\"/>|" "$INDEX"
 rm "${INDEX}.bak"
+echo "${NEW_BUILD}" > build.txt
 echo "Web build:    ${CUR_BUILD} → ${NEW_BUILD}"
 
 # 2. Bump iOS CFBundleVersion.

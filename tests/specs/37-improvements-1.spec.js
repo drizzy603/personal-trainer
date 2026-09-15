@@ -114,7 +114,10 @@ run('the dock is exactly --tab-h tall, so every clearance built from the token i
   try {
     const out = await app.page.evaluate(() => {
       const tabs = document.getElementById('tabs');
-      const token = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tab-h'));
+      const cs = getComputedStyle(document.documentElement);
+      // Heavyweight's fixed bar absorbs the safe-area clearance into its own height.
+      const clear = document.documentElement.getAttribute('data-room') === 'heavyweight' ? (parseFloat(getComputedStyle(tabs).paddingBottom) - 6) : 0;
+      const token = parseFloat(cs.getPropertyValue('--tab-h')) + clear;
       const r = tabs.getBoundingClientRect();
       const tabH = [...tabs.querySelectorAll('.tab')].map(t => Math.round(t.getBoundingClientRect().height));
       return { token, dock: Math.round(r.height), tabH, bottomGap: Math.round(window.innerHeight - r.bottom) };

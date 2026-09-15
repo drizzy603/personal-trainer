@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-7"/>
+<meta name="build" content="20260914-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -373,6 +373,11 @@ select option{background:var(--bg);}
 .wk-row.open .wk-row-chev{transform:rotate(180deg);color:var(--accent);}
 .wk-detail{padding:4px 16px 14px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--text) 5%,transparent);}
 .wk-detail-note{font-size:12px;color:var(--lite);line-height:1.55;padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.wk-row-custom{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:8px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink);border:1px solid var(--accent-soft);border-radius:999px;padding:2px 6px;margin-left:6px;flex-shrink:0;}
+.wk-cadence{padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.wk-cadence-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);}
+.wk-cadence-line{font-size:12px;color:var(--lite);margin-top:4px;line-height:1.5;}
+.wk-cadence-reset{margin-top:8px;background:transparent;border:1px solid var(--border);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;color:var(--text);font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .wk-day-rows{display:flex;flex-direction:column;}
 .wk-day-row{display:grid;grid-template-columns:36px 10px auto 1fr 14px;align-items:center;gap:10px;padding:10px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;border-bottom:1px solid color-mix(in srgb,var(--text) 6%,transparent);}
 .wk-day-row:last-of-type{border-bottom:none;}
@@ -1510,6 +1515,20 @@ function checkForLiveUpdate(){
   // Native shell only — the PWA's service worker already fetches fresh HTML
   // network-first, so caching a copy here would just duplicate storage.
   if(window.location.protocol!=='capacitor:') return;
+  // A 12-byte stamp first: the full page (~900 KB) used to download on every
+  // launch just to compare a build number. Only a newer stamp fetches it.
+  var cachedBuild=localStorage.getItem('kt_cached_build')||'';
+  fetch('https://drizzy603.github.io/personal-trainer/build.txt?_='+Date.now(),{cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw 0; return r.text(); })
+    .then(function(txt){
+      var stamp=String(txt||'').trim();
+      if(!/^\d{8}-\d+$/.test(stamp)) throw 0;
+      localStorage.setItem('kt_last_seen_build', stamp);
+      if(buildNewer(stamp,APP_BUILD) && buildNewer(stamp,cachedBuild)) _fetchLivePage();
+    })
+    .catch(function(){ _fetchLivePage(); });   // no stamp on the server → the old full check
+}
+function _fetchLivePage(){
   var url='https://drizzy603.github.io/personal-trainer/index.html?_='+Date.now();
   fetch(url,{cache:'no-store'}).then(function(r){
     if(!r.ok) throw 0;
@@ -1544,7 +1563,7 @@ var logSession = 'Push';
 var currentWeek   = 1;
 var logSubTab        = 'workout';
 var logSportType     = 'Cycling';
-var currentTheme     = 'dark';
+var currentTheme     = 'heavyweight';
 var wakeLock         = null;
 // Calendar state
 var calYear  = new Date().getFullYear();
@@ -2928,8 +2947,7 @@ function _applyImportedData(data) {
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');
-  if (importedTheme === 'auto') setAutoTheme();
-  else if (importedTheme) applyTheme(importedTheme);
+  applyTheme(THEMES[importedTheme]?importedTheme:'heavyweight');
   render();
   showToast('Restored '+count+' data items');
 }
@@ -5703,6 +5721,58 @@ function undoLastRun(){
   _unmarkHealthUuid(uuid);
   render();
 }
+// Edit a logged run in place — sessions and sport logs had editors, runs
+// only had delete-and-retype. Fields are typed in the display units.
+var _reFeel=0;
+function openRunEditor(id){
+  var rec=getRuns().find(function(r){ return r.id===id; }); if(!rec) return;
+  closeRunEditor();
+  _reFeel=parseInt(rec.feel)||0;
+  var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
+  var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;';
+  var types=['easy','tempo','long','intervals'];
+  var overlay=document.createElement('div');
+  overlay.id='runEditOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head"><div class="kt-sheet-title">Edit run</div><button class="kt-sheet-x" onclick="closeRunEditor()" aria-label="Close">\u2715</button></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+      '<div><label style="'+lbl+'" for="re_dist">Distance ('+_uD()+')</label><input id="re_dist" type="number" inputmode="decimal" step="0.01" min="0" value="'+dDisp(rec.distance)+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_time">Time</label><input id="re_time" type="text" inputmode="text" placeholder="28:30" value="'+_esc(rec.time||'')+'" style="'+inp+'"/></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
+      '<div><label style="'+lbl+'" for="re_date">Date</label><input id="re_date" type="date" value="'+_esc(rec.date||'')+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_hr">Avg HR</label><input id="re_hr" type="number" inputmode="numeric" min="0" max="220" value="'+(rec.hr||'')+'" style="'+inp+'"/></div>'+
+    '</div>'+
+    '<div style="margin-bottom:10px;"><label style="'+lbl+'" for="re_type">Type</label><select id="re_type" style="'+inp+'">'+
+      types.map(function(t){ return '<option value="'+t+'"'+(rec.type===t?' selected':'')+'>'+_esc(_runTypeLabel(t))+'</option>'; }).join('')+'</select></div>'+
+    '<div style="margin-bottom:10px;"><label style="'+lbl+'">How did it feel?</label><div class="kt-rlog-feel">'+
+      [1,2,3,4,5].map(function(n){ return '<button type="button" class="kt-rlog-face'+(_reFeel===n?' on':'')+'" aria-label="'+FEEL_LBL[n]+'" onclick="_reSetFeel('+n+')">'+FEEL_FACE[n]+'</button>'; }).join('')+'</div></div>'+
+    '<div style="margin-bottom:14px;"><label style="'+lbl+'" for="re_note">Notes</label><input id="re_note" type="text" value="'+_esc(rec.note||'')+'" style="'+inp+'"/></div>'+
+    '<button class="btn btn-primary btn-full" style="padding:14px;font-size:15px;" onclick="saveRunEdit('+rec.id+')">Save run</button>'+
+    '<button class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;margin-top:8px;color:var(--red);" onclick="closeRunEditor();deleteRun('+rec.id+')">Delete run</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeRunEditor);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeRunEditor(); });
+  _a11yPass();
+}
+function closeRunEditor(){ var el=document.getElementById('runEditOverlay'); if(el) el.remove(); }
+function _reSetFeel(n){ _reFeel=(_reFeel===n)?0:n; document.querySelectorAll('#runEditOverlay .kt-rlog-face').forEach(function(b,i){ b.classList.toggle('on', i+1===_reFeel); }); }
+function saveRunEdit(id){
+  var runs=getRuns(), rec=runs.find(function(r){ return r.id===id; }); if(!rec){ closeRunEditor(); return; }
+  var v=function(k){ var el=document.getElementById(k); return el?String(el.value||'').trim():''; };
+  var dist=parseFloat(v('re_dist')), time=_normRunTime(v('re_time')), date=v('re_date');
+  if(!(dist>0) || !time){ showToast('Distance and a readable time are required','err'); return; }
+  rec.distance=dStore(dist); rec.time=time;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(date)){ rec.date=date; rec.week=weekForDate(date); }
+  rec.hr=parseInt(v('re_hr'))||0; rec.note=v('re_note'); rec.type=v('re_type')||rec.type||'easy'; rec.feel=_reFeel||0;
+  lsSet('kt_runs', runs);
+  invalidateCoachCard();
+  closeRunEditor();
+  showToast('Run updated');
+  render();
+}
 function deleteRun(id){
   var gone=getRuns().find(function(r){return r.id===id;}); if(!gone) return;
   lsSet('kt_runs',getRuns().filter(function(r){return r.id!==id;}));
@@ -8325,6 +8395,25 @@ function toggleWkDay(rowId){
   row.setAttribute('aria-expanded', open ? 'false' : 'true');
   row.classList.toggle('open', !open);
 }
+// A week the coach (or a swap) gave its own cadence used to look identical
+// to every other week; the override was invisible and could not be undone.
+function _cadenceNote(wd){
+  if(!(Array.isArray(wd.weekPlan)&&wd.weekPlan.length===7)) return '';
+  var days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var line=wd.weekPlan.map(function(t,i){ return days[i]+' '+((SESS[t]&&SESS[t].label)||t); }).join(' \u00b7 ');
+  return '<div class="wk-cadence"><div class="wk-cadence-hd">THIS WEEK\u2019S CADENCE \u00b7 CUSTOM</div>'+
+    '<div class="wk-cadence-line">'+_esc(line)+'</div>'+
+    '<button class="wk-cadence-reset" onclick="event.stopPropagation();resetWeekCadence('+wd.wk+')">Reset to the routine\u2019s cadence</button></div>';
+}
+function resetWeekCadence(wk){
+  var cr=getCustomRoutine(); if(!cr||!cr.weeks||!cr.weeks[wk-1]||!cr.weeks[wk-1].weekPlan) return;
+  _snapshotRoutineForUndo();
+  delete cr.weeks[wk-1].weekPlan;
+  setCustomRoutine(cr);
+  showToast('Week '+wk+' follows the routine cadence again');
+  closeProgrammeModal(); openProgrammeModal();
+  render();
+}
 function openProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
   var cr=getCustomRoutine();
@@ -8355,10 +8444,11 @@ function openProgrammeModal(){
     var wkRows=bl.weeks.map(function(wd){
       var isCurrent=wd.wk===currentWeek;
       var note=wd.wkNote||'';
-      var detailHTML=_renderWeekDetail(wd);
+      var detailHTML=_cadenceNote(wd)+_renderWeekDetail(wd);
       return '<div class="wk-row'+(isCurrent?' current':'')+'" id="wk-row-'+wd.wk+'" onclick="toggleWkDetail('+wd.wk+')" role="button" aria-expanded="false">'+
         '<span class="wk-row-num'+(isCurrent?' current':'')+'">Wk '+wd.wk+'</span>'+
         (isCurrent?'<span class="wk-row-now">NOW</span>':'')+
+        (Array.isArray(wd.weekPlan)&&wd.weekPlan.length===7?'<span class="wk-row-custom" title="This week has its own cadence">CADENCE</span>':'')+
         '<span class="wk-row-note">'+_esc(note)+'</span>'+
         '<svg class="wk-row-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'+
       '</div>'+
@@ -8460,7 +8550,7 @@ function renderRunsSection(opts) {
       var hrLabel=r.hr?' · '+r.hr+'bpm':'';
       var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+_esc(r.note):'');
       runItems += '<div class="run-item">'+
-        '<div><div style="font-size:14px;font-weight:800;">'+fmtD(dist)+' &middot; '+r.time+'</div>'+
+        '<div onclick="openRunEditor('+r.id+')" role="button" tabindex="0" style="cursor:pointer;flex:1;min-width:0;"><div style="font-size:14px;font-weight:800;">'+fmtD(dist)+' &middot; '+r.time+'</div>'+
         '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:10px;">'+
           '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+fmtPaceStr(p)+'</div>'+
@@ -9956,6 +10046,19 @@ function renderWeekRecap(sessions,runs){
 // Reps capped at 10: Epley overstates badly beyond that, so a 20-rep burnout
 // set at 95 lb (e1RM 158) used to beat a real 150 × 3 (165) — and drive the
 // plateau + forecast readouts with it.
+// The bench and squat goals, charts and e1RM cards match the LIFT, not one
+// exact string — "Bench Press", "Barbell Bench Press", "Paused Bench Press"
+// are the same goal; incline, close-grip, dumbbell and machine variants are
+// not. Squat: back squat in any bar position; front/goblet/split/hack/box
+// are their own lifts.
+function _isBenchLift(name){
+  var n=String(name||'').toLowerCase();
+  return /bench/.test(n) && /press/.test(n) && !/incline|decline|close|dumbbell|\bdb\b|machine|smith|floor|spoto|larsen|board/.test(n);
+}
+function _isSquatLift(name){
+  var n=String(name||'').toLowerCase();
+  return /squat/.test(n) && !/front|goblet|split|bulgarian|hack|box|jump|pistol|belt|sissy|overhead|zercher|\bair\b|wall|leg press|smith|landmine|cossack|sumo/.test(n);
+}
 function _epley(w, r){ r=Math.min(r||0,10); return r>0 ? w*(1+r/30) : w; }
 // Every render of Today and Progress recomputed this from scratch — a full
 // sessions x exercises x sets Epley scan (the proactive-banner predicates
@@ -10186,22 +10289,26 @@ function renderProgress() {
   }
 
   // Dynamic goals — find bests from logged data
-  var bestBench=0, bestSquat=0, bestRun5kSec=0;
+  var bestBench=0, bestSquat=0, bestRun5kSec=0, best10kSec=0;
   sessions.forEach(function(s){
     (s.exercises||[]).forEach(function(ex){
       var w=parseFloat(ex.weight)||0;
-      if(ex.name==='Barbell Bench Press'&&w>bestBench) bestBench=w;
-      if((ex.name==='Barbell Back Squat'||ex.name==='Back Squat')&&w>bestSquat) bestSquat=w;
+      if(_isBenchLift(ex.name)&&w>bestBench) bestBench=w;
+      if(_isSquatLift(ex.name)&&w>bestSquat) bestSquat=w;
     });
   });
   runs.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
-    if(Math.abs(dist-5)/5>0.1) return; // ~5k only (±10%, same window as the run review)
     var parts=(r.time||'').split(':').map(Number);
     var secs=parts.length===2?parts[0]*60+(parts[1]||0):parts[0]*3600+parts[1]*60+(parts[2]||0);
-    if(secs>0){
-      secs=Math.round(secs/dist*5);   // normalise a 4.6-5.4 km effort to 5 km
-      if(bestRun5kSec===0||secs<bestRun5kSec) bestRun5kSec=secs;
+    if(!(secs>0) || !(dist>0)) return;
+    if(Math.abs(dist-5)/5<=0.1){            // ~5k (±10%, same window as the run review)
+      var s5=Math.round(secs/dist*5);       // normalise a 4.6-5.4 km effort to 5 km
+      if(bestRun5kSec===0||s5<bestRun5kSec) bestRun5kSec=s5;
+    }
+    if(Math.abs(dist-10)/10<=0.1){          // ~10k
+      var s10=Math.round(secs/dist*10);
+      if(best10kSec===0||s10<best10kSec) best10kSec=s10;
     }
   });
 
@@ -10383,7 +10490,7 @@ function renderProgress() {
     var s=sessions[i];
     if(s.type!=='Push') continue;
     (s.exercises||[]).forEach(function(ex){
-      if(ex.name==='Barbell Bench Press'&&parseFloat(ex.weight)>0&&benchData.length<10)
+      if(_isBenchLift(ex.name)&&parseFloat(ex.weight)>0&&benchData.length<10)
         benchData.push({date:s.date,val:parseFloat(ex.weight)});
     });
   }
@@ -10394,7 +10501,7 @@ function renderProgress() {
     var s=sessions[i];
     if(s.type!=='Legs'&&s.type!=='Legs2') continue;
     (s.exercises||[]).forEach(function(ex){
-      if((ex.name==='Barbell Back Squat'||ex.name==='Back Squat')&&parseFloat(ex.weight)>0&&squatData.length<10)
+      if(_isSquatLift(ex.name)&&parseFloat(ex.weight)>0&&squatData.length<10)
         squatData.push({date:s.date,val:parseFloat(ex.weight)});
     });
   }
@@ -10456,8 +10563,9 @@ function renderProgress() {
   // loop disagreed with the Strength card by 10-20 lb for any ascending or
   // top-set session and skipped legacy nested-shape sessions entirely.
   var _rmSer=_e1rmSeries();
+  function _bestRMBy(pred){ var b=0; Object.keys(_rmSer).forEach(function(nm){ if(!pred(nm)) return; (_rmSer[nm]||[]).forEach(function(pt){ if(pt.e1rm>b) b=pt.e1rm; }); }); return Math.round(b); }
   function _bestRM(names){ var b=0; names.forEach(function(nm){ (_rmSer[nm]||[]).forEach(function(pt){ if(pt.e1rm>b) b=pt.e1rm; }); }); return Math.round(b); }
-  var bestBenchRM=_bestRM(['Barbell Bench Press']), bestSquatRM=_bestRM(['Barbell Back Squat','Back Squat']);
+  var bestBenchRM=_bestRMBy(_isBenchLift), bestSquatRM=_bestRMBy(_isSquatLift);
   var rmSection=(bestBenchRM||bestSquatRM)?
     '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Est. 1RM (Epley formula)</div></div></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">'+
@@ -10732,6 +10840,7 @@ function renderProgress() {
           (bestRun5kSec>0?bb(fmtPace(bestRun5kSec/5),'best 5k pace'):'')+
           (_bestPace?bb(fmtPace(_bestPace),'fastest pace'):'')+
           (_bigWeek?bb(fmtD(_bigWeek),'biggest week'):'')+
+          (best10kSec>0?bb(_fmtDur(best10kSec*1000),'best 10k'):'')+
           '</div></div>';
       }
     }
@@ -10947,11 +11056,12 @@ function renderCalDetail(sessions,runs,sports){
         '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
+          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="openRunEditor('+r.id+')" title="Edit run">EDIT</button>'+
           '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
         '</div>'+
       '</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
-        '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+dist+'km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
+        '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+fmtD(dist)+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.time+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">time</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+fmtPaceStr(p)+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
         (r.hr?'<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.hr+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">bpm</div></div>':'')+
@@ -13192,13 +13302,7 @@ function renderCoach(){
 // with a subtle hue tint and swaps the accent. Light exists mainly so Auto
 // can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
-  dark:     {name:'Lime',     room:'Studio',    textColor:'#f7fff8',bg:'#080b09',card:'#111613',card2:'#1a211c',border:'rgba(216,255,99,.10)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.14)','accent-dim':'rgba(216,255,99,.07)','on-accent':'#080b09','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f7fff8',muted:'#748077',lite:'#a6b0a8',purple:'#ad92ff'},
-  midnight: {name:'Midnight', room:'Night ops', textColor:'#eaf4ff',bg:'#050a14',card:'#0c1524',card2:'#142033',border:'rgba(125,211,252,.14)',accent:'#7dd3fc','accent-soft':'rgba(125,211,252,.14)','accent-dim':'rgba(125,211,252,.07)','on-accent':'#050a14','accent-ink':'#7dd3fc',green:'#7dd3fc',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a5b4fc',text:'#eaf4ff',muted:'#6b81a6',lite:'#8ba3c7',purple:'#a78bfa'},
-  carbon:   {name:'Carbon',   room:'Wireframe', textColor:'#ffffff',bg:'#060607',card:'#060607',card2:'#161618',border:'rgba(255,255,255,.16)',accent:'#ffffff','accent-soft':'rgba(255,255,255,.10)','accent-dim':'rgba(255,255,255,.05)','on-accent':'#060607','accent-ink':'#ffffff',green:'#ffffff',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#a1a1a8',text:'#ffffff',muted:'#7f7f85',lite:'#ababb2',purple:'#a78bfa'},
-  ember:    {name:'Ember',    room:'Forge',     textColor:'#fff1e8',bg:'#120a06',card:'#1e130c',card2:'#2a1a11',border:'rgba(255,140,90,.12)',accent:'#ff5c38','accent-soft':'rgba(255,92,56,.16)','accent-dim':'rgba(255,92,56,.08)','on-accent':'#120a06','accent-ink':'#ff5c38',green:'#ff5c38',yellow:'#ffd60a',red:'#ff453a',orange:'#ff8c5a',cyan:'#60a5fa',text:'#fff1e8',muted:'#9a7d6d',lite:'#c2a08e',purple:'#c4a7fd'},
-  violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','on-accent':'#0b0716','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6',purple:'#c4b5fd'},
-  gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','on-accent':'#080601','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088',purple:'#b7a3f7'},
-  light:    {name:'Light',    room:'Paper',     paper:true,textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','on-accent':'#000000','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
+  dark:     {name:'Lime',     room:'Green & black',    textColor:'#f7fff8',bg:'#080b09',card:'#111613',card2:'#1a211c',border:'rgba(216,255,99,.10)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.14)','accent-dim':'rgba(216,255,99,.07)','on-accent':'#080b09','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f7fff8',muted:'#748077',lite:'#a6b0a8',purple:'#ad92ff'},
   heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000',green:'#4f7000',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#5b21b6'},
 };
 
@@ -13231,7 +13335,7 @@ function _paintTheme(name){
   return true;
 }
 function _systemTheme(){
-  return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+  return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'heavyweight';
 }
 function applyTheme(name) {
   if(!_paintTheme(name)) return;
@@ -13242,7 +13346,7 @@ function applyTheme(name) {
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
 // themes can be compared without leaving the sheet.
 function _buildThemeRows(){
-  var order=['auto','heavyweight','dark','midnight','carbon','ember','violet','gold','light'];
+  var order=['heavyweight','dark'];
   return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">'+
     order.map(function(id){
       var sel=currentTheme===id;
@@ -13335,11 +13439,8 @@ function closeThemeSheet(){
   var el=document.getElementById('themeSheetOverlay');
   if(el)el.remove();
 }
-function setAutoTheme(){
-  currentTheme='auto';
-  localStorage.setItem('kt_theme','auto');
-  _paintTheme(_systemTheme());
-}
+// Auto retired with the six extra rooms; old callers land on the default.
+function setAutoTheme(){ applyTheme('heavyweight'); }
 
 function openWorkflow(){
   var el=document.getElementById('wf-view');
@@ -13648,7 +13749,7 @@ function renderSettings() {
           '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'+
         '</svg>'+
       '</div>'+
-      '<div class="settings-row-body"><div class="settings-row-title">Theme</div><div class="settings-row-sub">Six dark looks & light</div></div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Theme</div><div class="settings-row-sub">'+(currentTheme==='dark'?'Lime':'Heavyweight')+' \u00b7 two looks</div></div>'+
       '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;background:var(--card2);color:var(--accent);border:1px solid var(--border);">'+
         _esc(currentTheme==='auto'?'Auto':(THEMES[currentTheme]?THEMES[currentTheme].name:currentTheme))+'</span>'+
     '</div>'+
@@ -14642,22 +14743,15 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
   });
 }
 // ── Start ─────────────────────────────────────────────────────────────────────
-currentTheme = localStorage.getItem('kt_theme') || 'dark';
-// Retired themes (ocean/sunset) and any unknown value migrate to dark.
-if(currentTheme!=='auto' && !THEMES[currentTheme]){
-  currentTheme='dark';
-  localStorage.setItem('kt_theme','dark');
+// Two looks: Heavyweight (paper · blue · lime, the default) and Lime (the
+// original green-and-black Studio). Every retired room — Auto, Midnight,
+// Carbon, Ember, Violet, Gold, Light — migrates to Heavyweight on boot.
+currentTheme = localStorage.getItem('kt_theme') || 'heavyweight';
+if(!THEMES[currentTheme]){
+  currentTheme='heavyweight';
+  localStorage.setItem('kt_theme','heavyweight');
 }
-if(currentTheme==='auto'){
-  _paintTheme(_systemTheme());
-} else if(!_paintTheme(currentTheme)){
-  applyTheme('dark');   // retired/unknown stored theme → the default room
-}
-try{
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){
-    if(currentTheme==='auto') _paintTheme(e.matches?'dark':'light');
-  });
-}catch(ex){}
+if(!_paintTheme(currentTheme)) applyTheme('heavyweight');
 currentWeek = getWeek();
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping

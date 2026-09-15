@@ -4,23 +4,25 @@
 // on a failed write, and the volume chart shows gaps instead of hiding them.
 const { boot, assert, run } = require('../lib/harness');
 
-run('Auto theme stays Auto across paint and system flips', async () => {
+run('two rooms: Heavyweight is the default, Lime persists, retired picks migrate', async () => {
   const app = await boot();
   try {
     const out = await app.page.evaluate(() => {
-      setAutoTheme();
-      const stored1 = localStorage.getItem('kt_theme'), cur1 = currentTheme;
-      _paintTheme('light');           // what the sunset listener does
-      const stored2 = localStorage.getItem('kt_theme'), cur2 = currentTheme;
-      applyTheme('midnight');         // explicit pick persists
-      const stored3 = localStorage.getItem('kt_theme');
+      const boot = { stored: localStorage.getItem('kt_theme'), cur: currentTheme, room: document.documentElement.getAttribute('data-room') };
       applyTheme('dark');
-      return { stored1, cur1, stored2, cur2, stored3 };
+      const lime = { stored: localStorage.getItem('kt_theme'), cur: currentTheme };
+      applyTheme('midnight');           // retired room: ignored, Lime stays
+      const retired = { stored: localStorage.getItem('kt_theme'), cur: currentTheme };
+      setAutoTheme();                   // Auto retired too: lands on the default
+      const auto = { stored: localStorage.getItem('kt_theme'), cur: currentTheme };
+      return { boot, lime, retired, auto, rooms: Object.keys(THEMES) };
     });
-    assert(out.stored1 === 'auto' && out.cur1 === 'auto', 'setAutoTheme persists auto');
-    assert(out.stored2 === 'auto' && out.cur2 === 'auto', 'a system repaint keeps auto');
-    assert(out.stored3 === 'midnight', 'an explicit pick persists');
-    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+    assert(out.boot.cur === 'heavyweight' && out.boot.room === 'heavyweight', 'boots into Heavyweight: ' + JSON.stringify(out.boot));
+    assert(out.lime.stored === 'dark' && out.lime.cur === 'dark', 'Lime persists');
+    assert(out.retired.stored === 'dark' && out.retired.cur === 'dark', 'a retired room cannot be applied');
+    assert(out.auto.stored === 'heavyweight' && out.auto.cur === 'heavyweight', 'Auto lands on the default');
+    assert(out.rooms.length === 2, 'exactly two rooms remain');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
 

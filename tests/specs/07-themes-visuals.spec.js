@@ -18,10 +18,7 @@ run('theme rooms apply their tokens', async () => {
       applyTheme('dark');
       return res;
     });
-    assert(out.midnight.bg === '#050a14', 'midnight is navy');
-    assert(out.carbon.bg === '#060607', 'carbon near-black');
-    assert(out.light.bg === '#f4f2ec' && out.light.ink === '#3f6a00', 'light paper + dark accent-ink');
-    assert(out.gold.yellow === '#ffb340', 'gold PR-yellow exception');
+    assert(Object.keys(out).sort().join() === 'dark,heavyweight', 'exactly two rooms remain: ' + Object.keys(out).join());
     // Signal v4 (2026-08-25) retuned the Studio room's lime to #d8ff63.
     assert(out.dark.ink === '#d8ff63', 'dark ink equals the Signal accent');
     assert(out.heavyweight.bg === '#f7f5ef' && out.heavyweight.ink === '#0a43f5', 'Heavyweight is paper + blue');
@@ -124,18 +121,16 @@ run('paper rooms hand the Studio lime to dark-surface satellites; fonts ship wit
     const out = await app.page.evaluate(async () => {
       applyTheme('heavyweight');
       const hw = _posterAccent('#0a43f5');
-      applyTheme('light');
-      const light = _posterAccent('#5b8a00');
-      applyTheme('midnight');
-      const midnight = _posterAccent('#7dd3fc');
+      const light = _posterAccent('#0a43f5');
       applyTheme('dark');
+      const midnight = _posterAccent('#d8ff63');
       _lastNativeSummary = null; _runNativeSync();
       await new Promise(r => setTimeout(r, 50));
       const faces = [...document.styleSheets[0].cssRules].filter(r => r.constructor.name === 'CSSFontFaceRule').map(r => r.style.getPropertyValue('src'));
       return { hw, light, midnight, faces: faces.length, fallback: faces.every(f => /drizzy603\.github\.io\/personal-trainer\/assets\/fonts/.test(f)) };
     });
     assert(out.hw === '#d8ff63' && out.light === '#d8ff63', 'paper rooms → Studio lime for posters/widgets');
-    assert(out.midnight === '#7dd3fc', 'dark rooms keep their own accent');
+    assert(out.midnight === '#d8ff63', 'the dark room keeps its own accent');
     assert(out.faces === 8 && out.fallback, 'every bundled face has a network fallback src');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
