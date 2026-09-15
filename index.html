@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-5"/>
+<meta name="build" content="20260915-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -977,6 +977,11 @@ button:active{transform:scale(.97);}
 .kt-eng-row{display:flex;flex-direction:column;gap:6px;}
 .kt-step{padding:0;}
 .kt-step-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.12em;margin-bottom:2px;}
+.kt-rpe-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;}
+.kt-rpe-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;opacity:.55;letter-spacing:.12em;margin-right:2px;}
+.kt-rpe-chip{min-width:36px;padding:7px 0;border-radius:999px;border:1px solid color-mix(in srgb,currentColor 28%,transparent);background:transparent;color:inherit;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rpe-chip.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);}
+.kt-done-more{margin-top:10px;background:transparent;border:1px solid color-mix(in srgb,currentColor 28%,transparent);color:inherit;border-radius:999px;padding:7px 16px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-step-row{display:flex;align-items:center;gap:10px;}
 .kt-step-val{font-size:clamp(38px,14vw,56px);font-weight:800;letter-spacing:-2.5px;line-height:1;color:inherit;flex:1;min-width:0;text-align:center;}
 .kt-step.reps .kt-step-val{font-size:38px;letter-spacing:-1.6px;}
@@ -1665,6 +1670,7 @@ var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerRpe         = {};         // {exId: currentRpe} — stepper state
 var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
 var runnerEditSetIdx  = null;       // set index currently being edited (or null)
+var _runnerEditDraft  = null;       // {w, r} typed into an open ledger edit, carried across one repaint
 var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
@@ -6285,8 +6291,9 @@ function skipRunnerExercise(){
   if(runnerExIdx < total - 1){
     runnerGoTo(runnerExIdx + 1);
   } else {
-    // Last exercise — skip means done with session
-    runnerFinishSession();
+    // Last exercise — skipping it ends the session, and there is no undo.
+    var _lx=_runnerEx();
+    _ktConfirm({title:'Skip '+(_lx?_lx.name:'this exercise')+' and finish?', body:'This is the last exercise. Finishing saves the session with the sets you have logged so far.', confirmLabel:'Finish session', confirmStyle:'var(--accent)', onConfirm:runnerFinishSession});
   }
 }
 // "8" / "8-10" / per-set arrays → "(3/8/8)"; uniform arrays collapse.
@@ -6320,7 +6327,7 @@ function runnerToggleEngaged(){
   var ex = _runnerEx();
   if(!ex) return;
   var done = runnerCompleted[ex.name] || 0;
-  if(done >= ex.sets) return; // exercise already complete; require explicit Next
+  if(done >= ex.sets && !runnerEngaged) return; // a finished card only re-opens through +1 set
   runnerEngaged = !runnerEngaged;
   if(runnerEngaged) _wristMirror = null;   // touching the card takes over
   paintRunner();
@@ -6413,6 +6420,7 @@ function runnerCompleteSet(){
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
   _justLoggedSet = {ex: ex.name, idx: done-1, at: Date.now()};
+  showUndoToast('Set '+done+' logged \u00b7 '+fmtW(w)+' \u00d7 '+r, (function(name, idx){ return function(){ runnerUndoSet(name, idx); }; })(ex.name, done-1));
   // PR beat — only when a stored best exists and this set beats it (a first-
   // ever lift has nothing to beat, so it stays quiet). One heavy haptic; the
   // gold surfaces render from state.
@@ -6452,7 +6460,7 @@ function runnerCompleteSet(){
   }
   var _ssPrev=runnerExIdx>0?runnerSession.exercises[runnerExIdx-1]:null;
   var _prevOpen=!!(_ssPrev && _ssPrev.ss && (runnerCompleted[_ssPrev.name]||0) < _ssPrev.sets);
-  if(done < ex.sets || _prevOpen){
+  if(done < ex.sets || done > ex.sets || _prevOpen){
     if(_prevOpen) _ssReturnIdx=runnerExIdx-1;
     runnerResting = true;
     runnerRestLeft = _defaultRestFor(ex);
@@ -6491,6 +6499,7 @@ function runnerLogAllAtTarget(){
   var ex = _runnerEx(); if(!ex) return;
   var curW = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   var targetRpe = parseInt(ex.rpe)||7;
+  var _snap={r:(runnerRepsLog[ex.name]||[]).slice(), w:(runnerWeightsLog[ex.name]||[]).slice(), p:(runnerRpeLog[ex.name]||[]).slice(), done:runnerCompleted[ex.name]||0};
   runnerRepsLog[ex.name] = [];
   runnerWeightsLog[ex.name] = [];
   runnerRpeLog[ex.name] = [];
@@ -6510,6 +6519,7 @@ function runnerLogAllAtTarget(){
   runnerResting = false;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
   _trovoTimerEnd();
+  showUndoToast('All '+_plural(ex.sets,'set')+' logged at target', (function(name, snap){ return function(){ runnerUndoLogAll(name, snap); }; })(ex.name, _snap));
   var idx = runnerExIdx;
   if(idx < runnerSession.exercises.length - 1){
     if(_runnerAdvanceTO) clearTimeout(_runnerAdvanceTO);
@@ -6522,6 +6532,57 @@ function runnerLogAllAtTarget(){
     }, 1200);
   }
   paintRunner();
+}
+// Undo for the two ways a set enters the log. Both land the deck back on the
+// exercise (it may already have auto-advanced), stop any rest that the removed
+// set started, and re-open the steppers with that set's target.
+function _runnerIdxOf(name){
+  var i=-1; if(runnerSession) runnerSession.exercises.forEach(function(e,k){ if(e.name===name) i=k; });
+  return i;
+}
+function _runnerReopen(name){
+  var i=_runnerIdxOf(name); if(i<0) return;
+  var ex=runnerSession.exercises[i];
+  if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
+  if(runnerExIdx!==i) runnerGoTo(i);
+  if(runnerResting){
+    runnerResting=false; runnerRestEndsAt=0; runnerRestTotal=0;
+    if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+    _trovoTimerEnd(); cancelRestNotification();
+  }
+  _ssReturnIdx=null; _runnerPrBeat=null;
+  var ti=Math.min(runnerCompleted[name]||0, ex.sets-1);
+  var tr=Array.isArray(ex.reps)?ex.reps[Math.min(ti,ex.reps.length-1)]:ex.reps;
+  runnerReps[name]=parseInt(tr)||0;
+  runnerEngaged=true;
+  _saveRunnerDraft(); paintRunner();
+}
+function runnerUndoSet(name, idx){
+  if(!runnerSession) return;
+  var done=runnerCompleted[name]||0;
+  if(!(idx>=0 && idx<done)) return;
+  [runnerRepsLog, runnerWeightsLog, runnerRpeLog].forEach(function(l){ if(Array.isArray(l[name])) l[name].splice(idx,1); });
+  runnerCompleted[name]=done-1;
+  if(_justLoggedSet && _justLoggedSet.ex===name) _justLoggedSet=null;
+  if(runnerEditSetIdx!=null && runnerEditSetEx===name){ runnerEditSetIdx=null; runnerEditSetEx=null; }
+  _runnerReopen(name);
+  showToast('Set removed');
+}
+function runnerUndoSetAt(i){ var ex=_runnerEx(); if(ex) runnerUndoSet(ex.name, i); }
+function runnerUndoLogAll(name, snap){
+  if(!runnerSession || !snap) return;
+  runnerRepsLog[name]=snap.r; runnerWeightsLog[name]=snap.w; runnerRpeLog[name]=snap.p; runnerCompleted[name]=snap.done;
+  _runnerReopen(name);
+  showToast('Log all undone');
+}
+// "One more" on a finished exercise: re-open the steppers for an extra set.
+function runnerExtraSet(){
+  var ex=_runnerEx(); if(!ex) return;
+  if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
+  var ti=Math.min(runnerCompleted[ex.name]||0, ex.sets-1);
+  var tr=Array.isArray(ex.reps)?ex.reps[Math.min(ti,ex.reps.length-1)]:ex.reps;
+  if(!(runnerReps[ex.name]>0)) runnerReps[ex.name]=parseInt(tr)||0;
+  runnerEngaged=true; paintRunner();
 }
 function _confirmRunnerLogAll(){
   var ex=_runnerEx(); if(!ex) return;
@@ -6553,8 +6614,15 @@ function _restFinish(){
   haptic('success');
   var _rc=document.getElementById('runner-root');
   if(_rc){_rc.classList.add('kt-r-flash');setTimeout(function(){_rc.classList.remove('kt-r-flash');},700);}
+  _stashRunnerEdit();
   _ssJumpBack();
   paintRunner();
+}
+// Carry whatever is typed in an open ledger edit across the next repaint.
+function _stashRunnerEdit(){
+  if(runnerEditSetIdx==null) return;
+  var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
+  if(wEl||rEl) _runnerEditDraft={w:wEl?wEl.value:null, r:rEl?rEl.value:null};
 }
 // After a superset pair's shared rest, land back on the first movement.
 function _ssJumpBack(){
@@ -6959,7 +7027,7 @@ function renderDeckRunner(){
 
   // Body of the active card depends on state.
   var body;
-  if(exerciseDone){
+  if(exerciseDone && !runnerEngaged){
     body = _renderRunnerDoneBody(ex, isLast);
   } else if(runnerResting){
     body = _renderRunnerRestingBody(ex, done);
@@ -6977,7 +7045,7 @@ function renderDeckRunner(){
   var topL, topR;
   if(exerciseDone){
     topL = idxStr;
-    topR = '<span class="kt-r-card-meta">'+_esc(ex.sets+'/'+ex.sets+' SETS LOGGED')+'</span>';
+    topR = '<span class="kt-r-card-meta">'+_esc(done+'/'+ex.sets+' SETS LOGGED')+'</span>';
   } else if(runnerResting){
     topL = idxStr+' · SET '+done+' LOGGED';
     topR = '<span class="kt-r-card-meta">NEXT · SET '+(done+1)+'</span>';
@@ -7166,14 +7234,16 @@ function _renderCompletedSets(ex){
     var w=(runnerWeightsLog[ex.name]||[])[i];
     var r=(runnerRepsLog[ex.name]||[])[i];
     if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
+      var _ed=_runnerEditDraft||{}; _runnerEditDraft=null;
       rows+='<div class="kt-lr" style="gap:5px;" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
-        '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+(w!=null?wDisp(w):'')+'" placeholder="'+_uW()+'" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+_esc(_ed.w!=null?_ed.w:(w!=null?wDisp(w):''))+'" placeholder="'+_uW()+'" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
         '<span style="font-size:11px;opacity:.45;flex-shrink:0;">'+_uW()+' ×</span>'+
-        '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+(r!=null?r:'')+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+_esc(_ed.r!=null?_ed.r:(r!=null?r:''))+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
         '<span style="font-size:11px;opacity:.45;flex-shrink:0;">reps</span>'+
         '<button onclick="event.stopPropagation();runnerSaveEditSet()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;">✓</button>'+
         '<button onclick="event.stopPropagation();runnerCancelEditSet()" style="padding:4px 8px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;opacity:.6;">✕</button>'+
+        '<button onclick="event.stopPropagation();runnerUndoSetAt('+i+')" aria-label="Remove set '+(i+1)+'" style="padding:4px 8px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:11px;font-weight:700;cursor:pointer;opacity:.6;">Remove</button>'+
       '</div>';
     } else {
       var _washed=_justLoggedSet && _justLoggedSet.ex===ex.name && i===_justLoggedSet.idx
@@ -7479,11 +7549,17 @@ function _renderRunnerEngagedBody(ex, done){
     '</div></div>';
   var targetRpe = parseInt(ex.rpe) || 7;
   var rpeLeft = 10 - targetRpe;
-  var rpeHint = '<div style="margin-top:10px;font-size:10px;opacity:.35;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-align:center;text-transform:uppercase;">RPE '+targetRpe+' target · stop with ~'+rpeLeft+' rep'+(rpeLeft===1?'':'s')+' left</div>';
+  var rpeHint = '<div style="margin-top:6px;font-size:10px;opacity:.35;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-align:center;text-transform:uppercase;">RPE '+targetRpe+' target · stop with ~'+rpeLeft+' rep'+(rpeLeft===1?'':'s')+' left</div>';
+  // The set's real effort — what the progression banner and Progress avg RPE
+  // run on. Seeded at the programme target; a tap records the truth.
+  var curRpe = runnerRpe[ex.name] != null ? runnerRpe[ex.name] : targetRpe;
+  rpeHint = '<div class="kt-rpe-row" role="group" aria-label="Effort, RPE"><span class="kt-rpe-lbl">RPE</span>'+
+    [6,7,8,9,10].map(function(n){ return '<button class="kt-rpe-chip'+(n===curRpe?' on':'')+'" aria-pressed="'+(n===curRpe)+'" onclick="event.stopPropagation();runnerSetRpe('+n+');paintRunner()">'+n+'</button>'; }).join('')+
+    '</div>'+rpeHint;
   var doneBtn = '<button class="kt-eng-done" onclick="event.stopPropagation();runnerCompleteSet()">Log set '+(done+1)+'</button>';
   var logAllBtn = '';
   if(done === 0){
-    var logAllAction = ex.isMain ? '_confirmRunnerLogAll()' : 'runnerLogAllAtTarget()';
+    var logAllAction = '_confirmRunnerLogAll()';
     logAllBtn = '<button class="kt-eng-logall" onclick="event.stopPropagation();'+logAllAction+'">Log all '+_plural(ex.sets,'set')+' at target →</button>';
   }
   // Warm-up ramp — main lift only, only before the first working set.
@@ -7636,9 +7712,10 @@ function _renderRunnerDoneBody(ex, isLast){
   return '<div class="kt-done">'+
     '<div class="kt-done-check">✓</div>'+
     '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-done-meta">'+_esc(ex.sets+'/'+ex.sets+' SETS LOGGED')+'</div>'+
+    '<div class="kt-done-meta">'+_esc((runnerCompleted[ex.name]||ex.sets)+'/'+ex.sets+' SETS LOGGED')+'</div>'+
     beatHTML+
     _renderCompletedSets(ex)+
+    '<button class="kt-done-more" onclick="event.stopPropagation();runnerExtraSet()">+1 set</button>'+
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     nextPreview+
