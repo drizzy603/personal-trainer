@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-13"/>
+<meta name="build" content="20260915-14"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1675,6 +1675,9 @@ var _runnerEditDraft  = null;       // {w, r} typed into an open ledger edit, ca
 var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
+var _rExPickMode      = 'swap';     // 'swap' replaces the open exercise, 'add' inserts after it
+var _rExPickCat       = 'All';      // category chip in the picker
+var _rExEditApply     = false;      // also write the edit into the programme (this week onward)
 var _rExEditName      = '';
 var _rExEditSeed=null;
 var _rExEditSS        = false;      // "superset with next" toggle in the sheet
@@ -1850,9 +1853,9 @@ function sportChip(s, px, inv){
 
 // ── Exercise Library (for swap dropdown) ─────────────────────────────────────
 var EXERCISE_LIBRARY = {
-  Push:['Barbell Bench Press','Incline Dumbbell Press','Cable Fly','DB Lateral Raise','Tricep Pushdown','Overhead Tricep Ext','Close Grip Bench Press','Machine Shoulder Press','DB Shoulder Press','Dips','Cable Lateral Raise','OH Cable Tri Ext'],
-  Pull:['Pull Up','Seated Cable Row','Lat Pulldown (neutral)','Chest Supported Row','Hammer Curl','Barbell Curl (21s)','Face Pull','Barbell Curl','Incline DB Curl','Cable Row','Single Arm Row','Preacher Curl'],
-  Legs:['Barbell Back Squat','Romanian Deadlift','Leg Press','Leg Extension','Seated Leg Curl','Standing Calf Raise','Cable Crunch','Lying Leg Curl','Hanging Leg Raise','Hip Thrust','Leg Curl','RDL'],
+  Push:['Barbell Bench Press','Incline Dumbbell Press','Cable Fly','DB Lateral Raise','Tricep Pushdown','Overhead Tricep Extension','Close Grip Bench Press','Machine Shoulder Press','Arnold Press','Dips','Cable Lateral Raise','Overhead Press','DB Bench Press','Pec Deck'],
+  Pull:['Pull Up','Seated Cable Row','Lat Pulldown','Chest Supported Row','Hammer Curl','Face Pull','Barbell Curl','Incline DB Curl','Barbell Row','Single Arm DB Row','Preacher Curl','Chin Up','T-Bar Row','Rear Delt Fly'],
+  Legs:['Barbell Back Squat','Romanian Deadlift','Leg Press','Leg Extension','Seated Leg Curl','Standing Calf Raise','Cable Crunch','Lying Leg Curl','Hanging Leg Raise','Hip Thrust','Front Squat','Bulgarian Split Squat','Hack Squat','Conventional Deadlift'],
   Arms:['Barbell Curl','Hammer Curl','Preacher Curl','Incline DB Curl','Cable Curl','Concentration Curl','Tricep Pushdown','Skull Crushers','Overhead Tricep Extension','Close Grip Bench Press','Dips','Single-Arm DB Tricep Kickback','Cable Crunch','Hanging Leg Raise','Plank','Bicycle Crunch']
 };
 
@@ -7967,7 +7970,7 @@ function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
   '</div>';
 }
 function _buildRunnerExEditHTML(){
-  var exEntry=EXERCISE_DB.find(function(e){return e.name===_rExEditName;});
+  var exEntry=getAllExercises().find(function(e){return e.name===_rExEditName;});
   var cat=exEntry?exEntry.cat:'';
   return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">'+
@@ -7995,11 +7998,22 @@ function _buildRunnerExEditHTML(){
         '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditSS?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditSS?'ON':'OFF')+'</span>'+
       '</button>'
       :'')+
+    (hasCustomRoutine() && runnerSession && ['push','pull','legs','legs2','arms'].indexOf(String(runnerSession.type||'').toLowerCase())>=0
+      ?'<button onclick="event.stopPropagation();runnerExEditToggleApply()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditApply?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditApply?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
+        '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:700;color:var(--text);">Also update my programme</span><span style="display:block;font-size:11px;color:var(--muted);margin-top:2px;">This week onward \u00b7 Restore Previous undoes it</span></span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditApply?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditApply?'ON':'OFF')+'</span>'+
+      '</button>'
+      :'')+
+    '<div style="display:flex;gap:8px;margin-bottom:12px;">'+
+      '<button onclick="event.stopPropagation();_openRunnerExPicker(\'add\')" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+ Add exercise after</button>'+
+      '<button onclick="event.stopPropagation();runnerExRemove()" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--red);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Remove from today</button>'+
+    '</div>'+
     '<button onclick="event.stopPropagation();saveRunnerExEdit()" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.02em;-webkit-tap-highlight-color:transparent;">Save Changes</button>'+
   '</div>';
 }
-function _openRunnerExPicker(){
+function _openRunnerExPicker(mode){
   var sheet=document.getElementById('runner-ex-edit-sheet'); if(!sheet) return;
+  _rExPickMode=mode==='add'?'add':'swap'; _rExPickCat='All';
   runnerExPickerQ='';
   sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;';
   sheet.innerHTML=_buildRunnerExPickerHTML();
@@ -8010,54 +8024,169 @@ function _closeRunnerExPicker(){
   sheet.innerHTML=_buildRunnerExEditHTML();
 }
 function runnerExPickExercise(name){
+  if(_rExPickMode==='add'){ runnerExAddPick(name); return; }
   _rExEditName=name; _closeRunnerExPicker();
+}
+function runnerExPickerSetCat(c){
+  _rExPickCat=c||'All';
+  var sheet=document.getElementById('runner-ex-edit-sheet'); if(sheet) sheet.innerHTML=_buildRunnerExPickerHTML();
+  var inp=document.getElementById('runner-ex-picker-q'); if(inp && runnerExPickerQ) inp.focus();
+}
+// "Create" from the picker: a custom exercise named exactly what was typed,
+// filed under the picker's category (or the session's), selectable at once.
+function runnerExCreateCustom(name){
+  name=String(name||'').trim(); if(!name) return;
+  var exists=getAllExercises().find(function(e){ return e.name.toLowerCase()===name.toLowerCase(); });
+  if(!exists){
+    var cat=_rExPickCat!=='All'?_rExPickCat:((runnerSession&&/^(Push|Pull|Legs|Arms)$/.test(runnerSession.type))?runnerSession.type.replace('Legs2','Legs'):'Push');
+    saveCustomExercise({name:name,cat:cat,muscles:'Not specified',equip:'Not specified',desc:'',tips:[],_custom:true});
+    _bwLiftCache={};
+    showToast('Added to your library');
+  }
+  runnerExPickExercise(exists?exists.name:name);
+}
+// Insert a new exercise right after the one being edited, then open its editor.
+function runnerExAddPick(name){
+  if(runnerExEditIdx==null || !runnerSession) return;
+  var lib=getAllExercises().find(function(e){ return e.name===name; });
+  var w=parseFloat(getWeights()[name])||0;
+  var ex={name:name, sets:3, reps:(lib&&lib.cat==='Core')?12:10, weight:w, rpe:7, isMain:false};
+  var at=runnerExEditIdx+1;
+  runnerSession.exercises.splice(at,0,ex);
+  // A superset never pairs across an insert.
+  var prev=runnerSession.exercises[at-1]; if(prev && prev.ss) prev.ss=false;
+  runnerWeights[name]=w; runnerReps[name]=ex.reps; runnerRpe[name]=7;
+  if(_rExEditApply) _runnerApplyToProgramme('add', {ex:ex, after:runnerSession.exercises[at-1]?runnerSession.exercises[at-1].name:null});
+  _saveRunnerDraft(); paintRunner();
+  showToast(name+' added after '+_esc(runnerSession.exercises[at-1]?runnerSession.exercises[at-1].name:'this'));
+  var keepApply=_rExEditApply;
+  openRunnerExEdit(at); _rExEditApply=keepApply;
+  var sheet=document.getElementById('runner-ex-edit-sheet'); if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
+// Take the exercise out of today's session (its logged sets go with it).
+function runnerExRemove(){
+  if(runnerExEditIdx==null || !runnerSession) return;
+  var ex=runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
+  if(runnerSession.exercises.length<=1){ showToast('Last exercise \u2014 end the session instead','err'); return; }
+  var done=runnerCompleted[ex.name]||0;
+  var doIt=function(){
+    var idx=runnerExEditIdx, name=ex.name;
+    runnerSession.exercises.splice(idx,1);
+    var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss && idx>=runnerSession.exercises.length) prev.ss=false;
+    [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,runnerWeights,runnerReps,_wristStamps].forEach(function(m){ if(m) delete m[name]; });
+    if(_runnerPrBeat && _runnerPrBeat.ex===name) _runnerPrBeat=null;
+    if(_rExEditApply) _runnerApplyToProgramme('remove', {name:name});
+    closeRunnerExEdit();
+    runnerExIdx=Math.min(idx, runnerSession.exercises.length-1); runnerEngaged=false; runnerResting=false;
+    if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
+    _saveRunnerDraft(); paintRunner();
+    showToast(name+' removed from today');
+  };
+  if(done>0) _ktConfirm({title:'Remove '+ex.name+'?', body:_plural(done,'logged set')+' on it will be dropped from this session.', confirmLabel:'Remove', confirmStyle:'var(--red)', onConfirm:doIt});
+  else doIt();
+}
+function runnerExEditToggleApply(){
+  _rExEditApply=!_rExEditApply;
+  var sheet=document.getElementById('runner-ex-edit-sheet'); if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
+// Write a session edit into the programme: this week and every later week of
+// the same session type. Snapshot first so Restore Previous undoes it.
+function _runnerApplyToProgramme(op, p){
+  var cr=getCustomRoutine(); if(!cr || !cr.weeks || !runnerSession) return false;
+  var key=String(runnerSession.type||'').toLowerCase();
+  if(['push','pull','legs','legs2','arms'].indexOf(key)<0) return false;
+  _snapshotRoutineForUndo();
+  var touched=0;
+  for(var wi=currentWeek-1; wi<cr.weeks.length; wi++){
+    var wk=cr.weeks[wi]; if(!wk) continue;
+    var list=wk[key]; if(!Array.isArray(list)) continue;
+    if(op==='rename'){
+      list.forEach(function(e){
+        if(e.name!==p.oldName) return;
+        e.name=p.ex.name; e.sets=p.ex.sets; e.reps=p.ex.reps; delete e.weights;
+        if(wi===currentWeek-1 && parseFloat(p.ex.weight)>0) e.weight=p.ex.weight;
+        touched++;
+      });
+    } else if(op==='add'){
+      if(list.some(function(e){ return e.name===p.ex.name; })) continue;
+      var at=-1; list.forEach(function(e,i){ if(e.name===p.after) at=i; });
+      var copy={name:p.ex.name, sets:p.ex.sets, reps:p.ex.reps, weight:wi===currentWeek-1?p.ex.weight:0, rpe:p.ex.rpe||7, isMain:false};
+      if(at>=0) list.splice(at+1,0,copy); else list.push(copy);
+      touched++;
+    } else if(op==='remove'){
+      var before=list.length; wk[key]=list.filter(function(e){ return e.name!==p.name; }); touched+=before-wk[key].length;
+    }
+  }
+  if(touched){ setCustomRoutine(cr); invalidateCoachCard(); showToast('Programme updated from this week on \u00b7 Restore Previous in Settings undoes it'); }
+  return touched>0;
 }
 function runnerExPickerFilter(q){
   runnerExPickerQ=q;
   var el=document.getElementById('runner-ex-picker-list'); if(!el) return;
   el.innerHTML=_buildExPickerItems(q);
 }
+// Names the user has actually lifted recently (newest first), for the picker's top section.
+function _recentExerciseNames(limit){
+  var out=[], seen={};
+  getSessions().slice(0,30).forEach(function(s){ (s.exercises||[]).forEach(function(e){ if(e&&e.name&&!seen[e.name]){ seen[e.name]=1; out.push(e.name); } }); });
+  return out.slice(0, limit||8);
+}
 function _buildExPickerItems(q){
   var sType=(runnerSession&&runnerSession.type)||'';
   var qLow=(q||'').trim().toLowerCase();
-  var sessionNames=EXERCISE_LIBRARY[sType]||[];
-  var allNames=EXERCISE_DB.map(function(e){return e.name;});
-  var filter=function(n){return !qLow||n.toLowerCase().indexOf(qLow)>=0;};
-  var sessionFiltered=sessionNames.filter(filter);
-  var otherFiltered=allNames.filter(function(n){return filter(n)&&sessionNames.indexOf(n)<0;});
-  function item(name){
-    var isCur=name===_rExEditName;
+  var all=getAllExercises();
+  var byName={}; all.forEach(function(e){ byName[e.name]=e; });
+  var inSession={}; ((runnerSession&&runnerSession.exercises)||[]).forEach(function(e){ inSession[e.name]=1; });
+  var catOk=function(e){ return _rExPickCat==='All' || (e && e.cat===_rExPickCat); };
+  var hit=function(e){
+    if(!e) return false;
+    if(!qLow) return true;
+    return e.name.toLowerCase().indexOf(qLow)>=0 || String(e.muscles||'').toLowerCase().indexOf(qLow)>=0 || String(e.equip||'').toLowerCase().indexOf(qLow)>=0;
+  };
+  var sec=function(t){ return '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:6px 8px;">'+_esc(t)+'</div>'; };
+  function item(e){
+    var name=e.name, isCur=(_rExPickMode==='swap' && name===_rExEditName), here=!!inSession[name];
     var escaped=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var sub=[e.muscles&&e.muscles!=='Not specified'?e.muscles:'', e.equip&&e.equip!=='Not specified'?e.equip:''].filter(Boolean).join(' \u00b7 ');
     return '<button onclick="event.stopPropagation();runnerExPickExercise(\''+escaped+'\')" style="'+
-      'width:100%;display:flex;align-items:center;justify-content:space-between;'+
+      'width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;'+
       'background:'+(isCur?'color-mix(in srgb,var(--accent) 10%,transparent)':'transparent')+';'+
-      'border:none;border-radius:10px;padding:12px 8px;color:var(--text);font-size:14px;font-weight:'+(isCur?'700':'500')+';'+
-      'cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
-      _esc(name)+(isCur?'<span style="color:var(--accent);font-weight:700;margin-left:8px;">✓</span>':'')+
+      'border:none;border-radius:10px;padding:10px 8px;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+      '<div style="min-width:0;"><div style="font-size:14px;font-weight:'+(isCur?'700':'600')+';">'+_esc(name)+(e._custom?' <span class="kt-mono" style="font-size:9px;color:var(--muted);letter-spacing:.06em;">CUSTOM</span>':'')+'</div>'+
+      (sub?'<div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(sub)+'</div>':'')+'</div>'+
+      (isCur?'<span style="color:var(--accent);font-weight:700;flex-shrink:0;">\u2713</span>':(here&&_rExPickMode==='add'?'<span class="kt-mono" style="font-size:9px;color:var(--muted);letter-spacing:.06em;flex-shrink:0;">IN TODAY</span>':''))+
     '</button>';
   }
   var html='';
-  if(sessionFiltered.length&&sType&&!qLow){
-    html+='<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:4px 8px 6px;">'+_esc(sType)+' Day</div>';
-    html+=sessionFiltered.map(item).join('');
-    if(otherFiltered.length) html+='<div style="height:1px;background:var(--border);margin:10px 0;"></div>';
+  if(!qLow){
+    var recent=_recentExerciseNames(8).map(function(n){ return byName[n]||{name:n,cat:'',muscles:'',equip:''}; }).filter(catOk);
+    if(recent.length){ html+=sec('Recent'); html+=recent.map(item).join(''); }
+    var dayNames=(EXERCISE_LIBRARY[sType]||[]).filter(function(n){ return byName[n] && catOk(byName[n]); });
+    if(dayNames.length){ html+=sec(sType+' day'); html+=dayNames.map(function(n){ return item(byName[n]); }).join(''); }
+    if(html) html+='<div style="height:1px;background:var(--border);margin:8px 0;"></div>';
   }
-  if(otherFiltered.length){
-    if(sType&&!qLow) html+='<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:4px 8px 6px;">All Exercises</div>';
-    html+=otherFiltered.map(item).join('');
+  var rest=all.filter(function(e){ return catOk(e) && hit(e); });
+  rest.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  if(rest.length){ if(!qLow) html+=sec((_rExPickCat==='All'?'All':_rExPickCat)+' \u00b7 '+rest.length); html+=rest.map(item).join(''); }
+  var exact=q&&all.some(function(e){ return e.name.toLowerCase()===qLow; });
+  if(qLow && !exact){
+    var escapedQ=String(q).trim().replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    html+=(rest.length?'<div style="height:1px;background:var(--border);margin:8px 0;"></div>':'')+
+      '<button onclick="event.stopPropagation();runnerExCreateCustom(\''+escapedQ+'\')" style="width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--accent-ink);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+        '<span style="font-size:18px;line-height:1;">+</span><span>Create \u201c'+_esc(String(q).trim())+'\u201d</span></button>';
   }
-  if(!sessionFiltered.length&&!otherFiltered.length){
-    html='<div style="text-align:center;padding:24px;color:var(--muted);font-size:14px;">No exercises match "'+_esc(q)+'"</div>';
-  }
+  if(!html) html='<div style="text-align:center;padding:24px;color:var(--muted);font-size:14px;">Nothing in '+_esc(_rExPickCat)+'.</div>';
   return html;
 }
 function _buildRunnerExPickerHTML(){
   return '<div style="flex-shrink:0;padding:16px 20px 12px;border-bottom:1px solid var(--border);">'+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'+
       '<button onclick="event.stopPropagation();_closeRunnerExPicker()" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:18px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">‹</button>'+
-      '<div style="font-size:17px;font-weight:800;">Choose Exercise</div>'+
+      '<div style="font-size:17px;font-weight:800;">'+(_rExPickMode==='add'?'Add exercise':'Choose Exercise')+'</div>'+
+      '<span class="kt-mono" style="margin-left:auto;font-size:10px;color:var(--muted);letter-spacing:.06em;">'+getAllExercises().length+' IN LIBRARY</span>'+
     '</div>'+
-    '<input type="text" placeholder="Search exercises…" value="'+_esc(runnerExPickerQ)+'"'+
+    '<div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;">'+['All','Push','Pull','Legs','Arms','Core'].map(function(c){ var on=_rExPickCat===c; return '<button onclick="event.stopPropagation();runnerExPickerSetCat(\''+c+'\')" style="flex-shrink:0;padding:6px 12px;border-radius:999px;border:1px solid '+(on?'var(--accent)':'var(--border)')+';background:'+(on?'var(--accent)':'transparent')+';color:'+(on?'var(--on-accent)':'var(--text)')+';font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+c+'</button>'; }).join('')+'</div>'+
+    '<input id="runner-ex-picker-q" type="text" placeholder="Search name, muscle or equipment\u2026" value="'+_esc(runnerExPickerQ)+'"'+
       ' oninput="event.stopPropagation();runnerExPickerFilter(this.value)"'+
       ' onclick="event.stopPropagation();this.select()"'+
       ' style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-family:inherit;box-sizing:border-box;outline:none;-webkit-appearance:none;"/>'+
@@ -8113,7 +8242,9 @@ function saveRunnerExEdit(){
     });
     if(_runnerPrBeat && _runnerPrBeat.ex===oldName) _runnerPrBeat.ex=newName;
   }
-  closeRunnerExEdit(); paintRunner();
+  if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight}});
+  _bwLiftCache={};
+  closeRunnerExEdit(); _saveRunnerDraft(); paintRunner();
 }
 function _swapModalLabel(planEntry){
   if(planEntry.isRest) return 'Rest';
