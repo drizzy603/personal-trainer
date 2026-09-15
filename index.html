@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-8"/>
+<meta name="build" content="20260915-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1049,6 +1049,7 @@ button:active{transform:scale(.97);}
 .kt-ov-tgt{font-size:12px;color:var(--muted);margin-top:2px;}
 .kt-ov-first{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);flex-shrink:0;}
 .kt-ov-focus{display:flex;gap:10px;align-items:baseline;font-size:13px;color:var(--lite);line-height:1.5;margin-top:14px;}
+.kt-rest-cta{margin:4px 0 18px;}
 .kt-ov-focus-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--muted);flex-shrink:0;}
 .kt-done-name{font-size:18px;font-weight:600;opacity:.85;text-align:center;}
 .kt-done-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;letter-spacing:.1em;}
@@ -3582,6 +3583,12 @@ function autoAdvanceWeek(){
   var d1=new Date(stored+'T00:00:00'), d2=new Date(thisMonday+'T00:00:00');
   var elapsed=Math.round((d2-d1)/(7*86400000));
   if(elapsed<=0) return;
+  // A programme nobody has trained yet stays on week 1: a Saturday install
+  // used to become "week 2" on Monday's boot with zero sessions behind it.
+  if(!getSessions().length && !getRuns().length && !getSportLogs().length){
+    localStorage.setItem('kt_week_monday',thisMonday);
+    return;
+  }
   var newWeek=Math.min(total,currentWeek+elapsed);
   if(newWeek!==currentWeek){
     currentWeek=newWeek;
@@ -3941,6 +3948,67 @@ function addDays(iso, n) {
 // Walks the last 14 days; if every active day is covered, falls forward to
 // the next scheduled lift. The fallback intentionally ignores cardio/sport
 // because the caller uses this to set a default lift sub-tab.
+// The most recent planned LIFT day of this calendar week (Monday → yesterday)
+// that was neither logged nor skipped — the make-up a rest day should offer.
+function _missedThisWeek(){
+  if(!hasCustomRoutine()) return null;
+  var today=todayISO(), mon=_mostRecentMonday();
+  var sessions=getSessions(), skips=getSkips();
+  var found=null;
+  for(var i=0;i<7;i++){
+    var date=addDays(mon,i);
+    if(date>=today) break;
+    var dow=(new Date(date+'T00:00:00').getDay()+6)%7;
+    var plan=getWeekPlan()[dow];
+    if(!plan || !plan.isLift) continue;
+    if(skips.some(function(k){ return k.date===date && k.type===plan.type; })) continue;
+    if(sessions.some(function(x){ return x.date===date && x.type===plan.type; })) continue;
+    if(!_todayLiftExercises(plan.type).length) continue;
+    found={date:date, type:plan.type, dow:dow};
+  }
+  return found;
+}
+function skipMissed(date, type){
+  saveSkip(date, type);
+  showToast(((SESS[type]&&SESS[type].label)||type)+' skipped \u2014 back on plan');
+  render();
+}
+// Tomorrow's plan label ("Push", "Rest", "Run"), honouring next week's cadence on Sundays.
+function _tomorrowLabel(){
+  var _dowIdx=(new Date().getDay()+6)%7, _tomIdx=(_dowIdx+1)%7;
+  var _tomWeek=getWeekPlan();
+  if(_dowIdx===6){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
+  var tomPlan=_tomWeek[_tomIdx];
+  if(!tomPlan) return '';
+  return tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : ((SESS[tomPlan.type]&&SESS[tomPlan.type].label)||tomPlan.type||'');
+}
+// Rest-day CTA: the make-up for a missed lift, or the first session for a
+// starter who installed on a rest day. Always ends with what tomorrow holds.
+function _restDayCTA(){
+  var out='';
+  var DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var missed=_missedThisWeek();
+  if(missed){
+    var ml=(SESS[missed.type]&&SESS[missed.type].label)||missed.type;
+    out+='<button class="kt-cta" onclick="openDeckRunner(\''+_esc(missed.type)+'\')">'+
+        '<div style="text-align:left;"><div class="kt-cta-label">MAKE-UP</div>'+
+        '<div class="kt-cta-title">Do '+_esc(DAYS[missed.dow])+'\u2019s '+_esc(ml)+' now</div></div>'+
+        '<div class="kt-cta-arrow">\u2192</div></button>'+
+      '<button class="btn btn-ghost btn-full" style="margin-top:8px;padding:11px;font-size:13px;" onclick="skipMissed(\''+missed.date+'\',\''+_esc(missed.type)+'\')">Skip it, stay on plan</button>';
+  } else if(hasCustomRoutine() && !getSessions().length){
+    var nxt=null; try{ nxt=getNextSession(); }catch(e){}
+    if(nxt && _planEntry(nxt).isLift && _todayLiftExercises(nxt).length){
+      var nl=(SESS[nxt]&&SESS[nxt].label)||nxt;
+      out+='<button class="kt-cta" onclick="openDeckRunner(\''+_esc(nxt)+'\')">'+
+        '<div style="text-align:left;"><div class="kt-cta-label">FIRST SESSION</div>'+
+        '<div class="kt-cta-title">Start '+_esc(nl)+' today</div></div>'+
+        '<div class="kt-cta-arrow">\u2192</div></button>';
+    }
+  }
+  var tom=_tomorrowLabel();
+  if(tom) out+='<div style="display:flex;justify-content:flex-end;padding:10px 0 0;"><span class="kt-marquee-reps" style="color:var(--muted);font-size:10px;">TOMORROW \u00b7 '+_esc(String(tom).toUpperCase())+'</span></div>';
+  return out?'<div class="kt-rest-cta">'+out+'</div>':'';
+}
 function getNextSession() {
   var sessions = getSessions();
   var runs = getRuns();
@@ -4556,6 +4624,22 @@ function renderTodayEditorial(){
     line2 = 'No workout.';
     line2Class = '';
     body = 'Recover well — walk, stretch, eat well.';
+    var _anyToday = getSessions().some(function(x){ return x.date === _todayKey(); });
+    var _missed = _anyToday ? null : _missedThisWeek();
+    if(_missed){
+      var _mlab = (SESS[_missed.type]&&SESS[_missed.type].label)||_missed.type;
+      var _mday = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_missed.dow];
+      line2 = _mlab.charAt(0).toUpperCase()+_mlab.slice(1).toLowerCase()+' still open.';
+      line2Class = 'accent';
+      body = _mday+'\u2019s '+_mlab.toLowerCase()+' session wasn\u2019t logged. Do it today, or skip it and stay on plan.';
+    } else if(hasCustomRoutine() && !getSessions().length){
+      var _nx = null; try{ _nx = getNextSession(); }catch(e){}
+      if(_nx && _planEntry(_nx).isLift){
+        var _nxl = (SESS[_nx]&&SESS[_nx].label)||_nx;
+        var _nxDow = -1; var _wp = getWeekPlan(); for(var _q=1;_q<=7;_q++){ var _dd=((new Date().getDay()+6)%7+_q)%7; if(_wp[_dd] && _wp[_dd].type===_nx){ _nxDow=_dd; break; } }
+        body = 'Your first session, '+_nxl+', is '+(_nxDow>=0?['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_nxDow]:'next')+'. Start it today if you are keen \u2014 the plan adjusts.';
+      }
+    }
   }
   // Surface the week's focus note (spec: the one sentence explaining WHY
   // this week looks the way it does lived only in the programme modal).
@@ -4759,18 +4843,7 @@ function renderTodayEditorial(){
         '</div>'+spark;
     });
     // Tomorrow preview — quiet footer row so the ledger answers "and then?"
-    var _dowIdx = (new Date().getDay()+6)%7, _tomIdx = (_dowIdx+1)%7;
-    var _tomWeek = getWeekPlan();
-    if(_dowIdx===6){   // Sunday: tomorrow is NEXT week's Monday (its own cadence)
-      try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
-    }
-    var tomPlan = _tomWeek[_tomIdx];
-    var tomLbl = '';
-    if(tomPlan){
-      tomLbl = tomPlan.isRest ? 'Rest'
-        : tomPlan.isRun ? 'Run'
-        : ((SESS[tomPlan.type]&&SESS[tomPlan.type].label)||tomPlan.type||'');
-    }
+    var tomLbl = _tomorrowLabel();
     var tomorrowRow = tomLbl
       ? '<div style="display:flex;justify-content:flex-end;padding:12px 0 0;">'+
           '<span class="kt-marquee-reps" style="color:var(--muted);font-size:10px;">TOMORROW · '+_esc(String(tomLbl).toUpperCase())+'</span>'+
@@ -4978,6 +5051,7 @@ function renderTodayEditorial(){
   // Screen A1 order: banner (most-current thing) stays on top; the utility
   // chips read as part of the day's status, so they sit between the statement
   // and the Start CTA.
+  if(act.type==='rest' && !sessionDoneToday) cta = _restDayCTA() + cta;
   return meta + (activeSlot?activeSlot.html:'') + hero + _renderWeekStrip() + strip + cta + _renderGlance() + firstContract + adhocPicker + coachHTML + marquee;
 }
 var todayBannerOverride=null;
