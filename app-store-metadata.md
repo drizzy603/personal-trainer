@@ -31,9 +31,7 @@ Supero is a private, no-account training tracker with an AI coach that builds yo
 
 Start lifting in five taps: the built-in starter programme writes an 8-week block on your phone — no account, no API key, nothing to sign up for. Or tell the AI coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a fully custom multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
-━━━━━━━━━━━━━━━━━━━━
 WHAT'S INSIDE
-━━━━━━━━━━━━━━━━━━━━
 
 • Starter programme — Five questions, zero setup: an 8-week block built on-device around your gear and schedule
 • AI Coach — Conversational programme building, weekly reviews, mid-cycle tweaks, honest RPE-based progression
@@ -46,22 +44,16 @@ WHAT'S INSIDE
 • Library — 80 exercises with your history, PRs, form cues, and per-exercise notes
 • Programme — Visual training plan with week-by-week notes and PR attempts
 
-━━━━━━━━━━━━━━━━━━━━
 PRIVATE BY DESIGN
-━━━━━━━━━━━━━━━━━━━━
 
 Every workout, run, weigh-in, and chat is stored only on your device. No accounts. No tracking. No ads. No analytics.
 
 The AI Coach uses your own Anthropic API key — your conversations go directly from your phone to Anthropic, never through our servers (because we don't have any).
 
-━━━━━━━━━━━━━━━━━━━━
 WHAT YOU NEED
-━━━━━━━━━━━━━━━━━━━━
 
 • Nothing. The starter programme, logging, progress charts, watch app, and widgets all work out of the box.
 • Optional: your own Anthropic API key (console.anthropic.com) unlocks the AI Coach.
-
-━━━━━━━━━━━━━━━━━━━━
 
 Made for lifters, runners, and anyone who wants their training plan to actually be theirs.
 ```
