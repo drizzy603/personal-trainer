@@ -57,7 +57,7 @@ echo "── Pair: phone $PHONE / watch $WATCH"
 boot(){ xcrun simctl boot "$1" 2>/dev/null || true
   for _ in $(seq 1 45); do xcrun simctl list devices | grep -q "$1.*Booted" && return; sleep 1; done
   echo "FAIL: $1 did not boot"; exit 1; }
-boot "$PHONE"; open -a Simulator
+boot "$PHONE"; open -a Simulator 2>/dev/null || true   # Simulator.app is optional: devices boot and screenshot headless
 
 echo "── Installing + launching phone app"
 xcrun simctl install "$PHONE" "$PHONE_APP"

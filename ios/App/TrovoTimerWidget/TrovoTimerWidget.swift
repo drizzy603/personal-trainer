@@ -148,6 +148,7 @@ struct WidgetSummary: Decodable {
     let week: Int
     let totalWeeks: Int
     let streak: Int
+    let streakDays: Int?       // THE streak (scheduled training days); older summaries omit it
     let days: [SummaryDay]
 }
 
@@ -174,7 +175,7 @@ private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
         return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
     }
     return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
-                         streak: summary.streak, days: days)
+                         streak: summary.streak, streakDays: summary.streakDays, days: days)
 }
 private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     guard let data = UserDefaults(suiteName: "group.app.kt.trainer")?
@@ -197,7 +198,7 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
         return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
     }
     return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
-                         streak: summary.streak, days: days)
+                         streak: summary.streak, streakDays: summary.streakDays, days: days)
 }
 
 struct TodayEntry: TimelineEntry {
@@ -359,7 +360,7 @@ struct SuperoTodayView: View {
                             .padding(.vertical, 6)
                             .background(Capsule().fill(lime))
                     } else {
-                        Text("STREAK \(s.streak)W")
+                        Text(s.streakDays != nil ? "STREAK \(s.streakDays!)D" : "STREAK \(s.streak)W")
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
@@ -368,6 +369,8 @@ struct SuperoTodayView: View {
             }
         }
         .padding(14)
+        // "Start →" means start: the whole widget deep-links into today's session.
+        .widgetURL(URL(string: "trovo://start"))
     }
 
     private func shortDow(_ iso: String) -> String {

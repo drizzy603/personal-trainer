@@ -12,7 +12,18 @@ public class TrovoWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "TrovoWidget"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "updateSummary", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "consumeDeepLink", returnType: CAPPluginReturnPromise),
     ]
+
+    // The URL the app was opened with (widget "Start →" = trovo://start).
+    // AppDelegate parks it because on a cold start the page is not up yet;
+    // the page consumes it once at boot and it is cleared here.
+    @objc func consumeDeepLink(_ call: CAPPluginCall) {
+        let d = UserDefaults.standard
+        let url = d.string(forKey: "pendingDeepLink") ?? ""
+        d.removeObject(forKey: "pendingDeepLink")
+        call.resolve(["url": url])
+    }
 
     @objc func updateSummary(_ call: CAPPluginCall) {
         guard let json = call.getString("json") else {

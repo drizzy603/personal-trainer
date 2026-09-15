@@ -84,6 +84,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Capacitor / URL / UserActivity
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        if url.scheme == "trovo" {
+            // Widget / complication deep link. Parked for a cold start (the page
+            // reads it through TrovoWidget.consumeDeepLink) and pushed live when
+            // the page is already up (SuperoViewController listens).
+            UserDefaults.standard.set(url.absoluteString, forKey: "pendingDeepLink")
+            NotificationCenter.default.post(name: .trovoDeepLink, object: nil, userInfo: ["url": url.absoluteString])
+            return true
+        }
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
@@ -110,6 +118,11 @@ class SuperoViewController: CAPBridgeViewController {
     }
 
     override open func capacitorDidLoad() {
+        NotificationCenter.default.addObserver(forName: .trovoDeepLink, object: nil, queue: .main) { [weak self] note in
+            guard let url = note.userInfo?["url"] as? String else { return }
+            let safe = url.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "\\", with: "")
+            self?.webView?.evaluateJavaScript("window._trovoOpen && window._trovoOpen('\(safe)')", completionHandler: nil)
+        }
         bridge?.registerPluginInstance(TrovoOtaPlugin())
         bridge?.registerPluginInstance(TrovoHealthPlugin())
         bridge?.registerPluginInstance(TrovoTimerPlugin())
@@ -117,4 +130,8 @@ class SuperoViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TrovoWidgetPlugin())
         bridge?.registerPluginInstance(TrovoWatchPlugin())
     }
+}
+
+extension Notification.Name {
+    static let trovoDeepLink = Notification.Name("TrovoDeepLink")
 }

@@ -68,8 +68,9 @@ struct WatchPlan: Codable, Equatable {
     let week: Int
     let date: String?           // yyyy-MM-dd the phone built this plan for
     let dayName: String
-    let type: String            // "lift" | "run" | "sport" | "rest"
+    let type: String            // "lift" | "run" | "sport" | "rest" | "none"
     let exercises: [WatchExercise]
+    let hasPlan: Bool?          // false: the phone has no programme yet (older phones omit it)
 }
 
 // In-progress phone runner state — merged live into the wrist runner.
@@ -246,13 +247,13 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
         }
     }
 
-    func requestAuth() {
-        guard HKHealthStore.isHealthDataAvailable() else { return }
+    func requestAuth(_ completion: (() -> Void)? = nil) {
+        guard HKHealthStore.isHealthDataAvailable() else { completion?(); return }
         let share: Set<HKSampleType> = [HKObjectType.workoutType()]
         var read: Set<HKObjectType> = []
         if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { read.insert(hr) }
         if let en = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) { read.insert(en) }
-        store.requestAuthorization(toShare: share, read: read) { _, _ in }
+        store.requestAuthorization(toShare: share, read: read) { _, _ in completion?() }
     }
 
     func start() {
@@ -261,6 +262,12 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
         // already running in another app (e.g. Apple's Workout app). The
         // toggle in PlanView lets users who track elsewhere opt out.
         guard UserDefaults.standard.object(forKey: "autoWorkout") as? Bool ?? true else { return }
+        // First workout on this watch: the Health dialog appears now, over the
+        // set the user is about to log — not on a cold launch with no context.
+        if store.authorizationStatus(for: HKObjectType.workoutType()) == .notDetermined {
+            requestAuth { [weak self] in DispatchQueue.main.async { self?.start() } }
+            return
+        }
         let config = HKWorkoutConfiguration()
         config.activityType = .traditionalStrengthTraining
         config.locationType = .indoor
@@ -530,7 +537,9 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             if let plan = conn.plan {
-                if plan.type == "lift" && !plan.exercises.isEmpty {
+                if plan.hasPlan == false {
+                    NoPlanView(conn: conn)
+                } else if plan.type == "lift" && !plan.exercises.isEmpty {
                     if runner.synced {
                         SyncedView(runner: runner)
                     } else {
@@ -828,6 +837,21 @@ struct RestView: View {
     }
 }
 
+// The phone has no programme: tell the wrist what to do, not "Syncing…".
+struct NoPlanView: View {
+    @ObservedObject var conn: Connectivity
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "iphone").font(.title2).foregroundColor(lime)
+            Text("No programme yet").font(.headline)
+            Text("Build one in Supero on your iPhone — five taps, no account. It lands here.")
+                .font(.footnote).multilineTextAlignment(.center).foregroundColor(.secondary)
+            Button("Sync now") { conn.requestRefresh() }.buttonStyle(.bordered)
+        }
+        .padding()
+    }
+}
+
 struct OffDayView: View {
     let plan: WatchPlan
 
@@ -912,11 +936,6 @@ struct SuperoWatchApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .onAppear {
-                    #if !targetEnvironment(simulator)
-                    WorkoutManager.shared.requestAuth()
-                    #endif
-                }
         }
     }
 }

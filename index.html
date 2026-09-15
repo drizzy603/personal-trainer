@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-11"/>
+<meta name="build" content="20260915-12"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -15727,9 +15727,10 @@ function _pushWatchPlan(){
         reps:reps, weight:w, rest:_defaultRestFor(ex),
         rpe:parseInt(ex.rpe)||0 };
     });
+    var hasPlan=!!(hasCustomRoutine()||liveRun);
     var plan={ week:currentWeek, date:todayISO(),
-      dayName:String(liveRun?(runnerSession.dayName||'Session'):(act.dayName||act.type||'Rest')),
-      type:liveRun?'lift':String(act.type||'rest'), exercises:exs };
+      dayName:String(liveRun?(runnerSession.dayName||'Session'):(hasPlan?(act.dayName||act.type||'Rest'):'No plan')),
+      type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
     var liveJson=live?JSON.stringify(live):'';
@@ -15919,7 +15920,7 @@ function _runNativeSync(){
       : currentTheme;
     var _acc=(!THEMES[_appliedT]||THEMES[_appliedT].paper)?THEMES.dark.accent:THEMES[_appliedT].accent;
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(_trainingDays()), days:_nativeSummaryDays(), accent:_acc };
+      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc };
     var json=JSON.stringify(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;
@@ -16012,6 +16013,25 @@ function runAutoBackupNow(){
   pr.then(function(){ showToast('Backed up to Files → Supero'); render(); })
     .catch(function(){ showToast('Backup failed — use Export session log','err'); render(); });
 }
+
+// Deep links (the widget's "Start →" is trovo://start). Warm start: the shell
+// calls window._trovoOpen; cold start: the page consumes the parked URL once.
+function _handleDeepLink(url){
+  url=String(url||'');
+  var TW=_plug('TrovoWidget');
+  if(TW && TW.consumeDeepLink){ try{ TW.consumeDeepLink().catch(function(){}); }catch(e){} }
+  if(/^trovo:\/\/start/.test(url)){
+    switchTab('log'); logSubTab='workout'; render();
+    setTimeout(function(){ try{ if(hasCustomRoutine()) startTodaySession(); }catch(e){} }, 150);
+    return true;
+  }
+  return false;
+}
+window._trovoOpen=_handleDeepLink;
+(function(){
+  var TW=_plug('TrovoWidget'); if(!TW || !TW.consumeDeepLink) return;
+  setTimeout(function(){ try{ TW.consumeDeepLink().then(function(r){ if(r && r.url) _handleDeepLink(r.url); }).catch(function(){}); }catch(e){} }, 400);
+})();
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
 // the screenshot helper can drive the sim without UI taps. The key is
