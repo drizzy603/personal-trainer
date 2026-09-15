@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-3"/>
+<meta name="build" content="20260915-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4259,7 +4259,12 @@ function fetchCoachCard(activity){
     var cached = loadCachedCoachCard();
     if(cached){ resolve(cached); return; }
     var routine = lsGet('kt_routine') || {};
-    var recent = (lsGet('kt_sessions') || []).slice(0, 5);
+    var recent = (lsGet('kt_sessions') || []).slice(0, 5).map(function(sess){
+      var c={}; Object.keys(sess).forEach(function(k){ c[k]=sess[k]; });
+      c.exercises=(sess.exercises||[]).map(function(e){ var x={}; Object.keys(e).forEach(function(k){ x[k]=e[k]; }); if(parseFloat(x.weight)>0) x.weight=wDisp(x.weight); return x; });
+      c.unit=_uW();
+      return c;
+    });
     var snapshot = {
       type: activity.type,
       dayName: activity.dayName,
@@ -4267,7 +4272,8 @@ function fetchCoachCard(activity){
       week: currentWeek,
       mainLift: activity.exercises && activity.exercises[0] ? {
         name: activity.exercises[0].name,
-        weight: activity.exercises[0].weight,
+        weight: wDisp(activity.exercises[0].weight),
+        unit: _uW(),
         rpe: activity.exercises[0].rpe
       } : null
     };
@@ -4277,7 +4283,7 @@ function fetchCoachCard(activity){
       'Write ONE proactive note (2-3 sentences max) the user should see this morning.\n'+
       'Be specific to the data — name an exercise, a number, a pattern.\n'+
       'Don\'t be generic. Don\'t pep-talk. Talk like you\'ve coached them for a year.\n'+
-      'Any weight you suggest must be a multiple of 2.5 lb (smallest bump ±2.5, barbells ±5) — never fractional loads like 1.3 lb.\n\n'+
+      _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+' (smallest bump ±'+_plateStepDisp()+', barbells ±'+_plateBarDisp()+') — never fractional loads gyms cannot load.\n\n'+
       'Then propose two action labels (≤ 3 words each).\n\n'+
       'Return STRICT JSON only — no prose, no code fences:\n'+
       '{"message":"...","actions":[{"label":"...","primary":false},{"label":"...","primary":true}]}';
@@ -4965,7 +4971,7 @@ function startPlateauFix(){
   if(!pl.length) return;
   lsSet('kt_last_plateau_week', currentWeek);
   var msg='These lifts have plateaued (no new estimated-1RM peak): '+
-    pl.map(function(x){ return x.name+' at ~'+Math.round(x.e1rm)+' lb for '+x.days+' days'; }).join('; ')+
+    pl.map(function(x){ return x.name+' at ~'+fmtW(x.e1rm)+' for '+x.days+' days'; }).join('; ')+
     '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
     '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
     'Briefly explain why, then make the edit.';
@@ -5018,8 +5024,8 @@ function startProgression(){
   if(!pl.length) return;
   lsSet('kt_last_prog_week', currentWeek);
   var msg='Last week these main lifts hit every set cleanly: '+
-    pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+x.weight+' lb (RPE '+x.rpe+')'; }).join('; ')+
-    '. Propose a +5 lb progression on each for this week and apply it to my routine with your tools. '+
+    pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
+    '. Propose a +'+_plateBarDisp()+' '+_uW()+' progression on each for this week and apply it to my routine with your tools. '+
     'Briefly note why, then make the edits.';
   switchTab('coach');
   openCoachChat();
@@ -5390,11 +5396,11 @@ function _requestDebrief(sess){
   if(!key || !sess || !(sess.exercises||[]).length) return;
   var lines=sess.exercises.map(function(ex){
     var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps;
-    return ex.name+' '+ex.sets+'×['+reps+'] @ '+ex.weight+' lb'+(ex.rpe?' RPE '+ex.rpe:'');
+    return ex.name+' '+ex.sets+'×['+reps+'] @ '+fmtW(ex.weight)+(ex.rpe?' RPE '+ex.rpe:'');
   }).join('; ');
   var prompt='You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
     'and one cue for next time about this just-finished '+sess.type+' session. No greetings, no fluff. '+
-    'Any weight you suggest must be a multiple of 2.5 lb.\n'+
+    _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+'.\n'+
     'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'');
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
@@ -7329,6 +7335,57 @@ function _dSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, v
 function _paceSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:_uD()==='mi'?Math.round(d.val*KM_PER_MI):d.val}; }); }
 // Weight step for steppers: 2.5 lb or 1.25 kg, expressed in lb for storage.
 function wStepLb(){ return _uW()==='kg'?1.25*LB_PER_KG:2.5; }
+// ── Coach boundary ──────────────────────────────────────────────────────────
+// The model reads and writes the user's units; these convert at the prompt /
+// tool edge so a kg user never sees or types lb in the chat.
+function _plateStepDisp(){ return _uW()==='kg'?1.25:2.5; }   // smallest plate increment, display unit
+function _plateBarDisp(){ return _uW()==='kg'?2.5:5; }       // smallest barbell change, display unit
+// Model-written load (display unit) → lb, snapped to real plates in that unit.
+function _coachLoadIn(v){
+  var n=parseFloat(v); if(!(n>0)) return n;
+  var step=_plateStepDisp(); n=Math.round(n/step)*step;
+  return _uW()==='kg'?Math.round(n*LB_PER_KG*10)/10:Math.round(n*10)/10;
+}
+// log_run input → km. `distance` is in the user's unit; the explicit keys win
+// only when the source itself was in that unit.
+function _coachRunKm(i){
+  i=i||{};
+  if(parseFloat(i.distance)>0) return dStore(i.distance);
+  if(parseFloat(i.distance_km)>0) return Math.round(parseFloat(i.distance_km)*100)/100;
+  if(parseFloat(i.distance_mi)>0) return Math.round(parseFloat(i.distance_mi)*KM_PER_MI*100)/100;
+  return 0;
+}
+// Programme run slot from the model: {mi} becomes {km} for storage.
+function _coachRunIn(r){
+  if(!r||typeof r!=='object') return r;
+  var mi=parseFloat(r.mi);
+  if(mi>0 && !(parseFloat(r.km)>0)) r.km=Math.round(mi*KM_PER_MI*100)/100;
+  delete r.mi;
+  return r;
+}
+function _coachUnitsNote(){
+  var U=_uW(), D=_uD();
+  return 'UNITS: the user works in '+U+' and '+D+'. Every weight you read here or pass to a tool is in '+U+'; every distance is in '+D+' and every pace is per '+D+'. Do not convert — the app stores exactly what you send, in '+U+'/'+D+'.\n';
+}
+// Tool schemas carry {W}/{D} placeholders so the same definitions speak lb/km or kg/mi.
+function _unitizeText(t){
+  var U=_uW(), D=_uD(), mi=D==='mi';
+  return String(t).replace(/\{W\}/g,U).replace(/\{D\}/g,D).replace(/\{DNAME\}/g, mi?'miles':'kilometres')
+    .replace(/\{KMNOTE\}/g, mi?' — the user works in miles: fill mi instead and omit km':'')
+    .replace(/\{MINOTE\}/g, mi?' — use this, the user works in miles':' (only when the source is explicitly in miles; otherwise use km)');
+}
+function _unitizeSchema(node){
+  if(Array.isArray(node)) return node.map(_unitizeSchema);
+  if(node && typeof node==='object'){
+    var out={};
+    Object.keys(node).forEach(function(k){
+      var v=node[k];
+      out[k]=(k==='description'&&typeof v==='string')?_unitizeText(v):_unitizeSchema(v);
+    });
+    return out;
+  }
+  return node;
+}
 function _snap25(w){
   w=parseFloat(w);
   if(!(w>0)) return w;
@@ -10220,14 +10277,14 @@ function _buildWeekReviewMsg(){
     // Session prs are exercise-name strings (checkAndUpdatePRs); tolerate the
     // object shape too rather than sending 'undefined undefined×undefined'.
     if(typeof p==='string') prs.push(p+(_prBook[p]?' '+fmtW(_prBook[p]):''));
-    else if(p&&p.ex) prs.push(p.ex+' '+(p.weight||'')+(p.reps?'×'+p.reps:''));
+    else if(p&&p.ex) prs.push(p.ex+' '+(p.weight?fmtW(p.weight):'')+(p.reps?'×'+p.reps:''));
   }); });
   var lines=['Review my last 7 days and adjust next week if needed.',
     'Done: '+sessions.length+' lifts'+(sessions.length?' ('+sessions.map(function(s){ return s.type; }).join(', ')+')':'')+
     (runs.length?', '+runs.length+' run'+(runs.length>1?'s':''):'')+
     (sports.length?', '+sports.length+' sport session'+(sports.length>1?'s':''):'')+
     ' vs '+planned+' planned activity days.',
-    'Lift volume: '+Math.round(vol).toLocaleString()+' lb.'];
+    'Lift volume: '+Math.round(wDisp(vol)).toLocaleString()+' '+_uW()+'.'];
   if(prs.length) lines.push('PRs: '+prs.join('; ')+'.');
   var pl=_plateauLifts().slice(0,3);
   if(pl.length) lines.push('Plateaus: '+pl.map(function(p){ return p.name+' (no new peak in '+p.days+' days)'; }).join(', ')+'.');
@@ -11589,19 +11646,20 @@ function buildIntakeSystemPrompt(){
         var exs=lastWk[t]; if(!exs||!exs.length) return;
         prevSection += '\n'+t.toUpperCase()+' (week '+nWks+' — final weights):\n';
         exs.forEach(function(ex){
-          prevSection += '  • '+ex.name+': '+ex.sets+'×'+ex.reps+(ex.weight?' @ '+ex.weight+' lb':'')+(ex.isMain?' [MAIN]':'')+'\n';
+          prevSection += '  • '+ex.name+': '+ex.sets+'×'+ex.reps+(ex.weight?' @ '+fmtW(ex.weight):'')+(ex.isMain?' [MAIN]':'')+'\n';
         });
       });
     }
     prevSection += '\n=== END PREVIOUS PROGRAMME ===\n\n';
     prevSection += 'CONTINUATION MODE — the user is building a NEW programme that progresses from the one above.\n'+
       'You already know their split, equipment, injuries, and experience. DO NOT re-ask those questions.\n'+
-      'Instead: (1) briefly acknowledge what you see ("I can see you just finished X — bench ended at Y lb, squat at Z lb, etc."), '+
+      'Instead: (1) briefly acknowledge what you see ("I can see you just finished X — bench ended at Y '+_uW()+', squat at Z '+_uW()+', etc."), '+
       '(2) ask only what is NEW or different: any goals/focus changes, exercises to add or swap out, and desired programme length (suggest 12 weeks). Max 3 quick questions.\n'+
       'Start new working weights ~5–10% above where the previous programme ended on each lift.\n';
   }
 
   return 'You are a world-class personal trainer conducting an intake assessment to build a personalised training programme.\n\n'+
+_coachUnitsNote()+'\n'+
 (prevSection||
 'Ask the following questions ONE AT A TIME. Wait for an answer before asking the next. Be conversational and encouraging — like a real trainer. Acknowledge each answer briefly before moving to the next question.\n\n'+
 'Questions to cover (in this order):\n'+
@@ -11625,13 +11683,13 @@ function buildIntakeSystemPrompt(){
 'Rules:\n'+
 '- Each session has 6-8 exercises; mark the primary compound with isMain:true.\n'+
 '- Keep exercise names consistent across weeks so progression tracks.\n'+
-'- Use weight=0 for bodyweight exercises. Weights in lb.\n'+
-'- If the user wants running, set each week\'s runs field as a map of day-name → {km, type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan.\n'+
+'- Use weight=0 for bodyweight exercises. Weights in '+_uW()+'.\n'+
+'- If the user wants running, set each week\'s runs field as a map of day-name → {'+_uD()+', type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan.\n'+
 '- If the user does another activity instead (Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Other), put that activity\'s id directly in weekPlan on those days, and set each week\'s sports field as a map of day-name → {type, note?}. Keys must match the days marked with the activity in weekPlan, and `type` must equal the same activity id.\n'+
 '- A user can mix lift days, rest days, runs, and sports in the same week. If they have nothing scheduled on a day, use Rest.\n'+
 '- weekPlan entries must be one of: "Push", "Pull", "Legs", "Legs2", "Arms", "Rest", "Run", "Cycling", "CrossFit", "Pickleball", "Swimming", "Tennis", "Basketball", "Other". Spread lift days with rest/cardio between them. Match the number of lift days to the user\'s availability. Use "Legs2" when the user wants a SECOND distinct leg session per week (e.g. a 4-day split with Legs A quad-focus + Legs B posterior-chain focus). Use "Arms" for a dedicated biceps/triceps/abs day — populate the week\'s arms array with bicep, tricep, and core exercises; typically 4-5 sets per muscle group. When Legs2 or Arms appears in weekPlan, populate their respective arrays (legs2, arms) in each week. The matching exercise list for each day comes from push/pull/legs/legs2/arms arrays respectively.\n'+
 '- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
-'- Progress weight ~2.5-5 lb per week across the hypertrophy/strength blocks.\n\n'+
+'- Progress weight ~'+_plateStepDisp()+'-'+_plateBarDisp()+' '+_uW()+' per week across the hypertrophy/strength blocks.\n\n'+
 'Start with the first question now.';
 }
 
@@ -11675,7 +11733,7 @@ var _exerciseSchema={
     ss:{type:'boolean',description:'Superset: this exercise is paired with the NEXT one in the array (alternate sets, one shared rest after the pair)'},
     sets:{type:'integer',minimum:1},
     reps:{description:'Integer reps (e.g. 8), string range (e.g. "8-10" or "Max"), or an ARRAY of per-set targets like [3,8,8] for top-set/back-off schemes'},
-    weight:{type:'number',description:'Weight in lb — use 0 for bodyweight'},
+    weight:{type:'number',description:'Weight in {W} — use 0 for bodyweight'},
     weights:{type:'array',items:{type:'number'},description:'Optional per-set target loads like [225,185,185] — pairs with a reps array for top-set/back-off. weight stays the headline load.'},
     rpe:{type:'number',description:'Rating of perceived exertion, typically 6–10'}
   },
@@ -11684,12 +11742,13 @@ var _exerciseSchema={
 var _runSchema={
   type:'object',
   properties:{
-    km:{type:'number'},
+    km:{type:'number',description:'Distance in kilometres{KMNOTE}'},
+    mi:{type:'number',description:'Distance in miles{MINOTE}'},
     type:{type:'string',description:'easy / Z2 / tempo / intervals / race effort'},
     hr:{type:'number',description:'HR cap in bpm'},
     note:{type:'string'}
   },
-  required:['km','type']
+  required:['type']
 };
 var _sportSlotSchema={type:'object',
   properties:{
@@ -11743,38 +11802,40 @@ var COACH_TOOLS=[
      },
      required:['dayA','dayB']}},
   {name:'set_exercise_weight',
-   description:'Update the working weight for a named exercise (case-insensitive match).',
+   description:'Update the working weight for a named exercise (case-insensitive match). Weight in {W}.',
    input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
   {name:'set_bench_goal',
-   description:'Set the bench press target weight in lb.',
+   description:'Set the bench press target weight in {W}.',
    input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
   {name:'set_squat_goal',
-   description:'Set the back squat target weight in lb.',
+   description:'Set the back squat target weight in {W}.',
    input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
   {name:'set_run_goal',
-   description:'Set target running pace per km as "mm:ss" (e.g. "6:00").',
+   description:'Set target running pace per {D} as "mm:ss" (e.g. "6:00").',
    input_schema:{type:'object',properties:{pace:{type:'string'}},required:['pace']}},
   {name:'set_5k_goal',
    description:'Set target 5 km time as "mm:ss" (e.g. "30:00").',
    input_schema:{type:'object',properties:{time:{type:'string'}},required:['time']}},
   {name:'set_bw_goal',
-   description:'Set target body weight in lb.',
+   description:'Set target body weight in {W}.',
    input_schema:{type:'object',properties:{weight:{type:'number'}},required:['weight']}},
   {name:'log_bodyweight',
-   description:'Log the user\'s body weight in lb. Use the actual measurement date, not today, if they weighed in on a different day.',
+   description:'Log the user\'s body weight in {W}. Use the actual measurement date, not today, if they weighed in on a different day.',
    input_schema:{type:'object',properties:{weight:{type:'number'},date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'}},required:['weight']}},
   {name:'log_run',
    description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day.',
    input_schema:{type:'object',
      properties:{
-       distance_km:{type:'number',description:'Distance in kilometres.'},
+       distance:{type:'number',description:'Distance in {DNAME} — the user\'s unit. Use this unless the source is explicitly in the other unit.'},
+       distance_km:{type:'number',description:'Distance in kilometres — only when the source is explicitly in km.'},
+       distance_mi:{type:'number',description:'Distance in miles — only when the source is explicitly in miles.'},
        time:{type:'string',description:'Duration as MM:SS (e.g. "30:36") or H:MM:SS for longer runs.'},
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
        type:{type:'string',enum:['easy','tempo','long','intervals','race'],description:'Run type. Defaults to "easy".'},
        hr:{type:'number',description:'Average heart rate in bpm (optional).'},
        note:{type:'string',description:'Short note (optional).'}
      },
-     required:['distance_km','time']}},
+     required:['time']}},
   {name:'log_session',
    description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list. Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
    input_schema:{type:'object',
@@ -11785,7 +11846,7 @@ var COACH_TOOLS=[
          name:{type:'string'},
          sets:{type:'integer',minimum:1},
          reps:{description:'Reps per set — one integer (same every set) or an array like [8,8,6].'},
-         weight:{type:'number',description:'Weight in lb — 0 for bodyweight.'},
+         weight:{type:'number',description:'Weight in {W} — 0 for bodyweight.'},
          rpe:{type:'number',description:'RPE if the user gave one (optional).'},
          isMain:{type:'boolean',description:'True on the primary compound.'}
        },required:['name','sets','reps']}},
@@ -11893,9 +11954,9 @@ function executeCoachTool(name,input){
           if(sk==='legs2'||sk==='arms'){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
           else weekObj[sk]=_grp;
           _grp.forEach(function(e,ei){
-            if(e && parseFloat(e.weight)>0) e.weight=_snap25(e.weight);
+            if(e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
             if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
-              var v=parseFloat(x); return v>0?_snap25(v):x;
+              var v=parseFloat(x); return v>0?_coachLoadIn(v):x;
             });
             // Supersets are pairs — normalize chains and a dangling last-ss.
             if(e && e.ss && (ei===_grp.length-1 || (ei>0 && _grp[ei-1] && _grp[ei-1].ss))) e.ss=false;
@@ -11905,7 +11966,7 @@ function executeCoachTool(name,input){
         if(w.runs&&typeof w.runs==='object'&&!Array.isArray(w.runs)){
           var runsOut={};
           DOW_NAMES.forEach(function(n){
-            if(w.runs[n]&&typeof w.runs[n]==='object') runsOut[n]=w.runs[n];
+            if(w.runs[n]&&typeof w.runs[n]==='object') runsOut[n]=_coachRunIn(w.runs[n]);
           });
           if(Object.keys(runsOut).length) weekObj.runs=runsOut;
         } else {
@@ -12018,7 +12079,7 @@ function executeCoachTool(name,input){
       var weights=getWeights();
       var newW=parseFloat(input.weight);
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
-      newW=_snap25(newW);
+      newW=_coachLoadIn(newW);
       if(!input.name) return {ok:false,error:'name required'};
       var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
       if(!key) key=String(input.name);
@@ -12040,24 +12101,25 @@ function executeCoachTool(name,input){
         });
         if(touched) setCustomRoutine(crW);
       }
-      return {ok:true,message:key+' = '+newW+' lb'};
+      return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
       var bg=parseFloat(input.weight);
       if(!(bg>0)) return {ok:false,error:'weight must be > 0'};
-      setBenchGoal(bg);
-      return {ok:true,message:'bench goal = '+bg+' lb'};
+      bg=wStore(bg); setBenchGoal(bg);
+      return {ok:true,message:'bench goal = '+fmtW(bg)};
     }
     if(name==='set_squat_goal'){
       var sg=parseFloat(input.weight);
       if(!(sg>0)) return {ok:false,error:'weight must be > 0'};
-      setSquatGoal(sg);
-      return {ok:true,message:'squat goal = '+sg+' lb'};
+      sg=wStore(sg); setSquatGoal(sg);
+      return {ok:true,message:'squat goal = '+fmtW(sg)};
     }
     if(name==='set_run_goal'){
       if(!input.pace) return {ok:false,error:'pace required as "mm:ss"'};
-      setRunGoal(String(input.pace));
-      return {ok:true,message:'run pace goal = '+input.pace+'/km'};
+      var _pg=paceStore(String(input.pace));
+      setRunGoal(_pg);
+      return {ok:true,message:'run pace goal = '+fmtPaceStr(_pg)};
     }
     if(name==='set_5k_goal'){
       var parts=String(input.time||'').split(':').map(Number);
@@ -12069,8 +12131,8 @@ function executeCoachTool(name,input){
     if(name==='set_bw_goal'){
       var bw=parseFloat(input.weight);
       if(!(bw>0)) return {ok:false,error:'weight must be > 0'};
-      setBWGoal(bw);
-      return {ok:true,message:'body weight goal = '+bw+' lb'};
+      bw=wStore(bw); setBWGoal(bw);
+      return {ok:true,message:'body weight goal = '+fmtW(bw)};
     }
     if(name==='log_bodyweight'){
       var bwVal=parseFloat(input.weight);
@@ -12078,15 +12140,16 @@ function executeCoachTool(name,input){
       var bwDate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
       var bws=getBodyWeights();
+      bwVal=wStore(bwVal);
       bws.push({id:Date.now(),date:bwDate,weight:bwVal});
       bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
       lsSet('kt_bw',bws);
       render();
-      return {ok:true,message:'logged '+bwVal+' lb on '+bwDate};
+      return {ok:true,message:'logged '+fmtW(bwVal)+' on '+bwDate};
     }
     if(name==='log_run'){
-      var rkm=parseFloat(input.distance_km);
-      if(!(rkm>0)) return {ok:false,error:'distance_km must be > 0'};
+      var rkm=_coachRunKm(input);
+      if(!(rkm>0)) return {ok:false,error:'distance must be > 0 (in '+_uD()+')'};
       var rtime=String(input.time||'').trim();
       if(!rtime) return {ok:false,error:'time required as MM:SS'};
       var _rn=_normRunTime(rtime);
@@ -12103,7 +12166,7 @@ function executeCoachTool(name,input){
       lsSet('kt_runs',rruns);
       invalidateCoachCard();
       render();
-      return {ok:true,message:'Run logged: '+rkm+'km in '+rtime+' on '+rdate};
+      return {ok:true,message:'Run logged: '+fmtD(rkm)+' in '+rtime+' on '+rdate};
     }
     if(name==='log_session'){
       // The one loggable thing the coach previously had to refuse: a lift
@@ -12133,7 +12196,7 @@ function executeCoachTool(name,input){
         while(greps.length<gsets) greps.push(greps[greps.length-1]||0);
         var grpe=parseFloat(ge.rpe);
         gclean.push({name:gname, sets:gsets, reps:greps,
-          weight:parseFloat(ge.weight)||0,
+          weight:wStore(parseFloat(ge.weight)||0),
           rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
       }
       var gPRs=checkAndUpdatePRs(gclean);
@@ -12488,14 +12551,14 @@ function _planChangeLedger(tools, idx){
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
-      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_snap25(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_snap25(i.weight))]);
+      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight))]);
     } else if(tc.name==='swap_cadence_days'){
       rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
     } else if(tc.name==='update_routine_weeks'){
       var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
-    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(i.weight)]); }
-    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(i.weight)]); }
+    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
+    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(String(i.pace||'')))]); }
     else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
   });
@@ -12527,14 +12590,14 @@ function toolCallLabel(tc){
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
-  if(n==='set_exercise_weight') return i.name+' → '+fmtW(_snap25(i.weight));
-  if(n==='set_bench_goal') return 'Bench goal '+fmtW(i.weight);
-  if(n==='set_squat_goal') return 'Squat goal '+fmtW(i.weight);
-  if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(i.pace);
+  if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
+  if(n==='set_bench_goal') return 'Bench goal '+fmtW(wStore(i.weight));
+  if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
+  if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(paceStore(i.pace));
   if(n==='set_5k_goal') return '5k goal '+i.time;
-  if(n==='set_bw_goal') return 'BW goal '+fmtW(i.weight);
-  if(n==='log_bodyweight') return 'Logged '+fmtW(i.weight);
-  if(n==='log_run') return 'Run logged · '+(i.distance_km||'?')+'km '+( i.time||'');
+  if(n==='set_bw_goal') return 'BW goal '+fmtW(wStore(i.weight));
+  if(n==='log_bodyweight') return 'Logged '+fmtW(wStore(i.weight));
+  if(n==='log_run') return 'Run logged · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
   if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
   if(n==='delete_log') return (i.store||'entry')+' deleted';
   return n;
@@ -12676,11 +12739,12 @@ function buildSystemPrompt(){
   p+='%%metric: PACE | 8:07 | vs 8:15 goal | -8s | good\n';
   p+='(metric fields: LABEL | value | reference | delta | tone. Tone is good, warn, or plain. Use 2-4 consecutive %%metric lines so they group into one table.)\n';
   p+='%%takeaway: One or two sentences with the single conclusion. (max one per reply)\n';
-  p+='%%action: Set goal pace to 8:05 | Set my run goal pace to 8:05/km\n';
+  p+='%%action: Set goal pace to 8:05 | Set my run goal pace to 8:05/'+_uD()+'\n';
   p+='(action fields: chip label | the exact chat message I receive when tapped. Max two; the first is the primary. Only offer actions you can actually do with your tools or answer well.)\n';
   p+='Plain lines between markers render as short paragraphs — keep each to two sentences or fewer. For casual conversation, skip the markers entirely and answer in plain prose.\n\n';
 
-  p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of 2.5 lb (2.5, 5, 7.5, 10 …). The smallest meaningful change is ±2.5 lb (±5 lb on barbell lifts). Never suggest fractional bumps like +1.3 lb — gyms cannot load them.\n';
+  p+=_coachUnitsNote();
+  p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of '+_plateStepDisp()+' '+_uW()+'. The smallest meaningful change is ±'+_plateStepDisp()+' '+_uW()+' (±'+_plateBarDisp()+' '+_uW()+' on barbell lifts). Never suggest fractional bumps gyms cannot load.\n';
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
   if(cr&&cr.name)p+=' ('+cr.name+')';
@@ -12698,12 +12762,12 @@ function buildSystemPrompt(){
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
         wd[sess].forEach(function(ex){
-          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+ex.weight+'lb RPE'+fmtRpe(ex.rpe)+'\n';
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+fmtW(ex.weight)+' RPE'+fmtRpe(ex.rpe)+'\n';
         });
       }
     });
     getScheduledRuns(wd).forEach(function(s){
-      if(s.run) p+='RUN ('+s.name+'): '+s.run.km+'km '+s.run.type+'\n';
+      if(s.run) p+='RUN ('+s.name+'): '+fmtD(s.run.km)+' '+s.run.type+'\n';
       else p+='RUN ('+s.name+'): scheduled\n';
     });
     p+='\n';
@@ -12715,7 +12779,7 @@ function buildSystemPrompt(){
       p+='[id:'+s.id+'] '+s.type+' '+s.date+' (Wk'+s.week+'): ';
       var exStrs=(s.exercises||[]).map(function(ex){
         var r=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
-        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?ex.weight+'lb':'BW')+' RPE'+fmtRpe(ex.rpe);
+        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?fmtW(ex.weight):'BW')+' RPE'+fmtRpe(ex.rpe);
       });
       p+=exStrs.join(' | ')+'\n';
     });
@@ -12726,7 +12790,7 @@ function buildSystemPrompt(){
     p+='LOGGED RUNS (these are the only runs actually saved in the app — this list is the ground truth):\n';
     runs.slice(0,10).forEach(function(r){
       var dist=parseFloat(r.distance||r.dist||0);
-      p+='  [id:'+r.id+'] '+r.date+' · '+dist+'km · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
+      p+='  [id:'+r.id+'] '+r.date+' · '+fmtD(dist)+' · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
     });
     p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
   } else {
@@ -12737,7 +12801,7 @@ function buildSystemPrompt(){
   var _plat=_plateauLifts().slice(0,3);
   if(_plat.length){
     p+='PLATEAUS (no new estimated-1RM peak): '+_plat.map(function(x){
-      return x.name+' stuck at ~'+Math.round(x.e1rm)+' lb for '+x.days+' days';
+      return x.name+' stuck at ~'+fmtW(x.e1rm)+' for '+x.days+' days';
     }).join('; ')+'. Consider variation, intensity change, or a deload when relevant.\n\n';
   }
   // Recovery signal — today's readiness when the user has it enabled.
@@ -12755,7 +12819,7 @@ function buildSystemPrompt(){
     Object.keys(_fcSeries).forEach(function(nm){
       if(_fcLines.length>=3) return;
       var f=_forecastLift(_fcSeries[nm]);
-      if(f) _fcLines.push(nm+' on track for '+f.target+' lb around '+f.date);
+      if(f) _fcLines.push(nm+' on track for '+fmtW(f.target)+' around '+f.date);
     });
     if(_fcLines.length) p+='TRENDS: '+_fcLines.join('; ')+'.\n\n';
   }catch(e){}
@@ -12776,28 +12840,28 @@ function buildSystemPrompt(){
 
   var prKeys=Object.keys(prs);
   if(prKeys.length){
-    p+='PRs: '+prKeys.map(function(k){return k+' '+prs[k]+'lb';}).join(', ')+'\n';
+    p+='PRs: '+prKeys.map(function(k){return k+' '+fmtW(prs[k]);}).join(', ')+'\n';
   }
   if(bws.length){
-    p+='\nBODY WEIGHT: '+bws.slice(0,8).map(function(b){return b.weight+'lb ('+b.date+(b.id?',id:'+b.id:'')+')';}).join(' → ')+'\n';
+    p+='\nBODY WEIGHT: '+bws.slice(0,8).map(function(b){return fmtW(b.weight)+' ('+b.date+(b.id?',id:'+b.id:'')+')';}).join(' → ')+'\n';
   }
 
   var runGoal=getRunGoal();
   var bwGoal=getBWGoal();
-  if(runGoal){p+='RUN PACE GOAL: '+runGoal+'/km\n';}
+  if(runGoal){p+='RUN PACE GOAL: '+fmtPaceStr(runGoal)+'\n';}
   var goal5k=get5kGoal();
   if(goal5k){var g5m=Math.floor(goal5k/60),g5s=goal5k%60;p+='5K TIME GOAL: '+(g5m+':'+(g5s<10?'0':'')+g5s)+'\n';}
-  if(bwGoal){p+='BODY WEIGHT GOAL: '+bwGoal+'lb\n';}
+  if(bwGoal){p+='BODY WEIGHT GOAL: '+fmtW(bwGoal)+'\n';}
   var allWeights=getWeights();
   var wKeys=Object.keys(allWeights);
-  if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS (lb):\n'+wKeys.map(function(k){return '  '+k+': '+allWeights[k];}).join('\n')+'\n';}
+  if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS ('+_uW()+'):\n'+wKeys.map(function(k){return '  '+k+': '+wDisp(allWeights[k]);}).join('\n')+'\n';}
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
   p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.\n';
-  p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance_km, time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
+  p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
-  p+='  - Log body weight → call log_bodyweight with weight (lb) and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
+  p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Delete a logged entry the user wants removed → call delete_log with store ("run", "sport", "session", or "bodyweight") and id (from the [id:...] shown in the ground-truth lists above). Only delete when the user explicitly asks.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Legs2, Arms, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Use Legs2 when there are two distinct leg sessions per week — populate legs (Legs A) and legs2 (Legs B) separately in each week. Use Arms for a dedicated biceps/triceps/abs day — populate the arms array. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
@@ -12859,7 +12923,7 @@ function _downscaleImage(dataUrl, cb){
 // The last tool schema carries the cache breakpoint — schemas are the
 // biggest stable prefix chunk in every coach request.
 function _cachedCoachTools(){
-  var t=COACH_TOOLS.slice();
+  var t=_unitizeSchema(COACH_TOOLS);
   if(t.length){
     var last=t[t.length-1];
     var copy={};
