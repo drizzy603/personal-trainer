@@ -41,7 +41,7 @@ WHAT'S INSIDE
 • Apple Health — Watch workouts (runs, rides, swims, pickleball, and more) land in your log automatically; finished lifts can count toward your rings
 • Progress — Streaks, strength trends, PRs, weekly volume, activity mix, repeated-WOD bests
 • Widgets — Today's session on your Home Screen and Lock Screen
-• Library — 80 exercises with your history, PRs, form cues, and per-exercise notes
+• Library — 260+ exercises with your history, PRs, form cues, and per-exercise notes; add your own in two taps
 • Programme — Visual training plan with week-by-week notes and PR attempts
 
 PRIVATE BY DESIGN

@@ -14,7 +14,48 @@ private let wchLog = Logger(subsystem: "app.kt.trainer", category: "watch")
 // back with transferUserInfo (queued, guaranteed) and the phone app folds
 // them into the training log on next open.
 
-private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
+// MARK: - Theme (mirrors the phone's room)
+// The phone sends its room tokens with every plan; the wrist paints actions in
+// the accent (Heavyweight's blue, the green room's lime) and earned states in
+// the earned colour. The base stays black: watchOS draws the clock in white
+// and never flips to a light scheme, so paper would be unreadable here.
+struct WatchTheme: Codable, Equatable {
+    var room: String?
+    var paper: Bool?
+    var bg: String?
+    var card: String?
+    var card2: String?
+    var text: String?
+    var muted: String?
+    var accent: String?
+    var onAccent: String?
+    var earned: String?
+    var earnedInk: String?
+    var red: String?
+    static let lime = WatchTheme(room: "dark", paper: false, bg: "#080b09", card: "#111613", card2: "#1a211c",
+                                 text: "#f7fff8", muted: "#748077", accent: "#c7ff00", onAccent: "#080b09",
+                                 earned: "#c7ff00", earnedInk: "#c7ff00", red: "#ff5d55")
+    var isPaper: Bool { paper == true }
+    var accentColor: Color { Color(hex: accent) ?? Color(red: 0.78, green: 1.0, blue: 0.0) }
+    var earnedColor: Color { Color(hex: earned) ?? accentColor }
+    var onAccentColor: Color { Color(hex: onAccent) ?? .black }
+}
+extension Color {
+    init?(hex: String?) {
+        guard var h = hex?.trimmingCharacters(in: .whitespaces), !h.isEmpty else { return nil }
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
+        self.init(red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255)
+    }
+}
+final class ThemeStore: ObservableObject {
+    static let shared = ThemeStore()
+    @Published var theme: WatchTheme = .lime
+}
+// `lime` keeps its name as the ACTION colour every view already uses.
+private var lime: Color { ThemeStore.shared.theme.accentColor }
+private var earned: Color { ThemeStore.shared.theme.earnedColor }
+private var onAccent: Color { ThemeStore.shared.theme.onAccentColor }
 
 // The plan payload's yyyy-MM-dd is Gregorian (JS todayISO) — pin the
 // comparison formatter so Buddhist/Japanese device calendars can't make
@@ -71,6 +112,7 @@ struct WatchPlan: Codable, Equatable {
     let type: String            // "lift" | "run" | "sport" | "rest" | "none"
     let exercises: [WatchExercise]
     let hasPlan: Bool?          // false: the phone has no programme yet (older phones omit it)
+    let theme: WatchTheme?      // the phone's room tokens (older phones omit it → lime on black)
 }
 
 // In-progress phone runner state — merged live into the wrist runner.
@@ -103,6 +145,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         if let data = UserDefaults.standard.data(forKey: "lastPlan"),
            let p = try? JSONDecoder().decode(WatchPlan.self, from: data) {
             plan = p
+            ThemeStore.shared.theme = p.theme ?? .lime
         }
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
@@ -127,6 +170,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             liveSession = l
         }
         DispatchQueue.main.async {
+            ThemeStore.shared.theme = p.theme ?? .lime
             self.plan = p
             self.live = liveSession
             UserDefaults.standard.set(data, forKey: "lastPlan")
@@ -530,12 +574,14 @@ final class Runner: ObservableObject {
 
 struct RootView: View {
     @ObservedObject var conn = Connectivity.shared
+    @ObservedObject var theme = ThemeStore.shared
     @StateObject var runner = Runner()
     @State private var lastPlanDate: String? = nil
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
+          Group {
             if let plan = conn.plan {
                 if plan.hasPlan == false {
                     NoPlanView(conn: conn)
@@ -558,6 +604,7 @@ struct RootView: View {
                         .buttonStyle(.bordered)
                 }
             }
+          }
         }
         .onChange(of: scenePhase) { phase in
             guard phase == .active else { return }
@@ -625,7 +672,7 @@ struct PlanView: View {
                             }
                             Spacer()
                             if runner.isComplete(ex) {
-                                Image(systemName: "checkmark.circle.fill").foregroundColor(lime)
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(earned)
                             }
                         }
                     }
@@ -645,7 +692,7 @@ struct PlanView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .listRowBackground(RoundedRectangle(cornerRadius: 10).fill(lime))
-                .foregroundColor(.black)
+                .foregroundColor(onAccent)
             }
             // Opt-out for people who track lifts with another workout app —
             // our HKWorkoutSession would end theirs (watchOS allows one live).
@@ -777,7 +824,7 @@ struct ExerciseView: View {
                     }
                     .tint(lime)
                     .buttonStyle(.borderedProminent)
-                    .foregroundColor(.black)
+                    .foregroundColor(onAccent)
                     .disabled(runner.isComplete(ex))
                 }
             }
@@ -802,7 +849,7 @@ struct ExerciseView: View {
                     }
                     .tint(lime)
                     .buttonStyle(.borderedProminent)
-                    .foregroundColor(.black)
+                    .foregroundColor(onAccent)
                 }
                 .padding(.horizontal, 8)
             }
@@ -902,7 +949,7 @@ struct SyncedView: View {
         let delivered = conn.pendingUploads == 0
         VStack(spacing: 10) {
             Image(systemName: delivered ? "checkmark.circle.fill" : "arrow.up.circle")
-                .font(.system(size: 40)).foregroundColor(delivered ? lime : .secondary)
+                .font(.system(size: 40)).foregroundColor(delivered ? earned : .secondary)
             Text(delivered ? "Synced to iPhone" : "Saved on watch").font(.system(size: 15, weight: .bold))
             Text(delivered ? "Session lands in your log next time Supero opens."
                            : "Sends to your iPhone when it\u{2019}s back in range.")

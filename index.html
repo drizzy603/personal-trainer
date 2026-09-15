@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-15"/>
+<meta name="build" content="20260915-16"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -14493,7 +14493,7 @@ function renderCoach(){
 // can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
   dark:     {name:'Lime',     room:'Green & black',    textColor:'#f7fff8',bg:'#080b09',card:'#111613',card2:'#1a211c',border:'rgba(216,255,99,.10)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.14)','accent-dim':'rgba(216,255,99,.07)','on-accent':'#080b09','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f7fff8',muted:'#748077',lite:'#a6b0a8',purple:'#ad92ff'},
-  heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000',green:'#4f7000',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#0a43f5'},
+  heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000','sat-accent':'#4d7cff',green:'#4f7000',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#0a43f5'},
 };
 
 // Painting and persisting are separate: Auto paints the system room but must
@@ -14531,6 +14531,7 @@ function applyTheme(name) {
   if(!_paintTheme(name)) return;
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
+  _scheduleNativeSync();   // the watch and widgets follow the room
 }
 
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
@@ -16391,6 +16392,13 @@ function _buildWatchLive(){
   return { dayName:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:reps, weights:weights };
 }
+// The wrist follows the phone's room: the resolved theme's tokens ride the plan payload.
+function _watchThemeTokens(){
+  var name=currentTheme==='auto'?_systemTheme():currentTheme;
+  var T=THEMES[name]||THEMES.dark;
+  return { room:name, paper:!!T.paper, bg:T.bg, card:T.card, card2:T.card2, text:T.text||T.textColor, muted:T.muted,
+    accent:T['sat-accent']||T.accent, onAccent:T['on-accent'], earned:T.earned||T.accent, earnedInk:T['earned-ink']||T.accent, red:T.red };
+}
 function _pushWatchPlan(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.updateContext) return;
@@ -16414,7 +16422,7 @@ function _pushWatchPlan(){
     var hasPlan=!!(hasCustomRoutine()||liveRun);
     var plan={ week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(runnerSession.dayName||'Session'):(hasPlan?(act.dayName||act.type||'Rest'):'No plan')),
-      type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan };
+      type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens() };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
     var liveJson=live?JSON.stringify(live):'';
