@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-6"/>
+<meta name="build" content="20260915-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4243,7 +4243,15 @@ function fallbackCoachCard(activity){
     var lastW = last ? (parseFloat(last.weight) || 0) : 0;
     var loadPhrase = mainW > 0 ? 'Target ' + fmtW(mainW) : (_isBodyweightLift(main.name) ? 'Bodyweight' : 'Pick your load');
     var msg;
-    if(mainW > 0 && lastW > 0 && mainW > lastW){
+    var _pgL=null, _plL=null; try{ _pgL=_progressionLifts().find(function(x){ return x.name===main.name; })||null; _plL=_plateauLifts().find(function(x){ return x.name===main.name; })||null; }catch(e){}
+    var _lastTop = last && Array.isArray(last.rpeLog) && last.rpeLog.length ? Math.max.apply(null, last.rpeLog.map(function(x){ return parseFloat(x)||0; })) : 0;
+    if(_pgL && !(mainW > _pgL.weight)){
+      msg = main.name + ' was clean last week at ' + fmtW(_pgL.weight) + '. Today earns +' + fmtW(_progStepLb()) + ' \u2014 same reps, same tempo.';
+    } else if(_plL){
+      msg = main.name + ' has not set a new peak in ' + _plL.days + ' days. Take 10% off today, move it fast, and rebuild from there.';
+    } else if(_lastTop >= 9 && (mainW || lastW) > 0){
+      msg = main.name + ' ran to RPE ' + _lastTop + ' last time. Hold ' + fmtW(mainW || lastW) + ' and stop a rep early \u2014 the weight comes next week.';
+    } else if(mainW > 0 && lastW > 0 && mainW > lastW){
       msg = main.name + ' is up to ' + fmtW(mainW) + ' today. If warm-ups feel heavy, drop the working set to ' + wDisp(lastW) + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don\'t grind it.';
     } else {
       msg = main.name + ' is the main lift. ' + loadPhrase + ' at RPE ' + (main.rpe || 8) + ' — stop one rep shy if speed drops.';
@@ -4819,7 +4827,7 @@ function renderTodayEditorial(){
   if(_weekReviewDue()){
     reviewBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
-      '<div class="kt-resume-ttl">Your coach can review last week and tune what\'s next.</div></div>'+
+      '<div class="kt-resume-ttl">'+(getApiKey()?'Your coach can review last week and tune what\'s next.':'Last week in numbers \u2014 done, volume, records, what\'s earned.')+'</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="dismissWeeklyReview()">Skip</button>'+
         '<button class="kt-resume-cta" onclick="startWeeklyReview()">Get review →</button>'+
@@ -4832,7 +4840,7 @@ function renderTodayEditorial(){
     var _pl=_plateauLifts();
     plateauBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow" style="color:var(--yellow);">PLATEAU SPOTTED</div>'+
-      '<div class="kt-resume-ttl">'+_esc(_pl[0].name)+' has stalled for '+_pl[0].days+' days. Your coach can fix it — one concrete change, applied for you.</div></div>'+
+      '<div class="kt-resume-ttl">'+_esc(_pl[0].name)+' has stalled for '+_pl[0].days+' days. '+(getApiKey()?'Your coach can fix it — one concrete change, applied for you.':'Deload it 10% this week and rebuild — applied for you.')+'</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="dismissPlateauFix()">Skip</button>'+
         '<button class="kt-resume-cta" onclick="startPlateauFix()">Fix it →</button>'+
@@ -4941,11 +4949,12 @@ function renderTodayEditorial(){
   if(resumeBanner) cands.push({id:'resume', label:'IN PROGRESS', dot:'var(--accent-ink)', html:resumeBanner});
   if(lapseBanner) cands.push({id:'lapse', label:'WELCOME BACK', dot:'var(--accent-ink)', html:lapseBanner});
   if(watchCard) cands.push({id:'watch', label:'APPLE WATCH', dot:'var(--accent-ink)', html:watchCard});
+  // Sunday's wrap card is the more current thing; the review is Monday's follow-up.
+  if(weekWrapCard) cands.push({id:'weekwrap', label:'WRAPPED', dot:'var(--accent-ink)', html:weekWrapCard});
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
   if(progressionBanner) cands.push({id:'progression', label:'+5 LB', dot:'var(--accent-ink)', html:progressionBanner});
-  if(weekWrapCard) cands.push({id:'weekwrap', label:'WRAPPED', dot:'var(--accent-ink)', html:weekWrapCard});
   if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
   var activeSlot=null;
@@ -4976,7 +4985,7 @@ function promoteTodayItem(id){ todayBannerOverride=id; render(); }
 
 // ── Proactive coach: plateau fix ─────────────────────────────────────────────
 function _plateauFixDue(){
-  if(!hasCustomRoutine() || !getApiKey()) return false;
+  if(!hasCustomRoutine()) return false;
   if(String(lsGet('kt_last_plateau_week'))===String(currentWeek)) return false;
   return _plateauLifts().length>0;
 }
@@ -4984,6 +4993,7 @@ function dismissPlateauFix(){ lsSet('kt_last_plateau_week', currentWeek); render
 function startPlateauFix(){
   var pl=_plateauLifts();
   if(!pl.length) return;
+  if(!getApiKey()){ applyPlateauFixLocal(); return; }
   lsSet('kt_last_plateau_week', currentWeek);
   var msg='These lifts have plateaued (no new estimated-1RM peak): '+
     pl.map(function(x){ return x.name+' at ~'+fmtW(x.e1rm)+' for '+x.days+' days'; }).join('; ')+
@@ -5029,7 +5039,7 @@ function _progressionLifts(){
   return Object.keys(best).map(function(k){ return best[k]; });
 }
 function _progressionDue(){
-  if(!hasCustomRoutine() || !getApiKey()) return false;
+  if(!hasCustomRoutine()) return false;
   if(String(lsGet('kt_last_prog_week'))===String(currentWeek)) return false;
   return _progressionLifts().length>0;
 }
@@ -5037,6 +5047,7 @@ function dismissProgression(){ lsSet('kt_last_prog_week', currentWeek); render()
 function startProgression(){
   var pl=_progressionLifts();
   if(!pl.length) return;
+  if(!getApiKey()){ applyProgressionLocal(); return; }
   lsSet('kt_last_prog_week', currentWeek);
   var msg='Last week these main lifts hit every set cleanly: '+
     pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
@@ -5049,6 +5060,107 @@ function startProgression(){
     if(inp){ inp.value=msg; sendCoachMessage(); }
   }, 250);
 }
+
+// Keyless apply: the earned bump written on-device — the same write the
+// coach's set_exercise_weight makes (working weight + this week's
+// prescription), snapshot first, Undo for 6 s. A lift the programme already
+// moved past the target is left alone.
+function _progStepLb(){ return _uW()==='kg'?Math.round(2.5*LB_PER_KG*10)/10:5; }
+function _prescribedLb(name){
+  var cr=getCustomRoutine(), wk=cr&&cr.weeks&&cr.weeks[currentWeek-1], w=parseFloat(getWeights()[name])||0;
+  if(wk) ['push','pull','legs','legs2','arms'].forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>w) w=parseFloat(e.weight); }); });
+  return w;
+}
+function _writeLoadLocal(name, nw){
+  var weights=getWeights(); weights[name]=nw; lsSet('kt_weights', weights);
+  var cr=getCustomRoutine(), wk=cr&&cr.weeks&&cr.weeks[currentWeek-1], touched=false;
+  if(wk) ['push','pull','legs','legs2','arms'].forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>0){ e.weight=nw; touched=true; } }); });
+  if(touched) setCustomRoutine(cr);
+}
+function _loadUndoState(){
+  var prevW=JSON.stringify(getWeights()), prevR=localStorage.getItem('kt_routine');
+  return function(){
+    try{ lsSet('kt_weights', JSON.parse(prevW)); }catch(e){}
+    try{ if(prevR) lsSet('kt_routine', JSON.parse(prevR)); }catch(e){}
+    invalidateCoachCard(); render();
+  };
+}
+function applyProgressionLocal(){
+  var pl=_progressionLifts(); if(!pl.length) return;
+  var undo=_loadUndoState(), prevWeek=lsGet('kt_last_prog_week');
+  _snapshotRoutineForUndo();
+  var step=_progStepLb(), moved=[];
+  pl.forEach(function(x){
+    var target=Math.round((x.weight+step)*10)/10;
+    if(_prescribedLb(x.name)>=target) return;   // programme already progressed it
+    _writeLoadLocal(x.name, target); moved.push(x.name);
+  });
+  lsSet('kt_last_prog_week', currentWeek);
+  invalidateCoachCard(); render();
+  if(!moved.length){ showToast('Already progressed this week'); return; }
+  showUndoToast('+'+fmtW(step)+' on '+moved.join(', '), function(){
+    undo(); if(prevWeek!=null) lsSet('kt_last_prog_week', prevWeek); else lsDel('kt_last_prog_week');
+    render(); showToast('Progression undone');
+  });
+}
+// Keyless plateau fix: the change the coach proposes most often — a 10%
+// deload on the stalled lift for this week, then rebuild. Undoable for 6 s.
+function applyPlateauFixLocal(){
+  var pl=_plateauLifts(); if(!pl.length) return;
+  var x=pl[0], cur=_prescribedLb(x.name);
+  lsSet('kt_last_plateau_week', currentWeek);
+  if(!(cur>0)){ render(); showToast('No working weight on '+x.name+' to deload'); return; }
+  var undo=_loadUndoState(), prevWeek=lsGet('kt_last_plateau_week');
+  _snapshotRoutineForUndo();
+  var step=wStepLb(), nw=Math.round(Math.round(cur*0.9/step)*step*10)/10;
+  if(!(nw>0) || nw>=cur) nw=Math.round((cur-step)*10)/10;
+  _writeLoadLocal(x.name, nw);
+  invalidateCoachCard(); render();
+  showUndoToast(x.name+' deloaded to '+fmtW(nw)+' this week', function(){
+    undo(); lsDel('kt_last_plateau_week'); render(); showToast('Deload undone');
+  });
+}
+// Keyless week review: the same facts the coach would be sent, as a sheet.
+function openLocalWeekReview(){
+  lsSet('kt_last_review_week', currentWeek);
+  var cutoff=addDays(todayISO(),-7);
+  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
+  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
+  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
+  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var doneN=sessions.length+runs.length+sports.length;
+  var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
+  var _prBook=getPRs(), prs=[];
+  sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){ if(typeof p==='string') prs.push(p+(_prBook[p]?' '+fmtW(_prBook[p]):'')); }); });
+  var pl=_plateauLifts().slice(0,2), pg=_progressionLifts();
+  var verdict = planned>0 && doneN>=planned ? 'Every planned day done. Keep the loads honest and let the programme add weight.'
+    : doneN>=Math.max(1,planned-1) ? 'One short of the plan. Pick up where the week left off — no doubling up.'
+    : 'A light week. Restart with the next session as written; do not chase what was missed.';
+  var rows=[['DONE', doneN+' of '+planned+' planned'], ['LIFT VOLUME', Math.round(wDisp(vol)).toLocaleString()+' '+_uW()]];
+  if(prs.length) rows.push(['RECORDS', prs.join(', ')]);
+  if(pg.length) rows.push(['EARNED', pg.map(function(x){ return x.name; }).join(', ')+' — +'+fmtW(_progStepLb())]);
+  if(pl.length) rows.push(['STALLED', pl.map(function(p){ return p.name+' ('+p.days+' d)'; }).join(', ')]);
+  closeLocalWeekReview();
+  var overlay=document.createElement('div'); overlay.id='weekReviewOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">'+_esc(verdict)+'</div></div>'+
+      '<button class="kt-sheet-x" onclick="closeLocalWeekReview()" aria-label="Close">\u2715</button>'+
+    '</div>'+
+    '<div style="display:grid;gap:6px;margin:14px 0;">'+rows.map(function(c){
+      return '<div style="background:var(--card2);border-radius:10px;padding:10px 12px;"><div class="kt-mono" style="font-size:8px;font-weight:700;letter-spacing:.08em;color:var(--muted);">'+c[0]+'</div><div style="font-size:15px;font-weight:700;margin-top:3px;">'+_esc(c[1])+'</div></div>';
+    }).join('')+'</div>'+
+    (pg.length?'<button class="btn btn-primary btn-full" style="padding:14px;font-size:15px;" onclick="closeLocalWeekReview();startProgression()">Apply the earned +'+fmtW(_progStepLb())+'</button>':'')+
+    '<button class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;margin-top:8px;" onclick="closeLocalWeekReview()">Done</button>'+
+    '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5;text-align:center;">With an Anthropic key in Settings, the Coach writes this review and tunes next week for you.</p>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeLocalWeekReview);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeLocalWeekReview(); });
+  render();
+}
+function closeLocalWeekReview(){ var el=document.getElementById('weekReviewOverlay'); if(el) el.remove(); }
 
 // ── Proactive coach: low-readiness adjustment ────────────────────────────────
 // Rough night before a lift day → offer a lighter session or a day swap.
@@ -5434,7 +5546,7 @@ function _renderDebriefCard(){
   if(!d || !d.text || d.date!==todayISO()) return '';
   if(String(lsGet('kt_debrief_seen'))===String(d.id)) return '';
   return '<div class="kt-resume-banner" style="align-items:flex-start;">'+
-    '<div style="flex:1;min-width:0;"><div class="kt-resume-eyebrow">COACH · SESSION DEBRIEF</div>'+
+    '<div style="flex:1;min-width:0;"><div class="kt-resume-eyebrow">'+(getApiKey()?'COACH \u00b7 ':'')+'SESSION DEBRIEF</div>'+
     '<div class="kt-resume-ttl" style="font-weight:600;">'+_esc(d.text)+'</div></div>'+
     '<button onclick="lsSet(\'kt_debrief_seen\','+d.id+');render()" aria-label="Dismiss" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:6px;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
   '</div>';
@@ -6916,6 +7028,8 @@ function openCompleteSheet(c){
       '</div><span class="kt-cmp-badge">PR</span></div>';
   }).join('');
   var tile=function(lbl,val,unit){ return '<div class="kt-cmp-tile"><div class="kt-cmp-lbl">'+lbl+'</div><div class="kt-cmp-val">'+val+(unit?'<span class="u">'+unit+'</span>':'')+'</div></div>'; };
+  var _ins=_completeInsight(rec,pct,label);
+  if(!getApiKey()) lsSet('kt_debrief', {id:rec.id, date:rec.date, text:_ins});
   var overlay=document.createElement('div');
   overlay.id='completeSheetOverlay';
   overlay.className='kt-sheet-overlay';
@@ -6934,7 +7048,7 @@ function openCompleteSheet(c){
     '</div>'+
     (prRows?'<div class="kt-cmp-hd">PERSONAL RECORDS</div><div class="kt-cmp-prs">'+prRows+'</div>':'')+
     '<div class="kt-cmp-hd">COACH INSIGHT</div>'+
-    '<div class="kt-cmp-insight" id="kt-complete-insight">'+_esc(_completeInsight(rec,pct,label))+'</div>'+
+    '<div class="kt-cmp-insight" id="kt-complete-insight">'+_esc(_ins)+'</div>'+
     '<div class="kt-cmp-actions">'+
       '<button class="btn btn-primary btn-full" style="padding:15px;font-size:15px;" onclick="closeCompleteSheet()">Done</button>'+
       '<button class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;" onclick="shareSessionCard('+rec.id+')">Share card</button>'+
@@ -10345,7 +10459,6 @@ function renderStrengthTrends(extraHTML){
 function _weekReviewDue(){
   if(!hasCustomRoutine() || currentWeek<=1) return false;
   if(String(lsGet('kt_last_review_week'))===String(currentWeek)) return false;
-  if(!getApiKey()) return false;
   var cutoff=addDays(todayISO(),-7);
   return getSessions().some(function(s){ return s.date>=cutoff; }) ||
          getRuns().some(function(r){ return r.date>=cutoff; }) ||
@@ -10378,7 +10491,7 @@ function _buildWeekReviewMsg(){
   return lines.join('\n');
 }
 function startWeeklyReview(){
-  if(!getApiKey()){ switchTab('coach'); return; }
+  if(!getApiKey()){ openLocalWeekReview(); return; }
   lsSet('kt_last_review_week', currentWeek);
   switchTab('coach'); openCoachChat();
   setTimeout(function(){
