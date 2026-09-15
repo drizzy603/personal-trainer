@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-5"/>
+<meta name="build" content="20260914-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -440,6 +440,11 @@ select option{background:var(--bg);}
 .kt-sched-pick{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-sched-pick.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
 .kt-sched-editor-sub{font-size:11px;color:var(--muted);margin-top:9px;}
+.kt-units-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;}
+.kt-units-lbl{font-size:14px;font-weight:600;}
+.kt-units-seg{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--card2);border:1px solid var(--border);}
+.kt-units-opt{min-width:48px;padding:6px 10px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-units-opt.on{background:var(--accent);color:var(--on-accent);}
 .kt-rest-pill{border:1px solid var(--border);background:var(--card2);color:var(--muted);}
 .kt-rest-pill.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
 /* Honest summaries (screen 08): a row's current value in mono on the right,
@@ -1346,6 +1351,8 @@ html[data-room="heavyweight"] .kt-sched-editor-hd{font-family:'Archivo',sans-ser
 html[data-room="heavyweight"] .kt-ledger-card-hd{font-family:'Archivo',sans-serif;color:var(--accent);}
 html[data-room="heavyweight"]{--toast-pr:var(--earned);--toast-ok:var(--earned);--toast-ink:#0b0b0d;}
 html[data-room="heavyweight"] .kt-sched-pick.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+html[data-room="heavyweight"] .kt-units-seg{background:var(--card);}
+html[data-room="heavyweight"] .kt-units-opt.on{color:#fff;}
 html[data-room="heavyweight"] .kt-ov-first,html[data-room="heavyweight"] .kt-ov-focus-lbl{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .settings-row{border-color:var(--border);}
 html[data-room="heavyweight"] .settings-row-ic{background:var(--card2)!important;border:none;border-radius:10px;}
@@ -2459,8 +2466,8 @@ function _progressHeroVariants(){
           : 'Holding. Predictable is good.';
       out.push({key:'bw',
         greeting:'Body weight.',
-        line1:latest+' lb',
-        line2:dir+Math.abs(diff)+' lb total.',
+        line1:fmtW(latest),
+        line2:dir+wDisp(Math.abs(diff))+' '+_uW()+' total.',
         line2Class:'accent', body:bwBody});
     }
   }
@@ -2618,7 +2625,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen'];
 function buildBackupJSON() {
@@ -2727,7 +2734,7 @@ function renderBackupNudge(){
 var MILESTONE_DEFS = [
   {k:'sess',   label:function(v){return v+' sessions logged';},        steps:[10,25,50,100,200,365],
    value:function(){return getSessions().length;}},
-  {k:'vol',    label:function(v){return (v/1000)+'k lb lifted all-time';}, steps:[50000,100000,250000,500000,1000000],
+  {k:'vol',    label:function(v){return (Math.round(wDisp(v)/100)/10)+'k '+_uW()+' lifted all-time';}, steps:[50000,100000,250000,500000,1000000],
    value:function(){var t=0;getSessions().forEach(function(s){t+=calcVolume(s.exercises||[]);});return t;}},
   {k:'km',     label:function(v){return v+' km run all-time';},        steps:[25,50,100,250,500],
    value:function(){var t=0;getRuns().forEach(function(r){t+=parseFloat(r.distance||r.dist)||0;});return t;}},
@@ -3076,7 +3083,7 @@ function checkRecentHealthRun(sinceOverride){
         if(sid){ _logHealthSport(r, sid); sportNames.push(sid); }
         else lastRun=_logHealthRun(r);
       });
-      if(lastRun) showToast('Run logged from Apple Health · '+lastRun.distance+'km');
+      if(lastRun) showToast('Run logged from Apple Health · '+fmtD(lastRun.distance));
       else if(sportNames.length===1) showToast(sportNames[0]+' logged from Apple Health');
       else if(sportNames.length) showToast(sportNames.length+' workouts logged from Apple Health');
       haptic('light'); render();
@@ -3443,7 +3450,7 @@ function _healthCardSlot(compact){
 function renderHealthQuickLog(compact){
   var r = _hkPendingRun;
   var sid = _hkSportId(r);
-  var distStr = (Math.round(r.distanceKm*100)/100)+'km';
+  var distStr = fmtD(r.distanceKm);
   var timeStr = _secsToMMSS(r.durationSec);
   var d = new Date(r.startDate);
   var timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -3457,7 +3464,7 @@ function renderHealthQuickLog(compact){
     meta = (sp&&sp.emoji?sp.emoji+' ':'')+sid+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'')+(r.kcal?' · '+r.kcal+' kcal':'');
     ctaNoun = sid;
   } else {
-    meta = calcPace(r.distanceKm, timeStr)+'/km'+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+    meta = fmtPaceStr(calcPace(r.distanceKm, timeStr))+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
     ctaNoun = 'run';
   }
   var headline = r.distanceKm>0 ? distStr+' · '+timeStr : timeStr;
@@ -4188,10 +4195,10 @@ function fallbackCoachCard(activity){
     var last = getLastSessionData(main.name);
     var mainW = parseFloat(main.weight) || 0;
     var lastW = last ? (parseFloat(last.weight) || 0) : 0;
-    var loadPhrase = mainW > 0 ? 'Target ' + main.weight + ' lb' : 'Bodyweight';
+    var loadPhrase = mainW > 0 ? 'Target ' + fmtW(mainW) : 'Bodyweight';
     var msg;
     if(mainW > 0 && lastW > 0 && mainW > lastW){
-      msg = main.name + ' is up to ' + main.weight + ' lb today. If warm-ups feel heavy, drop the working set to ' + last.weight + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don\'t grind it.';
+      msg = main.name + ' is up to ' + fmtW(mainW) + ' today. If warm-ups feel heavy, drop the working set to ' + wDisp(lastW) + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don\'t grind it.';
     } else {
       msg = main.name + ' is the main lift. ' + loadPhrase + ' at RPE ' + (main.rpe || 8) + ' — stop one rep shy if speed drops.';
     }
@@ -4435,7 +4442,7 @@ function renderTodayEditorial(){
     var _dsets=_doneRec ? (_doneRec.exercises||[]).reduce(function(n,ex){ return n+(Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||0)); },0) : 0;
     var _dvol=_doneRec ? Math.round(calcVolume(_doneRec.exercises||[])) : 0;
     var _dprs=_doneRec ? (_doneRec.prs||[]).length : 0;
-    body = (_dsets ? _plural(_dsets,'set')+' logged'+(_dvol>0?' \u00b7 '+_dvol.toLocaleString()+' lb':'')+(_dprs?' \u00b7 '+_plural(_dprs,'PR'):'')+'. ' : 'Session logged. ')+
+    body = (_dsets ? _plural(_dsets,'set')+' logged'+(_dvol>0?' \u00b7 '+wDisp(_dvol).toLocaleString()+' '+_uW():'')+(_dprs?' \u00b7 '+_plural(_dprs,'PR'):'')+'. ' : 'Session logged. ')+
       'Nothing left to do today but recover.';
   } else if(act.type === 'lift'){
     line1 = 'Today is';
@@ -4452,11 +4459,11 @@ function renderTodayEditorial(){
       // Copy from the plan's real numbers — the old line promised "60% ·
       // 3×5" whatever the programme actually prescribed.
       body = main
-        ? 'Deload \u2014 '+_esc(main.name)+' at '+(curW>0?'<b>'+curW+' lb</b>':'<b>bodyweight</b>')+' for '+main.sets+'\u00d7'+_esc(_fmtRepTarget(main.reps))+
-          (lastW>0 && curW>0 && curW<lastW ? ' ('+Math.round(curW/lastW*100)+'% of your last '+lastW+')' : '')+'. Let the body absorb the work.'
+        ? 'Deload \u2014 '+_esc(main.name)+' at '+(curW>0?'<b>'+fmtW(curW)+'</b>':'<b>bodyweight</b>')+' for '+main.sets+'\u00d7'+_esc(_fmtRepTarget(main.reps))+
+          (lastW>0 && curW>0 && curW<lastW ? ' ('+Math.round(curW/lastW*100)+'% of your last '+wDisp(lastW)+')' : '')+'. Let the body absorb the work.'
         : 'Deload \u2014 lighter loads, same movements. Let the body absorb the work.';
     } else if(main){
-      var loadHTML = curW > 0 ? '<b>'+main.weight+' lb</b>' : '<b>bodyweight</b>';
+      var loadHTML = curW > 0 ? '<b>'+fmtW(curW)+'</b>' : '<b>bodyweight</b>';
       var upBit = (curW > lastW && lastW > 0) ? ' is up at '+loadHTML : ' at '+loadHTML;
       // The effort line quotes what was LOGGED (rpe on the record), dated
       // honestly: "last week" only if it really was last week.
@@ -4549,7 +4556,7 @@ function renderTodayEditorial(){
       var _pills='<div class="kt-statband" style="margin:12px 0 0;border-bottom:none;padding-bottom:6px;'+
         ((_vol>0&&_prc)?'':'grid-template-columns:1fr 1fr;')+'">'+
         '<div><div class="kt-statband-val" style="font-size:18px;" data-m05="today-sets">'+_sets+'</div><div class="kt-statband-lbl">Sets</div></div>'+
-        (_vol>0?'<div><div class="kt-statband-val" style="font-size:18px;" data-m05="today-vol">'+Math.round(_vol).toLocaleString()+'</div><div class="kt-statband-lbl">lb volume</div></div>':'')+
+        (_vol>0?'<div><div class="kt-statband-val" style="font-size:18px;" data-m05="today-vol">'+Math.round(wDisp(_vol)).toLocaleString()+'</div><div class="kt-statband-lbl">'+_uW()+' volume</div></div>':'')+
         (_prc?'<div><div class="kt-statband-val" style="font-size:18px;color:var(--yellow);" data-m05="today-prs">'+_prc+'</div><div class="kt-statband-lbl">PR'+(_prc>1?'s':'')+'</div></div>':'')+
       '</div>';
       // C1·B — a milestone crossed today gilds the done card in place: gold
@@ -4671,16 +4678,16 @@ function renderTodayEditorial(){
           var vals = hist.map(function(h){return h.w;});
           spark = '<div class="kt-marquee-spark">'+
             _sparklineSVG(vals, 'var(--accent)')+
-            '<span>'+vals[0]+' → '+vals[vals.length-1]+' lb · '+hist.length+' sessions</span>'+
+            '<span>'+wDisp(vals[0])+' → '+wDisp(vals[vals.length-1])+' '+_uW()+' · '+hist.length+' sessions</span>'+
           '</div>';
         } else if(hist.length === 1){
-          spark = '<div class="kt-marquee-spark"><span>'+hist[0].w+' lb logged once — trend starts next session.</span></div>';
+          spark = '<div class="kt-marquee-spark"><span>'+fmtW(hist[0].w)+' logged once — trend starts next session.</span></div>';
         } else {
           spark = '<div class="kt-marquee-spark"><span>No logged history yet.</span></div>';
         }
       }
       var exW = parseFloat(ex.weight) || 0;
-      var wLbl = exW > 0 ? ex.weight+' lb' : 'BW';
+      var wLbl = exW > 0 ? fmtW(exW) : 'BW';
       rows += '<div class="kt-marquee-row kt-tap" onclick="toggleTodaySparkIdx('+i+')"'+(open?' style="border-bottom:none;"':'')+'>'+
         '<div class="kt-marquee-left">'+
           '<span class="kt-marquee-name">'+_esc(ex.name)+'</span>'+
@@ -4797,10 +4804,10 @@ function renderTodayEditorial(){
     var _pg=_progressionLifts();
     progressionBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow">PROGRESSION EARNED</div>'+
-      '<div class="kt-resume-ttl">'+_esc(_pg[0].name)+(_pg.length>1?' and '+(_pg.length-1)+' more':'')+' hit every set cleanly last week. +5 lb is earned.</div></div>'+
+      '<div class="kt-resume-ttl">'+_esc(_pg[0].name)+(_pg.length>1?' and '+(_pg.length-1)+' more':'')+' hit every set cleanly last week. +'+fmtW(5)+' is earned.</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="dismissProgression()">Skip</button>'+
-        '<button class="kt-resume-cta" onclick="startProgression()">Apply +5 lb →</button>'+
+        '<button class="kt-resume-cta" onclick="startProgression()">Apply +'+fmtW(5)+' →</button>'+
       '</div></div>';
   }
   // First week of a new month — last month as a shareable poster.
@@ -5077,7 +5084,7 @@ function _renderMonthPoster(){
   }
   var monthName=first.toLocaleString([],{month:'long'}).toUpperCase()+' '+mk.slice(0,4);
   var streakWk=calcStreak(_trainingDays());
-  var volStr=st.volume>=1000?(Math.round(st.volume/100)/10)+'k':String(Math.round(st.volume));
+  var _sv=wDisp(st.volume); var volStr=_sv>=1000?(Math.round(_sv/100)/10)+'k':String(Math.round(_sv));
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 20px;margin-bottom:16px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:baseline;">'+
       '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">'+monthName+'</span>'+
@@ -5087,7 +5094,7 @@ function _renderMonthPoster(){
     '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--muted);margin-top:5px;">ACTIVE DAYS</div>'+
     '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:18px;">'+cells+'</div>'+
     '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:13px;margin-top:18px;">'+
-      '<div><div class="kt-mono" style="font-size:15px;font-weight:700;">'+volStr+'</div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">VOLUME LB</div></div>'+
+      '<div><div class="kt-mono" style="font-size:15px;font-weight:700;">'+volStr+'</div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">VOLUME '+_uW().toUpperCase()+'</div></div>'+
       '<div><div class="kt-mono" style="font-size:15px;font-weight:700;'+(st.prs?'color:var(--yellow);':'')+'">'+st.prs+'</div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">PR'+(st.prs===1?'':'S')+'</div></div>'+
       '<div><div class="kt-mono" style="font-size:15px;font-weight:700;">'+streakWk+'<span style="font-size:10px;color:var(--muted);">wk</span></div><div class="kt-mono" style="font-size:8px;letter-spacing:.1em;color:var(--muted);margin-top:2px;">STREAK</div></div>'+
     '</div>'+
@@ -5327,7 +5334,7 @@ function _drawWrapCard(mk, st, accent){
   x.textAlign='right'; x.fillStyle=INK;
   x.fillText(streakWk+'wk', R, 1226);
   ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
-  x.textAlign='left'; x.fillStyle=MUTED; x.fillText('VOLUME LB', M, 1264);
+  x.textAlign='left'; x.fillStyle=MUTED; x.fillText('VOLUME '+_uW().toUpperCase(), M, 1264);
   x.textAlign='center'; x.fillText(st.prs===1?'PR':'PRS', W/2, 1264);
   x.textAlign='right'; x.fillText('STREAK', R, 1264);
   x.textAlign='left'; ls('0px');
@@ -5547,7 +5554,7 @@ function renderRunTargetsList(){
   if(!runs.length) return '';
   var rows = runs.map(function(r){
     var typeName = _runTypeLabel(r.type);
-    var rightTop = r.km > 0 ? r.km+' km' : '—';
+    var rightTop = r.km > 0 ? fmtD(r.km) : '—';
     var rightBot = r.hr > 0 ? 'HR &lt;'+r.hr : '';
     var note = r.note ? '<div class="kt-run-note">'+_esc(r.note)+'</div>' : '';
     return '<div class="kt-run-row">'+
@@ -5631,7 +5638,7 @@ function _rlogPaceText(dist, time){
   if(!(d>0) || !norm) return '';
   var parts=norm.split(':').map(Number), secs=parts.length===3?parts[0]*3600+parts[1]*60+parts[2]:parts[0]*60+parts[1];
   var p=Math.round(secs/d), pad=function(n){ return (n<10?'0':'')+n; };
-  return 'PACE \u2248 '+Math.floor(p/60)+':'+pad(p%60)+' /KM'+(norm!==String(time).trim()?' \u00b7 READ AS '+norm:'');
+  return 'PACE \u2248 '+Math.floor(p/60)+':'+pad(p%60)+' /'+_uD().toUpperCase()+(norm!==String(time).trim()?' \u00b7 READ AS '+norm:'');
 }
 function _rlogPacePreview(){
   var el=document.getElementById('kt-rlog-pace'); if(!el) return;
@@ -5657,7 +5664,7 @@ function saveInlineRun(){
   var note = (runLogDraft.note||'').trim();
   var rec = {
     id: Date.now(),
-    distance: Math.round(dist*100)/100,
+    distance: dStore(dist),
     time: time,
     date: date,
     week: weekForDate(date),
@@ -5735,7 +5742,7 @@ function renderInlineRunLog(){
       '<button class="kt-rlog-x" onclick="discardRunLog()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div class="kt-rlog-row">'+
-      '<div><label class="kt-rlog-field-lbl">DISTANCE · KM</label>'+
+      '<div><label class="kt-rlog-field-lbl">DISTANCE · '+_uD().toUpperCase()+'</label>'+
         '<input id="kt-rlog-dist" class="kt-rlog-input" type="number" step="0.1" min="0" inputmode="decimal" placeholder="5.0" value="'+_esc(d.dist)+'"'+sync+'dist=this.value;_rlogPacePreview()"/></div>'+
       '<div><label class="kt-rlog-field-lbl">TIME · MM:SS</label>'+
         '<input id="kt-rlog-time" class="kt-rlog-input" type="text" inputmode="text" placeholder="28:30" value="'+_esc(d.time)+'"'+sync+'time=this.value;_rlogPacePreview()"/></div>'+
@@ -5847,7 +5854,7 @@ function renderRunReview(km, time, excludeId){
 function commitRunGoal(ev){
   var el = ev && ev.target;
   var v = el ? String(el.value||'').trim() : '';
-  if(v && /^\d{1,2}:\d{2}$/.test(v)) setRunGoal(v);
+  if(v && /^\d{1,2}:\d{2}$/.test(v)) setRunGoal(paceStore(v));
   else if(!v) setRunGoal('');
   runLogGoalEdit = false;
   render();
@@ -5866,11 +5873,11 @@ function renderRunGoalLine(){
   var g = (getRunGoal()||'').trim();
   if(runLogGoalEdit){
     return '<div class="kt-goal-line">GOAL · '+
-      '<input id="kt-run-goal-input" type="text" placeholder="6:00" value="'+_esc(g)+'" '+
+      '<input id="kt-run-goal-input" type="text" placeholder="6:00" value="'+_esc(g?fmtPaceStr(g,{bare:true}):'')+'" '+
         'onblur="commitRunGoal(event)" onkeydown="if(event.key===\'Enter\')event.target.blur();"/>'+
-      '/km</div>';
+      '/'+_uD()+'</div>';
   }
-  var label = g ? g+'/km' : 'set';
+  var label = g ? fmtPaceStr(g) : 'set';
   return '<div class="kt-goal-line" onclick="toggleRunGoalEdit()">GOAL · '+_esc(label)+'</div>';
 }
 // Editorial Run sub-tab: hero focused on the next run, lime CTA scrolls to
@@ -5898,7 +5905,7 @@ function renderRunSegment(){
 
   var line1, line2, line2Class='accent', body;
   if(focus && focus.isToday){
-    if(focus.km > 0){ line1 = focus.km+' km'; line2 = 'today.'; }
+    if(focus.km > 0){ line1 = fmtD(focus.km); line2 = 'today.'; }
     else { line1 = 'Easy'; line2 = 'run today.'; }
     if(deload){
       body = (focus.hr ? 'HR cap '+focus.hr+' bpm. ' : '') + 'Easy aerobic — deload week, no heroics.';
@@ -5910,7 +5917,7 @@ function renderRunSegment(){
       body = bp.join(' ');
     }
   } else if(focus){
-    if(focus.km > 0){ line1 = focus.km+' km'; line2 = 'on '+focus.dayName.toLowerCase()+'.'; }
+    if(focus.km > 0){ line1 = fmtD(focus.km); line2 = 'on '+focus.dayName.toLowerCase()+'.'; }
     else { line1 = 'Easy run'; line2 = focus.dayName.toLowerCase()+'.'; }
     var hrBit = focus.hr ? ' HR cap '+focus.hr+' bpm.' : '';
     body = 'Next run is '+focus.dayName+'.'+hrBit;
@@ -5952,7 +5959,7 @@ function renderRunSegment(){
     slot = renderInlineRunLog();
   } else {
     var ctaTitle;
-    if(focus && focus.isToday) ctaTitle = focus.km > 0 ? 'Start run · '+focus.km+' km' : 'Start run';
+    if(focus && focus.isToday) ctaTitle = focus.km > 0 ? 'Start run · '+fmtD(focus.km) : 'Start run';
     else ctaTitle = 'Log a run';
     slot = '<button class="kt-cta" onclick="openRunLog()">'+
       '<div style="text-align:left;">'+
@@ -6580,7 +6587,7 @@ function runnerFinishSession(){
   if(newPRs.length){
     if(navigator.vibrate) navigator.vibrate([60,40,60,40,140]);
     showToast(newPRs.length===1
-      ? 'PR · '+newPRs[0]+' '+(weights[newPRs[0]]||'')+' lb'
+      ? 'PR · '+newPRs[0]+(weights[newPRs[0]]?' '+fmtW(weights[newPRs[0]]):'')
       : newPRs.length+' PRs · '+newPRs.join(' · '), 'pr');
   } else {
     showToast('Session logged');
@@ -6642,7 +6649,7 @@ function _renderGlance(){
   return '<div class="kt-glance">'+
     '<div class="kt-glance-tile">'+ring+'<div class="kt-glance-lbl">Sessions<br>this week</div></div>'+
     '<div class="kt-glance-tile" onclick="switchTab(\'progress\')" role="button" tabindex="0">'+
-      '<div class="kt-glance-val">'+vol.toLocaleString()+'<span class="u"> lb</span></div>'+
+      '<div class="kt-glance-val">'+wDisp(vol).toLocaleString()+'<span class="u"> '+_uW()+'</span></div>'+
       '<div class="kt-glance-spark">'+_sparklineSVG(series,'var(--earned)')+'</div>'+
       '<div class="kt-glance-lbl">Volume<br>this week</div>'+
     '</div>'+
@@ -6694,7 +6701,7 @@ function openSessionOverview(act){
   var _ww=getWeights();
   var rows=exs.map(function(ex,i){
     var w=parseFloat(ex.weight)||parseFloat(_ww[ex.name])||0;
-    var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+(w>0?w+' lb':'bodyweight');
+    var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+(w>0?fmtW(w):'bodyweight');
     return '<div class="kt-ov-row'+(i===0?' first':'')+'">'+
       '<span class="kt-ov-idx">'+(i+1)+'</span>'+
       '<div class="kt-ov-body"><div class="kt-ov-name">'+_esc(ex.name)+'</div><div class="kt-ov-tgt">'+tgt+'</div></div>'+
@@ -6739,7 +6746,7 @@ function openCompleteSheet(c){
     var ex=(rec.exercises||[]).find(function(e){ return e.name===n; });
     var pair=ex?_lastPair(ex):null;
     return '<div class="kt-cmp-pr"><div><div style="font-size:15px;font-weight:700;">'+_esc(n)+'</div>'+
-      (pair?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+pair.w+' lb \u00d7 '+pair.r+' \u2014 best at this weight</div>':'')+
+      (pair?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtW(pair.w)+' \u00d7 '+pair.r+' \u2014 best at this weight</div>':'')+
       '</div><span class="kt-cmp-badge">PR</span></div>';
   }).join('');
   var tile=function(lbl,val,unit){ return '<div class="kt-cmp-tile"><div class="kt-cmp-lbl">'+lbl+'</div><div class="kt-cmp-val">'+val+(unit?'<span class="u">'+unit+'</span>':'')+'</div></div>'; };
@@ -6754,7 +6761,7 @@ function openCompleteSheet(c){
     '</div>'+
     '<div class="kt-cmp-hd">WORKOUT SUMMARY</div>'+
     '<div class="kt-cmp-grid">'+
-      tile('Total volume', vol.toLocaleString(), 'lb')+
+      tile('Total volume', wDisp(vol).toLocaleString(), _uW())+
       tile('Duration', _fmtDur(Date.now()-(c.startedAt||Date.now())), '')+
       tile('Exercises', done+'<span class="u">/'+planned+'</span>', '')+
       tile('Vs last '+_esc(label.toLowerCase()), pct==null?'\u2014':((pct>0?'+':'')+pct+'%'), '')+
@@ -7036,7 +7043,7 @@ function runnerSaveEditSet(){
   var ex=_runnerEx(); if(!ex) return;
   if(runnerEditSetIdx===null||runnerEditSetEx!==ex.name){ runnerCancelEditSet(); return; }
   var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
-  if(wEl){ var w=parseFloat(wEl.value); if(!isNaN(w)&&w>=0){ if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
+  if(wEl){ var _raw=parseFloat(wEl.value); if(!isNaN(_raw)&&_raw>=0){ var w=wStore(_raw); if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
   if(rEl){ var r=parseInt(rEl.value); if(!isNaN(r)&&r>0){ if(!runnerRepsLog[ex.name])runnerRepsLog[ex.name]=[]; runnerRepsLog[ex.name][runnerEditSetIdx]=r; } }
   // A live PR beat must follow the edit: retract when the corrected weight
   // no longer beats the old best, or track the corrected numbers.
@@ -7063,8 +7070,8 @@ function _renderCompletedSets(ex){
     if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
       rows+='<div class="kt-lr" style="gap:5px;" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
-        '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+(w!=null?w:'')+'" placeholder="lb" step="2.5" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
-        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">lb ×</span>'+
+        '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+(w!=null?wDisp(w):'')+'" placeholder="'+_uW()+'" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
+        '<span style="font-size:11px;opacity:.45;flex-shrink:0;">'+_uW()+' ×</span>'+
         '<input id="kt-edit-r" type="number" inputmode="numeric" value="'+(r!=null?r:'')+'" placeholder="reps" step="1" min="1" style="width:38px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
         '<span style="font-size:11px;opacity:.45;flex-shrink:0;">reps</span>'+
         '<button onclick="event.stopPropagation();runnerSaveEditSet()" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:none;background:'+btnBg+';color:inherit;font-size:13px;font-weight:700;cursor:pointer;">✓</button>'+
@@ -7083,7 +7090,7 @@ function _renderCompletedSets(ex){
       var _actStyle=_stamp && (Date.now()-_stamp)<90000 ? ' style="color:var(--accent-ink);opacity:1;"' : '';
       rows+='<div class="kt-lr'+(_gold?' gold':'')+(_washed?' kt-row-wash':'')+'" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
-        '<span class="kt-lr-val">'+(w!=null?w:'—')+' × '+(r!=null?r:'—')+(_gold?' ◆':'')+'</span>'+
+        '<span class="kt-lr-val">'+(w!=null?wDisp(w):'—')+' × '+(r!=null?r:'—')+(_gold?' ◆':'')+'</span>'+
         '<button class="kt-lr-act"'+_actStyle+' onclick="event.stopPropagation();runnerStartEditSet('+i+')">'+_act+'</button>'+
       '</div>';
     }
@@ -7094,13 +7101,13 @@ function _renderRunnerIdleBody(ex, next){
   var lastW = ex.lastWeight != null ? ex.lastWeight : (function(){ var l=getLastSessionData(ex.name); return l ? parseFloat(l.weight)||0 : 0; })();
   var lastReps = ex.lastReps != null ? ex.lastReps : (function(){ var l=getLastSessionData(ex.name); return l ? _lastPair(l).r : ex.reps; })();
   var curW = parseFloat(ex.weight) || 0;
-  var delta = curW - lastW;
+  var delta = Math.round((wDisp(curW) - wDisp(lastW))*100)/100;
   var deltaStr = '';
   if(lastW > 0 && delta !== 0){
     deltaStr = '<span class="kt-r-card-last-delta">'+(delta>0?'↑'+delta:'↓'+Math.abs(delta))+'</span>';
   }
   var lastBlock = lastW > 0
-    ? '<div class="kt-r-card-last">'+_esc('LAST · '+lastW+' × '+lastReps)+' '+deltaStr+'</div>'
+    ? '<div class="kt-r-card-last">'+_esc('LAST · '+wDisp(lastW)+' × '+lastReps)+' '+deltaStr+'</div>'
     : '<div class="kt-r-card-last">FIRST TIME LOGGING</div>';
   var nextBlock = next
     ? '<div class="kt-r-card-next">'+
@@ -7115,7 +7122,7 @@ function _renderRunnerIdleBody(ex, next){
   var plateIdle = _isBarbellLift(ex.name) ? _plateMath(targetW) : '';
   var targetLine = '<div class="kt-r-target-lbl">TARGET</div>'+
     '<div class="kt-r-target">'+
-      (targetW>0?targetW+'<span class="u">lb</span>':'BW')+
+      (targetW>0?wDisp(targetW)+'<span class="u">'+_uW()+'</span>':'BW')+
     '</div>'+
     '<div class="kt-r-target-sets">'+_esc(_plural(ex.sets,'set')+' × '+_fmtRepTarget(ex.reps)+' reps')+'</div>'+
     (plateIdle?'<div class="kt-r-target-plate">'+plateIdle+'</div>':'');
@@ -7185,17 +7192,60 @@ function _isBarbellLift(name){
 function _plateMath(total){
   var w=parseFloat(total);
   if(!(w>0)) return '';
-  if(w<=45) return w===45?'Empty bar':'';
-  var rem=(w-45)/2, out=[];
-  [45,35,25,10,5,2.5].forEach(function(p){
+  var kg=_uW()==='kg';
+  if(kg) w=Math.round(w/LB_PER_KG*4)/4;
+  var bar=kg?20:45, plates=kg?[25,20,15,10,5,2.5,1.25]:[45,35,25,10,5,2.5];
+  if(w<=bar) return Math.abs(w-bar)<0.3?'Empty bar':'';
+  var rem=(w-bar)/2, out=[];
+  plates.forEach(function(p){
     while(rem>=p-0.001){ out.push(p); rem-=p; }
   });
   if(!out.length) return '';
-  return out.join(' + ')+(rem>0.26?' +'+(Math.round(rem*10)/10):'')+' / side';
+  return out.join(' + ')+(rem>(kg?0.13:0.26)?' +'+(Math.round(rem*10)/10):'')+' / side';
 }
 // Gyms rack in 2.5 lb steps — every PRESCRIBED or AI-written load snaps to
 // the nearest 2.5 so the app never asks for a 1.3 lb plate that doesn't
 // exist. User-LOGGED weights are never touched.
+// ── Units ──────────────────────────────────────────────────────────────────
+// Everything is STORED in lb and km (sessions, PRs, working weights, body
+// weight, runs, goals, the coach's tools, the watch payload). The preference
+// only changes what the user sees and types. kg shows to 0.5 kg; miles and
+// per-mile paces convert on the way out and back.
+var LB_PER_KG=2.2046226218, KM_PER_MI=1.609344;
+function _uW(){ return localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb'; }
+function _uD(){ return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
+function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); _scheduleNativeSync(); render(); }
+function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); render(); }
+// lb (stored) → display number in the chosen unit
+function wDisp(lb){ var v=parseFloat(lb)||0; if(_uW()==='kg') return Math.round(v/LB_PER_KG*2)/2; return Math.round(v*100)/100; }
+// display number (typed) → lb for storage
+function wStore(v){ var n=parseFloat(v)||0; if(_uW()==='kg') return Math.round(n*LB_PER_KG*10)/10; return n; }
+function _wSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:wDisp(d.val)}; }); }
+function fmtW(lb, opts){ opts=opts||{}; var v=wDisp(lb); return (opts.bare?v:v+(opts.nbsp?'\u00a0':' ')+_uW()); }
+function dDisp(km){ var v=parseFloat(km)||0; if(_uD()==='mi') return Math.round(v/KM_PER_MI*100)/100; return Math.round(v*100)/100; }
+function dStore(v){ var n=parseFloat(v)||0; if(_uD()==='mi') return Math.round(n*KM_PER_MI*100)/100; return n; }
+function fmtD(km, opts){ opts=opts||{}; var v=dDisp(km); return opts.bare?v:v+' '+_uD(); }
+// seconds per km (stored) → "m:ss /km" or "/mi"
+function fmtPace(secPerKm, opts){
+  opts=opts||{}; var sec=parseFloat(secPerKm)||0; if(!(sec>0)) return '\u2014';
+  if(_uD()==='mi') sec=sec*KM_PER_MI;
+  var p=Math.round(sec), pad=function(n){ return (n<10?'0':'')+n; };
+  return Math.floor(p/60)+':'+pad(p%60)+(opts.bare?'':' /'+_uD());
+}
+// "m:ss" per km (stored) → display pace string in the chosen unit.
+function _paceStrToSec(str){ var m=String(str||'').trim().match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):0; }
+function fmtPaceStr(str, opts){ var sec=_paceStrToSec(str); return sec>0?fmtPace(sec, opts):String(str||''); }
+// display pace string (typed, per chosen unit) → "m:ss" per km for storage
+function paceStore(str){
+  var sec=_paceStrToSec(str); if(!(sec>0)) return String(str||'').trim();
+  if(_uD()==='mi') sec=sec/KM_PER_MI;
+  var p=Math.round(sec), pad=function(n){ return (n<10?'0':'')+n; };
+  return Math.floor(p/60)+':'+pad(p%60);
+}
+function _dSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:dDisp(d.val)}; }); }
+function _paceSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:_uD()==='mi'?Math.round(d.val*KM_PER_MI):d.val}; }); }
+// Weight step for steppers: 2.5 lb or 1.25 kg, expressed in lb for storage.
+function wStepLb(){ return _uW()==='kg'?1.25*LB_PER_KG:2.5; }
 function _snap25(w){
   w=parseFloat(w);
   if(!(w>0)) return w;
@@ -7228,18 +7278,21 @@ function runnerApplySuggestion(w){
 // when the load is too light for a ramp to mean anything.
 function _warmupRamp(w, barbell){
   w=parseFloat(w); if(!(w>0)) return '';
+  // Ramp in the DISPLAY unit: 5 lb / 2.5 kg rounding, 45 lb / 20 kg bar.
+  var kg=_uW()==='kg'; if(kg) w=w/LB_PER_KG;
+  var big=kg?2.5:5, small=kg?1.25:2.5, bar=kg?20:45;
   var steps=[], seen={};
   function add(l){ if(!seen[l]){ seen[l]=1; steps.push(l); } }
   if(barbell){
     add('bar\u00a0\u00d7\u00a010');
     [[.4,5],[.6,3],[.8,1]].forEach(function(st){
-      var wt=Math.round(w*st[0]/5)*5;
-      if(wt>45 && wt<w) add(wt+'\u00a0\u00d7\u00a0'+st[1]);
+      var wt=Math.round(w*st[0]/big)*big;
+      if(wt>bar && wt<w) add(wt+'\u00a0\u00d7\u00a0'+st[1]);
     });
     if(steps.length<2) return '';
   } else {
     [[.5,8],[.75,4]].forEach(function(st){
-      var wt=Math.round(w*st[0]/2.5)*2.5;
+      var wt=Math.round(w*st[0]/small)*small;
       if(wt>0 && wt<w) add(wt+'\u00a0\u00d7\u00a0'+st[1]);
     });
     if(!steps.length) return '';
@@ -7252,14 +7305,14 @@ function _renderRunnerEngagedBody(ex, done){
   // R1·B — the wells ARE the −/+ buttons; the numeral (still the same
   // editable input) sits between them at statement scale.
   var stepperW = '<div class="kt-step">'+
-    '<div class="kt-step-lbl">WEIGHT · LB</div>'+
+    '<div class="kt-step-lbl">WEIGHT · '+_uW().toUpperCase()+'</div>'+
     '<div class="kt-step-row">'+
-      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-2.5)">−</button>'+
-      '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="2.5" min="0" value="'+w+'"'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(-'+wStepLb()+')">−</button>'+
+      '<input class="kt-step-val kt-step-input" type="number" inputmode="decimal" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" value="'+wDisp(w)+'"'+
         ' onclick="event.stopPropagation();this.select()"'+
-        ' oninput="event.stopPropagation();runnerSetWeight(this.value)"'+
-        ' onchange="event.stopPropagation();runnerSetWeight(this.value)"/>'+
-      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight(2.5)">+</button>'+
+        ' oninput="event.stopPropagation();runnerSetWeight(wStore(this.value))"'+
+        ' onchange="event.stopPropagation();runnerSetWeight(wStore(this.value))"/>'+
+      '<button class="kt-step-btn" onclick="event.stopPropagation();runnerStepWeight('+wStepLb()+')">+</button>'+
     '</div>'+
     (_isBarbellLift(ex.name)&&_plateMath(w)
       ?'<div id="kt-plate-line" class="kt-plate-line">'+_plateMath(w)+'</div>'
@@ -7298,7 +7351,7 @@ function _renderRunnerEngagedBody(ex, done){
     var sugg=_overloadSuggestion(ex);
     if(sugg && w<sugg.to){
       overload='<button class="kt-overload" onclick="event.stopPropagation();runnerApplySuggestion('+sugg.to+')">'+
-        'TRY '+sugg.to+' LB → last '+sugg.from+' × '+sugg.reps+' @ RPE '+sugg.rpe+'</button>';
+        'TRY '+fmtW(sugg.to).toUpperCase()+' → last '+wDisp(sugg.from)+' × '+sugg.reps+' @ RPE '+sugg.rpe+'</button>';
     }
   }
   // R1·B header line: set position moved to the card's top meta line; the
@@ -7311,8 +7364,8 @@ function _renderRunnerEngagedBody(ex, done){
   var _last = getLastSessionData(ex.name);
   var _lastW = _last ? _lastPair(_last).w : 0;
   var _lastR = _last ? _lastPair(_last).r : null;
-  var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?_tW:'BW')+' × '+_tR+
-    (_lastW>0?' · LAST '+_lastW+' × '+_lastR:''))+'</div>';
+  var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?wDisp(_tW):'BW')+' × '+_tR+
+    (_lastW>0?' · LAST '+wDisp(_lastW)+' × '+_lastR:''))+'</div>';
   return '<div class="kt-eng">'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
     targetLine+
@@ -7342,7 +7395,7 @@ function _renderRunnerRestingBody(ex, done){
   var foot = '<div style="flex:1;"></div>'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'+
       '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:.1em;opacity:.4;">UP NEXT · SET '+(done+1)+'</div>'+
-      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+_esc((_nW>0?_nW+' lb':'BW')+' × '+_nR)+'</div></div>'+
+      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+_esc((_nW>0?fmtW(_nW):'BW')+' × '+_nR)+'</div></div>'+
     '</div>';
   // C1·A — the PR beat owns the display slot during the rest that follows
   // the record set: gold eyebrow + gold numeral, clock compressed to a side
@@ -7351,8 +7404,8 @@ function _renderRunnerRestingBody(ex, done){
   if(beat){
     return '<div class="kt-rest">'+
       '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
-      '<div class="kt-pr-eyebrow">◆ NEW RECORD · BEST WAS '+_runnerPrBeat.best+' LB</div>'+
-      '<div class="kt-pr-hero">'+_runnerPrBeat.w+' × '+_runnerPrBeat.r+'</div>'+
+      '<div class="kt-pr-eyebrow">◆ NEW RECORD · BEST WAS '+fmtW(_runnerPrBeat.best).toUpperCase()+'</div>'+
+      '<div class="kt-pr-hero">'+wDisp(_runnerPrBeat.w)+' × '+_runnerPrBeat.r+'</div>'+
       '<div class="kt-pr-sub">Rest is running. Nothing to tap — go breathe.</div>'+
       '<div class="kt-rest-mini">'+
         '<div class="kt-rest-time'+(runnerRestLeft<=10?' kt-final10':'')+'">'+m+':'+String(s).padStart(2,'0')+'</div>'+
@@ -7384,8 +7437,8 @@ function _renderRunnerMirrorBody(ex, done){
   var _lastR = _last ? _lastPair(_last).r : null;
   return '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
     '<div class="kt-r-card-name" style="margin-top:6px;">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?_nW:'BW')+' × '+_nR+
-      (_lastW>0?' · LAST '+_lastW+' × '+_lastR:''))+'</div>'+
+    '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?wDisp(_nW):'BW')+' × '+_nR+
+      (_lastW>0?' · LAST '+wDisp(_lastW)+' × '+_lastR:''))+'</div>'+
     _renderCompletedSets(ex)+
     '<div style="flex:1;"></div>'+
     '<div style="font-size:12.5px;line-height:1.55;opacity:.55;">Logging on the wrist. This screen mirrors — take over any time and the steppers wake.</div>'+
@@ -7427,8 +7480,8 @@ function _renderRunnerDoneBody(ex, isLast){
   var beatHTML='';
   if(_runnerPrBeat && _runnerPrBeat.ex===ex.name){
     beatHTML='<div style="text-align:center;">'+
-      '<div class="kt-pr-eyebrow" style="margin-top:0;">◆ NEW RECORD · BEST WAS '+_runnerPrBeat.best+' LB</div>'+
-      '<div class="kt-pr-hero" style="font-size:clamp(36px,13vw,48px);">'+_runnerPrBeat.w+' × '+_runnerPrBeat.r+'</div>'+
+      '<div class="kt-pr-eyebrow" style="margin-top:0;">◆ NEW RECORD · BEST WAS '+fmtW(_runnerPrBeat.best).toUpperCase()+'</div>'+
+      '<div class="kt-pr-hero" style="font-size:clamp(36px,13vw,48px);">'+wDisp(_runnerPrBeat.w)+' × '+_runnerPrBeat.r+'</div>'+
     '</div>';
   }
   return '<div class="kt-done">'+
@@ -7499,7 +7552,7 @@ function _buildRunnerExEditHTML(){
     '<div style="display:flex;gap:10px;margin-bottom:24px;">'+
       _runnerExStepHTML('runner-ex-sets-input','Sets',_rExEditSets,'runnerExEditStepSets','runnerExEditSetSets',1)+
       _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
-      _runnerExStepHTML('runner-ex-weight-input','Weight · lb',_rExEditWeight,'runnerExEditStepWeight','runnerExEditSetWeight',2.5)+
+      _runnerExStepHTML('runner-ex-weight-input','Weight · '+_uW(),wDisp(_rExEditWeight),'runnerExEditStepWeight','runnerExEditSetWeight',(_uW()==='kg'?1.25:2.5))+
     '</div>'+
     (runnerExEditIdx!=null && runnerSession && runnerExEditIdx<runnerSession.exercises.length-1
       ?'<button onclick="event.stopPropagation();runnerExEditToggleSS()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditSS?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditSS?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
@@ -7589,10 +7642,10 @@ function runnerExEditStepReps(d){
 }
 function runnerExEditSetReps(v){ _rExEditReps=Math.max(1,parseInt(v)||1); }
 function runnerExEditStepWeight(d){
-  _rExEditWeight=Math.max(0,parseFloat(_rExEditWeight||0)+parseFloat(d));
-  var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=_rExEditWeight;
+  _rExEditWeight=Math.max(0,wStore(wDisp(_rExEditWeight||0)+parseFloat(d)));
+  var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=wDisp(_rExEditWeight);
 }
-function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,parseFloat(v)||0); }
+function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,wStore(v)); }
 function runnerExEditToggleSS(){
   _rExEditSS=!_rExEditSS;
   var sheet=document.getElementById('runner-ex-edit-sheet');
@@ -8170,10 +8223,10 @@ function _renderWeekDetail(wd){
       var exs = (wd[key] && wd[key].length) ? wd[key] : [];
       if(exs.length){
         var main = exs.find(function(e){return e.isMain;}) || exs[0];
-        var weight = main.weight ? ' · '+main.weight+' lb' : '';
+        var weight = main.weight ? ' · '+fmtW(main.weight) : '';
         summary = exs.length+' lifts · '+_esc(main.name)+weight;
         fullHTML = '<div class="wk-ex-list">'+exs.map(function(e,i){
-          var w = e.weight ? e.weight+' lb' : '—';
+          var w = e.weight ? fmtW(e.weight) : '—';
           var rep = (e.sets||3)+'×'+(e.reps||'8-10');
           var rpe = e.rpe ? ' · RPE '+e.rpe : '';
           return '<div class="wk-ex-row">'+
@@ -8193,12 +8246,12 @@ function _renderWeekDetail(wd){
       var rd = (wd.runs && wd.runs[dayName]) || (dayName==='Tue' && wd.runTue) || (dayName==='Sat' && wd.runSat);
       if(rd){
         var bits=[];
-        if(rd.distance) bits.push(rd.distance+' km');
-        if(rd.paceMin!=null && rd.paceSec!=null) bits.push(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+'/km');
+        if(rd.distance) bits.push(fmtD(rd.distance));
+        if(rd.paceMin!=null && rd.paceSec!=null) bits.push(fmtPaceStr(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')));
         else if(rd.pace) bits.push(rd.pace);
         summary = bits.length ? bits.join(' · ') : 'Run';
         var detailParts = [];
-        if(rd.distance) detailParts.push(['DIST', rd.distance+' km']);
+        if(rd.distance) detailParts.push(['DIST', fmtD(rd.distance)]);
         if(rd.paceMin!=null && rd.paceSec!=null) detailParts.push(['PACE', rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+' / km']);
         else if(rd.pace) detailParts.push(['PACE', rd.pace]);
         if(rd.hr) detailParts.push(['HR CAP', rd.hr+' bpm']);
@@ -8221,7 +8274,7 @@ function _renderWeekDetail(wd){
       if(sd){
         var sParts = [];
         if(sd.duration) sParts.push(['DURATION', sd.duration+' min']);
-        if(sd.distance) sParts.push(['DISTANCE', sd.distance+' km']);
+        if(sd.distance) sParts.push(['DISTANCE', fmtD(sd.distance)]);
         if(sd.intensity) sParts.push(['INTENSITY', sd.intensity+'/10']);
         if(sd.calories) sParts.push(['CALORIES', sd.calories]);
         var sMeta = sParts.length
@@ -8371,7 +8424,7 @@ function renderRunsSection(opts) {
     }
     var dotClass = run.type==='race'?'orange':run.type==='intervals'?'cyan':'';
     var typeLabel = _runTypeLabel(run.type);
-    var mainLine = run.km ? run.km+' km' : 'Structured';
+    var mainLine = run.km ? fmtD(run.km) : 'Structured';
     if (run.hr) mainLine += ' · HR <'+run.hr+' bpm';
     return '<div class="run-card '+(dotClass)+'">'+
       '<div class="run-dot"></div>'+
@@ -8407,10 +8460,10 @@ function renderRunsSection(opts) {
       var hrLabel=r.hr?' · '+r.hr+'bpm':'';
       var subLine=fmtDate(r.date)+(typeLabel?' · '+typeLabel:'')+hrLabel+(r.note?' · '+_esc(r.note):'');
       runItems += '<div class="run-item">'+
-        '<div><div style="font-size:14px;font-weight:800;">'+dist+'km &middot; '+r.time+'</div>'+
+        '<div><div style="font-size:14px;font-weight:800;">'+fmtD(dist)+' &middot; '+r.time+'</div>'+
         '<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+subLine+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:10px;">'+
-          '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+p+'/km</div>'+
+          '<div style="font-size:14px;color:var(--accent);font-weight:900;letter-spacing:-.3px;">'+fmtPaceStr(p)+'</div>'+
           '<button onclick="deleteRun('+r.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:10px 8px;margin:-6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
         '</div>'+
         '</div>';
@@ -8460,13 +8513,13 @@ function updateRunPacePreview(){
   var dist=parseFloat(distEl?distEl.value:0);
   var time=timeEl?timeEl.value.trim():'';
   var pace=calcPace(dist,time);
-  preEl.textContent=(pace&&pace!=='-')?pace+' /km  ·  '+dist+'km':'';
+  preEl.textContent=(pace&&pace!=='-')?pace+' /'+_uD()+'  ·  '+dist+_uD():'';
 }
 function saveRunGoal(){
   var el=document.getElementById('runGoalInput');
   var v=el?el.value.trim():'';
-  setRunGoal(v);
-  showToast(v?'Pace goal: '+v+'/km':'Goal cleared');
+  setRunGoal(paceStore(v));
+  showToast(v?'Pace goal: '+v+'/'+_uD():'Goal cleared');
   render();
 }
 
@@ -8501,7 +8554,7 @@ function saveRun() {
   checkMilestones({delayToast:2500});
   var pace=calcPace(dist,time);
   var txt='['+fmtDate(date)+'] — Run (Week '+currentWeek+')\n';
-  txt+='Distance: '+dist+'km | Time: '+time+' | Pace: '+pace+'/km';
+  txt+='Distance: '+fmtD(dist)+' | Time: '+time+' | Pace: '+fmtPaceStr(pace);
   if(hr) txt+=' | HR avg: '+hr+' bpm';
   txt+='\n';
   if(type&&type!=='easy') txt+='Type: '+type.charAt(0).toUpperCase()+type.slice(1)+'\n';
@@ -8566,13 +8619,13 @@ function openSessionEditor(id){
       '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;margin-bottom:6px;">'+
         '<span></span>'+
         '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">REPS</span>'+
-        '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">LB</span>'+
+        '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">'+_uW().toUpperCase()+'</span>'+
       '</div>'+
       pair.map(function(p,si){
         return '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center;margin-bottom:6px;">'+
           '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SET '+(si+1)+'</span>'+
           '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" style="'+inp+'"/>'+
-          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+p[1]+'" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+(p[1]!==''&&p[1]!=null?wDisp(p[1]):'')+'" style="'+inp+'"/>'+
         '</div>';
       }).join('')+
     '</div>';
@@ -8629,7 +8682,7 @@ function saveSessionEdit(){
       var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
       var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
       reps.push(Math.max(0, parseInt(rEl&&rEl.value)||0));
-      wts.push(Math.max(0, parseFloat(wEl&&wEl.value)||0));
+      wts.push(Math.max(0, wStore(parseFloat(wEl&&wEl.value)||0)));   // typed in the display unit
     });
     var top=wts.length?Math.max.apply(null,wts):0;
     // Normalize to the flat runner shape on save (legacy nested included).
@@ -8742,7 +8795,7 @@ function buildSportSummary(log){
   var d=log.data||{}, parts=[];
   // Per-sport rich summaries (when forcedSportId path was used to log).
   if(log.type==='Cycling'){
-    if(d.distance) parts.push(d.distance+'km');
+    if(d.distance) parts.push(fmtD(d.distance));
     if(d.avgSpeed) parts.push(d.avgSpeed+'km/h');
   } else if(log.type==='CrossFit'){
     if(d.wodName) parts.push(d.wodName);
@@ -8780,7 +8833,7 @@ function buildSportSummary(log){
   // Generic editorial-form fields: distance / intensity / calories. Show
   // duration here when nothing else surfaced so empty rows aren't blank.
   if(!parts.length){
-    if(d.distance) parts.push(d.distance+(log.type==='Swimming'||log.type==='Rowing'?'m':'km'));
+    if(d.distance) parts.push((log.type==='Swimming'||log.type==='Rowing')?d.distance+'m':fmtD(d.distance));
     if(log.duration) parts.push(log.duration+' min');
     if(d.intensity) parts.push('RPE '+d.intensity);
     if(d.calories) parts.push(d.calories+' cal');
@@ -9407,6 +9460,7 @@ function saveBodyWeight(){
   var v=parseFloat(document.getElementById('bwVal')?document.getElementById('bwVal').value:0);
   var d=(document.getElementById('bwDate')||{}).value||todayISO();
   if(!v){showToast('Enter a weight');return;}
+  v=wStore(v);   // typed in the display unit, stored in lb
   var rec={id:Date.now(),date:d,weight:v};
   var bws=getBodyWeights();
   bws.push(rec);
@@ -9425,7 +9479,7 @@ function undoLastBodyWeight(){
 function renderBwSavedStrip(){
   if(!bwLogConfirmed) return '';
   return '<div class="kt-rconfirm">'+
-    '<div>✓ '+bwLogConfirmed.weight+' lb logged</div>'+
+    '<div>✓ '+fmtW(bwLogConfirmed.weight)+' logged</div>'+
     '<button class="kt-rconfirm-undo" onclick="undoLastBodyWeight()">UNDO</button>'+
     '</div>';
 }
@@ -9436,9 +9490,9 @@ function deleteBodyWeight(idx){
 }
 function saveBWGoal(){
   var el=document.getElementById('bwGoalInput');
-  var v=el?parseFloat(el.value):0;
+  var v=el?wStore(parseFloat(el.value)||0):0;
   setBWGoal(v);
-  showToast(v>0?'Goal set: '+v+' lb':'Goal cleared');
+  showToast(v>0?'Goal set: '+fmtW(v):'Goal cleared');
   render();
 }
 function getMeasurements(){return lsGet('kt_measurements')||[];}
@@ -9569,7 +9623,7 @@ function renderSportProgress(){
       '</div></div>';
 
     if(type==='Cycling'||type==='Swimming'){
-      var unit=type==='Cycling'?'km':'m';
+      var unit=type==='Cycling'?_uD():'m';
       var withDist=tl.filter(function(l){return l.data&&l.data.distance>0;});
       if(withDist.length){
         var total=withDist.reduce(function(a,l){return a+(l.data.distance||0);},0);
@@ -9655,11 +9709,11 @@ function renderBodyEditorial(){
       : 'holding steady.';
     var bits=[];
     if(trendH!==null && Math.abs(trendH)>=0.1){
-      bits.push((trendH>0?'+':'−')+Math.abs(trendH)+' lb a week');
+      bits.push((trendH>0?'+':'−')+wDisp(Math.abs(trendH))+' '+_uW()+' a week');
     }
     if(goalH>0){
       var toGoal=Math.round(Math.abs(goalH-bws[0].weight)*10)/10;
-      bits.push(toGoal>0 ? toGoal+' lb to goal' : 'at your goal');
+      bits.push(toGoal>0 ? wDisp(toGoal)+' '+_uW()+' to goal' : 'at your goal');
     }
     heroBody = bits.length
       ? bits.join(' · ')+'.'
@@ -9690,9 +9744,9 @@ function renderBodySection(){
   var chart=bwData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Body Weight</div>'+
-        '<div><span class="chart-val">'+currentW+'</span><span class="chart-unit">lb</span></div>'+
-        (bwGoal?'<div class="chart-delta">Goal: '+bwGoal+' lb</div>':'')+
-      '</div></div>'+svgChart(bwData,'var(--cyan)',bwGoal)+'</div>'
+        '<div><span class="chart-val">'+wDisp(currentW)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
+        (bwGoal?'<div class="chart-delta">Goal: '+fmtW(bwGoal)+'</div>':'')+
+      '</div></div>'+svgChart(_wSeries(bwData),'var(--cyan)',bwGoal?wDisp(bwGoal):bwGoal)+'</div>'
     :'';
 
   // START / NOW / GOAL hairline band + a slim body-hue progress track —
@@ -9706,7 +9760,7 @@ function renderBodySection(){
     goalSection='<div class="kt-statband" style="margin-top:14px;margin-bottom:10px;">'+
       '<div><div class="kt-statband-val" style="font-size:19px;color:var(--muted);">'+startW+'</div><div class="kt-statband-lbl">Start</div></div>'+
       '<div><div class="kt-statband-val" style="font-size:19px;">'+currentW+'</div><div class="kt-statband-lbl">Now</div></div>'+
-      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--cyan);">'+bwGoal+'</div><div class="kt-statband-lbl">Goal</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--cyan);">'+wDisp(bwGoal)+'</div><div class="kt-statband-lbl">Goal</div></div>'+
     '</div>'+
     '<div style="height:4px;background:var(--card2);border-radius:2px;">'+
       '<div style="width:'+pct+'%;height:4px;background:var(--cyan);border-radius:2px;transition:width .4s;"></div>'+
@@ -9720,7 +9774,7 @@ function renderBodySection(){
     bwItems+='<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">'+
       '<span style="font-size:13px;color:var(--muted);font-weight:500;">'+fmtDate(e.date)+'</span>'+
       '<div style="display:flex;align-items:center;gap:12px;">'+
-        '<span style="font-size:14px;font-weight:700;">'+e.weight+' lb</span>'+
+        '<span style="font-size:14px;font-weight:700;">'+fmtW(e.weight)+'</span>'+
         '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div></div>';
   });
@@ -9799,13 +9853,13 @@ function renderBodySection(){
     renderBwSavedStrip()+
     '<div class="card"><h2>Body Weight</h2>'+
       '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
-        '<div class="field" style="margin:0;flex:1"><label>Weight (lb)</label><input type="number" id="bwVal" placeholder="185" step="0.1" min="0" inputmode="decimal"/></div>'+
+        '<div class="field" style="margin:0;flex:1"><label>Weight ('+_uW()+')</label><input type="number" id="bwVal" placeholder="'+(_uW()==='kg'?'84':'185')+'" step="0.1" min="0" inputmode="decimal"/></div>'+
         '<div class="field" style="margin:0;flex:1"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
         '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;">Log</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">'+
-        '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL lb</div>'+
-        '<input type="number" id="bwGoalInput" placeholder="e.g. 175" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal||'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
+        '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL '+_uW()+'</div>'+
+        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDisp(bwGoal):'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+
@@ -9846,9 +9900,9 @@ function renderRetroCard(sessions){
   var thenW=parseFloat(main.weight)||0;
   var nowW=parseFloat(getWeights()[main.name])||0;
   var body;
-  if(nowW>thenW) body=_esc(main.name)+' was '+thenW+' lb that day. You work at '+nowW+' lb now — up '+Math.round((nowW-thenW)*100)/100+' lb in four weeks.';
-  else if(nowW>0&&nowW<thenW) body=_esc(main.name)+' was '+thenW+' lb that day. You\'re at '+nowW+' lb now — trust the block, the load comes back.';
-  else body=_esc(main.name)+' at '+thenW+' lb. Four weeks of showing up since.';
+  if(nowW>thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You work at '+fmtW(nowW)+' now — up '+Math.round((wDisp(nowW)-wDisp(thenW))*100)/100+' lb in four weeks.';
+  else if(nowW>0&&nowW<thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You\'re at '+fmtW(nowW)+' now — trust the block, the load comes back.';
+  else body=_esc(main.name)+' at '+fmtW(thenW)+'. Four weeks of showing up since.';
   var lbl=(SESS[hit.type]&&SESS[hit.type].label)||hit.type||'Session';
   return '<div class="chart-card">'+
     '<div class="chart-lbl">Four weeks ago · '+_esc(lbl)+' · '+fmtDate(hit.date)+'</div>'+
@@ -9885,7 +9939,7 @@ function renderWeekRecap(sessions,runs){
   var wkBws=getBodyWeights().filter(function(b){return b.date>=mon&&b.date<=today;});
   if(wkBws.length>=2){
     var d=Math.round((parseFloat(wkBws[0].weight)-parseFloat(wkBws[wkBws.length-1].weight))*10)/10;
-    if(!isNaN(d)&&d!==0) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+Math.abs(d)+' lb this week.</div>';
+    if(!isNaN(d)&&d!==0) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+wDisp(Math.abs(d))+' '+_uW()+' this week.</div>';
   }
   return '<div class="chart-card" style="border-left:2px solid var(--accent);">'+
     '<div class="chart-lbl">Sunday · this week, wrapped</div>'+
@@ -9994,14 +10048,14 @@ function renderStrengthTrends(extraHTML){
     // No point older than four weeks: the delta is "since your first
     // session", so label it with its real age instead of a made-up 4w.
     var spanLbl=hasBase?'4w':(Math.max(1,Math.round((Date.now()-new Date(pts[0].date+'T00:00:00').getTime())/86400000))+'d');
-    var delta=Math.round((cur-base)*10)/10;
+    var delta=Math.round((wDisp(cur)-wDisp(base))*10)/10;
     var deltaStr=delta>0?'<span style="color:var(--green);">↑'+delta+'</span>'
       :delta<0?'<span style="color:var(--red);">↓'+Math.abs(delta)+'</span>'
       :'<span style="color:var(--muted);">—</span>';
     var flag=plateaus[n]?'<div style="font-size:10px;color:var(--yellow);font-weight:700;margin-top:2px;">No new peak in '+plateaus[n].days+' days</div>':'';
     if(!flag){
       var fc=_forecastLift(pts);
-      if(fc) flag='<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+fc.target+' lb ≈ '+_esc(fc.date)+' at this pace</div>';
+      if(fc) flag='<div style="font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;">'+fmtW(fc.target)+' ≈ '+_esc(fc.date)+' at this pace</div>';
     }
     var open = strengthChartOpen===n;
     // Tap a row for the full e1RM history drawn by the main chart engine.
@@ -10014,7 +10068,7 @@ function renderStrengthTrends(extraHTML){
       '<div onclick="toggleStrengthChart(\''+_esc(n)+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
         '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:'+(open?'var(--accent)':'var(--text)')+';">'+_esc(n)+'</div>'+flag+'</div>'+
         (open?'':_sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)'))+
-        '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(cur)+'<span style="font-size:10px;color:var(--muted);"> lb</span></div>'+
+        '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(wDisp(cur))+'<span style="font-size:10px;color:var(--muted);"> '+_uW()+'</span></div>'+
         '<div style="font-size:10px;font-weight:700;">'+deltaStr+' <span style="color:var(--muted);">'+spanLbl+'</span></div></div>'+
       '</div>'+
       full+
@@ -10049,7 +10103,7 @@ function _buildWeekReviewMsg(){
   var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){
     // Session prs are exercise-name strings (checkAndUpdatePRs); tolerate the
     // object shape too rather than sending 'undefined undefined×undefined'.
-    if(typeof p==='string') prs.push(p+(_prBook[p]?' '+_prBook[p]+' lb':''));
+    if(typeof p==='string') prs.push(p+(_prBook[p]?' '+fmtW(_prBook[p]):''));
     else if(p&&p.ex) prs.push(p.ex+' '+(p.weight||'')+(p.reps?'×'+p.reps:''));
   }); });
   var lines=['Review my last 7 days and adjust next week if needed.',
@@ -10085,7 +10139,7 @@ function _plural(n,word){ n=parseInt(n)||0; return n+' '+word+(n===1?'':'s'); }
 function _fmtLbDelta(d){
   d=Math.round(d*10)/10;
   if(d===0) return 'flat over the window';
-  return (d>0?'↑ +':'↓ −')+Math.abs(d)+' lb total';
+  return (d>0?'↑ +':'↓ −')+wDisp(Math.abs(d))+' '+_uW()+' total';
 }
 function renderProgress() {
   var sessions=getSessions();
@@ -10155,8 +10209,8 @@ function renderProgress() {
     var pct=target>0?Math.min(100,Math.round((current/target)*100)):0;
     if(lowerBetter&&target>0) pct=current>0?Math.min(100,Math.round((target/current)*100)):0;
     var color=pct>=100?'var(--green)':pct>=70?'var(--accent)':'var(--yellow)';
-    var currentStr=current>0?(lowerBetter?secToPace(current/5):current+' '+unit):'—';
-    var targetStr=target>0?(lowerBetter?secToPace(target/5)+' /km':target+' '+unit):'set a target';
+    var currentStr=current>0?(lowerBetter?fmtPace(current/5,{bare:true}):(unit==='lb'?fmtW(current):current+' '+unit)):'—';
+    var targetStr=target>0?(lowerBetter?fmtPace(target/5):(unit==='lb'?fmtW(target):target+' '+unit)):'set a target';
     return '<div style="margin-bottom:16px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
         '<div style="font-size:13px;font-weight:800;">'+label+'</div>'+
@@ -10193,9 +10247,9 @@ function renderProgress() {
     var bar=goalBar(label,current,target,unit,lowerBetter);
     var inp='<div style="display:flex;align-items:center;gap:6px;margin-top:-8px;margin-bottom:14px;">'+
       '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
-      '<input type="number" aria-label="'+_esc(label)+' goal target, '+_esc(unit)+'" value="'+target+'" min="0" style="'+goalInpStyle+'"'+
-        ' onchange="'+setFn+'(parseFloat(this.value)||0);render();" />'+
-      '<span style="font-size:11px;color:var(--muted);">'+unit+'</span>'+
+      '<input type="number" aria-label="'+_esc(label)+' goal target, '+_esc(unit==='lb'?_uW():unit)+'" value="'+(unit==='lb'?(target?wDisp(target):''):target)+'" min="0" style="'+goalInpStyle+'"'+
+        ' onchange="'+setFn+'('+(unit==='lb'?'wStore(this.value)':'parseFloat(this.value)')+'||0);render();" />'+
+      '<span style="font-size:11px;color:var(--muted);">'+(unit==='lb'?_uW():unit)+'</span>'+
     '</div>';
     return bar+inp;
   }
@@ -10242,9 +10296,9 @@ function renderProgress() {
   }
   var runPaceInput = '<div style="display:flex;align-items:center;gap:6px;margin-top:-4px;margin-bottom:14px;">'+
     '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
-    '<input type="text" placeholder="6:00" value="'+_esc(runGoalPaceStr||'')+'" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;"'+
-      ' onchange="setRunGoal(this.value);render();" />'+
-    '<span style="font-size:11px;color:var(--muted);">/km</span>'+
+    '<input type="text" placeholder="6:00" value="'+_esc(runGoalPaceStr?fmtPaceStr(runGoalPaceStr,{bare:true}):'')+'" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;"'+
+      ' onchange="setRunGoal(paceStore(this.value));render();" />'+
+    '<span style="font-size:11px;color:var(--muted);">/'+_uD()+'</span>'+
     '</div>';
   var runGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Run goals</h2>'+
     (bestRun5kSec>0
@@ -10261,7 +10315,7 @@ function renderProgress() {
   var bws=getBodyWeights();
   var latestBW = bws.length ? bws[0].weight : null;
   var prevBW = bws.length > 1 ? bws[1].weight : null;
-  var bwDelta = (latestBW && prevBW) ? (latestBW - prevBW).toFixed(1) : null;
+  var bwDelta = (latestBW && prevBW) ? (wDisp(latestBW) - wDisp(prevBW)).toFixed(1) : null;
   var streak = calcStreak(_trainingDays());
   var thisWeekCount = sessions.filter(_inThisCalWeek).length;
   var scheduledLiftDays = getWeekPlan().filter(function(p){return p.isLift;}).length;
@@ -10310,14 +10364,14 @@ function renderProgress() {
 
   var liftStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
-    '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(weekVol).toLocaleString():'—')+'</div><div class="kt-statband-lbl">lb · this week</div></div>'+
+    '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(wDisp(weekVol)).toLocaleString():'—')+'</div><div class=\"kt-statband-lbl\">'+_uW()+' · this week</div></div>'+
     '<div><div class="kt-statband-val">'+calcTrainingDayStreak()+'<span class="u">'+(calcTrainingDayStreak()===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
     '</div>'+_weekDotsRow();
 
   var runStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+runs.length+'</div><div class="kt-statband-lbl">Runs</div></div>'+
-    '<div><div class="kt-statband-val">'+(Math.round(totalKm*10)/10)+'<span class="u">km</span></div><div class="kt-statband-lbl">'+(weekKm>0?(Math.round(weekKm*10)/10)+' km this wk':'all-time')+'</div></div>'+
-    '<div><div class="kt-statband-val">'+(avgPaceSec>0?secToPace(avgPaceSec):'—')+(avgPaceSec>0?'<span class="u">/km</span>':'')+'</div><div class="kt-statband-lbl">Avg pace</div></div>'+
+    '<div><div class="kt-statband-val">'+dDisp(totalKm)+'<span class="u">'+_uD()+'</span></div><div class="kt-statband-lbl">'+(weekKm>0?dDisp(weekKm)+' '+_uD()+' this wk':'all-time')+'</div></div>'+
+    '<div><div class="kt-statband-val">'+(avgPaceSec>0?fmtPace(avgPaceSec,{bare:true}):'—')+(avgPaceSec>0?'<span class="u">/'+_uD()+'</span>':'')+'</div><div class="kt-statband-lbl">Avg pace</div></div>'+
     '</div>'+_weekDotsRow();
 
   var stats = progressTab === 'runs' ? runStats : (progressTab === 'sports' ? '' : liftStats);
@@ -10348,16 +10402,16 @@ function renderProgress() {
 
   var benchChart=benchData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Bench Press · working weight</div>'+
-      '<div><span class="chart-val">'+benchData[benchData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
+      '<div><span class="chart-val">'+wDisp(benchData[benchData.length-1].val)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
       (benchData.length>=2?'<div class="chart-delta">'+_fmtLbDelta(benchData[benchData.length-1].val-benchData[0].val)+'</div>':'')+
-      '</div></div>'+svgChart(benchData,'var(--accent)')+'</div>'
+      '</div></div>'+svgChart(_wSeries(benchData),'var(--accent)')+'</div>'
     :'';
 
   var squatChart=squatData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Back Squat · working weight</div>'+
-      '<div><span class="chart-val">'+squatData[squatData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
+      '<div><span class="chart-val">'+wDisp(squatData[squatData.length-1].val)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
       (squatData.length>=2?'<div class="chart-delta">'+_fmtLbDelta(squatData[squatData.length-1].val-squatData[0].val)+'</div>':'')+
-      '</div></div>'+svgChart(squatData,'var(--orange)')+'</div>'
+      '</div></div>'+svgChart(_wSeries(squatData),'var(--orange)')+'</div>'
     :'';
 
   var runData=[];
@@ -10370,9 +10424,9 @@ function renderProgress() {
 
   var runGoalSec=paceToSec(getRunGoal());
   var runChart=runData.length>=2
-    ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Run pace · sec/km (lower = faster)</div>'+
-      (runGoalSec?'<div class="chart-delta">Goal: '+getRunGoal()+'/km</div>':'')+
-      '</div></div>'+svgChart(runData,'var(--accent)',runGoalSec)+'</div>'
+    ?'<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Run pace · sec/'+_uD()+' (lower = faster)</div>'+
+      (runGoalSec?'<div class="chart-delta">Goal: '+fmtPaceStr(getRunGoal())+'</div>':'')+
+      '</div></div>'+svgChart(_paceSeries(runData),'var(--accent)',runGoalSec?(_uD()==='mi'?Math.round(runGoalSec*KM_PER_MI):runGoalSec):runGoalSec)+'</div>'
     :'';
 
   // Weekly distance trend — group runs by ISO calendar week (Mon-based).
@@ -10391,10 +10445,10 @@ function renderProgress() {
   });
   var weeklyDistChart=weeklyDistData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
-        '<div class="chart-lbl">Weekly distance · km</div>'+
+        '<div class="chart-lbl">Weekly distance · '+_uD()+'</div>'+
         '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">'+
           (weeklyDistData[weeklyDistData.length-1].date===getMondayISO()?'km this wk':'km · wk of '+_esc(fmtDate(weeklyDistData[weeklyDistData.length-1].date)))+'</span></div>'+
-      '</div></div>'+svgChart(weeklyDistData,'var(--cyan)')+'</div>'
+      '</div></div>'+svgChart(_dSeries(weeklyDistData),'var(--cyan)')+'</div>'
     :'';
 
   // 1RM calculator (Epley)
@@ -10407,8 +10461,8 @@ function renderProgress() {
   var rmSection=(bestBenchRM||bestSquatRM)?
     '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Est. 1RM (Epley formula)</div></div></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">'+
-    (bestBenchRM?'<div class="stat" style="margin:0;"><div class="stat-lbl">Bench</div><div class="stat-val" style="color:var(--accent)">'+bestBenchRM+'</div><div style="font-size:12px;color:var(--muted)">lb</div></div>':'')+
-    (bestSquatRM?'<div class="stat" style="margin:0;"><div class="stat-lbl">Squat</div><div class="stat-val" style="color:var(--orange)">'+bestSquatRM+'</div><div style="font-size:12px;color:var(--muted)">lb</div></div>':'')+
+    (bestBenchRM?'<div class="stat" style="margin:0;"><div class="stat-lbl">Bench</div><div class="stat-val" style="color:var(--accent)">'+Math.round(wDisp(bestBenchRM))+'</div><div style="font-size:12px;color:var(--muted)">'+_uW()+'</div></div>':'')+
+    (bestSquatRM?'<div class="stat" style="margin:0;"><div class="stat-lbl">Squat</div><div class="stat-val" style="color:var(--orange)">'+Math.round(wDisp(bestSquatRM))+'</div><div style="font-size:12px;color:var(--muted)">'+_uW()+'</div></div>':'')+
     '</div></div>':'';
 
   // Volume trend
@@ -10506,14 +10560,14 @@ function renderProgress() {
     var delta = curW - startW;
     var maxExpectedGain = 30; // lb per block for display purposes
     var pct = startW > 0 ? Math.min(100, Math.max(4, Math.round((delta / maxExpectedGain) * 100))) : 0;
-    var wLabel = curMain && curMain.weight === 0 ? 'Bodyweight' : curW+' lb';
+    var wLabel = curMain && curMain.weight === 0 ? 'Bodyweight' : fmtW(curW);
     liftRows += '<div class="lift-row">'+
       '<div class="lift-head">'+
         '<span class="lift-name">'+lift.label+'</span>'+
-        (delta > 0 ? '<span class="lift-delta">+'+delta+' lb</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+delta+' lb</span>' : ''))+
+        (delta > 0 ? '<span class="lift-delta">+'+wDisp(delta)+' '+_uW()+'</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+wDisp(delta)+' '+_uW()+'</span>' : ''))+
       '</div>'+
       '<div class="lift-bar"><div class="lift-fill" style="width:'+(delta>0?pct:4)+'%"></div></div>'+
-      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?'BW':startW+' lb')+' start</span><span>'+wLabel+' now</span></div>'+
+      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?'BW':fmtW(startW))+' start</span><span>'+wLabel+' now</span></div>'+
     '</div>';
   });
 
@@ -10560,8 +10614,8 @@ function renderProgress() {
       var h=v>0?Math.max(4,Math.round(v/_volMax*100)):0;
       var isCur=w===_curWkKey;
       return '<div class="bar'+(isCur?' cur':'')+(v>0?'':' empty')+'" style="height:'+h+'%;" '+
-        'onclick="showToast(\'Week of '+fmtDate(w)+' · '+(v>0?Math.round(v).toLocaleString()+' lb':'no lifts logged')+'\')">'+
-        (isCur&&v>0?'<span class="val">'+_fmtChartVal(v)+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
+        'onclick="showToast(\'Week of '+fmtDate(w)+' · '+(v>0?Math.round(wDisp(v)).toLocaleString()+' '+_uW():'no lifts logged')+'\')">'+
+        (isCur&&v>0?'<span class="val">'+_fmtChartVal(wDisp(v))+'</span>':(_prWeeks[w]?'<span class="pr-dot"></span>':''))+
       '</div>';
     }).join('');
     // Trend: the most recent COMPLETED data week vs the first data week in
@@ -10590,12 +10644,12 @@ function renderProgress() {
       : 'LAST · WK OF '+_esc(fmtDate(_lastData).toUpperCase());
     weeklyVolCard='<div class="chart-card">'+
       '<div class="kt-ledger-hd">'+
-        '<span class="l">WEEKLY VOLUME · LB</span>'+
+        '<span class="l">WEEKLY VOLUME · '+_uW().toUpperCase()+'</span>'+
         '<span class="r">8W'+_vDelta+'</span>'+
       '</div>'+
       '<div class="kt-bars" style="margin-top:20px;">'+_volBars+'</div>'+
       '<div style="display:flex;justify-content:space-between;margin-top:8px;">'+
-        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_fmtChartVal(_vFirst)+'</span>'+
+        '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_fmtChartVal(wDisp(_vFirst))+'</span>'+
         (Object.keys(_prWeeks).length?'<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">● PR WEEK</span>':'')+
         '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+_rightLbl+'</span>'+
       '</div>'+
@@ -10618,11 +10672,11 @@ function renderProgress() {
       }
     }
     var latestLine = latestPR && latestPR.ex
-      ? 'latest '+_esc(latestPR.ex)+' '+latestPR.weight
+      ? 'latest '+_esc(latestPR.ex)+' '+wDisp(latestPR.weight)
       : 'best '+_esc(prNames[0])+' '+prData[prNames[0]];
     var latestSub = latestPR && latestPR.ex
       ? fmtDate(latestPR.date).toUpperCase()+(latestPR.reps?' · ×'+latestPR.reps:'')
-      : 'ALL-TIME BESTS · LB';
+      : 'ALL-TIME BESTS · '+_uW().toUpperCase();
     var prPills = prNames.map(function(n){
       var meta=_prMeta(n, prData[n]);
       return '<div style="display:inline-flex;align-items:baseline;gap:5px;'+
@@ -10630,7 +10684,7 @@ function renderProgress() {
         'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);'+
         'border-radius:12px;padding:6px 11px;">'+
         '<span style="font-size:12px;font-weight:700;">'+_esc(n)+'</span>'+
-        '<span style="font-size:12px;font-weight:800;color:var(--yellow);">'+prData[n]+'</span>'+
+        '<span style="font-size:12px;font-weight:800;color:var(--yellow);">'+wDisp(prData[n])+'</span>'+
         (meta ? '<span class="kt-mono" style="font-size:9.5px;color:var(--muted);">'+(meta.reps?'\u00d7'+meta.reps+' \u00b7 ':'')+_esc(fmtDate(meta.date).toUpperCase())+'</span>' : '')+
       '</div>';
     }).join('');
@@ -10674,10 +10728,10 @@ function renderProgress() {
       if(_longest>0){
         bestsCard='<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Bests</div></div></div>'+
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;">'+
-          bb(Math.round(_longest*10)/10+' km','longest run')+
-          (bestRun5kSec>0?bb(secToPace(Math.round(bestRun5kSec/5))+'/km','best 5k pace'):'')+
-          (_bestPace?bb(secToPace(Math.round(_bestPace))+'/km','fastest pace'):'')+
-          (_bigWeek?bb(Math.round(_bigWeek*10)/10+' km','biggest week'):'')+
+          bb(fmtD(_longest),'longest run')+
+          (bestRun5kSec>0?bb(fmtPace(bestRun5kSec/5),'best 5k pace'):'')+
+          (_bestPace?bb(fmtPace(_bestPace),'fastest pace'):'')+
+          (_bigWeek?bb(fmtD(_bigWeek),'biggest week'):'')+
           '</div></div>';
       }
     }
@@ -10711,9 +10765,9 @@ function renderProgress() {
   var bwChart=bwChartData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Body Weight</div>'+
-        '<div><span class="chart-val">'+bwChartData[bwChartData.length-1].val+'</span><span class="chart-unit">lb</span></div>'+
-        (bwGoalProg?'<div class="chart-delta">Goal: '+bwGoalProg+' lb</div>':'')+
-      '</div></div>'+svgChart(bwChartData,'var(--cyan)',bwGoalProg||undefined)+'</div>'
+        '<div><span class="chart-val">'+wDisp(bwChartData[bwChartData.length-1].val)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
+        (bwGoalProg?'<div class="chart-delta">Goal: '+fmtW(bwGoalProg)+'</div>':'')+
+      '</div></div>'+svgChart(_wSeries(bwChartData),'var(--cyan)',bwGoalProg?wDisp(bwGoalProg):undefined)+'</div>'
     :'';
 
   // Slim programme-week stepper — utility, so it lives down by the calendar
@@ -10899,7 +10953,7 @@ function renderCalDetail(sessions,runs,sports){
       '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+dist+'km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
         '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.time+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">time</div></div>'+
-        '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+p+'/km</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
+        '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+fmtPaceStr(p)+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
         (r.hr?'<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.hr+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">bpm</div></div>':'')+
       '</div>'+
       (r.note?'<div style="font-size:12px;color:var(--muted);">'+_esc(r.note)+'</div>':'')+
@@ -11008,10 +11062,10 @@ function _buildHistExRows(exercises, prs, supersets){
     var repsArr=Array.isArray(ex.reps)?ex.reps:[];
     var allRepsSame=repsArr.length&&repsArr.every(function(r){return r===repsArr[0];});
     var repsDisplay=repsArr.length?(allRepsSame?String(repsArr[0]):'('+repsArr.join('/')+')'):String(ex.reps||'—');
-    var wStr=parseFloat(ex.weight)>0?ex.weight+' lb':'BW';
+    var wStr=parseFloat(ex.weight)>0?fmtW(ex.weight):'BW';
     var wLog=Array.isArray(ex.weightLog)?ex.weightLog:[];
     var allWeightsSame=!wLog.length||wLog.every(function(w){return w===wLog[0];});
-    var wDetail=allWeightsSame?'':' &nbsp;·&nbsp; '+wLog.join('/')+' lb';
+    var wDetail=allWeightsSame?'':' &nbsp;·&nbsp; '+wLog.map(wDisp).join('/')+' '+_uW();
     var isPR=(prs||[]).indexOf(ex.name)>-1;
     var isSSSecond=ssSet[idx-1];
     rows+=(isSSSecond
@@ -11152,7 +11206,7 @@ function renderHistory() {
     var top = null;
     for(var t=0;t<exs.length;t++){ var e=exs[t]; if(e.isMain){top=e;break;} if(!top)top=e; }
     var summary = exs.length+' lift'+(exs.length!==1?'s':'')+
-      (top?' · '+top.name+(parseFloat(top.weight)>0?' '+top.weight+' lb':''):'');
+      (top?' · '+top.name+(parseFloat(top.weight)>0?' '+fmtW(top.weight):''):'');
     if(s.week!==lastWk){
       lastWk=s.week;
       rows+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);padding:12px 0 4px;">'+
@@ -12311,15 +12365,15 @@ function _planChangeLedger(tools, idx){
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
-      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_snap25(i.weight)?old+' \u2192 ':'\u2192 ')+_snap25(i.weight)+' lb']);
+      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_snap25(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_snap25(i.weight))]);
     } else if(tc.name==='swap_cadence_days'){
       rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
     } else if(tc.name==='update_routine_weeks'){
       var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
-    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+i.weight+' lb']); }
-    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+i.weight+' lb']); }
-    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(String(i.pace||''))+' /km']); }
+    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(i.weight)]); }
+    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(i.weight)]); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(String(i.pace||'')))]); }
     else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
   });
   if(!rows.length) return '';
@@ -12350,13 +12404,13 @@ function toolCallLabel(tc){
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
-  if(n==='set_exercise_weight') return i.name+' → '+_snap25(i.weight)+' lb';
-  if(n==='set_bench_goal') return 'Bench goal '+i.weight+' lb';
-  if(n==='set_squat_goal') return 'Squat goal '+i.weight+' lb';
-  if(n==='set_run_goal') return 'Pace goal '+i.pace+'/km';
+  if(n==='set_exercise_weight') return i.name+' → '+fmtW(_snap25(i.weight));
+  if(n==='set_bench_goal') return 'Bench goal '+fmtW(i.weight);
+  if(n==='set_squat_goal') return 'Squat goal '+fmtW(i.weight);
+  if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(i.pace);
   if(n==='set_5k_goal') return '5k goal '+i.time;
-  if(n==='set_bw_goal') return 'BW goal '+i.weight+' lb';
-  if(n==='log_bodyweight') return 'Logged '+i.weight+' lb';
+  if(n==='set_bw_goal') return 'BW goal '+fmtW(i.weight);
+  if(n==='log_bodyweight') return 'Logged '+fmtW(i.weight);
   if(n==='log_run') return 'Run logged · '+(i.distance_km||'?')+'km '+( i.time||'');
   if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
   if(n==='delete_log') return (i.store||'entry')+' deleted';
@@ -13461,6 +13515,16 @@ function renderSettings() {
           '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+pills+'</div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Used when your programme does not specify a rest period. Adjust per set with −15s / +30s during a workout.</div>'+
         '</div>'+
+        '<div style="padding:4px 18px 16px;border-top:1px solid var(--border);">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin:12px 0 10px;">Units</div>'+
+          '<div class="kt-units-row"><span class="kt-units-lbl">Weight</span><div class="kt-units-seg" role="radiogroup" aria-label="Weight unit">'+
+            '<button class="kt-units-opt'+(_uW()==='lb'?' on':'')+'" role="radio" aria-checked="'+(_uW()==='lb')+'" onclick="setUnitW(\'lb\')">lb</button>'+
+            '<button class="kt-units-opt'+(_uW()==='kg'?' on':'')+'" role="radio" aria-checked="'+(_uW()==='kg')+'" onclick="setUnitW(\'kg\')">kg</button></div></div>'+
+          '<div class="kt-units-row"><span class="kt-units-lbl">Distance</span><div class="kt-units-seg" role="radiogroup" aria-label="Distance unit">'+
+            '<button class="kt-units-opt'+(_uD()==='km'?' on':'')+'" role="radio" aria-checked="'+(_uD()==='km')+'" onclick="setUnitD(\'km\')">km</button>'+
+            '<button class="kt-units-opt'+(_uD()==='mi'?' on':'')+'" role="radio" aria-checked="'+(_uD()==='mi')+'" onclick="setUnitD(\'mi\')">mi</button></div></div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">Display only \u2014 your log stays in lb and km underneath, so nothing changes when you switch back.</div>'+
+        '</div>'+
         '<div class="settings-row" onclick="openLogTabsEditor()">'+
           '<div class="settings-row-ic" style="background:#132a1a;">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
@@ -14043,7 +14107,7 @@ function _renderCFMovesBlock(){
       '<div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(m.name)+'</div>'+
       '<input type="number" inputmode="numeric" placeholder="reps" value="'+_esc(m.reps||'')+'" '+
         'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'"/>'+
-      '<input type="number" inputmode="decimal" placeholder="lb" value="'+_esc(m.weight||'')+'" '+
+      '<input type="number" inputmode="decimal" placeholder="'+_uW()+'" value="'+_esc(m.weight||'')+'" '+
         'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'"/>'+
       '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:var(--muted);'+
         'font-size:15px;cursor:pointer;padding:12px 8px;margin:-8px -4px;flex-shrink:0;'+
@@ -14129,7 +14193,7 @@ function _cfMovesForSave(){
   return cfDraftMoves.map(function(m){
     var out={name:m.name};
     var r=parseInt(m.reps); if(r>0) out.reps=r;
-    var w=parseFloat(m.weight); if(w>0) out.weight=w;
+    var w=parseFloat(m.weight); if(w>0) out.weight=wStore(w);   // typed in the display unit
     return out;
   });
 }
@@ -14383,7 +14447,7 @@ function _exDetailHTML(ex, hist, isCustom){
       html+='<div class="kt-bars" style="height:56px;margin:16px 0 4px;">'+asc.map(function(h,i){
         var isLast=i===asc.length-1;
         return '<div class="bar'+(isLast?' cur':'')+'" style="height:'+Math.max(6,Math.round(h.w/mx*100))+'%;">'+
-          (isLast?'<span class="val">'+h.w+'</span>':'')+'</div>';
+          (isLast?'<span class="val">'+wDisp(h.w)+'</span>':'')+'</div>';
       }).join('')+'</div>'+
       '<div style="display:flex;justify-content:space-between;margin-bottom:12px;">'+
         '<span class="kt-mono" style="font-size:8px;font-weight:700;color:var(--muted);">'+fmtDate(asc[0].date).toUpperCase()+'</span>'+
@@ -14414,7 +14478,7 @@ function _exDetailHTML(ex, hist, isCustom){
       var lbl=(SESS[h.type]&&SESS[h.type].label)||h.type||'';
       html+='<div style="display:flex;align-items:center;justify-content:space-between;height:40px;'+(i<hist.length-1?'border-bottom:1px solid var(--border);':'')+'">'+
         '<span style="font-size:13px;font-weight:600;color:var(--lite);">'+fmtDate(h.date)+(lbl?' · '+_esc(lbl):'')+'</span>'+
-        '<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+h.sets+'×'+_esc(String(h.reps||'?'))+' · '+(h.w>0?h.w+' LB':'BW')+(h.rpe?' @ RPE '+fmtRpe(h.rpe):'')+'</span>'+
+        '<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+h.sets+'×'+_esc(String(h.reps||'?'))+' · '+(h.w>0?fmtW(h.w).toUpperCase():'BW')+(h.rpe?' @ RPE '+fmtRpe(h.rpe):'')+'</span>'+
       '</div>';
     });
   }
