@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-6"/>
+<meta name="build" content="20260914-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10446,8 +10446,8 @@ function renderProgress() {
   var weeklyDistChart=weeklyDistData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Weekly distance · '+_uD()+'</div>'+
-        '<div><span class="chart-val">'+weeklyDistData[weeklyDistData.length-1].val+'</span><span class="chart-unit">'+
-          (weeklyDistData[weeklyDistData.length-1].date===getMondayISO()?'km this wk':'km · wk of '+_esc(fmtDate(weeklyDistData[weeklyDistData.length-1].date)))+'</span></div>'+
+        '<div><span class="chart-val">'+dDisp(weeklyDistData[weeklyDistData.length-1].val)+'</span><span class="chart-unit">'+
+          (weeklyDistData[weeklyDistData.length-1].date===getMondayISO()?_uD()+' this wk':_uD()+' · wk of '+_esc(fmtDate(weeklyDistData[weeklyDistData.length-1].date)))+'</span></div>'+
       '</div></div>'+svgChart(_dSeries(weeklyDistData),'var(--cyan)')+'</div>'
     :'';
 
