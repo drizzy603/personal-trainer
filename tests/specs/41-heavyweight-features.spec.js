@@ -111,3 +111,29 @@ run('run log stores how it felt; coach ledger shows plan changes with Keep / Und
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('training-day streak counts scheduled days back from today, skipping rest days', async () => {
+  const app = await boot({ seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    const out = await app.page.evaluate(() => {
+      const zero = calcTrainingDayStreak();
+      // Log something on the last five scheduled training days.
+      const ss = [], d = new Date(todayISO() + 'T00:00:00'); let logged = 0, guard = 0;
+      while (logged < 5 && guard++ < 60) {
+        const iso = _ymdLocal(d), dow = (d.getDay() + 6) % 7;
+        const plan = getWeekPlanForWeek(Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso))))[dow];
+        if (!plan.isRest) { ss.push({ id: Date.now() + logged, date: iso, type: plan.isLift ? plan.type : 'Push', week: weekForDate(iso), exercises: [{ name: 'Bench Press', sets: 1, reps: [5], weight: 100, weightLog: [100], rpe: 7 }] }); logged++; }
+        d.setDate(d.getDate() - 1);
+      }
+      lsSet('kt_sessions', ss);
+      const five = calcTrainingDayStreak();
+      switchTab('progress');
+      const txt = document.body.textContent;
+      return { zero, five, shows: /5days|5 days|5day/.test(txt.replace(/\s+/g, '')) || txt.indexOf('Streak') > -1 };
+    });
+    assert(out.zero === 0, 'no logs → 0');
+    assert(out.five === 5, 'five logged training days in a row → 5, got ' + out.five);
+    assert(out.shows, 'Progress statband shows the streak');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

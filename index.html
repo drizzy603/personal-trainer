@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-4"/>
+<meta name="build" content="20260914-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2533,6 +2533,25 @@ function _trainingDays(){
   getRuns().forEach(function(r){ if(r&&r.date) out.push({date:r.date}); });
   getSportLogs().forEach(function(x){ if(x&&x.date) out.push({date:x.date}); });
   return out;
+}
+// Training-day streak (board H-08 "6 days"): consecutive SCHEDULED training
+// days with something logged, counting back from today. Rest days are
+// skipped, never broken on. Today only counts once it is logged; an unlogged
+// today does not end the streak until the day is over.
+function calcTrainingDayStreak(){
+  if(!hasCustomRoutine()) return 0;
+  var streak=0, d=new Date(todayISO()+'T00:00:00');
+  for(var i=0;i<400;i++){
+    var iso=_ymdLocal(d), dow=(d.getDay()+6)%7;
+    var wk=Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso)));
+    var plan=(getWeekPlanForWeek(wk)||[])[dow]||{};
+    if(!plan.isRest){
+      if(_loggedOn(iso)) streak++;
+      else if(i>0) break;          // a missed training day ends it; today gets the benefit of the doubt
+    }
+    d.setDate(d.getDate()-1);
+  }
+  return streak;
 }
 function calcStreak(sessions) {
   // Weeks are keyed by their Monday's local date (same grammar as the
@@ -10292,7 +10311,7 @@ function renderProgress() {
   var liftStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
     '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(weekVol).toLocaleString():'—')+'</div><div class="kt-statband-lbl">lb · this week</div></div>'+
-    '<div><div class="kt-statband-val">'+streak+'<span class="u">wk</span></div><div class="kt-statband-lbl">Streak</div></div>'+
+    '<div><div class="kt-statband-val">'+calcTrainingDayStreak()+'<span class="u">'+(calcTrainingDayStreak()===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
     '</div>'+_weekDotsRow();
 
   var runStats = '<div class="kt-statband">'+
