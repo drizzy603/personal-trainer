@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-2"/>
+<meta name="build" content="20260914-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1344,6 +1344,8 @@ html[data-room="heavyweight"] .kt-sched-editor{background:var(--card);}
 html[data-room="heavyweight"] .kt-sched-pick{background:var(--card);}
 html[data-room="heavyweight"] .kt-sched-editor-hd{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .kt-ledger-card-hd{font-family:'Archivo',sans-serif;color:var(--accent);}
+html[data-room="heavyweight"]{--toast-pr:var(--earned);--toast-ok:var(--earned);--toast-ink:#0b0b0d;}
+html[data-room="heavyweight"] .kt-sched-pick.on{background:var(--accent);border-color:var(--accent);color:#fff;}
 html[data-room="heavyweight"] .kt-ov-first,html[data-room="heavyweight"] .kt-ov-focus-lbl{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .settings-row{border-color:var(--border);}
 html[data-room="heavyweight"] .settings-row-ic{background:var(--card2)!important;border:none;border-radius:10px;}
@@ -6670,8 +6672,9 @@ function openSessionOverview(act){
   var exs=act.exercises||[];
   var wd=null; try{ wd=getWkData(); }catch(e){}
   var focus=wd&&(wd.note||wd.focus)?String(wd.note||wd.focus):'';
+  var _ww=getWeights();
   var rows=exs.map(function(ex,i){
-    var w=parseFloat(ex.weight)||0;
+    var w=parseFloat(ex.weight)||parseFloat(_ww[ex.name])||0;
     var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+(w>0?w+' lb':'bodyweight');
     return '<div class="kt-ov-row'+(i===0?' first':'')+'">'+
       '<span class="kt-ov-idx">'+(i+1)+'</span>'+
@@ -11204,8 +11207,8 @@ function showToast(msg, style){
   t.textContent=msg;
   // 'pr' — gold PR-celebration variant, shown a beat longer.
   // 'err' — failures were painted in success green; red, longer, assertive.
-  t.style.background=style==='pr'?'var(--yellow)':(style==='err'?'var(--red)':'var(--green)');
-  t.style.color='var(--on-accent)';
+  t.style.background=style==='pr'?'var(--toast-pr,var(--yellow))':(style==='err'?'var(--red)':'var(--toast-ok,var(--green))');
+  t.style.color=style==='err'?'var(--on-accent)':'var(--toast-ink,var(--on-accent))';
   t.setAttribute('aria-live', style==='err'?'assertive':'polite');
   t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
