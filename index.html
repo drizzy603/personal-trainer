@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-9"/>
+<meta name="build" content="20260915-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2455,7 +2455,7 @@ function _progressHeroVariants(){
   var loggedToday = sessions.some(function(s){return s.date===todayStr;})
     || runs.some(function(r){return r.date===todayStr;})
     || sports.some(function(s){return s.date===todayStr;});
-  var dayStreak = calcDayStreak();
+  var dayStreak = calcStreakDays();
   var pct = totalWks>0 ? Math.round((currentWeek/totalWks)*100) : 0;
   var thisWeek = sessions.filter(_inThisCalWeek).length + runs.filter(_inThisCalWeek).length;
   var firstName = getUserFirstName();
@@ -2608,6 +2608,10 @@ function calcTrainingDayStreak(){
   }
   return streak;
 }
+// THE streak: consecutive scheduled training days with something logged
+// (rest days skipped, not broken on); calendar days when there is no plan.
+// Today counts once logged and never ends the streak before the day is over.
+function calcStreakDays(){ return hasCustomRoutine() ? calcTrainingDayStreak() : calcDayStreak(); }
 function calcStreak(sessions) {
   // Weeks are keyed by their Monday's local date (same grammar as the
   // volume buckets). The old year+week-number key split the week spanning
@@ -2787,7 +2791,7 @@ var MILESTONE_DEFS = [
   {k:'km',     label:function(v){return v+' km run all-time';},        steps:[25,50,100,250,500],
    value:function(){var t=0;getRuns().forEach(function(r){t+=parseFloat(r.distance||r.dist)||0;});return t;}},
   {k:'streak', label:function(v){return v+'-day streak';},             steps:[7,14,30,60],
-   value:function(){return calcDayStreak();}},
+   value:function(){return calcStreakDays();}},
   {k:'pr',     label:function(v){return v+' PRs on file';},            steps:[5,10,25,50],
    value:function(){return Object.keys(getPRs()).length;}}
 ];
@@ -3387,9 +3391,12 @@ function _streakChip(){
     return '<span class="kt-streak-chip" style="border-color:color-mix(in srgb,var(--yellow) 45%,transparent);">'+
       '<span class="lbl'+_m10Once('chip-streak-'+goldMs.step)+'" style="color:var(--yellow);">◆ '+goldMs.step+'-DAY STREAK</span></span>';
   }
-  var s = calcStreak(_trainingDays());
+  var s = calcStreakDays();
   if(!(s >= 1)) return '';
-  return '<span class="kt-streak-chip"><span class="lbl">'+s+'-WEEK STREAK</span></span>';
+  // The chip is the one surface that can say the streak is on the line today.
+  var _ta = getTodayActivity();
+  var atRisk = s >= 2 && _ta.type !== 'rest' && !_loggedOn(todayISO());
+  return '<span class="kt-streak-chip'+(atRisk?' risk':'')+'"><span class="lbl">'+s+'-DAY STREAK'+(atRisk?' \u00b7 TRAIN TODAY TO KEEP IT':'')+'</span></span>';
 }
 
 // ── Health write (lifting sessions → Apple Health) ───────────────────────────
@@ -8310,7 +8317,12 @@ function openStarterIntake(){ _si={step:0, answers:{}}; _siPaint(); }
 function closeStarterIntake(){ var el=document.getElementById('starterOverlay'); if(el) el.remove(); _si=null; }
 function _siBack(){ if(!_si) return; if(_si.step===0){ closeStarterIntake(); return; } _si.step--; _siPaint(); }
 function _siPick(v){ if(!_si) return; _si.answers[STARTER_QS[_si.step].k]=v; _si.step++; _siPaint(); }
-function applyStarterIntake(){ if(_si) applyStarterRoutine(_si.answers); }
+function applyStarterIntake(){
+  if(!_si) return;
+  var el=document.getElementById('si-name'); var v=el?String(el.value||'').trim():'';
+  if(v) localStorage.setItem('kt_user_name', v.split(/\s+/)[0]);
+  applyStarterRoutine(_si.answers);
+}
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
   if(getCustomRoutine()) archiveCurrentRoutine();
@@ -8402,6 +8414,8 @@ function _siPaint(){
         '<div><div class="kt-statband-val">'+liftsPerDay+'</div><div class="kt-statband-lbl">Lifts / day</div></div>'+
         '<div><div class="kt-statband-val">~'+estMin+'<span class="u">m</span></div><div class="kt-statband-lbl">Per session</div></div>'+
       '</div>'+
+      (getUserFirstName()?'':'<div style="margin-top:18px;"><label for="si-name" class="kt-mono" style="display:block;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">YOUR FIRST NAME \u00b7 OPTIONAL</label>'+
+        '<input id="si-name" type="text" autocomplete="given-name" autocapitalize="words" placeholder="So the app can say hello" style="width:100%;box-sizing:border-box;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:16px;font-family:inherit;color:var(--text);"/></div>')+
       weekRows+
       '<div style="font-size:12.5px;line-height:1.55;color:var(--muted);margin-top:14px;">Base, build, peak, deload over 8 weeks — loads climb from week 4. Everything is editable, and the AI Coach can rebuild it into a custom programme whenever you connect a key.</div>'+
     '</div>'+
@@ -8517,11 +8531,10 @@ function renderLog() {
       // and this branch previously had no slot for the card at all.
       return subBar + header + renderWeekHeader() + _healthCardSlot() + renderSportSection(primaryAct);
     }
-    // Editorial Run segment when a routine exists; legacy stack otherwise.
-    if(hasCustomRoutine()){
-      return subBar + renderRunSegment();
-    }
-    return subBar + header + renderWeekHeader() + renderRunsSection();
+    // Editorial Run segment with or without a programme — the legacy stack
+    // showed a blank "Week N Run Targets" card and never surfaced the Health
+    // import to a runner who opened this tab first.
+    return subBar + renderRunSegment();
   }
 
   if (logSubTab === 'sport') {
@@ -8554,6 +8567,7 @@ function renderLog() {
     var _altLine = _hasKey
       ? 'In a hurry? <button onclick="openStarterIntake()" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Quick starter plan →</button>'
       : 'Want it custom? <button onclick="switchTab(\'coach\')" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Set up the AI Coach →</button>';
+    _altLine += '<br><button onclick="openWorkflow()" style="background:none;border:none;padding:6px 0 0;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">How Supero works \u2192</button>';
     var _greet = _firstName ? getGreeting()+', '+_esc(_firstName)+'.' : getGreeting()+'.';
     return subBar +
       '<div class="kt-meta-row">'+
@@ -13000,7 +13014,7 @@ function buildSystemPrompt(){
   var prs=getPRs();
   var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
-  var userName=cr&&cr.name?cr.name:'there';
+  var userName=getUserFirstName()||'there';
   var _d=new Date();
   var today=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
   var totalWks=getTotalWeeks();
@@ -15931,7 +15945,7 @@ function runAutoBackupNow(){
       <div class="ed-steps">
         <div class="ed-step">
           <div class="ed-step-rail"><div class="ed-step-num">1</div><div class="ed-step-line"></div></div>
-          <div class="ed-step-body"><h3>Start intake</h3><p>The Coach asks ten questions covering goals, frequency, equipment, injuries, and current strength.</p></div>
+          <div class="ed-step-body"><h3>Start intake</h3><p>Five taps build a starter block on your phone \u2014 no account, no key. Or the Coach asks ten questions (goals, frequency, equipment, injuries, current strength) and writes a fully custom plan.</p></div>
         </div>
         <div class="ed-step">
           <div class="ed-step-rail"><div class="ed-step-num">2</div><div class="ed-step-line"></div></div>
