@@ -98,7 +98,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // npm plugins were added). The custom in-app plugins must therefore be
 // registered programmatically. Main.storyboard's view controller points here.
 class SuperoViewController: CAPBridgeViewController {
+    // Live-page updates (TrovoOtaPlugin): a staged newer index.html + the
+    // bundled web folder live in Application Support; serve it when its
+    // build beats the bundle's, otherwise the bundle. See TrovoOta.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        if let live = TrovoOta.launchLocation() {
+            descriptor.appLocation = live
+        }
+        return descriptor
+    }
+
     override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(TrovoOtaPlugin())
         bridge?.registerPluginInstance(TrovoHealthPlugin())
         bridge?.registerPluginInstance(TrovoTimerPlugin())
         bridge?.registerPluginInstance(TrovoSharePlugin())

@@ -74,3 +74,49 @@ run('Runs bests include a 10k best when one exists', async () => {
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('Dynamic Type: the root zoom follows the probe, capped, and can be switched off', async () => {
+  const app = await boot();
+  try {
+    const out = await app.page.evaluate(() => {
+      const def = _dynTypeScale();                       // headless has no system body font → 1
+      applyDynamicType(1.2);
+      const zoomed = { zoom: document.documentElement.style.zoom, attr: document.documentElement.getAttribute('data-dyn-type') };
+      applyDynamicType(1.9);                             // over the cap only when forced; real probe is clamped
+      const over = document.documentElement.style.zoom;
+      localStorage.setItem('kt_dyn_type', '0'); applyDynamicType();
+      const off = document.documentElement.style.zoom;
+      const capped = _dynTypeScale();
+      const vp = document.querySelector('meta[name=viewport]').getAttribute('content');
+      return { def, zoomed, over, off, capped, vp };
+    });
+    assert(out.def === 1, 'no system font → scale 1');
+    assert(out.zoomed.zoom === '1.2' && out.zoomed.attr === '1.2', 'forced 1.2 applies a root zoom');
+    assert(out.off === '' && out.capped === 1, 'switching off removes the zoom');
+    assert(!/user-scalable=no/.test(out.vp) && /maximum-scale=3/.test(out.vp), 'pinch zoom is no longer blocked');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('OTA: a newer live page is staged through the native plugin, not localStorage', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      window.__staged = null; window.__confirmed = 0;
+      Capacitor.Plugins.TrovoOta = { stage: async (o) => { window.__staged = o; return { staged: true }; }, confirm: async () => { window.__confirmed++; }, status: async () => ({}) };
+      localStorage.setItem('kt_cached_html', '<html>old</html>'); localStorage.setItem('kt_cached_build', '20200101-1');
+      const html = document.documentElement.outerHTML.replace(/<meta name="build" content="[^"]+"/, '<meta name="build" content="20991231-1"');
+      window.fetch = async () => ({ ok: true, text: async () => html });
+      const proto = window.location.protocol;
+      Object.defineProperty(window, '__proto', { value: proto });
+      _fetchLivePage();
+      await new Promise(r => setTimeout(r, 200));
+      _otaConfirmed = false; render();
+      return { staged: window.__staged && window.__staged.build, cachedGone: !localStorage.getItem('kt_cached_html'), stagedKey: localStorage.getItem('kt_ota_staged'), confirmed: window.__confirmed };
+    });
+    assert(out.staged === '20991231-1', 'the plugin received the newer page: ' + out.staged);
+    assert(out.cachedGone && out.stagedKey === '20991231-1', 'localStorage copy dropped, staged stamp kept');
+    assert(out.confirmed >= 1, 'first render confirms the live page');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

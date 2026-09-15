@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-8"/>
+<meta name="build" content="20260914-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -156,6 +156,7 @@ window.addEventListener('unhandledrejection', function(e){
   --tab-gap:8px;
   --tab-bottom-clear:14px;
 }
+html{touch-action:manipulation;}
 html,body{background:var(--bg);color:var(--text);
   font-family:'Inter',-apple-system,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
@@ -1539,7 +1540,19 @@ function _fetchLivePage(){
     var liveBuild=m[1];
     localStorage.setItem('kt_last_seen_build', liveBuild);
     var cachedBuild=localStorage.getItem('kt_cached_build')||'';
-    if(buildNewer(liveBuild,APP_BUILD) && buildNewer(liveBuild,cachedBuild)){
+    var _staged=localStorage.getItem('kt_ota_staged')||'';
+    if(buildNewer(liveBuild,APP_BUILD) && buildNewer(liveBuild,cachedBuild) && buildNewer(liveBuild,_staged)){
+      // Plugin-capable shells (build 41+) stage the page on disk beside the
+      // bundled assets; localStorage no longer carries ~1 MB of HTML.
+      var OTA=_plug('TrovoOta');
+      if(OTA && OTA.stage){
+        Promise.resolve(OTA.stage({html:html, build:liveBuild})).then(function(){
+          localStorage.setItem('kt_ota_staged', liveBuild);
+          try{ localStorage.removeItem('kt_cached_html'); localStorage.removeItem('kt_cached_build'); localStorage.removeItem('kt_cached_err'); }catch(e){}
+          _wchLog('ota: staged '+liveBuild);
+        }).catch(function(e){ _wchLog('ota: stage failed · '+((e&&e.message)||e)); });
+        return;
+      }
       try{
         localStorage.setItem('kt_cached_html', html);
         localStorage.setItem('kt_cached_build', liveBuild);
@@ -2644,7 +2657,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
+var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen'];
 function buildBackupJSON() {
@@ -3656,7 +3669,7 @@ function render() {
   }
   // First successful paint disarms the OTA one-strike breaker: this page
   // (bundled or swapped-in live) provably boots.
-  if(!_otaConfirmed){ _otaConfirmed=true; try{ localStorage.removeItem('kt_ota_attempt'); }catch(e){} }
+  if(!_otaConfirmed){ _otaConfirmed=true; try{ localStorage.removeItem('kt_ota_attempt'); }catch(e){} try{ var _o=_plug('TrovoOta'); if(_o&&_o.confirm) Promise.resolve(_o.confirm()).catch(function(){}); }catch(e){} }
   screen.scrollTop = routeChanged ? 0 : prevScroll;
   _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
@@ -13626,6 +13639,13 @@ function renderSettings() {
             '<button class="kt-units-opt'+(_uD()==='mi'?' on':'')+'" role="radio" aria-checked="'+(_uD()==='mi')+'" onclick="setUnitD(\'mi\')">mi</button></div></div>'+
           '<div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">Display only \u2014 your log stays in lb and km underneath, so nothing changes when you switch back.</div>'+
         '</div>'+
+        '<div class="settings-row" role="switch" aria-checked="'+(localStorage.getItem('kt_dyn_type')!=='0')+'" onclick="toggleDynType()">'+
+          '<div class="settings-row-ic" style="background:#1b2230;">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>'+
+          '</div>'+
+          '<div class="settings-row-body"><div class="settings-row-title">Follow iOS text size</div><div class="settings-row-sub">'+(localStorage.getItem('kt_dyn_type')!=='0'?'Scales with Settings \u203a Display \u203a Text Size, up to 125%':'Off \u2014 fixed size')+'</div></div>'+
+          '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_dyn_type')!=='0'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_dyn_type')!=='0'?'On':'Off')+'</span>'+
+        '</div>'+
         '<div class="settings-row" onclick="openLogTabsEditor()">'+
           '<div class="settings-row-ic" style="background:#132a1a;">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
@@ -13775,7 +13795,8 @@ function renderSettings() {
       var liveBuild=localStorage.getItem('kt_last_seen_build')||'';
       var cachedBuild=localStorage.getItem('kt_cached_build')||'';
       var status;
-      if(buildNewer(cachedBuild,APP_BUILD)) status='Update ready · restarts on next launch';
+      var _stg=localStorage.getItem('kt_ota_staged')||'';
+      if(buildNewer(cachedBuild,APP_BUILD) || buildNewer(_stg,APP_BUILD)) status='Update ready · restarts on next launch';
       else if(buildNewer(liveBuild,APP_BUILD) && localStorage.getItem('kt_cached_err')) status='Update couldn\u2019t be stored \u2014 free space (export, clear chat) and reopen';
       else if(buildNewer(liveBuild,APP_BUILD)) status='Update available · downloading…';
       else if(liveBuild)                       status='Up to date';
@@ -14752,6 +14773,30 @@ if(!THEMES[currentTheme]){
   localStorage.setItem('kt_theme','heavyweight');
 }
 if(!_paintTheme(currentTheme)) applyTheme('heavyweight');
+// ── Dynamic Type ─────────────────────────────────────────────────────────────
+// The app pins its own pixel sizes, so the iOS text-size setting used to do
+// nothing here. A probe styled with the system body font reports the size the
+// user chose (17 px at default); everything scales with it through a root
+// zoom, capped so the runner still fits a 667 pt screen. Off in Settings.
+function _dynTypeScale(force){
+  if(force) return force;
+  if(localStorage.getItem('kt_dyn_type')==='0') return 1;
+  var el=document.getElementById('kt-dt-probe');
+  if(!el){ el=document.createElement('span'); el.id='kt-dt-probe'; el.setAttribute('aria-hidden','true');
+    el.style.cssText='position:absolute;left:-9999px;top:0;visibility:hidden;font:-apple-system-body;'; el.textContent='x'; document.body.appendChild(el); }
+  var px=parseFloat(getComputedStyle(el).fontSize)||17;
+  return Math.max(1, Math.min(1.25, Math.round(px/17*100)/100));
+}
+function applyDynamicType(force){
+  var sc=_dynTypeScale(force);
+  document.documentElement.style.zoom = sc===1 ? '' : String(sc);
+  document.documentElement.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+}
+function toggleDynType(){
+  localStorage.setItem('kt_dyn_type', localStorage.getItem('kt_dyn_type')==='0'?'1':'0');
+  applyDynamicType(); render();
+}
+try{ applyDynamicType(); document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') applyDynamicType(); }); }catch(e){}
 currentWeek = getWeek();
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
