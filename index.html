@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-4"/>
+<meta name="build" content="20260915-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2356,6 +2356,15 @@ function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+Stri
 // inventing a body. (Latest BW is an approximation for old sessions —
 // good enough for trends, and consistent across every consumer.)
 var _bwLiftCache={};
+// Load label for a PLANNED exercise. Zero means "bodyweight" only when the
+// lift is one; a loaded lift the programme left at 0 (every starter
+// accessory) says so instead of claiming Cable Fly is a bodyweight move.
+function _loadLabel(name, w, short){
+  w=parseFloat(w)||0;
+  if(w>0) return fmtW(w);
+  if(_isBodyweightLift(name)) return short?'BW':'bodyweight';
+  return 'your load';
+}
 function _isBodyweightLift(name){
   var n=String(name||'').toLowerCase();
   if(_bwLiftCache[n]!==undefined) return _bwLiftCache[n];
@@ -4226,7 +4235,7 @@ function fallbackCoachCard(activity){
     var last = getLastSessionData(main.name);
     var mainW = parseFloat(main.weight) || 0;
     var lastW = last ? (parseFloat(last.weight) || 0) : 0;
-    var loadPhrase = mainW > 0 ? 'Target ' + fmtW(mainW) : 'Bodyweight';
+    var loadPhrase = mainW > 0 ? 'Target ' + fmtW(mainW) : (_isBodyweightLift(main.name) ? 'Bodyweight' : 'Pick your load');
     var msg;
     if(mainW > 0 && lastW > 0 && mainW > lastW){
       msg = main.name + ' is up to ' + fmtW(mainW) + ' today. If warm-ups feel heavy, drop the working set to ' + wDisp(lastW) + ' × ' + (Array.isArray(last.reps)?last.reps[0]:last.reps) + '. Don\'t grind it.';
@@ -4724,7 +4733,7 @@ function renderTodayEditorial(){
         }
       }
       var exW = parseFloat(ex.weight) || 0;
-      var wLbl = exW > 0 ? fmtW(exW) : 'BW';
+      var wLbl = _loadLabel(ex.name, exW, true);
       rows += '<div class="kt-marquee-row kt-tap" onclick="toggleTodaySparkIdx('+i+')"'+(open?' style="border-bottom:none;"':'')+'>'+
         '<div class="kt-marquee-left">'+
           '<span class="kt-marquee-name">'+_esc(ex.name)+'</span>'+
@@ -6790,7 +6799,7 @@ function openSessionOverview(act){
   var _ww=getWeights();
   var rows=exs.map(function(ex,i){
     var w=parseFloat(ex.weight)||parseFloat(_ww[ex.name])||0;
-    var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+(w>0?fmtW(w):'bodyweight');
+    var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+_loadLabel(ex.name, w);
     return '<div class="kt-ov-row'+(i===0?' first':'')+'">'+
       '<span class="kt-ov-idx">'+(i+1)+'</span>'+
       '<div class="kt-ov-body"><div class="kt-ov-name">'+_esc(ex.name)+'</div><div class="kt-ov-tgt">'+tgt+'</div></div>'+
@@ -7211,7 +7220,7 @@ function _renderRunnerIdleBody(ex, next){
   var plateIdle = _isBarbellLift(ex.name) ? _plateMath(targetW) : '';
   var targetLine = '<div class="kt-r-target-lbl">TARGET</div>'+
     '<div class="kt-r-target">'+
-      (targetW>0?wDisp(targetW)+'<span class="u">'+_uW()+'</span>':'BW')+
+      (targetW>0?wDisp(targetW)+'<span class="u">'+_uW()+'</span>':_esc(_loadLabel(ex.name,0,true)))+
     '</div>'+
     '<div class="kt-r-target-sets">'+_esc(_plural(ex.sets,'set')+' × '+_fmtRepTarget(ex.reps)+' reps')+'</div>'+
     (plateIdle?'<div class="kt-r-target-plate">'+plateIdle+'</div>':'');
@@ -7504,7 +7513,7 @@ function _renderRunnerEngagedBody(ex, done){
   var _last = getLastSessionData(ex.name);
   var _lastW = _last ? _lastPair(_last).w : 0;
   var _lastR = _last ? _lastPair(_last).r : null;
-  var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?wDisp(_tW):'BW')+' × '+_tR+
+  var targetLine = '<div class="kt-eng-target">'+_esc('TARGET '+(_tW>0?wDisp(_tW):_loadLabel(ex.name,0,true))+' × '+_tR+
     (_lastW>0?' · LAST '+wDisp(_lastW)+' × '+_lastR:''))+'</div>';
   return '<div class="kt-eng">'+
     '<div class="kt-eng-name">'+_esc(ex.name)+'</div>'+
@@ -7535,7 +7544,7 @@ function _renderRunnerRestingBody(ex, done){
   var foot = '<div style="flex:1;"></div>'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;">'+
       '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:.1em;opacity:.4;">UP NEXT · SET '+(done+1)+'</div>'+
-      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+_esc((_nW>0?fmtW(_nW):'BW')+' × '+_nR)+'</div></div>'+
+      '<div style="font-size:13px;font-weight:700;opacity:.7;margin-top:3px;">'+_esc((_nW>0?fmtW(_nW):_loadLabel(ex.name,0,true))+' × '+_nR)+'</div></div>'+
     '</div>';
   // C1·A — the PR beat owns the display slot during the rest that follows
   // the record set: gold eyebrow + gold numeral, clock compressed to a side
@@ -7577,7 +7586,7 @@ function _renderRunnerMirrorBody(ex, done){
   var _lastR = _last ? _lastPair(_last).r : null;
   return '<div style="flex:1;display:flex;flex-direction:column;min-height:0;">'+
     '<div class="kt-r-card-name" style="margin-top:6px;">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?wDisp(_nW):'BW')+' × '+_nR+
+    '<div class="kt-eng-target" style="margin-top:8px;">'+_esc('TARGET '+(_nW>0?wDisp(_nW):_loadLabel(ex.name,0,true))+' × '+_nR+
       (_lastW>0?' · LAST '+wDisp(_lastW)+' × '+_lastR:''))+'</div>'+
     _renderCompletedSets(ex)+
     '<div style="flex:1;"></div>'+
@@ -10738,14 +10747,14 @@ function renderProgress() {
     var delta = curW - startW;
     var maxExpectedGain = 30; // lb per block for display purposes
     var pct = startW > 0 ? Math.min(100, Math.max(4, Math.round((delta / maxExpectedGain) * 100))) : 0;
-    var wLabel = curMain && curMain.weight === 0 ? 'Bodyweight' : fmtW(curW);
+    var wLabel = curMain && curMain.weight === 0 ? _loadLabel(curMain.name, 0) : fmtW(curW);
     liftRows += '<div class="lift-row">'+
       '<div class="lift-head">'+
         '<span class="lift-name">'+lift.label+'</span>'+
         (delta > 0 ? '<span class="lift-delta">+'+wDisp(delta)+' '+_uW()+'</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+wDisp(delta)+' '+_uW()+'</span>' : ''))+
       '</div>'+
       '<div class="lift-bar"><div class="lift-fill" style="width:'+(delta>0?pct:4)+'%"></div></div>'+
-      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?'BW':fmtW(startW))+' start</span><span>'+wLabel+' now</span></div>'+
+      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?_loadLabel(startMain.name,0,true):fmtW(startW))+' start</span><span>'+wLabel+' now</span></div>'+
     '</div>';
   });
 
@@ -11345,7 +11354,7 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
     x.fillStyle=isPR?GOLD:INK;
     x.fillText(name, M, ly);
     var w=exWeight(ex);
-    var wStr=(w>0?(w+' LB'):'BW')+(isPR?' ★':'');
+    var wStr=(w>0?fmtW(w).toUpperCase():'BW')+(isPR?' ★':'');
     x.textAlign='right'; x.fillStyle=isPR?GOLD:LITE;
     x.font='700 34px "JetBrains Mono", ui-monospace, monospace';
     x.fillText(wStr, R, ly);
@@ -12646,7 +12655,7 @@ function saveApiKey(){
   var inp=document.getElementById('coach-key-input');
   if(!inp)return;
   var k=inp.value.trim();
-  if(!k||!k.startsWith('sk-')){showToast('Invalid key — must start with sk-','err');return;}
+  if(!k||!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -13096,7 +13105,7 @@ function renderCoach(){
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;">Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent);">console.anthropic.com</a></p>'+
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.55;">Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.<br>Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.</p>'+
       (!hasCustomRoutine()
         ? '<div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">'+
             '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
@@ -13736,7 +13745,7 @@ function renderSettings() {
     '<div class="settings-group">'+
     '<div class="settings-group-hd">AI Coach</div>'+
     '<div style="padding:16px 18px;">'+
-    '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. <span style="color:var(--accent)">console.anthropic.com</span></p>'+
+    '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. Get a key from your Anthropic account (console.anthropic.com → API Keys); Anthropic bills usage to you, typically a few cents per chat.</p>'+
     (apiKey
       ? '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:10px;font-family:monospace;">'+maskedKey+'</div>'+
         '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'+
@@ -13860,11 +13869,11 @@ function renderSettings() {
       var cachedBuild=localStorage.getItem('kt_cached_build')||'';
       var status;
       var _stg=localStorage.getItem('kt_ota_staged')||'';
-      if(buildNewer(cachedBuild,APP_BUILD) || buildNewer(_stg,APP_BUILD)) status='Update ready · restarts on next launch';
-      else if(buildNewer(liveBuild,APP_BUILD) && localStorage.getItem('kt_cached_err')) status='Update couldn\u2019t be stored \u2014 free space (export, clear chat) and reopen';
-      else if(buildNewer(liveBuild,APP_BUILD)) status='Update available · downloading…';
+      if(buildNewer(cachedBuild,APP_BUILD) || buildNewer(_stg,APP_BUILD)) status='Latest content ready · applies on next launch';
+      else if(buildNewer(liveBuild,APP_BUILD) && localStorage.getItem('kt_cached_err')) status='Latest content couldn\u2019t be stored \u2014 free space (export, clear chat) and reopen';
+      else if(buildNewer(liveBuild,APP_BUILD)) status='Fetching latest content…';
       else if(liveBuild)                       status='Up to date';
-      else                                     status='Checking for updates…';
+      else                                     status='Checking for new content…';
       return '<div class="settings-row">'+
         '<div class="settings-row-ic" style="background:#1a262e;">'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
@@ -13986,7 +13995,7 @@ function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
   if(!el||!el.value.trim()){showToast('Enter a key first');return;}
   var k=el.value.trim();
-  if(!k.startsWith('sk-')){showToast('Invalid key — must start with sk-','err');return;}
+  if(!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -14024,7 +14033,7 @@ function _buildHealthRows(){
           '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'+
         '</svg>'+
       '</div>'+
-      '<div class="settings-row-body"><div class="settings-row-title">Readiness score</div><div class="settings-row-sub">'+(localStorage.getItem('kt_readiness_on')==='1'?((lsGet('kt_readiness')&&lsGet('kt_readiness').date===todayISO())?'Today: '+lsGet('kt_readiness').score+' · '+lsGet('kt_readiness').zone:'Sleep, HRV & resting HR each morning'):'Off — recovery-aware training')+'</div></div>'+
+      '<div class="settings-row-body"><div class="settings-row-title">Readiness score</div><div class="settings-row-sub">'+(localStorage.getItem('kt_readiness_on')==='1'?((lsGet('kt_readiness')&&lsGet('kt_readiness').date===todayISO())?'Today: '+lsGet('kt_readiness').score+' · '+lsGet('kt_readiness').zone:'Sleep, HRV & resting HR each morning \u00b7 shared with the Coach only when you chat'):'Off — recovery-aware training')+'</div></div>'+
       '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(localStorage.getItem('kt_readiness_on')==='1'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(localStorage.getItem('kt_readiness_on')==='1'?'On':'Off')+'</span>'+
     '</div>' : '')+
   (localStorage.getItem('kt_hk_last_sync')?
@@ -15484,9 +15493,33 @@ function _hashStr(s){
   for(var i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))|0; }
   return String(h);
 }
+// The iCloud copy carries no Apple Health readings (App Review 5.1.3: health
+// data may not be stored in iCloud). Runs and sports imported from Health keep
+// date / distance / duration; heart rate and calories are dropped, and the
+// Health dedup ledger is left out. The on-device Files copy is untouched.
+function _sanitizeForICloud(payload){
+  try{
+    var o=JSON.parse(payload);
+    if(o && typeof o==='object'){
+      delete o.kt_hk_imported;
+      if(Array.isArray(o.kt_runs)) o.kt_runs=o.kt_runs.map(function(r){
+        if(!r || r.note!=='From Apple Health') return r;
+        var c={}; Object.keys(r).forEach(function(k){ if(k!=='hr') c[k]=r[k]; }); return c;
+      });
+      if(Array.isArray(o.kt_sports)) o.kt_sports=o.kt_sports.map(function(s){
+        if(!s || s.notes!=='From Apple Health' || !s.data) return s;
+        var c={}; Object.keys(s).forEach(function(k){ c[k]=s[k]; });
+        var d={}; Object.keys(s.data).forEach(function(k){ if(k!=='avgHR'&&k!=='calories') d[k]=s.data[k]; });
+        c.data=d; return c;
+      });
+    }
+    return JSON.stringify(o);
+  }catch(e){ return payload; }
+}
 function _backupToICloud(payload, dow){
   var TS=_plug('TrovoShare');
   if(!TS || !TS.saveToICloud) return;
+  payload=_sanitizeForICloud(payload);
   Promise.resolve(TS.saveToICloud({name:'supero-backup-latest.json', content:payload}))
     .then(function(r){
       if(r && r.saved){
@@ -15710,7 +15743,7 @@ function runAutoBackupNow(){
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Apple Health, both directions</div><div class="ed-row-sub">Watch workouts — runs, rides, swims, pickleball, and more — land in your log with one tap, or automatically. Turn on saving and finished lifts count toward your rings.</div><div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Apple Health</div></div></div>
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Background sync</div><div class="ed-row-sub">With background sync on, iOS wakes Supero when a workout ends — the widget updates before you even open the app.</div></div></div>
         <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Training-day reminders</div><div class="ed-row-sub">An optional 9:00 nudge on training days. Rest-timer alerts fire even with the phone locked.</div></div></div>
-        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Daily auto-backup</div><div class="ed-row-sub">A backup file is written to the Files app every day — and to iCloud Drive when available, so your training history survives a lost phone.</div><div class="ed-row-sub mono" style="margin-top:5px;">Files → iCloud Drive → Supero</div></div></div>
+        <div class="ed-row"><div class="ed-row-body"><div class="ed-row-title">Daily auto-backup</div><div class="ed-row-sub">A backup file is written to the Files app every day — and to iCloud Drive when available, so your training history survives a lost phone. Heart-rate and calorie values imported from Health are left out of the iCloud copy.</div><div class="ed-row-sub mono" style="margin-top:5px;">Files → iCloud Drive → Supero</div></div></div>
       </div>
     </div>
   </div>
@@ -15756,7 +15789,7 @@ function runAutoBackupNow(){
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">04</span><h2>Apple Health</h2></div>
-      <p class="ed-body">Opt-in. If you grant permission, Supero reads your workouts only — runs, rides, and sports like swimming, tennis, or pickleball; date, distance, duration, average HR — and stores them locally alongside your other data. Background Watch sync (optional) lets iOS wake Supero briefly so new workouts are ready when you open the app; everything stays on-device. Imported workouts count as training data like any other, so the Coach includes recent ones in what it sends to Anthropic when you chat. Writing goes the other way only if you turn on "Save lifts to Apple Health" — then finished lifting sessions are added to Health as strength workouts; otherwise Supero never writes to Health. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
+      <p class="ed-body">Opt-in. If you grant permission, Supero reads your workouts only — runs, rides, and sports like swimming, tennis, or pickleball; date, distance, duration, average HR — and stores them locally alongside your other data. Background Watch sync (optional) lets iOS wake Supero briefly so new workouts are ready when you open the app; everything stays on-device. Imported workouts count as training data like any other, so the Coach includes recent ones in what it sends to Anthropic when you chat. Writing goes the other way only if you turn on "Save lifts to Apple Health" — then finished lifting sessions are added to Health as strength workouts; otherwise Supero never writes to Health. If you turn on the readiness score, Supero also reads last night’s sleep, HRV and resting heart rate to score recovery on-device; that score and its inputs reach the Coach only when you chat. Revoke any time in iOS Settings → Privacy &amp; Security → Health → Supero.</p>
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">05</span><h2>Analytics</h2></div>
