@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-10"/>
+<meta name="build" content="20260915-11"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2679,7 +2679,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -4377,7 +4377,9 @@ function fetchCoachCard(activity){
     };
     var prompt = 'You are a calm, opinionated strength coach.\n'+
       'Today: ' + JSON.stringify(snapshot) + '\n'+
-      'Last 5 sessions: ' + JSON.stringify(recent) + '\n\n'+
+      'Last 5 sessions: ' + JSON.stringify(recent) + '\n'+
+      'Signals: ' + _cardSignals() + '\n\n'+
+      _profilePrompt()+
       'Write ONE proactive note (2-3 sentences max) the user should see this morning.\n'+
       'Be specific to the data — name an exercise, a number, a pattern.\n'+
       'Don\'t be generic. Don\'t pep-talk. Talk like you\'ve coached them for a year.\n'+
@@ -5599,17 +5601,26 @@ function _drawWrapCard(mk, st, accent){
 
 // ── Proactive coach: session auto-debrief ────────────────────────────────────
 // Fired after a session saves; a short Haiku take lands as a card on Today.
+function _debriefPrompt(sess){
+  var fmtEx=function(ex){ var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps; return ex.name+' '+ex.sets+'×['+reps+'] @ '+fmtW(ex.weight)+(ex.rpe?' RPE '+ex.rpe:''); };
+  var lines=sess.exercises.map(fmtEx).join('; ');
+  // Baseline: the previous same-type session, the main lift's e1RM move, today's readiness, the profile.
+  var prev=getSessions().find(function(x){ return x.id!==sess.id && x.type===sess.type && (x.exercises||[]).length && x.date<=sess.date; });
+  var prevLine=prev?'\nPrevious '+sess.type+' ('+prev.date+'): '+prev.exercises.map(fmtEx).join('; '):'';
+  var main=sess.exercises.find(function(e){ return e.isMain; })||sess.exercises[0];
+  var trend='';
+  try{ var pts=(_e1rmSeries()[main.name]||[]); if(pts.length>=2){ var a=pts[pts.length-2].e1rm, b=pts[pts.length-1].e1rm; trend='\n'+main.name+' est. 1RM: '+fmtW(b)+' ('+(b>=a?'+':'\u2212')+wDisp(Math.abs(b-a))+' '+_uW()+' vs previous)'; } }catch(e){}
+  var rd=lsGet('kt_readiness'); var rdLine=(rd&&rd.date===todayISO())?'\nReadiness today: '+rd.score+'/100':'';
+  var pl=_profileLines(); var profLine=pl.length?'\nAthlete: '+pl.join('; '):'';
+  return 'You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
+    'and one cue for next time about this just-finished '+sess.type+' session. Compare with the previous session when it says something. No greetings, no fluff. '+
+    _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+'.\n'+
+    'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'')+prevLine+trend+rdLine+profLine;
+}
 function _requestDebrief(sess){
   var key=getApiKey();
   if(!key || !sess || !(sess.exercises||[]).length) return;
-  var lines=sess.exercises.map(function(ex){
-    var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps;
-    return ex.name+' '+ex.sets+'×['+reps+'] @ '+fmtW(ex.weight)+(ex.rpe?' RPE '+ex.rpe:'');
-  }).join('; ');
-  var prompt='You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
-    'and one cue for next time about this just-finished '+sess.type+' session. No greetings, no fluff. '+
-    _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+'.\n'+
-    'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'');
+  var prompt=_debriefPrompt(sess);
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
@@ -11919,6 +11930,97 @@ function getCoachChips(){
   return chips.slice(0,4);
 }
 
+// ── Athlete profile ────────────────────────────────────────────────────────
+// What the intake learns and the chat window forgets: injuries, equipment,
+// goals, likes and dislikes, experience. Written by the coach's save_profile
+// tool or edited in Settings; injected into every coach prompt.
+var PROFILE_FIELDS=[['goals','Goals'],['experience','Experience'],['equipment','Equipment'],['injuries','Injuries / avoid'],['likes','Likes'],['dislikes','Dislikes'],['sports','Other sports'],['notes','Notes']];
+function getProfile(){ return lsGet('kt_profile')||{}; }
+function saveProfile(patch){
+  var p=getProfile(), changed=[];
+  PROFILE_FIELDS.forEach(function(f){
+    var k=f[0]; if(!patch || patch[k]==null) return;
+    var v=String(patch[k]).trim().slice(0,300);
+    if(v===(p[k]||'')) return;
+    if(v) p[k]=v; else delete p[k];
+    changed.push(f[1]);
+  });
+  if(changed.length){ p.updatedAt=todayISO(); lsSet('kt_profile', p); }
+  return changed;
+}
+function _profileLines(){
+  var p=getProfile(), out=[];
+  PROFILE_FIELDS.forEach(function(f){ if(p[f[0]]) out.push(f[1].toUpperCase()+': '+p[f[0]]); });
+  return out;
+}
+function _profilePrompt(){
+  var lines=_profileLines();
+  if(!lines.length) return '';
+  return 'ATHLETE PROFILE (persistent \u2014 respect injuries and equipment in every suggestion; update it with save_profile when something lasting changes):\n'+lines.map(function(l){ return '  '+l; }).join('\n')+'\n\n';
+}
+// What the app already knows before an intake, so the coach confirms instead of re-asking.
+function _intakeKnownBlock(){
+  var lines=[];
+  var pr=_profileLines(); if(pr.length) lines.push('Profile: '+pr.join('; '));
+  var sessions=getSessions();
+  if(sessions.length){
+    var cutoff=addDays(todayISO(),-28), recent=sessions.filter(function(x){ return x.date>=cutoff; }).length;
+    lines.push('Training log: '+sessions.length+' lift sessions total, '+recent+' in the last 4 weeks (last: '+sessions[0].type+' on '+sessions[0].date+')');
+  }
+  var w=getWeights(), wk=Object.keys(w).filter(function(k){ return parseFloat(w[k])>0; }).sort(function(a,b){ return parseFloat(w[b])-parseFloat(w[a]); }).slice(0,6);
+  if(wk.length) lines.push('Working weights: '+wk.map(function(k){ return k+' '+fmtW(w[k]); }).join(', '));
+  var prs=getPRs(), pk=Object.keys(prs).slice(0,6);
+  if(pk.length) lines.push('PRs: '+pk.map(function(k){ return k+' '+fmtW(prs[k]); }).join(', '));
+  var runs=getRuns();
+  if(runs.length){ var r4=runs.filter(function(r){ return r.date>=addDays(todayISO(),-28); }).length; lines.push('Runs: '+runs.length+' logged, '+r4+' in the last 4 weeks, last '+fmtD(runs[0].distance)+' in '+runs[0].time); }
+  var sp=getSportLogs();
+  if(sp.length){ var types={}; sp.slice(0,20).forEach(function(x){ types[x.type]=1; }); lines.push('Other sports logged: '+Object.keys(types).join(', ')); }
+  var bws=getBodyWeights(); if(bws.length) lines.push('Body weight: '+fmtW(bws[0].weight)+' ('+bws[0].date+')');
+  var cr=getCustomRoutine(); if(cr && Array.isArray(cr.weekPlan)) lines.push('Current cadence: '+DOW_NAMES.map(function(n,i){ return n+'='+cr.weekPlan[i]; }).join(', '));
+  if(!lines.length) return '';
+  return '=== WHAT THE APP ALREADY KNOWS ===\n'+lines.join('\n')+'\n=== END ===\nSkip any question these facts already answer \u2014 confirm it in one line instead of asking. Use the working weights and PRs as the starting loads.\n\n';
+}
+// Deterministic signals for the morning card and the debrief.
+function _cardSignals(){
+  var out=[];
+  try{ var pg=_progressionLifts(); if(pg.length) out.push('earned +'+fmtW(_progStepLb())+': '+pg.map(function(x){ return x.name; }).join(', ')); }catch(e){}
+  try{ var pl=_plateauLifts().slice(0,2); if(pl.length) out.push('stalled: '+pl.map(function(x){ return x.name+' '+x.days+'d'; }).join(', ')); }catch(e){}
+  var rd=lsGet('kt_readiness'); if(rd && rd.date===todayISO()) out.push('readiness '+rd.score+'/100');
+  return out.length?out.join(' \u00b7 '):'none';
+}
+// Settings sheet for the profile.
+function openProfileSheet(){
+  closeProfileSheet();
+  var p=getProfile();
+  var fields=PROFILE_FIELDS.map(function(f){
+    return '<label for="pf-'+f[0]+'" class="kt-mono" style="display:block;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin:12px 0 6px;">'+f[1].toUpperCase()+'</label>'+
+      '<input id="pf-'+f[0]+'" type="text" value="'+_esc(p[f[0]]||'')+'" placeholder="'+(f[0]==='injuries'?'e.g. left shoulder \u2014 no dips':f[0]==='equipment'?'e.g. home gym, dumbbells to 50':'\u2014')+'" style="width:100%;box-sizing:border-box;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;font-size:15px;font-family:inherit;color:var(--text);"/>';
+  }).join('');
+  var overlay=document.createElement('div'); overlay.id='profileOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">ATHLETE PROFILE</div>'+
+      '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">What the Coach should always know.</div></div>'+
+      '<button class="kt-sheet-x" onclick="closeProfileSheet()" aria-label="Close">\u2715</button>'+
+    '</div>'+
+    '<div style="margin-top:4px;">'+fields+'</div>'+
+    '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5;">Stored on this phone. Sent with every Coach message so advice respects it; the Coach also fills it in from the intake.</p>'+
+    '<button class="btn btn-primary btn-full" style="padding:14px;font-size:15px;margin-top:14px;" onclick="saveProfileSheet()">Save</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeProfileSheet);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeProfileSheet(); });
+}
+function saveProfileSheet(){
+  var patch={};
+  PROFILE_FIELDS.forEach(function(f){ var el=document.getElementById('pf-'+f[0]); if(el) patch[f[0]]=el.value; });
+  var ch=saveProfile(patch);
+  closeProfileSheet();
+  showToast(ch.length?'Profile saved':'No changes');
+  render();
+}
+function closeProfileSheet(){ var el=document.getElementById('profileOverlay'); if(el) el.remove(); }
+
 function buildIntakeSystemPrompt(){
   // Inject previous programme context if one was just archived (continuation mode)
   var prevSection = '';
@@ -11950,6 +12052,7 @@ function buildIntakeSystemPrompt(){
 
   return 'You are a world-class personal trainer conducting an intake assessment to build a personalised training programme.\n\n'+
 _coachUnitsNote()+'\n'+
+_intakeKnownBlock()+
 (prevSection||
 'Ask the following questions ONE AT A TIME. Wait for an answer before asking the next. Be conversational and encouraging — like a real trainer. Acknowledge each answer briefly before moving to the next question.\n\n'+
 'Questions to cover (in this order):\n'+
@@ -11963,7 +12066,7 @@ _coachUnitsNote()+'\n'+
 '8. Cardio or sports — do they do anything besides lifting? Running, cycling, swimming, pickleball, tennis, basketball, CrossFit, or "other"? If yes, how many days a week and current ability/level\n'+
 '9. Any exercises they specifically love or hate\n'+
 '10. Programme length — how many weeks do they want (suggest 12 if unsure; valid range 4–24)\n\n')+
-'After you have all the answers, briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Rest/Run/sport, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
+'After you have all the answers, call save_profile ONCE with what you learned (goals, experience, equipment, injuries, likes, dislikes, other sports), briefly acknowledge ("Perfect — building your programme now"), then BUILD THE PLAN IN ONE SINGLE TOOL CALL: call update_routine_weeks once with an array of every week (wk 1 through N, where N is the programme length they chose) AND a weekPlan reflecting the user\'s answers (which weekdays are Push/Pull/Legs/Rest/Run/sport, Mon→Sun). This is intake — no past weeks to skip. Do NOT split into multiple calls — that hits rate limits. Do NOT write the plan as JSON in your text reply. Keep week notes and exercise notes short (one short sentence max) so the call fits comfortably in the response. The call applies immediately and the user sees a live progress pill.\n\n'+
 'Block structure — adapt to the chosen length, but keep these principles:\n'+
 '- Open with BASE (#06b6d4) — ~3 weeks of technique + moderate volume.\n'+
 '- Insert a DELOAD (#22c55e) at the end of each block (sets to 2-3, weight ~60-65%).\n'+
@@ -12143,6 +12246,9 @@ var COACH_TOOLS=[
        note:{type:'string',description:'Short note (optional).'}
      },
      required:['type','exercises']}},
+  {name:'save_profile',
+   description:'Remember lasting facts about the athlete: goals, experience, equipment, injuries or exercises to avoid, likes, dislikes, other sports, notes. Call it when intake answers or chat reveal something that should shape future advice. Send only the fields that changed; each is a short plain-text summary that replaces the stored value.',
+   input_schema:{type:'object',properties:{goals:{type:'string'},experience:{type:'string'},equipment:{type:'string'},injuries:{type:'string'},likes:{type:'string'},dislikes:{type:'string'},sports:{type:'string'},notes:{type:'string'}}}},
   {name:'log_sport',
    description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day.',
    input_schema:{type:'object',
@@ -12503,6 +12609,10 @@ function executeCoachTool(name,input){
       render();
       return {ok:true,message:gtype+' session logged for '+gdate+' — '+gclean.length+' exercise'+(gclean.length===1?'':'s')+(gPRs.length?', '+gPRs.length+' PR'+(gPRs.length===1?'':'s'):'')};
     }
+    if(name==='save_profile'){
+      var _pch=saveProfile(input);
+      return {ok:true,message:_pch.length?'Profile updated: '+_pch.join(', '):'Profile unchanged'};
+    }
     if(name==='log_sport'){
       var stype=String(input.type||'Other').trim();
       var sdur=parseInt(input.duration)||0;
@@ -12570,6 +12680,30 @@ function _toApiMsg(m){
 }
 
 // One full coach turn: may loop through multiple tool_use rounds.
+// Chat replies are capped at 200 words: medium effort trims thinking spend on
+// the user's own key. Intake keeps the default so update_routine_weeks stays
+// sharp. Only models that accept output_config.effort get it.
+function _coachOutputConfig(model, intake){
+  if(intake || !/sonnet-5|opus-5|opus-4-[678]|fable/.test(String(model||''))) return undefined;
+  return {effort:'medium'};
+}
+// Token spend on the user's own key — what Settings shows next to the key.
+function _recordCoachUsage(u){
+  if(!u) return;
+  var t=lsGet('kt_coach_usage')||{turns:0,input:0,output:0,cacheRead:0,cacheWrite:0,since:todayISO()};
+  t.turns=(t.turns||0)+1;
+  t.input=(t.input||0)+(u.input_tokens||0); t.output=(t.output||0)+(u.output_tokens||0);
+  t.cacheRead=(t.cacheRead||0)+(u.cache_read_input_tokens||0); t.cacheWrite=(t.cacheWrite||0)+(u.cache_creation_input_tokens||0);
+  lsSet('kt_coach_usage', t);
+}
+function _fmtTok(n){ n=n||0; return n>=1e6?(Math.round(n/1e5)/10)+'M':n>=1000?Math.round(n/1000)+'k':String(n); }
+function _coachUsageLine(){
+  var t=lsGet('kt_coach_usage'); if(!t || !t.turns) return '';
+  var inAll=(t.input||0)+(t.cacheRead||0)+(t.cacheWrite||0);
+  var pct=inAll?Math.round((t.cacheRead||0)/inAll*100):0;
+  return 'Your key so far: '+_plural(t.turns,'turn')+' \u00b7 '+_fmtTok(inAll)+' tokens in ('+pct+'% from cache) \u00b7 '+_fmtTok(t.output)+' out \u00b7 since '+t.since+'. Anthropic\u2019s console shows the bill.';
+}
+function resetCoachUsage(){ lsDel('kt_coach_usage'); render(); }
 async function runCoachTurn(systemPrompt,model,maxTok){
   // Keep enough history for a full 10-question intake plus follow-ups; the
   // system prompt holds the steady-state context, so we just need recent dialogue.
@@ -12663,7 +12797,8 @@ async function runCoachTurn(systemPrompt,model,maxTok){
             // re-billed prefix to a fraction on the user's own key.
             system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],
             messages:apiMsgs,
-            tools:_cachedCoachTools()
+            tools:_cachedCoachTools(),
+            output_config:_coachOutputConfig(model, intakeMode)
           })
         }),intakeMode?300000:180000,'fetch');
       }catch(e){
@@ -12705,6 +12840,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       break;
     }
     if(myGen!==_coachGen) return;
+    _recordCoachUsage(data && data.usage);
     if(data && Array.isArray(data.content)){
       finishedBlocks=data.content.map(function(b){
         if(b && b.type==='tool_use') return {type:'tool_use',id:b.id,name:b.name,input:b.input||{}};
@@ -12880,6 +13016,7 @@ function toolCallLabel(tc){
   }
   if(n==='set_current_week') return 'Week set to '+i.week;
   if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
+  if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='set_bench_goal') return 'Bench goal '+fmtW(wStore(i.weight));
   if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
@@ -13039,6 +13176,7 @@ function buildSystemPrompt(){
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
   if(cr&&cr.name)p+=' ('+cr.name+')';
   p+='\n';
+  p+=_profilePrompt();
 
   if(wd){
     p+='BLOCK: '+wd.bName+' — '+wd.wkNote+'\n';
@@ -13152,6 +13290,7 @@ function buildSystemPrompt(){
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
+  p+='  - Something lasting about the athlete (injury, new gym or equipment, goal change, a lift they love or hate) → call save_profile with just the changed fields.\n';
   p+='  - Delete a logged entry the user wants removed → call delete_log with store ("run", "sport", "session", or "bodyweight") and id (from the [id:...] shown in the ground-truth lists above). Only delete when the user explicitly asks.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Legs2, Arms, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Use Legs2 when there are two distinct leg sessions per week — populate legs (Legs A) and legs2 (Legs B) separately in each week. Use Arms for a dedicated biceps/triceps/abs day — populate the arms array. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
@@ -14025,12 +14164,17 @@ function renderSettings() {
 
     '<div class="settings-group">'+
     '<div class="settings-group-hd">AI Coach</div>'+
+    '<div class="settings-row" onclick="openProfileSheet()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Athlete profile</div><div class="settings-row-sub">'+_esc(_profileLines().length?_profileLines().slice(0,2).map(function(l){ return l.split(': ').slice(1).join(': '); }).join(' \u00b7 '):'Injuries, equipment, goals \u2014 the Coach fills it in at intake')+'</div></div>'+
+      '<span class="settings-row-chev">\u203a</span>'+
+    '</div>'+
     '<div style="padding:16px 18px;">'+
     '<p style="font-size:13px;color:var(--lite);margin-bottom:12px;line-height:1.5;">Stored only on this device. Get a key from your Anthropic account (console.anthropic.com → API Keys); Anthropic bills usage to you, typically a few cents per chat.</p>'+
     (apiKey
       ? '<div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:10px;font-family:monospace;">'+maskedKey+'</div>'+
         '<button class="btn btn-ghost btn-full" onclick="clearApiKeyFromSettings()">Remove Key</button>'+
         '<button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="_confirmClearChat()">Clear Chat History</button>'+
+        (_coachUsageLine()?'<p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">'+_esc(_coachUsageLine())+' <button onclick="resetCoachUsage()" style="background:none;border:none;padding:0;color:var(--accent-ink);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Reset</button></p>':'')+
         '<p style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">If the Coach starts hanging on every prompt, clearing old chats (especially ones with attached screenshots) usually fixes it.</p>'
       : '<div class="field" style="margin-bottom:10px;"><input type="password" id="settingsApiKeyInput" placeholder="sk-ant-api03-..." style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;font-family:monospace;"/></div>'+
         '<button class="btn btn-primary btn-full" onclick="saveApiKeyFromSettings()">Save Key</button>'
