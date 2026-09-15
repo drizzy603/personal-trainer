@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#080b09"/>
-<meta name="build" content="20260914-1"/>
+<meta name="build" content="20260914-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ select option{background:var(--bg);}
 .wk-row-note{font-size:13px;color:var(--lite);line-height:1.5;flex:1;min-width:0;}
 .wk-row-chev{flex-shrink:0;color:var(--muted);transition:transform .2s;align-self:center;}
 .wk-row.open .wk-row-chev{transform:rotate(180deg);color:var(--accent);}
-.wk-detail{padding:4px 16px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.15);}
+.wk-detail{padding:4px 16px 14px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--text) 5%,transparent);}
 .wk-detail-note{font-size:12px;color:var(--lite);line-height:1.55;padding:10px 0 12px;border-bottom:1px solid var(--border);margin-bottom:8px;}
 .wk-day-rows{display:flex;flex-direction:column;}
 .wk-day-row{display:grid;grid-template-columns:36px 10px auto 1fr 14px;align-items:center;gap:10px;padding:10px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;border-bottom:1px solid color-mix(in srgb,var(--text) 6%,transparent);}
@@ -433,6 +433,13 @@ select option{background:var(--bg);}
 .kt-day-chip.rest{border-color:var(--border);background:var(--card2);}
 .kt-day-chip-d{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.04em;}
 .kt-day-chip-t{font-size:11px;font-weight:800;color:var(--day-c);white-space:nowrap;}
+.kt-day-chip.editing{box-shadow:0 0 0 2px var(--accent);}
+.kt-sched-editor{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--card2);}
+.kt-sched-editor-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);margin-bottom:9px;}
+.kt-sched-picks{display:flex;flex-wrap:wrap;gap:6px;}
+.kt-sched-pick{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-sched-pick.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-sched-editor-sub{font-size:11px;color:var(--muted);margin-top:9px;}
 .kt-rest-pill{border:1px solid var(--border);background:var(--card2);color:var(--muted);}
 .kt-rest-pill.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
 /* Honest summaries (screen 08): a row's current value in mono on the right,
@@ -606,6 +613,9 @@ select option{background:var(--bg);}
 
 /* Inline Log-Run form (addendum 0e) — editorial, no nested card. */
 .kt-rlog{transform-origin:top center;animation:kt-rlog-in .35s ease-out;margin-bottom:24px;}
+.kt-rlog-feel{display:flex;gap:8px;}
+.kt-rlog-face{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:transparent;font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;padding:0;}
+.kt-rlog-face.on{background:var(--earned);border-color:var(--earned);}
 .kt-rlog-pace{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--muted);min-height:14px;margin:-4px 0 10px;}
 @keyframes kt-rlog-in{
   from{opacity:0;transform:translateY(-8px) scaleY(.96);}
@@ -722,8 +732,32 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-coach-ask svg{width:13px;height:13px;}
 .kt-coach-input-wrap{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
 .kt-coach-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none;box-sizing:border-box;}
+.kt-ledger-card{margin:-4px 4px 12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
+.kt-ledger-card-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.12em;color:var(--accent-ink);margin-bottom:6px;}
+.kt-ledger-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.kt-ledger-row:last-of-type{border-bottom:none;}
+.kt-ledger-row b{font-weight:700;white-space:nowrap;}
+.kt-ledger-card-actions{display:flex;gap:8px;margin-top:10px;}
+.kt-ledger-card-note{font-size:11px;color:var(--muted);margin-top:8px;}
 .kt-coach-empty{padding:14px 18px;border-radius:14px;background:color-mix(in srgb,var(--text) 4%,transparent);font-size:12px;color:var(--muted);text-align:center;}
 .kt-marquee{margin-top:28px;}
+/* Week strip + glance tiles (board H-01) */
+.kt-wkstrip{display:flex;gap:6px;margin:-8px 0 22px;}
+.kt-wkstrip-chip{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 7px;border-radius:12px;border:1px solid var(--border);background:transparent;position:relative;}
+.kt-wkstrip-d{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);}
+.kt-wkstrip-n{font-size:15px;font-weight:800;letter-spacing:-.3px;color:var(--text);}
+.kt-wkstrip-dot{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px;}
+.kt-wkstrip-chip.done .kt-wkstrip-dot{background:var(--earned-ink);}
+.kt-wkstrip-chip.rest .kt-wkstrip-n{color:var(--muted);font-weight:600;}
+.kt-wkstrip-chip.today{background:var(--accent);border-color:var(--accent);}
+.kt-wkstrip-chip.today .kt-wkstrip-d,.kt-wkstrip-chip.today .kt-wkstrip-n{color:var(--on-accent);}
+.kt-wkstrip-chip.today.done .kt-wkstrip-dot{background:var(--on-accent);}
+.kt-glance{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-10px 0 24px;}
+.kt-glance-tile{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0;-webkit-tap-highlight-color:transparent;}
+.kt-glance-lbl{font-size:12px;color:var(--muted);font-weight:600;line-height:1.3;}
+.kt-glance-val{font-size:22px;font-weight:800;letter-spacing:-.7px;line-height:1;}
+.kt-glance-val .u{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:0;}
+.kt-glance-spark svg{display:block;width:100%;height:28px;}
 .kt-marquee-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--lite);letter-spacing:.1em;margin-bottom:14px;font-weight:600;}
 .kt-marquee-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
 .kt-marquee-row:first-child{border-top:1px solid var(--border);}
@@ -976,6 +1010,30 @@ button:active{transform:scale(.97);}
 .kt-milestone-tick{animation:ktTickPulse var(--t-swap) var(--ease-spring);}
 .kt-done{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;}
 .kt-done-check{font-size:64px;font-weight:600;letter-spacing:-2px;line-height:1;}
+/* COMPLETE sheet (board H-04): summary quartet, PR rows, one coach line. */
+.kt-cmp-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent-ink);margin:14px 0 8px;}
+.kt-cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.kt-cmp-tile{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;min-width:0;}
+.kt-cmp-lbl{font-size:11px;color:var(--muted);font-weight:600;}
+.kt-cmp-val{font-size:26px;font-weight:800;letter-spacing:-.8px;margin-top:2px;line-height:1.1;}
+.kt-cmp-val .u{font-size:13px;color:var(--muted);font-weight:600;margin-left:3px;letter-spacing:0;}
+.kt-cmp-prs{border-top:1px solid var(--border);}
+.kt-cmp-pr{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);}
+.kt-cmp-badge{background:var(--earned);color:#0b0b0d;font-size:10px;font-weight:900;letter-spacing:.04em;border-radius:999px;padding:5px 9px;flex-shrink:0;}
+.kt-cmp-insight{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px;}
+.kt-cmp-actions{display:flex;flex-direction:column;gap:8px;}
+/* Pre-session overview (board H-17) */
+.kt-ov-list{border:1px solid var(--border);border-radius:14px;padding:4px 14px;background:var(--card2);}
+.kt-ov-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
+.kt-ov-row:last-child{border-bottom:none;}
+.kt-ov-idx{width:26px;height:26px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--lite);flex-shrink:0;}
+.kt-ov-row.first .kt-ov-idx{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-ov-body{flex:1;min-width:0;}
+.kt-ov-name{font-size:15px;font-weight:700;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-ov-tgt{font-size:12px;color:var(--muted);margin-top:2px;}
+.kt-ov-first{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);flex-shrink:0;}
+.kt-ov-focus{display:flex;gap:10px;align-items:baseline;font-size:13px;color:var(--lite);line-height:1.5;margin-top:14px;}
+.kt-ov-focus-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--muted);flex-shrink:0;}
 .kt-done-name{font-size:18px;font-weight:600;opacity:.85;text-align:center;}
 .kt-done-meta{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;opacity:.6;letter-spacing:.1em;}
 .kt-done-btn{margin-top:8px;padding:14px 24px;border-radius:14px;border:none;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
@@ -1254,7 +1312,7 @@ html[data-room="heavyweight"] .kt-r-card-name{font-size:clamp(36px,12vw,46px);li
 html[data-room="heavyweight"] .kt-eng-name{font-size:30px;}
 html[data-room="heavyweight"] .kt-rest-time{font-size:clamp(84px,30vw,112px);letter-spacing:.01em;font-variant-numeric:tabular-nums;}
 html[data-room="heavyweight"] .kt-r-target{font-size:clamp(50px,18vw,62px);}
-html[data-room="heavyweight"] .kt-r-target .u{font-family:'Archivo',sans-serif;font-weight:600;font-size:20px;opacity:.55;text-transform:none;}
+html[data-room="heavyweight"] .kt-r-target .u{font-family:'Archivo',sans-serif;font-weight:600;font-size:20px;opacity:1;color:var(--lite);text-transform:none;}
 html[data-room="heavyweight"] .kt-hero-greet,html[data-room="heavyweight"] .kt-prog-hero-greet{font-size:15px;color:var(--lite);margin-bottom:10px;}
 html[data-room="heavyweight"] .kt-hero-body{font-size:15px;color:var(--lite);}
 html[data-room="heavyweight"] .kt-hero-body b{color:var(--text);}
@@ -1276,6 +1334,17 @@ html[data-room="heavyweight"] .kt-sheet,html[data-room="heavyweight"] .ex-modal-
 }
 html[data-room="heavyweight"] .kt-sheet,html[data-room="heavyweight"] .ex-modal-sheet{border-radius:20px 20px 0 0;}
 html[data-room="heavyweight"] .kt-coach-card{border-left:1px solid var(--border);}
+html[data-room="heavyweight"] .kt-cmp-tile,html[data-room="heavyweight"] .kt-cmp-insight{background:var(--card);}
+html[data-room="heavyweight"] .kt-cmp-hd{font-family:'Archivo',sans-serif;color:var(--accent);}
+html[data-room="heavyweight"] .kt-wkstrip-chip{background:var(--card);}
+html[data-room="heavyweight"] .kt-wkstrip-chip.today{background:var(--accent);}
+html[data-room="heavyweight"] .kt-glance-tile{border-radius:14px;}
+html[data-room="heavyweight"] .kt-ov-list{background:var(--card);}
+html[data-room="heavyweight"] .kt-sched-editor{background:var(--card);}
+html[data-room="heavyweight"] .kt-sched-pick{background:var(--card);}
+html[data-room="heavyweight"] .kt-sched-editor-hd{font-family:'Archivo',sans-serif;}
+html[data-room="heavyweight"] .kt-ledger-card-hd{font-family:'Archivo',sans-serif;color:var(--accent);}
+html[data-room="heavyweight"] .kt-ov-first,html[data-room="heavyweight"] .kt-ov-focus-lbl{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .settings-row{border-color:var(--border);}
 html[data-room="heavyweight"] .settings-row-ic{background:var(--card2)!important;border:none;border-radius:10px;}
 html[data-room="heavyweight"] .kt-coach-ask,html[data-room="heavyweight"] .kt-coach-input{border-color:var(--border);}
@@ -1364,10 +1433,26 @@ html[data-room="heavyweight"] .kt-cta-label,html[data-room="heavyweight"] .kt-em
 html[data-room="heavyweight"] .lift-delta{color:var(--earned-ink);}
 html[data-room="heavyweight"] .lift-fill{background:var(--earned);}
 /* How it works: block cards take the room palette instead of fixed hues */
-html[data-room="heavyweight"] .wf-view .ed-block{--c:var(--accent);}
+html[data-room="heavyweight"] .wf-view .ed-block{--c:var(--accent)!important;}
+html[data-room="heavyweight"] .stat-val[style*="--orange"]{color:var(--earned-ink)!important;}
+html[data-room="heavyweight"] #screen svg line[stroke="var(--green)"]{stroke:var(--muted);}
+html[data-room="heavyweight"] #screen svg text[fill="var(--green)"]{fill:var(--muted);}
+@keyframes ktRowWashEarned{from{background-color:color-mix(in srgb,var(--earned) 30%,transparent);}to{background-color:transparent;}}
+html[data-room="heavyweight"] .kt-lr.gold.kt-row-wash{animation-name:ktRowWashEarned;}
 /* Flat means flat */
 html[data-room="heavyweight"] .kt-act-logcard{background:var(--card);border:1px solid var(--border);box-shadow:none;border-radius:14px;}
 html[data-room="heavyweight"] .coach-head-eyebrow::before{box-shadow:none;}
+/* Fresh-eyes pass: what the first fixes missed */
+html[data-room="heavyweight"] .kt-r-pill.idle .kt-r-pill-idx,html[data-room="heavyweight"] .kt-r-skip-ex{opacity:1;color:var(--lite);}
+html[data-room="heavyweight"] #runner-root [style*="opacity:."]{opacity:1!important;}
+html[data-room="heavyweight"] [onclick^="toggleStrengthChart"] svg{width:96px;}
+html[data-room="heavyweight"] [onclick^="toggleStrengthChart"]>div:first-child>div:first-child{white-space:normal!important;line-height:1.2;}
+html[data-room="heavyweight"] #coach-key-input,html[data-room="heavyweight"] #settingsApiKeyInput{font-family:'Archivo',sans-serif!important;font-variant-numeric:tabular-nums;}
+html[data-room="heavyweight"] .hero-block{background:var(--card);border:1px solid var(--border);color:var(--lite);}
+html[data-room="heavyweight"] #themeSheetList button[style*="accent-soft"]{background:var(--card)!important;}
+html[data-room="heavyweight"] .kt-main-tag{color:var(--lite);border-color:var(--border);}
+html[data-room="heavyweight"] .kt-r-back,html[data-room="heavyweight"] .coach-head button[style*="card2"]{background:var(--card)!important;border:1px solid var(--border);}
+html[data-room="heavyweight"] .kt-step-val{letter-spacing:0;}
 /* Fixed tab bar with icon + label, hairline top */
 html[data-room="heavyweight"] #tabs{left:0;right:0;bottom:0;height:calc(var(--tab-h) + var(--tab-bottom-clear));padding:6px 8px calc(var(--tab-bottom-clear) + 6px);
   border-radius:0;border:none;border-top:1px solid var(--border);background:var(--card);box-shadow:none;}
@@ -1560,6 +1645,13 @@ var runnerResumePending = false;
 var runLogOpen      = false;
 var runLogClosing   = false;
 var runLogPendingType = 'easy';     // easy | tempo | long | intervals
+var FEEL_FACE={1:'\ud83d\ude23',2:'\ud83d\ude41',3:'\ud83d\ude10',4:'\ud83d\ude42',5:'\ud83d\ude04'};
+var FEEL_LBL={1:'Rough',2:'Hard',3:'Okay',4:'Good',5:'Great'};
+function _setRunFeel(n){
+  _snapshotRunLogForm();
+  runLogDraft.feel=(runLogDraft.feel===n)?0:n;
+  document.querySelectorAll('.kt-rlog-face').forEach(function(b,i){ b.classList.toggle('on', i+1===runLogDraft.feel); });
+}
 var runLogConfirmed  = null;         // {id, km, time} after save
 var sportLogConfirmed = null;        // {id, type, label} after save
 var bwLogConfirmed    = null;        // {id, weight, date} after save
@@ -3635,19 +3727,27 @@ function swapWeekPlanDays(weekNum, dowA, dowB){
 }
 // Cycles a day's type in the routine-level weekPlan (and current week override
 // if one exists). Core types loop: Push→Pull→Legs→(Legs2 if used)→Run→Rest.
-function cycleWeekPlanDay(dow){
+var _schedEditDow=null;   // day selected in the Settings schedule editor
+function _schedTypes(){
+  var cr=getCustomRoutine(); if(!cr) return [];
+  var t=['Push','Pull','Legs','Arms','Run','Rest'];
+  var hasLegs2=cr.weeks&&cr.weeks.some(function(w){return w.legs2&&w.legs2.length;});
+  if(hasLegs2) t.splice(3,0,'Legs2');
+  return t;
+}
+function _schedPick(dow){ _schedEditDow=(_schedEditDow===dow)?null:dow; render(); }
+function setWeekPlanDay(dow, type){ _schedEditDow=null; cycleWeekPlanDay(dow, type); }
+function cycleWeekPlanDay(dow, forceType){
   var cr=getCustomRoutine();
   if(!cr) return;
-  var CYCLE=['Push','Pull','Legs','Arms','Run','Rest'];
-  var hasLegs2=cr.weeks&&cr.weeks.some(function(w){return w.legs2&&w.legs2.length;});
-  if(hasLegs2) CYCLE.splice(3,0,'Legs2');
+  var CYCLE=_schedTypes();
   // Read from current week plan so we see any per-week override
   var curPlan=getWeekPlanForWeek(currentWeek);
   var curType=curPlan[dow].type;
   // If current type is a sport (not in CYCLE), treat as Run so next step is Rest
   // — prevents silently converting e.g. Cycling → Push on first tap.
   var idx=CYCLE.indexOf(curType); if(idx===-1) idx=CYCLE.indexOf('Run');
-  var nextType=CYCLE[(idx+1)%CYCLE.length];
+  var nextType=forceType||CYCLE[(idx+1)%CYCLE.length];
   // Update routine-level weekPlan
   var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
     ?cr.weekPlan.slice()
@@ -4475,7 +4575,7 @@ function renderTodayEditorial(){
         '</div></div>';
     }
   } else if(act.type === 'lift' && act.exercises && act.exercises.length){
-    cta = '<button class="kt-cta" onclick="openDeckRunner()">'+
+    cta = '<button class="kt-cta" onclick="startTodaySession()">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">START</div>'+
         '<div class="kt-cta-title">'+_esc((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName)+' · '+_plural(act.exercises.length,'exercise')+'</div>'+
@@ -4789,7 +4889,7 @@ function renderTodayEditorial(){
   // Screen A1 order: banner (most-current thing) stays on top; the utility
   // chips read as part of the day's status, so they sit between the statement
   // and the Start CTA.
-  return meta + (activeSlot?activeSlot.html:'') + hero + strip + cta + firstContract + adhocPicker + coachHTML + marquee;
+  return meta + (activeSlot?activeSlot.html:'') + hero + _renderWeekStrip() + strip + cta + _renderGlance() + firstContract + adhocPicker + coachHTML + marquee;
 }
 var todayBannerOverride=null;
 function promoteTodayItem(id){ todayBannerOverride=id; render(); }
@@ -5245,6 +5345,7 @@ function _requestDebrief(sess){
     var txt=data&&data.content&&data.content[0]?String(data.content[0].text||'').trim():'';
     if(!txt) return;
     lsSet('kt_debrief', {id:sess.id, date:sess.date, text:txt});
+    var _ci=document.getElementById('kt-complete-insight'); if(_ci) _ci.textContent=txt;
     render();
   }).catch(function(){});
 }
@@ -5453,7 +5554,7 @@ function scrollToRunForm(){
 
 // ── Inline run-log form (addendum 0e) ────────────────────────────────────────
 function _resetRunLogDraft(){
-  runLogDraft = {dist:'', time:'', hr:'', date:todayISO(), note:''};
+  runLogDraft = {dist:'', time:'', hr:'', date:todayISO(), note:'', feel:0};
 }
 // Sync DOM inputs into runLogDraft. Call right before any render that
 // reaches the form so user-entered values survive.
@@ -5541,7 +5642,8 @@ function saveInlineRun(){
     week: weekForDate(date),
     note: note,
     hr: hr,
-    type: runLogPendingType
+    type: runLogPendingType,
+    feel: runLogDraft.feel||0
   };
   var runs = getRuns();
   runs.unshift(rec);
@@ -5627,6 +5729,10 @@ function renderInlineRunLog(){
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">DATE</label>'+
         '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
+    '</div>'+
+    '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
+      '<div><label class="kt-rlog-field-lbl">HOW DID IT FEEL? · OPTIONAL</label>'+
+        '<div class="kt-rlog-feel">'+[1,2,3,4,5].map(function(n){ return '<button type="button" class="kt-rlog-face'+(d.feel===n?' on':'')+'" aria-label="'+FEEL_LBL[n]+'" title="'+FEEL_LBL[n]+'" onclick="_setRunFeel('+n+')">'+FEEL_FACE[n]+'</button>'; }).join('')+'</div></div>'+
     '</div>'+
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">NOTES · OPTIONAL</label>'+
@@ -6003,7 +6109,7 @@ function _ktConfirm(opts){
     (opts.body?'<div class="kt-close-sheet-sub">'+_esc(opts.body)+'</div>':'')+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" '+
       'onclick="document.getElementById(\''+sid+'\').remove()">Cancel</button>'+
-    '<button class="kt-close-sheet-btn" id="'+sid+'ok" style="background:'+(opts.confirmStyle||'var(--red)')+';color:#000;"> '+(opts.confirmLabel||'Confirm')+'</button>'+
+    '<button class="kt-close-sheet-btn" id="'+sid+'ok" style="background:'+(opts.confirmStyle||'var(--red)')+';color:var(--on-accent);"> '+(opts.confirmLabel||'Confirm')+'</button>'+
   '</div>';
   document.body.appendChild(el);
   document.getElementById(sid+'ok').onclick=function(){el.remove();opts.onConfirm();};
@@ -6463,8 +6569,190 @@ function runnerFinishSession(){
   // The day's training reaches disk tonight, not tomorrow — the backup gate
   // is content-aware, so this rewrites Files/iCloud with the new session.
   setTimeout(_autoBackupIfDue, 2500);
+  var _cmp={rec:_newRec, planned:runnerSession.exercises.length, startedAt:runnerSession.startedAt||Date.now(), dayName:runnerSession.dayName};
   closeDeckRunner();
   render();
+  // COMPLETE — the session's numbers, records and one coach line, before the
+  // Today screen quietly absorbs them.
+  setTimeout(function(){ openCompleteSheet(_cmp); }, 80);
+}
+// Today: the week at a glance (board H-01). Seven chips Mon–Sun; today is
+// the one filled chip, logged days carry an earned dot, rest days sit muted.
+function _renderWeekStrip(){
+  if(!hasCustomRoutine()) return '';
+  var mon=_mostRecentMonday(), plan=getWeekPlan(), today=todayISO();
+  var chips=[];
+  for(var i=0;i<7;i++){
+    var d=new Date(mon+'T00:00:00'); d.setDate(d.getDate()+i);
+    var iso=_ymdLocal(d), p=plan[i]||{};
+    var logged=_loggedOn(iso);
+    var cls='kt-wkstrip-chip'+(iso===today?' today':'')+(logged?' done':'')+(p.isRest?' rest':'');
+    chips.push('<div class="'+cls+'" aria-label="'+_esc(DOW_NAMES[i]+' '+d.getDate()+(logged?', logged':(p.isRest?', rest':'')))+'">'+
+      '<span class="kt-wkstrip-d">'+_esc(String(DOW_NAMES[i]).slice(0,3).toUpperCase())+'</span>'+
+      '<span class="kt-wkstrip-n">'+d.getDate()+'</span>'+
+      '<span class="kt-wkstrip-dot"></span>'+
+    '</div>');
+  }
+  return '<div class="kt-wkstrip">'+chips.join('')+'</div>';
+}
+// Weekly lift volume for the last n calendar weeks (oldest first), zero-filled.
+function _weeklyVolumeSeries(n){
+  var buckets={};
+  getSessions().forEach(function(s){ if(!s.date) return; var k=_mondayKeyOf(s.date); buckets[k]=(buckets[k]||0)+calcVolume(s.exercises||[]); });
+  var out=[], d=new Date(_mostRecentMonday()+'T00:00:00');
+  for(var i=n-1;i>=0;i--){ var m=new Date(d); m.setDate(d.getDate()-7*i); out.push(Math.round(buckets[_ymdLocal(m)]||0)); }
+  return out;
+}
+// Sessions ring + volume sparkline (board H-01 "At a glance"). Only once there
+// is history to glance at.
+function _renderGlance(){
+  if(!hasCustomRoutine() || !getSessions().length) return '';
+  var ws=_weekStats();
+  var planned=ws.planned||0, count=ws.count||0;
+  var frac=planned>0?Math.min(1,count/planned):(count>0?1:0);
+  var r=20, C=2*Math.PI*r, off=C*(1-frac);
+  var ring='<svg viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">'+
+    '<circle cx="26" cy="26" r="'+r+'" fill="none" stroke="color-mix(in srgb,var(--text) 10%,transparent)" stroke-width="5"/>'+
+    '<circle cx="26" cy="26" r="'+r+'" fill="none" stroke="var(--earned)" stroke-width="5" stroke-linecap="round" '+
+      'stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'" transform="rotate(-90 26 26)"/>'+
+    '<text x="26" y="30" text-anchor="middle" font-size="13" font-weight="800" fill="var(--text)">'+count+(planned>0?'<tspan font-size="9" font-weight="600" fill="var(--muted)">/'+planned+'</tspan>':'')+'</text>'+
+  '</svg>';
+  var series=_weeklyVolumeSeries(8), vol=series[series.length-1];
+  return '<div class="kt-glance">'+
+    '<div class="kt-glance-tile">'+ring+'<div class="kt-glance-lbl">Sessions<br>this week</div></div>'+
+    '<div class="kt-glance-tile" onclick="switchTab(\'progress\')" role="button" tabindex="0">'+
+      '<div class="kt-glance-val">'+vol.toLocaleString()+'<span class="u"> lb</span></div>'+
+      '<div class="kt-glance-spark">'+_sparklineSVG(series,'var(--earned)')+'</div>'+
+      '<div class="kt-glance-lbl">Volume<br>this week</div>'+
+    '</div>'+
+  '</div>';
+}
+// Mean logged effort over the last N days (per-set logs first, summary rpe otherwise).
+function _avgRpe(days){
+  var cutoff=Date.now()-days*86400000, sum=0, n=0;
+  getSessions().forEach(function(s){
+    if(!s.date || new Date(s.date+'T00:00:00').getTime()<cutoff) return;
+    (s.exercises||[]).forEach(function(ex){
+      var log=Array.isArray(ex.rpeLog)?ex.rpeLog.map(function(x){ return parseFloat(x)||0; }).filter(function(x){ return x>0; }):[];
+      if(!log.length && Array.isArray(ex.sets)) log=ex.sets.map(function(st){ return parseFloat(st&&st.rpe)||0; }).filter(function(x){ return x>0; });   // legacy nested shape
+      if(log.length){ log.forEach(function(x){ sum+=x; n++; }); }
+      else { var r=parseFloat(ex.rpe); if(r>0){ sum+=r; n++; } }
+    });
+  });
+  return n?Math.round(sum/n*10)/10:0;
+}
+function _fmtDur(ms){
+  var t=Math.max(0,Math.round(ms/1000)), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), sec=t%60;
+  var pad=function(n){ return (n<10?'0':'')+n; };
+  return h>0 ? h+':'+pad(m)+':'+pad(sec) : m+':'+pad(sec);
+}
+function _completeInsight(rec, pct, label){
+  var d=lsGet('kt_debrief');
+  if(d && d.text && String(d.id)===String(rec.id)) return d.text;
+  var prs=rec.prs||[];
+  if(prs.length) return 'A record on '+prs.join(' and ')+'. Keep the next session honest \u2014 recovery is where it lands.';
+  if(pct!=null && pct>=3) return 'Volume up '+pct+'% on your last '+label.toLowerCase()+'. Hold this pace and add weight when the last set stays clean.';
+  if(pct!=null && pct<=-3) return 'Lighter than last time by '+Math.abs(pct)+'% \u2014 fine if it was planned. If not, sleep and food come first.';
+  return 'Steady session. Same loads next time, one more rep on the last set.';
+}
+// The runner's pre-start state as a sheet: the whole session as a numbered
+// ledger with targets, one CTA. Skipped when a session is already under way.
+function startTodaySession(){
+  if(runnerSession || runnerOpen){ openDeckRunner(); return; }
+  try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); if(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000){ openDeckRunner(); return; } }catch(e){}
+  var act=getTodayActivity();
+  if(act.type!=='lift' || !(act.exercises||[]).length){ openDeckRunner(); return; }
+  openSessionOverview(act);
+}
+function openSessionOverview(act){
+  closeSessionOverview();
+  var label=(SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName;
+  var exs=act.exercises||[];
+  var wd=null; try{ wd=getWkData(); }catch(e){}
+  var focus=wd&&(wd.note||wd.focus)?String(wd.note||wd.focus):'';
+  var rows=exs.map(function(ex,i){
+    var w=parseFloat(ex.weight)||0;
+    var tgt=_plural(ex.sets,'set')+' \u00d7 '+_esc(_fmtRepTarget(ex.reps))+' \u00b7 '+(w>0?w+' lb':'bodyweight');
+    return '<div class="kt-ov-row'+(i===0?' first':'')+'">'+
+      '<span class="kt-ov-idx">'+(i+1)+'</span>'+
+      '<div class="kt-ov-body"><div class="kt-ov-name">'+_esc(ex.name)+'</div><div class="kt-ov-tgt">'+tgt+'</div></div>'+
+      (i===0?'<span class="kt-ov-first">UP FIRST</span>':'')+
+    '</div>';
+  }).join('');
+  var overlay=document.createElement('div');
+  overlay.id='sessionOverviewOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WORKOUT</div>'+
+      '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">'+_esc(label)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:4px;">Week '+currentWeek+' of '+getTotalWeeks()+' \u00b7 ~'+Math.round(exs.length*8.5)+' min \u00b7 '+_plural(exs.length,'exercise')+'</div></div>'+
+      '<button class="kt-sheet-x" onclick="closeSessionOverview()" aria-label="Close">\u2715</button>'+
+    '</div>'+
+    '<div class="kt-ov-list">'+rows+'</div>'+
+    (focus?'<div class="kt-ov-focus"><span class="kt-ov-focus-lbl">FOCUS</span>'+_esc(focus)+'</div>':'')+
+    '<button class="btn btn-primary btn-full" style="padding:15px;font-size:15px;margin-top:14px;" onclick="closeSessionOverview();openDeckRunner()">Begin workout</button>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeSessionOverview);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeSessionOverview(); });
+  _a11yPass();
+}
+function closeSessionOverview(){
+  var el=document.getElementById('sessionOverviewOverlay');
+  if(el) el.remove();
+}
+function openCompleteSheet(c){
+  closeCompleteSheet();
+  var rec=c&&c.rec; if(!rec) return;
+  var label=(SESS[rec.type]&&SESS[rec.type].label)||rec.type||'Session';
+  var vol=Math.round(calcVolume(rec.exercises||[]));
+  var prev=getSessions().find(function(x){ return x.id!==rec.id && x.type===rec.type && (x.exercises||[]).length; });
+  var prevVol=prev?Math.round(calcVolume(prev.exercises||[])):0;
+  var pct=(prevVol>0)?Math.round((vol-prevVol)/prevVol*100):null;
+  var ws=_weekStats();
+  var title=_esc(label)+' done'+(ws.planned>0?' \u2014 '+ws.count+' of '+ws.planned+' this week.':'.');
+  var done=(rec.exercises||[]).length, planned=c.planned||done;
+  var prRows=(rec.prs||[]).map(function(n){
+    var ex=(rec.exercises||[]).find(function(e){ return e.name===n; });
+    var pair=ex?_lastPair(ex):null;
+    return '<div class="kt-cmp-pr"><div><div style="font-size:15px;font-weight:700;">'+_esc(n)+'</div>'+
+      (pair?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+pair.w+' lb \u00d7 '+pair.r+' \u2014 best at this weight</div>':'')+
+      '</div><span class="kt-cmp-badge">PR</span></div>';
+  }).join('');
+  var tile=function(lbl,val,unit){ return '<div class="kt-cmp-tile"><div class="kt-cmp-lbl">'+lbl+'</div><div class="kt-cmp-val">'+val+(unit?'<span class="u">'+unit+'</span>':'')+'</div></div>'; };
+  var overlay=document.createElement('div');
+  overlay.id='completeSheetOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">COMPLETE</div>'+
+      '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">'+title+'</div></div>'+
+      '<button class="kt-sheet-x" onclick="closeCompleteSheet()" aria-label="Close">\u2715</button>'+
+    '</div>'+
+    '<div class="kt-cmp-hd">WORKOUT SUMMARY</div>'+
+    '<div class="kt-cmp-grid">'+
+      tile('Total volume', vol.toLocaleString(), 'lb')+
+      tile('Duration', _fmtDur(Date.now()-(c.startedAt||Date.now())), '')+
+      tile('Exercises', done+'<span class="u">/'+planned+'</span>', '')+
+      tile('Vs last '+_esc(label.toLowerCase()), pct==null?'\u2014':((pct>0?'+':'')+pct+'%'), '')+
+    '</div>'+
+    (prRows?'<div class="kt-cmp-hd">PERSONAL RECORDS</div><div class="kt-cmp-prs">'+prRows+'</div>':'')+
+    '<div class="kt-cmp-hd">COACH INSIGHT</div>'+
+    '<div class="kt-cmp-insight" id="kt-complete-insight">'+_esc(_completeInsight(rec,pct,label))+'</div>'+
+    '<div class="kt-cmp-actions">'+
+      '<button class="btn btn-primary btn-full" style="padding:15px;font-size:15px;" onclick="closeCompleteSheet()">Done</button>'+
+      '<button class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;" onclick="shareSessionCard('+rec.id+')">Share card</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeCompleteSheet);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeCompleteSheet(); });
+  _a11yPass();
+}
+function closeCompleteSheet(){
+  var el=document.getElementById('completeSheetOverlay');
+  if(el) el.remove();
 }
 
 // Render the runner overlay into #runner-root.
@@ -8037,7 +8325,7 @@ function showManualCopy(txt) {
     '<p style="color:var(--lite);font-size:13px;margin-bottom:10px;">Select all and copy:</p>'+
     '<textarea readonly id="manualCopyTxt" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:11px;font-family:monospace;width:100%;height:160px;">'+txt+'</textarea>'+
     '<button onclick="selectManual()" style="margin-top:12px;width:100%;background:var(--accent);color:var(--on-accent);border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">Select All</button>'+
-    '<button onclick="this.closest(\'div\').parentElement.remove()" style="margin-top:8px;width:100%;background:#2a2a3a;color:#f0f0f8;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;">Close</button>'+
+    '<button onclick="this.closest(\'div\').parentElement.remove()" style="margin-top:8px;width:100%;background:var(--card2);color:var(--text);border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;">Close</button>'+
     '</div>';
   document.body.appendChild(overlay);
 }
@@ -9711,7 +9999,7 @@ function renderStrengthTrends(extraHTML){
     '</div>';
   }).join('');
   return '<div class="chart-card"><h2 style="margin-bottom:4px;">Strength</h2>'+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets · tap a lift for the full curve</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets · tap a lift for the full curve'+(function(){ var a=_avgRpe(28); return a?' · avg RPE '+a+' (4 wk)':''; })()+'</div>'+
     rows+(extraHTML||'')+'</div>';
 }
 
@@ -10544,6 +10832,7 @@ function selectCalDate(d){
   document.querySelectorAll('.cal-day').forEach(function(c){
     c.style.background=c.getAttribute('data-date')===calSelectedDate?'var(--accent)':'';
     c.style.color=c.getAttribute('data-date')===calSelectedDate?'var(--on-accent)':'';
+    var _n=c.firstElementChild; if(_n) _n.style.color=c.getAttribute('data-date')===calSelectedDate?'var(--on-accent)':'';
   });
 }
 function renderCalDetail(sessions,runs,sports){
@@ -10965,7 +11254,7 @@ function md(text){
   text=text.replace(/^#\s+(.+)$/gm,'<strong style="font-size:16px;">$1</strong>');
   text=text.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
   text=text.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
-  text=text.replace(/`([^`\n]+)`/g,'<code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
+  text=text.replace(/`([^`\n]+)`/g,'<code style="background:color-mix(in srgb,currentColor 10%,transparent);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
   var lines=text.split('\n');
   var out=[];var inList=false;
   lines.forEach(function(line){
@@ -11974,6 +12263,57 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 }
 
 // Friendly label for a tool call, shown as a pill in the chat UI.
+// The plan-change ledger under the newest coach message that edited the
+// programme: what moved, from what, and one honest pair of buttons. The
+// edits are already applied (tools execute immediately); Undo is the
+// existing Restore Previous, Keep just retires the card.
+function _isLastToolMsg(m){
+  var last=null;
+  coachMessages.forEach(function(x){ if(x.role==='assistant'&&Array.isArray(x._tools)&&x._tools.length) last=x; });
+  return last===m;
+}
+function _backupWeightFor(name){
+  var b=lsGet('kt_routine_backup'); if(!b||!b.weeks) return null;
+  var wk=b.weeks[currentWeek-1]||b.weeks[b.weeks.length-1]; if(!wk) return null;
+  var found=null, want=String(name||'').toLowerCase();
+  Object.keys(wk).forEach(function(k){
+    if(!Array.isArray(wk[k])) return;
+    wk[k].forEach(function(ex){ if(ex&&String(ex.name||'').toLowerCase()===want && found==null) found=parseFloat(ex.weight); });
+  });
+  return (found!=null && !isNaN(found))?found:null;
+}
+function _planChangeLedger(tools, idx){
+  var rows=[];
+  (tools||[]).forEach(function(tc){
+    if(!tc || !tc.result || tc.result.ok===false) return;
+    var i=tc.input||{};
+    if(tc.name==='set_exercise_weight'){
+      var old=_backupWeightFor(i.name);
+      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_snap25(i.weight)?old+' \u2192 ':'\u2192 ')+_snap25(i.weight)+' lb']);
+    } else if(tc.name==='swap_cadence_days'){
+      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
+    } else if(tc.name==='update_routine_weeks'){
+      var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+      if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
+    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+i.weight+' lb']); }
+    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+i.weight+' lb']); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(String(i.pace||''))+' /km']); }
+    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
+  });
+  if(!rows.length) return '';
+  var canUndo=!!(lsGet('kt_routine_backup')&&lsGet('kt_routine_backup').weeks);
+  return '<div class="kt-ledger-card">'+
+    '<div class="kt-ledger-card-hd">PLAN CHANGES \u00b7 WEEK '+currentWeek+'</div>'+
+    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('')+
+    '<div class="kt-ledger-card-actions">'+
+      (canUndo?'<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>':'')+
+      '<button class="kt-coach-btn primary" onclick="_ledgerKeep('+idx+')">Keep changes</button>'+
+    '</div>'+
+    '<div class="kt-ledger-card-note">Applied to your programme'+(canUndo?' \u00b7 Undo restores the previous version':'')+'</div>'+
+  '</div>';
+}
+function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
+function _ledgerUndo(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } restoreRoutineBackup(); }
 function toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
@@ -12094,6 +12434,7 @@ function saveCoachHistory(){
       // Stop notices re-enter the API history after the next boot.
       if(m._local) out._local=true;
       if(m._error) out._error=true;
+      if(m._ledgerSeen) out._ledgerSeen=true;
       if(Array.isArray(m.content)){
         // Storage projection: collapse multimodal/tool-use content to text +
         // a _hadImage flag. The rich in-memory version is preserved.
@@ -12678,6 +13019,7 @@ function renderCoach(){
           return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
         }).join(' ');
         bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+pills+'</div>';
+        if(!m._ledgerSeen && _isLastToolMsg(m)){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
       }
     });
     // Live pills for tools executed mid-turn (before the final message commits)
@@ -12781,7 +13123,7 @@ var THEMES = {
   violet:   {name:'Violet',   room:'Dusk',      textColor:'#f6f0ff',bg:'#0b0716',card:'#171028',card2:'#221839',border:'rgba(183,139,253,.14)',accent:'#b78bfd','accent-soft':'rgba(183,139,253,.16)','accent-dim':'rgba(183,139,253,.08)','on-accent':'#0b0716','accent-ink':'#b78bfd',green:'#b78bfd',yellow:'#ffd60a',red:'#ff453a',orange:'#fb923c',cyan:'#7dd3fc',text:'#f6f0ff',muted:'#8b7cab',lite:'#b3a4d6',purple:'#c4b5fd'},
   gold:     {name:'Gold',     room:'Brass',     textColor:'#fff8e1',bg:'#080601',card:'#141005',card2:'#1f1808',border:'rgba(245,197,24,.14)',accent:'#f5c518','accent-soft':'rgba(245,197,24,.12)','accent-dim':'rgba(245,197,24,.06)','on-accent':'#080601','accent-ink':'#f5c518',green:'#f5c518',yellow:'#ffb340',red:'#ff453a',orange:'#fb923c',cyan:'#60a5fa',text:'#fff8e1',muted:'#99885c',lite:'#c0b088',purple:'#b7a3f7'},
   light:    {name:'Light',    room:'Paper',     paper:true,textColor:'#17170f',bg:'#f4f2ec',card:'#ffffff',card2:'#e9e6dc',border:'rgba(60,50,20,.10)',accent:'#5b8a00','accent-soft':'rgba(91,138,0,.13)','accent-dim':'rgba(91,138,0,.07)','on-accent':'#000000','accent-ink':'#3f6a00',green:'#5b8a00',yellow:'#c8960c',red:'#dc2626',orange:'#ea580c',cyan:'#0891b2',text:'#17170f',muted:'#6c6a5f',lite:'#45443c',purple:'#6d28d9'},
-  heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000',green:'#3d7a00',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#5b21b6'},
+  heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000',green:'#4f7000',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#5b21b6'},
 };
 
 // Painting and persisting are separate: Auto paints the system room but must
@@ -12998,7 +13340,7 @@ function renderSettings() {
           // Abbreviate long sport names so they fit the ~55px chip
           var ABBREV={Cycling:'Bike',CrossFit:'CF',Pickleball:'PB',Swimming:'Swim',Basketball:'Bball',Volleyball:'VB',Climbing:'Climb',Soccer:'Soccer',Rowing:'Row',Boxing:'Box',Hiking:'Hike',Yoga:'Yoga',Golf:'Golf',Other:'Other'};
           var shortLbl=ABBREV[lbl]||lbl;
-          return '<button class="kt-day-chip'+(entry.isRest?' rest':'')+'" onclick="cycleWeekPlanDay('+dow+')" style="--day-c:'+color+';'+
+          return '<button class="kt-day-chip'+(entry.isRest?' rest':'')+(_schedEditDow===dow?' editing':'')+'" onclick="_schedPick('+dow+')" style="--day-c:'+color+';'+
             'display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;'+
             'padding:10px 4px;border-radius:12px;'+
             'cursor:pointer;min-width:0;-webkit-tap-highlight-color:transparent;">'+
@@ -13009,7 +13351,22 @@ function renderSettings() {
         schedHTML='<div style="padding:14px 18px 16px;">'+
           '<div style="font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px;">Weekly schedule</div>'+
           '<div style="display:flex;gap:5px;">'+chips+'</div>'+
-          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap any day to cycle through workout types. Changes apply to every week without its own cadence.</div>'+
+          (function(){
+            if(_schedEditDow==null) return '';
+            var cur=wPlan[_schedEditDow]||{}, curT=cur.type||'Rest';
+            var pick=_schedTypes().map(function(t){
+              var lbl=(SESS[t]&&SESS[t].label)||t, on=curT===t;
+              return '<button class="kt-sched-pick'+(on?' on':'')+'" onclick="setWeekPlanDay('+_schedEditDow+',\''+t+'\')">'+_esc(lbl)+'</button>';
+            }).join('');
+            var n=(cur.isLift)?getSessionExercises(curT).length:0;
+            var sub=cur.isRest?'Rest \u2014 nothing scheduled':(cur.isLift?'~'+Math.round(n*8.5)+' min \u00b7 '+_plural(n,'exercise'):(cur.isRun?'Run day':String(curT)));
+            return '<div class="kt-sched-editor">'+
+              '<div class="kt-sched-editor-hd">'+_esc(String(DOW_NAMES[_schedEditDow]).toUpperCase())+' \u00b7 '+_esc(((SESS[curT]&&SESS[curT].label)||curT).toUpperCase())+'</div>'+
+              '<div class="kt-sched-picks">'+pick+'</div>'+
+              '<div class="kt-sched-editor-sub">'+sub+'</div>'+
+            '</div>';
+          })()+
+          '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap a day, then pick what it holds. Changes apply to every week without its own cadence.</div>'+
         '</div>';
       }
       var progGroup='<div class="settings-group" id="settings-workout-group">'+
@@ -13879,7 +14236,7 @@ function setLibFilter(f){
     var active=p.dataset.cat===f;
     var color=catColors[p.dataset.cat]||'var(--accent)';
     p.style.background=active?color:'var(--card2)';
-    p.style.color=active?'var(--on-accent)':'var(--muted)';
+    p.style.color=active?(p.dataset.cat==='All'?'var(--on-accent)':'#0b0b0d'):'var(--muted)';
   });
 }
 function toggleLibEx(name){
@@ -14050,7 +14407,7 @@ function _buildExLibHTML(){
     var color=catColors[c]||'var(--accent)';
     return '<button class="exlib-pill" data-cat="'+c+'" onclick="setLibFilter(\''+c+'\')" style="'+
       'border:none;outline:none;cursor:pointer;padding:7px 16px;border-radius:20px;font-size:13px;font-weight:700;'+
-      'background:'+(active?color:'var(--card2)')+';color:'+(active?'var(--on-accent)':'var(--muted)')+';transition:all .15s;">'+c+'</button>';
+      'background:'+(active?color:'var(--card2)')+';color:'+(active?(c==='All'?'var(--on-accent)':'#0b0b0d'):'var(--muted)')+';transition:all .15s;">'+c+'</button>';
   }).join('');
   return '<div style="background:var(--card);border-radius:24px 24px 0 0;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;">'+
     '<div style="display:flex;align-items:center;padding:20px 20px 16px;gap:12px;border-bottom:1px solid var(--border);">'+
@@ -14084,7 +14441,7 @@ function setLibAddCat(c){
   document.querySelectorAll('.exadd-pill').forEach(function(p){
     var active=p.dataset.cat===c;
     p.style.background=active?(catColors[p.dataset.cat]||'#888'):'var(--card)';
-    p.style.color=active?'var(--on-accent)':'var(--muted)';
+    p.style.color=active?(p.dataset.cat==='All'?'var(--on-accent)':'#0b0b0d'):'var(--muted)';
   });
 }
 function _renderExLibAddForm(){
