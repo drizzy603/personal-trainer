@@ -81,6 +81,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         restActivity = nil
     }
 
+    // MARK: - Scene lifecycle
+    // Apps linked against the iOS 27 SDK must use UIScene: without a scene
+    // delegate UIKit aborts at launch on iOS 27 (builds 44/45 crashed on the
+    // phone while the iOS 26 simulator hid it). The manifest in Info.plist
+    // names SceneDelegate and the Main storyboard, so the scene instantiates
+    // SuperoViewController itself; this only hands back the named config.
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    }
+
     // MARK: - Capacitor / URL / UserActivity
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
@@ -134,4 +144,33 @@ class SuperoViewController: CAPBridgeViewController {
 
 extension Notification.Name {
     static let trovoDeepLink = Notification.Name("TrovoDeepLink")
+}
+
+// URL opens and user activities arrive on the scene under the UIScene
+// lifecycle; forward them to the same handlers (Capacitor's proxy, the
+// trovo:// deep link) the app delegate used before.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        for ctx in connectionOptions.urlContexts { open(ctx.url) }
+        if let activity = connectionOptions.userActivities.first { continueActivity(activity) }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for ctx in URLContexts { open(ctx.url) }
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        continueActivity(userActivity)
+    }
+
+    private func open(_ url: URL) {
+        guard let app = UIApplication.shared.delegate as? AppDelegate else { return }
+        _ = app.application(UIApplication.shared, open: url, options: [:])
+    }
+
+    private func continueActivity(_ activity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+    }
 }
