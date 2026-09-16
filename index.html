@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-20"/>
+<meta name="build" content="20260915-21"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -5545,7 +5545,7 @@ function renderTodayEditorial(){
     weekWrapCard='<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
         '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">WEEK '+_ww.weekNo+' · WRAPPED</span>'+
-        '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SUPERO</span>'+
+        '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">FITNESS PROGRAMMER</span>'+
       '</div>'+
       '<div style="font-size:28px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin-top:12px;">'+_wwLine1+(_wwLine2?'<br>'+_wwLine2:'')+'</div>'+
       '<div class="kt-statband" style="margin:16px 0 0;">'+
@@ -5891,7 +5891,7 @@ function _renderMonthPoster(){
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px 20px;margin-bottom:16px;">'+
     '<div style="display:flex;justify-content:space-between;align-items:baseline;">'+
       '<span class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--accent-ink);">'+monthName+'</span>'+
-      '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SUPERO</span>'+
+      '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">FITNESS PROGRAMMER</span>'+
     '</div>'+
     '<div class="kt-mono" style="font-size:56px;font-weight:250;letter-spacing:-2px;line-height:1;margin-top:16px;font-variant-numeric:tabular-nums;">'+activeDays+'</div>'+
     '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--muted);margin-top:5px;">ACTIVE DAYS</div>'+
@@ -6000,7 +6000,7 @@ function _drawWeekCard(st, accent){
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
   x.fillStyle=BG; x.fillRect(0,0,W,H);
   x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
-  x.fillText('SUPERO · WEEK '+currentWeek+' · WRAPPED', M, 136);
+  x.fillText('FITNESS PROGRAMMER · WEEK '+currentWeek+' · WRAPPED', M, 136);
   var nums=['Zero','One','Two','Three','Four','Five','Six','Seven'];
   var line1=(st.planned>0 && st.count===st.planned && st.count<=7)
     ? nums[st.count]+' for '+nums[st.count].toLowerCase()+'.'
@@ -6049,14 +6049,14 @@ function _drawWeekCard(st, accent){
   for(var j=0;j<7;j++){ x.fillText(days[j], M+j*(bw+gap)+bw/2-8, 1168); }
   x.fillStyle=accent; x.fillRect(M,1242,20,20);
   x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
-  x.fillText('SUPERO', 122, 1262);
+  x.fillText('FITNESS PROGRAMMER', 122, 1262);
   x.textAlign='right'; x.fillStyle=MUTED;
   x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
   x.fillText('AI TRAINER', R, 1262);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
-    var file=new File([blob], 'supero-week-'+st.monday+'-wrapped.png', {type:'image/png'});
+    var file=new File([blob], 'fitness-programmer-week-'+st.monday+'-wrapped.png', {type:'image/png'});
     _shareFile(file);
   }, 'image/png');
 }
@@ -6102,7 +6102,7 @@ function _drawWrapCard(mk, st, accent){
   x.fillStyle=BG; x.fillRect(0,0,W,H);
   x.fillStyle=accent; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3.5px');
   x.fillText(monthName.toUpperCase()+' '+mk.slice(0,4), M, 136);
-  x.textAlign='right'; x.fillStyle=MUTED; x.fillText('SUPERO', R, 136);
+  x.textAlign='right'; x.fillStyle=MUTED; x.fillText('FITNESS PROGRAMMER', R, 136);
   x.textAlign='left';
   var active=_monthActiveDays(mk);
   var activeDays=Object.keys(active).length;
@@ -6143,14 +6143,14 @@ function _drawWrapCard(mk, st, accent){
   x.textAlign='left'; ls('0px');
   x.fillStyle=accent; x.fillRect(M,1296,20,20);
   x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
-  x.fillText('SUPERO', 122, 1316);
+  x.fillText('FITNESS PROGRAMMER', 122, 1316);
   x.textAlign='right'; x.fillStyle=MUTED;
   x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
   x.fillText('AI TRAINER', R, 1316);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
-    var file=new File([blob], 'supero-'+mk+'-wrapped.png', {type:'image/png'});
+    var file=new File([blob], 'fitness-programmer-'+mk+'-wrapped.png', {type:'image/png'});
     _shareFile(file);
   }, 'image/png');
 }
@@ -12285,10 +12285,10 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
   var sets=exs.reduce(function(a,ex){ return a+exSets(ex); },0);
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
   x.fillStyle=BG; x.fillRect(0,0,W,H);
-  // Eyebrow — SUPERO · WEEK NN · SUN JUL 20
+  // Eyebrow — FITNESS PROGRAMMER · WEEK NN · SUN JUL 20
   var d=new Date((s.date||todayISO())+'T00:00:00');
   var dp=d.toDateString().toUpperCase().split(' '); // ["SUN","JUL","20","2026"]
-  var eyebrow='SUPERO'+(s.week?' · WEEK '+String(s.week).padStart(2,'0'):'')+' · '+dp[0]+' '+dp[1]+' '+parseInt(dp[2],10);
+  var eyebrow='FITNESS PROGRAMMER'+(s.week?' · WEEK '+String(s.week).padStart(2,'0'):'')+' · '+dp[0]+' '+dp[1]+' '+parseInt(dp[2],10);
   x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
   x.fillText(eyebrow, M, 136);
   // Headline — "{Type} day," in ink / "done." in accent
@@ -12341,17 +12341,17 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
     x.fillStyle=MUTED; x.font='600 32px Inter, sans-serif';
     x.fillText('+ '+(exs.length-4)+' more', M, ly);
   }
-  // Footer — accent square + SUPERO lockup / AI TRAINER
+  // Footer — accent square + brand lockup / AI TRAINER
   x.fillStyle=accent; x.fillRect(M,1242,20,20);
   x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
-  x.fillText('SUPERO', 122, 1262);
+  x.fillText('FITNESS PROGRAMMER', 122, 1262);
   x.textAlign='right'; x.fillStyle=MUTED;
   x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
   x.fillText('AI TRAINER', R, 1262);
   x.textAlign='left'; ls('0px');
   c.toBlob(function(blob){
     if(!blob){ showToast('Could not build card','err'); return; }
-    var file=new File([blob], 'supero-'+s.date+'.png', {type:'image/png'});
+    var file=new File([blob], 'fitness-programmer-'+s.date+'.png', {type:'image/png'});
     _shareFile(file);
   }, 'image/png');
 }
@@ -16949,7 +16949,7 @@ window._trovoOpen=_handleDeepLink;
   <div class="ed-hero">
     <div class="ed-hero-eyebrow">Legal</div>
     <h1>Privacy<br><span>Policy</span></h1>
-    <p class="ed-stamp">SUPERO · LAST UPDATED 6 JUL 2026</p>
+    <p class="ed-stamp">FITNESS PROGRAMMER · LAST UPDATED 15 SEP 2026</p>
   </div>
   <div class="content">
     <div class="ed-guarantees">
