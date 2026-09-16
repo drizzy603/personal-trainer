@@ -97,14 +97,14 @@ https://drizzy603.github.io/personal-trainer/privacy.html
 Email: robertokalanisosa@outlook.com
 ```
 
-Set in App Store Connect → My Apps → Supero → App Information → App Review Information.
+Set in App Store Connect → My Apps → Fitness Programmer → App Information → App Review Information.
 
 ## TestFlight
 
 **Beta App Description** *(shown to external testers before install)*
 
 ```
-Supero is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
+Fitness Programmer is a private AI-powered training tracker. Beta testers will help shape the AI Coach experience and verify the programme-building flow on real devices. All data is stored locally — no accounts needed.
 ```
 
 **What to Test** *(shown in TestFlight app)*
@@ -130,7 +130,7 @@ No account or API key is required to use the app: the built-in starter intake (L
 ## What's New in 1.2 (release notes — paste at submission)
 
 ```
-Supero 1.2 is the Health release — your training now lives on your wrist, your watch, and your rings.
+Fitness Programmer 1.2 is the Health release — your training now lives on your wrist, your watch, and your rings.
 
 • Apple Watch app: run today's session from your wrist — live heart rate, rest timer with haptics, and one-tap set logging. Finished sessions count toward your Activity rings and sync straight into your log.
 • Watch-face complication: today's session, one tap from the face.
@@ -168,7 +168,7 @@ Run top-to-bottom once Apple Developer verification clears.
 ### 2. App Store Connect (appstoreconnect.apple.com)
 - My Apps → **+** → New App
   - Platform: iOS
-  - Name: **Supero**
+  - Name: **Fitness Programmer**
   - Primary language: English (U.S.)
   - Bundle ID: `app.kt.trainer` (dropdown picks up the registered identifier)
   - SKU: `supero-001`
