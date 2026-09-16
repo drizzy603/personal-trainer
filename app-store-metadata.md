@@ -7,10 +7,10 @@ Source of truth for App Store Connect & TestFlight copy. Update here, then paste
 **App Name** *(30 char limit)* — as registered in App Store Connect
 
 ```
-Supero — AI Trainer
+Fitness Programmer
 ```
 
-Home-screen name (CFBundleDisplayName) is the short form `Supero`. Bare "Supero" and "Alzo" were both reserved by unreleased app records, so the store listing carries the qualifier.
+Renamed in App Store Connect on 2026-09-15 (was "Supero — AI Trainer"; bare "Supero" and "Alzo" were both reserved by unreleased app records). **The binary still shows `Supero` on the home screen (CFBundleDisplayName) and throughout the UI** — decide whether to rename the app to match (needs a new build, and the icon is an "S" mark) or to put the brand back in the store name. Apple can reject a listing whose name bears no relation to the name on the device.
 
 **Subtitle** *(30 char limit)*
 
@@ -27,7 +27,7 @@ Start in five taps — no account, no key needed. Your AI coach builds a custom 
 **Description** *(4000 char limit)*
 
 ```
-Supero is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
+Fitness Programmer is a private, no-account training tracker with an AI coach that builds your programme around your goals, schedule, and equipment.
 
 Start lifting in five taps: the built-in starter programme writes an 8-week block on your phone — no account, no API key, nothing to sign up for. Or tell the AI coach what you want to train for — strength, size, a 5K, getting back in shape — and it generates a fully custom multi-week programme in seconds. Push, pull, legs, runs, rest days; the cadence matches your week, not someone else's template.
 
@@ -61,10 +61,10 @@ Made for lifters, runners, and anyone who wants their training plan to actually 
 **Keywords** *(100 char limit, comma-separated, no spaces between commas)*
 
 ```
-workout,gym,training,fitness,coach,strength,running,tracker,crossfit,cycling,log,lifting,health
+workout,gym,training,coach,strength,running,tracker,crossfit,cycling,log,lifting,hypertrophy,split
 ```
 
-Do not include words already in the app name or category — Apple indexes those automatically.
+Do not include words already in the app name or category — Apple indexes those automatically. (`fitness` and `health` were dropped on 2026-09-15: the first is now in the app name, the second is the category.)
 
 **Support URL** *(required)*
 
