@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260915-24"/>
+<meta name="build" content="20260916-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3743,13 +3743,21 @@ function _hkLocalISO(r){
   var d = new Date(r.startDate);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+// One Health workout is imported once. Call this only after the workout has
+// actually been written, or after a deliberate skip.
+function _hkMarkSeen(uuid){
+  if(!uuid) return;
+  var seen = lsGet('kt_hk_imported')||[];
+  if(seen.indexOf(uuid)===-1){ seen.push(uuid); lsSet('kt_hk_imported', seen); }
+}
 function _logHealthRun(r){
   var localISO = _hkLocalISO(r);
-  var seen = lsGet('kt_hk_imported')||[];
-  // Mark seen either way — a manual duplicate must never re-offer.
-  if(seen.indexOf(r.uuid)===-1){ seen.push(r.uuid); lsSet('kt_hk_imported', seen); }
   localStorage.setItem('kt_hk_last_sync', String(Date.now()));
-  if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)) return null;
+  // A manual duplicate is a deliberate skip, so it is marked seen and never
+  // re-offered. Everything else is marked only after the run reaches disk —
+  // marking first meant a quota failure lost the workout with nothing left to
+  // re-offer it.
+  if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ _hkMarkSeen(r.uuid); return null; }
   var rec = {
     id: Date.now(),
     distance: Math.round(r.distanceKm*100)/100,
@@ -3760,7 +3768,9 @@ function _logHealthRun(r){
     hr: r.avgHr||0,
     type: 'easy'
   };
-  var runs = getRuns(); runs.unshift(rec); lsSet('kt_runs', runs);
+  var runs = getRuns(); runs.unshift(rec);
+  if(!lsSet('kt_runs', runs)) return false;   // storage full; lsSet has toasted
+  _hkMarkSeen(r.uuid);
   invalidateCoachCard();
   return rec;
 }
@@ -3792,9 +3802,10 @@ function _healthSportRec(r, sportId, idOffset){
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
   var rec = _healthSportRec(r, sportId, 0);
-  var logs = getSportLogs(); logs.unshift(rec); lsSet('kt_sports', logs);
-  var seen = lsGet('kt_hk_imported')||[]; seen.push(r.uuid); lsSet('kt_hk_imported', seen);
+  var logs = getSportLogs(); logs.unshift(rec);
   localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
+  _hkMarkSeen(r.uuid);
   invalidateCoachCard();
   return rec;
 }
@@ -4021,9 +4032,11 @@ function logPendingHealthRun(){
   var sid = _hkSportId(r);
   if(sid){
     var srec = _logHealthSport(r, sid);
-    sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
-      label: sid+(srec.duration?' · '+srec.duration+' min':'')};
-    showToast(sid+' logged from Apple Health');
+    if(srec){
+      sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
+        label: sid+(srec.duration?' · '+srec.duration+' min':'')};
+      showToast(sid+' logged from Apple Health');
+    }
   } else {
     var rec = _logHealthRun(r);
     if(rec){
@@ -4031,7 +4044,7 @@ function logPendingHealthRun(){
       // The undo strip lives on the Run tab; say so when logging from elsewhere.
       if(!(currentTab==='log' && logSubTab==='run')) showToast(rec.distance+' km run logged from Apple Health \u2014 undo on the Run tab');
       checkMilestones({delayToast:600});
-    } else {
+    } else if(rec===null){
       showToast('Already logged by hand — skipped the duplicate');
     }
   }
