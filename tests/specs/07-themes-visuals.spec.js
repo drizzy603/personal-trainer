@@ -36,7 +36,7 @@ run('share card draws through toBlob', async () => {
       const t = document.getElementById('toast');
       return t ? t.textContent : null;
     });
-    assert(/^Saved as supero-|^Sharing not supported here$/.test(out || ''), 'draw path completed (headless: PNG download fallback), got: ' + out);
+    assert(/^Saved as fitness-programmer-|^Sharing not supported here$/.test(out || ''), 'draw path completed (headless: PNG download fallback), got: ' + out);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
