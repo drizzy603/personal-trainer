@@ -181,7 +181,7 @@
 <div class="hero">
   <div class="label">Legal</div>
   <h1>Privacy Policy</h1>
-  <p class="updated">Supero · Last updated: July 6, 2026</p>
+  <p class="updated">Supero · Last updated: September 15, 2026</p>
 </div>
 
 <div class="content">
@@ -205,10 +205,14 @@
       <li>Personal records (PRs)</li>
       <li>Your AI-generated training programme</li>
       <li>AI Coach conversation history</li>
-      <li>App preferences (theme, goals)</li>
+      <li>App preferences (look, units, text size, goals)</li>
+      <li>Your athlete profile, if you or the Coach fills it in: training goals, experience, available equipment, injuries or exercises to avoid, and preferences</li>
+      <li>Exercises you add to the library yourself, and any notes you keep against an exercise</li>
+      <li>If you turn on the readiness score: the sleep, heart-rate-variability and resting-heart-rate values it is computed from (see Section 4)</li>
     </ul>
     <p>We do not operate servers that receive, store, or process your personal training data.</p>
-    <p>If you use the AI Coach, the relevant parts of this data (your programme, recent training history, and your messages) are sent directly from your device to Anthropic to generate the Coach's responses — see Sections 3 and 6. If you never use the Coach, nothing leaves your device.</p>
+    <p>When the iOS app launches it checks for newer app content by fetching a small version file (and, when that is newer, the app's page) from GitHub Pages, where this site is hosted. The request carries no personal data and no identifier; like any web request, GitHub receives your device's IP address.</p>
+    <p>If you use the AI Coach, the relevant parts of this data (your programme, recent training history, your athlete profile, and your messages) are sent directly from your device to Anthropic to generate the Coach's responses — see Sections 3 and 6. If you never use the Coach, nothing leaves your device.</p>
   </div>
 
   <div class="section">
@@ -223,6 +227,7 @@
     <p>When you import, Supero reads workout date, duration, distance, calories, and average heart rate for these workout types only — directly from Apple Health on your device. The data is then stored alongside your other Supero activity in local storage. It is never sent to us.</p>
     <p>If you turn on "Background Watch sync" in Settings, iOS can wake Supero briefly when a new run or ride is saved to Apple Health so the workout is ready in your log the next time you open the app. This processing happens entirely on your device.</p>
     <p>Separately, you may turn on "Save lifts to Apple Health" in Settings. When enabled, Supero writes the lifting sessions you finish in the app to Apple Health as strength-training workouts (start time, end time, and workout type only), so they count toward your activity rings. This is off by default, uses its own iOS Health permission prompt, and Supero only ever writes workouts you logged yourself — nothing else is written to Health.</p>
+    <p>If you turn on the readiness score in Settings, Supero also reads last night's sleep duration, heart-rate variability and resting heart rate from Apple Health each morning and computes a 0–100 recovery score on your device. When you chat with the AI Coach, today's score and those three inputs are included in the context sent to Anthropic so it can factor recovery into its advice. Turning readiness off stops both the reading and the sharing.</p>
     <p>Imported workouts become part of your training data, just like activity you log by hand. This means that if you use the AI Coach, your recent runs and rides — including imported ones and their average heart rate — are included in the context sent directly from your device to Anthropic, as described in Section 3. If you never use the Coach, imported Health data stays on your device.</p>
   </div>
 
@@ -251,6 +256,7 @@
   <div class="section">
     <h2>7. Data Storage and Security</h2>
     <p>All data is stored locally on your device. We have no access to it and therefore cannot recover it if lost. We recommend using the Export feature in Settings to regularly back up your data as a JSON file.</p>
+    <p>On iOS, Supero also writes a daily backup file to the Files app on your device and, when iCloud Drive is available, to the Supero folder in your iCloud Drive. That backup lives in your own Apple account and we cannot access it. Heart-rate and calorie values imported from Apple Health are left out of the iCloud copy.</p>
     <p>Clearing your browser data or uninstalling the app will permanently delete all locally stored data.</p>
   </div>
 
