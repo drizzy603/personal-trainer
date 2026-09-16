@@ -64,7 +64,7 @@ run('backup carries a manifest; restore keeps an undo snapshot; Settings shows s
         bytes: st.total, mb: _fmtMB(st.total),
       };
     });
-    assert(out.manifest && out.manifest.app === 'Supero' && out.manifest.build === '2' + out.manifest.build.slice(1), 'manifest names the app + build');
+    assert(out.manifest && out.manifest.app === 'Fitness Programmer' && out.manifest.build === '2' + out.manifest.build.slice(1), 'manifest names the app + build');
     assert(out.manifest.counts.sessions === out.before, 'manifest counts sessions');
     assert(out.after === out.before, 'round-trip restore keeps the data');
     assert(out.snapSessions === out.before && !out.snapHasManifest, 'pre-restore snapshot holds the old data, no manifest');

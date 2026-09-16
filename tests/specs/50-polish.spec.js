@@ -3,7 +3,7 @@
 // streak definition drives the chip, the milestone and the Progress hero — with an at-risk hint.
 const { boot, assert, run } = require('../lib/harness');
 
-run('name once, How-Supero-works link, Run tab before a plan, one streak with an at-risk hint', async () => {
+run('name once, How-it-works link, Run tab before a plan, one streak with an at-risk hint', async () => {
   const app = await boot({ seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]', kt_apikey: '' } });
   try {
     const out = await app.page.evaluate(() => {
@@ -11,7 +11,7 @@ run('name once, How-Supero-works link, Run tab before a plan, one streak with an
       localStorage.removeItem('kt_apikey'); localStorage.removeItem('kt_user_name'); lsDel('kt_routine');
       // empty state links the walkthrough; Run tab renders with no programme
       switchTab('log'); switchLogSub('workout');
-      r.emptyHasHow = /How Supero works/.test(document.getElementById('screen').innerText);
+      r.emptyHasHow = /How Fitness Programmer works/.test(document.getElementById('screen').innerText);
       switchLogSub('run');
       const runTxt = document.getElementById('screen').innerText;
       r.runTab = { cta: !!document.querySelector('#screen .kt-cta'), blankTargets: /Run Targets/.test(runTxt), hitRun: /Hit the Run tab/.test(runTxt) };
@@ -35,7 +35,7 @@ run('name once, How-Supero-works link, Run tab before a plan, one streak with an
       r.milestoneUsesStreak = MILESTONE_DEFS.some(m => m.k === 'streak' && m.value() === calcStreakDays());
       return r;
     });
-    assert(out.emptyHasHow, 'the no-programme empty state links How Supero works');
+    assert(out.emptyHasHow, 'the no-programme empty state links the How-it-works page');
     assert(out.runTab.cta && !out.runTab.blankTargets && !out.runTab.hitRun, 'the Run tab renders the editorial segment without a programme: ' + JSON.stringify(out.runTab));
     assert(out.nameField, 'the starter reveal carries an optional name field');
     assert(out.afterApply.first === 'Roberto' && out.afterApply.routine && out.afterApply.prompt && out.afterApply.greet, 'the name feeds the greeting and the coach prompt: ' + JSON.stringify(out.afterApply));

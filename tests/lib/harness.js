@@ -1,4 +1,4 @@
-// Shared Playwright harness for the Supero JS regression suites.
+// Shared Playwright harness for the Fitness Programmer JS regression suites.
 //
 // Serves the repo root over local HTTP (the OTA loader is capacitor:-only, so
 // it stays dormant), seeds localStorage from seed-dump.json before the page

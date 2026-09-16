@@ -711,7 +711,7 @@ struct PlanView: View {
         .navigationDestination(for: Int.self) { idx in
             ExerciseView(index: idx, runner: runner)
         }
-        .navigationTitle("Supero")
+        .navigationTitle("Fitness Programmer")
     }
 }
 
@@ -891,7 +891,7 @@ struct NoPlanView: View {
         VStack(spacing: 10) {
             Image(systemName: "iphone").font(.title2).foregroundColor(lime)
             Text("No programme yet").font(.headline)
-            Text("Build one in Supero on your iPhone — five taps, no account. It lands here.")
+            Text("Build one in Fitness Programmer on your iPhone — five taps, no account. It lands here.")
                 .font(.footnote).multilineTextAlignment(.center).foregroundColor(.secondary)
             Button("Sync now") { conn.requestRefresh() }.buttonStyle(.bordered)
         }

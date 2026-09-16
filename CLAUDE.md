@@ -1,6 +1,6 @@
-# Supero App
+# Fitness Programmer (repo: personal-trainer)
 
-A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS shell (phone app + Apple Watch app + widgets) for native distribution.
+**The product is named "Fitness Programmer" (renamed from "Supero" on 2026-09-15).** "Supero" survives on purpose in three places and must not be swept: the Files/iCloud backup folder `Supero/` and the `supero-backup-*.json` filenames (renaming orphans every existing backup), the developer/copyright lines ("operated by Supero", "© 2026 Supero"), and Xcode target/product names (`SuperoWatch`, `SuperoWatchWidget`) plus every bundle id, the App Group and the iCloud container. A single-file web training app with an AI coach, wrapped in a Capacitor 8 iOS shell (phone app + Apple Watch app + widgets) for native distribution.
 
 ## Files
 - `index.html` — the entire web app (HTML + CSS + JS in one file, including the inlined "How It Works" overlay and the inlined privacy section opened from Settings). ~15k lines, ES5-style inline JS; `render()` rebuilds `#screen`, `paintRunner()` the runner overlay.

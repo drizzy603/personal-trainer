@@ -10,7 +10,7 @@ Source of truth for App Store Connect & TestFlight copy. Update here, then paste
 Fitness Programmer
 ```
 
-Renamed in App Store Connect on 2026-09-15 (was "Supero — AI Trainer"; bare "Supero" and "Alzo" were both reserved by unreleased app records). **The binary still shows `Supero` on the home screen (CFBundleDisplayName) and throughout the UI** — decide whether to rename the app to match (needs a new build, and the icon is an "S" mark) or to put the brand back in the store name. Apple can reject a listing whose name bears no relation to the name on the device.
+Renamed in App Store Connect on 2026-09-15 (was "Supero — AI Trainer"; bare "Supero" and "Alzo" were both reserved by unreleased app records). The product was renamed throughout the app to match (2026-09-15): home-screen name, app title, watch app, widgets, share extension, privacy policy and How It Works. Kept as-is on purpose: the `Supero/` backup folder and `supero-backup-*.json` filenames, the developer/copyright lines, and all bundle ids. The app icon is still the Supero "S" mark — replace it when there is a new one. Ships from build 47 onward; builds up to 46 show "Supero" on the device.
 
 **Subtitle** *(30 char limit)*
 

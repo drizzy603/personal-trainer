@@ -116,7 +116,7 @@ struct SuperoWatchWidget: Widget {
             ComplicationView(entry: entry)
         }
         .configurationDisplayName("Today's session")
-        .description("Today's Supero plan, one tap from the face.")
+        .description("Today's Fitness Programmer plan, one tap from the face.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryCorner, .accessoryInline])
     }
 }

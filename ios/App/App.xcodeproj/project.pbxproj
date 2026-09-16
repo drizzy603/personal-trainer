@@ -715,7 +715,7 @@
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				INFOPLIST_KEY_CFBundleDisplayName = "Fitness Programmer";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -742,7 +742,7 @@
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SuperoWatchWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				INFOPLIST_KEY_CFBundleDisplayName = "Fitness Programmer";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -815,7 +815,7 @@
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				INFOPLIST_KEY_CFBundleDisplayName = "Fitness Programmer";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Supero shows your live heart rate while you train and reads workout energy to credit your rings.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Supero saves your wrist-run lifting sessions to Apple Health so they count toward your activity.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -894,7 +894,7 @@
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Supero;
+				INFOPLIST_KEY_CFBundleDisplayName = "Fitness Programmer";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Supero shows your live heart rate while you train and reads workout energy to credit your rings.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Supero saves your wrist-run lifting sessions to Apple Health so they count toward your activity.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
