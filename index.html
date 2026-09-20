@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-3"/>
+<meta name="build" content="20260920-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7938,8 +7938,14 @@ function renderDeckRunner(){
   var idxStr = String(runnerExIdx+1).padStart(2,'0')+' / '+String(total).padStart(2,'0');
   var topL, topR;
   if(exerciseDone){
+    // A finished exercise kept its set ledger editable but lost the Edit
+    // button, so picking the wrong lift and only noticing after the last set
+    // left nothing to fix it with.
     topL = idxStr;
-    topR = '<span class="kt-r-card-meta">'+_esc(done+'/'+ex.sets+' SETS LOGGED')+'</span>';
+    topR = '<div style="display:flex;gap:7px;align-items:center;flex-shrink:0;">'+
+      '<span class="kt-r-card-meta">'+_esc(done+'/'+ex.sets+' SETS LOGGED')+'</span>'+
+      '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit</button>'+
+    '</div>';
   } else if(runnerResting){
     topL = idxStr+' · SET '+done+' LOGGED';
     topR = '<span class="kt-r-card-meta">NEXT · SET '+(done+1)+'</span>';
@@ -8609,7 +8615,10 @@ function _renderRunnerDoneBody(ex, isLast){
     '<div class="kt-done-meta">'+_esc((runnerCompleted[ex.name]||ex.sets)+'/'+ex.sets+' SETS LOGGED')+'</div>'+
     beatHTML+
     _renderCompletedSets(ex)+
-    '<button class="kt-done-more" onclick="event.stopPropagation();runnerExtraSet()">+1 set</button>'+
+    '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'+
+      '<button class="kt-done-more" onclick="event.stopPropagation();runnerExtraSet()">+1 set</button>'+
+      '<button class="kt-done-more" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit exercise</button>'+
+    '</div>'+
     dateField+
     '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
     nextPreview+
@@ -9956,8 +9965,12 @@ function openSessionEditor(id){
   var rows='';
   s.exercises.forEach(function(ex,ei){
     var pair=_exSetPairs(ex);
+    // The name is editable too: a session logged against the wrong lift used to
+    // be uncorrectable once it left the runner — you could fix every number in
+    // it and still have it filed under the exercise you picked by mistake.
     rows+='<div style="margin-bottom:16px;">'+
-      '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">'+_esc(ex.name)+'</div>'+
+      '<input id="se_'+ei+'_name" type="text" value="'+_esc(ex.name)+'" aria-label="Exercise name" '+
+        'style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;color:var(--text);font-size:14px;font-weight:700;box-sizing:border-box;font-family:inherit;margin-bottom:8px;"/>'+
       '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;margin-bottom:6px;">'+
         '<span></span>'+
         '<span class="kt-mono" style="font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-align:center;">REPS</span>'+
@@ -10013,10 +10026,12 @@ function closeSessionEditor(){
   var el=document.getElementById('sessEditOverlay');
   if(el)el.remove();
 }
+var _sessEditRenamed=[];
 function saveSessionEdit(){
   var sessions=getSessions();
   var s=sessions.find(function(x){ return x.id===_sessEditId; });
   if(!s){ closeSessionEditor(); return; }
+  _sessEditRenamed=[];
   s.exercises=(s.exercises||[]).map(function(ex,ei){
     var pair=_exSetPairs(ex);
     var reps=[], wts=[];
@@ -10027,8 +10042,11 @@ function saveSessionEdit(){
       wts.push(Math.max(0, wStore(parseFloat(wEl&&wEl.value)||0)));   // typed in the display unit
     });
     var top=wts.length?Math.max.apply(null,wts):0;
+    var nEl=document.getElementById('se_'+ei+'_name');
+    var newName=nEl && String(nEl.value||'').trim() ? String(nEl.value).trim() : ex.name;
+    if(newName!==ex.name) _sessEditRenamed.push({from:ex.name, to:newName});
     // Normalize to the flat runner shape on save (legacy nested included).
-    return {name:ex.name, isMain:!!ex.isMain, sets:reps.length, reps:reps,
+    return {name:newName, isMain:!!ex.isMain, sets:reps.length, reps:reps,
       weight:top, weightLog:wts,
       rpe:(Array.isArray(ex.sets)?(ex.sets[0]&&ex.sets[0].rpe)||'':(ex.rpe!=null?ex.rpe:'')),
       rpeLog:Array.isArray(ex.rpeLog)?ex.rpeLog:undefined};
@@ -10050,7 +10068,9 @@ function saveSessionEdit(){
   recomputePRs();
   invalidateCoachCard();
   closeSessionEditor();
-  showToast('Session updated');
+  showToast(_sessEditRenamed.length
+    ? 'Updated \u00b7 now logged as '+_sessEditRenamed[0].to
+    : 'Session updated');
   render();
 }
 function _calNavToDate(dateStr){
