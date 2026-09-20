@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260916-1"/>
+<meta name="build" content="20260919-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1737,6 +1737,10 @@ var SESS = {
   Legs2:{label:'Legs B',icon:'', color:'#fb923c', focus:'Glutes · Hamstrings · Posterior Chain'},
   Arms: {label:'Arms',  icon:'', color:'#f59e0b', focus:'Biceps · Triceps · Abs'}
 };
+// Every lift session a week can hold. The key is the week array it reads
+// (wd.push, wd.legs2 …); the value is the cadence entry that schedules it.
+var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms'];
+function _sessLabel(t){ return (SESS[t] && SESS[t].label) || t || ''; }
 
 // ── Sports config ─────────────────────────────────────────────────────────────
 // 14 activities, each with a 2-letter mono badge and a unique saturated color.
@@ -5350,31 +5354,41 @@ function renderTodayEditorial(){
       '</button>';
   }
 
-  // Ad-hoc workout picker — on non-lift days, expose the user's lift
-  // session types so they can train off-schedule. Done day is empty so
-  // we don't push an "extra" workout option after a session is complete.
+  // Off-schedule picker. The programme is a library the user draws from, not a
+  // contract they obey — so this offers every lift session the current week
+  // CONTAINS, not merely the ones its cadence happens to schedule. Deriving the
+  // list from weekPlan (as this once did) locked users out of their own work:
+  // a routine with a populated legs array and no Legs day left that session
+  // unreachable through the one door built to reach it. It also read the
+  // routine-level weekPlan, so a type scheduled only in an overridden week
+  // never showed. Union both sources; intersect neither.
+  // On a lift day this becomes "train something else" — today's own session is
+  // already the headline CTA, so it is left out of the pills. A finished day
+  // shows nothing: no nagging for an extra workout.
   var adhocPicker = '';
-  if(!sessionDoneToday && act.type !== 'lift'){
-    var crAdh = getCustomRoutine();
+  if(!sessionDoneToday){
     var seenTypes = {};
     var liftTypes = [];
-    if(crAdh && Array.isArray(crAdh.weekPlan)){
-      crAdh.weekPlan.forEach(function(t){
-        if(!t) return;
-        var entry = _planEntry(t);
-        if(!entry.isLift) return;
-        if(seenTypes[entry.type]) return;
-        if(!_todayLiftExercises(entry.type).length) return;
-        seenTypes[entry.type] = true;
-        liftTypes.push(entry.type);
-      });
-    }
+    var todayType = (act.type === 'lift') ? act.dayName : '';
+    var _adhAdd = function(t){
+      if(!t) return;
+      var entry = _planEntry(t);
+      if(!entry.isLift) return;
+      if(entry.type === todayType) return;
+      if(seenTypes[entry.type]) return;
+      if(!_todayLiftExercises(entry.type).length) return;
+      seenTypes[entry.type] = true;
+      liftTypes.push(entry.type);
+    };
+    var planAdh = getWeekPlan();
+    if(planAdh && planAdh.length) planAdh.forEach(function(p){ _adhAdd(p && p.type); });
+    LIFT_TYPES.forEach(_adhAdd);
     if(liftTypes.length){
       var pills = liftTypes.map(function(t){
-        return '<button class="kt-adhoc-pill" onclick="openDeckRunner(\''+_esc(t)+'\')">'+_esc(t)+'</button>';
+        return '<button class="kt-adhoc-pill" onclick="openDeckRunner(\''+_esc(t)+'\')">'+_esc(_sessLabel(t))+'</button>';
       }).join('');
       adhocPicker = '<div class="kt-adhoc-row">'+
-        '<div class="kt-adhoc-lbl">OR LOG A WORKOUT ANYWAY</div>'+
+        '<div class="kt-adhoc-lbl">'+(todayType ? 'OR TRAIN SOMETHING ELSE' : 'OR LOG A WORKOUT ANYWAY')+'</div>'+
         '<div class="kt-adhoc-pills">'+pills+'</div>'+
       '</div>';
     }
