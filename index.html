@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-5"/>
+<meta name="build" content="20260920-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4400,8 +4400,31 @@ function _planEntry(type){
   // Fall through to SPORTS — match case-insensitively against id, return canonical id
   var sport=_findSport(t)||_findSport(titled);
   if(sport) return {type:sport.id,color:sport.color,isRest:false,isRun:false,isLift:false,isSport:true};
-  // Unknown → treat as rest so the cadence doesn't blow up
-  return {type:'Rest',color:_PLAN_TYPE_META.Rest.color,isRest:true,isRun:false,isLift:false,isSport:false};
+  // Unknown. It still RENDERS like a rest day so no caller blows up, but the
+  // day keeps its own name in .type. Returning 'Rest' here is what silently
+  // deleted a training day: every writer round-trips its value through this
+  // function, so an unrecognised entry was renamed on the next save and the
+  // day was gone with no undo and no message.
+  return {type:t,color:_PLAN_TYPE_META.Rest.color,isRest:true,isRun:false,isLift:false,isSport:false,isUnknown:true};
+}
+// The cadence values this build can act on. Anything else is preserved but not
+// written by us: see _planEntry's isUnknown arm.
+function _knownPlanType(s){
+  var t=String(s||'');
+  var titled=t.charAt(0).toUpperCase()+t.slice(1).toLowerCase();
+  return !!_PLAN_TYPE_META[titled] || !!(_findSport(t)||_findSport(titled));
+}
+// A cadence is 7 entries this build understands. Used to REJECT a malformed
+// write rather than coerce it, which is the whole point of stage 1.
+function _validWeekPlan(arr){
+  if(!Array.isArray(arr)||arr.length!==7) return false;
+  for(var i=0;i<7;i++){ if(!_knownPlanType(arr[i])) return false; }
+  return true;
+}
+function _badPlanEntries(arr){
+  var bad=[];
+  (Array.isArray(arr)?arr:[]).forEach(function(s){ if(!_knownPlanType(s)) bad.push(String(s)); });
+  return bad;
 }
 // Returns the cadence for a specific week (1-indexed), preferring the
 // per-week override if present, then the routine-level default, then the
@@ -4449,11 +4472,25 @@ function swapWeekPlanDays(weekNum, dowA, dowB){
 // Cycles a day's type in the routine-level weekPlan (and current week override
 // if one exists). Core types loop: Push→Pull→Legs→(Legs2 if used)→Run→Rest.
 var _schedEditDow=null;   // day selected in the Settings schedule editor
+// What the cadence editor can set. Derived from the routine, not hardcoded:
+// the old fixed list meant a programme built around Legs2 or a sport could not
+// be edited back to itself, and tapping such a day overwrote it.
 function _schedTypes(){
   var cr=getCustomRoutine(); if(!cr) return [];
   var t=['Push','Pull','Legs','Arms','Run','Rest'];
   var hasLegs2=cr.weeks&&cr.weeks.some(function(w){return w.legs2&&w.legs2.length;});
   if(hasLegs2) t.splice(3,0,'Legs2');
+  // Every value the routine's own cadences already use, so a day can always be
+  // set back to what it was.
+  var seen={};
+  t.forEach(function(x){ seen[x]=1; });
+  var plans=[];
+  if(Array.isArray(cr.weekPlan)) plans.push(cr.weekPlan);
+  (cr.weeks||[]).forEach(function(w){ if(Array.isArray(w&&w.weekPlan)) plans.push(w.weekPlan); });
+  plans.forEach(function(p){ p.forEach(function(v){
+    if(!v||seen[v]||!_knownPlanType(v)) return;
+    seen[v]=1; t.push(v);
+  }); });
   return t;
 }
 function _schedPick(dow){ _schedEditDow=(_schedEditDow===dow)?null:dow; render(); }
@@ -4461,13 +4498,18 @@ function setWeekPlanDay(dow, type){ _schedEditDow=null; cycleWeekPlanDay(dow, ty
 function cycleWeekPlanDay(dow, forceType){
   var cr=getCustomRoutine();
   if(!cr) return;
-  var CYCLE=_schedTypes();
   // Read from current week plan so we see any per-week override
   var curPlan=getWeekPlanForWeek(currentWeek);
   var curType=curPlan[dow].type;
-  // If current type is a sport (not in CYCLE), treat as Run so next step is Rest
-  // — prevents silently converting e.g. Cycling → Push on first tap.
-  var idx=CYCLE.indexOf(curType); if(idx===-1) idx=CYCLE.indexOf('Run');
+  var CYCLE=_schedTypes();
+  var idx=CYCLE.indexOf(curType);
+  if(idx===-1 && !forceType){
+    // A value this build does not understand. Cycling from it would rename the
+    // day — which is the reported bug. Offer the list instead and write nothing.
+    _trapErr('cadence: unrecognised day type '+curType);
+    _schedPick(dow);
+    return;
+  }
   var nextType=forceType||CYCLE[(idx+1)%CYCLE.length];
   // Update routine-level weekPlan
   var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
@@ -13215,6 +13257,22 @@ function executeCoachTool(name,input){
     if(name==='update_routine_weeks'){
       var weeksIn=Array.isArray(input.weeks)?input.weeks:null;
       if(!weeksIn||!weeksIn.length) return {ok:false,error:'weeks array required'};
+      // Validate BEFORE the snapshot. The snapshot used to be taken first and
+      // the coercion applied after, so a malformed call destroyed the day AND
+      // burned the undo point that could have recovered it.
+      if(Array.isArray(input.weekPlan)&&!_validWeekPlan(input.weekPlan)){
+        var _bad=_badPlanEntries(input.weekPlan);
+        _trapErr('coach weekPlan rejected: '+_bad.join(', '));
+        return {ok:false,error:'weekPlan has 7 entries I do not recognise: '+_bad.join(', ')+'. Use Push, Pull, Legs, Legs2, Arms, Rest, Run or a sport id. Nothing was changed.'};
+      }
+      for(var _wi=0;_wi<weeksIn.length;_wi++){
+        var _wp=weeksIn[_wi]&&weeksIn[_wi].weekPlan;
+        if(Array.isArray(_wp)&&!_validWeekPlan(_wp)){
+          var _bad2=_badPlanEntries(_wp);
+          _trapErr('coach per-week weekPlan rejected: '+_bad2.join(', '));
+          return {ok:false,error:'week '+(weeksIn[_wi].week||_wi+1)+' weekPlan has entries I do not recognise: '+_bad2.join(', ')+'. Nothing was changed.'};
+        }
+      }
       _snapshotRoutineForUndo();
       var cr=getCustomRoutine();
       if(!cr){
@@ -13222,7 +13280,7 @@ function executeCoachTool(name,input){
       }
       var planSupplied=Array.isArray(input.weekPlan)&&input.weekPlan.length===7;
       if(planSupplied){
-        // Accept lift/rest types and any sport id; unknown strings collapse to Rest.
+        // Validated above, so this only canonicalises case ("push" -> "Push").
         cr.weekPlan=input.weekPlan.map(function(s){return _planEntry(s).type;});
       }
       var written=[];
