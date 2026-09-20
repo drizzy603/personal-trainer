@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-4"/>
+<meta name="build" content="20260920-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -8977,6 +8977,12 @@ function saveRunnerExEdit(){
       runnerSession.exercises.splice(runnerSession.exercises.indexOf(ex)+1,0,_moved);
       ex.ss=true;
       runnerExEditIdx=runnerSession.exercises.indexOf(ex);
+      // _ssReturnIdx is a raw index into the array we just spliced. Every other
+      // path that moves through the deck nulls it (runnerGoTo does), and a
+      // reorder invalidates it the same way: a finished card shows the done
+      // body even while its rest runs, so the Edit button is reachable mid-pair
+      // and a stale index would land _ssJumpBack on a different exercise.
+      _ssReturnIdx=null;
       // The engaged card is tracked by index; the reorder must not move it to
       // a different exercise under the user.
       if(_engagedName){

@@ -35,7 +35,12 @@ run('choosing a superset partner moves it into the pair', async () => {
       };
       runnerExEditSetSSIdx(2);                  // Cable Fly — two below, not adjacent
       r.chosen = { with: _rExEditSSWith, on: _rExEditSS, backOnMainSheet: !_rExSSPicking };
+      // A pending superset return holds a raw index into the array the save is
+      // about to splice. A finished card shows the done body even while its
+      // rest runs, so Edit is reachable mid-pair and the index would go stale.
+      _ssReturnIdx = 3;
       saveRunnerExEdit();
+      r.ssReturnCleared = _ssReturnIdx === null;
       r.afterSave = { names: names(), flags: flags(), engaged: runnerExIdx };
 
       // Clearing it again unpairs without moving anything back.
@@ -60,6 +65,7 @@ run('choosing a superset partner moves it into the pair', async () => {
     assert(out.afterSave.names.length === 4 && out.afterSave.names.indexOf('Incline DB Press') >= 0,
       'nothing was lost in the move: ' + JSON.stringify(out.afterSave.names));
     assert(out.afterSave.engaged === 0, 'the engaged card still points at the same lift: ' + out.afterSave.engaged);
+    assert(out.ssReturnCleared, 'the reorder invalidates a pending superset return index');
     assert(out.reopened === 'Cable Fly', 'reopening shows the current partner: ' + out.reopened);
     assert(out.afterClear.flags[0] === 0 && out.afterClear.names[1] === 'Cable Fly',
       'clearing unpairs and leaves the order alone: ' + JSON.stringify(out.afterClear));
