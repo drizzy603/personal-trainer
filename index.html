@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-2"/>
+<meta name="build" content="20260920-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1690,7 +1690,9 @@ var _rExPickCat       = 'All';      // category chip in the picker
 var _rExEditApply     = false;      // also write the edit into the programme (this week onward)
 var _rExEditName      = '';
 var _rExEditSeed=null;
-var _rExEditSS        = false;      // "superset with next" toggle in the sheet
+var _rExEditSS        = false;      // derived: is a superset partner chosen
+var _rExEditSSWith    = '';         // the chosen partner's NAME ('' = no superset)
+var _rExSSPicking     = false;      // the edit sheet is showing the partner list
 // Index to jump back to when a superset pair's rest ends (B rested, A next).
 var _ssReturnIdx      = null;
 var _rExEditSets      = 0;
@@ -8623,7 +8625,12 @@ function openRunnerExEdit(idx){
   _rExEditReps   =runnerReps[ex.name]!=null?runnerReps[ex.name]:(Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
   _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps};
-  _rExEditSS     =!!ex.ss;
+  // ex.ss means "paired with the NEXT card", so the current partner is the one
+  // sitting below. The sheet lets you choose a different one.
+  var _ssNextEx  = runnerSession && runnerSession.exercises[runnerExEditIdx+1];
+  _rExEditSSWith = (ex.ss && _ssNextEx) ? _ssNextEx.name : '';
+  _rExEditSS     = !!_rExEditSSWith;
+  _rExSSPicking  = false;
   runnerExPickerQ='';
   var overlay=document.createElement('div');
   overlay.id='runner-ex-edit-modal';
@@ -8649,7 +8656,48 @@ function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
     '</div>'+
   '</div>';
 }
+function _buildRunnerSSPickerHTML(){
+  var exs=(runnerSession&&runnerSession.exercises)||[];
+  var rows='';
+  exs.forEach(function(e,i){
+    if(i===runnerExEditIdx) return;
+    var on=(_rExEditSSWith===e.name);
+    rows+='<button onclick="event.stopPropagation();runnerExEditSetSSIdx('+i+')" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(on?'var(--accent-soft)':'var(--border)')+';background:'+(on?'var(--accent-dim)':'var(--card2)')+';margin-bottom:8px;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;">'+
+      '<span style="font-size:13px;font-weight:700;color:var(--text);">'+_esc(e.name)+'</span>'+
+      (on?'<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--accent-ink);">PAIRED</span>':'')+
+    '</button>';
+  });
+  var noneOn=!_rExEditSSWith;
+  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+      '<div style="font-size:17px;font-weight:800;">Superset with</div>'+
+      '<button onclick="event.stopPropagation();runnerExEditBackFromSS()" style="border:1px solid var(--border);background:var(--card2);color:var(--muted);border-radius:12px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Back</button>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:16px;">The pair is trained back to back and shares one rest. Choosing a lift moves it directly below this one.</div>'+
+    rows+
+    '<button onclick="event.stopPropagation();runnerExEditSetSSIdx(-1)" style="width:100%;padding:13px 16px;border-radius:12px;border:1px solid '+(noneOn?'var(--accent-soft)':'var(--border)')+';background:'+(noneOn?'var(--accent-dim)':'var(--card2)')+';color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:4px;-webkit-tap-highlight-color:transparent;">No superset</button>'+
+  '</div>';
+}
+function runnerExEditPickSS(){
+  _rExSSPicking=true;
+  var sheet=document.getElementById('runner-ex-edit-sheet');
+  if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
+function runnerExEditBackFromSS(){
+  _rExSSPicking=false;
+  var sheet=document.getElementById('runner-ex-edit-sheet');
+  if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
+// By index, not by name: a name interpolated into an inline onclick breaks on
+// the first exercise with an apostrophe in it.
+function runnerExEditSetSSIdx(i){
+  var e=(i>=0 && runnerSession) ? runnerSession.exercises[i] : null;
+  _rExEditSSWith = e ? e.name : '';
+  _rExEditSS     = !!_rExEditSSWith;
+  runnerExEditBackFromSS();
+}
 function _buildRunnerExEditHTML(){
+  if(_rExSSPicking) return _buildRunnerSSPickerHTML();
   var exEntry=getAllExercises().find(function(e){return e.name===_rExEditName;});
   var cat=exEntry?exEntry.cat:'';
   return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
@@ -8672,10 +8720,11 @@ function _buildRunnerExEditHTML(){
       _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
       _runnerExStepHTML('runner-ex-weight-input','Weight · '+_uW(),wDisp(_rExEditWeight),'runnerExEditStepWeight','runnerExEditSetWeight',(_uW()==='kg'?1.25:2.5))+
     '</div>'+
-    (runnerExEditIdx!=null && runnerSession && runnerExEditIdx<runnerSession.exercises.length-1
-      ?'<button onclick="event.stopPropagation();runnerExEditToggleSS()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditSS?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditSS?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
-        '<span style="font-size:13px;font-weight:700;color:var(--text);">Superset with '+_esc(runnerSession.exercises[runnerExEditIdx+1].name)+'</span>'+
-        '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditSS?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditSS?'ON':'OFF')+'</span>'+
+    (runnerExEditIdx!=null && runnerSession && runnerSession.exercises.length>1
+      ?'<button onclick="event.stopPropagation();runnerExEditPickSS()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditSS?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditSS?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;">'+
+        '<span><span style="display:block;font-size:13px;font-weight:700;color:var(--text);">Superset with</span>'+
+        '<span style="display:block;font-size:11px;color:'+(_rExEditSS?'var(--accent-ink)':'var(--muted)')+';margin-top:2px;">'+(_rExEditSS?_esc(_rExEditSSWith):'No superset')+'</span></span>'+
+        '<span style="color:var(--accent);font-weight:700;font-size:14px;flex-shrink:0;margin-left:8px;">Change \u203a</span>'+
       '</button>'
       :'')+
     (hasCustomRoutine() && runnerSession && ['push','pull','legs','legs2','arms'].indexOf(String(runnerSession.type||'').toLowerCase())>=0
@@ -8890,11 +8939,6 @@ function runnerExEditStepWeight(d){
   var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=wDisp(_rExEditWeight);
 }
 function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,wStore(v)); }
-function runnerExEditToggleSS(){
-  _rExEditSS=!_rExEditSS;
-  var sheet=document.getElementById('runner-ex-edit-sheet');
-  if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
-}
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
@@ -8907,7 +8951,34 @@ function saveRunnerExEdit(){
   // The sheet edits scalars — stale per-set target arrays would silently
   // reseed the pre-edit loads on every completed set.
   delete ex.weights;
-  ex.ss     =_rExEditSS && runnerExEditIdx<runnerSession.exercises.length-1;
+  // A superset pairs with the card BELOW, so choosing a partner means moving it
+  // there. Before this the only reachable partner was whichever exercise
+  // happened to sit next in the list — the toggle could be turned on, but the
+  // other half of the pair could never be chosen.
+  ex.ss=false;
+  if(_rExEditSSWith){
+    var _engagedName=(runnerSession.exercises[runnerExIdx]||{}).name||null;
+    var _pi=-1;
+    for(var _i=0;_i<runnerSession.exercises.length;_i++){
+      if(runnerSession.exercises[_i].name===_rExEditSSWith){ _pi=_i; break; }
+    }
+    if(_pi>=0 && runnerSession.exercises[_pi]!==ex){
+      var _moved=runnerSession.exercises.splice(_pi,1)[0];
+      _moved.ss=false;                                  // a partner cannot also open a pair
+      runnerSession.exercises.splice(runnerSession.exercises.indexOf(ex)+1,0,_moved);
+      ex.ss=true;
+      runnerExEditIdx=runnerSession.exercises.indexOf(ex);
+      // The engaged card is tracked by index; the reorder must not move it to
+      // a different exercise under the user.
+      if(_engagedName){
+        var _ni=-1;
+        for(var _j=0;_j<runnerSession.exercises.length;_j++){
+          if(runnerSession.exercises[_j].name===_engagedName){ _ni=_j; break; }
+        }
+        if(_ni>=0) runnerExIdx=_ni;
+      }
+    }
+  }
   // Only touch the live steppers when the sheet value actually changed —
   // adding a 4th set used to snap a bumped 195 back to the prescribed 185.
   var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
