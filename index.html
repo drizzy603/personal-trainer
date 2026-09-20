@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260919-1"/>
+<meta name="build" content="20260919-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -193,7 +193,8 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
   padding:6px;justify-content:space-around;z-index:100;
   /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
      momentum scroll, which lets in-flow content slide visibly under the bar. */
-  transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;}
+  transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;
+  transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease;}
 
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:10px 4px;background:none;border:none;border-radius:18px;
@@ -493,6 +494,15 @@ select option{background:var(--bg);}
   background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border:1px solid var(--border);border-radius:24px;
   padding:6px 6px 6px 18px;z-index:50;}
+/* Typing: give the keyboard the screen. iOS pins position:fixed to the LAYOUT
+   viewport and then scrolls the page so the focused input clears the keyboard,
+   which drags the tab dock up with it — leaving ~110px of dead band between the
+   compose pill and the keys while the conversation is squeezed to a few lines.
+   While the chat input holds focus the dock stands down and the pill drops to
+   the bottom edge; the reclaimed space goes to the messages. */
+html.chat-typing #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;}
+html.chat-typing .coach-input-row{bottom:var(--tab-gap);}
+html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
 .coach-textarea::placeholder{color:var(--muted);}
@@ -4122,6 +4132,7 @@ function switchTab(tab) {
     if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
   });
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
+  if(window._chatTypingOff) _chatTypingOff();
   render();
   paintRunner();
 }
@@ -16026,6 +16037,41 @@ checkMilestones({quiet:true});
 // Ask the browser not to evict our storage — best-effort, silently ignored
 // where unsupported. localStorage is the only copy of the user's data.
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
+// ── Chat comfort: the dock stands down while you type ────────────────────────
+// Pairs with the html.chat-typing rules. Restoring is deferred by a frame or two
+// because tapping Send blurs the textarea before focus returns — without the
+// delay the tab bar flashes back in on every message. Tapping the conversation
+// dismisses the keyboard, which is how every other chat app behaves and the only
+// way back to the tabs without sending something.
+(function(){
+  var _ctTimer=null;
+  function _chatTyping(on){
+    if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; }
+    if(on){ document.documentElement.classList.add('chat-typing'); return; }
+    _ctTimer=setTimeout(function(){
+      var ae=document.activeElement;
+      if(ae && ae.id==='coach-input' && document.getElementById('coach-input')) return;  // focus came back
+      document.documentElement.classList.remove('chat-typing');
+    },180);
+  }
+  document.addEventListener('focusin',function(e){
+    if(e.target && e.target.id==='coach-input') _chatTyping(true);
+  });
+  document.addEventListener('focusout',function(e){
+    if(e.target && e.target.id==='coach-input') _chatTyping(false);
+  });
+  document.addEventListener('touchstart',function(e){
+    if(!document.documentElement.classList.contains('chat-typing')) return;
+    var t=e.target;
+    if(!t || !t.closest) return;
+    if(t.closest('.coach-input-row')) return;
+    if(t.closest('.coach-msgs-area')||t.closest('.coach-chat-body')){
+      var el=document.getElementById('coach-input'); if(el) el.blur();
+    }
+  },{passive:true});
+  window._chatTypingOff=function(){ _chatTyping(false); };
+})();
+
 // ── iOS keyboard scroll-offset guard ──────────────────────────────────────────
 // html/body are overflow:hidden — the document itself must never scroll
 // (#screen and inner containers own all scrolling). But when the on-screen
