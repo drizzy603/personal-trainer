@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-1"/>
+<meta name="build" content="20260920-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2936,6 +2936,17 @@ var _bwLiftCache={};
 // Load label for a PLANNED exercise. Zero means "bodyweight" only when the
 // lift is one; a loaded lift the programme left at 0 (every starter
 // accessory) says so instead of claiming Cable Fly is a bodyweight move.
+// "Barbell Bench Press (Top Set)" and "Barbell Bench Press (Backoff)" are the
+// same lift; logged sessions carry both spellings and the bare name too.
+function _liftBaseName(n){
+  return String(n||'').replace(/\s*\([^)]*\)\s*$/,'').trim().toLowerCase();
+}
+// What to call the lift in a block bar: its own name minus the set-variant
+// suffix, falling back to the slot when the week programmes nothing there.
+function _mainLiftLabel(ex, fallback){
+  var n = ex && ex.name ? String(ex.name).replace(/\s*\([^)]*\)\s*$/,'').trim() : '';
+  return n || fallback;
+}
 function _loadLabel(name, w, short){
   w=parseFloat(w)||0;
   if(w>0) return fmtW(w);
@@ -11348,7 +11359,7 @@ function renderStrengthTrends(extraHTML){
     '</div>';
   }).join('');
   return '<div class="chart-card"><h2 style="margin-bottom:4px;">Strength</h2>'+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets · tap a lift for the full curve'+(function(){ var a=_avgRpe(28); return a?' · avg RPE '+a+' (4 wk)':''; })()+'</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Estimated 1RM from your logged sets (bodyweight lifts count your bodyweight) · tap a lift for the full curve'+(function(){ var a=_avgRpe(28); return a?' · avg RPE '+a+' (4 wk)':''; })()+'</div>'+
     rows+(extraHTML||'')+'</div>';
 }
 
@@ -11811,10 +11822,14 @@ function renderProgress() {
     if (allWeeks[bw] && allWeeks[bw].block === blockNum) { wdStart = allWeeks[bw]; break; }
   }
 
+  // The bar is named after the lift ACTUALLY programmed in the slot. These
+  // labels used to be hardcoded next to a hardcoded exercise name, so a pull
+  // slot holding a bench press — which is exactly what a combined chest-and-back
+  // day produces — rendered as "Pull-ups" charting a 220 lb bench.
   var liftDefs = [
-    { label:'Bench Press', sessKey:'push', dataName:'Barbell Bench Press' },
-    { label:'Back Squat',  sessKey:'legs', dataName:'Barbell Back Squat'  },
-    { label:'Pull-ups',    sessKey:'pull', dataName:'Pull Up'             },
+    { sessKey:'push', fallback:'Push day'  },
+    { sessKey:'legs', fallback:'Legs day'  },
+    { sessKey:'pull', fallback:'Pull day'  },
   ];
 
   var liftRows = '';
@@ -11827,24 +11842,37 @@ function renderProgress() {
     if (!startMain && !curMain) return;
     var startW = startMain ? startMain.weight : 0;
     var curW   = curMain   ? curMain.weight   : startW;
-    // Boost curW with best logged weight
-    sessions.forEach(function(s) {
-      if (s.type !== (lift.sessKey.charAt(0).toUpperCase()+lift.sessKey.slice(1))) return;
-      (s.exercises||[]).forEach(function(ex) {
-        if (ex.name === lift.dataName) { var w=parseFloat(ex.weight)||0; if(w>curW) curW=w; }
+    var nameEx = curMain || startMain;
+    var baseName = _liftBaseName(nameEx && nameEx.name);
+    // Best logged weight for the same lift, whatever day it was logged on and
+    // whichever set variant it was named after. Matching on the session TYPE
+    // (as this did) loses the lift entirely once a day combines two splits.
+    if(baseName){
+      sessions.forEach(function(s) {
+        (s.exercises||[]).forEach(function(ex) {
+          if(_liftBaseName(ex.name) !== baseName) return;
+          var w=parseFloat(ex.weight)||0; if(w>curW) curW=w;
+        });
       });
-    });
+    }
     var delta = curW - startW;
     var maxExpectedGain = 30; // lb per block for display purposes
-    var pct = startW > 0 ? Math.min(100, Math.max(4, Math.round((delta / maxExpectedGain) * 100))) : 0;
-    var wLabel = curMain && curMain.weight === 0 ? _loadLabel(curMain.name, 0) : fmtW(curW);
+    // Drive the bar off the gain, not off the starting load: a lift that began
+    // at bodyweight and now carries plates still earned its fill.
+    var pct = delta > 0 ? Math.min(100, Math.max(4, Math.round((delta / maxExpectedGain) * 100))) : 4;
+    // _loadLabel handles all three cases — a real load, a bodyweight lift with
+    // none, and anything else with none ("your load"). The old code only
+    // guarded the START, so a slot the current week leaves without a main lift
+    // fell through to fmtW(0) and printed "0 lb now".
+    var startLbl = _loadLabel((startMain||nameEx||{}).name, startW, true);
+    var wLabel   = _loadLabel((nameEx||{}).name, curW, true);
     liftRows += '<div class="lift-row">'+
       '<div class="lift-head">'+
-        '<span class="lift-name">'+lift.label+'</span>'+
+        '<span class="lift-name">'+_esc(_mainLiftLabel(nameEx, lift.fallback))+'</span>'+
         (delta > 0 ? '<span class="lift-delta">+'+wDisp(delta)+' '+_uW()+'</span>' : (delta < 0 ? '<span class="lift-delta" style="color:var(--orange)">'+wDisp(delta)+' '+_uW()+'</span>' : ''))+
       '</div>'+
-      '<div class="lift-bar"><div class="lift-fill" style="width:'+(delta>0?pct:4)+'%"></div></div>'+
-      '<div class="lift-meta"><span>'+(startMain&&startMain.weight===0?_loadLabel(startMain.name,0,true):fmtW(startW))+' start</span><span>'+wLabel+' now</span></div>'+
+      '<div class="lift-bar"><div class="lift-fill" style="width:'+pct+'%"></div></div>'+
+      '<div class="lift-meta"><span>'+startLbl+' start</span><span>'+wLabel+' now</span></div>'+
     '</div>';
   });
 
