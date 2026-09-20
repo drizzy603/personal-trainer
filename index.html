@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260919-2"/>
+<meta name="build" content="20260920-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2846,7 +2846,7 @@ function restoreArchivedRoutine(id){
     archiveCurrentRoutine();
     setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
     setCustomRoutine(entry.routine);
-    _setWeek(1);
+    _startProgramme();
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();
   }});
@@ -4141,14 +4141,31 @@ function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.week
 // Every path that sets the programme week re-anchors the Monday: a stale
 // anchor (frozen while the previous plan sat on its last week) made
 // autoAdvanceWeek leap a freshly restored/built plan forward by weeks.
-function _setWeek(n){
+function _setWeek(n, mondayISO){
   currentWeek=n; lsSet('kt_week',n);
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  localStorage.setItem('kt_week_monday', mondayISO || _mostRecentMonday());
+}
+// The ONE door for a NEW programme: week 1 day 1 on the next Monday. Restores,
+// resets and the week stepper do not come through here — they continue a plan
+// that already has a start date, and must keep back-anchoring.
+// The 12->1 reset re-arms the once-per-week proactive cards against the OLD
+// plan's history, so stamp them for week 1: without this a 10% deload computed
+// from the previous block's stall, or a week wrap labelling old week-12
+// sessions "WEEK 1 WRAPPED", lands on day one of a brand-new programme.
+function _startProgramme(){
+  _setWeek(1, _nextMonday(todayISO()));
+  lsSet('kt_last_plateau_week', 1);
+  lsSet('kt_last_prog_week', 1);
+  lsSet('kt_last_weekwrap', _mostRecentMonday());
+  invalidateCoachCard();
+  _todayActMemo = null;
 }
 function adjustWeek(delta) {
-  currentWeek = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
-  lsSet('kt_week', currentWeek);
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  var next = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
+  // A tap that changes nothing must change nothing: re-anchoring on a clamped
+  // step would quietly pull a not-yet-started programme back to this Monday.
+  if(next === currentWeek) return;
+  _setWeek(next);
   invalidateCoachCard();
   render();
 }
@@ -4158,10 +4175,29 @@ function _mostRecentMonday(){
   d.setDate(d.getDate()-dow);
   return _ymdLocal(d);
 }
+// The Monday a NEW programme starts on: today when today is Monday, else the
+// Monday ahead. Week 1 day 1 is always a Monday.
+function _nextMonday(iso){
+  var d=new Date((iso||todayISO())+'T00:00:00');
+  var dow=(d.getDay()+6)%7;
+  if(dow) d.setDate(d.getDate()+(7-dow));
+  return _ymdLocal(d);
+}
+// kt_week_monday is the Monday that programme week `currentWeek` begins on.
+// It may sit in the FUTURE: a plan built mid-week starts next Monday and
+// nothing is due before then. Absent reads as started, so a device with no
+// anchor (fresh install, every test seed) behaves exactly as it always has.
+function _weekAnchor(){ return localStorage.getItem('kt_week_monday') || _mostRecentMonday(); }
+function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 function autoAdvanceWeek(){
   var total=getTotalWeeks();
   var stored=localStorage.getItem('kt_week_monday');
   var thisMonday=_mostRecentMonday();
+  // A programme that has not started yet keeps its future anchor. This has to
+  // sit ABOVE the final-week branch below, which writes thisMonday
+  // unconditionally and would drag a short plan's start date back to this
+  // Monday on the very next boot.
+  if(stored && stored>thisMonday) return;
   if(!total||currentWeek>=total){
     // Parked on the final week: nothing to advance, but the anchor must
     // still follow the calendar — a frozen anchor made the next restore,
@@ -4543,6 +4579,7 @@ function addDays(iso, n) {
 // that was neither logged nor skipped — the make-up a rest day should offer.
 function _missedThisWeek(){
   if(!hasCustomRoutine()) return null;
+  if(!_programmeStarted()) return null;
   var today=todayISO(), mon=_mostRecentMonday();
   var sessions=getSessions(), skips=getSkips();
   var found=null;
@@ -4568,16 +4605,42 @@ function skipMissed(date, type){
 function _tomorrowLabel(){
   var _dowIdx=(new Date().getDay()+6)%7, _tomIdx=(_dowIdx+1)%7;
   var _tomWeek=getWeekPlan();
-  if(_dowIdx===6){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
+  // On the Sunday BEFORE a programme starts, tomorrow is week 1's Monday, not
+  // week 2's — do not look ahead a week that has not begun.
+  if(_dowIdx===6 && _programmeStarted()){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
   return tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : ((SESS[tomPlan.type]&&SESS[tomPlan.type].label)||tomPlan.type||'');
 }
 // Rest-day CTA: the make-up for a missed lift, or the first session for a
 // starter who installed on a rest day. Always ends with what tomorrow holds.
+// Everything the pre-start surfaces need: how far off the start is, and what
+// week 1 day 1 actually holds. Read from week 1's cadence, never from the
+// current week, because currentWeek is already 1 and its plan is the same one.
+function _preStartInfo(){
+  var mon=_weekAnchor();
+  var days=Math.round((new Date(mon+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/86400000);
+  var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
+  var lifts=0, first=null;
+  for(var i=0;i<7;i++){
+    var e=p1[i];
+    if(e&&e.isLift){ lifts++; if(!first) first={type:e.type,dow:i}; }
+  }
+  return {mon:mon, days:days, lifts:lifts, first:first,
+    label:first?((SESS[first.type]&&SESS[first.type].label)||first.type):'',
+    dateLong:new Date(mon+'T00:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})};
+}
 function _restDayCTA(){
   var out='';
   var DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  if(!_programmeStarted()){
+    var ps=_preStartInfo();
+    return '<button class="kt-cta" onclick="openProgrammeModal()">'+
+        '<div style="text-align:left;"><div class="kt-cta-label">'+(ps.days===1?'TOMORROW':'IN '+ps.days+' DAYS')+'</div>'+
+        '<div class="kt-cta-title">Preview week 1</div></div>'+
+        '<div class="kt-cta-arrow">\u2192</div></button>'+
+      (ps.label?'<div class="kt-marquee-reps" style="margin-top:10px;">MONDAY \u00b7 DAY 1 \u00b7 '+_esc(String(ps.label).toUpperCase())+'</div>':'');
+  }
   var missed=_missedThisWeek();
   if(missed){
     var ml=(SESS[missed.type]&&SESS[missed.type].label)||missed.type;
@@ -4764,10 +4827,18 @@ function getTodayActivity(){
   return v;
 }
 function _computeTodayActivity(){
-  var weekPlan = getWeekPlan();
   var todayDow = (new Date().getDay()+6)%7;
-  var plan = weekPlan[todayDow];
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][todayDow];
+  // Before week 1 day 1 the programme schedules nothing. Reporting a REST day
+  // rather than a new activity type is deliberate: every existing consumer
+  // already does the right thing with rest — no START CTA, no lift ledger, no
+  // at-risk streak nag, a rest day on the wrist and in the widget.
+  var _psMon = _weekAnchor();
+  if(hasCustomRoutine() && todayISO() < _psMon){
+    return {type:'rest', dayName:'Rest', weekday:weekday, preStart:true, startsOn:_psMon};
+  }
+  var weekPlan = getWeekPlan();
+  var plan = weekPlan[todayDow];
   if(plan.isRest) return {type:'rest', dayName:'Rest', weekday:weekday};
   if(plan.isLift){
     var exs = _todayLiftExercises(plan.type);
@@ -5116,9 +5187,7 @@ function _sparklineSVG(vals, color){
 function lapseKeep(){ lapsePending=null; render(); }
 function lapseRewind(){
   if(!lapsePending) return;
-  currentWeek = lapsePending.from;
-  lsSet('kt_week', currentWeek);
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  _setWeek(lapsePending.from);
   invalidateCoachCard();
   showToast('Back on week '+currentWeek);
   lapsePending=null;
@@ -5137,8 +5206,8 @@ function renderTodayEditorial(){
   var act = getTodayActivity();
 
   var meta = '<div class="kt-meta-row">'+
-    '<div class="kt-meta-label">'+act.weekday+' · WK '+
-      String(currentWeek).padStart(2,'0')+' / '+totalWks+'</div>'+
+    '<div class="kt-meta-label">'+act.weekday+' · '+
+      (act.preStart ? 'STARTS MON' : 'WK '+String(currentWeek).padStart(2,'0')+' / '+totalWks)+'</div>'+
     '<div style="display:flex;align-items:center;gap:10px;">'+
       '<button onclick="switchTab(\'settings\');setTimeout(function(){var el=document.getElementById(\'settings-workout-group\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});},120);" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;-webkit-tap-highlight-color:transparent;padding:0;">Edit split →</button>'+
       '<div class="kt-meta-ava">'+initial+'</div>'+
@@ -5212,6 +5281,14 @@ function renderTodayEditorial(){
     line2 = 'today.';
     line2Class = 'accent';
     body = 'No lifts scheduled — log it from the + tab.';
+  } else if(act.preStart){
+    var _ps = _preStartInfo();
+    line1 = 'Week 1 starts';
+    line2 = _ps.days === 1 ? 'tomorrow.' : 'Monday.';
+    line2Class = 'accent';
+    body = 'Your '+getTotalWeeks()+'-week plan is saved \u2014 '+_plural(_ps.lifts,'lift day')+' a week.'+
+      (_ps.label ? ' Day 1 is '+_ps.label+', '+_ps.dateLong+'.' : '')+
+      ' Nothing is due before then.';
   } else {
     line1 = 'Rest day.';
     line2 = 'No workout.';
@@ -5399,7 +5476,7 @@ function renderTodayEditorial(){
         return '<button class="kt-adhoc-pill" onclick="openDeckRunner(\''+_esc(t)+'\')">'+_esc(_sessLabel(t))+'</button>';
       }).join('');
       adhocPicker = '<div class="kt-adhoc-row">'+
-        '<div class="kt-adhoc-lbl">'+(todayType ? 'OR TRAIN SOMETHING ELSE' : 'OR LOG A WORKOUT ANYWAY')+'</div>'+
+        '<div class="kt-adhoc-lbl">'+(act.preStart ? 'OR TRAIN TODAY ANYWAY' : (todayType ? 'OR TRAIN SOMETHING ELSE' : 'OR LOG A WORKOUT ANYWAY'))+'</div>'+
         '<div class="kt-adhoc-pills">'+pills+'</div>'+
       '</div>';
     }
@@ -5996,6 +6073,7 @@ function _loggedOn(dateStr){
 // Monday instead of vanishing at midnight.
 var _wwDueMon=null, _wwDueWeek=null;
 function _weekWrapDue(){
+  if(!_programmeStarted()) return false;
   var now=new Date(), dow=now.getDay(), stamped=String(lsGet('kt_last_weekwrap'));
   var thisMon=_mostRecentMonday();
   if(dow===0){
@@ -9060,12 +9138,10 @@ function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
   if(getCustomRoutine()) archiveCurrentRoutine();
   setCustomRoutine(r);
-  _setWeek(1);
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
-  invalidateCoachCard();
+  _startProgramme();
   closeStarterIntake();
   logSubTab='workout'; switchTab('log');
-  showToast('Starter block ready — week 1 starts now');
+  showToast(_programmeStarted() ? 'Starter block ready — week 1 starts today' : 'Starter block ready — week 1 starts Monday');
   haptic('success');
 }
 function _siPaint(){
@@ -13146,8 +13222,7 @@ function executeCoachTool(name,input){
       var w=parseInt(input.week);
       var total=getTotalWeeks();
       if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
-      currentWeek=w; lsSet('kt_week',w);
-      localStorage.setItem('kt_week_monday',_mostRecentMonday());
+      _setWeek(w);
       invalidateCoachCard();
       return {ok:true,message:'current week set to '+w};
     }
@@ -13655,11 +13730,10 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var _complete=!!(_cr&&_cr.weeks&&_cr.weeks.length>=1&&_cr.weeks.every(function(w){return w&&w.bName;}));
     if(_complete){
       _setIntakeMode(false);
-      currentWeek=1;
-      lsSet('kt_week',1);
+      _startProgramme();
       var _n=getNextSession();
       logSession=(_n==='Run')?'Push':_n;
-      showToast('Programme loaded — Week 1 is ready');
+      showToast(_programmeStarted() ? 'Programme saved — week 1 starts today' : 'Programme saved — week 1 starts Monday');
       // R5 — surface partial intakes. The prompt asks for 4–24 weeks; if the AI
       // shipped fewer than 4 weeks we ask the user to confirm rather than
       // silently bless an undercooked programme.
@@ -13766,19 +13840,10 @@ function restoreRoutineBackup(){
   }});
 }
 
-function confirmLoadRoutine(){
-  if(!pendingRoutine) return;
-  setCustomRoutine(pendingRoutine);
-  currentWeek=1;
-  lsSet('kt_week',1);
-  _setIntakeMode(false);
-  pendingRoutine=null;
-  clearCoachHistory();
-  var _next=getNextSession();
-  logSession=(_next==='Run')?'Push':_next;
-  showToast('Programme loaded — Week 1 is ready');
-  switchTab('log');
-}
+// confirmLoadRoutine() lived here and was deleted 2026-09-20. `pendingRoutine`
+// is declared nowhere in the file, so its first statement threw a
+// ReferenceError, and nothing ever called it — no call site, no inline
+// handler. The live AI install path is the intake auto-exit above.
 
 function resetCustomRoutine(){
   _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
@@ -13896,6 +13961,7 @@ function buildSystemPrompt(){
   p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of '+_plateStepDisp()+' '+_uW()+'. The smallest meaningful change is ±'+_plateStepDisp()+' '+_uW()+' (±'+_plateBarDisp()+' '+_uW()+' on barbell lifts). Never suggest fractional bumps gyms cannot load.\n';
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
+  if(!_programmeStarted()) p+=' — NOT STARTED YET: week 1 day 1 is Monday '+_weekAnchor()+'. Nothing is scheduled before then; do not tell them they are mid-week.';
   if(cr&&cr.name)p+=' ('+cr.name+')';
   p+='\n';
   p+=_profilePrompt();
@@ -14351,7 +14417,14 @@ function renderCoach(){
   // Editorial header: lime online dot + COACH · ONLINE eyebrow + "Today's
   // plan" title on the left; week / model controls on the right. Avatar
   // dropped — the green-dotted eyebrow already signals presence.
-  var dayIdx = ((new Date().getDay()+6)%7) + 1;
+  // Day-of-programme, not day-of-calendar: before the fix this was the raw
+  // weekday, so a plan built on a Saturday opened on "WK 01 · DAY 6".
+  var _dayAnchor = _weekAnchor();
+  var dayIdx = Math.max(1, Math.min(7,
+    Math.floor((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
+  var _dayMeta = hasCustomRoutine() && !_programmeStarted()
+    ? 'WK 01 · STARTS MON'
+    : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
   var coachHead='<div class="coach-head">'+
     '<div class="coach-head-l">'+
       '<div class="coach-head-eyebrow">COACH · '+(intakeMode?'INTAKE':'ONLINE')+'</div>'+
@@ -14359,7 +14432,7 @@ function renderCoach(){
     '</div>'+
     '<div class="coach-head-r">'+
       (!intakeMode
-        ?'<span class="coach-head-meta">WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx+'</span>'
+        ?'<span class="coach-head-meta">'+_dayMeta+'</span>'
         :'')+
       (intakeMode
         ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
@@ -16415,6 +16488,7 @@ function _nativeSummaryDays(n){
   var sessions=getSessions(), runs=getRuns(), sports=getSportLogs();
   for(var i=0;i<(n||7);i++){
     var iso=addDays(todayISO(), i);
+    if(iso < _weekAnchor()){ out.push({date:iso, type:'Rest', isRest:true, lifts:0, done:false}); continue; }
     var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
     var wk=Math.min(total, Math.max(1, weekForDate(iso)));
     var plan=getWeekPlanForWeek(wk)[dow];

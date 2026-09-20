@@ -24,8 +24,12 @@ run('name once, How-it-works link, Run tab before a plan, one streak with an at-
       if (nameEl) nameEl.value = 'Roberto Sosa';
       applyStarterIntake();
       r.afterApply = { first: getUserFirstName(), routine: hasCustomRoutine(), prompt: /for Roberto\./.test(buildSystemPrompt()), greet: /Roberto/.test(document.getElementById('screen').innerText) };
-      // one streak: every day a lift day, two logged days behind today → at risk until logged
+      // one streak: every day a lift day, two logged days behind today → at risk until logged.
+      // The starter install now dates week 1 day 1 to the next Monday, so pull the anchor
+      // back to this Monday: the streak chip is about a programme that is under way, and a
+      // pre-start day is a rest day by design (see _computeTodayActivity).
       const cr = getCustomRoutine(); cr.weekPlan = ['Push','Push','Push','Push','Push','Push','Push']; (cr.weeks || []).forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr);
+      localStorage.setItem('kt_week_monday', _mostRecentMonday()); _todayActMemo = null;
       const y1 = addDays(todayISO(), -1), y2 = addDays(todayISO(), -2);
       lsSet('kt_sessions', [{ id: 1, date: y1, week: 1, type: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 100 }], prs: [] },
                             { id: 2, date: y2, week: 1, type: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 100 }], prs: [] }]);

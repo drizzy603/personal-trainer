@@ -11,9 +11,18 @@ run('missed-session make-up, first-session pointer, tomorrow row, week-1 anchor'
       const dow = (new Date().getDay() + 6) % 7;                 // Monday = 0
       const cr = getCustomRoutine();
       // Today = Rest, yesterday = Push (when there is a yesterday in this week), tomorrow = Pull.
+      // On a Sunday "tomorrow" is NEXT week's Monday, so it goes in a week-2 override rather
+      // than wrapping to index 0 — index 0 is six days PAST on a Sunday, and writing Pull
+      // there would leave a second missed session that the skip assertions below do not expect.
       const plan = ['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest'];
-      plan[dow] = 'Rest'; plan[(dow + 1) % 7] = 'Pull'; if (dow > 0) plan[dow - 1] = 'Push';
-      cr.weekPlan = plan; (cr.weeks || []).forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr);
+      plan[dow] = 'Rest'; if (dow > 0) plan[dow - 1] = 'Push';
+      if (dow < 6) plan[dow + 1] = 'Pull';
+      cr.weekPlan = plan; (cr.weeks || []).forEach(w => { delete w.weekPlan; });
+      if (dow === 6) {
+        const nextPlan = plan.slice(); nextPlan[0] = 'Pull';
+        if (cr.weeks && cr.weeks[currentWeek]) cr.weeks[currentWeek].weekPlan = nextPlan;
+      }
+      setCustomRoutine(cr);
       r.dow = dow;
       // first-session pointer (no sessions ever)
       const missed0 = _missedThisWeek();
