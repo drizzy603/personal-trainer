@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260920-6"/>
+<meta name="build" content="20260921-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4494,6 +4494,8 @@ function _schedTypes(){
   return t;
 }
 function _schedPick(dow){ _schedEditDow=(_schedEditDow===dow)?null:dow; render(); }
+// Jump straight to the Settings cadence editor with a day already selected.
+function _openCadenceFor(dow){ _schedEditDow=dow; switchTab('settings'); }
 function setWeekPlanDay(dow, type){ _schedEditDow=null; cycleWeekPlanDay(dow, type); }
 function cycleWeekPlanDay(dow, forceType){
   var cr=getCustomRoutine();
@@ -4685,6 +4687,26 @@ function _preStartInfo(){
     label:first?((SESS[first.type]&&SESS[first.type].label)||first.type):'',
     dateLong:new Date(mon+'T00:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})};
 }
+// Start week 1 today instead of waiting for Monday. The Monday start is the
+// DEFAULT so a plan built on a Saturday is not six days old on arrival — but a
+// default is not a rule, and someone who built a plan on a Wednesday and wants
+// to train Wednesday gets to. The anchor moves back to this Monday, so today is
+// day N of week 1 and today's session is on the card. The days already gone
+// this week are recorded as skipped, so nothing nags about a Monday that was
+// never owed.
+function startProgrammeNow(){
+  if(!hasCustomRoutine()) return;
+  var mon=_mostRecentMonday(), today=todayISO();
+  var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
+  for(var i=0;i<7;i++){
+    var d=addDays(mon,i); if(d>=today) break;
+    var e=p1[i]; if(e && !e.isRest && e.type) saveSkip(d, e.type);
+  }
+  _setWeek(1, mon);
+  _todayActMemo=null; invalidateCoachCard();
+  showToast('Week 1 started \u2014 today is on the card');
+  render();
+}
 function _restDayCTA(){
   var out='';
   var DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -4694,7 +4716,16 @@ function _restDayCTA(){
         '<div style="text-align:left;"><div class="kt-cta-label">'+(ps.days===1?'TOMORROW':'IN '+ps.days+' DAYS')+'</div>'+
         '<div class="kt-cta-title">Preview week 1</div></div>'+
         '<div class="kt-cta-arrow">\u2192</div></button>'+
+      '<button class="btn btn-ghost btn-full" style="margin-top:8px;padding:11px;font-size:13px;" onclick="startProgrammeNow()">Start week 1 today instead</button>'+
       (ps.label?'<div class="kt-marquee-reps" style="margin-top:10px;">MONDAY \u00b7 DAY 1 \u00b7 '+_esc(String(ps.label).toUpperCase())+'</div>':'');
+  }
+  var _actU=null; try{ _actU=getTodayActivity(); }catch(e){}
+  if(_actU && _actU.unknown){
+    var _dowU=(new Date().getDay()+6)%7;
+    return '<button class="kt-cta" onclick="_openCadenceFor('+_dowU+')">'+
+        '<div style="text-align:left;"><div class="kt-cta-label">SET TO \u201c'+_esc(String(_actU.unknown).toUpperCase())+'\u201d</div>'+
+        '<div class="kt-cta-title">Choose what today is</div></div>'+
+        '<div class="kt-cta-arrow">\u2192</div></button>';
   }
   var missed=_missedThisWeek();
   if(missed){
@@ -4894,7 +4925,10 @@ function _computeTodayActivity(){
   }
   var weekPlan = getWeekPlan();
   var plan = weekPlan[todayDow];
-  if(plan.isRest) return {type:'rest', dayName:'Rest', weekday:weekday};
+  // An unrecognised cadence value renders rest-like (see _planEntry) but must
+  // not LOOK like a rest day, or the user never learns their Monday is set to
+  // something this build cannot read. Carry the raw value so the card can say so.
+  if(plan.isRest) return {type:'rest', dayName:'Rest', weekday:weekday, unknown: plan.isUnknown ? String(plan.type) : ''};
   if(plan.isLift){
     var exs = _todayLiftExercises(plan.type);
     return {type:'lift', dayName:plan.type, weekday:weekday, exercises:exs};
@@ -5344,6 +5378,11 @@ function renderTodayEditorial(){
     body = 'Your '+getTotalWeeks()+'-week plan is saved \u2014 '+_plural(_ps.lifts,'lift day')+' a week.'+
       (_ps.label ? ' Day 1 is '+_ps.label+', '+_ps.dateLong+'.' : '')+
       ' Nothing is due before then.';
+  } else if(act.unknown){
+    line1 = 'Unrecognised day.';
+    line2 = '\u201c'+_esc(act.unknown)+'\u201d';
+    line2Class = 'accent';
+    body = 'Today is set to something this version can\u2019t read. It is kept exactly as written \u2014 choose what it should be, or train anything below.';
   } else {
     line1 = 'Rest day.';
     line2 = 'No workout.';
@@ -11965,11 +12004,10 @@ function renderProgress() {
   // labels used to be hardcoded next to a hardcoded exercise name, so a pull
   // slot holding a bench press — which is exactly what a combined chest-and-back
   // day produces — rendered as "Pull-ups" charting a 220 lb bench.
-  var liftDefs = [
-    { sessKey:'push', fallback:'Push day'  },
-    { sessKey:'legs', fallback:'Legs day'  },
-    { sessKey:'pull', fallback:'Pull day'  },
-  ];
+  // Every lift slot the app knows, in the order the runner walks them. Rows
+  // only render for slots that actually programme a main lift, so an Arms day
+  // with no isMain adds nothing and a Legs B day with one now shows up.
+  var liftDefs = LIFT_TYPES.map(function(t){ return { sessKey:t.toLowerCase(), fallback:_sessLabel(t)+' day' }; });
 
   var liftRows = '';
   liftDefs.forEach(function(lift) {
@@ -16316,13 +16354,27 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
   document.addEventListener('focusout',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(false);
   });
+  // A tap on the conversation dismisses the keyboard. It has to be a TAP:
+  // blurring on touchstart (as this first shipped) closed the keyboard the
+  // moment a finger landed to scroll back through the chat, so reading an
+  // earlier message while composing meant losing the keyboard every time.
+  var _ctTouch=null;
   document.addEventListener('touchstart',function(e){
+    _ctTouch=null;
     if(!document.documentElement.classList.contains('chat-typing')) return;
-    var t=e.target;
-    if(!t || !t.closest) return;
-    if(t.closest('.coach-input-row')) return;
-    if(t.closest('.coach-msgs-area')||t.closest('.coach-chat-body')){
-      var el=document.getElementById('coach-input'); if(el) el.blur();
+    var t=e.touches&&e.touches[0]; if(!t) return;
+    _ctTouch={x:t.clientX,y:t.clientY,el:e.target};
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    var start=_ctTouch; _ctTouch=null;
+    if(!start || !document.documentElement.classList.contains('chat-typing')) return;
+    var t=e.changedTouches&&e.changedTouches[0]; if(!t) return;
+    if(Math.abs(t.clientX-start.x)>10 || Math.abs(t.clientY-start.y)>10) return;   // a scroll
+    var el=start.el;
+    if(!el || !el.closest) return;
+    if(el.closest('.coach-input-row')) return;
+    if(el.closest('.coach-msgs-area')||el.closest('.coach-chat-body')){
+      var inp=document.getElementById('coach-input'); if(inp) inp.blur();
     }
   },{passive:true});
   window._chatTypingOff=function(){ _chatTyping(false); };

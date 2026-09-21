@@ -24,8 +24,9 @@ run('keyless progression, plateau deload, week review sheet and debrief card', a
       r.progLifts = _progressionLifts().map(x => x.name);
       r.progDue = _progressionDue();
       lsSet('kt_last_review_week', currentWeek);   // the review banner outranks progression in the slot; retire it for this check
+      lsSet('kt_last_weekwrap', _mostRecentMonday()); // so does the week wrap, which is due on Sundays and Mondays; retire it too
       r.bannerHTML = (function(){ switchTab('log'); return document.getElementById('screen').innerHTML; })();
-      lsDel('kt_last_review_week');
+      lsDel('kt_last_review_week'); lsDel('kt_last_weekwrap');
       startProgression();
       r.afterApply = { w: getWeights()['Bench Press'], backup: !!lsGet('kt_routine_backup'), flagged: String(lsGet('kt_last_prog_week')), toast: document.getElementById('toast').textContent, coachTab: currentTab };
       _toastUndo();
