@@ -32,7 +32,7 @@ if [ "${1:-}" != "--no-tests" ]; then
   grep -q 'All suites passed' /tmp/publish-tests.log || die "suite did not report a pass — not publishing"
 fi
 
-echo "${DIM}publish: fast-forwarding main by $AHEAD commit(s)…${OFF}"
+echo "${DIM}publish: fast-forwarding main by ${AHEAD} commit(s)…${OFF}"
 git log --oneline origin/main..next | sed 's/^/  /'
 git checkout main --quiet
 git merge next --ff-only --quiet
@@ -40,10 +40,10 @@ git push origin main --quiet
 git checkout next --quiet
 
 STAMP=$(cat build.txt)
-echo "${DIM}publish: waiting for GitHub Pages to serve $STAMP…${OFF}"
+echo "${DIM}publish: waiting for GitHub Pages to serve ${STAMP}…${OFF}"
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   LIVE=$(curl -s https://drizzy603.github.io/personal-trainer/build.txt | head -1)
-  [ "$LIVE" = "$STAMP" ] && { echo "${GRN}publish: live — build.txt serves $LIVE${OFF}"; exit 0; }
+  [ "$LIVE" = "$STAMP" ] && { echo "${GRN}publish: live — build.txt serves ${LIVE}${OFF}"; exit 0; }
   sleep 10
 done
-echo "${RED}publish: pushed, but Pages still serves $LIVE after 2 min — it usually catches up within a few minutes${OFF}"
+echo "${RED}publish: pushed, but Pages still serves ${LIVE} after 2 min — it usually catches up within a few minutes${OFF}"
