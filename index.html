@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260921-4"/>
+<meta name="build" content="20260921-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -500,8 +500,11 @@ select option{background:var(--bg);}
    compose pill and the keys while the conversation is squeezed to a few lines.
    While the chat input holds focus the dock stands down and the pill drops to
    the bottom edge; the reclaimed space goes to the messages. */
+/* A cadence value this build cannot read: not dressed as rest. */
+.kt-wkstrip-chip.unknown{border-style:dashed;border-color:var(--accent);}
 html.chat-typing #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;}
 html.chat-typing .coach-input-row{bottom:var(--tab-gap);}
+html.chat-typing .coach-img-preview{bottom:calc(var(--tab-gap) + 58px) !important;}   /* inline style sets the idle value */
 html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
@@ -2912,7 +2915,11 @@ function weekForDate(dateStr){
   var dow=(d.getDay()+6)%7;
   var mon=new Date(d); mon.setDate(d.getDate()-dow);
   var monNow=new Date(_mostRecentMonday()+'T00:00:00');
-  var weeksAgo=Math.max(0, Math.round((monNow-mon)/(7*86400000)));
+  // Negative weeksAgo is a FUTURE week. The old Math.max(0, …) clamped every
+  // future date to the current week, so the widget's 7-day strip and the
+  // 28-day reminders drew next week from this week's cadence. Callers that
+  // need an upper bound clamp to getTotalWeeks() themselves.
+  var weeksAgo=Math.round((monNow-mon)/(7*86400000));
   return Math.max(1,currentWeek-weeksAgo);
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
@@ -4084,7 +4091,7 @@ function logPendingHealthRun(){
     if(rec){
       runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
       // The undo strip lives on the Run tab; say so when logging from elsewhere.
-      if(!(currentTab==='log' && logSubTab==='run')) showToast(rec.distance+' km run logged from Apple Health \u2014 undo on the Run tab');
+      if(!(currentTab==='log' && logSubTab==='run')) showToast(fmtD(rec.distance)+' run logged from Apple Health \u2014 undo on the Run tab');
       checkMilestones({delayToast:600});
     } else if(rec===null){
       showToast('Already logged by hand — skipped the duplicate');
@@ -4431,9 +4438,22 @@ function _knownPlanType(s){
 }
 // A cadence is 7 entries this build understands. Used to REJECT a malformed
 // write rather than coerce it, which is the whole point of stage 1.
+// Values the stored routine ALREADY uses in any cadence. Echoing one of those
+// back is not a new corruption — without this, one unrecognised day made the
+// coach unable to change any other day: sending the current weekPlan back with
+// a single edit was rejected on the value it did not touch.
+function _existingPlanValues(){
+  var seen={}; var cr=getCustomRoutine(); if(!cr) return seen;
+  var plans=[]; if(Array.isArray(cr.weekPlan)) plans.push(cr.weekPlan);
+  (cr.weeks||[]).forEach(function(w){ if(Array.isArray(w&&w.weekPlan)) plans.push(w.weekPlan); });
+  plans.forEach(function(p){ p.forEach(function(v){ if(v) seen[String(v)]=1; }); });
+  return seen;
+}
+function _acceptablePlanType(s, existing){ return _knownPlanType(s) || !!(existing && existing[String(s)]); }
 function _validWeekPlan(arr){
   if(!Array.isArray(arr)||arr.length!==7) return false;
-  for(var i=0;i<7;i++){ if(!_knownPlanType(arr[i])) return false; }
+  var ex=_existingPlanValues();
+  for(var i=0;i<7;i++){ if(!_acceptablePlanType(arr[i], ex)) return false; }
   return true;
 }
 // The reason a cadence was rejected, in words the coach can act on.
@@ -4442,8 +4462,8 @@ function _weekPlanProblem(arr){
   return 'has entries I do not recognise: '+_badPlanEntries(arr).join(', ')+'. Use Push, Pull, Legs, Legs2, Arms, Rest, Run or a sport id.';
 }
 function _badPlanEntries(arr){
-  var bad=[];
-  (Array.isArray(arr)?arr:[]).forEach(function(s){ if(!_knownPlanType(s)) bad.push(String(s)); });
+  var bad=[], ex=_existingPlanValues();
+  (Array.isArray(arr)?arr:[]).forEach(function(s){ if(!_acceptablePlanType(s, ex)) bad.push(String(s)); });
   return bad;
 }
 // Returns the cadence for a specific week (1-indexed), preferring the
@@ -4745,8 +4765,10 @@ function _restDayCTA(){
   }
   var _actU=null; try{ _actU=getTodayActivity(); }catch(e){}
   if(_actU && _actU.unknown){
+    // Leads the card, but does not REPLACE it: the make-up, first-session and
+    // TOMORROW rows below still apply to a day that happens to be misnamed.
     var _dowU=(new Date().getDay()+6)%7;
-    return '<button class="kt-cta" onclick="_openCadenceFor('+_dowU+')">'+
+    out+='<button class="kt-cta" onclick="_openCadenceFor('+_dowU+')">'+
         '<div style="text-align:left;"><div class="kt-cta-label">SET TO \u201c'+_esc(String(_actU.unknown).toUpperCase())+'\u201d</div>'+
         '<div class="kt-cta-title">Choose what today is</div></div>'+
         '<div class="kt-cta-arrow">\u2192</div></button>';
@@ -7775,8 +7797,8 @@ function _renderWeekStrip(){
     var d=new Date(mon+'T00:00:00'); d.setDate(d.getDate()+i);
     var iso=_ymdLocal(d), p=plan[i]||{};
     var logged=_loggedOn(iso);
-    var cls='kt-wkstrip-chip'+(iso===today?' today':'')+(logged?' done':'')+(p.isRest?' rest':'');
-    chips.push('<div class="'+cls+'" aria-label="'+_esc(DOW_NAMES[i]+' '+d.getDate()+(logged?', logged':(p.isRest?', rest':'')))+'">'+
+    var cls='kt-wkstrip-chip'+(iso===today?' today':'')+(logged?' done':'')+(p.isRest?' rest':'')+(p.isUnknown?' unknown':'');
+    chips.push('<div class="'+cls+'" aria-label="'+_esc(DOW_NAMES[i]+' '+d.getDate()+(logged?', logged':(p.isUnknown?', set to '+p.type+' (unrecognised)':(p.isRest?', rest':''))))+'">'+
       '<span class="kt-wkstrip-d">'+_esc(String(DOW_NAMES[i]).slice(0,3).toUpperCase())+'</span>'+
       '<span class="kt-wkstrip-n">'+d.getDate()+'</span>'+
       '<span class="kt-wkstrip-dot"></span>'+
@@ -14844,7 +14866,7 @@ function renderCoach(){
 
   var inputPlaceholder=intakeMode?'Answer the Coach…':'Message Coach…';
   var imgPreview=pendingImage
-    ?'<div style="position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 58px);z-index:51;'+
+    ?'<div class="coach-img-preview" style="position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 58px);z-index:51;'+
         'background:rgba(22,22,26,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);'+
         'border:1px solid var(--border);border-radius:16px;padding:10px;">'+
         '<button onclick="clearPendingImage()" style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;'+
@@ -16413,11 +16435,19 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
   function _chatTyping(on){
     if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; }
     if(on){ document.documentElement.classList.add('chat-typing'); return; }
-    _ctTimer=setTimeout(function(){
+    var _waited=0;
+    var _check=function(){
       var ae=document.activeElement;
       if(ae && ae.id==='coach-input' && document.getElementById('coach-input')) return;  // focus came back
+      // Sending blurs the box and the reply re-focuses it seconds later. Without
+      // this the dock slid back in and out again on every message. Hold while a
+      // reply is in flight, bounded so a stalled request cannot hide the tabs.
+      if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000){
+        _waited+=400; _ctTimer=setTimeout(_check,400); return;
+      }
       document.documentElement.classList.remove('chat-typing');
-    },180);
+    };
+    _ctTimer=setTimeout(_check,180);
   }
   document.addEventListener('focusin',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(true);
@@ -16581,12 +16611,17 @@ var _coachDraft = { v:'', s:0, e:0, focus:false };
 function _restoreCoachDraft(){
   // Guard the boot render: this var's initializer lives after the first
   // render() call in the boot sequence, so it can still be undefined here.
-  if(!_coachDraft || !_coachDraft.v) return;
+  // Focus is restored even when the draft is EMPTY. An async render (watch
+  // drain, Health auto-log, coach card) with the box focused but blank used
+  // to drop focus, which closed the keyboard and bounced the dock back in.
+  if(!_coachDraft || (!_coachDraft.v && !_coachDraft.focus)) return;
   var el = document.getElementById('coach-input');
-  if(!el || el.value) return;
-  el.value = _coachDraft.v;
-  el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
-  if(_coachDraft.focus){
+  if(!el) return;
+  if(_coachDraft.v && !el.value){
+    el.value = _coachDraft.v;
+    el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
+  }
+  if(_coachDraft.focus && document.activeElement!==el){
     el.focus();
     try{ el.setSelectionRange(_coachDraft.s, _coachDraft.e); }catch(e){}
   }

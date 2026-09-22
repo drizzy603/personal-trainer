@@ -56,6 +56,24 @@ run('an unrecognised day keeps its name; bad writes are rejected, not coerced', 
       });
       r.coachGood = { ok: res3 && res3.ok, err: (res3 && res3.error) || (res3 && res3.message) || '', plan: getCustomRoutine().weekPlan.slice(0, 1) };
 
+      // 2b. echo tolerance: a value the routine ALREADY holds may be sent back; a new one may not
+      const crE = getCustomRoutine(); crE.weekPlan = ['Upper', 'Rest', 'Pull', 'Rest', 'Legs', 'Run', 'Rest']; setCustomRoutine(crE);
+      r.echo = {
+        sameOk: _validWeekPlan(['Upper', 'Rest', 'Pull', 'Rest', 'Legs', 'Run', 'Rest']),
+        editedOk: _validWeekPlan(['Upper', 'Push', 'Pull', 'Rest', 'Legs', 'Run', 'Rest']),
+        newBad: _validWeekPlan(['Upper', 'Lower', 'Pull', 'Rest', 'Legs', 'Run', 'Rest']),
+        badNames: _badPlanEntries(['Upper', 'Lower', 'Pull', 'Rest', 'Legs', 'Run', 'Rest']),
+      };
+      // 2c. an unrecognised day today does not hide the make-up row for yesterday's missed lift
+      const dowU = (new Date().getDay() + 6) % 7;
+      if (dowU > 0) {
+        const crU = getCustomRoutine();
+        const pU = ['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']; pU[dowU] = 'Upper'; pU[dowU - 1] = 'Push';
+        crU.weekPlan = pU; (crU.weeks || []).forEach(w => { delete w.weekPlan; }); setCustomRoutine(crU);
+        lsSet('kt_sessions', []); lsSet('kt_skips', []); _todayActMemo = null;
+        const cta = _restDayCTA();
+        r.unknownCta = { fix: /Choose what today is/.test(cta), makeup: /MAKE-UP/.test(cta) };
+      }
       // 3. the Settings editor: a day it cannot cycle is offered, not overwritten
       const cr2 = getCustomRoutine();
       cr2.weekPlan = ['Upper', 'Rest', 'Pull', 'Rest', 'Legs', 'Run', 'Rest'];
@@ -96,6 +114,9 @@ run('an unrecognised day keeps its name; bad writes are rejected, not coerced', 
       'a per-week override is validated too: ' + JSON.stringify(out.coachPerWeek));
     assert(out.coachGood.plan[0] === 'Pull', 'a valid write still applies and canonicalises case ("pull" -> "Pull"): ' + JSON.stringify(out.coachGood));
 
+    assert(out.echo.sameOk && out.echo.editedOk && !out.echo.newBad && out.echo.badNames.join(',') === 'Lower',
+      'the coach may echo a value the routine already holds, but not introduce a new one: ' + JSON.stringify(out.echo));
+    if (out.unknownCta) assert(out.unknownCta.fix && out.unknownCta.makeup, 'the unknown-day CTA leads the card without hiding the make-up row: ' + JSON.stringify(out.unknownCta));
     assert(out.editor.dayKept === 'Upper' && out.editor.pickerOpened,
       'tapping an unrecognised day opens the picker instead of renaming it: ' + JSON.stringify(out.editor));
     assert(out.editorForce === 'Push', 'an explicit pick still writes: ' + out.editorForce);

@@ -43,8 +43,14 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
       await wait(300);
       r.afterBlur = document.documentElement.classList.contains('chat-typing');
 
+      // An async render with the box focused but EMPTY must not drop focus (it closed the keyboard).
+      input.focus(); input.value = ''; await wait(30);
+      render(); await wait(30);
+      r.renderKeepsFocus = document.activeElement && document.activeElement.id === 'coach-input';
+      const input2 = document.getElementById('coach-input'); if (input2) input2.blur(); await wait(300);
       // Leaving the Coach tab with the keyboard up must not strand the dock offscreen.
-      input.focus(); await wait(60);
+      // (render() above rebuilt #screen, so re-query the element rather than focusing a detached one.)
+      const input3 = document.getElementById('coach-input'); input3.focus(); await wait(60);
       r.beforeSwitch = document.documentElement.classList.contains('chat-typing');
       switchTab('log');
       await wait(300);
@@ -65,6 +71,7 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
     assert(out.immediatelyAfterBlur, 'the dock does not flash back on the blur that Send causes');
     assert(!out.afterBlur, 'the dock returns once focus is really gone');
     assert(out.beforeSwitch && !out.afterSwitch, 'leaving the tab restores the dock: ' + JSON.stringify({ before: out.beforeSwitch, after: out.afterSwitch }));
+    assert(out.renderKeepsFocus, 'a render with an empty, focused box keeps the focus');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
