@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260921-1"/>
+<meta name="build" content="20260921-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1692,6 +1692,7 @@ var _rExEditName      = '';
 var _rExEditSeed=null;
 var _rExEditSS        = false;      // derived: is a superset partner chosen
 var _rExEditSSWith    = '';         // the chosen partner's NAME ('' = no superset)
+var _rExEditSSAsSecond= false;      // the sheet is open on the second half of a pair (the opener above owns .ss)
 var _rExSSPicking     = false;      // the edit sheet is showing the partner list
 // Index to jump back to when a superset pair's rest ends (B rested, A next).
 var _ssReturnIdx      = null;
@@ -3637,9 +3638,12 @@ function importFromHealth(){
       seen.add(r.uuid);
       added++;
     });
-    lsSet('kt_runs', existing);
-    if(rides) lsSet('kt_sports', sports);
-    lsSet('kt_hk_imported', Array.from(seen));
+    // Same discipline as _logHealthRun: the UUIDs are burned only once the
+    // records are on disk. Marking first meant a full quota lost every workout
+    // in the batch for good.
+    var _okRuns = lsSet('kt_runs', existing);
+    var _okSports = rides ? lsSet('kt_sports', sports) : true;
+    if(_okRuns && _okSports) lsSet('kt_hk_imported', Array.from(seen));
     localStorage.setItem('kt_hk_last_sync', String(Date.now()));
     if(added || rides){
       invalidateCoachCard();
@@ -3772,6 +3776,13 @@ function _hkLocalISO(r){
 }
 // One Health workout is imported once. Call this only after the workout has
 // actually been written, or after a deliberate skip.
+// Two workouts imported in the same tick must not share an id — deleting one
+// deleted both. Bump past any id already in the log.
+function _hkFreshId(list){
+  var id=Date.now();
+  while((list||[]).some(function(x){ return x && x.id===id; })) id++;
+  return id;
+}
 function _hkMarkSeen(uuid){
   if(!uuid) return;
   var seen = lsGet('kt_hk_imported')||[];
@@ -3786,7 +3797,7 @@ function _logHealthRun(r){
   // re-offer it.
   if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ _hkMarkSeen(r.uuid); return null; }
   var rec = {
-    id: Date.now(),
+    id: _hkFreshId(getRuns()),
     distance: Math.round(r.distanceKm*100)/100,
     time: _secsToMMSS(r.durationSec),
     date: localISO,
@@ -3795,7 +3806,10 @@ function _logHealthRun(r){
     hr: r.avgHr||0,
     type: 'easy'
   };
-  var runs = getRuns(); runs.unshift(rec);
+  // A NEW array, not an in-place unshift: getRuns() hands back the cached
+  // object, and a failed lsSet rolls the cache back to that same reference —
+  // so an in-place push left a phantom run in the session after "storage full".
+  var runs = [rec].concat(getRuns());
   if(!lsSet('kt_runs', runs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(r.uuid);
   invalidateCoachCard();
@@ -3828,8 +3842,9 @@ function _healthSportRec(r, sportId, idOffset){
 }
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
-  var rec = _healthSportRec(r, sportId, 0);
-  var logs = getSportLogs(); logs.unshift(rec);
+  var logs0 = getSportLogs();
+  var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
+  var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
   localStorage.setItem('kt_hk_last_sync', String(Date.now()));
   if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(r.uuid);
@@ -4421,6 +4436,11 @@ function _validWeekPlan(arr){
   for(var i=0;i<7;i++){ if(!_knownPlanType(arr[i])) return false; }
   return true;
 }
+// The reason a cadence was rejected, in words the coach can act on.
+function _weekPlanProblem(arr){
+  if(!Array.isArray(arr)||arr.length!==7) return 'must have exactly 7 entries, Monday to Sunday (got '+(Array.isArray(arr)?arr.length:'none')+').';
+  return 'has entries I do not recognise: '+_badPlanEntries(arr).join(', ')+'. Use Push, Pull, Legs, Legs2, Arms, Rest, Run or a sport id.';
+}
 function _badPlanEntries(arr){
   var bad=[];
   (Array.isArray(arr)?arr:[]).forEach(function(s){ if(!_knownPlanType(s)) bad.push(String(s)); });
@@ -4696,15 +4716,18 @@ function _preStartInfo(){
 // never owed.
 function startProgrammeNow(){
   if(!hasCustomRoutine()) return;
+  var dowNow=(new Date().getDay()+6)%7;
+  if(dowNow===6) return;                        // Sunday: week 1 starts tomorrow anyway
   var mon=_mostRecentMonday(), today=todayISO();
   var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
+  var todaySlot=p1[dowNow];
   for(var i=0;i<7;i++){
     var d=addDays(mon,i); if(d>=today) break;
     var e=p1[i]; if(e && !e.isRest && e.type) saveSkip(d, e.type);
   }
   _setWeek(1, mon);
   _todayActMemo=null; invalidateCoachCard();
-  showToast('Week 1 started \u2014 today is on the card');
+  showToast(todaySlot && !todaySlot.isRest ? 'Week 1 started \u2014 today is on the card' : 'Week 1 started \u2014 today is a rest day');
   render();
 }
 function _restDayCTA(){
@@ -4716,7 +4739,8 @@ function _restDayCTA(){
         '<div style="text-align:left;"><div class="kt-cta-label">'+(ps.days===1?'TOMORROW':'IN '+ps.days+' DAYS')+'</div>'+
         '<div class="kt-cta-title">Preview week 1</div></div>'+
         '<div class="kt-cta-arrow">\u2192</div></button>'+
-      '<button class="btn btn-ghost btn-full" style="margin-top:8px;padding:11px;font-size:13px;" onclick="startProgrammeNow()">Start week 1 today instead</button>'+
+      (((new Date().getDay()+6)%7)===6 ? '' :   // on a Sunday "today" would be a one-day week 1; tomorrow IS the start
+        '<button class="btn btn-ghost btn-full" style="margin-top:8px;padding:11px;font-size:13px;" onclick="startProgrammeNow()">Start week 1 today instead</button>')+
       (ps.label?'<div class="kt-marquee-reps" style="margin-top:10px;">MONDAY \u00b7 DAY 1 \u00b7 '+_esc(String(ps.label).toUpperCase())+'</div>':'');
   }
   var _actU=null; try{ _actU=getTodayActivity(); }catch(e){}
@@ -8709,6 +8733,9 @@ function _renderRunnerDoneBody(ex, isLast){
 function openRunnerExEdit(idx){
   closeRunnerExEdit();
   var ex=runnerSession&&runnerSession.exercises[idx]; if(!ex) return;
+  // The done card arms a 3 s auto-advance. Its other entry points clear it;
+  // this one did not, so the deck moved on underneath the open sheet.
+  if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
   runnerExEditIdx=idx;
   _rExEditName   =ex.name;
   _rExEditSets   =ex.sets;
@@ -8719,6 +8746,12 @@ function openRunnerExEdit(idx){
   // sitting below. The sheet lets you choose a different one.
   var _ssNextEx  = runnerSession && runnerSession.exercises[runnerExEditIdx+1];
   _rExEditSSWith = (ex.ss && _ssNextEx) ? _ssNextEx.name : '';
+  // Open on the SECOND half of a pair, the sheet used to say "No superset" and
+  // could not dissolve it — and picking a partner from there chained a third
+  // lift onto the pair. Show the pair from this side; save handles the rest.
+  var _ssPrevEx  = (runnerSession && runnerExEditIdx>0) ? runnerSession.exercises[runnerExEditIdx-1] : null;
+  _rExEditSSAsSecond = !!(_ssPrevEx && _ssPrevEx.ss && !_rExEditSSWith);
+  if(_rExEditSSAsSecond) _rExEditSSWith = _ssPrevEx.name;
   _rExEditSS     = !!_rExEditSSWith;
   _rExSSPicking  = false;
   runnerExPickerQ='';
@@ -8896,6 +8929,8 @@ function runnerExRemove(){
     if(_runnerPrBeat && _runnerPrBeat.ex===name) _runnerPrBeat=null;
     if(_rExEditApply) _runnerApplyToProgramme('remove', {name:name});
     closeRunnerExEdit();
+    if(runnerResting) _trovoTimerEnd();          // the Live Activity and rest-done alert belong to the removed lift
+    if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
     runnerExIdx=Math.min(idx, runnerSession.exercises.length-1); runnerEngaged=false; runnerResting=false;
     if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
     _saveRunnerDraft(); paintRunner();
@@ -9045,8 +9080,13 @@ function saveRunnerExEdit(){
   // there. Before this the only reachable partner was whichever exercise
   // happened to sit next in the list — the toggle could be turned on, but the
   // other half of the pair could never be chosen.
+  // Second half of a pair: the opener above owns the flag. Keeping the same
+  // partner changes nothing; choosing another (or none) dissolves that pair.
+  var _openerEx=(runnerExEditIdx>0)?runnerSession.exercises[runnerExEditIdx-1]:null;
+  var _keptPair=!!(_rExEditSSAsSecond && _openerEx && _openerEx.ss && _rExEditSSWith===_openerEx.name);
+  if(_rExEditSSAsSecond && !_keptPair && _openerEx) _openerEx.ss=false;
   ex.ss=false;
-  if(_rExEditSSWith){
+  if(_rExEditSSWith && !_keptPair){
     var _engagedName=(runnerSession.exercises[runnerExIdx]||{}).name||null;
     var _pi=-1;
     for(var _i=0;_i<runnerSession.exercises.length;_i++){
@@ -9057,6 +9097,11 @@ function saveRunnerExEdit(){
       _moved.ss=false;                                  // a partner cannot also open a pair
       runnerSession.exercises.splice(runnerSession.exercises.indexOf(ex)+1,0,_moved);
       ex.ss=true;
+      // Supersets are strictly pairs. If the lift now above this one opens a
+      // pair, this one would be both its second half and an opener — a chain
+      // that the runner's pair walk drops the opener from. Break it.
+      var _aboveIdx=runnerSession.exercises.indexOf(ex)-1;
+      if(_aboveIdx>=0 && runnerSession.exercises[_aboveIdx].ss) runnerSession.exercises[_aboveIdx].ss=false;
       runnerExEditIdx=runnerSession.exercises.indexOf(ex);
       // _ssReturnIdx is a raw index into the array we just spliced. Every other
       // path that moves through the deck nulls it (runnerGoTo does), and a
@@ -10151,6 +10196,21 @@ function saveSessionEdit(){
     });
     if(!newer){ wts2[ex.name]=w; wtsTouched=true; }
   });
+  // A rename carries the per-name records with it: the exercise note, the
+  // session's own PR list, and the working-weight entry when no other session
+  // still uses the old name. recomputePRs below rebuilds kt_prs from the
+  // corrected sessions, so records follow without extra work.
+  if(_sessEditRenamed.length){
+    var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
+    _sessEditRenamed.forEach(function(rn){
+      if(notes[rn.from] && !notes[rn.to]){ notes[rn.to]=notes[rn.from]; delete notes[rn.from]; notesTouched=true; }
+      if(Array.isArray(s.prs)) s.prs=s.prs.map(function(p){ return p===rn.from?rn.to:p; });
+      var stillUsed=sessions.some(function(o){ return o!==s && (o.exercises||[]).some(function(e2){ return e2 && e2.name===rn.from; }); });
+      if(!stillUsed && wts2[rn.from]!=null){ if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from]; delete wts2[rn.from]; wtsTouched=true; }
+    });
+    if(notesTouched) lsSet('kt_ex_notes', notes);
+    lsSet('kt_sessions', sessions);
+  }
   if(wtsTouched) lsSet('kt_weights', wts2);
   recomputePRs();
   invalidateCoachCard();
@@ -12017,9 +12077,14 @@ function renderProgress() {
     if (startArr) { for (var li=0;li<startArr.length;li++){if(startArr[li].isMain){startMain=startArr[li];break;}} }
     if (curArr)   { for (var li=0;li<curArr.length;li++){if(curArr[li].isMain){curMain=curArr[li];break;}}   }
     if (!startMain && !curMain) return;
-    var startW = startMain ? startMain.weight : 0;
-    var curW   = curMain   ? curMain.weight   : startW;
     var nameEx = curMain || startMain;
+    var curW   = curMain ? (parseFloat(curMain.weight)||0) : (parseFloat(startMain.weight)||0);
+    // A gain is only a gain against the SAME lift at the block start. With no
+    // main lift there, startW was 0 and a 230 lb bench read as "+230 lb"; with
+    // a different lift there, two exercises were compared as one.
+    var sameLift = !!(startMain && curMain && _liftBaseName(startMain.name)===_liftBaseName(curMain.name));
+    var _noBaseline = !!curMain && !sameLift;
+    var startW = sameLift ? (parseFloat(startMain.weight)||0) : curW;
     var baseName = _liftBaseName(nameEx && nameEx.name);
     // Best logged weight for the same lift, whatever day it was logged on and
     // whichever set variant it was named after. Matching on the session TYPE
@@ -12032,6 +12097,7 @@ function renderProgress() {
         });
       });
     }
+    if(_noBaseline) startW = curW;              // after the logged-weight boost: claim nothing
     var delta = curW - startW;
     var maxExpectedGain = 30; // lb per block for display purposes
     // Drive the bar off the gain, not off the starting load: a lift that began
@@ -12041,7 +12107,7 @@ function renderProgress() {
     // none, and anything else with none ("your load"). The old code only
     // guarded the START, so a slot the current week leaves without a main lift
     // fell through to fmtW(0) and printed "0 lb now".
-    var startLbl = _loadLabel((startMain||nameEx||{}).name, startW, true);
+    var startLbl = _loadLabel(((sameLift?startMain:nameEx)||{}).name, startW, true);
     var wLabel   = _loadLabel((nameEx||{}).name, curW, true);
     liftRows += '<div class="lift-row">'+
       '<div class="lift-head">'+
@@ -13299,16 +13365,14 @@ function executeCoachTool(name,input){
       // the coercion applied after, so a malformed call destroyed the day AND
       // burned the undo point that could have recovered it.
       if(Array.isArray(input.weekPlan)&&!_validWeekPlan(input.weekPlan)){
-        var _bad=_badPlanEntries(input.weekPlan);
-        _trapErr('coach weekPlan rejected: '+_bad.join(', '));
-        return {ok:false,error:'weekPlan has 7 entries I do not recognise: '+_bad.join(', ')+'. Use Push, Pull, Legs, Legs2, Arms, Rest, Run or a sport id. Nothing was changed.'};
+        _trapErr('coach weekPlan rejected: '+_weekPlanProblem(input.weekPlan));
+        return {ok:false,error:'weekPlan '+_weekPlanProblem(input.weekPlan)+' Nothing was changed.'};
       }
       for(var _wi=0;_wi<weeksIn.length;_wi++){
         var _wp=weeksIn[_wi]&&weeksIn[_wi].weekPlan;
         if(Array.isArray(_wp)&&!_validWeekPlan(_wp)){
-          var _bad2=_badPlanEntries(_wp);
-          _trapErr('coach per-week weekPlan rejected: '+_bad2.join(', '));
-          return {ok:false,error:'week '+(weeksIn[_wi].week||_wi+1)+' weekPlan has entries I do not recognise: '+_bad2.join(', ')+'. Nothing was changed.'};
+          _trapErr('coach per-week weekPlan rejected: '+_weekPlanProblem(_wp));
+          return {ok:false,error:'week '+(weeksIn[_wi].wk||weeksIn[_wi].week||_wi+1)+' weekPlan '+_weekPlanProblem(_wp)+' Nothing was changed.'};
         }
       }
       _snapshotRoutineForUndo();
@@ -13443,6 +13507,10 @@ function executeCoachTool(name,input){
       var w=parseInt(input.week);
       var total=getTotalWeeks();
       if(!(w>=1&&w<=total)) return {ok:false,error:'week must be 1-'+total};
+      // Same guard as the week stepper: a call that changes nothing must not
+      // re-anchor, or "set week 1" on a plan starting next Monday silently
+      // starts it today.
+      if(w===currentWeek) return {ok:true,message:'already on week '+w+' \u2014 nothing changed'};
       _setWeek(w);
       invalidateCoachCard();
       return {ok:true,message:'current week set to '+w};

@@ -49,6 +49,15 @@ run('choosing a superset partner moves it into the pair', async () => {
       runnerExEditSetSSIdx(-1);
       saveRunnerExEdit();
       r.afterClear = { names: names(), flags: flags() };
+
+      // Open on the SECOND half of a pair: it shows the opener, and choosing another
+      // partner dissolves that pair rather than chaining a third lift onto it.
+      runnerSession.exercises[0].ss = true;                 // Bench -> Cable Fly
+      openRunnerExEdit(1);                                  // the sheet on Cable Fly
+      r.secondHalf = { seeded: _rExEditSSWith, asSecond: _rExEditSSAsSecond };
+      runnerExEditSetSSIdx(3);                              // pick Tricep Pushdown instead
+      saveRunnerExEdit();
+      r.afterSecond = { names: names(), flags: flags() };
       return r;
     });
 
@@ -69,6 +78,10 @@ run('choosing a superset partner moves it into the pair', async () => {
     assert(out.reopened === 'Cable Fly', 'reopening shows the current partner: ' + out.reopened);
     assert(out.afterClear.flags[0] === 0 && out.afterClear.names[1] === 'Cable Fly',
       'clearing unpairs and leaves the order alone: ' + JSON.stringify(out.afterClear));
+    assert(out.secondHalf.seeded === 'Barbell Bench Press' && out.secondHalf.asSecond, 'the sheet on the second half shows the opener: ' + JSON.stringify(out.secondHalf));
+    assert(out.afterSecond.flags[0] === 0 && out.afterSecond.names[1] === 'Cable Fly' && out.afterSecond.names[2] === 'Tricep Pushdown' && out.afterSecond.flags[1] === 1 && out.afterSecond.flags[2] === 0,
+      'choosing another partner dissolves the old pair and does not chain: ' + JSON.stringify(out.afterSecond));
+    assert(out.afterSecond.flags.filter(x => x).length === 1, 'exactly one pair opener remains: ' + JSON.stringify(out.afterSecond));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

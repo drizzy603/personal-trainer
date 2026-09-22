@@ -28,7 +28,9 @@ run('a finished exercise is still editable, in the runner and in history', async
         stillHasSetEdit: /runnerStartEditSet\(/.test(card),
       };
       // and the sheet actually opens on a finished exercise
+      _runnerAdvanceTO = setTimeout(function(){}, 60000);   // the done card's 3 s auto-advance, armed
       openRunnerExEdit(0);
+      r.advanceDisarmed = _runnerAdvanceTO === null;
       r.sheetOpens = !!document.getElementById('runner-ex-edit-sheet') && _rExEditName === 'Barbell Curl';
       // renaming carries the logged sets across
       _rExEditName = 'Barbell Curl (21s)';
@@ -60,6 +62,7 @@ run('a finished exercise is still editable, in the runner and in history', async
     assert(out.runner.saysDone && out.runner.stillHasSetEdit, 'the finished card renders with its set ledger: ' + JSON.stringify(out.runner));
     assert(out.runner.hasExerciseEdit, 'a finished exercise still offers Edit: ' + JSON.stringify(out.runner));
     assert(out.sheetOpens, 'the edit sheet opens on a finished exercise');
+    assert(out.advanceDisarmed, 'opening the sheet disarms the auto-advance so the deck does not move under it');
     assert(out.renamed.name === 'Barbell Curl (21s)' && out.renamed.completed === 2 && out.renamed.oldGone && out.renamed.log === 2,
       'renaming a finished exercise carries its logged sets: ' + JSON.stringify(out.renamed));
     assert(out.history.hasNameField && out.history.seeded === 'Barbell Curl',

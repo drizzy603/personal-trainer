@@ -22,8 +22,8 @@ run('start-now override, visible unknown day, all-slot progress, tap-not-scroll'
       r.preStart = { started: _programmeStarted(), anchor: localStorage.getItem('kt_week_monday') };
       switchTab('log');
       const txt0 = document.getElementById('screen').innerText;
-      r.offer = { shown: /Start week 1 today instead/.test(txt0), onlyWhenPending: dow !== 0 };
-      if (dow !== 0) {
+      r.offer = { shown: /Start week 1 today instead/.test(txt0), onlyWhenPending: dow !== 0 && dow !== 6 };   // Monday: already started; Sunday: tomorrow IS the start
+      if (dow !== 0 && dow !== 6) {
         startProgrammeNow();
         r.now = {
           started: _programmeStarted(),
@@ -64,7 +64,8 @@ run('start-now override, visible unknown day, all-slot progress, tap-not-scroll'
       setCustomRoutine(cr3);
       switchTab('progress');
       const ptxt = document.getElementById('screen').innerText;
-      r.progress = { legsB: /Romanian Deadlift/.test(ptxt), arms: /Barbell Curl/.test(ptxt) };
+      // The block-start week has no main lift in legs2/arms, so no gain may be claimed against a zero start.
+      r.progress = { legsB: /Romanian Deadlift/.test(ptxt), arms: /Barbell Curl/.test(ptxt), noFabricatedGain: !/\+185|\+65 /.test(ptxt) };
 
       // ── A. chat: tap dismisses, scroll does not ───────────────────────────
       coachView = 'chat'; currentTab = 'coach'; render();
@@ -95,6 +96,7 @@ run('start-now override, visible unknown day, all-slot progress, tap-not-scroll'
     assert(out.unknown.heroSays && out.unknown.ctaSays && out.unknown.notPlainRest, 'the card names the unknown day and offers the fix: ' + JSON.stringify(out.unknown));
     assert(out.fixRoute.tab === 'settings' && out.fixRoute.dowSelected, 'the fix lands in the cadence editor on that day: ' + JSON.stringify(out.fixRoute));
     assert(out.progress.legsB && out.progress.arms, 'Progress bars cover Legs B and Arms: ' + JSON.stringify(out.progress));
+    assert(out.progress.noFabricatedGain, 'no gain is fabricated against a slot the block did not start with: ' + JSON.stringify(out.progress));
     assert(out.scroll.stillTyping, 'a scroll on the conversation keeps the keyboard');
     assert(out.tap.dismissed, 'a tap on the conversation dismisses it');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));

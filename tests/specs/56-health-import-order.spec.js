@@ -39,6 +39,17 @@ run('Health import marks a workout seen only once it is saved', async () => {
       const s = _logHealthSport({ uuid: 'u-s2', startDate: at, durationSec: 1800, type: 'swim' }, 'swim');
       _logHealthSport({ uuid: 'u-s2', startDate: at, durationSec: 1800, type: 'swim' }, 'swim');
       r.sport = { rec: !!(s && s.id), count: seen().filter(u => u === 'u-s2').length };
+
+      // 5. two workouts in one tick get distinct ids — deleting one must not delete both
+      const a = _logHealthRun({ uuid: 'u-t1', startDate: at, distanceKm: 3, durationSec: 900, avgHr: 140 });
+      const b = _logHealthRun({ uuid: 'u-t2', startDate: at, distanceKm: 4, durationSec: 1200, avgHr: 140 });
+      r.ids = { distinct: !!(a && b && a.id !== b.id) };
+      // 6. a failed save leaves NO phantom in the in-memory log (the cache is shared by reference)
+      const before = getRuns().length;
+      localStorage.setItem = function (k, v) { if (k === 'kt_runs') { const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; } return realSet(k, v); };
+      _logHealthRun({ uuid: 'u-ghost', startDate: at, distanceKm: 9, durationSec: 2700, avgHr: 140 });
+      localStorage.setItem = realSet;
+      r.phantom = { before: before, after: getRuns().length, ghostVisible: getRuns().some(x => x.distance === 9) };
       return r;
     });
 
@@ -47,6 +58,8 @@ run('Health import marks a workout seen only once it is saved', async () => {
     assert(out.full.ret === false && !out.full.marked, 'a failed save does not burn the run uuid: ' + JSON.stringify(out.full));
     assert(out.full.sportRet === false && !out.full.sportMarked, 'a failed save does not burn the sport uuid: ' + JSON.stringify(out.full));
     assert(out.sport.rec && out.sport.count === 1, 'a sport is marked exactly once: ' + JSON.stringify(out.sport));
+    assert(out.ids.distinct, 'two imports in one tick get distinct ids');
+    assert(out.phantom.after === out.phantom.before && !out.phantom.ghostVisible, 'a failed save leaves no phantom run in the session: ' + JSON.stringify(out.phantom));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
