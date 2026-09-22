@@ -65,6 +65,9 @@ run('a new programme starts on Monday; continuing one does not move', async () =
       localStorage.setItem('kt_week_monday', _nextMonday(todayISO())); currentWeek = 1; lsSet('kt_week', 1);
       const noop = executeCoachTool('set_current_week', { week: 1 });
       r.coachNoop = { ok: noop && noop.ok, anchorKept: anchor() === _nextMonday(todayISO()) };
+      // The coach is told, in so many words, that a stated week is a request to set it.
+      const sp = buildSystemPrompt();
+      r.promptActs = /call set_current_week with that number in the SAME turn/.test(sp) && /never call it "just a label"/.test(sp) && /stepper under the week number/.test(sp);
       // The dead AI-install path is gone.
       r.deadGone = typeof confirmLoadRoutine === 'undefined';
       return r;
@@ -94,6 +97,7 @@ run('a new programme starts on Monday; continuing one does not move', async () =
     assert(out.realStep.week === 2 && out.realStep.backAnchored,
       'a real week step continues the plan and back-anchors: ' + JSON.stringify(out.realStep));
     assert(out.deadGone, 'confirmLoadRoutine (dead, threw on entry) is gone');
+    assert(out.promptActs, 'the coach prompt tells it to set a stated week, not debate it');
     assert(out.coachNoop.ok && out.coachNoop.anchorKept, 'set_current_week to the current week leaves a pending start alone: ' + JSON.stringify(out.coachNoop));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

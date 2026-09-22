@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260921-2"/>
+<meta name="build" content="20260921-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -14250,6 +14250,9 @@ function buildSystemPrompt(){
   p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of '+_plateStepDisp()+' '+_uW()+'. The smallest meaningful change is ±'+_plateStepDisp()+' '+_uW()+' (±'+_plateBarDisp()+' '+_uW()+' on barbell lifts). Never suggest fractional bumps gyms cannot load.\n';
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
+  // The counter is the user's. The coach once answered "it's week 1 now" with a
+  // paragraph about numbering being "just a label" and changed nothing.
+  p+='\nThe week counter is the user\'s to set. If they state the week or ask to change it ("it\'s week 1 now", "put me on week 3"), call set_current_week with that number in the SAME turn. Never explain the numbering instead, never call it "just a label", never suggest waiting. They can also change it themselves with the \u2212 / + stepper under the week number on the Log tab.';
   if(!_programmeStarted()) p+=' — NOT STARTED YET: week 1 day 1 is Monday '+_weekAnchor()+'. Nothing is scheduled before then; do not tell them they are mid-week.';
   if(cr&&cr.name)p+=' ('+cr.name+')';
   p+='\n';
@@ -14362,7 +14365,7 @@ function buildSystemPrompt(){
   if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS ('+_uW()+'):\n'+wKeys.map(function(k){return '  '+k+': '+wDisp(allWeights[k]);}).join('\n')+'\n';}
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
-  p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.).\n';
+  p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.). A stated week ("it\'s week 1") IS a request to set it: act, do not discuss.\n';
   p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
