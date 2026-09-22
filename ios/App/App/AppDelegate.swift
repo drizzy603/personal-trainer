@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import ActivityKit
 import CapApp_SPM
+import ObjectiveC.runtime
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -139,6 +140,34 @@ class SuperoViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TrovoSharePlugin())
         bridge?.registerPluginInstance(TrovoWidgetPlugin())
         bridge?.registerPluginInstance(TrovoWatchPlugin())
+        hideKeyboardAccessoryBar()
+        // WebKit can create its content view after this callback; try once more.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.hideKeyboardAccessoryBar() }
+    }
+
+    // The grey ⌃ ⌄ Done strip iOS adds above the keyboard for web forms. Nothing
+    // in the app uses it, and in the Coach it costs a row of conversation.
+    // WKWebView has no API to drop it; the established route is a runtime
+    // subclass of WebKit's content view whose inputAccessoryView returns nil.
+    private func hideKeyboardAccessoryBar() {
+        guard let scroll = webView?.scrollView else { return }
+        for sub in scroll.subviews {
+            guard let cls = object_getClass(sub), NSStringFromClass(cls).hasPrefix("WKContent") else { continue }
+            let name = NSStringFromClass(cls) + "_NoAccessory"
+            if let existing = NSClassFromString(name) {
+                if object_getClass(sub) != existing { object_setClass(sub, existing) }
+                return
+            }
+            guard let newCls = objc_allocateClassPair(cls, name, 0) else { return }
+            let sel = #selector(getter: UIResponder.inputAccessoryView)
+            if let method = class_getInstanceMethod(cls, sel) {
+                let block: @convention(block) (AnyObject) -> UIView? = { _ in nil }
+                class_addMethod(newCls, sel, imp_implementationWithBlock(block), method_getTypeEncoding(method))
+            }
+            objc_registerClassPair(newCls)
+            object_setClass(sub, newCls)
+            return
+        }
     }
 }
 

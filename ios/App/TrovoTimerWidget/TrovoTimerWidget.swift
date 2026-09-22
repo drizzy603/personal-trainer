@@ -138,10 +138,15 @@ struct LockScreenView: View {
 
 struct SummaryDay: Decodable {
     let date: String       // yyyy-MM-dd (local)
-    let type: String       // "Push" / "Rest" / "Run" / sport id
+    let type: String       // slot id: "Push" / "Rest" / "Run" / sport id — identity, never shown
+    let label: String?     // what the user calls the day ("Chest + Back"); pages before 20260921-6 omit it
+    let short: String?     // the same, fitted to a chip ("C+B")
     let isRest: Bool
     let lifts: Int         // exercise count for lift days, else 0
     let done: Bool         // session already logged that day
+
+    var name: String { label ?? type }
+    var chip: String { short ?? String(type.prefix(5)) }
 }
 
 struct WidgetSummary: Decodable {
@@ -172,7 +177,7 @@ private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
             .stringArray(forKey: "pendingWatchDone"), !done.isEmpty else { return summary }
     let days = summary.days.map { d -> SummaryDay in
         guard !d.done, done.contains(d.date) else { return d }
-        return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
+        return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
     }
     return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
                          streak: summary.streak, streakDays: summary.streakDays, days: days)
@@ -195,7 +200,7 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     let days = summary.days.map { d -> SummaryDay in
         // Only cardio days (not rest, no lifts planned) get auto-completed.
         guard !d.done, !d.isRest, d.lifts == 0, pendingDays.contains(d.date) else { return d }
-        return SummaryDay(date: d.date, type: d.type, isRest: d.isRest, lifts: d.lifts, done: true)
+        return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
     }
     return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
                          streak: summary.streak, streakDays: summary.streakDays, days: days)
@@ -257,8 +262,8 @@ struct SuperoTodayView: View {
     // "Pull day." — and the subline is a mono data line, not a sentence.
     private var headline: String {
         guard let d = day else { return "Open Supero." }
-        if d.done { return "\(d.type), done." }
-        return d.isRest ? "Rest day." : "\(d.type) day."
+        if d.done { return "\(d.name), done." }
+        return d.isRest ? "Rest day." : "\(d.name) day."
     }
 
     private var subline: String {
@@ -280,7 +285,7 @@ struct SuperoTodayView: View {
         guard let d = day else { return "—" }
         if d.done { return "DONE" }
         if d.isRest { return "REST" }
-        return String(d.type.prefix(5)).uppercased()
+        return d.chip.uppercased()
     }
 
     var body: some View {
