@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260921-5"/>
+<meta name="build" content="20260921-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1756,7 +1756,69 @@ var SESS = {
 // Every lift session a week can hold. The key is the week array it reads
 // (wd.push, wd.legs2 …); the value is the cadence entry that schedules it.
 var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms'];
-function _sessLabel(t){ return (SESS[t] && SESS[t].label) || t || ''; }
+// ── Named slots ───────────────────────────────────────────────────────────────
+// A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
+// reads, how history groups, how the runner walks it. Its NAME is the user's:
+// kt_routine.dayNames = { Push: 'Chest + Back', … }. weekPlan never gains a new
+// value, so an older bundled page ignores dayNames and still renders the same
+// exercises under the stock label. _dayLabel() is the ONE read path.
+function _cleanDayLabel(s){
+  var t=String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim();
+  return t.slice(0,24);
+}
+function _dayNames(){ var cr=getCustomRoutine(); return (cr && cr.dayNames && typeof cr.dayNames==='object') ? cr.dayNames : {}; }
+function _dayLabel(t){
+  if(!t) return '';
+  var n=_dayNames()[t]; if(n){ n=_cleanDayLabel(n); if(n) return n; }
+  return (SESS[t] && SESS[t].label) || String(t);
+}
+function _sessLabel(t){ return _dayLabel(t); }
+// The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B".
+function _dayShort(t){
+  var l=_dayLabel(t); if(l.length<=7) return l;
+  var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
+  if(parts.length>1) return parts.map(function(p){ return p.charAt(0).toUpperCase(); }).join('+');
+  return l.slice(0,6);
+}
+// Reverse lookup: a slot id, the name the user gave one (any case), or a stock
+// label -> the slot. `extra` lets a coach call that names AND uses a day in the
+// same turn resolve against the incoming map. null when nothing matches.
+function _slotForLabel(name, extra){
+  var s=_cleanDayLabel(name); if(!s) return null;
+  var low=s.toLowerCase(), i, k;
+  for(i=0;i<LIFT_TYPES.length;i++){ if(LIFT_TYPES[i].toLowerCase()===low) return LIFT_TYPES[i]; }
+  var pools=[extra||{}, _dayNames()];
+  for(var p=0;p<pools.length;p++){
+    for(k in pools[p]){ if(pools[p].hasOwnProperty(k) && LIFT_TYPES.indexOf(k)>=0 && _cleanDayLabel(pools[p][k]).toLowerCase()===low) return k; }
+  }
+  for(k in SESS){ if(SESS.hasOwnProperty(k) && String(SESS[k].label).toLowerCase()===low) return k; }
+  return null;
+}
+function setDayName(slot, name){
+  if(LIFT_TYPES.indexOf(slot)<0) return;
+  var cr=getCustomRoutine(); if(!cr) return;
+  var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{};
+  var clean=_cleanDayLabel(name), stock=(SESS[slot]&&SESS[slot].label)||slot;   // the STOCK label, not the current custom one
+  if(clean && clean!==stock) names[slot]=clean; else delete names[slot];
+  if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
+  setCustomRoutine(cr);
+  if(typeof _scheduleNativeSync==='function') _scheduleNativeSync();   // the wrist and widget show the name
+  render();
+}
+// A name proposed from what the slot actually holds this week — the muscle
+// groups of its exercises, e.g. "Chest + Back". '' when there is nothing to say.
+function _autoDayLabel(slot){
+  var exs=[]; try{ exs=getSessionExercises(slot)||[]; }catch(e){}
+  if(!exs.length) return '';
+  var lib={}; getAllExercises().forEach(function(e){ lib[String(e.name).toLowerCase()]=e; });
+  var GROUP={Push:'Chest',Pull:'Back',Legs:'Legs',Arms:'Arms',Core:'Core'};
+  var seen={}, order=[];
+  exs.forEach(function(ex){
+    var e=lib[_liftBaseName(ex.name)]||lib[String(ex.name||'').toLowerCase()];
+    var g=e?GROUP[e.cat]:null; if(!g||seen[g]) return; seen[g]=1; order.push(g);
+  });
+  return order.slice(0,3).join(' + ');
+}
 
 // ── Sports config ─────────────────────────────────────────────────────────────
 // 14 activities, each with a 2-letter mono badge and a unique saturated color.
@@ -4695,7 +4757,7 @@ function _missedThisWeek(){
 }
 function skipMissed(date, type){
   saveSkip(date, type);
-  showToast(((SESS[type]&&SESS[type].label)||type)+' skipped \u2014 back on plan');
+  showToast((_dayLabel(type))+' skipped \u2014 back on plan');
   render();
 }
 // Tomorrow's plan label ("Push", "Rest", "Run"), honouring next week's cadence on Sundays.
@@ -4707,7 +4769,7 @@ function _tomorrowLabel(){
   if(_dowIdx===6 && _programmeStarted()){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
-  return tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : ((SESS[tomPlan.type]&&SESS[tomPlan.type].label)||tomPlan.type||'');
+  return tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
 }
 // Rest-day CTA: the make-up for a missed lift, or the first session for a
 // starter who installed on a rest day. Always ends with what tomorrow holds.
@@ -4724,7 +4786,7 @@ function _preStartInfo(){
     if(e&&e.isLift){ lifts++; if(!first) first={type:e.type,dow:i}; }
   }
   return {mon:mon, days:days, lifts:lifts, first:first,
-    label:first?((SESS[first.type]&&SESS[first.type].label)||first.type):'',
+    label:first?(_dayLabel(first.type)):'',
     dateLong:new Date(mon+'T00:00:00').toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})};
 }
 // Start week 1 today instead of waiting for Monday. The Monday start is the
@@ -4775,7 +4837,7 @@ function _restDayCTA(){
   }
   var missed=_missedThisWeek();
   if(missed){
-    var ml=(SESS[missed.type]&&SESS[missed.type].label)||missed.type;
+    var ml=_dayLabel(missed.type);
     out+='<button class="kt-cta" onclick="openDeckRunner(\''+_esc(missed.type)+'\')">'+
         '<div style="text-align:left;"><div class="kt-cta-label">MAKE-UP</div>'+
         '<div class="kt-cta-title">Do '+_esc(DAYS[missed.dow])+'\u2019s '+_esc(ml)+' now</div></div>'+
@@ -4784,7 +4846,7 @@ function _restDayCTA(){
   } else if(hasCustomRoutine() && !getSessions().length){
     var nxt=null; try{ nxt=getNextSession(); }catch(e){}
     if(nxt && _planEntry(nxt).isLift && _todayLiftExercises(nxt).length){
-      var nl=(SESS[nxt]&&SESS[nxt].label)||nxt;
+      var nl=_dayLabel(nxt);
       out+='<button class="kt-cta" onclick="openDeckRunner(\''+_esc(nxt)+'\')">'+
         '<div style="text-align:left;"><div class="kt-cta-label">FIRST SESSION</div>'+
         '<div class="kt-cta-title">Start '+_esc(nl)+' today</div></div>'+
@@ -5360,7 +5422,7 @@ function renderTodayEditorial(){
   // — "Today is pull day." over a finished workout read like a nag.
   var _doneRec = (act.type === 'lift') ? getSessions().find(function(s){ return s.date === _todayKey() && s.type === act.dayName; }) : null;
   if(act.type === 'lift' && (_doneRec || runnerJustFinishedKey === _todayKey()+'-'+act.type+'-'+(act.dayName||''))){
-    var _dl=((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'');
+    var _dl=(_dayLabel(act.dayName)||'');
     line1 = _dl.charAt(0).toUpperCase()+_dl.slice(1).toLowerCase()+' day,';
     line2 = 'done.';
     line2Class = 'accent';
@@ -5371,7 +5433,7 @@ function renderTodayEditorial(){
       'Nothing left to do today but recover.';
   } else if(act.type === 'lift'){
     line1 = 'Today is';
-    line2 = ((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName||'').toLowerCase()+' day.';
+    line2 = (_dayLabel(act.dayName)||'').toLowerCase()+' day.';
     line2Class = 'accent';
     var main = (act.exercises && act.exercises.length) ? (act.exercises.find(function(e){return e.isMain;}) || act.exercises[0]) : null;
     var last = main ? getLastSessionData(main.name) : null;
@@ -5437,7 +5499,7 @@ function renderTodayEditorial(){
     var _anyToday = getSessions().some(function(x){ return x.date === _todayKey(); });
     var _missed = _anyToday ? null : _missedThisWeek();
     if(_missed){
-      var _mlab = (SESS[_missed.type]&&SESS[_missed.type].label)||_missed.type;
+      var _mlab = _dayLabel(_missed.type);
       var _mday = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_missed.dow];
       line2 = _mlab.charAt(0).toUpperCase()+_mlab.slice(1).toLowerCase()+' still open.';
       line2Class = 'accent';
@@ -5445,7 +5507,7 @@ function renderTodayEditorial(){
     } else if(hasCustomRoutine() && !getSessions().length){
       var _nx = null; try{ _nx = getNextSession(); }catch(e){}
       if(_nx && _planEntry(_nx).isLift){
-        var _nxl = (SESS[_nx]&&SESS[_nx].label)||_nx;
+        var _nxl = _dayLabel(_nx);
         var _nxDow = -1; var _wp = getWeekPlan(); for(var _q=1;_q<=7;_q++){ var _dd=((new Date().getDay()+6)%7+_q)%7; if(_wp[_dd] && _wp[_dd].type===_nx){ _nxDow=_dd; break; } }
         body = 'Your first session, '+_nxl+', is '+(_nxDow>=0?['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_nxDow]:'next')+'. Start it today if you are keen \u2014 the plan adjusts.';
       }
@@ -5504,7 +5566,7 @@ function renderTodayEditorial(){
       // effective load) — the tile used to disagree with the ledger row.
       var _vol=calcVolume(_ts.exercises||[]);
       var _prc=(_ts.prs||[]).length;
-      var _sl=(SESS[_ts.type]||{label:_ts.type}).label;
+      var _sl=_ts.label||_dayLabel(_ts.type);
       // Completion summary as a hairline stat band (screen 09) — the PR cell
       // is the only colored number, and only when one actually happened.
       var _pills='<div class="kt-statband" style="margin:12px 0 0;border-bottom:none;padding-bottom:6px;'+
@@ -5560,7 +5622,7 @@ function renderTodayEditorial(){
     cta = '<button class="kt-cta" onclick="startTodaySession()">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">START</div>'+
-        '<div class="kt-cta-title">'+_esc((SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName)+' · '+_plural(act.exercises.length,'exercise')+'</div>'+
+        '<div class="kt-cta-title">'+_esc(_dayLabel(act.dayName))+' · '+_plural(act.exercises.length,'exercise')+'</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
@@ -5690,7 +5752,7 @@ function renderTodayEditorial(){
     resumeBanner = '<div class="kt-resume-banner">'+
       '<div>'+
         '<div class="kt-resume-eyebrow">WORKOUT IN PROGRESS</div>'+
-        '<div class="kt-resume-ttl">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName))+' · '+doneCount+' / '+totalCount+' sets</div>'+
+        '<div class="kt-resume-ttl">'+_esc((_dayLabel(runnerSession.dayName)))+' · '+doneCount+' / '+totalCount+' sets</div>'+
       '</div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="discardRunnerDraft()">Discard</button>'+
@@ -5825,7 +5887,7 @@ function renderTodayEditorial(){
   if(_watchLive && _watchLive.sets>0){
     watchLiveBanner='<div class="kt-resume-banner">'+
       '<div><div class="kt-resume-eyebrow">LIVE ON WATCH ⌚</div>'+
-      '<div class="kt-resume-ttl">'+_esc(((SESS[_watchLive.dayName]&&SESS[_watchLive.dayName].label)||_watchLive.dayName))+' · '+_watchLive.sets+' set'+(_watchLive.sets===1?'':'s')+' from your wrist. Lands here when you finish.</div></div>'+
+      '<div class="kt-resume-ttl">'+_esc((_dayLabel(_watchLive.dayName)))+' · '+_watchLive.sets+' set'+(_watchLive.sets===1?'':'s')+' from your wrist. Lands here when you finish.</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="hideWatchLive()">Hide</button>'+
       '</div></div>';
@@ -7744,7 +7806,7 @@ function runnerFinishSession(){
   sessions = sessions.filter(function(x){
     return !(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch');
   });
-  var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName,
+  var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName, label:_dayLabel(runnerSession.dayName),
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs,
     startedAt:runnerSession.startedAt||undefined,
     supersets:(_ssIdx.length?_ssIdx:undefined)};
@@ -7763,7 +7825,7 @@ function runnerFinishSession(){
   // Keyed by the date the session was FILED under — a backdated log must
   // not mark today done and hide today's Start CTA.
   runnerJustFinishedKey = _sessionDate+'-lift-'+runnerSession.dayName;
-  _watchEndedPayload={ dayName:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
+  _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:{}, weights:{}, ended:true };
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
@@ -7877,7 +7939,7 @@ function startTodaySession(){
 }
 function openSessionOverview(act){
   closeSessionOverview();
-  var label=(SESS[act.dayName]&&SESS[act.dayName].label)||act.dayName;
+  var label=_dayLabel(act.dayName);
   var exs=act.exercises||[];
   var wd=null; try{ wd=getWkData(); }catch(e){}
   var focus=wd&&(wd.note||wd.focus)?String(wd.note||wd.focus):'';
@@ -7918,7 +7980,7 @@ function closeSessionOverview(){
 function openCompleteSheet(c){
   closeCompleteSheet();
   var rec=c&&c.rec; if(!rec) return;
-  var label=(SESS[rec.type]&&SESS[rec.type].label)||rec.type||'Session';
+  var label=rec.label||_dayLabel(rec.type)||'Session';
   var vol=Math.round(calcVolume(rec.exercises||[]));
   var prev=getSessions().find(function(x){ return x.id!==rec.id && x.type===rec.type && (x.exercises||[]).length; });
   var prevVol=prev?Math.round(calcVolume(prev.exercises||[])):0;
@@ -8040,7 +8102,7 @@ function renderDeckRunner(){
       '<button class="kt-r-back" onclick="confirmCloseRunner()">← Today</button>'+
       (mirroring
         ?'<div class="kt-r-day" style="display:flex;align-items:center;gap:6px;"><span class="kt-live-dot"></span>ON WRIST</div>'
-        :'<div class="kt-r-day">'+_esc(((SESS[runnerSession.dayName]&&SESS[runnerSession.dayName].label)||runnerSession.dayName).toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>')+
+        :'<div class="kt-r-day">'+_esc((_dayLabel(runnerSession.dayName)).toUpperCase())+' · '+_esc(runnerSession.weekday)+'</div>')+
       '<div class="kt-r-pct" data-m05="r-pct">'+pct+'%</div>'+
     '</div>'+
     '<div class="kt-r-bar"><div class="kt-r-bar-fill" style="width:'+pct+'%"></div></div>'+
@@ -9162,7 +9224,7 @@ function saveRunnerExEdit(){
 }
 function _swapModalLabel(planEntry){
   if(planEntry.isRest) return 'Rest';
-  return (SESS[planEntry.type]&&SESS[planEntry.type].label)||planEntry.type;
+  return _dayLabel(planEntry.type);
 }
 function openSwapModal(sourceDow){
   closeSwapModal();
@@ -9447,7 +9509,7 @@ function _siPaint(){
     var weekRows='';
     prev.weekPlan.forEach(function(t,dow){
       if(t==='Rest') return;
-      var lbl=(SESS[t]&&SESS[t].label)||t;
+      var lbl=_dayLabel(t);
       weekRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--border);">'+
         '<div style="display:flex;align-items:center;gap:10px;">'+
           '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);width:30px;">'+DOW_NAMES[dow].toUpperCase()+'</span>'+
@@ -9723,7 +9785,7 @@ function _renderWeekDetail(wd){
           '</div>';
         }).join('')+'</div>';
       } else {
-        var _pLabel=(SESS[p.type]&&SESS[p.type].label)||p.type;
+        var _pLabel=_dayLabel(p.type);
         summary = _esc(_pLabel)+' day';
         fullHTML = '<div class="wk-day-empty">No exercises planned for this '+_esc(_pLabel)+' day yet.</div>';
       }
@@ -9778,7 +9840,7 @@ function _renderWeekDetail(wd){
       fullHTML = '<div class="wk-day-empty">Recover. Walk, stretch, eat well.</div>';
     }
     var iconColor = p.isLift?'var(--accent)':p.isRun?'#60a5fa':p.isSport?'#a78bfa':'var(--muted)';
-    var label = p.isRest ? 'Rest' : ((SESS[p.type]&&SESS[p.type].label)||p.type||'Activity');
+    var label = p.isRest ? 'Rest' : (_dayLabel(p.type)||'Activity');
     var rowId = 'wk-'+wd.wk+'-day-'+dow;
     dayRows += '<div class="wk-day-row" id="'+rowId+'-row" onclick="toggleWkDay(\''+rowId+'\')" role="button" aria-expanded="false">'+
       '<span class="wk-day-dow">'+dayName.toUpperCase()+'</span>'+
@@ -9815,7 +9877,7 @@ function toggleWkDay(rowId){
 function _cadenceNote(wd){
   if(!(Array.isArray(wd.weekPlan)&&wd.weekPlan.length===7)) return '';
   var days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  var line=wd.weekPlan.map(function(t,i){ return days[i]+' '+((SESS[t]&&SESS[t].label)||t); }).join(' \u00b7 ');
+  var line=wd.weekPlan.map(function(t,i){ return days[i]+' '+(_dayLabel(t)); }).join(' \u00b7 ');
   return '<div class="wk-cadence"><div class="wk-cadence-hd">THIS WEEK\u2019S CADENCE \u00b7 CUSTOM</div>'+
     '<div class="wk-cadence-line">'+_esc(line)+'</div>'+
     '<button class="wk-cadence-reset" onclick="event.stopPropagation();resetWeekCadence('+wd.wk+')">Reset to the routine\u2019s cadence</button></div>';
@@ -11434,7 +11496,7 @@ function renderRetroCard(sessions){
   if(nowW>thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You work at '+fmtW(nowW)+' now — up '+Math.round((wDisp(nowW)-wDisp(thenW))*100)/100+' lb in four weeks.';
   else if(nowW>0&&nowW<thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You\'re at '+fmtW(nowW)+' now — trust the block, the load comes back.';
   else body=_esc(main.name)+' at '+fmtW(thenW)+'. Four weeks of showing up since.';
-  var lbl=(SESS[hit.type]&&SESS[hit.type].label)||hit.type||'Session';
+  var lbl=hit.label||_dayLabel(hit.type)||'Session';
   return '<div class="chart-card">'+
     '<div class="chart-lbl">Four weeks ago · '+_esc(lbl)+' · '+fmtDate(hit.date)+'</div>'+
     '<div style="font-size:14px;line-height:1.5;margin-top:8px;letter-spacing:-.1px;">'+body+'</div>'+
@@ -13067,6 +13129,8 @@ function _intakeKnownBlock(){
   var sp=getSportLogs();
   if(sp.length){ var types={}; sp.slice(0,20).forEach(function(x){ types[x.type]=1; }); lines.push('Other sports logged: '+Object.keys(types).join(', ')); }
   var bws=getBodyWeights(); if(bws.length) lines.push('Body weight: '+fmtW(bws[0].weight)+' ('+bws[0].date+')');
+  var _dn=_dayNames(), _dk=Object.keys(_dn).filter(function(k){ return LIFT_TYPES.indexOf(k)>=0; });
+  if(_dk.length) lines.push('Day names (left: the slot id you use in weekPlan and the exercise arrays; right: what the user sees and says): '+_dk.map(function(k){ return k+' = "'+_cleanDayLabel(_dn[k])+'"'; }).join(', ')+'. Use the user\'s names when you talk about their days.');
   var cr=getCustomRoutine(); if(cr && Array.isArray(cr.weekPlan)) lines.push('Current cadence: '+DOW_NAMES.map(function(n,i){ return n+'='+cr.weekPlan[i]; }).join(', '));
   if(!lines.length) return '';
   return '=== WHAT THE APP ALREADY KNOWS ===\n'+lines.join('\n')+'\n=== END ===\nSkip any question these facts already answer \u2014 confirm it in one line instead of asking. Use the working weights and PRs as the starting loads.\n\n';
@@ -13269,6 +13333,9 @@ var COACH_TOOLS=[
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
+       dayNames:{type:'object',additionalProperties:false,
+         properties:{Push:{type:'string',maxLength:24},Pull:{type:'string',maxLength:24},Legs:{type:'string',maxLength:24},Legs2:{type:'string',maxLength:24},Arms:{type:'string',maxLength:24}},
+         description:'Optional. What the user calls each lift slot, e.g. {"Push":"Chest + Back"}. The slot id stays the key used in weekPlan and the exercise arrays; only the display name changes. Set it when the user renames a day or describes one by its muscles. Setting a slot to its stock name (or "") clears the custom name.'},
        weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Legs2','Arms','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs/Legs2/Arms (use Legs2 when there are two distinct leg sessions per week; use Arms for a biceps/triceps/abs isolation day). Off days = Rest. Cardio/sport days can be any of: Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, or Other. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
      },
      required:['weeks']}},
@@ -13383,6 +13450,13 @@ function executeCoachTool(name,input){
     if(name==='update_routine_weeks'){
       var weeksIn=Array.isArray(input.weeks)?input.weeks:null;
       if(!weeksIn||!weeksIn.length) return {ok:false,error:'weeks array required'};
+      // A day written by its NAME ("Chest + Back") resolves to its slot before
+      // validation — against the incoming dayNames too, so naming and using a
+      // day in the same call works.
+      var _inNames=(input.dayNames&&typeof input.dayNames==='object')?input.dayNames:null;
+      var _norm=function(arr){ return Array.isArray(arr)?arr.map(function(s){ var sl=_slotForLabel(s,_inNames); return (sl&&LIFT_TYPES.indexOf(sl)>=0)?sl:s; }):arr; };
+      if(Array.isArray(input.weekPlan)) input.weekPlan=_norm(input.weekPlan);
+      weeksIn.forEach(function(w){ if(w&&Array.isArray(w.weekPlan)) w.weekPlan=_norm(w.weekPlan); });
       // Validate BEFORE the snapshot. The snapshot used to be taken first and
       // the coercion applied after, so a malformed call destroyed the day AND
       // burned the undo point that could have recovered it.
@@ -13401,6 +13475,15 @@ function executeCoachTool(name,input){
       var cr=getCustomRoutine();
       if(!cr){
         cr={name:'Custom Programme',weeks:[]};
+      }
+      if(_inNames){
+        var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
+        LIFT_TYPES.forEach(function(sl){
+          if(!_inNames.hasOwnProperty(sl)) return;
+          var v=_cleanDayLabel(_inNames[sl]), stock=(SESS[sl]&&SESS[sl].label)||sl;
+          if(v && v!==stock) _names[sl]=v; else delete _names[sl];
+        });
+        if(Object.keys(_names).length) cr.dayNames=_names; else delete cr.dayNames;
       }
       var planSupplied=Array.isArray(input.weekPlan)&&input.weekPlan.length===7;
       if(planSupplied){
@@ -14272,6 +14355,11 @@ function buildSystemPrompt(){
   p+='LOADS — real plates only: every weight you prescribe, suggest, or write with a tool MUST be a multiple of '+_plateStepDisp()+' '+_uW()+'. The smallest meaningful change is ±'+_plateStepDisp()+' '+_uW()+' (±'+_plateBarDisp()+' '+_uW()+' on barbell lifts). Never suggest fractional bumps gyms cannot load.\n';
   p+='CRITICAL — TODAY\'S DATE: '+today+' (use ONLY this date; ignore any other date assumptions)\n';
   p+='PROGRAMME WEEK: '+currentWeek+' of '+totalWks;
+  // The user's names for their lift days, every turn. The slot id is what the
+  // tools take; the name is what the user says — "make Chest + Back heavier"
+  // must land on the Push slot without a guessing game.
+  var _pdn=_dayNames(), _pdk=Object.keys(_pdn).filter(function(k){ return LIFT_TYPES.indexOf(k)>=0; });
+  if(_pdk.length) p+='\nDay names (slot id -> what the user calls it; use their names when you talk about their days, use the slot id in tool calls): '+_pdk.map(function(k){ return k+' = "'+_cleanDayLabel(_pdn[k])+'"'; }).join(', ')+'.';
   // The counter is the user's. The coach once answered "it's week 1 now" with a
   // paragraph about numbering being "just a label" and changed nothing.
   p+='\nThe week counter is the user\'s to set. If they state the week or ask to change it ("it\'s week 1 now", "put me on week 3"), call set_current_week with that number in the SAME turn. Never explain the numbering instead, never call it "just a label", never suggest waiting. They can also change it themselves with the \u2212 / + stepper under the week number on the Log tab.';
@@ -15129,7 +15217,7 @@ function renderSettings() {
         var chips=DOW_NAMES.map(function(name,dow){
           var entry=wPlan[dow];
           var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
-          var lbl=entry.type==='Rest'?'Rest':entry.type;
+          var lbl=entry.type==='Rest'?'Rest':(entry.isLift?_dayShort(entry.type):entry.type);
           // Abbreviate long sport names so they fit the ~55px chip
           var ABBREV={Cycling:'Bike',CrossFit:'CF',Pickleball:'PB',Swimming:'Swim',Basketball:'Bball',Volleyball:'VB',Climbing:'Climb',Soccer:'Soccer',Rowing:'Row',Boxing:'Box',Hiking:'Hike',Yoga:'Yoga',Golf:'Golf',Other:'Other'};
           var shortLbl=ABBREV[lbl]||lbl;
@@ -15148,15 +15236,32 @@ function renderSettings() {
             if(_schedEditDow==null) return '';
             var cur=wPlan[_schedEditDow]||{}, curT=cur.type||'Rest';
             var pick=_schedTypes().map(function(t){
-              var lbl=(SESS[t]&&SESS[t].label)||t, on=curT===t;
+              var lbl=_dayLabel(t), on=curT===t;
               return '<button class="kt-sched-pick'+(on?' on':'')+'" onclick="setWeekPlanDay('+_schedEditDow+',\''+t+'\')">'+_esc(lbl)+'</button>';
             }).join('');
             var n=(cur.isLift)?getSessionExercises(curT).length:0;
             var sub=cur.isRest?'Rest \u2014 nothing scheduled':(cur.isLift?'~'+Math.round(n*8.5)+' min \u00b7 '+_plural(n,'exercise'):(cur.isRun?'Run day':String(curT)));
+            // Name the day. The slot underneath stays what it is; the name is what
+            // every screen and the wrist show. An auto-suggestion reads the muscle
+            // groups actually programmed, so "Chest + Back" is one tap.
+            var nameRow='';
+            if(cur.isLift){
+              var _curName=_dayLabel(curT), _stock=(SESS[curT]&&SESS[curT].label)||curT, _auto=_autoDayLabel(curT);
+              nameRow='<div style="margin-top:12px;">'+
+                '<div class="kt-sched-editor-hd" style="margin-bottom:6px;">NAME THIS DAY</div>'+
+                '<input type="text" maxlength="24" value="'+_esc(_curName===_stock?'':_curName)+'" placeholder="'+_esc(_stock)+'" aria-label="Day name" '+
+                  'onchange="setDayName(\''+curT+'\', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" '+
+                  'style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 11px;color:var(--text);font-size:14px;font-weight:600;font-family:inherit;"/>'+
+                (_auto && _auto.toLowerCase()!==_curName.toLowerCase()
+                  ? '<button class="kt-sched-pick" style="margin-top:8px;" onclick="setDayName(\''+curT+'\', \''+_esc(_auto).replace(/'/g,'')+'\')">Use \u201c'+_esc(_auto)+'\u201d</button>'
+                  : '')+
+              '</div>';
+            }
             return '<div class="kt-sched-editor">'+
-              '<div class="kt-sched-editor-hd">'+_esc(String(DOW_NAMES[_schedEditDow]).toUpperCase())+' \u00b7 '+_esc(((SESS[curT]&&SESS[curT].label)||curT).toUpperCase())+'</div>'+
+              '<div class="kt-sched-editor-hd">'+_esc(String(DOW_NAMES[_schedEditDow]).toUpperCase())+' \u00b7 '+_esc((_dayLabel(curT)).toUpperCase())+'</div>'+
               '<div class="kt-sched-picks">'+pick+'</div>'+
               '<div class="kt-sched-editor-sub">'+sub+'</div>'+
+              nameRow+
             '</div>';
           })()+
           '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">Tap a day, then pick what it holds. Changes apply to every week without its own cadence.</div>'+
@@ -16205,7 +16310,7 @@ function _exDetailHTML(ex, hist, isCustom){
   if(hist.length){
     html+='<div class="kt-ledger-hd" style="margin-top:12px;"><span class="l">HISTORY</span><span class="r">SETS · TOP</span></div>';
     hist.forEach(function(h,i){
-      var lbl=(SESS[h.type]&&SESS[h.type].label)||h.type||'';
+      var lbl=h.label||_dayLabel(h.type)||'';
       html+='<div style="display:flex;align-items:center;justify-content:space-between;height:40px;'+(i<hist.length-1?'border-bottom:1px solid var(--border);':'')+'">'+
         '<span style="font-size:13px;font-weight:600;color:var(--lite);">'+fmtDate(h.date)+(lbl?' · '+_esc(lbl):'')+'</span>'+
         '<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+h.sets+'×'+_esc(String(h.reps||'?'))+' · '+(h.w>0?fmtW(h.w).toUpperCase():'BW')+(h.rpe?' @ RPE '+fmtRpe(h.rpe):'')+'</span>'+
@@ -16817,7 +16922,7 @@ function _syncReminders(){
     var at=new Date(d.date+'T'+hour+':00');
     if(at.getTime() <= Date.now()) continue;
     toSched.push({ id:9101+j,
-      title:'Today is '+(((SESS[d.type]&&SESS[d.type].label)||String(d.type))).toLowerCase()+' day',
+      title:'Today is '+_dayLabel(d.type).toLowerCase()+' day',
       body: d.lifts>0 ? d.lifts+' lifts planned · ~'+(d.lifts*8)+' min' : 'Time to move.',
       schedule:{ at: at }, sound:'default' });
   }
@@ -16837,7 +16942,7 @@ function _nativeSummaryDays(n){
     if(plan.isLift)       done=sessions.some(function(s){return s.date===iso && s.type===plan.type;});
     else if(plan.isRun)   done=runs.some(function(r){return r.date===iso;});
     else if(plan.isSport) done=sports.some(function(l){return l.date===iso && l.type===plan.type;});
-    out.push({date:iso, type:plan.type, isRest:!!plan.isRest,
+    out.push({date:iso, type:plan.type, label:_dayLabel(plan.type), short:_dayShort(plan.type), isRest:!!plan.isRest,
       lifts: plan.isLift ? getSessionExercises(plan.type).length : 0, done:done});
   }
   return out;
@@ -16909,7 +17014,7 @@ function _pushWatchPlan(){
     });
     var hasPlan=!!(hasCustomRoutine()||liveRun);
     var plan={ week:currentWeek, date:todayISO(),
-      dayName:String(liveRun?(runnerSession.dayName||'Session'):(hasPlan?(act.dayName||act.type||'Rest'):'No plan')),
+      dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
       type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens() };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
@@ -17053,9 +17158,11 @@ function drainWatchSessions(){
       // began); the payload's own day type decides main-lift flags, not
       // whatever today happens to be.
       var d=s.startedAt?new Date(s.startedAt):(s.loggedAt?new Date(s.loggedAt):new Date());
-      if(s.dayName){ var _dayExs=getSessionExercises(s.dayName); if(_dayExs.length){ mainByName={}; _dayExs.forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; }); } }
+      // The wrist echoes the NAME it was shown; map it back to the slot before
+      // anything is filed, or a renamed day's wrist sessions would be orphaned.
+      var dayType=_slotForLabel(s.dayName)||s.dayName||'Session';
+      if(s.dayName){ var _dayExs=getSessionExercises(dayType); if(_dayExs.length){ mainByName={}; _dayExs.forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; }); } }
       var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-      var dayType=s.dayName||'Session';
       // Double-log guard: the same session may already be in the log — phone-
       // logged, or from an earlier drain of a payload that failed to clear.
       var already=getSessions().some(function(x){ return x.date===localISO && x.type===dayType; });
@@ -17065,7 +17172,7 @@ function drainWatchSessions(){
       lsSet('kt_weights', weights);
       var newPRs=checkAndUpdatePRs(exsOut);
       var sessions=getSessions();
-      sessions.unshift({ id:Date.now()+added, date:localISO, type:dayType,
+      sessions.unshift({ id:Date.now()+added, date:localISO, type:dayType, label:_dayLabel(dayType),
         week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs });
       lsSet('kt_sessions', sessions);
       // Handoff completion: the wrist finished a session the phone started —
