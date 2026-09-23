@@ -31,12 +31,14 @@ const ICONS = [
   ['app-icon-192.png', 192],
   ['assets/icon-only.png', 1024],
   ['ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png', 1024],
+  // The watch icon matches the phone's DEFAULT room (Heavyweight). watchOS has
+  // no runtime alternate-icon API, so it cannot follow a theme switch; the
+  // complication follows the theme instead (watchThemeAccent in the App Group).
+  ['ios/App/SuperoWatch/Assets.xcassets/AppIcon.appiconset/watch-icon-1024.png', 1024],
 ];
-// The black/lime colourway: iOS 18's dark-appearance icon, and the watch, whose
-// UI is always dark (see the watch-theme decision — the wrist keeps a black base).
+// The black/lime colourway: iOS 18's dark-appearance icon.
 const DARK_ICONS = [
   ['ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-dark.png', 1024],
-  ['ios/App/SuperoWatch/Assets.xcassets/AppIcon.appiconset/watch-icon-1024.png', 1024],
   ['assets/icon-dark-1024.png', 1024],
 ];
 const SPLASHES = [

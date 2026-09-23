@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260922-2"/>
+<meta name="build" content="20260922-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7873,7 +7873,7 @@ function runnerFinishSession(){
   // Keyed by the date the session was FILED under — a backdated log must
   // not mark today done and hide today's Start CTA.
   runnerJustFinishedKey = _sessionDate+'-lift-'+runnerSession.dayName;
-  _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
+  _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:{}, weights:{}, ended:true };
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
@@ -17081,6 +17081,7 @@ function _pushWatchPlan(){
     var plan={ week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
       slot:String(liveRun?(runnerSession.dayName||''):(hasPlan?(act.dayName||''):'')),
+      short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan&&act.type==='lift'?_dayShort(act.dayName):(act.dayName||''))),
       type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens() };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();

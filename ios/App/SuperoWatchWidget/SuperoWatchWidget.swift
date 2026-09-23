@@ -1,32 +1,46 @@
 import WidgetKit
 import SwiftUI
 
-// Supero watch-face complication: today's session at a glance, tap to open
-// the watch app. The watch app mirrors the phone-pushed plan into the App
-// Group whenever it changes and reloads these timelines.
+// Fitness Programmer watch-face complication: today's session at a glance,
+// tap to open the watch app. The watch app mirrors the phone-pushed plan — and
+// the phone's theme colours — into the App Group whenever they change and
+// reloads these timelines.
 
-private let lime = Color(red: 0.78, green: 1.0, blue: 0.0)
+private func hexColor(_ hex: String?) -> Color? {
+    guard var h = hex?.trimmingCharacters(in: .whitespaces), !h.isEmpty else { return nil }
+    if h.hasPrefix("#") { h.removeFirst() }
+    guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
+    return Color(red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255)
+}
+private let studioLime = Color(red: 0.78, green: 1.0, blue: 0.0)
 
 struct ComplicationEntry: TimelineEntry {
     let date: Date
-    let day: String
+    let day: String    // the day's name as the user calls it; "" = nothing current
+    let short: String  // the same, fitted to the circular face ("C+B")
     let type: String   // "lift" | "run" | "sport" | "rest" | ""
     let week: Int
+    let accentHex: String?   // the phone theme's action colour
+    var accent: Color { hexColor(accentHex) ?? studioLime }
+    var hasDay: Bool { !day.isEmpty }
 }
 
 private func loadEntry() -> ComplicationEntry {
     let d = UserDefaults(suiteName: "group.app.kt.trainer")
+    let day = d?.string(forKey: "watchPlanDay") ?? ""
     return ComplicationEntry(
         date: Date(),
-        day: d?.string(forKey: "watchPlanDay") ?? "Supero",
+        day: day,
+        short: d?.string(forKey: "watchPlanShort") ?? day,
         type: d?.string(forKey: "watchPlanType") ?? "",
-        week: d?.integer(forKey: "watchPlanWeek") ?? 0
+        week: d?.integer(forKey: "watchPlanWeek") ?? 0,
+        accentHex: d?.string(forKey: "watchThemeAccent")
     )
 }
 
 struct ComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> ComplicationEntry {
-        ComplicationEntry(date: Date(), day: "Push", type: "lift", week: 6)
+        ComplicationEntry(date: Date(), day: "Push", short: "Push", type: "lift", week: 6, accentHex: nil)
     }
     func getSnapshot(in context: Context, completion: @escaping (ComplicationEntry) -> Void) {
         completion(loadEntry())
@@ -34,12 +48,12 @@ struct ComplicationProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<ComplicationEntry>) -> Void) {
         // The watch app reloads timelines whenever a new plan arrives — but
         // the plan is a DAY's plan: at midnight it becomes yesterday's, so
-        // roll the face to an honest 'open Supero' state until a new one lands.
+        // roll the face to an honest 'open to sync' state until a new one lands.
         let now = Date()
         let cal = Calendar.current
         let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(86400)
         let today = loadEntry()
-        let stale = ComplicationEntry(date: midnight, day: "Supero", type: "", week: today.week)
+        let stale = ComplicationEntry(date: midnight, day: "", short: "", type: "", week: today.week, accentHex: today.accentHex)
         completion(Timeline(entries: [today, stale], policy: .after(midnight.addingTimeInterval(60))))
     }
 }
@@ -73,10 +87,11 @@ struct ComplicationView: View {
         switch family {
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 1) {
-                Text("SUPERO")
+                Text("FITNESS PROGRAMMER")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                Text(entry.type == "rest" ? "Rest day" : "\(entry.day) day")
+                    .foregroundColor(entry.accent)
+                    .lineLimit(1)
+                Text(!entry.hasDay ? "Open to sync" : (entry.type == "rest" ? "Rest day" : "\(entry.day) day"))
                     .font(.system(size: 15, weight: .bold))
                     .lineLimit(1)
                 if entry.week > 0 {
@@ -87,12 +102,13 @@ struct ComplicationView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .complicationBackground()
         case .accessoryInline:
-            Text("Supero · \(entry.day)")
+            Text(entry.hasDay ? "FP · \(entry.day)" : "Fitness Programmer")
                 .complicationBackground()
         case .accessoryCorner:
             Image(systemName: glyph(for: entry.type))
                 .font(.system(size: 20, weight: .semibold))
-                .widgetLabel { Text(entry.day) }
+                .foregroundColor(entry.accent)
+                .widgetLabel { Text(entry.hasDay ? entry.day : "Open to sync") }
                 .complicationBackground()
         default: // .accessoryCircular
             ZStack {
@@ -100,7 +116,8 @@ struct ComplicationView: View {
                 VStack(spacing: 0) {
                     Image(systemName: glyph(for: entry.type))
                         .font(.system(size: 15, weight: .semibold))
-                    Text(String(entry.day.prefix(5)).uppercased())
+                        .foregroundColor(entry.accent)
+                    Text(entry.hasDay ? String(entry.short.prefix(5)).uppercased() : "FP")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                 }
             }

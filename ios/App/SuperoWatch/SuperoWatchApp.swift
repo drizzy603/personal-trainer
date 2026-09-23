@@ -113,11 +113,23 @@ struct WatchPlan: Codable, Equatable {
     let exercises: [WatchExercise]
     let hasPlan: Bool?          // false: the phone has no programme yet (older phones omit it)
     let theme: WatchTheme?      // the phone's room tokens (older phones omit it → lime on black)
+    let slot: String?           // the day's slot id ("Push"); dayName is whatever the user named it (pages before 20260922 omit it)
+    let short: String?          // dayName fitted to a complication ("C+B")
+}
+
+// Is this live payload about the session the wrist is showing? Compare slot
+// ids when both sides carry one: the display name is the user's and can change
+// between a plan push and a live update (a rename mid-session broke the mirror
+// on 2026-09-22). Older phones send names only — fall back to those.
+func sameSession(_ live: LiveSession, _ plan: WatchPlan) -> Bool {
+    if let a = live.slot, let b = plan.slot, !a.isEmpty, !b.isEmpty { return a == b }
+    return live.dayName == plan.dayName
 }
 
 // In-progress phone runner state — merged live into the wrist runner.
 struct LiveSession: Codable, Equatable {
     let dayName: String
+    let slot: String?           // slot id when the phone sends one
     let startedAt: Double       // ms since epoch
     let reps: [String: [Int]]
     let weights: [String: Double]
@@ -177,8 +189,13 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             // Mirror into the App Group for the watch-face complication.
             if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
                 shared.set(p.dayName, forKey: "watchPlanDay")
+                shared.set(p.short ?? p.dayName, forKey: "watchPlanShort")
                 shared.set(p.type, forKey: "watchPlanType")
                 shared.set(p.week, forKey: "watchPlanWeek")
+                // The complication follows the phone's theme too.
+                let t = p.theme ?? .lime
+                shared.set(t.accent, forKey: "watchThemeAccent")
+                shared.set(t.earned, forKey: "watchThemeEarned")
             }
             WidgetCenter.shared.reloadAllTimelines()
         }
@@ -247,7 +264,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         })
     }
 
-    func sendSession(dayName: String, exercises: [[String: Any]], startedAt: Double = 0) {
+    func sendSession(dayName: String, slot: String? = nil, exercises: [[String: Any]], startedAt: Double = 0) {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
         var payload: [String: Any] = [
@@ -255,6 +272,9 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             "loggedAt": iso.string(from: Date()),
             "exercises": exercises,
         ]
+        // The slot survives a rename the phone made while this session was on
+        // the wrist; the name alone would file it under a day that no longer exists.
+        if let slot = slot, !slot.isEmpty { payload["slot"] = slot }
         // The phone dates the ledger row by START — a session that crosses
         // midnight belongs to the evening it began.
         if startedAt > 0 { payload["startedAt"] = iso.string(from: Date(timeIntervalSince1970: startedAt / 1000)) }
@@ -442,16 +462,18 @@ final class Runner: ObservableObject {
     // Mirror this session to the phone in real time — Today shows a live
     // "on watch" banner while the wrist logs sets.
     func pushLive(ended: Bool = false) {
-        guard let day = Connectivity.shared.plan?.dayName else { return }
+        guard let plan = Connectivity.shared.plan else { return }
+        let day = plan.dayName
         let sets = repsDone.values.reduce(0) { $0 + $1.count }
         guard ended || sets > 0 else { return }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "dayName": day,
             "startedAt": startedAt > 0 ? startedAt : Date().timeIntervalSince1970 * 1000,
             "reps": repsDone,
             "weights": weights,
             "ended": ended,
         ]
+        if let slot = plan.slot, !slot.isEmpty { payload["slot"] = slot }   // the phone files by slot, not by name
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         Connectivity.shared.sendLive(json)
@@ -503,7 +525,7 @@ final class Runner: ObservableObject {
                     "weightLog": wl, "rpe": rpes[ex.name] ?? 0]
         }
         guard !exs.isEmpty else { return }
-        Connectivity.shared.sendSession(dayName: plan.dayName, exercises: exs, startedAt: startedAt)
+        Connectivity.shared.sendSession(dayName: plan.dayName, slot: plan.slot, exercises: exs, startedAt: startedAt)
         WorkoutManager.shared.end()
         pushLive(ended: true)
         synced = true
@@ -630,14 +652,14 @@ struct RootView: View {
         // A phone 'ended' payload closes the wrist side too (the HKWorkout
         // session used to keep running until the user noticed).
         .onChange(of: conn.live) { newLive in
-            guard let live = newLive, let plan = conn.plan, live.dayName == plan.dayName else { return }
+            guard let live = newLive, let plan = conn.plan, sameSession(live, plan) else { return }
             if live.ended == true { runner.reset(); WorkoutManager.shared.end(); return }
             guard live.isFresh else { return }
             runner.merge(live)
         }
         .onAppear {
             if let live = conn.live, let plan = conn.plan,
-               live.dayName == plan.dayName, live.isFresh {
+               sameSession(live, plan), live.isFresh {
                 runner.merge(live)
             }
         }
@@ -934,7 +956,7 @@ struct OffDayView: View {
                     .font(.system(size: 34))
                 Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
                     .font(.system(size: 17, weight: .heavy))
-                Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Supero picks it up from Health.")
+                Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Fitness Programmer picks it up from Health.")
                     .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 6)
@@ -951,7 +973,7 @@ struct SyncedView: View {
             Image(systemName: delivered ? "checkmark.circle.fill" : "arrow.up.circle")
                 .font(.system(size: 40)).foregroundColor(delivered ? earned : .secondary)
             Text(delivered ? "Synced to iPhone" : "Saved on watch").font(.system(size: 15, weight: .bold))
-            Text(delivered ? "Session lands in your log next time Supero opens."
+            Text(delivered ? "Session lands in your log next time Fitness Programmer opens."
                            : "Sends to your iPhone when it\u{2019}s back in range.")
                 .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
             Button("New session") { runner.reset() }

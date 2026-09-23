@@ -261,7 +261,7 @@ struct SuperoTodayView: View {
     // Statement grammar (spec 09): the headline speaks in the app's voice —
     // "Pull day." — and the subline is a mono data line, not a sentence.
     private var headline: String {
-        guard let d = day else { return "Open Supero." }
+        guard let d = day else { return "Open Fitness Programmer." }
         if d.done { return "\(d.name), done." }
         return d.isRest ? "Rest day." : "\(d.name) day."
     }
@@ -276,7 +276,7 @@ struct SuperoTodayView: View {
     private var metaLine: String {
         let f = DateFormatter(); f.dateFormat = "EEE"
         let dow = f.string(from: entry.date).uppercased()
-        guard let s = entry.summary else { return "SUPERO" }
+        guard let s = entry.summary else { return "FITNESS PROGRAMMER" }
         return "\(dow) · WK \(s.week) / \(s.totalWeeks)"
     }
 

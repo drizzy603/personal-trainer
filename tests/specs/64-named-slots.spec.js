@@ -56,13 +56,14 @@ run('named slots: label, reverse lookup, settings, history, watch round-trip, co
       try { runnerFinishSession(); } catch (e) { r.finishErr = String(e); }
       const rec = getSessions()[0];
       r.record = { added: getSessions().length === before + 1, type: rec && rec.type, label: rec && rec.label };
+      r.ended = _watchEndedPayload ? { dayName: _watchEndedPayload.dayName, slot: _watchEndedPayload.slot } : null;
 
       // 7. the watch is told the NAME, and a wrist session coming back under that name maps to the slot
       Capacitor.Plugins.TrovoWatch = Capacitor.Plugins.TrovoWatch || {};
       Capacitor.Plugins.TrovoWatch.updateContext = (p) => { window._ctx = p; return Promise.resolve({ sent: true }); };
       runnerSession = null; runnerOpen = false; _lastWatchPlan = ''; _todayActMemo = null; _pushWatchPlan();
       const wp = JSON.parse(window._ctx.json);
-      r.watch = { dayName: wp.dayName, type: wp.type };
+      r.watch = { dayName: wp.dayName, type: wp.type, slot: wp.slot, short: wp.short };
       r.drainSlot = _slotForLabel(wp.dayName);
 
       // 8. the coach: names in the prompt, dayNames on the tool, a labelled weekPlan resolves to slots
@@ -142,6 +143,8 @@ run('named slots: label, reverse lookup, settings, history, watch round-trip, co
     assert(out.today.hero, 'the Today card calls the day by its name: ' + JSON.stringify(out.today));
     assert(!out.finishErr && out.record.added && out.record.type === 'Push' && out.record.label === 'Chest + Back',
       'the session record keeps type=slot and carries the label: ' + JSON.stringify(out.record) + (out.finishErr || ''));
+    assert(out.ended && out.ended.dayName === 'Chest + Back' && out.ended.slot === 'Push', 'the ended signal carries the name AND the slot: ' + JSON.stringify(out.ended));
+    assert(out.watch.slot === 'Push' && out.watch.short === 'C+B', 'the plan carries the slot and the short name for the complication: ' + JSON.stringify(out.watch));
     assert(out.watch.dayName === 'Chest + Back' && out.watch.type === 'lift' && out.drainSlot === 'Push',
       'the watch gets the name and it maps back to the slot: ' + JSON.stringify(out.watch));
     assert(out.promptNames, 'the coach prompt lists the day names');
