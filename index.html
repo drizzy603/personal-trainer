@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260921-6"/>
+<meta name="build" content="20260922-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1751,11 +1751,19 @@ var SESS = {
   Pull: {label:'Pull',  icon:'', color:'#22c55e', focus:'Back · Biceps'},
   Legs: {label:'Legs',  icon:'', color:'#f97316', focus:'Quads · Hamstrings · Glutes'},
   Legs2:{label:'Legs B',icon:'', color:'#fb923c', focus:'Glutes · Hamstrings · Posterior Chain'},
-  Arms: {label:'Arms',  icon:'', color:'#f59e0b', focus:'Biceps · Triceps · Abs'}
+  Arms: {label:'Arms',  icon:'', color:'#f59e0b', focus:'Biceps · Triceps · Abs'},
+  Day6: {label:'Day 6', icon:'', color:'#0ea5e9', focus:'Your sixth session \u2014 name it in Settings'},
+  Day7: {label:'Day 7', icon:'', color:'#e879f9', focus:'Your seventh session \u2014 name it in Settings'}
 };
 // Every lift session a week can hold. The key is the week array it reads
 // (wd.push, wd.legs2 …); the value is the cadence entry that schedules it.
-var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms'];
+// Day6 and Day7 are two more lift slots for a sixth or seventh DISTINCT session
+// (a six-day split, an extra upper day). They have no stock meaning — the user
+// names them (dayNames) — and they only ever appear where a week programmes
+// something in them. Anything older than 20260921-7 renders them as rest.
+var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms','Day6','Day7'];
+var LIFT_KEYS  = LIFT_TYPES.map(function(t){ return t.toLowerCase(); });   // the week arrays
+var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // present on a week only when they hold something
 // ── Named slots ───────────────────────────────────────────────────────────────
 // A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
 // reads, how history groups, how the runner walks it. Its NAME is the user's:
@@ -1794,12 +1802,39 @@ function _slotForLabel(name, extra){
   for(k in SESS){ if(SESS.hasOwnProperty(k) && String(SESS[k].label).toLowerCase()===low) return k; }
   return null;
 }
+// Why a name cannot be used for a slot: another slot's id, stock label or
+// current name, or a cadence value (Run, Rest, a sport). Any of those makes
+// _slotForLabel file a wrist session under the wrong day, or lets a coach
+// cadence echo rewrite Rest/Run days. '' when the name is fine.
+function _dayNameCollision(slot, name, extra){
+  var s=_cleanDayLabel(name); if(!s) return '';
+  var low=s.toLowerCase(), i, k;
+  for(i=0;i<LIFT_TYPES.length;i++){
+    var t=LIFT_TYPES[i]; if(t===slot) continue;
+    if(t.toLowerCase()===low || String((SESS[t]&&SESS[t].label)||'').toLowerCase()===low) return 'that is the '+_dayLabel(t)+' day';
+  }
+  var pools=[_dayNames(), extra||{}];
+  for(var p=0;p<pools.length;p++){
+    for(k in pools[p]){ if(pools[p].hasOwnProperty(k) && k!==slot && LIFT_TYPES.indexOf(k)>=0 && _cleanDayLabel(pools[p][k]).toLowerCase()===low) return 'another day is already called that'; }
+  }
+  if(low==='run'||low==='rest') return 'that is a cadence value, not a lift day';
+  var titled=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+  if(_findSport(s)||_findSport(titled)) return 'that is a sport';
+  return '';
+}
+// A slot id or its stock label typed as a name means "back to the default".
+function _isStockName(slot, clean){
+  var low=String(clean||'').toLowerCase();
+  return !low || low===slot.toLowerCase() || low===String((SESS[slot]&&SESS[slot].label)||'').toLowerCase();
+}
 function setDayName(slot, name){
   if(LIFT_TYPES.indexOf(slot)<0) return;
   var cr=getCustomRoutine(); if(!cr) return;
   var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{};
-  var clean=_cleanDayLabel(name), stock=(SESS[slot]&&SESS[slot].label)||slot;   // the STOCK label, not the current custom one
-  if(clean && clean!==stock) names[slot]=clean; else delete names[slot];
+  var clean=_cleanDayLabel(name);
+  var why=_dayNameCollision(slot, clean);
+  if(why){ showToast('Can\u2019t call it that \u2014 '+why,'err'); render(); return; }
+  if(!_isStockName(slot, clean)) names[slot]=clean; else delete names[slot];
   if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
   setCustomRoutine(cr);
   if(typeof _scheduleNativeSync==='function') _scheduleNativeSync();   // the wrist and widget show the name
@@ -1817,7 +1852,8 @@ function _autoDayLabel(slot){
     var e=lib[_liftBaseName(ex.name)]||lib[String(ex.name||'').toLowerCase()];
     var g=e?GROUP[e.cat]:null; if(!g||seen[g]) return; seen[g]=1; order.push(g);
   });
-  return order.slice(0,3).join(' + ');
+  var out=order.slice(0,3).join(' + ');
+  return _dayNameCollision(slot, out) ? '' : out;   // never suggest another day's name
 }
 
 // ── Sports config ─────────────────────────────────────────────────────────────
@@ -2976,7 +3012,10 @@ function weekForDate(dateStr){
   var d=new Date(dateStr+'T00:00:00');
   var dow=(d.getDay()+6)%7;
   var mon=new Date(d); mon.setDate(d.getDate()-dow);
-  var monNow=new Date(_mostRecentMonday()+'T00:00:00');
+  // Measured from the ANCHOR, not today's Monday: currentWeek is defined
+  // relative to kt_week_monday, and before a programme starts that Monday is
+  // ahead of today, so measuring from today's Monday read the first week as 2.
+  var monNow=new Date(_weekAnchor()+'T00:00:00');
   // Negative weeksAgo is a FUTURE week. The old Math.max(0, …) clamped every
   // future date to the current week, so the widget's 7-day strip and the
   // 28-day reminders drew next week from this week's cadence. Callers that
@@ -4230,6 +4269,9 @@ function switchTab(tab) {
   });
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
   if(window._chatTypingOff) _chatTypingOff();
+  // A draft captured with focus must not re-focus the box (and hide the dock)
+  // when the chat is reopened later through a tab switch.
+  if(tab!=='coach' && typeof _coachDraft==='object' && _coachDraft) _coachDraft.focus=false;
   render();
   paintRunner();
 }
@@ -4467,6 +4509,8 @@ var _PLAN_TYPE_META={
   Legs: {color:'var(--orange)', isRest:false,isRun:false,isLift:true, isSport:false},
   Legs2:{color:'var(--orange)', isRest:false,isRun:false,isLift:true, isSport:false},
   Arms: {color:'#f59e0b',       isRest:false,isRun:false,isLift:true, isSport:false},
+  Day6: {color:'#0ea5e9',       isRest:false,isRun:false,isLift:true, isSport:false},
+  Day7: {color:'#e879f9',       isRest:false,isRun:false,isLift:true, isSport:false},
   Run:  {color:'var(--green)',  isRest:false,isRun:true, isLift:false,isSport:false},
   Rest: {color:'var(--muted)',  isRest:true, isRun:false,isLift:false,isSport:false}
 };
@@ -4580,8 +4624,12 @@ var _schedEditDow=null;   // day selected in the Settings schedule editor
 function _schedTypes(){
   var cr=getCustomRoutine(); if(!cr) return [];
   var t=['Push','Pull','Legs','Arms','Run','Rest'];
-  var hasLegs2=cr.weeks&&cr.weeks.some(function(w){return w.legs2&&w.legs2.length;});
-  if(hasLegs2) t.splice(3,0,'Legs2');
+  // The optional slots appear only when some week programmes them: Legs2
+  // beside Legs, the two extra sessions before Run.
+  var _used=function(k){ return !!(cr.weeks&&cr.weeks.some(function(w){ var a=w&&w[k]; return a&&a.length; })); };
+  if(_used('legs2')) t.splice(3,0,'Legs2');
+  if(_used('day6')) t.splice(t.indexOf('Run'),0,'Day6');
+  if(_used('day7')) t.splice(t.indexOf('Run'),0,'Day7');
   // Every value the routine's own cadences already use, so a day can always be
   // set back to what it was.
   var seen={};
@@ -4769,7 +4817,7 @@ function _tomorrowLabel(){
   if(_dowIdx===6 && _programmeStarted()){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
-  return tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
+  return tomPlan.isUnknown ? 'Unset' : tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
 }
 // Rest-day CTA: the make-up for a missed lift, or the first session for a
 // starter who installed on a rest day. Always ends with what tomorrow holds.
@@ -6024,13 +6072,13 @@ function startProgression(){
 function _progStepLb(){ return _uW()==='kg'?Math.round(2.5*LB_PER_KG*10)/10:5; }
 function _prescribedLb(name){
   var cr=getCustomRoutine(), wk=cr&&cr.weeks&&cr.weeks[currentWeek-1], w=parseFloat(getWeights()[name])||0;
-  if(wk) ['push','pull','legs','legs2','arms'].forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>w) w=parseFloat(e.weight); }); });
+  if(wk) LIFT_KEYS.forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>w) w=parseFloat(e.weight); }); });
   return w;
 }
 function _writeLoadLocal(name, nw){
   var weights=getWeights(); weights[name]=nw; lsSet('kt_weights', weights);
   var cr=getCustomRoutine(), wk=cr&&cr.weeks&&cr.weeks[currentWeek-1], touched=false;
-  if(wk) ['push','pull','legs','legs2','arms'].forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>0){ e.weight=nw; touched=true; } }); });
+  if(wk) LIFT_KEYS.forEach(function(k){ (wk[k]||[]).forEach(function(e){ if(e.name===name && parseFloat(e.weight)>0){ e.weight=nw; touched=true; } }); });
   if(touched) setCustomRoutine(cr);
 }
 function _loadUndoState(){
@@ -8934,7 +8982,7 @@ function _buildRunnerExEditHTML(){
         '<span style="color:var(--accent);font-weight:700;font-size:14px;flex-shrink:0;margin-left:8px;">Change \u203a</span>'+
       '</button>'
       :'')+
-    (hasCustomRoutine() && runnerSession && ['push','pull','legs','legs2','arms'].indexOf(String(runnerSession.type||'').toLowerCase())>=0
+    (hasCustomRoutine() && runnerSession && LIFT_KEYS.indexOf(String(runnerSession.type||'').toLowerCase())>=0
       ?'<button onclick="event.stopPropagation();runnerExEditToggleApply()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-radius:12px;border:1px solid '+(_rExEditApply?'var(--accent-soft)':'var(--border)')+';background:'+(_rExEditApply?'var(--accent-dim)':'var(--card2)')+';margin-bottom:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+
         '<span style="text-align:left;"><span style="display:block;font-size:13px;font-weight:700;color:var(--text);">Also update my programme</span><span style="display:block;font-size:11px;color:var(--muted);margin-top:2px;">This week onward \u00b7 Restore Previous undoes it</span></span>'+
         '<span class="kt-mono" style="font-size:10px;font-weight:800;letter-spacing:.06em;color:'+(_rExEditApply?'var(--accent-ink)':'var(--muted)')+';">'+(_rExEditApply?'ON':'OFF')+'</span>'+
@@ -9032,7 +9080,7 @@ function runnerExEditToggleApply(){
 function _runnerApplyToProgramme(op, p){
   var cr=getCustomRoutine(); if(!cr || !cr.weeks || !runnerSession) return false;
   var key=String(runnerSession.type||'').toLowerCase();
-  if(['push','pull','legs','legs2','arms'].indexOf(key)<0) return false;
+  if(LIFT_KEYS.indexOf(key)<0) return false;
   _snapshotRoutineForUndo();
   var touched=0;
   for(var wi=currentWeek-1; wi<cr.weeks.length; wi++){
@@ -9505,7 +9553,7 @@ function _siPaint(){
     var estMin=Math.round(liftsPerDay*8.5/5)*5;
     var splitName=a.days<=2?'Push / pull':a.days===3?'Push / pull / legs':a.days===4?'Four-day split':'Five-day split';
     var equipBit=a.equip==='full'?'Full-gym built':a.equip==='db'?'Dumbbell-built':'Bodyweight-built';
-    var FOCUS={Push:'PRESS FOCUS',Pull:'PULL FOCUS',Legs:'SQUAT PATTERN',Legs2:'HINGE PATTERN',Arms:'ARM FOCUS',Run:'EASY RUN'};
+    var FOCUS={Push:'PRESS FOCUS',Pull:'PULL FOCUS',Legs:'SQUAT PATTERN',Legs2:'HINGE PATTERN',Arms:'ARM FOCUS',Day6:'SESSION SIX',Day7:'SESSION SEVEN',Run:'EASY RUN'};
     var weekRows='';
     prev.weekPlan.forEach(function(t,dow){
       if(t==='Rest') return;
@@ -12557,7 +12605,8 @@ function renderCalDetail(sessions,runs,sports){
   var dateInpStyle='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;font-family:inherit;padding:8px 6px;cursor:pointer;';
   var html='';
   daySessions.forEach(function(s){
-    var def=SESS[s.type]||{icon:'',label:s.type};
+    var _d0=SESS[s.type]||{icon:'',label:s.type}; var def={}; for(var _dk in _d0){ def[_dk]=_d0[_dk]; }
+    def.label=s.label||_dayLabel(s.type);   // the day's name, as it was called when logged
     var sessionPRs=s.prs||[];
     var exRows=_buildHistExRows(s.exercises,sessionPRs,s.supersets);
     html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
@@ -12833,7 +12882,8 @@ function renderHistory() {
   var visible=showAllHist?sessions.slice(0,60):sessions.slice(0,HIST_LIMIT);
   var rows='', lastWk=null;
   visible.forEach(function(s) {
-    var def=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'};
+    var _d1=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'}; var def={}; for(var _dk1 in _d1){ def[_dk1]=_d1[_dk1]; }
+    def.label=s.label||_dayLabel(s.type);   // the day's name, as it was called when logged
     var sessionPRs=s.prs||[];
     var open = histExpandedId===s.id;
     var exs = s.exercises||[];
@@ -13189,7 +13239,7 @@ function buildIntakeSystemPrompt(){
     prevSection += 'Name: '+(prev.blockName||prev.name||'Training Programme')+' · '+nWks+' weeks\n';
     if(prev.weekPlan) prevSection += 'Split: '+prev.weekPlan.map(function(p,i){return DOW[i]+':'+p;}).join(' / ')+'\n';
     if(lastWk){
-      ['push','pull','legs','legs2','arms'].forEach(function(t){
+      LIFT_KEYS.forEach(function(t){
         var exs=lastWk[t]; if(!exs||!exs.length) return;
         prevSection += '\n'+t.toUpperCase()+' (week '+nWks+' — final weights):\n';
         exs.forEach(function(ex){
@@ -13235,7 +13285,7 @@ _intakeKnownBlock()+
 '- If the user wants running, set each week\'s runs field as a map of day-name → {'+_uD()+', type, hr?, note?}. Keys must be Mon/Tue/Wed/Thu/Fri/Sat/Sun and must match the days marked Run in weekPlan.\n'+
 '- If the user does another activity instead (Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Other), put that activity\'s id directly in weekPlan on those days, and set each week\'s sports field as a map of day-name → {type, note?}. Keys must match the days marked with the activity in weekPlan, and `type` must equal the same activity id.\n'+
 '- A user can mix lift days, rest days, runs, and sports in the same week. If they have nothing scheduled on a day, use Rest.\n'+
-'- weekPlan entries must be one of: "Push", "Pull", "Legs", "Legs2", "Arms", "Rest", "Run", "Cycling", "CrossFit", "Pickleball", "Swimming", "Tennis", "Basketball", "Other". Spread lift days with rest/cardio between them. Match the number of lift days to the user\'s availability. Use "Legs2" when the user wants a SECOND distinct leg session per week (e.g. a 4-day split with Legs A quad-focus + Legs B posterior-chain focus). Use "Arms" for a dedicated biceps/triceps/abs day — populate the week\'s arms array with bicep, tricep, and core exercises; typically 4-5 sets per muscle group. When Legs2 or Arms appears in weekPlan, populate their respective arrays (legs2, arms) in each week. The matching exercise list for each day comes from push/pull/legs/legs2/arms arrays respectively.\n'+
+'- weekPlan entries must be one of: "Push", "Pull", "Legs", "Legs2", "Arms", "Day6", "Day7", "Rest", "Run", "Cycling", "CrossFit", "Pickleball", "Swimming", "Tennis", "Basketball", "Other". Spread lift days with rest/cardio between them. Match the number of lift days to the user\'s availability. Use "Legs2" when the user wants a SECOND distinct leg session per week (e.g. a 4-day split with Legs A quad-focus + Legs B posterior-chain focus). Use "Arms" for a dedicated biceps/triceps/abs day — populate the week\'s arms array with bicep, tricep, and core exercises; typically 4-5 sets per muscle group. When Legs2 or Arms appears in weekPlan, populate their respective arrays (legs2, arms) in each week. The matching exercise list for each day comes from push/pull/legs/legs2/arms arrays respectively.\n'+
 '- Start conservatively on working weights — underestimating is safer than overshooting.\n'+
 '- Progress weight ~'+_plateStepDisp()+'-'+_plateBarDisp()+' '+_uW()+' per week across the hypertrophy/strength blocks.\n\n'+
 'Start with the first question now.';
@@ -13316,13 +13366,15 @@ var _weekSchema={type:'object',
     legs: {type:'array',items:_exerciseSchema,description:'Primary Legs session exercises (Legs A — typically quad/glute dominant)'},
     legs2:{type:'array',items:_exerciseSchema,description:'Optional secondary Legs session (Legs B — typically hamstring/glute dominant). Use when the weekPlan has two Legs-type days per week (e.g. a 4-day upper/lower split).'},
     arms:{type:'array',items:_exerciseSchema,description:'Optional Arms + Abs session (biceps, triceps, core). Use when the weekPlan has an Arms day.'},
+    day6:{type:'array',items:_exerciseSchema,description:'Optional sixth lift slot (weekPlan value Day6). Only for a SIXTH distinct session, e.g. a six-day split; name it with dayNames. Leave out otherwise.'},
+    day7:{type:'array',items:_exerciseSchema,description:'Optional seventh lift slot (weekPlan value Day7). Only for a SEVENTH distinct session; name it with dayNames. Leave out otherwise.'},
     runs:{type:'object',
       description:'Optional. Map weekday name → run details for each scheduled run. Keys: Mon, Tue, Wed, Thu, Fri, Sat, Sun. Days not listed = no run that day. Should match the run days in weekPlan.',
       properties:{Mon:_runSchema,Tue:_runSchema,Wed:_runSchema,Thu:_runSchema,Fri:_runSchema,Sat:_runSchema,Sun:_runSchema}},
     sports:{type:'object',
       description:'Optional. Map weekday name → {type, note?} for each scheduled sport day. Use only on days that hold a sport id (Cycling, Pickleball, etc.) in weekPlan. Days not listed = no sport that day.',
       properties:{Mon:_sportSlotSchema,Tue:_sportSlotSchema,Wed:_sportSlotSchema,Thu:_sportSlotSchema,Fri:_sportSlotSchema,Sat:_sportSlotSchema,Sun:_sportSlotSchema}},
-    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Legs2','Arms','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other']},
+    weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:LIFT_TYPES.concat(['Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other'])},
       description:'Optional. Per-week cadence override (Mon→Sun). Use Legs2 for a second distinct Legs session (posterior-chain focus). Use Arms for a biceps/triceps/abs day. If omitted, the routine-level weekPlan applies.'}
   },
   required:['wk','bName','bColor','push','pull','legs']
@@ -13336,7 +13388,7 @@ var COACH_TOOLS=[
        dayNames:{type:'object',additionalProperties:false,
          properties:{Push:{type:'string',maxLength:24},Pull:{type:'string',maxLength:24},Legs:{type:'string',maxLength:24},Legs2:{type:'string',maxLength:24},Arms:{type:'string',maxLength:24}},
          description:'Optional. What the user calls each lift slot, e.g. {"Push":"Chest + Back"}. The slot id stays the key used in weekPlan and the exercise arrays; only the display name changes. Set it when the user renames a day or describes one by its muscles. Setting a slot to its stock name (or "") clears the custom name.'},
-       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:['Push','Pull','Legs','Legs2','Arms','Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other']},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs/Legs2/Arms (use Legs2 when there are two distinct leg sessions per week; use Arms for a biceps/triceps/abs isolation day). Off days = Rest. Cardio/sport days can be any of: Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, or Other. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
+       weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:LIFT_TYPES.concat(['Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other'])},description:'Optional. 7 entries Mon→Sun describing the user\'s weekly cadence. Lift days = Push/Pull/Legs/Legs2/Arms/Day6/Day7 (Day6 and Day7 are two more lift slots for a sixth or seventh distinct session — name them with dayNames) (use Legs2 when there are two distinct leg sessions per week; use Arms for a biceps/triceps/abs isolation day). Off days = Rest. Cardio/sport days can be any of: Run, Cycling, Swimming, Pickleball, Tennis, Basketball, CrossFit, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, or Other. Only set on intake or when the user changes their cadence. If omitted, the existing cadence is kept.'}
      },
      required:['weeks']}},
   {name:'set_current_week',
@@ -13391,7 +13443,7 @@ var COACH_TOOLS=[
    description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list. Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
    input_schema:{type:'object',
      properties:{
-       type:{type:'string',enum:['Push','Pull','Legs','Legs2','Arms'],description:'Session type.'},
+       type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
        exercises:{type:'array',minItems:1,items:{type:'object',properties:{
          name:{type:'string'},
@@ -13457,6 +13509,15 @@ function executeCoachTool(name,input){
       var _norm=function(arr){ return Array.isArray(arr)?arr.map(function(s){ var sl=_slotForLabel(s,_inNames); return (sl&&LIFT_TYPES.indexOf(sl)>=0)?sl:s; }):arr; };
       if(Array.isArray(input.weekPlan)) input.weekPlan=_norm(input.weekPlan);
       weeksIn.forEach(function(w){ if(w&&Array.isArray(w.weekPlan)) w.weekPlan=_norm(w.weekPlan); });
+      // dayNames: slot keys only, and no name that collides with another day.
+      if(_inNames){
+        for(var _nk in _inNames){ if(_inNames.hasOwnProperty(_nk) && LIFT_TYPES.indexOf(_nk)<0) return {ok:false,error:'dayNames keys must be lift slot ids ('+LIFT_TYPES.join(', ')+'); got "'+_nk+'". Nothing was changed.'}; }
+        for(var _ni=0;_ni<LIFT_TYPES.length;_ni++){
+          var _sl=LIFT_TYPES[_ni]; if(!_inNames.hasOwnProperty(_sl)) continue;
+          var _why=_dayNameCollision(_sl, _inNames[_sl], _inNames);
+          if(_why) return {ok:false,error:'dayNames.'+_sl+' = "'+_cleanDayLabel(_inNames[_sl])+'": '+_why+'. Nothing was changed.'};
+        }
+      }
       // Validate BEFORE the snapshot. The snapshot used to be taken first and
       // the coercion applied after, so a malformed call destroyed the day AND
       // burned the undo point that could have recovered it.
@@ -13480,8 +13541,8 @@ function executeCoachTool(name,input){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
         LIFT_TYPES.forEach(function(sl){
           if(!_inNames.hasOwnProperty(sl)) return;
-          var v=_cleanDayLabel(_inNames[sl]), stock=(SESS[sl]&&SESS[sl].label)||sl;
-          if(v && v!==stock) _names[sl]=v; else delete _names[sl];
+          var v=_cleanDayLabel(_inNames[sl]);
+          if(!_isStockName(sl, v)) _names[sl]=v; else delete _names[sl];
         });
         if(Object.keys(_names).length) cr.dayNames=_names; else delete cr.dayNames;
       }
@@ -13519,11 +13580,10 @@ function executeCoachTool(name,input){
           pull: Array.isArray(w.pull)?w.pull:[],
           legs: Array.isArray(w.legs)?w.legs:[]
         };
-        if(Array.isArray(w.legs2)&&w.legs2.length) weekObj.legs2=w.legs2;
-        if(Array.isArray(w.arms)&&w.arms.length) weekObj.arms=w.arms;
+        OPTIONAL_LIFT_KEYS.forEach(function(ok){ if(Array.isArray(w[ok])&&w[ok].length) weekObj[ok]=w[ok]; });
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
-        ['push','pull','legs','legs2','arms'].forEach(function(sk){
+        LIFT_KEYS.forEach(function(sk){
           // The tool schema isn't enforced by the API: drop null/nameless
           // entries (they threw inside render() and blanked the Log tab) and
           // coerce the basics so every stored row is renderable.
@@ -13535,7 +13595,7 @@ function executeCoachTool(name,input){
             e.sets=parseInt(e.sets)||3;
             if(e.reps==null||e.reps==='') e.reps='8-10';
           });
-          if(sk==='legs2'||sk==='arms'){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
+          if(OPTIONAL_LIFT_KEYS.indexOf(sk)>=0){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
           else weekObj[sk]=_grp;
           _grp.forEach(function(e,ei){
             if(e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
@@ -13679,7 +13739,7 @@ function executeCoachTool(name,input){
       var crW=getCustomRoutine();
       if(crW&&crW.weeks&&crW.weeks[currentWeek-1]){
         var wNow=crW.weeks[currentWeek-1], touched=false;
-        ['push','pull','legs','legs2','arms'].forEach(function(k){
+        LIFT_KEYS.forEach(function(k){
           (wNow[k]||[]).forEach(function(e){
             if(String(e.name).toLowerCase()===String(input.name).toLowerCase()&&parseFloat(e.weight)>0){
               e.weight=newW; touched=true;
@@ -13762,7 +13822,7 @@ function executeCoachTool(name,input){
       // the working-weight cache follows real work. Logged weights are the
       // user's truth: no plate snapping here.
       var gtype=String(input.type||'').trim();
-      if(['Push','Pull','Legs','Legs2','Arms'].indexOf(gtype)===-1) return {ok:false,error:'type must be Push, Pull, Legs, Legs2, or Arms'};
+      if(LIFT_TYPES.indexOf(gtype)===-1) return {ok:false,error:'type must be one of '+LIFT_TYPES.join(', ')};
       var gexsIn=Array.isArray(input.exercises)?input.exercises:[];
       if(!gexsIn.length) return {ok:false,error:'exercises array required'};
       var gdate=String(input.date||'').trim();
@@ -14374,7 +14434,7 @@ function buildSystemPrompt(){
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN:\n';
-    ['push','pull','legs','legs2','arms'].forEach(function(sess){
+    LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
@@ -14483,7 +14543,7 @@ function buildSystemPrompt(){
   p+='  - Something lasting about the athlete (injury, new gym or equipment, goal change, a lift they love or hate) → call save_profile with just the changed fields.\n';
   p+='  - Delete a logged entry the user wants removed → call delete_log with store ("run", "sport", "session", or "bodyweight") and id (from the [id:...] shown in the ground-truth lists above). Only delete when the user explicitly asks.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
-  p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Legs2, Arms, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Use Legs2 when there are two distinct leg sessions per week — populate legs (Legs A) and legs2 (Legs B) separately in each week. Use Arms for a dedicated biceps/triceps/abs day — populate the arms array. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
+  p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Legs2, Arms, Day6, Day7, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Use Legs2 when there are two distinct leg sessions per week — populate legs (Legs A) and legs2 (Legs B) separately in each week. Use Arms for a dedicated biceps/triceps/abs day — populate the arms array. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
   p+='  - Swap two days quickly (e.g. user says "do push tomorrow, run today") → call swap_cadence_days with dayA/dayB. Defaults to current-week-only via a per-week override; pass scope:"global" to shift every week.\n';
   p+='  - Rewrite / regenerate the full programme → one update_routine_weeks call covering ONLY weeks '+currentWeek+' through '+totalWks+' (the user is on week '+currentWeek+' of '+totalWks+'; earlier weeks are already completed and will be rejected). Do NOT include weeks 1..'+Math.max(1,currentWeek-1)+' in the array. Do NOT split across multiple calls — multiple calls compound input tokens and hit the 30k/min rate limit. Keep exercise notes and week notes short. The app backs up the previous routine before the first write so the user can roll back.\n';
   p+='  - Past weeks (1..'+Math.max(0,currentWeek-1)+') are HISTORY. Never try to modify them. If the user asks to change an earlier week, explain that past weeks are locked — the app drops any attempt to rewrite them.\n';
@@ -15213,7 +15273,7 @@ function renderSettings() {
       var schedHTML='';
       if(crSched){
         var wPlan=getWeekPlan();
-        var TYPE_COLOR={Push:'var(--accent)',Pull:'var(--cyan)',Legs:'var(--orange)',Legs2:'var(--orange)',Arms:'#f59e0b',Run:'var(--green)',Rest:'var(--muted)'};
+        var TYPE_COLOR={Push:'var(--accent)',Pull:'var(--cyan)',Legs:'var(--orange)',Legs2:'var(--orange)',Arms:'#f59e0b',Day6:'#0ea5e9',Day7:'#e879f9',Run:'var(--green)',Rest:'var(--muted)'};
         var chips=DOW_NAMES.map(function(name,dow){
           var entry=wPlan[dow];
           var color=entry.isSport?'#a78bfa':(TYPE_COLOR[entry.type]||'var(--muted)');
@@ -15226,7 +15286,7 @@ function renderSettings() {
             'padding:10px 4px;border-radius:12px;'+
             'cursor:pointer;min-width:0;-webkit-tap-highlight-color:transparent;">'+
             '<span class="kt-day-chip-d">'+name.toUpperCase()+'</span>'+
-            '<span class="kt-day-chip-t">'+shortLbl+'</span>'+
+            '<span class="kt-day-chip-t">'+_esc(shortLbl)+'</span>'+
           '</button>';
         }).join('');
         schedHTML='<div style="padding:14px 18px 16px;">'+
@@ -15249,7 +15309,7 @@ function renderSettings() {
               var _curName=_dayLabel(curT), _stock=(SESS[curT]&&SESS[curT].label)||curT, _auto=_autoDayLabel(curT);
               nameRow='<div style="margin-top:12px;">'+
                 '<div class="kt-sched-editor-hd" style="margin-bottom:6px;">NAME THIS DAY</div>'+
-                '<input type="text" maxlength="24" value="'+_esc(_curName===_stock?'':_curName)+'" placeholder="'+_esc(_stock)+'" aria-label="Day name" '+
+                '<input type="text" maxlength="24" value="'+_esc(_curName===_stock?'':_curName)+'" placeholder="'+_esc(_stock)+'" id="kt-dayname-input" aria-label="Day name" '+
                   'onchange="setDayName(\''+curT+'\', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" '+
                   'style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 11px;color:var(--text);font-size:14px;font-weight:600;font-family:inherit;"/>'+
                 (_auto && _auto.toLowerCase()!==_curName.toLowerCase()
@@ -16184,7 +16244,7 @@ function _exSessionHistory(name, n){
       if(!(w>0) && Array.isArray(ex.sets) && ex.sets[0]){
         w=parseFloat(ex.sets[0].weight); reps=ex.sets[0].reps;
       }
-      out.push({date:s.date, type:s.type, sets:setsN, reps:reps, w:(w>0?w:0), rpe:ex.rpe});
+      out.push({date:s.date, type:s.type, label:s.label, sets:setsN, reps:reps, w:(w>0?w:0), rpe:ex.rpe});
     });
   }
   return out;
@@ -16201,7 +16261,7 @@ function _renderExLibList(){
   // MAIN tags carry over from the current week's programme (screen 12·I).
   var mains={};
   var wdL=getWkData();
-  if(wdL) ['push','pull','legs','legs2','arms'].forEach(function(k){
+  if(wdL) LIFT_KEYS.forEach(function(k){
     (wdL[k]||[]).forEach(function(e){ if(e.isMain) mains[String(e.name).toLowerCase()]=1; });
   });
   var todayD=new Date(todayISO()+'T00:00:00');
@@ -16547,7 +16607,7 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
       // Sending blurs the box and the reply re-focuses it seconds later. Without
       // this the dock slid back in and out again on every message. Hold while a
       // reply is in flight, bounded so a stalled request cannot hide the tabs.
-      if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000){
+      if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000 && document.getElementById('coach-input')){   // only while the box still exists
         _waited+=400; _ctTimer=setTimeout(_check,400); return;
       }
       document.documentElement.classList.remove('chat-typing');
@@ -16631,7 +16691,7 @@ loadCoachHistory();
     var moved=false;
     _mig.weeks.forEach(function(wkO){
       if(!wkO) return;
-      ['push','pull','legs','legs2','arms'].forEach(function(sk){
+      LIFT_KEYS.forEach(function(sk){
         (wkO[sk]||[]).forEach(function(e){
           var ew=parseFloat(e&&e.weight);
           if(ew>0){
@@ -16982,7 +17042,12 @@ function _buildWatchLive(){
     if(arr.length) reps[ex.name]=arr;
     weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   });
-  return { dayName:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
+  // The plan and ended payloads carry the day's NAME (what the wrist shows and
+  // compares); this one carried the slot id, so a renamed day, or the stock
+  // "Legs B" whose label differs from its id, failed the watch's equality guard
+  // and the live mirror went silent both ways. `slot` rides along for a future
+  // watch build that compares ids.
+  return { dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:reps, weights:weights };
 }
 // The wrist follows the phone's room: the resolved theme's tokens ride the plan payload.
@@ -17015,6 +17080,7 @@ function _pushWatchPlan(){
     var hasPlan=!!(hasCustomRoutine()||liveRun);
     var plan={ week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
+      slot:String(liveRun?(runnerSession.dayName||''):(hasPlan?(act.dayName||''):'')),
       type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens() };
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
@@ -17033,6 +17099,9 @@ var _watchLive=null;
 function _onWatchLive(json){
   var s; try{ s=typeof json==='string'?JSON.parse(json):json; }catch(e){ _wchLog('live: bad payload'); return; }
   if(!s || !s.dayName) return;
+  // The wrist echoes the NAME it was shown. Resolve it to the slot once and
+  // compare slots: the phone's runnerSession.dayName is the slot id.
+  var wristSlot=(s.slot&&LIFT_TYPES.indexOf(s.slot)>=0)?s.slot:(_slotForLabel(s.dayName)||s.dayName);
   var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
   var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
   _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
@@ -17042,7 +17111,7 @@ function _onWatchLive(json){
       // The wrist finished this session — the authoritative record arrives on
       // the guaranteed queue. If our runner is open on the same day, close it
       // so a second finish can't double-log the workout.
-      if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName){
+      if(runnerOpen && runnerSession && runnerSession.dayName===wristSlot){
         // Only step aside when the wrist knows everything the phone knows —
         // otherwise the drained watch record would silently drop phone sets.
         var _ahead=false;
@@ -17054,7 +17123,7 @@ function _onWatchLive(json){
       }
       setTimeout(drainWatchSessions, 600); setTimeout(drainWatchSessions, 3000);
     }
-  } else if(runnerOpen && runnerSession && runnerSession.dayName===s.dayName){
+  } else if(runnerOpen && runnerSession && runnerSession.dayName===wristSlot){
     // Live mirror: merge wrist sets straight into the open runner. Monotone —
     // the longer per-exercise rep log wins — so repeated exchanges between
     // the two runners converge instead of ping-ponging.
@@ -17122,7 +17191,7 @@ function _onWatchLive(json){
     // back; its own merge adopts and the next exchange finds nothing to do.
     if(localAhead) _scheduleNativeSync();
   } else {
-    _watchLive={ dayName:String(s.dayName), sets:n, at:Date.now() };
+    _watchLive={ dayName:String(wristSlot), sets:n, at:Date.now() };   // a slot: the banner renders it through _dayLabel
   }
   if(currentTab==='log') render();
 }
@@ -17160,7 +17229,18 @@ function drainWatchSessions(){
       var d=s.startedAt?new Date(s.startedAt):(s.loggedAt?new Date(s.loggedAt):new Date());
       // The wrist echoes the NAME it was shown; map it back to the slot before
       // anything is filed, or a renamed day's wrist sessions would be orphaned.
-      var dayType=_slotForLabel(s.dayName)||s.dayName||'Session';
+      // Resolve the wrist's name to a slot. If it no longer resolves (a rename
+      // or programme swap the watch had not received), match by the exercises
+      // it logged, then today's lift slot; never a type that is not a slot.
+      var dayType=(s.slot&&LIFT_TYPES.indexOf(s.slot)>=0)?s.slot:_slotForLabel(s.dayName);
+      if(!dayType){
+        var _wn={}; (s.exercises||[]).forEach(function(e){ if(e&&e.name) _wn[String(e.name).toLowerCase()]=1; });
+        var _best=null,_bestN=0;
+        LIFT_TYPES.forEach(function(sl){ var n=0; (getSessionExercises(sl)||[]).forEach(function(ex){ if(_wn[String(ex.name).toLowerCase()]) n++; }); if(n>_bestN){ _bestN=n; _best=sl; } });
+        if(!_best){ var _ta=null; try{ _ta=getTodayActivity(); }catch(e){} if(_ta&&_ta.type==='lift'&&LIFT_TYPES.indexOf(_ta.dayName)>=0) _best=_ta.dayName; }
+        dayType=_best||LIFT_TYPES[0];
+        _wchLog('drain: "'+s.dayName+'" is not a known day; filed under '+dayType);
+      }
       if(s.dayName){ var _dayExs=getSessionExercises(dayType); if(_dayExs.length){ mainByName={}; _dayExs.forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; }); } }
       var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
       // Double-log guard: the same session may already be in the log — phone-

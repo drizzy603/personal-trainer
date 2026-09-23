@@ -68,6 +68,10 @@ run('a new programme starts on Monday; continuing one does not move', async () =
       // weekForDate: a date next week belongs to next week (it used to clamp to the current one).
       currentWeek = 3; lsSet('kt_week', 3); localStorage.setItem('kt_week_monday', mon);
       r.weekForDate = { next: weekForDate(addDays(mon, 7)), last: weekForDate(addDays(mon, -7)), thisWk: weekForDate(addDays(mon, 3)) };
+      // With the anchor a week AHEAD (a plan built mid-week), the first programme week IS week 1.
+      localStorage.setItem('kt_week_monday', addDays(mon, 7)); currentWeek = 1; lsSet('kt_week', 1);
+      r.wfdFuture = { atAnchor: weekForDate(addDays(mon, 7)), before: weekForDate(mon), after: weekForDate(addDays(mon, 14)) };
+      localStorage.setItem('kt_week_monday', mon);
       // The coach is told, in so many words, that a stated week is a request to set it.
       const sp = buildSystemPrompt();
       r.promptActs = /call set_current_week with that number in the SAME turn/.test(sp) && /never call it "just a label"/.test(sp) && /stepper under the week number/.test(sp);
@@ -102,6 +106,7 @@ run('a new programme starts on Monday; continuing one does not move', async () =
     assert(out.deadGone, 'confirmLoadRoutine (dead, threw on entry) is gone');
     assert(out.promptActs, 'the coach prompt tells it to set a stated week, not debate it');
     assert(out.weekForDate.next === 4 && out.weekForDate.last === 2 && out.weekForDate.thisWk === 3, 'weekForDate: next week is week+1, not clamped to this week: ' + JSON.stringify(out.weekForDate));
+    assert(out.wfdFuture.atAnchor === 1 && out.wfdFuture.before === 1 && out.wfdFuture.after === 2, 'weekForDate measures from the anchor, so a pending week 1 is week 1: ' + JSON.stringify(out.wfdFuture));
     assert(out.coachNoop.ok && out.coachNoop.anchorKept, 'set_current_week to the current week leaves a pending start alone: ' + JSON.stringify(out.coachNoop));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

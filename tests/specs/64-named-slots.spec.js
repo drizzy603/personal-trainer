@@ -74,7 +74,60 @@ run('named slots: label, reverse lookup, settings, history, watch round-trip, co
       });
       const cr3 = getCustomRoutine();
       r.coach = { ok: !!(res && res.ok), err: (res && res.error) || '', plan: cr3.weekPlan, names: cr3.dayNames };
-      return r;
+
+      // 9. two more slots, Day6/Day7: lifts with no stock meaning, offered only when a week uses them
+      r.slots = { count: LIFT_TYPES.length, keys: LIFT_KEYS.length, isLift: _planEntry('Day6').isLift && _planEntry('Day7').isLift,
+        stock: _dayLabel('Day6'), known: _knownPlanType('Day7'), offeredBefore: _schedTypes().indexOf('Day6') >= 0 };
+      const res6 = executeCoachTool('update_routine_weeks', {
+        dayNames: { Day6: 'Shoulders' },
+        weekPlan: ['Push', 'Run', 'Pull', 'Rest', 'Arms', 'Shoulders', 'Rest'],
+        weeks: [{ wk: currentWeek, bName: 'BASE', bColor: '#06b6d4', day6: [{ name: 'Machine Shoulder Press', sets: 3, reps: '10', isMain: true }] }],
+      });
+      const cr6 = getCustomRoutine();
+      r.day6 = { ok: !!(res6 && res6.ok), err: (res6 && res6.error) || '', plan5: cr6.weekPlan[5], label: _dayLabel('Day6'),
+        exercises: getSessionExercises('Day6').length, offeredNow: _schedTypes().indexOf('Day6') >= 0 };
+
+      // 10. the wrist round-trip: every payload carries the NAME, and what comes back merges by slot
+      const seedRunner = (slot, exName) => {
+        runnerSession = { type: slot, dayName: slot, weekday: 'MON', exercises: [{ name: exName, sets: 3, reps: 8, weight: 185 }], startedAt: Date.now() };
+        runnerOpen = true; runnerExIdx = 0; runnerCompleted = {}; runnerRepsLog = {}; runnerWeightsLog = {}; runnerWeights = {}; runnerReps = {}; runnerRpe = {}; runnerRpeLog = {}; _wristStamps = {};
+        runnerCompleted[exName] = 1; runnerRepsLog[exName] = [8]; runnerWeightsLog[exName] = [185];
+      };
+      seedRunner('Push', 'Barbell Bench Press');                     // Push is named 'Chest + Back' (section 2)
+      const live = _buildWatchLive();
+      r.live = { dayName: live && live.dayName, slot: live && live.slot };
+      try { _onWatchLive(JSON.stringify({ dayName: 'Chest + Back', startedAt: Date.now(), reps: { 'Barbell Bench Press': [8, 8, 8] } })); } catch (e) { r.liveErr = String(e); }
+      r.merged = { sets: (runnerRepsLog['Barbell Bench Press'] || []).length, noBanner: _watchLive === null };
+      seedRunner('Legs2', 'Romanian Deadlift');                      // stock Legs B: label != id, no rename at all
+      try { _onWatchLive(JSON.stringify({ dayName: 'Legs B', startedAt: Date.now(), reps: { 'Romanian Deadlift': [8, 8] } })); } catch (e) { r.liveErr2 = String(e); }
+      r.legsB = { sets: (runnerRepsLog['Romanian Deadlift'] || []).length };
+      runnerOpen = false; runnerSession = null; _watchLive = null;
+
+      // 11. a name may not collide with another day; the auto-suggest never proposes one
+      setDayName('Legs2', 'Legs');
+      r.collide = { legs2: (getCustomRoutine().dayNames || {}).Legs2, toast: document.getElementById('toast').textContent };
+      const badName = executeCoachTool('update_routine_weeks', { dayNames: { Arms: 'Rest' }, weeks: [{ wk: currentWeek, bName: 'BASE', bColor: '#06b6d4', pull: [{ name: 'Pull Up', sets: 3, reps: '8' }] }] });
+      r.collideCoach = { ok: !!(badName && badName.ok), err: (badName && badName.error) || '', arms: (getCustomRoutine().dayNames || {}).Arms };
+      const badKey = executeCoachTool('update_routine_weeks', { dayNames: { Upper: 'X' }, weeks: [{ wk: currentWeek, bName: 'BASE', bColor: '#06b6d4' }] });
+      r.badKey = { ok: !!(badKey && badKey.ok), err: (badKey && badKey.error) || '' };
+      const wkL = getCustomRoutine().weeks[currentWeek - 1]; wkL.legs2 = [{ name: 'Barbell Back Squat', sets: 3, reps: '8', weight: 200, isMain: true }]; setCustomRoutine(getCustomRoutine());
+      r.autoLegs2 = _autoDayLabel('Legs2');
+      setDayName('Push', 'Push');                                     // typing the slot id clears the name
+      r.idClears = (getCustomRoutine().dayNames || {}).Push === undefined;
+
+      // 12. a wrist session under a name the phone no longer holds is filed under a real slot
+      Capacitor.Plugins.TrovoWatch.getPendingSessions = () => Promise.resolve({ sessions: [JSON.stringify({ dayName: 'Upper', startedAt: Date.now(), exercises: [{ name: 'Barbell Bench Press', reps: [8, 8], weights: [185, 185] }] })] });
+      Capacitor.Plugins.TrovoWatch.clearPendingSessions = () => Promise.resolve({});
+      return new Promise(resolve => {
+        lsSet('kt_sessions', []);   // section 6 logged a Push today; the drain's same-day dedupe would skip this one
+        const before = getSessions().length;
+        try { drainWatchSessions(); } catch (e) { r.drainErr = String(e); }
+        setTimeout(() => {
+          const rec = getSessions()[0];
+          r.drain = { added: getSessions().length === before + 1, type: rec && rec.type, isSlot: !!(rec && LIFT_TYPES.indexOf(rec.type) >= 0) };
+          resolve(r);
+        }, 400);
+      });
     });
 
     assert(out.defaults.push === 'Push' && out.defaults.legs2 === 'Legs B' && out.defaults.rest === 'Rest' && out.defaults.sess === 'Pull' && out.defaults.empty === '',
@@ -94,6 +147,19 @@ run('named slots: label, reverse lookup, settings, history, watch round-trip, co
     assert(out.promptNames, 'the coach prompt lists the day names');
     assert(out.coach.ok && out.coach.plan[0] === 'Push' && out.coach.plan[2] === 'Pull' && out.coach.names && out.coach.names.Pull === 'Back + Biceps' && out.coach.names.Arms === undefined,
       'the coach can name days and write a labelled weekPlan that resolves to slots: ' + JSON.stringify(out.coach));
+    assert(out.slots.count === 7 && out.slots.keys === 7 && out.slots.isLift && out.slots.stock === 'Day 6' && out.slots.known && !out.slots.offeredBefore,
+      'Day6/Day7 are lift slots, stock-named, not offered until used: ' + JSON.stringify(out.slots));
+    assert(out.day6.ok && out.day6.plan5 === 'Day6' && out.day6.label === 'Shoulders' && out.day6.exercises === 1 && out.day6.offeredNow,
+      'the coach can programme a sixth session by its name: ' + JSON.stringify(out.day6));
+    assert(!out.liveErr && out.live.dayName === 'Chest + Back' && out.live.slot === 'Push', 'the live payload carries the NAME and the slot: ' + JSON.stringify(out.live) + (out.liveErr || ''));
+    assert(out.merged.sets === 3 && out.merged.noBanner, 'a wrist echo under the name merges into the open runner: ' + JSON.stringify(out.merged));
+    assert(!out.liveErr2 && out.legsB.sets === 2, 'the stock Legs B day (label != id) merges too: ' + JSON.stringify(out.legsB) + (out.liveErr2 || ''));
+    assert(out.collide.legs2 === undefined && /Legs day/.test(out.collide.toast), 'naming Legs B "Legs" is refused: ' + JSON.stringify(out.collide));
+    assert(!out.collideCoach.ok && /cadence value/.test(out.collideCoach.err) && out.collideCoach.arms === undefined, 'the coach may not name a day "Rest": ' + JSON.stringify(out.collideCoach));
+    assert(!out.badKey.ok && /slot ids/.test(out.badKey.err), 'the coach may not name a non-slot: ' + JSON.stringify(out.badKey));
+    assert(out.autoLegs2 === '', 'the auto-suggest never proposes another day\'s name: ' + JSON.stringify(out.autoLegs2));
+    assert(out.idClears, 'typing the slot id as the name clears it');
+    assert(!out.drainErr && out.drain.added && out.drain.isSlot, 'an unresolvable wrist name is filed under a real slot: ' + JSON.stringify(out.drain) + (out.drainErr || ''));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
