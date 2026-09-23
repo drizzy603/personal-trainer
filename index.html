@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260922-4"/>
+<meta name="build" content="20260922-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -17164,6 +17164,16 @@ function _watchThemeTokens(){
   return { room:name, paper:!!T.paper, bg:T.bg, card:T.card, card2:T.card2, text:T.text||T.textColor, muted:T.muted,
     accent:T['sat-accent']||T.accent, onAccent:T['on-accent'], earned:T.earned||T.accent, earnedInk:T['earned-ink']||T.accent, red:T.red };
 }
+// The Home Screen widget wears the room (Heavyweight paper, Lime near-black).
+// Unlike the watch face, the card IS the room's background, so a paper room
+// sends its own blue, not the satellite blue tuned for black. `accent` above
+// stays the Lime for the Live Activity, which is always dark.
+function _widgetThemeTokens(){
+  var name=currentTheme==='auto'?_systemTheme():currentTheme;
+  var T=THEMES[name]||THEMES.dark;
+  return { room:name, paper:!!T.paper, bg:T.bg, text:T.text||T.textColor, muted:T.muted,
+    accent:T.accent, onAccent:T['on-accent'], earnedInk:T['earned-ink']||T.accent };
+}
 function _pushWatchPlan(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.updateContext) return;
@@ -17395,7 +17405,8 @@ function _runNativeSync(){
       : currentTheme;
     var _acc=(!THEMES[_appliedT]||THEMES[_appliedT].paper)?THEMES.dark.accent:THEMES[_appliedT].accent;
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc };
+      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc,
+      theme:_widgetThemeTokens() };
     var json=JSON.stringify(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;

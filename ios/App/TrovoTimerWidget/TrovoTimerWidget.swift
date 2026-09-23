@@ -38,6 +38,9 @@ extension Color {
 // Every timer text builds Date.now...endDate — once rest expires while the
 // phone is locked, JS never ends the activity and the next render would
 // construct an INVALID range. Guarded views render a done state instead.
+// The clock is one line, always: a monospaced 48 pt "1:17" needs ~116 pt, and
+// in its old 110 pt slot SwiftUI wrapped it to "1:1" over "7" on the Lock
+// Screen. lineLimit(1) lets minimumScaleFactor shrink a long "10:00" instead.
 private func restTimerText(_ end: Date, size: CGFloat, color: Color, width: CGFloat? = nil) -> some View {
     Group {
         if end > .now {
@@ -51,8 +54,15 @@ private func restTimerText(_ end: Date, size: CGFloat, color: Color, width: CGFl
                 .foregroundColor(color)
         }
     }
-    .frame(width: width)
+    .lineLimit(1)
+    .minimumScaleFactor(0.5)
+    .multilineTextAlignment(.trailing)
+    .frame(width: width, alignment: .trailing)
 }
+
+// Grey for the always-dark surfaces. .secondary follows the phone's
+// appearance, so in light mode it drew dark grey on the black card.
+private let dimOnDark = Color(white: 0.62)
 
 struct TrovoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
@@ -107,24 +117,26 @@ struct LockScreenView: View {
     let context: ActivityViewContext<TrovoTimerAttributes>
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("REST")
                     .font(.system(size: 9, weight: .heavy, design: .monospaced))
                     .kerning(1.0)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(dimOnDark)
                 Text(context.attributes.exerciseName)
                     .font(.system(size: 17, weight: .heavy))
                     .foregroundColor(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 Text("NEXT · SET \(context.state.nextSet) OF \(context.state.totalSets)")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .kerning(0.5)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(dimOnDark)
+                    .lineLimit(1)
             }
-            Spacer()
-            restTimerText(context.state.endDate, size: 48, color: lime, width: 110)
-                .minimumScaleFactor(0.6)
+            Spacer(minLength: 0)
+            // 124 pt holds "1:17" at 46 pt with room to spare; "10:00" scales.
+            restTimerText(context.state.endDate, size: 46, color: lime, width: 124)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -149,12 +161,57 @@ struct SummaryDay: Decodable {
     var chip: String { short ?? String(type.prefix(5)) }
 }
 
+// The phone's room, as the page sends it: Heavyweight is paper/ink/blue,
+// Lime is near-black/lime. Pages before 20260922-5 send none.
+struct WidgetTheme: Decodable {
+    let paper: Bool?
+    let bg: String?
+    let text: String?
+    let muted: String?
+    let accent: String?
+    let onAccent: String?
+    let earnedInk: String?
+}
+
 struct WidgetSummary: Decodable {
     let week: Int
     let totalWeeks: Int
     let streak: Int
     let streakDays: Int?       // THE streak (scheduled training days); older summaries omit it
     let days: [SummaryDay]
+    let theme: WidgetTheme?
+
+    func with(days: [SummaryDay]) -> WidgetSummary {
+        WidgetSummary(week: week, totalWeeks: totalWeeks, streak: streak,
+                      streakDays: streakDays, days: days, theme: theme)
+    }
+}
+
+// Colours for the Home Screen card. Every colour is explicit: .secondary
+// follows the phone's appearance, not the card, and vanished on the black
+// card in light mode.
+struct WidgetPalette {
+    let bg: Color, text: Color, muted: Color, accent: Color, onAccent: Color, done: Color, faint: Color
+
+    static func of(_ theme: WidgetTheme?) -> WidgetPalette {
+        if let t = theme, t.paper == true {
+            let ink = t.text.flatMap { Color(hex: $0) } ?? Color(red: 0.06, green: 0.06, blue: 0.06)
+            return WidgetPalette(
+                bg: t.bg.flatMap { Color(hex: $0) } ?? Color(red: 0.97, green: 0.96, blue: 0.94),
+                text: ink,
+                muted: t.muted.flatMap { Color(hex: $0) } ?? Color(red: 0.42, green: 0.42, blue: 0.4),
+                accent: t.accent.flatMap { Color(hex: $0) } ?? Color(red: 0.04, green: 0.26, blue: 0.96),
+                onAccent: t.onAccent.flatMap { Color(hex: $0) } ?? .white,
+                done: t.earnedInk.flatMap { Color(hex: $0) } ?? Color(red: 0.31, green: 0.44, blue: 0),
+                faint: ink.opacity(0.18))
+        }
+        let acc = theme?.accent.flatMap { Color(hex: $0) } ?? lime
+        return WidgetPalette(
+            bg: theme?.bg.flatMap { Color(hex: $0) } ?? .black,
+            text: .white, muted: dimOnDark, accent: acc,
+            onAccent: theme?.onAccent.flatMap { Color(hex: $0) } ?? .black,
+            done: acc, faint: Color.white.opacity(0.25))
+    }
 }
 
 func loadSummary() -> WidgetSummary? {
@@ -179,8 +236,7 @@ private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
         guard !d.done, done.contains(d.date) else { return d }
         return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
     }
-    return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
-                         streak: summary.streak, streakDays: summary.streakDays, days: days)
+    return summary.with(days: days)
 }
 private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     guard let data = UserDefaults(suiteName: "group.app.kt.trainer")?
@@ -202,14 +258,17 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
         guard !d.done, !d.isRest, d.lifts == 0, pendingDays.contains(d.date) else { return d }
         return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
     }
-    return WidgetSummary(week: summary.week, totalWeeks: summary.totalWeeks,
-                         streak: summary.streak, streakDays: summary.streakDays, days: days)
+    return summary.with(days: days)
 }
 
 struct TodayEntry: TimelineEntry {
     let date: Date
     let summary: WidgetSummary?
     let dayIndex: Int      // which entry of summary.days this entry shows
+    // The room, kept even when the summary does not cover today (the card
+    // then says "Open Fitness Programmer." but stays paper in Heavyweight).
+    var theme: WidgetTheme? = nil
+    var palette: WidgetPalette { WidgetPalette.of(summary?.theme ?? theme) }
 }
 
 struct SuperoTodayProvider: TimelineProvider {
@@ -235,7 +294,7 @@ struct SuperoTodayProvider: TimelineProvider {
             // Nothing the app wrote covers today — say so rather than guess,
             // and ask again at midnight.
             let nextMidnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(3600)
-            completion(Timeline(entries: [TodayEntry(date: now, summary: nil, dayIndex: 0)], policy: .after(nextMidnight)))
+            completion(Timeline(entries: [TodayEntry(date: now, summary: nil, dayIndex: 0, theme: summary?.theme)], policy: .after(nextMidnight)))
             return
         }
         var entries: [TodayEntry] = [TodayEntry(date: now, summary: s, dayIndex: start)]
@@ -256,6 +315,14 @@ struct SuperoTodayView: View {
     private var day: SummaryDay? {
         guard let s = entry.summary, entry.dayIndex < s.days.count else { return nil }
         return s.days[entry.dayIndex]
+    }
+    private var pal: WidgetPalette { entry.palette }
+    // iOS 17+ already insets widget content by the system margin; padding on
+    // top of it left the small card ~110 pt wide and cut "Chest + Back day."
+    // to "Chest + Back…". iOS 16 has no system margin, so pad there only.
+    private var ownPadding: CGFloat {
+        if #available(iOS 17.0, *) { return 0 }
+        return 14
     }
 
     // Statement grammar (spec 09): the headline speaks in the app's voice —
@@ -299,14 +366,18 @@ struct SuperoTodayView: View {
             }
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.summary != nil ? "SUPERO · WK \(entry.summary!.week)" : "SUPERO")
+                Text(metaLine)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
                 Text(headline)
                     .font(.system(size: 14, weight: .heavy))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text(subline)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         default:
@@ -320,29 +391,34 @@ struct SuperoTodayView: View {
                 Text(metaLine)
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .kerning(0.8)
-                    .foregroundColor(.secondary)
-                Spacer()
+                    .foregroundColor(pal.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
                 if day?.done == true {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(lime)
+                        .foregroundColor(pal.done)
                 } else {
-                    Circle().fill(lime).frame(width: 6, height: 6)
+                    Circle().fill(pal.accent).frame(width: 6, height: 6)
                 }
             }
             Spacer(minLength: 0)
-            // One emphasis per surface: the statement stays white; lime is the
-            // status dot and the Start capsule.
+            // One emphasis per surface: the statement stays in the text colour;
+            // the accent is the status dot and the Start capsule. The small card
+            // gives a day name two lines rather than an ellipsis.
             Text(headline)
-                .font(.system(size: family == .systemMedium ? 26 : 20, weight: .heavy))
-                .foregroundColor(.white)
-                .lineLimit(1)
+                .font(.system(size: family == .systemMedium ? 26 : 22, weight: .heavy))
+                .foregroundColor(pal.text)
+                .lineLimit(family == .systemMedium ? 1 : 2)
                 .minimumScaleFactor(0.7)
+                .fixedSize(horizontal: false, vertical: true)
             Text(subline)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .kerning(0.5)
-                .foregroundColor(.secondary)
+                .foregroundColor(pal.muted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             if family == .systemMedium, let s = entry.summary {
                 HStack(spacing: 10) {
                     ForEach(Array(s.days.enumerated().dropFirst(entry.dayIndex + 1).prefix(4)),
@@ -350,9 +426,9 @@ struct SuperoTodayView: View {
                         VStack(spacing: 2) {
                             Text(shortDow(d.date))
                                 .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.secondary)
+                                .foregroundColor(pal.muted)
                             Circle()
-                                .fill(d.isRest ? Color.secondary.opacity(0.35) : lime)
+                                .fill(d.isRest ? pal.faint : pal.accent)
                                 .frame(width: 5, height: 5)
                         }
                     }
@@ -360,20 +436,20 @@ struct SuperoTodayView: View {
                     if let d = day, !d.done, !d.isRest {
                         Text("Start →")
                             .font(.system(size: 12, weight: .heavy))
-                            .foregroundColor(.black)
+                            .foregroundColor(pal.onAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Capsule().fill(lime))
+                            .background(Capsule().fill(pal.accent))
                     } else {
                         Text(s.streakDays != nil ? "STREAK \(s.streakDays!)D" : "STREAK \(s.streak)W")
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(pal.muted)
                     }
                 }
                 .padding(.top, 4)
             }
         }
-        .padding(14)
+        .padding(ownPadding)
         // "Start →" means start: the whole widget deep-links into today's session.
         .widgetURL(URL(string: "trovo://start"))
     }
@@ -386,8 +462,9 @@ struct SuperoTodayView: View {
     }
 }
 
-// Home-screen families get the black editorial card; Lock Screen accessories
-// must stay clear so the system's vibrant material shows through.
+// Home-screen families get the editorial card in the phone's room (paper for
+// Heavyweight, near-black for Lime); Lock Screen accessories must stay clear so
+// the system's vibrant material shows through.
 struct SuperoTodayEntryView: View {
     @Environment(\.widgetFamily) var family
     let entry: TodayEntry
@@ -400,11 +477,11 @@ struct SuperoTodayEntryView: View {
         if #available(iOS 17.0, *) {
             SuperoTodayView(entry: entry)
                 .containerBackground(for: .widget) {
-                    if isAccessory { Color.clear } else { Color.black }
+                    if isAccessory { Color.clear } else { entry.palette.bg }
                 }
         } else {
             SuperoTodayView(entry: entry)
-                .background(isAccessory ? Color.clear : Color.black)
+                .background(isAccessory ? Color.clear : entry.palette.bg)
         }
     }
 }
