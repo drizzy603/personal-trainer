@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260922-3"/>
+<meta name="build" content="20260922-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -10316,6 +10316,16 @@ function saveSessionEdit(){
       rpeLog:Array.isArray(ex.rpeLog)?ex.rpeLog:undefined};
   });
   lsSet('kt_sessions', sessions);
+  _afterSessionEdit(s, sessions, _sessEditRenamed);
+  closeSessionEditor();
+  showToast(_sessEditRenamed.length
+    ? 'Updated \u00b7 now logged as '+_sessEditRenamed[0].to
+    : 'Session updated');
+  render();
+}
+// After a logged session is corrected — by the history editor or the coach's
+// edit_session tool — the per-lift records follow the corrected truth.
+function _afterSessionEdit(s, sessions, renamed){
   // The working-weight cache follows the corrected truth — but only when the
   // edited session is the NEWEST one for that lift. Fixing a typo in a
   // weeks-old session must not regress today's prescription.
@@ -10332,9 +10342,9 @@ function saveSessionEdit(){
   // session's own PR list, and the working-weight entry when no other session
   // still uses the old name. recomputePRs below rebuilds kt_prs from the
   // corrected sessions, so records follow without extra work.
-  if(_sessEditRenamed.length){
+  if(renamed && renamed.length){
     var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
-    _sessEditRenamed.forEach(function(rn){
+    renamed.forEach(function(rn){
       if(notes[rn.from] && !notes[rn.to]){ notes[rn.to]=notes[rn.from]; delete notes[rn.from]; notesTouched=true; }
       if(Array.isArray(s.prs)) s.prs=s.prs.map(function(p){ return p===rn.from?rn.to:p; });
       var stillUsed=sessions.some(function(o){ return o!==s && (o.exercises||[]).some(function(e2){ return e2 && e2.name===rn.from; }); });
@@ -10346,11 +10356,6 @@ function saveSessionEdit(){
   if(wtsTouched) lsSet('kt_weights', wts2);
   recomputePRs();
   invalidateCoachCard();
-  closeSessionEditor();
-  showToast(_sessEditRenamed.length
-    ? 'Updated \u00b7 now logged as '+_sessEditRenamed[0].to
-    : 'Session updated');
-  render();
 }
 function _calNavToDate(dateStr){
   var p=dateStr.split('-');
@@ -13469,6 +13474,18 @@ var COACH_TOOLS=[
        notes:{type:'string',description:'Short note (optional).'}
      },
      required:['type','duration']}},
+  {name:'edit_session',
+   description:'Correct a lift session that is ALREADY logged: rename an exercise that was picked or typed wrong, or fix its sets, reps or load. Use when the user says a past entry is wrong (e.g. "that Bar on the 18th should be Barbell Curl (21s)"). Identify the session by its [id:...] from RECENT SESSIONS. Only what you pass changes. Records, working weights and exercise notes follow a rename. Do not use delete_log + log_session for this.',
+   input_schema:{type:'object',
+     properties:{
+       id:{type:'number',description:'The session id from RECENT SESSIONS. Preferred.'},
+       date:{type:'string',description:'YYYY-MM-DD. Only when no id is given and exactly one lift session is logged that day.'},
+       exercise:{type:'string',description:'The exercise name exactly as it is logged in that session (case-insensitive).'},
+       rename_to:{type:'string',description:'Optional. The correct exercise name.'},
+       reps:{type:'array',items:{type:'integer'},description:'Optional. Corrected reps, one entry per set; replaces the set list.'},
+       weight:{type:'number',description:'Optional. Corrected load in {W}, applied to every set.'}
+     },
+     required:['exercise']}},
   {name:'delete_log',
    description:'Delete a previously logged entry that the user wants removed. Use this only when the user explicitly asks to delete or remove a logged entry. Confirm the id from the ground-truth lists shown in your context (date + details).',
    input_schema:{type:'object',
@@ -13487,6 +13504,28 @@ var COACH_TOOLS=[
 // object, so snapshotting it after the in-place edit stored the already-
 // edited routine — Restore Previous was a no-op. Taken per mutating call
 // (not once per page session) so the last Coach change is always undoable.
+// What a routine write actually stored, so the coach can check its own work:
+// the cadence with the user's day names, the full exercise lists of the first
+// two written weeks, and per-slot counts for the rest. The model once merged
+// chest and back into one day, dropped most of the chest work, and could not
+// see it because the tool only answered "Weeks 1-12 updated".
+function _routineReadback(written){
+  var cr=getCustomRoutine(); if(!cr) return null;
+  var plan=Array.isArray(cr.weekPlan)?cr.weekPlan:[];
+  var out={cadence:DOW_NAMES.map(function(n,i){ var v=plan[i]; return n+'='+(v&&LIFT_TYPES.indexOf(v)>=0?(_dayLabel(v)+' ['+v+']'):(v||'?')); }).join(', '), weeks:{}};
+  (written||[]).forEach(function(wk, i){
+    var w=(cr.weeks||[])[wk-1]; if(!w) return;
+    if(i<2){
+      var full={};
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e&&e.name; }); });
+      if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
+      out.weeks[wk]=full;
+    } else {
+      out.weeks[wk]=LIFT_KEYS.map(function(k, ki){ var a=w[k]; return (a&&a.length)?(LIFT_TYPES[ki]+' '+a.length):''; }).filter(Boolean).join(', ');
+    }
+  });
+  return out;
+}
 function _snapshotRoutineForUndo(){
   try{
     var raw=localStorage.getItem('kt_routine');
@@ -13655,18 +13694,19 @@ function executeCoachTool(name,input){
         if(planSupplied){
           // The cadence WAS written above — reporting failure told the model
           // (and the user) nothing changed while the Log tab already showed it.
-          return {ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone.',weeks:[],skipped:skipped};
+          return {ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone. If the user says they are on an earlier week, call set_current_week with that week first, then write it.',weeks:[],skipped:skipped,stored:_routineReadback([])};
         }
-        return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-'+getTotalWeeks()+' can be changed.',skipped:skipped};
+        return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-'+getTotalWeeks()+' can be changed. If the user says they are on an earlier week (e.g. "it is week 1"), call set_current_week with that week first, then write it again.',skipped:skipped};
       }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
       if(skipped.length){
         var sLo=Math.min.apply(null,skipped), sHi=Math.max.apply(null,skipped);
         var sRange=skipped.length===1?('week '+skipped[0]):('weeks '+sLo+'–'+sHi);
-        label+='; skipped '+sRange+' (already in the past — current week is '+currentWeek+')';
+        label+='; skipped '+sRange+' (already in the past — current week is '+currentWeek+'; if the user says they are on an earlier week, call set_current_week first)';
       }
-      return {ok:true,message:label,weeks:written,skipped:skipped};
+      return {ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),
+        check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'};
     }
     if(name==='set_current_week'){
       var w=parseInt(input.week);
@@ -13877,6 +13917,53 @@ function executeCoachTool(name,input){
       invalidateCoachCard();
       render();
       return {ok:true,message:stype+' logged: '+sdur+' min on '+sdate};
+    }
+    if(name==='edit_session'){
+      var esAll=getSessions(), es=null;
+      if(input.id){
+        es=esAll.find(function(x){ return x && x.id===Number(input.id); });
+        if(!es) return {ok:false,error:'session id '+input.id+' not found. Nothing was changed.'};
+      } else if(input.date){
+        var esDay=esAll.filter(function(x){ return x && x.date===String(input.date); });
+        if(esDay.length!==1) return {ok:false,error:(esDay.length?'several sessions':'no session')+' on '+input.date+' \u2014 pass the id from RECENT SESSIONS. Nothing was changed.'};
+        es=esDay[0];
+      } else return {ok:false,error:'pass the session id (or a date with exactly one session). Nothing was changed.'};
+      var esWant=String(input.exercise||'').trim().toLowerCase();
+      var esExs=es.exercises||[], esIdx=-1;
+      for(var esI=0;esI<esExs.length;esI++){ if(esExs[esI] && String(esExs[esI].name||'').trim().toLowerCase()===esWant){ esIdx=esI; break; } }
+      if(esIdx<0) return {ok:false,error:'no exercise "'+input.exercise+'" in the '+es.date+' session; it has: '+esExs.map(function(e){ return e&&e.name; }).join(', ')+'. Nothing was changed.'};
+      var esEx=esExs[esIdx];
+      var esPairs=_exSetPairs(esEx);
+      var esReps=esPairs.map(function(p){ return p[0]; }), esW=esPairs.map(function(p){ return p[1]; });
+      var esHasReps=Array.isArray(input.reps)&&input.reps.length>0;
+      if(esHasReps){
+        esReps=input.reps.map(function(r){ return Math.max(0, parseInt(r)||0); });
+        while(esW.length<esReps.length) esW.push(esW.length?esW[esW.length-1]:0);
+        esW=esW.slice(0, esReps.length);
+      }
+      if(input.weight!=null){
+        var esLoad=_coachLoadIn(input.weight);
+        if(!(esLoad>=0)) return {ok:false,error:'weight must be a number. Nothing was changed.'};
+        esW=esReps.map(function(){ return esLoad; });
+      }
+      var esRenamed=[], esName=esEx.name;
+      if(input.rename_to!=null){
+        var esNew=String(input.rename_to).trim();
+        if(!esNew) return {ok:false,error:'rename_to is empty. Nothing was changed.'};
+        if(esNew!==esEx.name){ esRenamed.push({from:esEx.name, to:esNew}); esName=esNew; }
+      }
+      if(!esRenamed.length && !esHasReps && input.weight==null) return {ok:false,error:'nothing to change: pass rename_to, reps or weight.'};
+      var esTop=esW.length?Math.max.apply(null,esW):0;
+      esExs[esIdx]={name:esName, isMain:!!esEx.isMain, sets:esReps.length, reps:esReps, weight:esTop, weightLog:esW,
+        rpe:(Array.isArray(esEx.sets)?(esEx.sets[0]&&esEx.sets[0].rpe)||'':(esEx.rpe!=null?esEx.rpe:'')),
+        rpeLog:Array.isArray(esEx.rpeLog)?esEx.rpeLog:undefined};
+      es.exercises=esExs;
+      lsSet('kt_sessions', esAll);
+      _afterSessionEdit(es, esAll, esRenamed);
+      render();
+      return {ok:true,
+        message:(esRenamed.length?('Renamed '+esRenamed[0].from+' \u2192 '+esRenamed[0].to):('Corrected '+esName))+' in the '+es.date+' session',
+        stored:{id:es.id, date:es.date, exercise:esName, sets:esReps.length, reps:esReps, load:fmtW(esTop)}};
     }
     if(name==='delete_log'){
       var dlStore=String(input.store||'');
@@ -14276,6 +14363,7 @@ function toolCallLabel(tc){
   if(n==='log_bodyweight') return 'Logged '+fmtW(wStore(i.weight));
   if(n==='log_run') return 'Run logged · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
   if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
+  if(n==='edit_session') return i.rename_to ? (String(i.exercise||'')+' \u2192 '+String(i.rename_to)) : (String(i.exercise||'Session')+' corrected');
   if(n==='delete_log') return (i.store||'entry')+' deleted';
   return n;
 }
@@ -14422,6 +14510,7 @@ function buildSystemPrompt(){
   if(_pdk.length) p+='\nDay names (slot id -> what the user calls it; use their names when you talk about their days, use the slot id in tool calls): '+_pdk.map(function(k){ return k+' = "'+_cleanDayLabel(_pdn[k])+'"'; }).join(', ')+'.';
   // The counter is the user's. The coach once answered "it's week 1 now" with a
   // paragraph about numbering being "just a label" and changed nothing.
+  p+='\nHow the counter works: it advances by one every Monday from the week that was set (by the user, the week stepper, or your set_current_week). It is NOT derived from logged sessions. Weeks before the current one are locked against rewriting.';
   p+='\nThe week counter is the user\'s to set. If they state the week or ask to change it ("it\'s week 1 now", "put me on week 3"), call set_current_week with that number in the SAME turn. Never explain the numbering instead, never call it "just a label", never suggest waiting. They can also change it themselves with the \u2212 / + stepper under the week number on the Log tab.';
   if(!_programmeStarted()) p+=' — NOT STARTED YET: week 1 day 1 is Monday '+_weekAnchor()+'. Nothing is scheduled before then; do not tell them they are mid-week.';
   if(cr&&cr.name)p+=' ('+cr.name+')';
@@ -14541,6 +14630,7 @@ function buildSystemPrompt(){
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Something lasting about the athlete (injury, new gym or equipment, goal change, a lift they love or hate) → call save_profile with just the changed fields.\n';
+  p+='  - A logged lift entry is wrong (wrong exercise picked, a typo, wrong reps or load) → edit_session with the session id and the exercise as logged. Never delete and re-log to fix one exercise.\n';
   p+='  - Delete a logged entry the user wants removed → call delete_log with store ("run", "sport", "session", or "bodyweight") and id (from the [id:...] shown in the ground-truth lists above). Only delete when the user explicitly asks.\n';
   p+='  - Tweak one week of the plan → one update_routine_weeks call with a 1-element weeks array.\n';
   p+='  - Change which weekdays are lift/rest/run/sport → include weekPlan (7 entries Mon→Sun) on an update_routine_weeks call. Valid values: Push, Pull, Legs, Legs2, Arms, Day6, Day7, Rest, Run, Cycling, CrossFit, Pickleball, Swimming, Tennis, Basketball, Yoga, Hiking, Climbing, Soccer, Rowing, Boxing, Golf, Other. Use Legs2 when there are two distinct leg sessions per week — populate legs (Legs A) and legs2 (Legs B) separately in each week. Use Arms for a dedicated biceps/triceps/abs day — populate the arms array. Omit weekPlan when only editing exercises so the existing cadence is kept.\n';
@@ -15100,11 +15190,27 @@ function _paintTheme(name){
 function _systemTheme(){
   return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'heavyweight';
 }
+// The Home Screen icon follows the room: Heavyweight is the primary icon (the
+// blue FP), Lime the alternate "AppIcon-Lime" (the black FP). iOS shows its own
+// "You have changed the icon" alert on each switch and refuses the change when
+// the app is not frontmost, so this runs only on a theme tap and once after
+// boot, and the plugin is a no-op when the icon already matches. Shells before
+// build 51 have no TrovoIcon plugin: nothing happens.
+function _appIconFor(room){ return room==='dark' ? 'AppIcon-Lime' : ''; }
+function _syncAppIcon(){
+  try{
+    var P=window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoIcon;
+    if(!P || !P.set) return;
+    var r=P.set({ name:_appIconFor(currentTheme) });
+    if(r && r.catch) r.catch(function(e){ _trapErr('app icon: '+((e&&e.message)||e)); });
+  }catch(e){}
+}
 function applyTheme(name) {
   if(!_paintTheme(name)) return;
   localStorage.setItem('kt_theme',name);
   currentTheme=name;
   _scheduleNativeSync();   // the watch and widgets follow the room
+  _syncAppIcon();          // and so does the Home Screen icon
 }
 
 // Settings → About → Theme opens a swatch sheet; taps apply instantly so
@@ -16541,6 +16647,7 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
 // original green-and-black Studio). Every retired room — Auto, Midnight,
 // Carbon, Ember, Violet, Gold, Light — migrates to Heavyweight on boot.
 currentTheme = localStorage.getItem('kt_theme') || 'heavyweight';
+setTimeout(_syncAppIcon, 2500);   // after first paint: iOS refuses the switch while launching
 if(!THEMES[currentTheme]){
   currentTheme='heavyweight';
   localStorage.setItem('kt_theme','heavyweight');
