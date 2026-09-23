@@ -140,6 +140,7 @@ class SuperoViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TrovoSharePlugin())
         bridge?.registerPluginInstance(TrovoWidgetPlugin())
         bridge?.registerPluginInstance(TrovoWatchPlugin())
+        bridge?.registerPluginInstance(TrovoIconPlugin())
         hideKeyboardAccessoryBar()
         // WebKit can create its content view after this callback; try once more.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.hideKeyboardAccessoryBar() }

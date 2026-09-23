@@ -36,9 +36,9 @@ const ICONS = [
   // complication follows the theme instead (watchThemeAccent in the App Group).
   ['ios/App/SuperoWatch/Assets.xcassets/AppIcon.appiconset/watch-icon-1024.png', 1024],
 ];
-// The black/lime colourway: iOS 18's dark-appearance icon.
+// The black/lime colourway: the phone's alternate icon for the Lime room (TrovoIconPlugin).
 const DARK_ICONS = [
-  ['ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-dark.png', 1024],
+  ['ios/App/App/Assets.xcassets/AppIcon-Lime.appiconset/AppIcon-Lime.png', 1024],   // the Lime room's alternate phone icon
   ['assets/icon-dark-1024.png', 1024],
 ];
 const SPLASHES = [
