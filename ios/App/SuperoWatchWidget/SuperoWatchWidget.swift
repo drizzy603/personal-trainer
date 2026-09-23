@@ -27,12 +27,21 @@ struct ComplicationEntry: TimelineEntry {
 
 private func loadEntry() -> ComplicationEntry {
     let d = UserDefaults(suiteName: "group.app.kt.trainer")
-    let day = d?.string(forKey: "watchPlanDay") ?? ""
+    var day = d?.string(forKey: "watchPlanDay") ?? ""
+    // The plan is one day's. A timeline rebuilt the next morning (reboot, a
+    // budgeted reload) used to show yesterday's session as today's; watch
+    // builds before 51 wrote no date, so a missing one is taken on trust.
+    if let planDate = d?.string(forKey: "watchPlanDate") {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        if planDate != f.string(from: Date()) { day = "" }
+    }
     return ComplicationEntry(
         date: Date(),
         day: day,
-        short: d?.string(forKey: "watchPlanShort") ?? day,
-        type: d?.string(forKey: "watchPlanType") ?? "",
+        short: day.isEmpty ? "" : (d?.string(forKey: "watchPlanShort") ?? day),
+        type: day.isEmpty ? "" : (d?.string(forKey: "watchPlanType") ?? ""),
         week: d?.integer(forKey: "watchPlanWeek") ?? 0,
         accentHex: d?.string(forKey: "watchThemeAccent")
     )

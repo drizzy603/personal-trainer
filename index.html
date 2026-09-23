@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260922-5"/>
+<meta name="build" content="20260922-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2861,9 +2861,16 @@ function lsSet(k,v) {
         localStorage.setItem(k,JSON.stringify(v)); return true;
       }catch(e2){}
     }
-    // Roll the cache back: caching before the write meant a quota failure
-    // left the unsaved value as the in-session truth (phantom save).
-    if(_hadPrev) _lsCache[k]=_prev; else delete _lsCache[k];
+    // Roll the cache back to what is ON DISK: caching before the write meant a
+    // quota failure left the unsaved value as the in-session truth (phantom
+    // save). Restoring the previous reference was not enough: callers mutate
+    // the cached array in place (getSessions().unshift(...)) before calling
+    // here, so it already held the unsaved row, and a later watch drain took
+    // that phantom for a duplicate and cleared the watch's only copy.
+    try{
+      var _disk=localStorage.getItem(k);
+      if(_disk==null) delete _lsCache[k]; else _lsCache[k]=JSON.parse(_disk);
+    }catch(_r){ if(_hadPrev) _lsCache[k]=_prev; else delete _lsCache[k]; }
     if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
       try{ showToast('Couldn\'t save — storage full. Export your data.','err'); }catch(_){}
     }
@@ -7240,6 +7247,7 @@ function openDeckRunner(overrideType){
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
   runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now()};
+  _watchEndedPayload = null;   // a new session: the last one's 'ended' is done with
   runnerExIdx = 0;
   runnerEngaged = false;
   runnerResting = false;
@@ -7381,7 +7389,7 @@ function discardRunnerDraft(){
     '<div class="kt-close-sheet-ttl">Discard workout?</div>'+
     '<div class="kt-close-sheet-sub">Your in-progress sets will be lost.</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-discard-draft-sheet\').remove()">Keep it</button>'+
-    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();_watchSendDiscard();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
   '</div>';
   document.body.appendChild(el);
 }
@@ -7407,7 +7415,7 @@ function confirmCloseRunner(){
     '<div class="kt-close-sheet-sub">'+(hasSets?'Save what you\u2019ve done, or discard it.':'Logged sets so far won\'t be saved.')+'</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-close-runner-sheet\').remove()">Keep working</button>'+
     (hasSets?'<button class="kt-close-sheet-btn" style="background:var(--accent);color:var(--on-accent);" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();runnerFinishSession();">Save &amp; finish early</button>':'')+
-    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();closeDeckRunner();">Discard &amp; exit</button>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="var s=document.getElementById(\'kt-close-runner-sheet\');if(s)s.remove();discardDeckRunner();">Discard &amp; exit</button>'+
   '</div>';
   document.body.appendChild(el);
 }
@@ -7689,6 +7697,7 @@ function runnerUndoSet(name, idx){
   if(!(idx>=0 && idx<done)) return;
   [runnerRepsLog, runnerWeightsLog, runnerRpeLog].forEach(function(l){ if(Array.isArray(l[name])) l[name].splice(idx,1); });
   runnerCompleted[name]=done-1;
+  _markPhoneEdit(name);
   if(_justLoggedSet && _justLoggedSet.ex===name) _justLoggedSet=null;
   if(runnerEditSetIdx!=null && runnerEditSetEx===name){ runnerEditSetIdx=null; runnerEditSetEx=null; }
   _runnerReopen(name);
@@ -7698,6 +7707,7 @@ function runnerUndoSetAt(i){ var ex=_runnerEx(); if(ex) runnerUndoSet(ex.name, i
 function runnerUndoLogAll(name, snap){
   if(!runnerSession || !snap) return;
   runnerRepsLog[name]=snap.r; runnerWeightsLog[name]=snap.w; runnerRpeLog[name]=snap.p; runnerCompleted[name]=snap.done;
+  _markPhoneEdit(name);
   _runnerReopen(name);
   showToast('Log all undone');
 }
@@ -7851,13 +7861,22 @@ function runnerFinishSession(){
   var sessions = getSessions();
   // Double-log guard: a watch-synced copy of this same session (same day, same
   // type) gets replaced by the richer phone log. Manual entries are never touched.
-  sessions = sessions.filter(function(x){
-    return !(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch');
+  // A wrist copy of this same session (same day, same slot) folds into the
+  // phone's record instead of being deleted with whatever only it held.
+  var _wristCopies = sessions.filter(function(x){
+    return x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch';
   });
+  sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
+  var _owned=Object.keys(runnerSession.ownAt||{});
   var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName, label:_dayLabel(runnerSession.dayName),
     week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:newPRs,
     startedAt:runnerSession.startedAt||undefined,
-    supersets:(_ssIdx.length?_ssIdx:undefined)};
+    supersets:(_ssIdx.length?_ssIdx:undefined),
+    phoneOwned:(_owned.length?_owned:undefined)};
+  _wristCopies.forEach(function(w){
+    _mergeWristExercises(_newRec, w.exercises);
+    (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });
+  });
   sessions.unshift(_newRec);
   if(!lsSet('kt_sessions', sessions)){
     // Storage full: keep the runner (and its draft) so nothing is lost —
@@ -7873,8 +7892,12 @@ function runnerFinishSession(){
   // Keyed by the date the session was FILED under — a backdated log must
   // not mark today done and hide today's Start CTA.
   runnerJustFinishedKey = _sessionDate+'-lift-'+runnerSession.dayName;
+  // What was saved rides along, so the wrist (build 51) can tell whether it
+  // holds sets this phone never received and send them rather than drop them.
+  var _endReps={};
+  _newRec.exercises.forEach(function(e){ if(e && e.name && Array.isArray(e.reps)) _endReps[e.name]=e.reps.map(function(r){ return parseInt(r)||0; }); });
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
-    reps:{}, weights:{}, ended:true };
+    reps:_endReps, weights:{}, ended:true, endedAt:Date.now() };
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
@@ -8355,6 +8378,7 @@ function runnerSaveEditSet(){
     if(!(parseFloat(_ew)>_runnerPrBeat.best)) _runnerPrBeat=null;
     else { _runnerPrBeat.w=_ew; _runnerPrBeat.r=(runnerRepsLog[ex.name]||[])[runnerEditSetIdx]; }
   }
+  _markPhoneEdit(ex.name);
   runnerEditSetIdx=null; runnerEditSetEx=null;
   _saveRunnerDraft(); paintRunner();
 }
@@ -17140,13 +17164,23 @@ var _lastWatchPlan='';
 // runner (and its HKWorkoutSession) running until the user found it.
 var _watchEndedPayload=null;
 function _buildWatchLive(){
-  if(!runnerOpen && _watchEndedPayload){ var _e=_watchEndedPayload; _watchEndedPayload=null; return _e; }
+  // Rides every push for 30 minutes, not just the next one: a plan push that
+  // replaced it before the wrist looked used to leave the watch's workout
+  // running. Build 51 ignores an 'ended' older than its own session.
+  if(!runnerOpen && _watchEndedPayload){
+    if(Date.now()-(_watchEndedPayload.endedAt||0) < 30*60*1000) return _watchEndedPayload;
+    _watchEndedPayload=null;
+  }
   if(!runnerOpen || !runnerSession || !(runnerSession.exercises||[]).length) return null;
-  var reps={}, weights={};
+  var reps={}, weights={}, wlog={};
   runnerSession.exercises.forEach(function(ex){
     var done=runnerCompleted[ex.name]||0;
     var arr=(runnerRepsLog[ex.name]||[]).slice(0, done).map(function(r){ return parseInt(r)||0; });
-    if(arr.length) reps[ex.name]=arr;
+    if(arr.length){
+      reps[ex.name]=arr;
+      var wl=(runnerWeightsLog[ex.name]||[]).slice(0, done).map(function(w){ return parseFloat(w)||0; });
+      if(wl.length===arr.length) wlog[ex.name]=wl;
+    }
     weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   });
   // The plan and ended payloads carry the day's NAME (what the wrist shows and
@@ -17154,8 +17188,53 @@ function _buildWatchLive(){
   // "Legs B" whose label differs from its id, failed the watch's equality guard
   // and the live mirror went silent both ways. `slot` rides along for a future
   // watch build that compares ids.
-  return { dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
-    reps:reps, weights:weights };
+  var out={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
+    reps:reps, weights:weights, wlog:wlog };
+  // Undos and edits made here: the wrist (build 51+) takes these logs as the
+  // truth instead of putting the removed set back.
+  if(runnerSession.ownAt && Object.keys(runnerSession.ownAt).length) out.own=runnerSession.ownAt;
+  return out;
+}
+// An undo or a ledger edit makes the phone's log for that exercise the truth
+// for the rest of the session.
+function _markPhoneEdit(name){
+  if(!runnerSession || !name) return;
+  if(!runnerSession.ownAt) runnerSession.ownAt={};
+  runnerSession.ownAt[name]=Date.now();
+}
+// Discarding here discards on the wrist too; without it the watch kept the
+// sets and its workout, and Finish there saved what was thrown away.
+function _watchSendDiscard(){
+  if(!runnerSession) return;
+  _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''),
+    startedAt:runnerSession.startedAt||Date.now(), reps:{}, weights:{}, ended:true, discarded:true, endedAt:Date.now() };
+  _scheduleNativeSync();
+}
+function discardDeckRunner(){ _watchSendDiscard(); closeDeckRunner(); }
+// Fold a wrist session's exercises into a logged record. An exercise only the
+// wrist has is added; one both have keeps the longer set log, unless the phone
+// corrected that exercise during the session (undo/edit), whose log stands.
+// Returns how many exercises changed. The drain used to skip the whole wrist
+// session as a duplicate, and the phone's finish used to delete it.
+function _mergeWristExercises(rec, wristExs){
+  var owned={}; (rec.phoneOwned||[]).forEach(function(n){ owned[String(n).toLowerCase()]=1; });
+  if(!Array.isArray(rec.exercises)) rec.exercises=[];
+  var n=0;
+  (wristExs||[]).forEach(function(w){
+    if(!w || !w.name) return;
+    var key=String(w.name).toLowerCase(), mine=null;
+    for(var i=0;i<rec.exercises.length;i++){ var e=rec.exercises[i]; if(e && String(e.name||'').toLowerCase()===key){ mine=e; break; } }
+    if(!mine){ rec.exercises.push(JSON.parse(JSON.stringify(w))); n++; return; }
+    if(owned[key]) return;
+    var wr=Array.isArray(w.reps)?w.reps:[], mr=Array.isArray(mine.reps)?mine.reps:[];
+    if(wr.length<=mr.length) return;
+    var fill=parseFloat(w.weight)||parseFloat(mine.weight)||0;
+    mine.reps=wr.slice(); mine.sets=wr.length;
+    mine.weightLog=(Array.isArray(w.weightLog)&&w.weightLog.length===wr.length)?w.weightLog.slice():wr.map(function(){ return fill; });
+    mine.weight=Math.max.apply(null, mine.weightLog.map(function(x){ return parseFloat(x)||0; }).concat([0]));
+    n++;
+  });
+  return n;
 }
 // The wrist follows the phone's room: the resolved theme's tokens ride the plan payload.
 function _watchThemeTokens(){
@@ -17183,7 +17262,12 @@ function _pushWatchPlan(){
     // exercises edited or swapped mid-workout live only on runnerSession
     // (never the routine), and ad-hoc sessions run on off days. Without
     // this, the watch keeps showing the routine's original list.
-    var liveRun = runnerOpen && runnerSession && (runnerSession.exercises||[]).length;
+    // A draft restored on a cold launch (runner closed, Resume pending) is still
+    // the session in progress. Pushing today's plan instead used to make the
+    // watch prune every set of an off-schedule workout it was logging.
+    var draftRun = !runnerOpen && runnerResumePending && runnerSession && (runnerSession.exercises||[]).length &&
+      (!runnerSessionDate || runnerSessionDate===todayISO());
+    var liveRun = (runnerOpen && runnerSession && (runnerSession.exercises||[]).length) || draftRun;
     var srcExs = liveRun ? runnerSession.exercises
       : (act.type==='lift'&&act.exercises?act.exercises:[]);
     var exs=srcExs.map(function(ex){
@@ -17236,6 +17320,11 @@ function _onWatchLive(json){
         Object.keys(runnerRepsLog||{}).forEach(function(nm){
           if((runnerRepsLog[nm]||[]).length > ((s.reps&&s.reps[nm])||[]).length) _ahead=true;
         });
+        // A set undone or corrected here that the wrist still holds.
+        Object.keys(runnerSession.ownAt||{}).forEach(function(nm){
+          var mine=(runnerRepsLog[nm]||[]).slice(0, runnerCompleted[nm]||0).map(function(r){ return parseInt(r)||0; });
+          if(JSON.stringify(mine)!==JSON.stringify((s.reps&&s.reps[nm])||[])) _ahead=true;
+        });
         if(_ahead) showToast('Watch finished, but this phone holds extra sets \u2014 finish here to keep them.');
         else closeDeckRunner();
       }
@@ -17252,6 +17341,14 @@ function _onWatchLive(json){
       if(!known[name]) return;
       var inc=(s.reps[name]||[]).map(function(r){ return parseInt(r)||0; });
       var loc=runnerRepsLog[name]||[];
+      // Corrected here (undo/edit) after the wrist's last set for it: ours
+      // stands. Longest-wins used to put an undone set straight back. Only a
+      // wrist set logged after the correction (build 51 stamps them) is taken.
+      var ownAt=(runnerSession.ownAt||{})[name];
+      if(ownAt && !(s.at && s.at[name] > ownAt)){
+        if(JSON.stringify(inc)!==JSON.stringify(loc.slice(0, runnerCompleted[name]||0).map(function(r){ return parseInt(r)||0; }))) localAhead=true;
+        return;
+      }
       if(inc.length>loc.length){
         // R1·E: stamp the wrist-arrived indices and wash the newest row.
         if(!_wristStamps[name]) _wristStamps[name]={};
@@ -17308,6 +17405,11 @@ function _onWatchLive(json){
     // The wrist is missing sets we have — the debounced push carries them
     // back; its own merge adopts and the next exchange finds nothing to do.
     if(localAhead) _scheduleNativeSync();
+  } else if(getSessions().some(function(x){ return x.date===todayISO() && x.type===wristSlot && (x.id||0) > (s.startedAt||0); })){
+    // Already filed today after this wrist session began (finished here, or
+    // its drain landed): watches before build 51 re-announced it on every
+    // wrist raise and the LIVE ON WATCH banner came back.
+    _watchLive=null;
   } else {
     _watchLive={ dayName:String(wristSlot), sets:n, at:Date.now() };   // a slot: the banner renders it through _dayLabel
   }
@@ -17324,7 +17426,7 @@ function drainWatchSessions(){
     var act=getTodayActivity();
     var mainByName={};
     (act.exercises||[]).forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; });
-    var added=0;
+    var added=0, saveFailed=false;
     arr.forEach(function(json){
       var s; try{ s=JSON.parse(json); }catch(e){ return; }
       if(!s || !Array.isArray(s.exercises) || !s.exercises.length) return;
@@ -17363,16 +17465,30 @@ function drainWatchSessions(){
       var localISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
       // Double-log guard: the same session may already be in the log — phone-
       // logged, or from an earlier drain of a payload that failed to clear.
-      var already=getSessions().some(function(x){ return x.date===localISO && x.type===dayType; });
-      if(already){ _wchLog('drain: skip duplicate '+localISO+' '+dayType); return; }
+      var _all=getSessions(), _prior=null;
+      for(var _pi=0;_pi<_all.length;_pi++){ if(_all[_pi] && _all[_pi].date===localISO && _all[_pi].type===dayType){ _prior=_all[_pi]; break; } }
+      if(_prior){
+        // Merge rather than skip: a workout split between phone and wrist, or
+        // sets the wrist logged out of range, used to vanish here while the
+        // watch said "Synced to iPhone". Draining the same payload twice
+        // changes nothing (longest log wins, present exercises stay).
+        var _mn=_mergeWristExercises(_prior, exsOut);
+        if(!_mn){ _wchLog('drain: duplicate '+localISO+' '+dayType+' (nothing new)'); return; }
+        if(!lsSet('kt_sessions', _all)){ saveFailed=true; return; }
+        _afterSessionEdit(_prior, _all, []);
+        _wchLog('drain: merged '+_mn+' exercise(s) into '+localISO+' '+dayType);
+        added++;
+        return;
+      }
       var weights=getWeights();
       exsOut.forEach(function(ex){ if(ex.weight>0) weights[ex.name]=ex.weight; });
       lsSet('kt_weights', weights);
       var newPRs=checkAndUpdatePRs(exsOut);
       var sessions=getSessions();
       sessions.unshift({ id:Date.now()+added, date:localISO, type:dayType, label:_dayLabel(dayType),
-        week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs });
-      lsSet('kt_sessions', sessions);
+        week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:newPRs,
+        wristStartedAt:s.startedAt||undefined });
+      if(!lsSet('kt_sessions', sessions)){ saveFailed=true; return; }
       // Handoff completion: the wrist finished a session the phone started —
       // drop the stale runner draft so no resume banner offers a ghost.
       try{
@@ -17384,7 +17500,13 @@ function drainWatchSessions(){
       }catch(e){}
       added++;
     });
-    TWch.clearPendingSessions().catch(function(){});
+    // Never clear a queue that did not save: the watch holds the only copy.
+    if(saveFailed){
+      _wchLog('drain: save FAILED, queue kept');
+      showToast('Couldn\u2019t save the watch session \u2014 storage full. Export your data, then reopen.','err');
+    } else {
+      TWch.clearPendingSessions().catch(function(){});
+    }
     _wchLog('drain: added '+added);
     if(added){
       _watchLive=null;
