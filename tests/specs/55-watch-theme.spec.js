@@ -20,7 +20,7 @@ run('watch plan payload carries the theme; changing the theme pushes it', async 
       return r;
     });
     assert(out.hw && out.hw.room === 'heavyweight' && out.hw.paper === true && out.hw.accent === '#4d7cff' && out.hw.earned === '#b7f000' && out.hw.bg === '#f7f5ef' && out.hw.onAccent === '#ffffff', 'Heavyweight tokens ride the plan: ' + JSON.stringify(out.hw));
-    assert(out.dark && out.dark.room === 'dark' && out.dark.paper === false && out.dark.accent === '#d8ff63' && out.dark.earned === '#d8ff63' && out.dark.bg === '#080b09', 'Lime tokens ride the plan: ' + JSON.stringify(out.dark));
+    assert(out.dark && out.dark.room === 'dark' && out.dark.paper === false && out.dark.accent === '#d8ff63' && out.dark.earned === '#d8ff63' && out.dark.bg === '#0b0b0c', 'Lime tokens ride the plan: ' + JSON.stringify(out.dark));
     assert(out.scheduled && out.sigChanged, 'a theme change schedules the push and changes the payload: ' + JSON.stringify({ scheduled: out.scheduled, sigChanged: out.sigChanged }));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

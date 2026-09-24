@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260923-2"/>
+<meta name="build" content="20260923-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -242,8 +242,7 @@ select option{background:var(--bg);}
 
 /* ── Week hero card ──────────────────────────────────────────────────────── */
 .hero-card{
-  background:radial-gradient(ellipse at top right, var(--accent-soft), transparent 60%),
-    linear-gradient(180deg, #1a1a1e 0%, #141418 100%);
+  background:var(--card);
   border:1px solid var(--border);border-radius:var(--r-hero);padding:26px var(--pad-card);margin:16px 0 20px;
   position:relative;overflow:hidden;}
 .hero-label{font-size:12px;color:var(--lite);font-weight:500;margin-bottom:6px;}
@@ -323,7 +322,7 @@ select option{background:var(--bg);}
 .lift-name{font-size:15px;font-weight:600;}
 .lift-delta{font-size:13px;color:var(--accent-ink);font-weight:600;}
 .lift-bar{height:7px;background:var(--card2);border-radius:4px;overflow:hidden;}
-.lift-fill{height:100%;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 45%,transparent),var(--accent));border-radius:4px;}
+.lift-fill{height:100%;background:var(--accent);border-radius:4px;}
 .lift-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px;font-weight:500;}
 
 /* ── History items ───────────────────────────────────────────────────────── */
@@ -1237,6 +1236,67 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
   .tab svg{width:17px;height:17px;}
   .kt-hero-headline,.kt-prog-hero-num{font-size:41px;letter-spacing:-2.1px;}
 }
+
+/* ── LIME ROOM ───────────────────────────────────────────────────────────
+   The dark room with Heavyweight's discipline on black: neutral ground,
+   flat cards on hairlines, no glows, no gradients, no tinted washes, one-
+   colour headlines. Lime is the ACTION (the CTA, primary buttons) and the
+   EARNED state (progress, done, records) — nothing else. Selection is
+   neutral: a lighter grey pill, and a white "today" in the week strip. */
+html[data-room="dark"]{--sel:color-mix(in srgb,var(--text) 15%,var(--card));}
+html[data-room="dark"] #app::before{display:none;}
+html[data-room="dark"] body::before{background:var(--bg);}
+html[data-room="dark"] .kt-hero-headline .accent,html[data-room="dark"] .kt-prog-hero-num .accent,
+html[data-room="dark"] .kt-hero-headline .kt-line2.accent{background:none;-webkit-background-clip:initial;background-clip:initial;-webkit-text-fill-color:currentColor;color:var(--text);}
+html[data-room="dark"] .kt-meta-label::before{box-shadow:none;border-radius:50%;transform:none;}
+html[data-room="dark"] .coach-head-eyebrow::before{box-shadow:none;}
+/* Flat cards on hairlines */
+html[data-room="dark"] .card,html[data-room="dark"] .hero-card,html[data-room="dark"] .chart-card,html[data-room="dark"] .stat,
+html[data-room="dark"] .kt-coach-card,html[data-room="dark"] .settings-group,html[data-room="dark"] .kt-cmb-metrics,html[data-room="dark"] .kt-cmb-take,
+html[data-room="dark"] .profile-row,html[data-room="dark"] .kt-empty-contract,html[data-room="dark"] .kt-act-logcard,
+html[data-room="dark"] .kt-sheet,html[data-room="dark"] .ex-modal-sheet,html[data-room="dark"] .kt-close-sheet-inner{
+  background:var(--card);border-color:var(--border);box-shadow:none;
+}
+html[data-room="dark"] .coach-bubble.assistant{background:var(--card);border:1px solid var(--border);border-left-width:1px;}
+html[data-room="dark"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;}
+html[data-room="dark"] .field input,html[data-room="dark"] .field select,html[data-room="dark"] .field textarea,
+html[data-room="dark"] .coach-textarea,html[data-room="dark"] .kt-coach-input{background:var(--card2);border-color:var(--border);}
+html[data-room="dark"] .settings-row{border-color:var(--border);}
+html[data-room="dark"] .settings-row-ic{background:var(--card2)!important;border:none;}
+html[data-room="dark"] #themeSheetList button[style*="accent-soft"]{background:var(--card2)!important;}
+/* Runner cards */
+html[data-room="dark"] .kt-r-card{box-shadow:none;}
+html[data-room="dark"] .kt-r-card.dark{background:var(--card);border:1px solid var(--border);}
+html[data-room="dark"] .kt-r-card.lime{background:var(--accent);}
+html[data-room="dark"] .kt-r-strip-inner{background:var(--card);border-color:var(--border);}
+/* Lime is the action: solid, no glow */
+html[data-room="dark"] .kt-cta{background:var(--accent);border:none;box-shadow:none;}
+html[data-room="dark"] .kt-cta-arrow{background:rgba(0,0,0,.1);border-radius:50%;}
+html[data-room="dark"] .btn-primary,html[data-room="dark"] .btn-green,html[data-room="dark"] .coach-send-btn,
+html[data-room="dark"] .kt-coach-btn.primary,html[data-room="dark"] .kt-eng-done{box-shadow:none;}
+/* Selection is neutral, never another lime fill */
+html[data-room="dark"] .log-subtabs,html[data-room="dark"] .kt-prog-toggle{background:var(--card);border-color:var(--border);box-shadow:none;}
+html[data-room="dark"] .log-subtab.active,html[data-room="dark"] .kt-prog-toggle button.on{background:var(--sel);color:var(--text);box-shadow:none;}
+html[data-room="dark"] #tabs{background:color-mix(in srgb,var(--card) 94%,transparent);border-color:var(--border);box-shadow:none;}
+html[data-room="dark"] .tab.active{background:var(--sel);color:var(--text);box-shadow:none;}
+html[data-room="dark"] .kt-wkstrip-chip.today{background:var(--text);border-color:var(--text);}
+html[data-room="dark"] .kt-wkstrip-chip.today .kt-wkstrip-d,html[data-room="dark"] .kt-wkstrip-chip.today .kt-wkstrip-n{color:var(--bg);}
+html[data-room="dark"] .kt-wkstrip-chip.today.done .kt-wkstrip-dot{background:var(--bg);}
+html[data-room="dark"] .kt-wkstrip-chip.unknown{border-color:var(--muted);}
+html[data-room="dark"] .kt-meta-ava,html[data-room="dark"] .screen-avatar,html[data-room="dark"] .profile-ava{background:var(--card2);color:var(--text);border:1px solid var(--border);box-shadow:none;}
+html[data-room="dark"] .kt-day-chip,html[data-room="dark"] .kt-day-chip.rest{background:var(--card2);border:1px solid var(--border);}
+html[data-room="dark"] .kt-day-chip-t{color:var(--text);}
+html[data-room="dark"] .kt-day-chip.rest .kt-day-chip-t{color:var(--muted);}
+html[data-room="dark"] .kt-day-chip.editing{box-shadow:0 0 0 2px var(--text);}
+html[data-room="dark"] .kt-sched-pick.on,html[data-room="dark"] .kt-units-opt.on,html[data-room="dark"] .kt-rlog-pill.on,
+html[data-room="dark"] .kt-r-pill.active,html[data-room="dark"] .kt-rest-pill.on{background:var(--sel);border-color:transparent;color:var(--text);}
+/* Numbers are statements, not neon */
+html[data-room="dark"] .hero-num{color:var(--text);}
+html[data-room="dark"] .hero-block{background:var(--card2);border:1px solid var(--border);color:var(--lite);}
+html[data-room="dark"] .hero-bar{background:var(--card2);}
+/* Charts: the line, no wash under it, no halo on the last point */
+html[data-room="dark"] #screen svg path[fill^="url("]{display:none;}
+html[data-room="dark"] #screen svg circle[opacity=".18"]{display:none;}
 
 /* ── HEAVYWEIGHT ROOM ────────────────────────────────────────────────────
    Opt-in theme (Settings → Theme). Paper ground, Anton poster caps, Archivo
@@ -11239,7 +11299,7 @@ function renderActivityMix(){
       '<span style="font-size:15px;width:22px;text-align:center;flex-shrink:0;">'+(s.emoji||'')+'</span>'+
       '<div style="width:76px;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">'+_esc(t)+'</div>'+
       '<div style="flex:1;height:9px;border-radius:5px;background:var(--card2);overflow:hidden;">'+
-        '<div style="width:'+pct+'%;height:100%;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,'+s.color+' 50%,transparent),'+s.color+');"></div></div>'+
+        '<div style="width:'+pct+'%;height:100%;border-radius:5px;background:'+s.color+';"></div></div>'+
       '<div style="width:22px;text-align:right;font-size:12px;font-weight:800;flex-shrink:0;">'+counts[t]+'</div>'+
     '</div>';
   }).join('');
@@ -11927,7 +11987,7 @@ function renderProgress() {
         '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+currentStr+' / '+targetStr+'</div>'+
       '</div>'+
       '<div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden;">'+
-        '<div style="height:7px;border-radius:4px;background:linear-gradient(90deg,color-mix(in srgb,'+color+' 45%,transparent),'+color+');width:'+pct+'%;transition:width .4s;"></div>'+
+        '<div style="height:7px;border-radius:4px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
       '</div>'+
       (target<=0?'':pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal reached</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
     '</div>';
@@ -11992,7 +12052,7 @@ function renderProgress() {
         '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km / '+runGoalPaceStr+'/km</div>'+
       '</div>'+
       '<div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden;">'+
-        '<div style="height:7px;border-radius:4px;background:linear-gradient(90deg,color-mix(in srgb,'+color+' 45%,transparent),'+color+');width:'+pct+'%;transition:width .4s;"></div>'+
+        '<div style="height:7px;border-radius:4px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
       '</div>'+
       (pct>=100?'<div style="font-size:10px;color:var(--green);margin-top:4px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">✓ Goal hit</div>':'<div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;">'+pct+'%</div>')+
     '</div>';
@@ -15212,7 +15272,9 @@ function renderCoach(){
 // with a subtle hue tint and swaps the accent. Light exists mainly so Auto
 // can follow the phone. Ocean/Sunset were retired (kt_theme migrates to dark).
 var THEMES = {
-  dark:     {name:'Lime',     room:'Green & black',    textColor:'#f7fff8',bg:'#080b09',card:'#111613',card2:'#1a211c',border:'rgba(216,255,99,.10)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.14)','accent-dim':'rgba(216,255,99,.07)','on-accent':'#080b09','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f7fff8',muted:'#748077',lite:'#a6b0a8',purple:'#ad92ff'},
+  // Neutral blacks and greys: the only green in the room is the lime. The
+  // green-tinted greys and lime hairlines made every surface glow faintly.
+  dark:     {name:'Lime',     room:'Green & black',    textColor:'#f4f4f1',bg:'#0b0b0c',card:'#151517',card2:'#1e1e21',border:'rgba(255,255,255,.08)',accent:'#d8ff63','accent-soft':'rgba(216,255,99,.12)','accent-dim':'rgba(216,255,99,.06)','on-accent':'#0b0b0c','accent-ink':'#d8ff63',green:'#d8ff63',yellow:'#ffd65a',red:'#ff5d55',orange:'#ff9d5c',cyan:'#69cfff',text:'#f4f4f1',muted:'#8c8c91',lite:'#b9b9be',purple:'#ad92ff'},
   heavyweight:{name:'Heavyweight',room:'Paper \u00b7 Blue',paper:true,textColor:'#0f0f0f',bg:'#f7f5ef',card:'#ffffff',card2:'#efece4',border:'rgba(15,15,15,.10)',accent:'#0a43f5','accent-soft':'rgba(10,67,245,.10)','accent-dim':'rgba(10,67,245,.06)','on-accent':'#ffffff','accent-ink':'#0a43f5',earned:'#b7f000','earned-ink':'#4f7000','sat-accent':'#4d7cff',green:'#4f7000',yellow:'#4f7000',red:'#dc2626',orange:'#ea580c',cyan:'#0a43f5',text:'#0f0f0f',muted:'#6b6b66',lite:'#3f3f3a',purple:'#0a43f5'},
 };
 

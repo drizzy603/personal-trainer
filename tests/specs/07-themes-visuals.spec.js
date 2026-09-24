@@ -109,7 +109,7 @@ run('Heavyweight room: scoped by attribute, poster type, two colours, reversible
     assert(out.hw.ctaBg === 'rgb(10, 67, 245)', 'the action surface is blue: ' + out.hw.ctaBg);
     assert(out.hw.pillBg === 'rgb(255, 255, 255)' && out.hw.onBg === 'rgb(10, 67, 245)', 'rest pills: white on hairline, selected solid blue (' + out.hw.pillBg + ' / ' + out.hw.onBg + ')');
     assert(out.hw.chipBg === 'rgb(255, 255, 255)' && out.hw.chipInk === 'rgb(15, 15, 15)', 'day chips lose their tinted wash: ' + out.hw.chipBg + ' / ' + out.hw.chipInk);
-    assert(out.back.darkPillBg === 'rgb(26, 33, 28)', 'dark room keeps its card2 pills: ' + out.back.darkPillBg);
+    assert(out.back.darkPillBg === 'rgb(30, 30, 33)', 'dark room keeps its card2 pills (neutral since 20260923-3): ' + out.back.darkPillBg);
     assert(out.back.room === 'dark' && out.back.earned === '#d8ff63' && !/Anton/.test(out.back.heroFont) && out.back.tabsLeft > 0, 'switching back removes every room rule');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
