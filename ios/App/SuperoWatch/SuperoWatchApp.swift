@@ -70,6 +70,24 @@ private func planIsStale(_ plan: WatchPlan) -> Bool {
     return d != f.string(from: Date())
 }
 
+// Sets from a session that was never finished: say when it was, offer to
+// drop it; the Finish button below sends it (the phone files it by its start).
+private struct UnfinishedRow: View {
+    @ObservedObject var runner: Runner
+    var body: some View {
+        HStack {
+            Text("UNFINISHED · \(runner.startedLabel.uppercased())")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .foregroundColor(.orange)
+            Spacer()
+            Button { runner.reset(); WorkoutManager.shared.end() } label: {
+                Text("Discard").font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 // Orange "plan is old" row — tap pulls a fresh plan from the phone.
 private struct StalePlanRow: View {
     let date: String?
@@ -90,7 +108,8 @@ private struct StalePlanRow: View {
 
 // Weights step in 2.5 lb — show the half only when it's there (145, 147.5).
 private func fmtWeight(_ v: Double) -> String {
-    v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v)
+    guard v.isFinite, v.magnitude < 1e9 else { return v.isFinite ? String(format: "%.0f", v) : "0" }
+    return v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v)
 }
 
 // MARK: - Plan model (mirrors the JSON the web app sends)
@@ -149,8 +168,9 @@ struct LiveSession: Codable, Equatable {
     let discarded: Bool?        // the phone threw the session away: drop the wrist's copy too
     let own: [String: Double]?  // exercise → ms of an undo/edit on the phone: its log is the truth
     let wlog: [String: [Double]]?  // per-set weights, so finishing here keeps a top-set/back-off day
+    let lastAt: Double?         // ms of the phone's last set/edit (pages from 20260923-1); a draft resumed hours later is still live
     var setsDone: Int { reps.values.reduce(0) { $0 + $1.count } }
-    var isFresh: Bool { Date().timeIntervalSince1970 - startedAt / 1000 < 6 * 3600 }
+    var isFresh: Bool { Date().timeIntervalSince1970 - max(startedAt, lastAt ?? 0) / 1000 < 6 * 3600 }
 }
 
 // MARK: - Connectivity
@@ -203,8 +223,11 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             UserDefaults.standard.set(data, forKey: "lastPlan")
             // Mirror into the App Group for the watch-face complication.
             if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
-                shared.set(p.dayName, forKey: "watchPlanDay")
-                shared.set(p.short ?? p.dayName, forKey: "watchPlanShort")
+                // No programme: the face falls to its 'Open to sync' state
+                // instead of 'No plan day' with the default cadence's glyph.
+                let faceDay = (p.hasPlan == false || p.type == "none") ? "" : p.dayName
+                shared.set(faceDay, forKey: "watchPlanDay")
+                shared.set(faceDay.isEmpty ? "" : (p.short ?? p.dayName), forKey: "watchPlanShort")
                 shared.set(p.type, forKey: "watchPlanType")
                 shared.set(p.week, forKey: "watchPlanWeek")
                 // The face shows this plan only on the day it was built for.
@@ -435,6 +458,10 @@ final class Runner: ObservableObject {
     // ms of the wrist's last logged set per exercise: an undo or edit on the
     // phone after it wins; one before it doesn't.
     var setAt: [String: Double] = [:]
+    // Phone corrections this wrist has applied (exercise → the phone's stamp):
+    // echoed as `ack` so the phone takes the log whole instead of guessing.
+    var acked: [String: Double] = [:]
+    private var restoredAt: Double = 0        // ms; when a restored session was last saved
     private var timer: Timer?
     private(set) var startedAt: Double = 0   // ms since epoch, set on first logged set
     private var restoring = false
@@ -447,11 +474,28 @@ final class Runner: ObservableObject {
         // the plan with 0 sets, which reads like the workout was lost.
         let at = UserDefaults.standard.double(forKey: Self.syncedKey)
         synced = at > 0 && Date().timeIntervalSince1970 - at < 3 * 3600
+        // A session written by build 49/50 carries no plan: pin the plan the
+        // wrist was showing (cached), or its sets would hide under today's
+        // Rest and file under whichever lift plan arrived first.
+        if hasSets, sessionPlan == nil, let p = Connectivity.shared.plan, p.type == "lift" {
+            sessionPlan = withLogged(p, from: nil)
+        }
     }
 
     var hasSets: Bool { repsDone.values.contains { !$0.isEmpty } }
-    // A session in progress: sets on the wrist, begun within the last 6 hours.
-    var isLive: Bool { hasSets && Date().timeIntervalSince1970 - startedAt / 1000 < 6 * 3600 }
+    // A session in progress: sets on the wrist and activity within 6 hours.
+    // The START used to decide, so a runner opened at 17:30 and trained at
+    // 23:40 lost every set to the midnight plan.
+    var lastActivityMs: Double { max(setAt.values.max() ?? 0, startedAt, restoredAt) }
+    var isLive: Bool { hasSets && Date().timeIntervalSince1970 * 1000 - lastActivityMs < 6 * 3600 * 1000 }
+    // Sets from a session that was never finished: shown with its date, sent
+    // on Finish (the phone files it by its start), never silently dropped.
+    var isStale: Bool { hasSets && !isLive }
+    var startedLabel: String {
+        guard startedAt > 0 else { return "earlier" }
+        let f = DateFormatter(); f.dateFormat = "EEE d MMM"
+        return f.string(from: Date(timeIntervalSince1970: startedAt / 1000))
+    }
 
     // What the wrist shows: its own session while one has sets, else the
     // phone's plan for today.
@@ -465,7 +509,7 @@ final class Runner: ObservableObject {
         let d = UserDefaults.standard
         if repsDone.values.allSatisfy({ $0.isEmpty }) { d.removeObject(forKey: Self.stateKey); return }
         var obj: [String: Any] = ["repsDone": repsDone, "weights": weights, "weightLog": weightLog,
-                                  "rpes": rpes, "startedAt": startedAt, "setAt": setAt,
+                                  "rpes": rpes, "startedAt": startedAt, "setAt": setAt, "acked": acked,
                                   "savedAt": Date().timeIntervalSince1970 * 1000]
         if let p = sessionPlan, let pd = try? JSONEncoder().encode(p), let ps = String(data: pd, encoding: .utf8) {
             obj["sessionPlan"] = ps
@@ -476,12 +520,20 @@ final class Runner: ObservableObject {
     private func restore() {
         guard let data = UserDefaults.standard.data(forKey: Self.stateKey),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let savedAt = obj["savedAt"] as? Double,
-              Date().timeIntervalSince1970 * 1000 - savedAt < 6 * 3600 * 1000 else {
+              let savedAt = obj["savedAt"] as? Double else {
+            UserDefaults.standard.removeObject(forKey: Self.stateKey)
+            return
+        }
+        // Older than 6 h: a session with its plan is kept as "unfinished" for
+        // the user to send; one without (builds before 51) cannot be filed
+        // and is dropped as before.
+        if Date().timeIntervalSince1970 * 1000 - savedAt >= 6 * 3600 * 1000, obj["sessionPlan"] == nil {
             UserDefaults.standard.removeObject(forKey: Self.stateKey)
             return
         }
         restoring = true
+        restoredAt = savedAt
+        acked = (obj["acked"] as? [String: Double]) ?? [:]
         repsDone = (obj["repsDone"] as? [String: [Int]]) ?? [:]
         weights = (obj["weights"] as? [String: Double]) ?? [:]
         weightLog = (obj["weightLog"] as? [String: [Double]]) ?? [:]
@@ -534,6 +586,8 @@ final class Runner: ObservableObject {
             "reps": repsDone,
             "weights": weights,
             "at": setAt,
+            "ack": acked,
+            "hk": WorkoutManager.shared.active,   // the phone skips its own Health write when the wrist runs the workout
             "ended": ended,
         ]
         if let slot = plan.slot, !slot.isEmpty { payload["slot"] = slot }   // the phone files by slot, not by name
@@ -579,7 +633,8 @@ final class Runner: ObservableObject {
     }
 
     func finish(plan: WatchPlan) {
-        let exs: [[String: Any]] = plan.exercises.compactMap { ex in
+        // Every exercise with sets goes, even one the passed plan lacks.
+        let exs: [[String: Any]] = withLogged(plan, from: sessionPlan).exercises.compactMap { ex in
             guard let reps = repsDone[ex.name], !reps.isEmpty else { return nil }
             var wl = weightLog[ex.name] ?? []
             while wl.count < reps.count { wl.append(weight(for: ex)) }
@@ -600,9 +655,9 @@ final class Runner: ObservableObject {
     }
 
     private func clearSession() {
-        repsDone = [:]; weights = [:]; weightLog = [:]; rpes = [:]; setAt = [:]
+        repsDone = [:]; weights = [:]; weightLog = [:]; rpes = [:]; setAt = [:]; acked = [:]
         sessionPlan = nil; resting = false
-        startedAt = 0
+        startedAt = 0; restoredAt = 0
         timer?.invalidate()
         UserDefaults.standard.removeObject(forKey: Self.stateKey)
     }
@@ -672,7 +727,11 @@ final class Runner: ObservableObject {
     func merge(_ live: LiveSession) {
         var changed = false
         var localAhead = false
-        for (name, arr) in live.reps {
+        // An exercise the phone corrected to zero is absent from `reps` on
+        // pages before 20260923-1; its `own` stamp still says it was edited.
+        var incoming = live.reps
+        for (name, _) in (live.own ?? [:]) where incoming[name] == nil { incoming[name] = [] }
+        for (name, arr) in incoming {
             let local = repsDone[name] ?? []
             // An undo or edit on the phone after the wrist's last set for
             // this exercise: the phone's log is the truth, shorter or not.
@@ -691,13 +750,13 @@ final class Runner: ObservableObject {
                     while wl.count < arr.count { wl.append(fill) }
                     weightLog[name] = wl
                 }
-                if phoneEdit { setAt[name] = live.own?[name] ?? setAt[name] }
+                if phoneEdit, let stamp = live.own?[name] { setAt[name] = stamp; acked[name] = stamp }
                 changed = true
             } else if local.count > arr.count {
                 localAhead = true
             }
         }
-        if repsDone.contains(where: { !$0.value.isEmpty && live.reps[$0.key] == nil }) {
+        if repsDone.contains(where: { !$0.value.isEmpty && incoming[$0.key] == nil }) {
             localAhead = true
         }
         // Adopt phone weights for lifts we haven't started.
@@ -766,7 +825,12 @@ struct RootView: View {
             // in progress (sets logged in the last 6 hours): training across
             // midnight keeps its sets.
             if let d = plan.date, d != lastPlanDate {
-                if lastPlanDate != nil && !runner.isLive { runner.reset(); WorkoutManager.shared.end() }
+                if lastPlanDate != nil && !runner.isLive {
+                    // Sets from a session that was never finished go to the
+                    // phone (filed by their start) instead of being discarded.
+                    if runner.hasSets, let own = runner.shownPlan(plan) { runner.finish(plan: own) } else { runner.reset() }
+                    WorkoutManager.shared.end()
+                }
                 lastPlanDate = d
             }
             runner.adopt(plan)
@@ -783,10 +847,15 @@ struct RootView: View {
             if live.ended == true {
                 // An 'ended' from before this wrist session began is about an earlier one.
                 if let endedAt = live.endedAt, runner.startedAt > endedAt { return }
+                // Nothing on the wrist to close: 'Synced to iPhone' stays. A
+                // phone finish or discard after the wrist's own Finish used to
+                // drop it back to the plan at 0 sets.
+                if runner.synced && !runner.hasSets { WorkoutManager.shared.end(); return }
                 // Sets the phone never received (out of range) go to it as a
-                // wrist session, which the phone merges, rather than vanish.
-                if live.discarded != true && runner.hasSetsBeyond(live) { runner.finish(plan: plan) }
-                runner.reset(); WorkoutManager.shared.end(); return
+                // wrist session, which the phone merges, rather than vanish;
+                // finish() leaves the Synced screen up, reset() would clear it.
+                if live.discarded != true && runner.hasSetsBeyond(live) { runner.finish(plan: plan) } else { runner.reset() }
+                WorkoutManager.shared.end(); return
             }
             guard live.isFresh, !runner.synced else { return }
             runner.merge(live)
@@ -811,15 +880,21 @@ struct PlanView: View {
 
     var body: some View {
         List {
-            if planIsStale(plan) {
+            if runner.isStale {
+                UnfinishedRow(runner: runner)
+            } else if !runner.hasSets && planIsStale(plan) {
+                // Mid-session the pinned plan's date is history, not a warning.
                 StalePlanRow(date: plan.date)
             }
             Section {
                 // Rows push their POSITION, not a value copy: an exercise edited or
                 // swapped on the phone mid-workout must re-render on the open
                 // wrist screen, not freeze as whatever the link was tapped with.
-                ForEach(Array(plan.exercises.enumerated()), id: \.element.id) { idx, ex in
-                    NavigationLink(value: idx) {
+                // Rows navigate by NAME: a phone-side reorder (superset pairing)
+                // or removal used to leave the open wrist screen on a different
+                // exercise, and Log set wrote to it.
+                ForEach(plan.exercises) { ex in
+                    NavigationLink(value: ex.name) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ex.name).font(.system(size: 14, weight: .bold)).lineLimit(2)
@@ -864,15 +939,15 @@ struct PlanView: View {
                 .tint(lime)
             }
         }
-        .navigationDestination(for: Int.self) { idx in
-            ExerciseView(index: idx, runner: runner)
+        .navigationDestination(for: String.self) { name in
+            ExerciseView(name: name, runner: runner)
         }
         .navigationTitle("Fitness Programmer")
     }
 }
 
 struct ExerciseView: View {
-    let index: Int
+    let name: String
     @ObservedObject var runner: Runner
     @ObservedObject private var conn = Connectivity.shared
     @State private var reps: Int = 0
@@ -889,8 +964,7 @@ struct ExerciseView: View {
     // in-session exercise list on every runner edit (Cues/Edit sheet, swaps),
     // so this re-renders with the new name/sets/reps/weight as it lands.
     private var ex: WatchExercise? {
-        guard let p = runner.shownPlan(conn.plan), p.exercises.indices.contains(index) else { return nil }
-        return p.exercises[index]
+        runner.shownPlan(conn.plan)?.exercises.first { $0.name == name }
     }
 
     var body: some View {

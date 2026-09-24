@@ -35,20 +35,22 @@ public class TrovoWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         defaults.set(json, forKey: "superoWidgetSummary")
-        // Retire wrist-done overlay dates the summary itself now marks done —
-        // clearing them any earlier (e.g. at drain time) raced the debounced
-        // summary write and flashed the widget back to "Start →".
+        // Retire wrist-done overlay dates the summary now covers. The overlay
+        // bridges the gap between a wrist finish and the next time the page
+        // runs; once the page has written a summary, that summary is the
+        // truth (a session is only "done" for the day it was scheduled on).
+        // Retiring only dates the summary marked done left an off-schedule
+        // wrist session saying "Run, done." for the rest of the day; clearing
+        // at drain time raced the debounced write and flashed "Start →".
         if var pending = defaults.stringArray(forKey: "pendingWatchDone"), !pending.isEmpty,
            let data = json.data(using: .utf8),
            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let days = obj["days"] as? [[String: Any]] {
-            let doneDates = Set(days.compactMap { d -> String? in
-                (d["done"] as? Bool) == true ? d["date"] as? String : nil
-            })
-            // Dates that fell off the summary window can never be retired by
-            // it — drop them too, or the overlay list grows forever.
-            let firstDate = days.compactMap { $0["date"] as? String }.min()
-            pending.removeAll { d in doneDates.contains(d) || (firstDate != nil && d < firstDate!) }
+            let dates = days.compactMap { $0["date"] as? String }
+            let firstDate = dates.min(), lastDate = dates.max()
+            pending.removeAll { d in
+                (firstDate != nil && d < firstDate!) || (firstDate != nil && lastDate != nil && d >= firstDate! && d <= lastDate!)
+            }
             defaults.set(pending, forKey: "pendingWatchDone")
         }
         if #available(iOS 14.0, *) {

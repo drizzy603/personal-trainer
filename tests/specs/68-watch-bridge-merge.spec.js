@@ -34,7 +34,8 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
       _onWatchLive({ dayName: pushName, slot: 'Push', startedAt: Date.now(), reps: live2, weights: w2, at: at2 });   // build 51 logged after adopting
       r.afterWrist = runnerRepsLog[A].slice(0, runnerCompleted[A]);
 
-      // B. the phone's finish merges the wrist copy instead of deleting it
+      // B. the phone's finish merges the wrist copy instead of deleting it; the copy's 4th set
+      //    (logged on the wrist after the correction, never received here) is kept
       const s0 = getSessions();
       s0.unshift({ id: Date.now() - 1000, date: today, type: 'Push', label: pushName, week: currentWeek, note: 'From Apple Watch', prs: [],
         exercises: [{ name: 'Wrist Curl', sets: 2, reps: [12, 12], weight: 30, weightLog: [30, 30] },
@@ -61,8 +62,9 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
       _watchLive = null;
 
       // D. the drain merges into the logged session; draining it again changes nothing
-      const wristSess = JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date().toISOString(),
-        exercises: [{ name: 'Wrist Curl', reps: [12, 12, 12], weight: 30 }, { name: A, reps: [1, 1, 1, 1, 1], weight: 10 }, { name: 'New Lift', reps: [5], weight: 50 }] });
+      // started before the phone finished, so it is a copy of the same session (one begun after would be its own record)
+      const wristSess = JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+        exercises: [{ name: 'Wrist Curl', reps: [12, 12, 12], weight: 30 }, { name: A, reps: [1, 1, 1, 1], weight: 10 }, { name: 'New Lift', reps: [5], weight: 50 }] });
       pending = [wristSess]; cleared = 0;
       drainWatchSessions(); await wait(300);
       const recD = getSessions().filter(x => x.date === today && x.type === 'Push');
@@ -107,12 +109,12 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
     assert(JSON.stringify(out.undoKept) === '[8,8]', 'an older watch echoing the undone set does not put it back: ' + JSON.stringify(out.undoKept));
     assert(out.liveOwn && JSON.stringify(out.wlog) === '[100,100]', 'the live payload marks the phone edit and carries per-set weights: ' + JSON.stringify([out.liveOwn, out.wlog]));
     assert(JSON.stringify(out.afterWrist) === '[8,8,10]', 'a wrist set logged after the undo is taken: ' + JSON.stringify(out.afterWrist));
-    assert(out.finish.count === 1 && out.finish.names.indexOf('Wrist Curl') >= 0 && JSON.stringify(out.finish.aReps) === '[8,8,10]' && JSON.stringify(out.finish.owned) === JSON.stringify([out.finish.names[0]]),
-      'finishing merges the wrist copy (its Wrist Curl kept) and the corrected exercise keeps the phone log: ' + JSON.stringify(out.finish));
-    assert(out.ended.ended && JSON.stringify(out.ended.reps) === '[8,8,10]' && out.ended.curl && out.ended.endedAt, 'the ended signal carries what was saved and when: ' + JSON.stringify(out.ended));
+    assert(out.finish.count === 1 && out.finish.names.indexOf('Wrist Curl') >= 0 && JSON.stringify(out.finish.aReps) === '[8,8,10,10]' && JSON.stringify(out.finish.owned) === JSON.stringify([out.finish.names[0]]),
+      'finishing merges the wrist copy (its Wrist Curl and its later 4th set kept; the undone set stays gone): ' + JSON.stringify(out.finish));
+    assert(out.ended.ended && JSON.stringify(out.ended.reps) === '[8,8,10,10]' && out.ended.curl && out.ended.endedAt, 'the ended signal carries what was saved and when: ' + JSON.stringify(out.ended));
     assert(out.endedRepeats && out.endedExpires, 'the ended signal rides every push for 30 minutes, then stops');
     assert(out.ghost === null && out.fresh === 'Push', 'a finished session is not re-announced; a later one is: ' + JSON.stringify([out.ghost, out.fresh]));
-    assert(out.drain.count === 1 && JSON.stringify(out.drain.curl) === '[12,12,12]' && JSON.stringify(out.drain.a) === '[8,8,10]' && out.drain.newLift && out.drain.cleared === 1,
+    assert(out.drain.count === 1 && JSON.stringify(out.drain.curl) === '[12,12,12]' && JSON.stringify(out.drain.a) === '[8,8,10,10]' && out.drain.newLift && out.drain.cleared === 1,
       'the drain merges: longer wrist log kept, phone-corrected lift untouched, new lift added, queue cleared: ' + JSON.stringify(out.drain));
     assert(out.redrainSame, 'draining the same wrist session twice changes nothing');
     assert(out.queueKept && !out.phantom, 'a failed save keeps the watch queue and leaves no phantom session: ' + JSON.stringify([out.phantom, out.queueDbg]));

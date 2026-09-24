@@ -232,8 +232,10 @@ func loadSummary() -> WidgetSummary? {
 private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
     guard let done = UserDefaults(suiteName: "group.app.kt.trainer")?
             .stringArray(forKey: "pendingWatchDone"), !done.isEmpty else { return summary }
+    // Only a scheduled lift day flips — a wrist session on a Run or Rest day
+    // used to render "Run, done." until the next day's summary.
     let days = summary.days.map { d -> SummaryDay in
-        guard !d.done, done.contains(d.date) else { return d }
+        guard !d.done, !d.isRest, d.lifts > 0, done.contains(d.date) else { return d }
         return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
     }
     return summary.with(days: days)
@@ -276,7 +278,18 @@ struct SuperoTodayProvider: TimelineProvider {
         TodayEntry(date: Date(), summary: nil, dayIndex: 0)
     }
     func getSnapshot(in context: Context, completion: @escaping (TodayEntry) -> Void) {
-        completion(TodayEntry(date: Date(), summary: loadSummary(), dayIndex: 0))
+        // Aligned on today like the timeline is: the gallery preview used to
+        // show days[0] (the day the app last ran) under today's weekday.
+        let s = loadSummary()
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let todayKey = f.string(from: Date())
+        if let s = s, let i = s.days.firstIndex(where: { $0.date == todayKey }) {
+            completion(TodayEntry(date: Date(), summary: s, dayIndex: i))
+        } else {
+            completion(TodayEntry(date: Date(), summary: nil, dayIndex: 0, theme: s?.theme))
+        }
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
         let summary = loadSummary()
@@ -433,7 +446,9 @@ struct SuperoTodayView: View {
                         }
                     }
                     Spacer()
-                    if let d = day, !d.done, !d.isRest {
+                    // Start means the runner: only a lift day offers it. A Run
+                    // day's capsule used to land on "No lift session scheduled".
+                    if let d = day, !d.done, !d.isRest, d.lifts > 0 {
                         Text("Start →")
                             .font(.system(size: 12, weight: .heavy))
                             .foregroundColor(pal.onAccent)

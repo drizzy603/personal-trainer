@@ -28,6 +28,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if HealthKitReader.backgroundSyncEnabled {
             healthObserver.startBackgroundObserver()
         }
+        // WatchConnectivity from launch, not from the web view: the watch
+        // waking this app in the background connects no scene, so the plugin
+        // (and its session delegate) never loaded and the watch got no reply.
+        WatchSessionHub.shared.start()
         // A rest Live Activity only had an in-memory handle: if the app was
         // killed mid-rest the banner lingered ('DONE') and the next rest
         // stacked a second one. Sweep survivors at launch.

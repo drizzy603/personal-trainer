@@ -58,7 +58,7 @@ class ShareViewController: UIViewController {
         bar.addSubview(icon)
 
         let title = UILabel()
-        title.text = "Supero"
+        title.text = "Fitness Programmer"
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(title)
