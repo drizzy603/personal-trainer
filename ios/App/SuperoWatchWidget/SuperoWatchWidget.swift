@@ -55,15 +55,33 @@ struct ComplicationProvider: TimelineProvider {
         completion(loadEntry())
     }
     func getTimeline(in context: Context, completion: @escaping (Timeline<ComplicationEntry>) -> Void) {
-        // The watch app reloads timelines whenever a new plan arrives — but
-        // the plan is a DAY's plan: at midnight it becomes yesterday's, so
-        // roll the face to an honest 'open to sync' state until a new one lands.
+        // The plan is a DAY's plan. With the week ahead from the phone (pages
+        // from 20260923-5) the face changes to each day's session at its
+        // midnight; past the last known day, or without it, it rolls to an
+        // honest 'open to sync' state until a new plan lands.
         let now = Date()
         let cal = Calendar.current
-        let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(86400)
         let today = loadEntry()
-        let stale = ComplicationEntry(date: midnight, day: "", short: "", type: "", week: today.week, accentHex: today.accentHex)
-        completion(Timeline(entries: [today, stale], policy: .after(midnight.addingTimeInterval(60))))
+        var entries = [today]
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let d = UserDefaults(suiteName: "group.app.kt.trainer")
+        let week = (d?.string(forKey: "watchWeek")?.data(using: .utf8))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] } ?? []
+        var last = cal.startOfDay(for: now)
+        for i in 1...7 {
+            guard let midnight = cal.date(byAdding: .day, value: i, to: cal.startOfDay(for: now)) else { break }
+            let key = f.string(from: midnight)
+            guard let e = week.first(where: { ($0["date"] as? String) == key }) else { break }
+            entries.append(ComplicationEntry(date: midnight, day: (e["day"] as? String) ?? "",
+                                             short: (e["short"] as? String) ?? "", type: (e["type"] as? String) ?? "",
+                                             week: (e["week"] as? Int) ?? today.week, accentHex: today.accentHex))
+            last = midnight
+        }
+        let staleAt = cal.date(byAdding: .day, value: 1, to: last) ?? now.addingTimeInterval(86400)
+        entries.append(ComplicationEntry(date: staleAt, day: "", short: "", type: "", week: today.week, accentHex: today.accentHex))
+        completion(Timeline(entries: entries, policy: .after(staleAt.addingTimeInterval(60))))
     }
 }
 

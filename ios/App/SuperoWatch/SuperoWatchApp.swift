@@ -187,6 +187,10 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
     // The phone mirrors pushes over context + message, so the same payload
     // often lands twice — skip the repeat (WidgetCenter reloads are budgeted).
     private var lastIngestSig = ""
+    // The next days' plans (pages from 20260923-5). When a new day starts and
+    // the phone app has not run, the wrist rolls over to that day's plan by
+    // itself instead of showing yesterday's session as stale.
+    private(set) var weekPlans: [WatchPlan] = []
 
     override init() {
         super.init()
@@ -195,6 +199,11 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             plan = p
             ThemeStore.shared.theme = p.theme ?? .lime
         }
+        if let wd = UserDefaults.standard.data(forKey: "weekPlans"),
+           let wk = try? JSONDecoder().decode([WatchPlan].self, from: wd) {
+            weekPlans = wk
+        }
+        rolloverIfNeeded()
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -207,7 +216,8 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
             if !context.isEmpty { wchLog.error("ingest: payload had no decodable plan") }
             return
         }
-        let sig = json + "|" + ((context["live"] as? String) ?? "")
+        let weekJson = (context["week"] as? String) ?? ""
+        let sig = json + "|" + ((context["live"] as? String) ?? "") + "|" + weekJson
         if sig == lastIngestSig { return }
         lastIngestSig = sig
         wchLog.info("ingest: plan \(p.dayName, privacy: .public)/\(p.type, privacy: .public) wk\(p.week) (live: \(context["live"] != nil))")
@@ -217,28 +227,70 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
            let l = try? JSONDecoder().decode(LiveSession.self, from: ld) {
             liveSession = l
         }
+        var week: [WatchPlan]? = nil
+        if !weekJson.isEmpty, let wd = weekJson.data(using: .utf8) {
+            week = try? JSONDecoder().decode([WatchPlan].self, from: wd)
+        }
         DispatchQueue.main.async {
             ThemeStore.shared.theme = p.theme ?? .lime
             self.plan = p
             self.live = liveSession
             UserDefaults.standard.set(data, forKey: "lastPlan")
-            // Mirror into the App Group for the watch-face complication.
-            if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
-                // No programme: the face falls to its 'Open to sync' state
-                // instead of 'No plan day' with the default cadence's glyph.
-                let faceDay = (p.hasPlan == false || p.type == "none") ? "" : p.dayName
-                shared.set(faceDay, forKey: "watchPlanDay")
-                shared.set(faceDay.isEmpty ? "" : (p.short ?? p.dayName), forKey: "watchPlanShort")
-                shared.set(p.type, forKey: "watchPlanType")
-                shared.set(p.week, forKey: "watchPlanWeek")
-                // The face shows this plan only on the day it was built for.
-                if let d = p.date { shared.set(d, forKey: "watchPlanDate") } else { shared.removeObject(forKey: "watchPlanDate") }
-                // The complication follows the phone's theme too.
-                let t = p.theme ?? .lime
-                shared.set(t.accent, forKey: "watchThemeAccent")
-                shared.set(t.earned, forKey: "watchThemeEarned")
+            if let week = week {
+                self.weekPlans = week
+                if let wd = try? JSONEncoder().encode(week) { UserDefaults.standard.set(wd, forKey: "weekPlans") }
             }
+            self.mirrorToFace(p)
             WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    // Today's plan from the stored week, when the one on the wrist is from
+    // another day. Keeps the room's theme (week entries omit it). Called at
+    // launch and every time the wrist is raised.
+    func rolloverIfNeeded() {
+        guard let cur = plan, planIsStale(cur) else { return }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let today = f.string(from: Date())
+        guard let next = weekPlans.first(where: { $0.date == today }) else { return }
+        let p = WatchPlan(week: next.week, date: next.date, dayName: next.dayName, type: next.type,
+                          exercises: next.exercises, hasPlan: next.hasPlan, theme: next.theme ?? cur.theme,
+                          slot: next.slot, short: next.short)
+        wchLog.info("rollover: \(cur.date ?? "?", privacy: .public) → \(today, privacy: .public) \(p.dayName, privacy: .public)")
+        plan = p
+        if let data = try? JSONEncoder().encode(p) { UserDefaults.standard.set(data, forKey: "lastPlan") }
+        mirrorToFace(p)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // Mirror into the App Group for the watch-face complication: today's plan
+    // and the days after it, so the face changes day at midnight by itself.
+    private func mirrorToFace(_ p: WatchPlan) {
+        if let shared = UserDefaults(suiteName: "group.app.kt.trainer") {
+            // No programme: the face falls to its 'Open to sync' state
+            // instead of 'No plan day' with the default cadence's glyph.
+            let faceDay = (p.hasPlan == false || p.type == "none") ? "" : p.dayName
+            shared.set(faceDay, forKey: "watchPlanDay")
+            shared.set(faceDay.isEmpty ? "" : (p.short ?? p.dayName), forKey: "watchPlanShort")
+            shared.set(p.type, forKey: "watchPlanType")
+            shared.set(p.week, forKey: "watchPlanWeek")
+            // The face shows this plan only on the day it was built for.
+            if let d = p.date { shared.set(d, forKey: "watchPlanDate") } else { shared.removeObject(forKey: "watchPlanDate") }
+            // The complication follows the phone's theme too.
+            let t = p.theme ?? ThemeStore.shared.theme
+            shared.set(t.accent, forKey: "watchThemeAccent")
+            shared.set(t.earned, forKey: "watchThemeEarned")
+            let days: [[String: Any]] = weekPlans.compactMap { d in
+                guard let date = d.date else { return nil }
+                let none = d.hasPlan == false || d.type == "none"
+                return ["date": date, "day": none ? "" : d.dayName,
+                        "short": none ? "" : (d.short ?? d.dayName), "type": d.type, "week": d.week]
+            }
+            if let jd = try? JSONSerialization.data(withJSONObject: days), let js = String(data: jd, encoding: .utf8) {
+                shared.set(js, forKey: "watchWeek")
+            }
         }
     }
 
@@ -848,6 +900,9 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { phase in
             guard phase == .active else { return }
+            // A new day since the last plan: take it from the stored week
+            // before asking the phone (which may be asleep or out of range).
+            conn.rolloverIfNeeded()
             // Raising the wrist re-pulls the plan and re-broadcasts any
             // in-progress wrist session to the phone.
             conn.requestRefresh()

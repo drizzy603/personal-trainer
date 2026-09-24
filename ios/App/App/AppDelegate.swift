@@ -61,7 +61,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let state = TrovoTimerAttributes.ContentState(
             endDate:    Date().addingTimeInterval(TimeInterval(seconds)),
             nextSet:    nextSet,
-            totalSets:  totalSets
+            totalSets:  totalSets,
+            detail:     info["detail"] as? String
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(TimeInterval(seconds) + 5))
         do {

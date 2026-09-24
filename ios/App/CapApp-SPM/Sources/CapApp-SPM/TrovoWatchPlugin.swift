@@ -43,6 +43,11 @@ public class TrovoWatchPlugin: CAPPlugin, CAPBridgedPlugin {
         if let live = call.getString("live"), !live.isEmpty {
             context["live"] = live
         }
+        // The next days' plans (pages from 20260923-5); watches before build
+        // 53 ignore the key.
+        if let week = call.getString("week"), !week.isEmpty {
+            context["week"] = week
+        }
         let r = hub.push(context: context)
         if let reason = r.reason { call.resolve(["sent": r.sent, "reason": reason]) }
         else { call.resolve(["sent": r.sent]) }

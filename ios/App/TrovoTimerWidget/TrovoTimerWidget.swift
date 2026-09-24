@@ -93,9 +93,17 @@ struct TrovoTimerLiveActivity: Widget {
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    VStack(spacing: 2) {
+                        Text("SET \(context.state.nextSet) OF \(context.state.totalSets)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        if let detail = context.state.detail {
+                            Text("Next: \(detail)")
+                                .font(.system(size: 14, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
                 }
             } compactLeading: {
                 Image(systemName: "dumbbell.fill")
@@ -119,20 +127,34 @@ struct LockScreenView: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("REST")
+                // With a detail line the set count moves up into the eyebrow,
+                // so the Lock Screen still reads in three lines.
+                Text(context.state.detail == nil ? "REST" : "REST · SET \(context.state.nextSet) OF \(context.state.totalSets)")
                     .font(.system(size: 9, weight: .heavy, design: .monospaced))
                     .kerning(1.0)
                     .foregroundColor(dimOnDark)
+                    .lineLimit(1)
+                // Wraps rather than shrinks: with two shrinkable lines SwiftUI
+                // scaled the name down whenever the detail line was present.
                 Text(context.attributes.exerciseName)
                     .font(.system(size: 17, weight: .heavy))
                     .foregroundColor(.white)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                Text("NEXT · SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .kerning(0.5)
-                    .foregroundColor(dimOnDark)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = context.state.detail {
+                    // The next set, so the phone need not be unlocked between sets.
+                    Text("Next: \(detail)")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                } else {
+                    Text("NEXT · SET \(context.state.nextSet) OF \(context.state.totalSets)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .kerning(0.5)
+                        .foregroundColor(dimOnDark)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             // 124 pt holds "1:17" at 46 pt with room to spare; "10:00" scales.

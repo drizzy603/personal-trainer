@@ -18,16 +18,14 @@ public class TrovoTimerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Missing parameters")
             return
         }
-        NotificationCenter.default.post(
-            name: Notification.Name("TrovoTimerStart"),
-            object: nil,
-            userInfo: [
-                "exerciseName": exerciseName,
-                "seconds":      seconds,
-                "nextSet":      nextSet,
-                "totalSets":    totalSets,
-            ]
-        )
+        var info: [String: Any] = [
+            "exerciseName": exerciseName,
+            "seconds":      seconds,
+            "nextSet":      nextSet,
+            "totalSets":    totalSets,
+        ]
+        if let detail = call.getString("detail"), !detail.isEmpty { info["detail"] = detail }
+        NotificationCenter.default.post(name: Notification.Name("TrovoTimerStart"), object: nil, userInfo: info)
         call.resolve()
     }
 
