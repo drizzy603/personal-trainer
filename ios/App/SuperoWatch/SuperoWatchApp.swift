@@ -168,6 +168,7 @@ struct LiveSession: Codable, Equatable {
     let discarded: Bool?        // the phone threw the session away: drop the wrist's copy too
     let own: [String: Double]?  // exercise → ms of an undo/edit on the phone: its log is the truth
     let wlog: [String: [Double]]?  // per-set weights, so finishing here keeps a top-set/back-off day
+    let rlog: [String: [Int]]?     // per-set RPE (pages from 20260923-4)
     let lastAt: Double?         // ms of the phone's last set/edit (pages from 20260923-1); a draft resumed hours later is still live
     var setsDone: Int { reps.values.reduce(0) { $0 + $1.count } }
     var isFresh: Bool { Date().timeIntervalSince1970 - max(startedAt, lastAt ?? 0) / 1000 < 6 * 3600 }
@@ -448,8 +449,12 @@ final class Runner: ObservableObject {
     // old tick-counted clock. Wrist-raise now derives from this date.
     @Published var restEndsAt: Date? = nil
     // Chosen RPE per exercise — without it, drained wrist sessions carried
-    // rpe:'' and could never earn the +5 lb progression banner.
+    // rpe:'' and could never earn the +5 lb progression banner. Now only the
+    // stepper's starting value; the record is rpeLog.
     var rpes: [String: Int] = [:] { didSet { persist() } }
+    // RPE per logged set, parallel to repsDone. One number per exercise used
+    // to stamp the LAST set's effort on every set — a 7-7-9 top set read 9-9-9.
+    var rpeLog: [String: [Int]] = [:] { didSet { persist() } }
     // The session these sets belong to. Set at the first logged (or adopted)
     // set and kept until Finish, New session or reset: the phone's plan is
     // TODAY's, and a phone reopened mid-workout on another day's plan (today's
@@ -509,7 +514,7 @@ final class Runner: ObservableObject {
         let d = UserDefaults.standard
         if repsDone.values.allSatisfy({ $0.isEmpty }) { d.removeObject(forKey: Self.stateKey); return }
         var obj: [String: Any] = ["repsDone": repsDone, "weights": weights, "weightLog": weightLog,
-                                  "rpes": rpes, "startedAt": startedAt, "setAt": setAt, "acked": acked,
+                                  "rpes": rpes, "rpeLog": rpeLog, "startedAt": startedAt, "setAt": setAt, "acked": acked,
                                   "savedAt": Date().timeIntervalSince1970 * 1000]
         if let p = sessionPlan, let pd = try? JSONEncoder().encode(p), let ps = String(data: pd, encoding: .utf8) {
             obj["sessionPlan"] = ps
@@ -538,6 +543,7 @@ final class Runner: ObservableObject {
         weights = (obj["weights"] as? [String: Double]) ?? [:]
         weightLog = (obj["weightLog"] as? [String: [Double]]) ?? [:]
         rpes = (obj["rpes"] as? [String: Int]) ?? [:]
+        rpeLog = (obj["rpeLog"] as? [String: [Int]]) ?? [:]
         startedAt = (obj["startedAt"] as? Double) ?? 0
         setAt = (obj["setAt"] as? [String: Double]) ?? [:]
         if let ps = obj["sessionPlan"] as? String, let pd = ps.data(using: .utf8) {
@@ -550,7 +556,22 @@ final class Runner: ObservableObject {
     func done(_ ex: WatchExercise) -> Int { repsDone[ex.name]?.count ?? 0 }
     func isComplete(_ ex: WatchExercise) -> Bool { done(ex) >= ex.sets }
 
-    func logSet(_ ex: WatchExercise, reps: Int) {
+    // RPE a set gets when nothing was chosen: the exercise's last pick, then
+    // the programme's target, then 7 (the phone's default).
+    func defaultRpe(_ name: String, target: Int? = nil) -> Int {
+        if let r = rpes[name] { return r }
+        if let t = target, (5...10).contains(t) { return t }
+        return 7
+    }
+    // The RPE log padded or trimmed to the rep log's length.
+    func alignedRpe(_ name: String, count: Int, target: Int? = nil) -> [Int] {
+        var rl = Array((rpeLog[name] ?? []).prefix(count))
+        let fill = rl.last ?? defaultRpe(name, target: target)
+        while rl.count < count { rl.append(fill) }
+        return rl
+    }
+
+    func logSet(_ ex: WatchExercise, reps: Int, rpe: Int? = nil) {
         WorkoutManager.shared.start()   // no-op while a session is already live
         WorkoutManager.shared.touch()   // each set resets the abandonment clock
         if startedAt == 0 { startedAt = Date().timeIntervalSince1970 * 1000 }
@@ -564,6 +585,11 @@ final class Runner: ObservableObject {
         while wl.count < arr.count - 1 { wl.append(weight(for: ex)) }   // sets merged from the phone
         wl.append(weight(for: ex))
         weightLog[ex.name] = wl
+        let effort = rpe ?? defaultRpe(ex.name, target: ex.rpe)
+        rpes[ex.name] = effort
+        var rl = alignedRpe(ex.name, count: arr.count - 1, target: ex.rpe)   // sets merged from the phone
+        rl.append(effort)
+        rpeLog[ex.name] = rl
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
         pushLive()
@@ -585,6 +611,7 @@ final class Runner: ObservableObject {
             "startedAt": startedAt > 0 ? startedAt : Date().timeIntervalSince1970 * 1000,
             "reps": repsDone,
             "weights": weights,
+            "rlog": rpeLog,
             "at": setAt,
             "ack": acked,
             "hk": WorkoutManager.shared.active,   // the phone skips its own Health write when the wrist runs the workout
@@ -639,8 +666,11 @@ final class Runner: ObservableObject {
             var wl = weightLog[ex.name] ?? []
             while wl.count < reps.count { wl.append(weight(for: ex)) }
             if wl.count > reps.count { wl = Array(wl.prefix(reps.count)) }
+            // Per-set RPE, plus the rounded mean for phones that read one number.
+            let rl = alignedRpe(ex.name, count: reps.count, target: ex.rpe)
+            let mean = Int((Double(rl.reduce(0, +)) / Double(max(1, rl.count))).rounded())
             return ["name": ex.name, "weight": wl.max() ?? weight(for: ex), "reps": reps,
-                    "weightLog": wl, "rpe": rpes[ex.name] ?? 0]
+                    "weightLog": wl, "rpe": mean, "rpeLog": rl]
         }
         guard !exs.isEmpty else { return }
         Connectivity.shared.sendSession(dayName: plan.dayName, slot: plan.slot, exercises: exs, startedAt: startedAt)
@@ -655,7 +685,7 @@ final class Runner: ObservableObject {
     }
 
     private func clearSession() {
-        repsDone = [:]; weights = [:]; weightLog = [:]; rpes = [:]; setAt = [:]; acked = [:]
+        repsDone = [:]; weights = [:]; weightLog = [:]; rpes = [:]; rpeLog = [:]; setAt = [:]; acked = [:]
         sessionPlan = nil; resting = false
         startedAt = 0; restoredAt = 0
         timer?.invalidate()
@@ -718,6 +748,7 @@ final class Runner: ObservableObject {
         if weights.keys.contains(where: { !keep($0) }) { weights = weights.filter { keep($0.key) } }
         if weightLog.keys.contains(where: { !keep($0) }) { weightLog = weightLog.filter { keep($0.key) } }
         if rpes.keys.contains(where: { !keep($0) }) { rpes = rpes.filter { keep($0.key) } }
+        if rpeLog.keys.contains(where: { !keep($0) }) { rpeLog = rpeLog.filter { keep($0.key) } }
     }
 
     // Live mirror: merge phone runner state into the wrist session. Monotone
@@ -749,6 +780,13 @@ final class Runner: ObservableObject {
                     let fill = (live.weights[name] ?? weights[name]) ?? 0
                     while wl.count < arr.count { wl.append(fill) }
                     weightLog[name] = wl
+                }
+                if let rl = live.rlog?[name], rl.count == arr.count {
+                    rpeLog[name] = rl
+                } else {
+                    // Older pages send no per-set RPE: keep ours for the sets
+                    // both sides have, pad the adopted ones.
+                    rpeLog[name] = alignedRpe(name, count: arr.count)
                 }
                 if phoneEdit, let stamp = live.own?[name] { setAt[name] = stamp; acked[name] = stamp }
                 changed = true
@@ -1044,8 +1082,7 @@ struct ExerciseView: View {
                             .foregroundColor(.secondary)
                     }
                     Button {
-                        runner.rpes[ex.name] = rpe
-                        runner.logSet(ex, reps: reps)
+                        runner.logSet(ex, reps: reps, rpe: rpe)
                         if runner.isComplete(ex) { dismiss() }
                     } label: {
                         Text(runner.isComplete(ex) ? "Done ✓" : "Log set")
