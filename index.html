@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260923-5"/>
+<meta name="build" content="20260923-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -735,6 +735,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 /* Ad-hoc session picker — appears below the GO-TO CTA on non-lift days
    so the user can train off-schedule. */
 .kt-adhoc-row{margin:-12px 0 24px;}
+.kt-empty-contract + .kt-adhoc-row{margin-top:14px;}
 .kt-adhoc-lbl{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.12em;margin-bottom:8px;}
 .kt-adhoc-pills{display:flex;flex-wrap:wrap;gap:8px;}
 .kt-adhoc-pill{background:transparent;border:1px solid var(--border);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;letter-spacing:-.1px;}
@@ -1036,7 +1037,12 @@ button:active{transform:scale(.97);}
 /* M-10 milestone-tick — one 1.06 pulse on a numeral crossing a threshold. */
 @keyframes ktTickPulse{0%{transform:scale(1);}50%{transform:scale(1.06);}100%{transform:scale(1);}}
 .kt-milestone-tick{animation:ktTickPulse var(--t-swap) var(--ease-spring);}
-.kt-done{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;}
+.kt-done{display:flex;flex-direction:column;flex:1;min-height:0;gap:10px;}
+/* Centred while it fits (auto margins), scrolls when it doesn't; the foot never clips. */
+.kt-done-scroll{flex:1;min-height:0;width:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;align-items:center;gap:16px;}
+.kt-done-scroll>:first-child{margin-top:auto;}
+.kt-done-scroll>:last-child{margin-bottom:auto;}
+.kt-done-foot{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;}
 .kt-done-check{font-size:64px;font-weight:600;letter-spacing:-2px;line-height:1;}
 /* COMPLETE sheet (board H-04): summary quartet, PR rows, one coach line. */
 .kt-cmp-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent-ink);margin:14px 0 8px;}
@@ -5088,13 +5094,17 @@ function _restDayCTA(){
   var DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   if(!_programmeStarted()){
     var ps=_preStartInfo();
-    return '<button class="kt-cta" onclick="openProgrammeModal()">'+
+    // Same wrapper as the normal return: without it the glance tiles' negative
+    // margin slid over the 'MONDAY · DAY 1' line.
+    return '<div class="kt-rest-cta">'+
+      '<button class="kt-cta" onclick="openProgrammeModal()">'+
         '<div style="text-align:left;"><div class="kt-cta-label">'+(ps.days===1?'TOMORROW':'IN '+ps.days+' DAYS')+'</div>'+
         '<div class="kt-cta-title">Preview week 1</div></div>'+
         '<div class="kt-cta-arrow">\u2192</div></button>'+
       (((new Date().getDay()+6)%7)===6 ? '' :   // on a Sunday "today" would be a one-day week 1; tomorrow IS the start
         '<button class="btn btn-ghost btn-full" style="margin-top:8px;padding:11px;font-size:13px;" onclick="startProgrammeNow()">Start week 1 today instead</button>')+
-      (ps.label?'<div class="kt-marquee-reps" style="margin-top:10px;">MONDAY \u00b7 DAY 1 \u00b7 '+_esc(String(ps.label).toUpperCase())+'</div>':'');
+      (ps.label?'<div class="kt-marquee-reps" style="margin-top:10px;">MONDAY \u00b7 DAY 1 \u00b7 '+_esc(String(ps.label).toUpperCase())+'</div>':'')+
+      '</div>';
   }
   var _actU=null; try{ _actU=getTodayActivity(); }catch(e){}
   if(_actU && _actU.unknown){
@@ -8746,9 +8756,11 @@ function _renderRunnerIdleBody(ex, next){
   return '<div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;">'+
     '<div style="min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;">'+
       lastBlock+
-      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'+
-        '<div class="kt-r-card-name" style="flex:1;">'+_esc(ex.name)+'</div>'+
-        '<div style="display:flex;gap:7px;flex-shrink:0;margin-top:5px;">'+
+      // Wraps: a name wider than the space beside the buttons (OVERHEAD in
+      // Anton) used to push Cues/Edit past the card edge; now they drop below.
+      '<div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px;">'+
+        '<div class="kt-r-card-name" style="flex:1 1 160px;">'+_esc(ex.name)+'</div>'+
+        '<div style="display:flex;gap:7px;flex-shrink:0;margin-top:5px;margin-left:auto;">'+
           '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerCueSheet()" style="padding:8px 13px;font-size:12px;">Cues</button>'+
           '<button class="kt-r-mini-btn" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')" style="padding:8px 13px;font-size:12px;">Edit</button>'+
         '</div>'+
@@ -9127,19 +9139,25 @@ function _renderRunnerDoneBody(ex, isLast){
       '<div class="kt-pr-hero" style="font-size:clamp(36px,13vw,48px);">'+wDisp(_runnerPrBeat.w)+' × '+_runnerPrBeat.r+'</div>'+
     '</div>';
   }
+  // The middle scrolls and the next action stays pinned: with a PR beat and
+  // four ledger rows the card clipped 'Next exercise →' at its bottom edge.
   return '<div class="kt-done">'+
-    '<div class="kt-done-check">✓</div>'+
-    '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
-    '<div class="kt-done-meta">'+_esc((runnerCompleted[ex.name]||ex.sets)+'/'+ex.sets+' SETS LOGGED')+'</div>'+
-    beatHTML+
-    _renderCompletedSets(ex)+
-    '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'+
-      '<button class="kt-done-more" onclick="event.stopPropagation();runnerExtraSet()">+1 set</button>'+
-      '<button class="kt-done-more" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit exercise</button>'+
+    '<div class="kt-done-scroll">'+
+      '<div class="kt-done-check">✓</div>'+
+      '<div class="kt-done-name">'+_esc(ex.name)+'</div>'+
+      '<div class="kt-done-meta">'+_esc((runnerCompleted[ex.name]||ex.sets)+'/'+ex.sets+' SETS LOGGED')+'</div>'+
+      beatHTML+
+      _renderCompletedSets(ex)+
+      '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'+
+        '<button class="kt-done-more" onclick="event.stopPropagation();runnerExtraSet()">+1 set</button>'+
+        '<button class="kt-done-more" onclick="event.stopPropagation();openRunnerExEdit('+runnerExIdx+')">Edit exercise</button>'+
+      '</div>'+
+      dateField+
     '</div>'+
-    dateField+
-    '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
-    nextPreview+
+    '<div class="kt-done-foot">'+
+      '<button class="kt-done-btn" onclick="event.stopPropagation();'+onclick+'">'+label+'</button>'+
+      nextPreview+
+    '</div>'+
     '</div>';
 }
 // ── Runner Exercise Edit Sheet ─────────────────────────────────────────────────
@@ -9182,8 +9200,10 @@ function closeRunnerExEdit(){
   var el=document.getElementById('runner-ex-edit-modal'); if(el) el.remove();
   runnerExEditIdx=null;
 }
+// Three steppers need ~440px and the sheet gives 350: each takes 140 and the
+// row wraps, so Weight drops under Sets and Reps instead of running off-screen.
 function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
-  return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
+  return '<div style="flex:1 1 140px;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
     '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;">'+label+'</div>'+
     '<div style="display:flex;align-items:center;gap:5px;">'+
       '<button onclick="event.stopPropagation();'+stepFn+'(-'+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">−</button>'+
@@ -9204,7 +9224,7 @@ function _buildRunnerSSPickerHTML(){
     '</button>';
   });
   var noneOn=!_rExEditSSWith;
-  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
+  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px) + 28px);">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
       '<div style="font-size:17px;font-weight:800;">Superset with</div>'+
       '<button onclick="event.stopPropagation();runnerExEditBackFromSS()" style="border:1px solid var(--border);background:var(--card2);color:var(--muted);border-radius:12px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Back</button>'+
@@ -9236,7 +9256,7 @@ function _buildRunnerExEditHTML(){
   if(_rExSSPicking) return _buildRunnerSSPickerHTML();
   var exEntry=getAllExercises().find(function(e){return e.name===_rExEditName;});
   var cat=exEntry?exEntry.cat:'';
-  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px)+28px);">'+
+  return '<div style="padding:24px 20px calc(env(safe-area-inset-bottom,0px) + 28px);">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">'+
       '<div style="font-size:17px;font-weight:800;">Edit Exercise</div>'+
       '<button onclick="closeRunnerExEdit()" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card2);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">✕</button>'+
@@ -9251,7 +9271,7 @@ function _buildRunnerExEditHTML(){
         '<span style="color:var(--accent);font-weight:700;font-size:14px;flex-shrink:0;margin-left:8px;">Change ›</span>'+
       '</button>'+
     '</div>'+
-    '<div style="display:flex;gap:10px;margin-bottom:24px;">'+
+    '<div style="display:flex;flex-wrap:wrap;gap:14px 10px;justify-content:center;margin-bottom:24px;">'+
       _runnerExStepHTML('runner-ex-sets-input','Sets',_rExEditSets,'runnerExEditStepSets','runnerExEditSetSets',1)+
       _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
       _runnerExStepHTML('runner-ex-weight-input','Weight · '+_uW(),wDisp(_rExEditWeight),'runnerExEditStepWeight','runnerExEditSetWeight',(_uW()==='kg'?1.25:2.5))+
@@ -9458,7 +9478,7 @@ function _buildRunnerExPickerHTML(){
       ' onclick="event.stopPropagation();this.select()"'+
       ' style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;font-family:inherit;box-sizing:border-box;outline:none;-webkit-appearance:none;"/>'+
   '</div>'+
-  '<div id="runner-ex-picker-list" style="overflow-y:auto;padding:8px 12px calc(env(safe-area-inset-bottom,0px)+16px);flex:1;min-height:0;-webkit-overflow-scrolling:touch;">'+
+  '<div id="runner-ex-picker-list" style="overflow-y:auto;padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 16px);flex:1;min-height:0;-webkit-overflow-scrolling:touch;">'+
     _buildExPickerItems(runnerExPickerQ)+
   '</div>';
 }
@@ -12119,7 +12139,7 @@ function renderProgress() {
       '</div>'+
       '<div class="kt-empty-contract">'+
         '<div class="kt-empty-contract-lbl">AFTER YOUR FIRST PR</div>'+
-        '<div class="kt-empty-contract-body"><b>Records ledger, in <span style="color:var(--yellow);">gold</span></b></div>'+
+        '<div class="kt-empty-contract-body"><b>Records ledger, each one marked <span style="color:var(--earned-ink);">PR</span></b></div>'+
       '</div>'+
       (hasPlan
         ?''
@@ -17304,7 +17324,7 @@ function scheduleRestNotification(ex, nextSet, seconds){
 function _restAlertsOfferHTML(){
   if(!isNativeIOS() || !_plug('LocalNotifications') || localStorage.getItem('kt_notif_asked')==='1') return '';
   return '<div id="kt-ov-notif" class="kt-ov-focus" style="align-items:center;margin-top:12px;">'+
-    '<div style="flex:1;min-width:0;"><span class="kt-ov-focus-lbl">REST ALERTS</span>A buzz when each rest ends, even with the screen off.</div>'+
+    '<div style="flex:1;min-width:0;"><span class="kt-ov-focus-lbl" style="display:block;margin-bottom:3px;">REST ALERTS</span>A buzz when each rest ends, even with the screen off.</div>'+
     '<button class="btn btn-ghost" style="padding:8px 12px;font-size:12px;flex-shrink:0;" onclick="_skipRestAlerts()">Not now</button>'+
     '<button class="btn btn-primary" style="padding:8px 12px;font-size:12px;flex-shrink:0;" onclick="_askRestAlerts()">Allow</button>'+
   '</div>';
@@ -18180,7 +18200,7 @@ window._trovoOpen=_handleDeepLink;
       <div class="ed-steps">
         <div class="ed-step">
           <div class="ed-step-rail"><div class="ed-step-num">1</div><div class="ed-step-line"></div></div>
-          <div class="ed-step-body"><h3>Start intake</h3><p>Five taps build a starter block on your phone \u2014 no account, no key. Or the Coach asks ten questions (goals, frequency, equipment, injuries, current strength) and writes a fully custom plan.</p></div>
+          <div class="ed-step-body"><h3>Start intake</h3><p>Five taps build a starter block on your phone &mdash; no account, no key. Or the Coach asks ten questions (goals, frequency, equipment, injuries, current strength) and writes a fully custom plan.</p></div>
         </div>
         <div class="ed-step">
           <div class="ed-step-rail"><div class="ed-step-num">2</div><div class="ed-step-line"></div></div>
