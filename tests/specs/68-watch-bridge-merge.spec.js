@@ -10,6 +10,9 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
     const out = await app.page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const r = {};
+      // 'A few minutes ago', but never before 00:01 today: sessions file by their start, so a run
+      // just after midnight would otherwise land on yesterday and miss the today-based lookups.
+      const recent = m => Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - m * 60000);
       const W = Capacitor.Plugins.TrovoWatch;
       let cleared = 0, pending = [], ctx = null;
       W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
@@ -55,7 +58,7 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
 
       // C. a finished session is not re-announced as live; a new one is
       const liveOld = {}; liveOld[A] = [8];
-      _onWatchLive({ dayName: pushName, slot: 'Push', startedAt: Date.now() - 3600 * 1000, reps: liveOld, weights: {} });
+      _onWatchLive({ dayName: pushName, slot: 'Push', startedAt: recent(60), reps: liveOld, weights: {} });
       r.ghost = _watchLive;
       _onWatchLive({ dayName: pushName, slot: 'Push', startedAt: Date.now() + 10, reps: liveOld, weights: {} });
       r.fresh = _watchLive && _watchLive.dayName;
@@ -63,7 +66,7 @@ run('watch bridge: undo sticks, merges instead of drops, ended/discard reach the
 
       // D. the drain merges into the logged session; draining it again changes nothing
       // started before the phone finished, so it is a copy of the same session (one begun after would be its own record)
-      const wristSess = JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+      const wristSess = JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date(recent(5)).toISOString(),
         exercises: [{ name: 'Wrist Curl', reps: [12, 12, 12], weight: 30 }, { name: A, reps: [1, 1, 1, 1], weight: 10 }, { name: 'New Lift', reps: [5], weight: 50 }] });
       pending = [wristSess]; cleared = 0;
       drainWatchSessions(); await wait(300);

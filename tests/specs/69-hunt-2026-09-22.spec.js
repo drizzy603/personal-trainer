@@ -14,6 +14,9 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
     const out = await app.page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const r = {};
+      // 'A few minutes ago', but never before 00:01 today: sessions file by their start, so a run
+      // just after midnight would otherwise land on yesterday and miss the today-based lookups.
+      const recent = m => Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - m * 60000);
       const W = Capacitor.Plugins.TrovoWatch;
       let cleared = [], pending = [], ctx = null, pushes = [];
       W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
@@ -30,7 +33,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       runnerRepsLog[A] = [8, 8, 8]; runnerWeightsLog[A] = [100, 100, 100]; runnerCompleted[A] = 3;
       _flushRunnerDraft();
       runnerOpen = false; runnerResumePending = true;   // cold launch: draft restored, runner closed
-      pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: isoOf(Date.now() - 20 * 60000), loggedAt: isoOf(Date.now()),
+      pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: isoOf(recent(20)), loggedAt: isoOf(Date.now()),
         exercises: [{ name: 'Overhead Press', reps: [10, 10], weight: 60 }] })];
       drainWatchSessions(); await wait(300);
       const recA = getSessions().filter(x => x.date === today && x.type === 'Push');
@@ -40,7 +43,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       // ── B. a second Push in the evening is its own record; the same session merges ──
       lsSet('kt_sessions', [{ id: Date.now() - 3 * 3600000, date: today, type: 'Push', label: pushName, week: currentWeek, note: '', prs: [],
         startedAt: Date.now() - 4 * 3600000, exercises: [{ name: A, sets: 3, reps: [8, 8, 8], weight: 100, weightLog: [100, 100, 100] }] }]);
-      const eveStart = isoOf(Date.now() - 20 * 60000);
+      const eveStart = isoOf(recent(20));
       pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: eveStart, loggedAt: isoOf(Date.now()),
         exercises: [{ name: A, reps: [8, 8, 8], weight: 105 }, { name: 'Curl', reps: [12], weight: 30 }] })];
       drainWatchSessions(); await wait(300);
@@ -57,7 +60,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       const cr = getCustomRoutine(); cr.weekPlan = ['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']; (cr.weeks || []).forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr);
       lsSet('kt_sessions', []);
       const pullMain = getSessionExercises('Pull').filter(e => e.isMain).map(e => e.name);
-      pending = [JSON.stringify({ dayName: pullName, slot: 'Pull', startedAt: isoOf(Date.now() - 30 * 60000), loggedAt: isoOf(Date.now()),
+      pending = [JSON.stringify({ dayName: pullName, slot: 'Pull', startedAt: isoOf(recent(30)), loggedAt: isoOf(Date.now()),
         exercises: pullMain.slice(0, 1).map(n => ({ name: n, reps: [5, 5], weight: 200 })) })];
       drainWatchSessions(); await wait(300);
       const recC = getSessions()[0];
@@ -104,7 +107,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       r.bannerFiled = _watchLive;
       // a manual entry logged during a live wrist session does not hide it
       const sm = getSessions(); sm.unshift({ id: Date.now() + 1, date: today, type: 'Pull', label: pullName, week: currentWeek, note: '', prs: [], exercises: [{ name: 'Row', sets: 1, reps: [8], weight: 50 }] }); lsSet('kt_sessions', sm);
-      _onWatchLive({ dayName: pullName, slot: 'Pull', startedAt: Date.now() - 30 * 60000, reps: { Row: [8] }, weights: {} });
+      _onWatchLive({ dayName: pullName, slot: 'Pull', startedAt: recent(30), reps: { Row: [8] }, weights: {} });
       r.bannerManual = _watchLive && _watchLive.dayName;
       _watchLive = null;
 
@@ -185,7 +188,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
 
       // ── N. a failed drain save leaves PRs and weights untouched; the retry awards the PR ──
       lsSet('kt_sessions', []); lsSet('kt_prs', { 'Squat': 100 }); lsSet('kt_weights', { 'Squat': 100 });
-      pending = [JSON.stringify({ dayName: pullName, slot: 'Pull', startedAt: isoOf(Date.now() - 30 * 60000), loggedAt: isoOf(Date.now()), exercises: [{ name: 'Squat', reps: [5], weight: 140 }] })];
+      pending = [JSON.stringify({ dayName: pullName, slot: 'Pull', startedAt: isoOf(recent(30)), loggedAt: isoOf(Date.now()), exercises: [{ name: 'Squat', reps: [5], weight: 140 }] })];
       cleared = [];
       block('kt_sessions');
       drainWatchSessions(); await wait(300);

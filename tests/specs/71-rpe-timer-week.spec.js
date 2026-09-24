@@ -19,11 +19,14 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
       const today = todayISO(), pushName = _dayLabel('Push');
 
       // ── A. the drain keeps the wrist's per-set RPE; rpe stays the mean ──
-      pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date(Date.now() - 30 * 60000).toISOString(), loggedAt: new Date().toISOString(),
+      // Filed by its START: find it on that date, not today (a run just after midnight files yesterday).
+      const stMs = Date.now() - 30 * 60000, stD = new Date(stMs);
+      const stISO = stD.getFullYear() + '-' + String(stD.getMonth() + 1).padStart(2, '0') + '-' + String(stD.getDate()).padStart(2, '0');
+      pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: new Date(stMs).toISOString(), loggedAt: new Date().toISOString(),
         exercises: [{ name: 'Bench Press', reps: [8, 8, 6], weight: 100, weightLog: [100, 100, 105], rpe: 8, rpeLog: [7, 8, 9] },
                     { name: 'Row', reps: [10], weight: 80, rpe: 7 }] })];
       drainWatchSessions(); await wait(300);
-      const rec = getSessions().find(x => x.date === today && x.type === 'Push');
+      const rec = getSessions().find(x => x.date === stISO && x.type === 'Push');
       r.drain = { bench: rec && rec.exercises.find(e => e.name === 'Bench Press'), row: rec && rec.exercises.find(e => e.name === 'Row') };
 
       // ── B. live mirror: phone RPE rides to the wrist; wrist RPE lands in the runner ──
