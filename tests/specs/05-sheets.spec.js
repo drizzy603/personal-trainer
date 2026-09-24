@@ -29,6 +29,7 @@ run('sheets share the R2 shell + grabber', async () => {
       probe('cfPicker', openCFMovePicker, 'cfPickerOverlay', closeCFMovePicker);
       probe('errLog', openErrorLogSheet, 'errLogOverlay', closeErrorLogSheet);
       probe('sportCatalog', openSportCatalogSheet, 'sportCatalogOverlay', closeSportCatalogSheet);
+      probe('compare', () => { switchTab('progress'); var s=getSessions(); cmpOn=true; cmpKind='lift'; cmpPicks=[String(s[0].id), String(s[3].id)]; openCompareSheet(); }, 'cmpSheetOverlay', () => { closeCompareSheet(); _cmpExit(); });
       return res;
     });
     for (const [name, r] of Object.entries(out)) {

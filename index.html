@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260923-6"/>
+<meta name="build" content="20260923-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1056,6 +1056,65 @@ button:active{transform:scale(.97);}
 .kt-cmp-badge{background:var(--earned);color:#0b0b0d;font-size:10px;font-weight:900;letter-spacing:.04em;border-radius:999px;padding:5px 9px;flex-shrink:0;}
 .kt-cmp-insight{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.5;margin-bottom:16px;}
 .kt-cmp-actions{display:flex;flex-direction:column;gap:8px;}
+/* Compare two logs (Activity Calendar, COMPARE): pick list, tray, then-to-now sheet.
+   Selection is neutral (--text), actions are --accent-ink, only a better
+   number is --earned-ink. No wash, no red, never --accent on a delta. */
+.kt-cal-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.kt-cal-hd h2{margin:0;}
+.kt-vs-btn{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);min-height:44px;padding:0 8px;margin:-10px -8px -10px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-vs-btn[aria-pressed="true"]{color:var(--text);}
+.cal-day{border-bottom:2px solid transparent;}
+.cal-day.today:not(.sel){border-bottom-color:var(--today,var(--accent));}
+.cal-day.sel{background:var(--sel,var(--accent));}
+.cal-n{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.cal-day.today .cal-n{font-weight:900;color:var(--today,var(--accent));}
+.cal-day.sel .cal-n{color:var(--sel-ink,var(--on-accent));}
+.cal-day.kt-vs-on{box-shadow:inset 0 0 0 2px var(--text);}
+#cmp-tray{margin-top:12px;}
+.kt-vs-tray{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--card2);border:1px solid var(--border);}
+.kt-vs-tray-main{flex:1;min-width:0;}
+.kt-vs-tray-t{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-vs-tray-s{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-vs-tray .btn{padding:8px 14px;font-size:13px;flex-shrink:0;}
+.kt-vs-seg{margin-bottom:10px;}
+.kt-vs-seg .kt-units-opt{flex:1;}
+.kt-vs-listhd{min-height:32px;}
+.kt-vs-link{background:none;border:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--accent-ink);min-height:44px;padding:0 4px;margin:-6px -4px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-vs-pick{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 0;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-vs-pick:disabled{opacity:.4;cursor:default;}
+.kt-vs-pick-dt{width:34px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;}
+.kt-vs-pick-dt .w{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);}
+.kt-vs-pick-dt .n{font-size:16px;font-weight:800;line-height:1.1;}
+.kt-vs-pick-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+.kt-vs-pick-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-vs-pick-meta{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
+.kt-vs-disc{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--muted);box-sizing:border-box;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:transparent;}
+.kt-vs-pick.on .kt-vs-disc{background:var(--text);border-color:var(--text);color:var(--bg);}
+.kt-vs-empty{font-size:13px;color:var(--muted);text-align:center;padding:14px 0;}
+.kt-vs-meta{font-size:12px;color:var(--muted);margin-top:4px;}
+#cmpSheetTitle:focus{outline:none;}
+.kt-vs-pair{display:grid;grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr);align-items:center;gap:6px;margin-bottom:4px;}
+.kt-vs-pair-ar{text-align:center;color:var(--muted);}
+.kt-vs-side{border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:0;}
+.kt-vs-side-d{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--muted);}
+.kt-vs-side-n{font-size:15px;font-weight:800;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-vs-side-m{font-size:11px;color:var(--muted);margin-top:2px;}
+.kt-vs-sec{margin:16px 0 2px;}
+.kt-vs-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px;padding:8px 0;border-bottom:1px solid var(--border);}
+.kt-vs-main{flex:1;min-width:0;}
+.kt-vs-k{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.kt-vs-name{font-size:15px;font-weight:700;overflow-wrap:anywhere;}
+.kt-vs-v{margin-top:3px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.kt-vs-v .a{font-size:14px;font-weight:600;color:var(--muted);}
+.kt-vs-v .ar{color:var(--muted);}
+.kt-vs-v .b{font-size:16px;font-weight:800;color:var(--text);}
+.kt-vs-v .u{font-size:12px;font-weight:600;color:var(--muted);}
+.kt-vs-v .none{color:var(--muted);font-weight:600;}
+.kt-vs-sub{font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;}
+.kt-vs-d{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0;text-align:right;}
+.kt-vs-d.up{color:var(--earned-ink);font-weight:800;}
+.kt-vs-pr{font-size:9px;font-weight:800;letter-spacing:.04em;color:var(--earned-ink);margin-left:4px;}
+.kt-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
 /* Pre-session overview (board H-17) */
 .kt-ov-list{border:1px solid var(--border);border-radius:14px;padding:4px 14px;background:var(--card2);}
 .kt-ov-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
@@ -1296,6 +1355,9 @@ html[data-room="dark"] .kt-day-chip.rest .kt-day-chip-t{color:var(--muted);}
 html[data-room="dark"] .kt-day-chip.editing{box-shadow:0 0 0 2px var(--text);}
 html[data-room="dark"] .kt-sched-pick.on,html[data-room="dark"] .kt-units-opt.on,html[data-room="dark"] .kt-rlog-pill.on,
 html[data-room="dark"] .kt-r-pill.active,html[data-room="dark"] .kt-rest-pill.on{background:var(--sel);border-color:transparent;color:var(--text);}
+/* The calendar's selected day is selection, not an earned state: neutral, never lime */
+html[data-room="dark"] .cal-day.sel{background:var(--sel);}
+html[data-room="dark"] .cal-day.sel .cal-n{color:var(--text);}
 /* Numbers are statements, not neon */
 html[data-room="dark"] .hero-num{color:var(--text);}
 html[data-room="dark"] .hero-block{background:var(--card2);border:1px solid var(--border);color:var(--lite);}
@@ -1543,6 +1605,12 @@ html[data-room="heavyweight"] .kt-r-skip-ex,
 html[data-room="heavyweight"] .screen-eyebrow,
 html[data-room="heavyweight"] .field label,
 html[data-room="heavyweight"] .settings-group-hd,
+html[data-room="heavyweight"] .kt-vs-btn,
+html[data-room="heavyweight"] .kt-vs-link,
+html[data-room="heavyweight"] .kt-vs-pick-dt .w,
+html[data-room="heavyweight"] .kt-vs-side-d,
+html[data-room="heavyweight"] .kt-vs-k,
+html[data-room="heavyweight"] .kt-vs-d,
 html[data-room="heavyweight"] [style*="JetBrains"]{font-family:'Archivo',sans-serif!important;font-variant-numeric:tabular-nums;}
 
 html[data-room="heavyweight"] #app::before{display:none;}
@@ -1823,6 +1891,12 @@ var wakeLock         = null;
 var calYear  = new Date().getFullYear();
 var calMonth = new Date().getMonth(); // 0-indexed
 var calSelectedDate = null;
+// Activity Calendar compare mode: transient, never persisted.
+var cmpOn=false;          // pick-two mode is on
+var cmpKind='lift';       // 'lift' | 'run'
+var cmpPicks=[];          // _cmpIdStr ids in tap order, max 2; [0] is the anchor
+var _cmpOpenT=null;       // pending auto-open timer
+var _cmpReturnFocus=null; // element focused when the sheet opened
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
@@ -3357,7 +3431,7 @@ function calcDayStreak(){
   }
   return streak;
 }
-function setProgressTab(t){ progressTab = t; render(); }
+function setProgressTab(t){ progressTab = t; if(cmpOn && !cmpPicks.length) cmpKind=_cmpKindFor(t); render(); }
 
 // Pool of editorial Progress-hero variants. Each returns a {greeting, line1,
 // line2, line2Class, body} or null if the variant has no data to surface.
@@ -4488,6 +4562,7 @@ function renderHealthQuickLog(compact){
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
+  if(tab!=='progress' && (cmpOn || document.getElementById('cmpSheetOverlay'))) _cmpExit();
   if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; todaySparkEx=null; }
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
@@ -12895,15 +12970,12 @@ function selectCalDate(d){
   // re-render just the detail pane
   var el=document.getElementById('cal-detail');
   if(el) el.innerHTML=renderCalDetail(getSessions(),getRuns(),getSportLogs());
-  // highlight selected cell
-  document.querySelectorAll('.cal-day').forEach(function(c){
-    c.style.background=c.getAttribute('data-date')===calSelectedDate?'var(--sel,var(--accent))':'';
-    c.style.color=c.getAttribute('data-date')===calSelectedDate?'var(--sel-ink,var(--on-accent))':'';
-    var _n=c.firstElementChild; if(_n) _n.style.color=c.getAttribute('data-date')===calSelectedDate?'var(--sel-ink,var(--on-accent))':'';
-  });
+  // highlight selected cell (the look lives in CSS: .cal-day.sel, per room)
+  document.querySelectorAll('.cal-day').forEach(function(c){ c.classList.toggle('sel', c.getAttribute('data-date')===calSelectedDate); });
 }
 function renderCalDetail(sessions,runs,sports){
   sports=sports||[];
+  if(cmpOn) return _cmpListHTML(sessions,runs);
   if(!calSelectedDate) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Tap a day to see what you did</div>';
   var daySessions=sessions.filter(function(s){return s.date===calSelectedDate;});
   var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
@@ -12921,7 +12993,7 @@ function renderCalDetail(sessions,runs,sports){
     var exRows=_buildHistExRows(s.exercises,sessionPRs,s.supersets);
     html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
-        '<div style="font-size:14px;font-weight:800;letter-spacing:-.2px;">'+def.label+(s.week?' · Wk '+s.week:'')+'</div>'+
+        '<div style="font-size:14px;font-weight:800;letter-spacing:-.2px;">'+_esc(def.label)+(s.week?' · Wk '+s.week:'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+s.date+'" style="'+dateInpStyle+'" onchange="moveSession('+s.id+',this.value)" title="Move to a different date"/>'+
           '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteSession('+s.id+')" title="Delete session">✕</button>'+
@@ -12976,6 +13048,10 @@ function renderCalDetail(sessions,runs,sports){
   return html;
 }
 function renderCalendar(sessions,runs,sports){
+  var cmpOk=_cmpAvailable(); if(!cmpOk && cmpOn) _cmpExit();
+  if(cmpOn && _cmpOkCount(cmpKind,2)<2){ cmpKind=_cmpKindFor(cmpKind==='run'?'runs':'lifts'); cmpPicks=[]; }
+  if(cmpOn) _cmpPrune();
+  var pickDates=cmpOn?_cmpPickDates():{};
   var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   sports=sports||[];
@@ -13012,12 +13088,10 @@ function renderCalendar(sessions,runs,sports){
     if(hasSess)  dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
     if(hasRun)   dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-run,var(--orange));margin:0 1px;"></div>';
     if(hasSport) dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-sport,#a78bfa);margin:0 1px;"></div>';
-    cells+='<div class="cal-day" data-date="'+dateStr+'"'+(acts.length?' data-act="1"':'')+' onclick="selectCalDate(\''+dateStr+'\')" style="'+
+    cells+='<div class="cal-day'+(isToday?' today':'')+(isSelected?' sel':'')+(pickDates[dateStr]?' kt-vs-on':'')+'" data-date="'+dateStr+'"'+(acts.length?' data-act="1"':'')+' onclick="selectCalDate(\''+dateStr+'\')" style="'+
       'text-align:center;border-radius:3px;padding:8px 2px;min-height:44px;box-sizing:border-box;cursor:'+(acts.length?'pointer':'default')+';'+
-      'background:'+(isSelected?'var(--sel,var(--accent))':'')+';'+
-      'border-bottom:'+(isToday&&!isSelected?'2px solid var(--today,var(--accent))':'2px solid transparent')+';'+
     '">'+
-      '<div style="font-size:12px;font-weight:'+(isToday?'900':'600')+';color:'+(isSelected?'var(--sel-ink,var(--on-accent))':isToday?'var(--today,var(--accent))':'var(--text)')+';margin-bottom:2px;">'+d+'</div>'+
+      '<div class="cal-n">'+d+'</div>'+
       '<div style="display:flex;justify-content:center;">'+dots+'</div>'+
     '</div>';
   }
@@ -13029,7 +13103,516 @@ function renderCalendar(sessions,runs,sports){
   '</div>';
   var detail='<div id="cal-detail" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">'+renderCalDetail(sessions,runs,sports)+'</div>';
 
-  return '<div class="card"><h2>Activity Calendar</h2>'+header+grid+legend+detail+'</div>';
+  return '<div class="card"><div class="kt-cal-hd"><h2>Activity Calendar</h2>'+(cmpOk?_cmpBtnHTML():'')+'</div>'+header+grid+legend+
+    (cmpOn?'<div id="cmp-tray" aria-live="polite">'+_cmpTrayHTML()+'</div>':'')+detail+'</div>';
+}
+// ── COMPARE ───────────────────────────────────────────────────────────────────
+// "Compare two": COMPARE on the Activity Calendar turns the day panel into a
+// pick list of the month's workouts (or runs); two picks open a then -> now
+// sheet. Transient state only (cmp* globals), nothing persisted. Every delta
+// is N - T on the DISPLAYED values (wDisp / dDisp / per-unit pace), so the two
+// sides always subtract to the printed chip. Only volume (when the sessions
+// share lifts), a lift's top set (by e1RM), pace and same-distance time are
+// ever called better; everything else stays neutral.
+function _cmpIdStr(id){ return String(id).replace(/[^\w.-]/g,''); }
+function _cmpLiftOk(s){
+  return !!s && (s.exercises||[]).some(function(ex){
+    return !!ex && _exSetPairs(ex).some(function(p){ return p[0]>0; });
+  });
+}
+function _cmpRunOk(r){
+  return !!r && ((parseFloat(r.distance||r.dist)||0)>0 || _runSecsOf(r.time)>0);
+}
+function _cmpOkCount(kind, cap){
+  var list=kind==='run'?getRuns():getSessions(), ok=kind==='run'?_cmpRunOk:_cmpLiftOk, n=0;
+  for(var i=0;i<list.length;i++){
+    if(ok(list[i])){ n++; if(cap && n>=cap) break; }
+  }
+  return n;
+}
+function _cmpAvailable(){ return _cmpOkCount('lift',2)>=2 || _cmpOkCount('run',2)>=2; }
+function _cmpKindFor(tab){
+  var k=tab==='runs'?'run':'lift';
+  if(_cmpOkCount(k,2)<2){
+    var other=k==='run'?'lift':'run';
+    if(_cmpOkCount(other,2)>=2) k=other;
+  }
+  return k;
+}
+function _cmpRec(id){
+  var sid=_cmpIdStr(id), list=cmpKind==='run'?getRuns():getSessions();
+  for(var i=0;i<list.length;i++){ if(list[i] && _cmpIdStr(list[i].id)===sid) return list[i]; }
+  return null;
+}
+function _cmpPrune(){
+  var ok=cmpKind==='run'?_cmpRunOk:_cmpLiftOk;
+  cmpPicks=cmpPicks.filter(function(id){ var r=_cmpRec(id); return !!r && ok(r); });
+}
+function _cmpPickDates(){
+  var o={};
+  cmpPicks.forEach(function(id){ var r=_cmpRec(id); if(r && r.date) o[r.date]=true; });
+  return o;
+}
+function _cmpName(rec){
+  if(!rec) return '';
+  return cmpKind==='run' ? _runTypeLabel(rec.type) : String(rec.label||_dayLabel(rec.type)||'');
+}
+function _cmpByDateDesc(x,y){
+  var dx=String(x.date||''), dy=String(y.date||'');
+  if(dx!==dy) return dx<dy?1:-1;
+  return (Number(y.id)||0)-(Number(x.id)||0);
+}
+// [T, N]: "then" is the earlier record (date, then id); tap order never matters.
+function _cmpOrder(a,b){
+  var da=String(a.date||''), db=String(b.date||'');
+  if(da!==db) return da<db?[a,b]:[b,a];
+  return (Number(a.id)||0)<=(Number(b.id)||0)?[a,b]:[b,a];
+}
+// 'short' Jul 15, 'long' Wed, Jul 15, 'caps' WED JUL 15
+function _cmpDay(iso, fmt, withYear){
+  var d=new Date(String(iso||'')+'T00:00:00');
+  if(isNaN(d.getTime())) return _esc(iso||'');
+  var o={month:'short', day:'numeric'};
+  if(fmt!=='short') o.weekday='short';
+  if(withYear) o.year='numeric';
+  var t=d.toLocaleDateString('en-US', o);
+  if(fmt==='caps') t=t.replace(/,/g,'').toUpperCase();
+  return t;
+}
+function _cmpReduced(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+function _cmpClearTimer(){ if(_cmpOpenT){ clearTimeout(_cmpOpenT); _cmpOpenT=null; } }
+
+// ── mode ──
+function cmpToggle(){
+  var b0=document.getElementById('cmp-btn'), had=!!b0 && document.activeElement===b0;
+  if(cmpOn){ _cmpExit(); }
+  else { cmpOn=true; cmpKind=_cmpKindFor(progressTab); cmpPicks=[]; calSelectedDate=null; }
+  render();
+  if(had){ var b1=document.getElementById('cmp-btn'); if(b1){ try{ b1.focus({preventScroll:true}); }catch(e){} } }
+}
+function _cmpExit(){
+  cmpOn=false; cmpPicks=[];
+  _cmpClearTimer();
+  closeCompareSheet(true);
+}
+function cmpSetKind(k){
+  k=k==='run'?'run':'lift';
+  if(k===cmpKind) return;
+  var ae=document.activeElement, inSeg=!!(ae && ae.closest && ae.closest('.kt-vs-seg'));
+  cmpKind=k; cmpPicks=[];
+  _cmpClearTimer();
+  _cmpRepaint();
+  if(inSeg){ var on=document.querySelector('.kt-vs-seg .kt-units-opt.on'); if(on){ try{ on.focus({preventScroll:true}); }catch(e){} } }
+}
+function cmpPick(id){
+  var sid=_cmpIdStr(id), i=cmpPicks.indexOf(sid);
+  _cmpClearTimer();
+  if(i>=0) cmpPicks.splice(i,1);
+  else if(cmpPicks.length<2) cmpPicks.push(sid);
+  else cmpPicks[1]=sid;                 // [0] is the anchor; a third tap swaps the second
+  _cmpRepaint(sid);
+  if(i<0 && cmpPicks.length===2){
+    // Let the check mark land before the sheet covers it.
+    _cmpOpenT=setTimeout(function(){ _cmpOpenT=null; openCompareSheet(); }, _cmpReduced()?0:180);
+  }
+}
+function cmpClear(){
+  cmpPicks=[];
+  _cmpClearTimer();
+  _cmpRepaint();
+}
+// Tray, list and grid rings in place: no full render, so the scroll stays put.
+function _cmpRepaint(focusId){
+  _cmpPrune();
+  var fid=focusId!=null?'cmp-r-'+_cmpIdStr(focusId):null;
+  var fe=fid?document.getElementById(fid):null;
+  var had=!!fe && document.activeElement===fe;
+  var tray=document.getElementById('cmp-tray');
+  if(tray) tray.innerHTML=_cmpTrayHTML();
+  var det=document.getElementById('cal-detail');
+  if(det) det.innerHTML=renderCalDetail(getSessions(),getRuns(),getSportLogs());
+  _cmpPaintGrid();
+  if(had){ var ne=document.getElementById(fid); if(ne){ try{ ne.focus({preventScroll:true}); }catch(e){} } }
+}
+function _cmpPaintGrid(){
+  var pd=cmpOn?_cmpPickDates():{};
+  document.querySelectorAll('.cal-day').forEach(function(c){ c.classList.toggle('kt-vs-on', !!pd[c.getAttribute('data-date')]); });
+}
+
+// ── render ──
+function _cmpBtnHTML(){
+  return '<button type="button" id="cmp-btn" class="kt-vs-btn" aria-pressed="'+cmpOn+'" onclick="cmpToggle()">'+(cmpOn?'Done':'Compare')+'</button>';
+}
+function _cmpTrayHTML(){
+  _cmpPrune();
+  var noun=cmpKind==='run'?'run':'workout';
+  var recs=cmpPicks.map(_cmpRec).filter(function(r){ return !!r; });
+  var clear='<button type="button" class="btn btn-ghost" onclick="cmpClear()">Clear</button>';
+  var t, sub, btns='';
+  if(!recs.length){
+    t='Pick two '+noun+'s';
+    sub='From any month \u00b7 \u2039 \u203a keeps your picks';
+  } else if(recs.length===1){
+    t=_esc(_cmpName(recs[0]))+' \u00b7 '+_cmpDay(recs[0].date,'long');
+    sub='Pick one more '+noun;
+    btns=clear;
+  } else {
+    var o=_cmpOrder(recs[0],recs[1]);
+    t=_cmpDay(o[0].date,'short')+' vs '+_cmpDay(o[1].date,'short');
+    sub=_esc(_cmpName(o[0]))+' \u00b7 '+_esc(_cmpName(o[1]));
+    btns=clear+'<button type="button" class="btn btn-primary" id="cmp-go" onclick="openCompareSheet()">Compare</button>';
+  }
+  return '<div class="kt-vs-tray"><div class="kt-vs-tray-main"><div class="kt-vs-tray-t">'+t+'</div><div class="kt-vs-tray-s">'+sub+'</div></div>'+btns+'</div>';
+}
+function _cmpListHTML(sessions, runs){
+  var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var isRun=cmpKind==='run', noun=isRun?'run':'workout';
+  var seg='';
+  if(_cmpOkCount('lift',2)>=2 && _cmpOkCount('run',2)>=2){
+    var opt=function(k, lbl){
+      var on=cmpKind===k;
+      return '<button type="button" class="kt-units-opt'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" onclick="cmpSetKind(\''+k+'\')">'+lbl+'</button>';
+    };
+    seg='<div class="kt-units-seg kt-vs-seg" role="radiogroup" aria-label="What to compare">'+opt('lift','Workouts')+opt('run','Runs')+'</div>';
+  }
+  var sel=calSelectedDate?String(calSelectedDate).replace(/[^\d-]/g,''):'';
+  var mPrefix=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-';
+  // The getters hand back shared cached arrays: filter (a copy), then sort that copy.
+  var recs=((isRun?runs:sessions)||[]).filter(function(r){
+    return !!r && !!r.date && (sel ? r.date===sel : String(r.date).indexOf(mPrefix)===0);
+  }).slice().sort(_cmpByDateDesc);
+  var cnt=_plural(recs.length, noun).toUpperCase();
+  var hd='<div class="kt-ledger-hd kt-vs-listhd"><span class="l">'+(sel?_cmpDay(sel,'caps'):MONTHS[calMonth].toUpperCase())+' \u00b7 '+cnt+'</span>'+
+    (sel?'<button type="button" class="kt-vs-link" onclick="selectCalDate(\''+sel+'\')">WHOLE MONTH</button>':'')+'</div>';
+  var body;
+  if(recs.length) body=recs.map(_cmpRowHTML).join('');
+  else if(sel) body='<div class="kt-vs-empty">No '+noun+'s on '+_cmpDay(sel,'long')+'.</div>';
+  else body='<div class="kt-vs-empty">No '+noun+'s in '+MONTHS[calMonth]+'. Use \u2039 \u203a to pick from another month.</div>';
+  return seg+hd+body;
+}
+function _cmpRowHTML(rec){
+  var isRun=cmpKind==='run', ok=isRun?_cmpRunOk(rec):_cmpLiftOk(rec);
+  var sid=_cmpIdStr(rec.id), on=ok && cmpPicks.indexOf(sid)>=0;
+  var dt=new Date(String(rec.date)+'T00:00:00');
+  var wd=isNaN(dt.getTime())?'':dt.toLocaleDateString('en-US',{weekday:'short'}).toUpperCase();
+  var dn=parseInt(String(rec.date).slice(8,10),10)||'';
+  var name, meta;
+  if(isRun){
+    var st=_cmpRunStats(rec);
+    name=_esc(_runTypeLabel(rec.type));
+    meta=[st.km>0?fmtD(st.km):null, st.secs>0?_fmtRunSecs(st.secs):null, st.pace>0?fmtPace(st.pace):null]
+      .filter(function(x){ return !!x; }).join(' \u00b7 ');
+  } else {
+    name=_esc(rec.label||_dayLabel(rec.type))+(rec.week?' \u00b7 Wk '+_esc(rec.week):'');
+    meta=_plural(_cmpGroups(rec).length,'lift')+' \u00b7 '+Math.round(wDisp(calcVolume(rec.exercises||[]))).toLocaleString()+' '+_uW();
+  }
+  if(!ok) meta='Nothing logged';
+  return '<button type="button" class="kt-vs-pick'+(on?' on':'')+'" id="cmp-r-'+sid+'" aria-pressed="'+on+'"'+
+      (ok?' onclick="cmpPick(\''+sid+'\')"':' disabled')+'>'+
+    '<span class="kt-vs-pick-dt"><span class="w">'+wd+'</span><span class="n">'+dn+'</span></span>'+
+    '<span class="kt-vs-pick-body"><span class="kt-vs-pick-name">'+name+'</span><span class="kt-vs-pick-meta">'+meta+'</span></span>'+
+    '<span class="kt-vs-disc" aria-hidden="true">\u2713</span>'+
+  '</button>';
+}
+
+// ── sheet ──
+function openCompareSheet(){
+  _cmpClearTimer();
+  _cmpPrune();
+  if(cmpPicks.length<2) return;
+  var a=_cmpRec(cmpPicks[0]), b=_cmpRec(cmpPicks[1]);
+  if(!a || !b) return;
+  var old=document.getElementById('cmpSheetOverlay');
+  if(old) old.remove();                               // idempotent; keep the first opener
+  else _cmpReturnFocus=document.activeElement;
+  var o=_cmpOrder(a,b), T=o[0], N=o[1], isRun=cmpKind==='run';
+  var nT=_cmpName(T), nN=_cmpName(N);
+  var title=nT.toLowerCase()===nN.toLowerCase()?nT:nT+' vs '+nN;
+  var yT=String(T.date).slice(0,4), yN=String(N.date).slice(0,4), yr=yT!==yN, same=T.date===N.date;
+  var gap=Math.round((new Date(N.date+'T00:00:00')-new Date(T.date+'T00:00:00'))/86400000);
+  var meta=same ? _cmpDay(T.date,'long')+' \u00b7 same day'
+    : _cmpDay(T.date,'long',yr)+' \u2192 '+_cmpDay(N.date,'long',yr)+' \u00b7 '+_plural(gap,'day')+' apart';
+  var side=function(rec, idx){
+    var d=_cmpDay(rec.date,'caps')+(same?' \u00b7 '+idx:'')+(yr?', '+String(rec.date).slice(0,4):'');
+    var m;
+    if(isRun){
+      var st=_cmpRunStats(rec);
+      m=(st.km>0?fmtD(st.km):'\u2014')+(rec.note==='From Apple Health'?' \u00b7 HEALTH':'');
+    } else {
+      m=(rec.week?'Wk '+_esc(rec.week)+' \u00b7 ':'')+_plural(_cmpGroups(rec).length,'lift')+
+        ((rec.wristStartedAt||rec.note==='From Apple Watch')?' \u00b7 WATCH':'');
+    }
+    return '<div class="kt-vs-side"><div class="kt-vs-side-d">'+d+'</div><div class="kt-vs-side-n">'+_esc(_cmpName(rec))+'</div><div class="kt-vs-side-m">'+m+'</div></div>';
+  };
+  var overlay=document.createElement('div');
+  overlay.id='cmpSheetOverlay';
+  overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet" role="dialog" aria-modal="true" aria-labelledby="cmpSheetTitle">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div style="min-width:0;"><div class="screen-eyebrow" style="color:var(--muted);margin-bottom:6px;">COMPARE</div>'+
+      '<div class="kt-sheet-title" id="cmpSheetTitle" tabindex="-1" style="font-size:20px;line-height:1.2;">'+_esc(title)+'</div>'+
+      '<div class="kt-vs-meta">'+meta+'</div></div>'+
+      '<button type="button" class="kt-sheet-x" onclick="closeCompareSheet()" aria-label="Close">\u2715</button>'+
+    '</div>'+
+    '<div class="kt-vs-pair">'+side(T,1)+'<div class="kt-vs-pair-ar" aria-hidden="true">\u2192</div>'+side(N,2)+'</div>'+
+    (isRun?_cmpRunBody(T,N):_cmpLiftBody(T,N))+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeCompareSheet);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeCompareSheet(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closeCompareSheet(); } });
+  _a11yPass();
+  var tt=document.getElementById('cmpSheetTitle');
+  if(tt){ try{ tt.focus({preventScroll:true}); }catch(e){} }
+}
+// Closes the sheet only: compare mode and both picks stay.
+function closeCompareSheet(noFocus){
+  var el=document.getElementById('cmpSheetOverlay');
+  if(!el) return;
+  el.remove();
+  if(!noFocus){
+    var go=document.getElementById('cmp-go');
+    var tgt=go || ((_cmpReturnFocus && _cmpReturnFocus.isConnected) ? _cmpReturnFocus : null);
+    if(tgt){ try{ tgt.focus({preventScroll:true}); }catch(e){} }
+  }
+  _cmpReturnFocus=null;
+}
+
+// ── numbers ──
+function _cmpSign(d){ return d>0?'+':(d<0?'\u2212':''); }
+function _cmpSecsTxt(s){ return s<60 ? s+' s' : _fmtRunSecs(s); }
+function _cmpDelta(d, absTxt, dir){
+  if(d===0) return '<span class="kt-vs-d eq"><span aria-hidden="true">=</span><span class="kt-sr">no change</span></span>';
+  return '<span class="kt-vs-d'+(dir && d*dir>0?' up':'')+'">'+_cmpSign(d)+absTxt+'</span>';
+}
+function _cmpRow(label, a, b, unit, chip){
+  var none='<span class="none"><span aria-hidden="true">\u2014</span><span class="kt-sr">not recorded</span></span>';
+  var u=unit?'<span class="u"> '+unit+'</span>':'';
+  var ar='<span class="ar" aria-hidden="true"> \u2192 </span><span class="kt-sr"> to </span>';
+  var v=b==null
+    ? '<span class="a">'+(a==null?none:a)+'</span>'+u+ar+'<span class="b">'+none+'</span>'
+    : '<span class="a">'+(a==null?none:a)+'</span>'+ar+'<span class="b">'+b+'</span>'+u;
+  return '<div class="kt-vs-row"><div class="kt-vs-main"><div class="kt-vs-k">'+label+'</div><div class="kt-vs-v">'+v+'</div></div>'+
+    (chip||'<span class="kt-vs-d"></span>')+'</div>';
+}
+function _cmpSecHd(l, r){
+  return '<div class="kt-ledger-hd kt-vs-sec"><span class="l">'+l+'</span>'+(r?'<span class="r">'+r+'</span>':'')+'</div>';
+}
+// Exercises collapsed per name: the same lift logged twice is one group.
+function _cmpGroups(s){
+  var out=[], by={};
+  ((s && s.exercises)||[]).forEach(function(ex){
+    if(!ex) return;
+    var name=String(ex.name||'').trim();
+    if(!name) return;
+    var pairs=_exSetPairs(ex).filter(function(p){ return p[0]>0; });
+    if(!pairs.length) return;
+    var key=name.toLowerCase(), g=by['k:'+key];
+    if(!g){ g=by['k:'+key]={key:key, base:_liftBaseName(name), name:name, names:[], pairs:[]}; out.push(g); }
+    if(g.names.indexOf(name)<0) g.names.push(name);
+    g.pairs=g.pairs.concat(pairs);
+  });
+  return out;
+}
+// Mean logged effort for one session: the _avgRpe chain (per-set log, legacy
+// per-set rpe, then the exercise's one number).
+function _cmpAvgRpe(s){
+  var sum=0, n=0;
+  ((s && s.exercises)||[]).forEach(function(ex){
+    if(!ex) return;
+    var log=Array.isArray(ex.rpeLog)?ex.rpeLog.map(function(x){ return parseFloat(x)||0; }).filter(function(x){ return x>0; }):[];
+    if(!log.length && Array.isArray(ex.sets)) log=ex.sets.map(function(st){ return parseFloat(st&&st.rpe)||0; }).filter(function(x){ return x>0; });
+    if(log.length) log.forEach(function(x){ sum+=x; n++; });
+    else { var r=parseFloat(ex.rpe); if(r>0){ sum+=r; n++; } }
+  });
+  return n?Math.round(sum/n*10)/10:null;
+}
+// The runner stamps id=Date.now() at save, so id - startedAt is the session's
+// length. Wrist drains, coach logs and legacy records have none.
+function _cmpDurMs(s){
+  var st=parseFloat(s && s.startedAt), id=Number(s && s.id);
+  if(!(st>0) || s.wristStartedAt || !(id>st)) return null;
+  var d=id-st;
+  return (d>=5*60000 && d<=5*3600000) ? d : null;
+}
+function _cmpPrSet(s){
+  var o={};
+  ((s && s.prs)||[]).forEach(function(p){
+    var n=typeof p==='string'?p:(p && (p.ex||p.name));
+    if(n) o['k:'+String(n).trim().toLowerCase()]=true;
+  });
+  return o;
+}
+function _cmpLiftStats(s){
+  var groups=_cmpGroups(s), sets=0, reps=0, prs=_cmpPrSet(s);
+  groups.forEach(function(g){ sets+=g.pairs.length; g.pairs.forEach(function(p){ reps+=p[0]; }); });
+  return {vol:calcVolume(s.exercises||[]), sets:sets, reps:reps, lifts:groups.length, rpe:_cmpAvgRpe(s),
+    dur:_cmpDurMs(s), prs:prs, prN:Object.keys(prs).length, groups:groups};
+}
+function _cmpExStats(name, pairs){
+  var top=null, e1=0, reps=0;
+  pairs.forEach(function(p){
+    var r=p[0], w=p[1];
+    reps+=r;
+    if(!top || w>top.w || (w===top.w && r>top.r)) top={w:w, r:r};
+    var e=_epley(_effLoad(name, w), r);
+    if(e>e1) e1=e;
+  });
+  top=top||{w:0, r:0};
+  return {top:top, e1:e1, sets:pairs.length, reps:reps, topTxt:(top.w>0?fmtW(top.w):'BW')+' \u00d7 '+top.r};
+}
+// Exact names first, then leftovers by base name ("(Top Set)"/"(Backoff)"
+// suffixes off). Never fuzzy: a different spelling lands in ONLY ON.
+function _cmpMatch(gT, gN){
+  var usedT={}, usedN={}, rows=[];
+  gN.forEach(function(n, ni){
+    for(var ti=0; ti<gT.length; ti++){
+      if(!usedT[ti] && gT[ti].key===n.key){
+        usedT[ti]=true; usedN[ni]=true;
+        rows.push({name:n.name, ord:ni, tNames:gT[ti].names.slice(), nNames:n.names.slice(), tPairs:gT[ti].pairs, nPairs:n.pairs});
+        break;
+      }
+    }
+  });
+  var buckets=function(groups, used){
+    var list=[], by={};
+    groups.forEach(function(g, i){
+      if(used[i] || !g.base) return;
+      var bk=by['k:'+g.base];
+      if(!bk){ bk=by['k:'+g.base]={base:g.base, first:i, idx:[], names:[], pairs:[]}; list.push(bk); }
+      bk.idx.push(i);
+      g.names.forEach(function(nm){ if(bk.names.indexOf(nm)<0) bk.names.push(nm); });
+      bk.pairs=bk.pairs.concat(g.pairs);
+    });
+    return {list:list, by:by};
+  };
+  var bT=buckets(gT, usedT), bN=buckets(gN, usedN);
+  bN.list.forEach(function(nb){
+    var tb=bT.by['k:'+nb.base];
+    if(!tb || tb.done) return;
+    tb.done=true;
+    tb.idx.forEach(function(i){ usedT[i]=true; });
+    nb.idx.forEach(function(i){ usedN[i]=true; });
+    rows.push({name:_mainLiftLabel({name:nb.names[0]}), ord:nb.first, tNames:tb.names, nNames:nb.names, tPairs:tb.pairs, nPairs:nb.pairs});
+  });
+  rows.sort(function(x,y){ return x.ord-y.ord; });
+  return {
+    rows:rows,
+    onlyT:gT.filter(function(g,i){ return !usedT[i]; }),
+    onlyN:gN.filter(function(g,i){ return !usedN[i]; })
+  };
+}
+function _cmpLiftBody(T, N){
+  var a=_cmpLiftStats(T), b=_cmpLiftStats(N);
+  var m=_cmpMatch(a.groups, b.groups);
+  var html=_cmpSecHd('SESSION', 'THEN \u2192 NOW');
+  // Volume is only "better" when the two sessions share most of their lifts:
+  // Push against Pull never colours a bigger number as progress.
+  var comparable=m.rows.length>=1 && m.rows.length*2>=Math.min(a.groups.length, b.groups.length);
+  var vT=Math.round(wDisp(a.vol)), vN=Math.round(wDisp(b.vol)), dv=vN-vT;
+  var pct=vT>0?Math.round(dv/vT*100):0;
+  html+=_cmpRow('VOLUME', vT.toLocaleString(), vN.toLocaleString(), _uW(),
+    _cmpDelta(dv, Math.abs(dv).toLocaleString()+' '+_uW()+(pct?' \u00b7 '+_cmpSign(pct)+Math.abs(pct)+'%':''), comparable?1:0));
+  var cnt=function(label, x, y){ var d=y-x; html+=_cmpRow(label, x, y, '', _cmpDelta(d, String(Math.abs(d)), 0)); };
+  cnt('SETS', a.sets, b.sets);
+  cnt('REPS', a.reps, b.reps);
+  cnt('LIFTS', a.lifts, b.lifts);
+  if(a.rpe!=null || b.rpe!=null){
+    var rc='';
+    if(a.rpe!=null && b.rpe!=null){ var dr=Math.round((b.rpe-a.rpe)*10)/10; rc=_cmpDelta(dr, String(Math.round(Math.abs(dr)*10)/10), 0); }
+    html+=_cmpRow('AVG RPE', a.rpe!=null?String(a.rpe):null, b.rpe!=null?String(b.rpe):null, '', rc);
+  }
+  if(a.dur!=null || b.dur!=null){
+    var dc='';
+    if(a.dur!=null && b.dur!=null){ var dd=Math.round(b.dur/1000)-Math.round(a.dur/1000); dc=_cmpDelta(dd, _fmtDur(Math.abs(dd)*1000), 0); }
+    html+=_cmpRow('DURATION', a.dur!=null?_fmtDur(a.dur):null, b.dur!=null?_fmtDur(b.dur):null, '', dc);
+  }
+  if(a.prN>0 || b.prN>0) html+=_cmpRow('PRS', a.prN, b.prN, '', '');
+  // Lifts in common: the literal top-set difference, toned by e1RM.
+  var dT=_cmpDay(T.date,'short'), dN=_cmpDay(N.date,'short');
+  var ar='<span class="ar" aria-hidden="true"> \u2192 </span><span class="kt-sr"> to </span>';
+  var prMark='<span class="kt-vs-pr">PR</span>';
+  var hasPr=function(names, set){ return names.some(function(nm){ return !!set['k:'+String(nm).trim().toLowerCase()]; }); };
+  html+=_cmpSecHd('LIFTS IN COMMON \u00b7 '+m.rows.length, 'TOP SET');
+  if(!m.rows.length){
+    html+='<div class="kt-vs-empty">No lifts in common \u2014 the session rows above are the comparison.</div>';
+  }
+  m.rows.forEach(function(r){
+    var sT=_cmpExStats(r.tNames[0], r.tPairs), sN=_cmpExStats(r.nNames[0], r.nPairs);
+    var dW=Math.round((wDisp(sN.top.w)-wDisp(sT.top.w))*100)/100, dR=sN.top.r-sT.top.r;
+    var parts=[];
+    if(dW) parts.push(_cmpSign(dW)+Math.abs(dW)+' '+_uW());
+    if(dR) parts.push(_cmpSign(dR)+Math.abs(dR)+' '+(Math.abs(dR)===1?'rep':'reps'));
+    var eT=Math.round(wDisp(sT.e1)*10), eN=Math.round(wDisp(sN.e1)*10);
+    var up=(eT>0 || eN>0) ? eN>eT : dR>0;
+    var chip=parts.length ? '<span class="kt-vs-d'+(up?' up':'')+'">'+parts.join(' \u00b7 ')+'</span>' : _cmpDelta(0,'',0);
+    var logged=function(names, day){
+      return (names.length===1 && names[0]===r.name) ? '' : '<div class="kt-vs-sub">'+day+': '+names.map(_esc).join(' + ')+'</div>';
+    };
+    html+='<div class="kt-vs-row kt-vs-ex"><div class="kt-vs-main">'+
+      '<div class="kt-vs-name">'+_esc(r.name)+'</div>'+
+      '<div class="kt-vs-v"><span class="a">'+sT.topTxt+(hasPr(r.tNames,a.prs)?prMark:'')+'</span>'+ar+
+        '<span class="b">'+sN.topTxt+(hasPr(r.nNames,b.prs)?prMark:'')+'</span></div>'+
+      '<div class="kt-vs-sub">'+_plural(sT.sets,'set')+' \u00b7 '+_plural(sT.reps,'rep')+ar+_plural(sN.sets,'set')+' \u00b7 '+_plural(sN.reps,'rep')+'</div>'+
+      logged(r.tNames, dT)+logged(r.nNames, dN)+
+    '</div>'+chip+'</div>';
+  });
+  var only=function(list, day){
+    if(!list.length) return '';
+    return _cmpSecHd('ONLY ON '+day.toUpperCase()+' \u00b7 '+list.length, '')+list.map(function(g){
+      var st=_cmpExStats(g.names[0], g.pairs);
+      return '<div class="kt-vs-row kt-vs-only"><div class="kt-vs-main"><div class="kt-vs-name">'+_esc(g.name)+'</div>'+
+        '<div class="kt-vs-sub">'+_plural(st.sets,'set')+' \u00b7 '+_plural(st.reps,'rep')+' \u00b7 top '+st.topTxt+'</div></div></div>';
+    }).join('');
+  };
+  html+=only(m.onlyT, dT)+only(m.onlyN, dN);
+  return html;
+}
+function _cmpRunStats(r){
+  var km=parseFloat(r.distance||r.dist)||0, secs=_runSecsOf(r.time), feel=parseInt(r.feel)||0;
+  return {km:km, secs:secs, pace:(km>0 && secs>0)?secs/km:0, hr:parseInt(r.hr)||0, feel:(feel>=1 && feel<=5)?feel:0};
+}
+function _cmpRunBody(T, N){
+  var a=_cmpRunStats(T), b=_cmpRunStats(N);
+  var sameDist=a.km>0 && b.km>0 && Math.abs(b.km-a.km)<=0.02*Math.max(a.km, b.km);
+  var html=_cmpSecHd('RUN', 'THEN \u2192 NOW');
+  // Distance: a longer run is not "better".
+  var xA=a.km>0?dDisp(a.km):null, xB=b.km>0?dDisp(b.km):null, c='';
+  if(xA!=null && xB!=null){ var dx=Math.round((xB-xA)*100)/100; c=_cmpDelta(dx, Math.abs(dx)+' '+_uD(), 0); }
+  html+=_cmpRow('DISTANCE', xA, xB, _uD(), c);
+  // Time: lower is better only over the same distance.
+  c='';
+  if(a.secs>0 && b.secs>0){ var ds=b.secs-a.secs; c=_cmpDelta(ds, _cmpSecsTxt(Math.abs(ds)), sameDist?-1:0); }
+  html+=_cmpRow('TIME', a.secs>0?_fmtRunSecs(a.secs):null, b.secs>0?_fmtRunSecs(b.secs):null, '', c);
+  // Pace: per displayed unit, whole seconds, lower is better.
+  var pd=function(p){ return Math.round(_uD()==='mi' ? p*KM_PER_MI : p); };
+  c='';
+  if(a.pace>0 && b.pace>0){ var dp=pd(b.pace)-pd(a.pace); c=_cmpDelta(dp, _cmpSecsTxt(Math.abs(dp))+' /'+_uD(), -1); }
+  html+=_cmpRow('PACE', a.pace>0?fmtPace(a.pace,{bare:true}):null, b.pace>0?fmtPace(b.pace,{bare:true}):null, '/'+_uD(), c);
+  if(a.hr>0 || b.hr>0){
+    c='';
+    if(a.hr>0 && b.hr>0){ var dh=b.hr-a.hr; c=_cmpDelta(dh, Math.abs(dh)+' bpm', 0); }
+    html+=_cmpRow('AVG HR', a.hr>0?a.hr:null, b.hr>0?b.hr:null, 'bpm', c);
+  }
+  if(a.feel || b.feel){
+    html+=_cmpRow('FEEL', a.feel?FEEL_LBL[a.feel]:null, b.feel?FEEL_LBL[b.feel]:null, '', '');
+  }
+  return html;
+}
+// Dev nav "progress/compare": the newest session against the newest earlier
+// one of the same slot (else the second newest), sheet open.
+function _cmpDevOpen(){
+  var all=getSessions().filter(_cmpLiftOk).slice().sort(_cmpByDateDesc);
+  if(all.length<2) return;
+  var newest=all[0], other=null;
+  for(var i=1;i<all.length;i++){ if(all[i].type===newest.type){ other=all[i]; break; } }
+  if(!other) other=all[1];
+  cmpOn=true; cmpKind='lift'; cmpPicks=[_cmpIdStr(newest.id), _cmpIdStr(other.id)];
+  _calNavToDate(newest.date); calSelectedDate=null;
+  render();
+  openCompareSheet();
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
@@ -18128,7 +18711,7 @@ window._trovoOpen=_handleDeepLink;
 // the screenshot helper can drive the sim without UI taps. The key is
 // consumed (deleted) on first read; absence is the no-op default. Routes:
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
-//   "progress" | "settings"
+//   "progress" | "progress/compare" | "settings"
 //   "coach" (home) | "coach/chat"
 //   "modal/programme"
 //   "overlay/how" | "overlay/privacy"
@@ -18146,6 +18729,7 @@ window._trovoOpen=_handleDeepLink;
         }
         if(head==='log' && sub){ switchLogSub(sub); }
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
+        if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
