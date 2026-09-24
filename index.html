@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260923-4"/>
+<meta name="build" content="20260923-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7742,13 +7742,34 @@ async function checkPendingShare(){
     }
   } catch(e){}
 }
+// The set that follows this rest: the same exercise, or a superset's first
+// half when the pair returns to it.
+function _restNextEx(ex){
+  if(_ssReturnIdx!=null && runnerSession && runnerSession.exercises[_ssReturnIdx]) return runnerSession.exercises[_ssReturnIdx];
+  return ex;
+}
+// "160 lb × 8" for the next set of nx, in the user's units (the Live
+// Activity shows it as "Next: …" so the phone need not be unlocked).
+function _restDetail(nx){
+  if(!nx) return '';
+  var w=runnerWeights[nx.name]!=null ? parseFloat(runnerWeights[nx.name]) : (parseFloat(nx.weight)||0);
+  var done=runnerCompleted[nx.name]||0;
+  var ti=Math.min(done, Math.max(0,(parseInt(nx.sets)||1)-1));
+  var tr=Array.isArray(nx.reps)?nx.reps[Math.min(ti,nx.reps.length-1)]:nx.reps;
+  var r=parseInt(runnerReps[nx.name])>0 ? parseInt(runnerReps[nx.name]) : (parseInt(tr)||0);
+  var load=w>0 ? fmtW(w) : 'Bodyweight';
+  return load+(r>0?' \u00d7 '+r:'');
+}
 function _trovoTimerStart(ex, nextSet){
   // Backgrounded-phone alert when the rest is over (Live Activity shows the
   // countdown; the notification does the buzz). Cancelled on skip/return.
   scheduleRestNotification(ex, nextSet, runnerRestLeft);
   var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
   if(!TT) return;
-  TT.startTimer({exerciseName: ex.name, seconds: runnerRestLeft, nextSet: nextSet, totalSets: ex.sets}).catch(function(){});
+  var nx=_restNextEx(ex), detail='';
+  try{ detail=_restDetail(nx); if(detail && nx!==ex) detail=nx.name+' \u00b7 '+detail; }catch(e){ detail=''; }
+  var nxSet=nx===ex ? nextSet : Math.min((runnerCompleted[nx.name]||0)+1, parseInt(nx.sets)||1);
+  TT.startTimer({exerciseName: ex.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail}).catch(function(){});
 }
 function _trovoTimerEnd(){
   cancelRestNotification();
@@ -17433,7 +17454,7 @@ function _buildWatchLive(){
     _watchEndedPayload=null;
   }
   if(!runnerOpen || !runnerSession || !(runnerSession.exercises||[]).length) return null;
-  var reps={}, weights={}, wlog={};
+  var reps={}, weights={}, wlog={}, rlog={};
   runnerSession.exercises.forEach(function(ex){
     var done=runnerCompleted[ex.name]||0;
     var arr=(runnerRepsLog[ex.name]||[]).slice(0, done).map(function(r){ return parseInt(r)||0; });
@@ -17443,6 +17464,8 @@ function _buildWatchLive(){
       reps[ex.name]=arr;
       var wl=(runnerWeightsLog[ex.name]||[]).slice(0, done).map(function(w){ return parseFloat(w)||0; });
       if(wl.length===arr.length) wlog[ex.name]=wl;
+      var rv=(runnerRpeLog[ex.name]||[]).slice(0, done).map(function(r){ return parseInt(r)||0; });
+      if(rv.length===arr.length && rv.every(function(x){ return x>0; })) rlog[ex.name]=rv;
     }
     weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   });
@@ -17452,7 +17475,7 @@ function _buildWatchLive(){
   // and the live mirror went silent both ways. `slot` rides along for a future
   // watch build that compares ids.
   var out={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
-    reps:reps, weights:weights, wlog:wlog, lastAt:runnerSession.lastSetAt||runnerSession.startedAt||Date.now() };
+    reps:reps, weights:weights, wlog:wlog, rlog:rlog, lastAt:runnerSession.lastSetAt||runnerSession.startedAt||Date.now() };
   // Undos and edits made here: the wrist (build 51+) takes these logs as the
   // truth instead of putting the removed set back.
   if(runnerSession.ownAt && Object.keys(runnerSession.ownAt).length) out.own=runnerSession.ownAt;
@@ -17516,6 +17539,10 @@ function _mergeWristExercises(rec, wristExs){
       // sets the wrist logged AFTER the correction are still its sets.
       var base=ownLen[owned[key]]||0;
       if(wr.length<=base) return;
+      if(Array.isArray(w.rpeLog) && w.rpeLog.length===wr.length){
+        var mrl=Array.isArray(mine.rpeLog)?mine.rpeLog.slice(0, mr.length):mr.map(function(){ return ''; });
+        mine.rpeLog=mrl.concat(w.rpeLog.slice(base));
+      }
       mine.reps=mr.concat(wr.slice(base)); mine.sets=mine.reps.length;
       mine.weightLog=(Array.isArray(mine.weightLog)?mine.weightLog.slice(0, mr.length):mr.map(function(){ return fill; })).concat(wwl.slice(base));
       if(!rec.phoneOwnedLen) rec.phoneOwnedLen={};
@@ -17524,6 +17551,7 @@ function _mergeWristExercises(rec, wristExs){
       if(wr.length<=mr.length) return;
       mine.reps=wr.slice(); mine.sets=wr.length;
       mine.weightLog=wwl.slice();
+      if(Array.isArray(w.rpeLog) && w.rpeLog.length===wr.length) mine.rpeLog=w.rpeLog.slice();
     }
     mine.weight=Math.max.apply(null, mine.weightLog.map(function(x){ return parseFloat(x)||0; }).concat([0]));
     if(Array.isArray(mine.rpeLog)){ while(mine.rpeLog.length<mine.reps.length) mine.rpeLog.push(mine.rpeLog.length?mine.rpeLog[mine.rpeLog.length-1]:''); }
@@ -17579,6 +17607,32 @@ function _widgetThemeTokens(){
   return { room:name, paper:!!T.paper, bg:T.bg, text:T.text||T.textColor, muted:T.muted,
     accent:T.accent, onAccent:T['on-accent'], earnedInk:T['earned-ink']||T.accent };
 }
+// One day's plan in the watch's shape, for a date after today: that week's
+// exercises (loads resolved like today's), or the run/sport/rest it holds.
+// Before a programme's start Monday every day is a rest day.
+function _watchPlanForDate(iso){
+  var total=getTotalWeeks();
+  if(iso < _weekAnchor()) return { week:1, date:iso, dayName:'Rest', slot:'', short:'Rest', type:'rest', exercises:[], hasPlan:true };
+  var wk=Math.min(total, Math.max(1, weekForDate(iso)));
+  var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
+  var pl=getWeekPlanForWeek(wk)[dow]||{};
+  if(!pl.isLift){
+    var t=pl.isRun?'run':(pl.isSport?'sport':'rest');
+    return { week:wk, date:iso, dayName:String(pl.isRest?'Rest':(pl.type||'Rest')), slot:'', short:String(pl.type||''), type:t, exercises:[], hasPlan:true };
+  }
+  var cr=getCustomRoutine(), w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
+  var arr=(w&&w[String(pl.type).toLowerCase()])||[];
+  var weights=getWeights();
+  var exs=arr.map(function(ex){
+    var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
+    var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
+    var presc=parseFloat(ex.weight); if(!(presc>0)){ var bn=parseFloat(weights[ex.name]); if(bn>0) presc=bn; }
+    return { name:String(ex.name), sets:parseInt(ex.sets)||3, reps:reps, weight:Math.min(presc||0, 5000),
+      rest:_defaultRestFor(ex), rpe:parseInt(ex.rpe)||0 };
+  });
+  return { week:wk, date:iso, dayName:String(_dayLabel(pl.type)||pl.type), slot:String(pl.type), short:String(_dayShort(pl.type)),
+    type:'lift', exercises:exs, hasPlan:true };
+}
 function _pushWatchPlan(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.updateContext) return;
@@ -17613,9 +17667,15 @@ function _pushWatchPlan(){
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
     var liveJson=live?JSON.stringify(live):'';
-    if(json+'|'+liveJson===_lastWatchPlan) return;
-    _lastWatchPlan=json+'|'+liveJson;
-    TWch.updateContext({json:json, live:liveJson}).then(function(r){
+    // The next six days, so the wrist and its face change day at midnight
+    // without the phone app running (watch build 53+; older ones ignore it).
+    var weekJson='';
+    if(hasPlan){
+      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++) _wk.push(_watchPlanForDate(addDays(todayISO(), _wi))); weekJson=JSON.stringify(_wk); }catch(e){ weekJson=''; }
+    }
+    if(json+'|'+liveJson+'|'+weekJson===_lastWatchPlan) return;
+    _lastWatchPlan=json+'|'+liveJson+'|'+weekJson;
+    TWch.updateContext({json:json, live:liveJson, week:weekJson}).then(function(r){
       _wchLog('push '+plan.dayName+'/'+plan.type+(liveJson?' +live':'')+' → '+((r&&r.sent)?'sent':'NOT SENT'+((r&&r.reason)?' · '+r.reason:'')));
     }).catch(function(e){ _wchLog('push FAILED · '+((e&&e.message)||e)); });
   }catch(e){}
@@ -17692,8 +17752,11 @@ function _onWatchLive(json){
           if(!_wristStamps[name]) _wristStamps[name]={};
           var wvN=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
           var wlN=(runnerWeightsLog[name]||[]).slice(0, done0);
-          fresh_.forEach(function(r){ _wristStamps[name][_lg.length]=Date.now(); _lg.push(r); wlN.push(wvN>0?wvN:(wlN.length?wlN[wlN.length-1]:(runnerWeights[name]||0))); });
+          var rlN=(runnerRpeLog[name]||[]).slice(0, done0);
+          var rlIn=(s.rlog&&Array.isArray(s.rlog[name])&&s.rlog[name].length===inc.length)?s.rlog[name].slice(ownLen):null;
+          fresh_.forEach(function(r, fi){ _wristStamps[name][_lg.length]=Date.now(); _lg.push(r); wlN.push(wvN>0?wvN:(wlN.length?wlN[wlN.length-1]:(runnerWeights[name]||0))); if(rlIn) rlN.push(parseInt(rlIn[fi])||7); });
           runnerRepsLog[name]=_lg; runnerWeightsLog[name]=wlN; runnerCompleted[name]=_lg.length;
+          if(rlIn) runnerRpeLog[name]=rlN;
           runnerSession.ownLen[name]=inc.length;   // consumed
           _justLoggedSet={ex:name, idx:_lg.length-1, at:Date.now()};
           changed=true;
@@ -17709,8 +17772,11 @@ function _onWatchLive(json){
         for(var wi=loc.length; wi<inc.length; wi++) _wristStamps[name][wi]=Date.now();
         _justLoggedSet={ex:name, idx:inc.length-1, at:Date.now()};
         var _loc=(runnerRepsLog[name]||[]).slice();
-        for(var _ri=_loc.length; _ri<inc.length; _ri++) _loc[_ri]=inc[_ri];
+        var _rlIn=(s.rlog&&Array.isArray(s.rlog[name])&&s.rlog[name].length===inc.length)?s.rlog[name]:null;
+        var _rlo=(runnerRpeLog[name]||[]).slice(0, _loc.length);
+        for(var _ri=_loc.length; _ri<inc.length; _ri++){ _loc[_ri]=inc[_ri]; if(_rlIn) _rlo[_ri]=parseInt(_rlIn[_ri])||7; }
         runnerRepsLog[name]=_loc;
+        if(_rlIn) runnerRpeLog[name]=_rlo;
         runnerCompleted[name]=inc.length;
         var wv=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
         if(wv>0){
@@ -17804,8 +17870,11 @@ function drainWatchSessions(){
           ? ex.weightLog.map(function(x){ return parseFloat(x)||w; })
           : reps.map(function(){ return w; });
         if(wl.length) w=Math.max.apply(null, wl.concat([w]));
+        // Per-set RPE from watch build 53; older watches send one number.
+        var rl=(Array.isArray(ex.rpeLog)&&ex.rpeLog.length===reps.length)
+          ? ex.rpeLog.map(function(x){ var v=parseFloat(x); return v>0?v:''; }) : undefined;
         return { name:String(ex.name), isMain:!!mainByName[ex.name], sets:reps.length,
-          reps:reps, weight:w, weightLog:wl,
+          reps:reps, weight:w, weightLog:wl, rpeLog:rl,
           rpe:(parseFloat(ex.rpe)>0?parseFloat(ex.rpe):'') };
       }).filter(function(ex){ return ex.sets>0; });
       if(!exsOut.length) return;
