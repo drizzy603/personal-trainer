@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-9"/>
+<meta name="build" content="20260924-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -638,6 +638,14 @@ html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .kt-run-row-km{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--lite);}
 .kt-run-row-hr{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--muted);margin-top:2px;}
 .kt-run-note{font-size:13px;color:var(--lite);line-height:1.5;margin-top:8px;letter-spacing:-.011em;}
+.kt-run-hist-row{display:flex;align-items:center;gap:11px;min-height:44px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-run-hist-row:active{background:color-mix(in srgb,var(--text) 5%,transparent);}
+.kt-run-hist-main{flex:1;min-width:0;}
+.kt-run-hist-t{font-size:13px;font-weight:800;color:var(--text);}
+.kt-run-hist-d{font-size:11px;color:var(--muted);margin-left:7px;}
+.kt-run-hist-s{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kt-run-hist-go{font-size:18px;line-height:1;color:var(--muted);flex-shrink:0;}
+.kt-run-hist-more{width:100%;margin-top:12px;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 /* Inline Log-Run form (addendum 0e) — editorial, no nested card. */
 .kt-rlog{transform-origin:top center;animation:kt-rlog-in .35s ease-out;margin-bottom:24px;}
@@ -668,6 +676,8 @@ html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 
 .kt-rconfirm{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-radius:14px;font-size:14px;font-weight:600;margin-bottom:24px;animation:kt-rconfirm-in .35s ease-out;letter-spacing:-.011em;}
 @keyframes kt-rconfirm-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.kt-rconfirm-t{min-width:0;}
+.kt-rconfirm-acts{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;}
 .kt-rconfirm-undo{background:rgba(0,0,0,.18);color:var(--on-accent);border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
@@ -1208,6 +1218,10 @@ button:active{transform:scale(.97);}
 .kt-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .kt-sheet-title{font-size:19px;font-weight:800;letter-spacing:-.5px;color:var(--text);}
 .kt-sheet-x{background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:15px;cursor:pointer;border-radius:50%;width:34px;height:34px;line-height:1;font-family:inherit;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
+.kt-re-src{font-size:12px;color:var(--muted);line-height:1.5;margin:-4px 0 12px;}
+.kt-re-err{font-size:12px;font-weight:700;color:var(--red);line-height:1.4;margin:0 0 10px;}
+.kt-re-err:empty{display:none;}
+#reTitle:focus{outline:none;}   /* focused for VoiceOver on open, as #cmpSheetTitle */
 
 /* Rest-done flash */
 @keyframes kt-r-flash{0%{opacity:1;}20%{opacity:.3;}50%{opacity:.85;}80%{opacity:.4;}100%{opacity:1;}}
@@ -2069,6 +2083,7 @@ var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
 var showAllHist = false;     // Session History collapsed to recent rows by default
+var showAllRunHist = false;  // Run history, the same
 var histExpandedId = null;   // session id open in the Session History accordion
 var strengthChartOpen = null; // lift name expanded to a full e1RM chart
 // + sub-tab editorial form draft, captured on every input.
@@ -4191,13 +4206,12 @@ function importFromHealth(){
   });
 }
 // Forgets which HK workouts have been imported AND removes Apple Health
-// entries from kt_runs that the user hasn't edited (i.e. still carry the
-// "From Apple Health" note). Manually-edited entries are kept so we don't
-// destroy the user's annotations.
+// entries from kt_runs that the user hasn't edited (still marked "From Apple
+// Health", no hkOrig). Edited runs are kept, as the dialog promises.
 function resetHealthImport(){
   _ktConfirm({title:'Reset Apple Health import?',body:'Forgets which workouts were imported and removes unedited Apple Health runs. Manually-edited runs are kept.',confirmLabel:'Reset',onConfirm:function(){
     var existing=getRuns(); var removed=0;
-    var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'){removed++;return false;}return true;});
+    var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'&&!r.hkOrig){removed++;return false;}return true;});
     lsSet('kt_runs',kept);
     lsDel('kt_hk_imported');
     localStorage.removeItem('kt_hk_last_sync');
@@ -4282,18 +4296,33 @@ function drainPendingHealth(){
 // UUID-only dedup imported the same watch-tracked run twice — double-counting
 // weekly km, milestones, and VS RECENT rows. Same local date + distance
 // within 5% (and not itself a Health import) reads as the same run.
+// An imported run keeps its Health identity after an edit: hkOrig is what Health recorded,
+// stamped on the first saved change or date move (the note alone was the marker before).
+function _isHealthRun(r){ return !!r && (r.note==='From Apple Health' || !!r.hkOrig); }
+function _hkOrigOf(r){ return {date:String(r.date||''), km:parseFloat(r.distance||r.dist)||0, time:String(r.time||'')}; }
+// While the import ledger exists no Health run ever matches (as before). Once it is gone
+// (Reset import, an iCloud restore), an EDITED run stands in for its own workout so the next
+// import brings no twin. Never widen this to unedited Health runs: importFromHealth writes the
+// ledger after the batch, so a run imported earlier in the same batch would swallow a second
+// same-day workout.
 function _manualRunDupe(dateISO, km, durationSec){
   km = parseFloat(km)||0;
   if(!(km>0)) return false;
   var hkSec = parseFloat(durationSec)||0;
+  var led=lsGet('kt_hk_imported'), hasLedger=Array.isArray(led)?led.length>0:!!(led&&typeof led==='object'&&Object.keys(led).length);
   return getRuns().some(function(r){
-    if(r.note==='From Apple Health') return false;
-    if(String(r.date)!==String(dateISO)) return false;
-    var rd=parseFloat(r.distance||r.dist)||0;
+    if(!r) return false;
+    var o=r;
+    if(_isHealthRun(r)){
+      if(!r.hkOrig || hasLedger) return false;
+      o={date:r.hkOrig.date, distance:r.hkOrig.km, time:r.hkOrig.time};
+    }
+    if(String(o.date)!==String(dateISO)) return false;
+    var rd=parseFloat(o.distance||o.dist)||0;
     if(!(rd>0) || Math.abs(rd-km)/Math.max(rd,km) > 0.05) return false;
     // Two genuinely different same-distance runs in one day exist (track
     // repeats) — when both sides know their duration, it must agree too.
-    var rSec=_runSecsOf(r.time);
+    var rSec=_runSecsOf(o.time);
     if(hkSec>0 && rSec>0) return Math.abs(rSec-hkSec)/Math.max(rSec,hkSec) <= 0.15;
     return true;
   });
@@ -7154,6 +7183,7 @@ function _runTypeLabel(t){
     long:'Long run', race:'Race effort', Z2:'Zone-2'
   })[t] || 'Run';
 }
+var RUN_TYPES=['easy','tempo','long','intervals','race'];   // the editor's choices; a run's own other type is kept
 function renderRunTargetsList(){
   var runs = getThisWeekRuns();
   if(!runs.length) return '';
@@ -7310,62 +7340,158 @@ function undoLastRun(){
 }
 // Edit a logged run in place — sessions and sport logs had editors, runs
 // only had delete-and-retype. Fields are typed in the display units.
-var _reFeel=0;
+var _reFeel=0, _reInit=null, _reReturnFocus=null, _reReturnId='';
 function openRunEditor(id){
-  var rec=getRuns().find(function(r){ return r.id===id; }); if(!rec) return;
-  closeRunEditor();
-  _reFeel=parseInt(rec.feel)||0;
+  var rec=null, runs=getRuns();
+  for(var i=0;i<runs.length;i++){ if(runs[i] && runs[i].id===id){ rec=runs[i]; break; } }
+  if(!rec) return;
+  var prevEl=document.getElementById('runEditOverlay');
+  if(prevEl) prevEl.remove();
+  else { _reReturnFocus=document.activeElement; _reReturnId=(_reReturnFocus&&_reReturnFocus.id)||''; }
+  var km=parseFloat(rec.distance||rec.dist)||0, secs=_runSecsOf(rec.time), health=_isHealthRun(rec);
+  var f=parseInt(rec.feel,10); _reFeel=(f>=1&&f<=5)?f:0;
+  var pDist=km>0?String(dDisp(km)):'', pTime=_normRunTime(rec.time)||(secs>0?_fmtRunSecs(secs):String(rec.time||''));
+  var pHr=parseInt(rec.hr,10)>0?String(parseInt(rec.hr,10)):'', pNote=rec.note==='From Apple Health'?'':String(rec.note||'');
+  var cur=String(rec.type||''), types=RUN_TYPES.slice(); if(types.indexOf(cur)<0) types.unshift(cur);
   var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;';
-  var types=['easy','tempo','long','intervals'];
   var overlay=document.createElement('div');
-  overlay.id='runEditOverlay';
-  overlay.className='kt-sheet-overlay';
-  overlay.innerHTML='<div class="kt-sheet">'+
-    '<div class="kt-sheet-head"><div class="kt-sheet-title">Edit run</div><button class="kt-sheet-x" onclick="closeRunEditor()" aria-label="Close">\u2715</button></div>'+
+  overlay.id='runEditOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet" role="dialog" aria-modal="true" aria-labelledby="reTitle">'+
+    '<div class="kt-sheet-head"><div class="kt-sheet-title" id="reTitle" tabindex="-1">Edit run · '+_esc(rec.date?fmtDate(rec.date):'—')+'</div><button type="button" class="kt-sheet-x" onclick="closeRunEditor()" aria-label="Close">✕</button></div>'+
+    (health?'<div class="kt-re-src">From Apple Health — edits change this log, not the workout in Health.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
-      '<div><label style="'+lbl+'" for="re_dist">Distance ('+_uD()+')</label><input id="re_dist" type="number" inputmode="decimal" step="0.01" min="0" value="'+dDisp(rec.distance)+'" style="'+inp+'"/></div>'+
-      '<div><label style="'+lbl+'" for="re_time">Time</label><input id="re_time" type="text" inputmode="text" placeholder="28:30" value="'+_esc(rec.time||'')+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_dist">Distance ('+_uD()+')</label><input id="re_dist" type="number" inputmode="decimal" step="0.01" min="0" value="'+_esc(pDist)+'" oninput="_rePacePreview()" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_time">Time</label><input id="re_time" type="text" placeholder="28:30" value="'+_esc(pTime)+'" oninput="_rePacePreview()" style="'+inp+'"/></div>'+
     '</div>'+
+    '<div id="re_pace" class="kt-rlog-pace" aria-live="polite">'+_esc(_rlogPaceText(pDist,pTime))+'</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
-      '<div><label style="'+lbl+'" for="re_date">Date</label><input id="re_date" type="date" value="'+_esc(rec.date||'')+'" style="'+inp+'"/></div>'+
-      '<div><label style="'+lbl+'" for="re_hr">Avg HR</label><input id="re_hr" type="number" inputmode="numeric" min="0" max="220" value="'+(rec.hr||'')+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_date">Date</label><input id="re_date" type="date" max="'+todayISO()+'" value="'+_esc(rec.date||'')+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'" for="re_hr">Avg HR</label><input id="re_hr" type="number" inputmode="numeric" min="30" max="240" placeholder="Optional" value="'+_esc(pHr)+'" style="'+inp+'"/></div>'+
     '</div>'+
     '<div style="margin-bottom:10px;"><label style="'+lbl+'" for="re_type">Type</label><select id="re_type" style="'+inp+'">'+
-      types.map(function(t){ return '<option value="'+t+'"'+(rec.type===t?' selected':'')+'>'+_esc(_runTypeLabel(t))+'</option>'; }).join('')+'</select></div>'+
-    '<div style="margin-bottom:10px;"><label style="'+lbl+'">How did it feel?</label><div class="kt-rlog-feel">'+
-      [1,2,3,4,5].map(function(n){ return '<button type="button" class="kt-rlog-face'+(_reFeel===n?' on':'')+'" aria-label="'+FEEL_LBL[n]+'" onclick="_reSetFeel('+n+')">'+FEEL_FACE[n]+'</button>'; }).join('')+'</div></div>'+
-    '<div style="margin-bottom:14px;"><label style="'+lbl+'" for="re_note">Notes</label><input id="re_note" type="text" value="'+_esc(rec.note||'')+'" style="'+inp+'"/></div>'+
-    '<button class="btn btn-primary btn-full" style="padding:14px;font-size:15px;" onclick="saveRunEdit('+rec.id+')">Save run</button>'+
-    '<button class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;margin-top:8px;color:var(--red);" onclick="closeRunEditor();deleteRun('+rec.id+')">Delete run</button>'+
+      types.map(function(t){ var l=_runTypeLabel(t); if(l==='Run'&&t) l=t; return '<option value="'+_esc(t)+'"'+(t===cur?' selected':'')+'>'+_esc(l)+'</option>'; }).join('')+'</select></div>'+
+    '<div style="margin-bottom:10px;"><div id="reFeelLbl" style="'+lbl+'">How did it feel?</div><div class="kt-rlog-feel" role="group" aria-labelledby="reFeelLbl">'+
+      [1,2,3,4,5].map(function(n){ return '<button type="button" class="kt-rlog-face'+(_reFeel===n?' on':'')+'" aria-label="'+FEEL_LBL[n]+'" aria-pressed="'+(_reFeel===n)+'" onclick="_reSetFeel('+n+')">'+FEEL_FACE[n]+'</button>'; }).join('')+'</div></div>'+
+    '<div style="margin-bottom:14px;"><label style="'+lbl+'" for="re_note">Notes</label><input id="re_note" type="text" placeholder="Optional" value="'+_esc(pNote)+'" style="'+inp+'"/></div>'+
+    '<div id="re_err" class="kt-re-err" role="alert"></div>'+
+    '<button type="button" class="btn btn-primary btn-full" style="padding:14px;font-size:15px;" onclick="saveRunEdit('+rec.id+')">Save changes</button>'+
+    '<button type="button" class="btn btn-ghost btn-full" style="padding:12px;font-size:14px;margin-top:8px;color:var(--red);" onclick="_runEditDelete('+rec.id+')">Delete run</button>'+
   '</div>';
   document.body.appendChild(overlay);
+  var rb=function(k){ var el=document.getElementById(k); return el?String(el.value||'').trim():''; };
+  _reInit={id:rec.id, dist:rb('re_dist'), time:rb('re_time'), hr:rb('re_hr'), date:rb('re_date'), note:rb('re_note')};
   _sheetDrag(overlay, closeRunEditor);
-  overlay.addEventListener('click',function(e){ if(e.target===overlay) closeRunEditor(); });
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeRunEditor(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closeRunEditor(); } });
   _a11yPass();
+  var tt=document.getElementById('reTitle'); if(tt){ try{ tt.focus({preventScroll:true}); }catch(e){} }
 }
-function closeRunEditor(){ var el=document.getElementById('runEditOverlay'); if(el) el.remove(); }
-function _reSetFeel(n){ _reFeel=(_reFeel===n)?0:n; document.querySelectorAll('#runEditOverlay .kt-rlog-face').forEach(function(b,i){ b.classList.toggle('on', i+1===_reFeel); }); }
+function closeRunEditor(){
+  var el=document.getElementById('runEditOverlay');
+  if(el){
+    el.remove();
+    var tgt=(_reReturnFocus&&_reReturnFocus.isConnected)?_reReturnFocus:(_reReturnId?document.getElementById(_reReturnId):null);
+    if(tgt){ try{ tgt.focus({preventScroll:true}); }catch(e){} }
+  }
+  _reReturnFocus=null; _reReturnId=''; _reInit=null;
+}
+function _reSetFeel(n){ _reFeel=(_reFeel===n)?0:n; document.querySelectorAll('#runEditOverlay .kt-rlog-face').forEach(function(b,i){ b.classList.toggle('on', i+1===_reFeel); b.setAttribute('aria-pressed', String(i+1===_reFeel)); }); }
+function _rePacePreview(){ var el=document.getElementById('re_pace'), d=document.getElementById('re_dist'), t=document.getElementById('re_time'); if(el) el.textContent=_rlogPaceText(d&&d.value, t&&t.value); }
+function _runEditErr(msg, fieldId){
+  var e=document.getElementById('re_err'); if(e) e.textContent=msg||'';
+  ['re_dist','re_time','re_date','re_hr'].forEach(function(k){ var x=document.getElementById(k); if(x) x.removeAttribute('aria-invalid'); });
+  if(fieldId){ var f=document.getElementById(fieldId); if(f){ f.setAttribute('aria-invalid','true'); try{ f.focus(); }catch(_){} } }
+  return false;
+}
+// Only touched fields are validated or written; an untouched field is compared with what
+// the browser rendered (_reInit), so number/date normalisation never counts as an edit.
 function saveRunEdit(id){
-  var runs=getRuns(), rec=runs.find(function(r){ return r.id===id; }); if(!rec){ closeRunEditor(); return; }
+  if(!_reInit || _reInit.id!==id || !document.getElementById('runEditOverlay')) return;
+  _runEditErr('');
+  var runs=getRuns(), idx=-1;
+  for(var i=0;i<runs.length;i++){ if(runs[i] && runs[i].id===id){ idx=i; break; } }
+  if(idx<0){ closeRunEditor(); return; }
+  var rec=runs[idx];
   var v=function(k){ var el=document.getElementById(k); return el?String(el.value||'').trim():''; };
-  var dist=parseFloat(v('re_dist')), time=_normRunTime(v('re_time')), date=v('re_date');
-  if(!(dist>0) || !time){ showToast('Distance and a readable time are required','err'); return; }
-  rec.distance=dStore(dist); rec.time=time;
-  if(/^\d{4}-\d{2}-\d{2}$/.test(date)){ rec.date=date; rec.week=weekForDate(date); }
-  rec.hr=parseInt(v('re_hr'))||0; rec.note=v('re_note'); rec.type=v('re_type')||rec.type||'easy'; rec.feel=_reFeel||0;
-  lsSet('kt_runs', runs);
-  invalidateCoachCard();
-  closeRunEditor();
-  showToast('Run updated');
-  render();
+  var km=parseFloat(rec.distance||rec.dist)||0, origSecs=_runSecsOf(rec.time), health=_isHealthRun(rec);
+  var f0=parseInt(rec.feel,10), origFeel=(f0>=1&&f0<=5)?f0:0, origHr=parseInt(rec.hr,10)||0;
+  var rawD=v('re_dist'), rawT=v('re_time'), rawH=v('re_hr'), rawDate=v('re_date');
+  var dTouched=rawD!==_reInit.dist && parseFloat(rawD)!==parseFloat(_reInit.dist);
+  var tTouched=rawT!==_reInit.time, hTouched=rawH!==_reInit.hr, dateTouched=rawDate!==_reInit.date;
+  var newKm=km, newTime=rec.time, newHr=origHr, newDate=rec.date, n;
+  if(dTouched){
+    n=parseFloat(rawD);
+    if(!(n>0)) return _runEditErr('Enter a distance above 0 '+_uD()+'.', 're_dist');
+    newKm=dStore(n);
+    if(newKm>400) return _runEditErr('That reads over '+fmtD(400)+' — check the distance.', 're_dist');
+  }
+  if(tTouched){
+    if(!rawT){ if(origSecs>0) return _runEditErr('Enter a time.', 're_time'); }
+    else {
+      var norm=_normRunTime(rawT);
+      if(!norm) return _runEditErr('Time reads like 28:30 (or 1:02:30, 28m30s)', 're_time');
+      newTime=(_runSecsOf(norm)===origSecs)?rec.time:norm;
+    }
+  }
+  if((dTouched||tTouched) && newKm>0 && _runSecsOf(newTime)>0 && _runSecsOf(newTime)/newKm<90)
+    return _runEditErr('That pace is faster than a sprinter — check the distance and time.', 're_time');
+  if(hTouched){
+    if(!rawH) newHr=0;
+    else { n=parseInt(rawH,10); if(!(n>=30&&n<=240)) return _runEditErr('Heart rate reads 30–240 bpm — or leave it empty.', 're_hr'); newHr=n; }
+  }
+  if(dateTouched && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)){
+    if(rawDate>todayISO()) return _runEditErr('Pick today or an earlier date.', 're_date');
+    newDate=rawDate;
+  }
+  var newType=v('re_type'), newFeel=_reFeel;
+  var rawN=v('re_note'), nTouched=rawN!==_reInit.note;
+  var newNote=nTouched?((!rawN && rec.note==='From Apple Health')?rec.note:rawN):rec.note;
+  var ch={dist:newKm!==km, time:newTime!==rec.time, date:newDate!==rec.date, hr:newHr!==origHr,
+    type:newType!==String(rec.type||''), feel:newFeel!==origFeel, note:newNote!==rec.note};
+  var any=false; for(var k in ch){ if(ch[k]) any=true; }
+  if(!any){ closeRunEditor(); return; }
+  var next={}; Object.keys(rec).forEach(function(k){ next[k]=rec[k]; });
+  if(ch.dist){ next.distance=newKm; delete next.dist; }
+  if(ch.time) next.time=newTime;
+  if(ch.date){ next.date=newDate; next.week=weekForDate(newDate); }
+  if(ch.hr) next.hr=newHr;
+  if(ch.type) next.type=newType;
+  if(ch.feel) next.feel=newFeel;
+  if(ch.note) next.note=newNote;
+  if(rec.note==='From Apple Health' && !rec.hkOrig) next.hkOrig=_hkOrigOf(rec);
+  var prev=JSON.parse(JSON.stringify(rec)), out=runs.slice(); out[idx]=next;
+  if(!lsSet('kt_runs', out)) return _runEditErr('Couldn\'t save — storage is full. Export your data from Settings, then try again.');
+  if(runLogConfirmed && runLogConfirmed.id===id){ runLogConfirmed.km=next.distance||next.dist; runLogConfirmed.time=next.time; }
+  if(ch.date && calSelectedDate===rec.date) _calNavToDate(newDate);
+  invalidateCoachCard(); render(); closeRunEditor();
+  showUndoToast('Run updated', function(){ _undoRunEdit(id, prev); });
 }
+function _undoRunEdit(id, prev){
+  var runs=getRuns(), idx=-1;
+  for(var i=0;i<runs.length;i++){ if(runs[i] && runs[i].id===id){ idx=i; break; } }
+  if(idx<0) return;
+  var out=runs.slice(); out[idx]=prev;
+  if(!lsSet('kt_runs', out)) return;
+  if(runLogConfirmed && runLogConfirmed.id===id){ runLogConfirmed.km=prev.distance||prev.dist; runLogConfirmed.time=prev.time; }
+  invalidateCoachCard(); render();
+}
+// null: nothing matched · false: storage full (nothing changed) · true: deleted, with Undo.
+// Every record with that id goes (legacy duplicate-id twins) and Undo brings them all back.
 function deleteRun(id){
-  var gone=getRuns().find(function(r){return r.id===id;}); if(!gone) return;
-  lsSet('kt_runs',getRuns().filter(function(r){return r.id!==id;}));
-  calSelectedDate=null; render();
-  showUndoToast('Run deleted', function(){ var rs=getRuns(); rs.unshift(gone); lsSet('kt_runs',rs); render(); });
+  var gone=[], kept=[];
+  getRuns().forEach(function(r){ (r && r.id===id ? gone : kept).push(r); });
+  if(!gone.length) return null;
+  if(!lsSet('kt_runs', kept)) return false;
+  if(runLogConfirmed && runLogConfirmed.id===id) runLogConfirmed=null;
+  invalidateCoachCard(); calSelectedDate=null; render();
+  showUndoToast('Run deleted', function(){
+    if(getRuns().some(function(r){ return r && r.id===id; })) return;
+    if(lsSet('kt_runs', gone.concat(getRuns()))){ invalidateCoachCard(); render(); }
+  });
+  return true;
 }
+function _runEditDelete(id){ if(deleteRun(id)===false) _runEditErr('Couldn\'t delete — storage is full. Export your data from Settings, then try again.'); else closeRunEditor(); }
 // Surgical pill-class swap — re-rendering would wipe in-progress input
 // values, so update DOM in place instead.
 function selectRunLogType(t){
@@ -7433,12 +7559,12 @@ function renderRunSavedStrip(){
   if(!runLogConfirmed) return '';
   var c = runLogConfirmed;
   return '<div class="kt-rconfirm">'+
-    '<div>✓ Run saved · '+_esc(fmtD(c.km))+' in '+_esc(c.time)+'</div>'+
-    '<button class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button>'+
+    '<div class="kt-rconfirm-t">✓ Run saved · '+fmtD(parseFloat(c.km)||0)+' in '+_esc(c.time)+'</div>'+
+    '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+c.id+')">EDIT</button>'+
+    '<button type="button" class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button></div>'+
     '</div>'+
     renderRunReview(c.km, c.time, c.id);
 }
-
 // Post-run review (screen C): the goal-pace delta renders as the screen's one
 // lime data chip (only when the goal was actually beaten), then a VS RECENT
 // ledger of comparable runs — same ±10% distance, oldest at the top so today
@@ -7476,7 +7602,7 @@ function renderRunReview(km, time, excludeId){
     var rs=_runSecsOf(r.time);
     if(!(rd>0) || !(rs>0)) return;
     if(Math.abs(rd-d)/d>0.1) return;
-    comps.push({date:r.date, secs:rs, health:r.note==='From Apple Health'});
+    comps.push({date:r.date, secs:rs, health:_isHealthRun(r)});
   });
   if(comps.length){
     comps.reverse(); // storage is newest-first; ledger runs oldest → today
@@ -7608,10 +7734,12 @@ function renderRunSegment(){
   } else if(runLogConfirmed){
     slot = renderRunSavedStrip();
   } else if(_todayStoredRun){
+    var _tsKm=_todayStoredRun.distance||_todayStoredRun.dist;
     slot = '<div class="kt-rconfirm">'+
-      '<div>✓ Run logged · '+_esc(fmtD(_todayStoredRun.distance))+' in '+_esc(_todayStoredRun.time)+'</div>'+
+      '<div class="kt-rconfirm-t">✓ Run logged · '+fmtD(parseFloat(_tsKm)||0)+' in '+_esc(_todayStoredRun.time)+'</div>'+
+      '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+_todayStoredRun.id+')">EDIT</button></div>'+
       '</div>'+
-      renderRunReview(_todayStoredRun.distance, _todayStoredRun.time, _todayStoredRun.id);
+      renderRunReview(_tsKm, _todayStoredRun.time, _todayStoredRun.id);
   } else if(runLogOpen){
     slot = renderInlineRunLog();
   } else {
@@ -10889,7 +11017,7 @@ function moveSession(id,newDate){
 function moveRun(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var runs=getRuns();
-  runs.forEach(function(r){ if(r.id===id){ r.date=newDate; r.week=weekForDate(newDate); } });
+  runs.forEach(function(r){ if(r.id===id){ if(r.date!==newDate && r.note==='From Apple Health' && !r.hkOrig) r.hkOrig=_hkOrigOf(r); r.date=newDate; r.week=weekForDate(newDate); } });
   lsSet('kt_runs',runs);
   _calNavToDate(newDate); render();
 }
@@ -12999,7 +13127,7 @@ function renderProgress() {
     eyebrow('Overview') + toggle + stats +
     midGroups + renderMilestones() + _renderMonthPoster() + renderRetroCard(sessions) +
     eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
-    (progressTab==='lifts' ? renderHistory() : '');
+    (progressTab==='lifts' ? renderHistory() : (progressTab==='runs' ? renderRunHistory() : ''));
 }
 
 // Catmull-Rom → cubic bezier, so charts draw as smooth curves not zig-zags.
@@ -13138,7 +13266,7 @@ function renderCalDetail(sessions,runs,sports){
         '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px;">'+
           '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="openRunEditor('+r.id+')" title="Edit run">EDIT</button>'+
+          '<button type="button" id="cal-edit-'+r.id+'" style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="openRunEditor('+r.id+')" title="Edit run">EDIT</button>'+
           '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
         '</div>'+
       '</div>'+
@@ -13472,7 +13600,7 @@ function openCompareSheet(){
     var m;
     if(isRun){
       var st=_cmpRunStats(rec);
-      m=(st.km>0?fmtD(st.km):'\u2014')+(rec.note==='From Apple Health'?' \u00b7 HEALTH':'');
+      m=(st.km>0?fmtD(st.km):'\u2014')+(_isHealthRun(rec)?' \u00b7 HEALTH':'');
     } else {
       m=(rec.week?'Wk '+_esc(rec.week)+' \u00b7 ':'')+_plural(_cmpGroups(rec).length,'lift')+
         ((rec.wristStartedAt||rec.note==='From Apple Watch')?' \u00b7 WATCH':'');
@@ -14011,6 +14139,30 @@ function renderHistory() {
       (showAllHist?'Show recent ↑':'Show all '+sessions.length+' →')+'</button>'
     : '';
   return '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Session history · '+sessions.length+' logged</div></div></div>'+rows+moreBtn+'</div>';
+}
+
+
+// Progress › Runs › Run history: every logged run, newest first, each row opens the run
+// editor. It lives here, not on the Run tab, because a sport-primary plan has no Run tab.
+function renderRunHistory(){
+  var all=getRuns().slice().sort(_cmpByDateDesc);
+  if(!all.length) return '';
+  var LIM=6, CAP=60, list=all.slice(0, showAllRunHist?CAP:LIM);
+  var rows=list.map(function(r){
+    var km=parseFloat(r.distance||r.dist)||0, secs=_runSecsOf(r.time);
+    var when=r.date?fmtDate(r.date):'—';
+    var sub=[(km>0?fmtD(km):'—')+(secs>0?' · '+_fmtRunSecs(secs):'')];
+    if(km>0&&secs>0) sub.push(fmtPace(secs/km));
+    if(_isHealthRun(r)) sub.push('HEALTH');
+    var t=_runTypeLabel(r.type);
+    return '<div class="kt-run-hist-row" id="rh-'+r.id+'" role="button" tabindex="0" onclick="openRunEditor('+r.id+')" aria-label="'+_esc('Edit run, '+t+', '+when+', '+sub[0])+'">'+
+      '<div class="kt-run-hist-main"><div><span class="kt-run-hist-t">'+_esc(t)+'</span><span class="kt-run-hist-d">'+_esc(when)+'</span></div>'+
+      '<div class="kt-run-hist-s">'+_esc(sub.join(' · '))+'</div></div>'+
+      '<span class="kt-run-hist-go" aria-hidden="true">›</span></div>';
+  }).join('');
+  var more=all.length>LIM ? '<button type="button" class="kt-run-hist-more" onclick="showAllRunHist='+(!showAllRunHist)+';render()">'+
+    (showAllRunHist ? 'Show recent ↑' : (all.length<=CAP ? 'Show all '+all.length+' →' : 'Show latest '+CAP+' →'))+'</button>' : '';
+  return '<div class="chart-card kt-run-hist"><div class="chart-head"><div><div class="chart-lbl">Run history · '+all.length+' logged</div></div></div>'+rows+more+'</div>';
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -18842,7 +18994,7 @@ function _sanitizeForICloud(payload){
     if(o && typeof o==='object'){
       delete o.kt_hk_imported;
       if(Array.isArray(o.kt_runs)) o.kt_runs=o.kt_runs.map(function(r){
-        if(!r || r.note!=='From Apple Health') return r;
+        if(!r || !_isHealthRun(r)) return r;
         var c={}; Object.keys(r).forEach(function(k){ if(k!=='hr') c[k]=r[k]; }); return c;
       });
       if(Array.isArray(o.kt_sports)) o.kt_sports=o.kt_sports.map(function(s){

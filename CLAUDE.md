@@ -55,6 +55,7 @@
 - **Coach units:** prompts render every number through `fmtW/fmtD/fmtPaceStr` and open with `_coachUnitsNote()`; tool schemas carry `{W}`/`{D}` placeholders filled per request by `_unitizeSchema`; every weight-writing tool converts through `_coachLoadIn`/`wStore`, run goals through `paceStore`; `log_run` takes `distance` (user unit) or `distance_km`/`distance_mi`, programme runs accept `{mi}`.
 - **Keyless proactive coach:** `_progressionDue/_plateauFixDue/_weekReviewDue` are not key-gated. Without a key, `applyProgressionLocal` / `applyPlateauFixLocal` (10% deload) write the change on-device with a 6 s Undo, `openLocalWeekReview` is a sheet, and the COMPLETE insight doubles as the Today debrief card. With a key the same taps go through the Coach.
 - Compare: Activity Calendar › COMPARE picks two workouts or two runs (in memory only) and opens a then → now sheet. Same-day pairs order by start time (`_cmpT`: `startMs` on Health runs, `wristStartedAt`, `startedAt`, then id).
+- Run editor: Progress › Runs › Run history, the calendar day panel's EDIT and the Run tab's saved/logged strips open `openRunEditor`. Only touched fields are validated or written, and each save has a 6 s Undo.
 - PR history: Records pills and the exercise-detail PR row open RECORD HISTORY (`openPRHistory`): each record's reps and date and the records it replaced, derived from `kt_sessions` by `_prLedger()` (memoised on `_logsVersion`, never stored).
 - **One streak:** `calcStreakDays()` (scheduled training days; calendar days with no plan) drives the Today chip (`… · TRAIN TODAY TO KEEP IT` when at risk), the streak milestone and the Progress hero; the widget summary carries `streakDays`.
 - **Deep link:** `trovo://start` (widget `.widgetURL`) → AppDelegate parks it in UserDefaults `pendingDeepLink` and posts `.trovoDeepLink`; `SuperoViewController` evals `window._trovoOpen(url)` when the page is up; the page consumes the parked URL at boot through `TrovoWidget.consumeDeepLink` and `_handleDeepLink` opens today's session.
@@ -62,7 +63,7 @@
 
 ## Key localStorage keys
 - `kt_sessions` — logged gym sessions
-- `kt_runs` — run logs (manual + Apple Health imports; `feel` 1–5 optional)
+- `kt_runs` — run logs (manual + Apple Health imports; `feel` 1–5 optional; `startMs` on Health imports; `hkOrig` {date, km, time} = what Apple Health recorded, stamped on the first edit or date move of an imported run, so Reset import keeps it and it still counts as Health for the iCloud HR strip)
 - `kt_sports` — non-running sport activity logs
 - `kt_weights` — working weight per exercise (lb)
 - `kt_bw` — body weight history (lb)
