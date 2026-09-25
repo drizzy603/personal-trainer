@@ -32,9 +32,11 @@ struct WatchTheme: Codable, Equatable {
     var earned: String?
     var earnedInk: String?
     var red: String?
-    static let lime = WatchTheme(room: "dark", paper: false, bg: "#080b09", card: "#111613", card2: "#1a211c",
-                                 text: "#f7fff8", muted: "#748077", accent: "#c7ff00", onAccent: "#080b09",
-                                 earned: "#c7ff00", earnedInk: "#c7ff00", red: "#ff5d55")
+    // The Lime room's tokens as the page sends them (THEMES.dark since 2026-09-23): shown only
+    // until the first themed plan arrives.
+    static let lime = WatchTheme(room: "dark", paper: false, bg: "#0b0b0c", card: "#151517", card2: "#1e1e21",
+                                 text: "#f4f4f1", muted: "#8c8c91", accent: "#d8ff63", onAccent: "#0b0b0c",
+                                 earned: "#d8ff63", earnedInk: "#d8ff63", red: "#ff5d55")
     var isPaper: Bool { paper == true }
     var accentColor: Color { Color(hex: accent) ?? Color(red: 0.78, green: 1.0, blue: 0.0) }
     var earnedColor: Color { Color(hex: earned) ?? accentColor }
@@ -51,6 +53,7 @@ extension Color {
 final class ThemeStore: ObservableObject {
     static let shared = ThemeStore()
     @Published var theme: WatchTheme = .lime
+    @Published var unit: String = "lb"   // the phone's display unit for weights ("lb" | "kg")
 }
 // `lime` keeps its name as the ACTION colour every view already uses.
 private var lime: Color { ThemeStore.shared.theme.accentColor }
@@ -112,6 +115,18 @@ private func fmtWeight(_ v: Double) -> String {
     return v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(format: "%.1f", v)
 }
 
+// Weights live in lb on the wrist, as on the phone. A kg user sees and types kg, converted
+// exactly as the page does it (wDisp rounds to 0.5 kg, wStore to 0.1 lb, wStepLb is 1.25 kg).
+private let lbPerKg = 2.2046226218
+private var isKg: Bool { ThemeStore.shared.unit == "kg" }
+private var unitLabel: String { isKg ? "kg" : "lb" }
+private func dispWeight(_ lb: Double) -> Double { isKg ? (lb / lbPerKg * 2).rounded() / 2 : lb }
+private func fmtW(_ lb: Double) -> String { fmtWeight(dispWeight(lb)) }
+private func storeWeight(_ typed: Double) -> Double { isKg ? (typed * lbPerKg * 10).rounded() / 10 : typed }
+private var weightStepLb: Double { isKg ? 1.25 * lbPerKg : 2.5 }
+private var weightStepLabel: String { isKg ? "1.25" : "2.5" }
+private func stepWeight(_ lb: Double, by delta: Double) -> Double { max(0, ((lb + delta) * 100).rounded() / 100) }
+
 // MARK: - Plan model (mirrors the JSON the web app sends)
 
 struct WatchExercise: Codable, Identifiable, Hashable {
@@ -134,10 +149,11 @@ struct WatchPlan: Codable, Equatable {
     let theme: WatchTheme?      // the phone's room tokens (older phones omit it → lime on black)
     let slot: String?           // the day's slot id ("Push"); dayName is whatever the user named it (pages before 20260922 omit it)
     let short: String?          // dayName fitted to a complication ("C+B")
+    var unit: String? = nil     // display unit for weights, "lb" | "kg" (pages before 20260924-7 omit it)
 
     func with(exercises: [WatchExercise]) -> WatchPlan {
         WatchPlan(week: week, date: date, dayName: dayName, type: type, exercises: exercises,
-                  hasPlan: hasPlan, theme: theme, slot: slot, short: short)
+                  hasPlan: hasPlan, theme: theme, slot: slot, short: short, unit: unit)
     }
 }
 
@@ -198,6 +214,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
            let p = try? JSONDecoder().decode(WatchPlan.self, from: data) {
             plan = p
             ThemeStore.shared.theme = p.theme ?? .lime
+            ThemeStore.shared.unit = p.unit ?? "lb"
         }
         if let wd = UserDefaults.standard.data(forKey: "weekPlans"),
            let wk = try? JSONDecoder().decode([WatchPlan].self, from: wd) {
@@ -233,14 +250,22 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         }
         DispatchQueue.main.async {
             ThemeStore.shared.theme = p.theme ?? .lime
+            ThemeStore.shared.unit = p.unit ?? "lb"
             self.plan = p
             self.live = liveSession
             UserDefaults.standard.set(data, forKey: "lastPlan")
             if let week = week {
                 self.weekPlans = week
                 if let wd = try? JSONEncoder().encode(week) { UserDefaults.standard.set(wd, forKey: "weekPlans") }
+            } else if p.hasPlan == false {
+                // No programme on the phone: no week ahead either (a page that sent '' left the old one).
+                self.weekPlans = []
+                UserDefaults.standard.removeObject(forKey: "weekPlans")
             }
             self.mirrorToFace(p)
+            // A cold launch replays the last applicationContext, which can be yesterday's: roll
+            // straight back to today from the stored week (a same-day push is left alone).
+            self.rolloverIfNeeded()
             WidgetCenter.shared.reloadAllTimelines()
         }
     }
@@ -257,7 +282,7 @@ final class Connectivity: NSObject, ObservableObject, WCSessionDelegate {
         guard let next = weekPlans.first(where: { $0.date == today }) else { return }
         let p = WatchPlan(week: next.week, date: next.date, dayName: next.dayName, type: next.type,
                           exercises: next.exercises, hasPlan: next.hasPlan, theme: next.theme ?? cur.theme,
-                          slot: next.slot, short: next.short)
+                          slot: next.slot, short: next.short, unit: next.unit ?? cur.unit)
         wchLog.info("rollover: \(cur.date ?? "?", privacy: .public) → \(today, privacy: .public) \(p.dayName, privacy: .public)")
         plan = p
         if let data = try? JSONEncoder().encode(p) { UserDefaults.standard.set(data, forKey: "lastPlan") }
@@ -991,7 +1016,7 @@ struct PlanView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ex.name).font(.system(size: 14, weight: .bold)).lineLimit(2)
-                                Text("\(runner.done(ex))/\(ex.sets) sets · \(fmtWeight(runner.weight(for: ex))) lb")
+                                Text("\(runner.done(ex))/\(ex.sets) sets · \(fmtW(runner.weight(for: ex))) \(unitLabel)")
                                     .font(.system(size: 11, design: .monospaced)).foregroundColor(.secondary)
                             }
                             Spacer()
@@ -1108,23 +1133,23 @@ struct ExerciseView: View {
                     }
                     LiveHRChip()
                     HStack(spacing: 8) {
-                        Button { runner.weights[ex.name] = max(0, runner.weight(for: ex) - 2.5) } label: { Text("−2.5") }
+                        Button { runner.weights[ex.name] = stepWeight(runner.weight(for: ex), by: -weightStepLb) } label: { Text("−" + weightStepLabel) }
                             .buttonStyle(.bordered)
                         // Tap the number to type an exact weight.
                         Button {
-                            weightText = fmtWeight(runner.weight(for: ex))
+                            weightText = fmtW(runner.weight(for: ex))
                             editingWeight = true
                         } label: {
                             VStack(spacing: 0) {
-                                Text(fmtWeight(runner.weight(for: ex)))
+                                Text(fmtW(runner.weight(for: ex)))
                                     .font(.system(size: 26, weight: .heavy, design: .rounded))
                                     .lineLimit(1).minimumScaleFactor(0.6)
-                                Text("LB").font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
+                                Text(unitLabel.uppercased()).font(.system(size: 9, weight: .bold)).foregroundColor(.secondary)
                             }
                             .frame(minWidth: 44)
                         }
                         .buttonStyle(.plain)
-                        Button { runner.weights[ex.name] = runner.weight(for: ex) + 2.5 } label: { Text("+2.5") }
+                        Button { runner.weights[ex.name] = stepWeight(runner.weight(for: ex), by: weightStepLb) } label: { Text("+" + weightStepLabel) }
                             .buttonStyle(.bordered)
                     }
                     Stepper(value: $reps, in: 0...50) {
@@ -1155,7 +1180,7 @@ struct ExerciseView: View {
             .onChange(of: ex) { newEx in seed(newEx) }
             .sheet(isPresented: $editingWeight) {
                 VStack(spacing: 12) {
-                    Text("WEIGHT · LB")
+                    Text("WEIGHT · " + unitLabel.uppercased())
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(.secondary)
                     TextField("0", text: $weightText)
@@ -1164,8 +1189,8 @@ struct ExerciseView: View {
                     Button("Set") {
                         let cleaned = weightText.replacingOccurrences(of: ",", with: ".")
                             .trimmingCharacters(in: .whitespaces)
-                        if let v = Double(cleaned), v >= 0, v <= 1995 {
-                            runner.weights[ex.name] = v
+                        if let v = Double(cleaned), v >= 0, storeWeight(v) <= 1995 {
+                            runner.weights[ex.name] = storeWeight(v)
                         }
                         editingWeight = false
                     }

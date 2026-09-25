@@ -27,7 +27,9 @@ struct ComplicationEntry: TimelineEntry {
 
 private func loadEntry() -> ComplicationEntry {
     let d = UserDefaults(suiteName: "group.app.kt.trainer")
-    var day = d?.string(forKey: "watchPlanDay") ?? ""
+    let accent = d?.string(forKey: "watchThemeAccent")
+    let weekNo = d?.integer(forKey: "watchPlanWeek") ?? 0
+    let day = d?.string(forKey: "watchPlanDay") ?? ""
     // The plan is one day's. A timeline rebuilt the next morning (reboot, a
     // budgeted reload) used to show yesterday's session as today's; watch
     // builds before 51 wrote no date, so a missing one is taken on trust.
@@ -35,15 +37,25 @@ private func loadEntry() -> ComplicationEntry {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
-        if planDate != f.string(from: Date()) { day = "" }
+        let today = f.string(from: Date())
+        if planDate != today {
+            // Before the watch app has run today, the week ahead the phone sent still knows today.
+            let week = (d?.string(forKey: "watchWeek")?.data(using: .utf8))
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] } ?? []
+            if let e = week.first(where: { ($0["date"] as? String) == today }), let name = e["day"] as? String, !name.isEmpty {
+                return ComplicationEntry(date: Date(), day: name, short: (e["short"] as? String) ?? name,
+                                         type: (e["type"] as? String) ?? "", week: (e["week"] as? Int) ?? weekNo, accentHex: accent)
+            }
+            return ComplicationEntry(date: Date(), day: "", short: "", type: "", week: weekNo, accentHex: accent)
+        }
     }
     return ComplicationEntry(
         date: Date(),
         day: day,
         short: day.isEmpty ? "" : (d?.string(forKey: "watchPlanShort") ?? day),
         type: day.isEmpty ? "" : (d?.string(forKey: "watchPlanType") ?? ""),
-        week: d?.integer(forKey: "watchPlanWeek") ?? 0,
-        accentHex: d?.string(forKey: "watchThemeAccent")
+        week: weekNo,
+        accentHex: accent
     )
 }
 
