@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-2"/>
+<meta name="build" content="20260925-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3735,7 +3735,7 @@ function _prLedger(){
       var t=tops['k:'+n], c=chains['k:'+n];
       if(!c){ c=chains['k:'+n]=[]; names.push(n); }
       var last=c[c.length-1];
-      if(last && !(t.w>last.w)) return;
+      if(last && !_prBeats(t.w, last.w)) return;
       var e={name:n, w:t.w, r:t.r, date:String(s.date||''), id:s.id, type:String(s.type||''), label:String(s.label||'')};
       c.push(e);
       if(!first) first=e;
@@ -3787,13 +3787,16 @@ function _prGain(c, i){
   return d>0 ? '+'+d+' '+_uW() : '';
 }
 // Returns array of exercise names that set new PRs
+// A record beats the old one by more than storage rounding (kg loads are stored in
+// lb at 0.1, and older builds stepped at 0.01): the smallest real plate is 2.5 lb.
+function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2; }
 function checkAndUpdatePRs(exercises) {
   var prs = getPRs();
   var newPRs = [];
   exercises.forEach(function(ex) {
     var w = parseFloat(ex.weight);
     if (!(w > 0)) return; // bodyweight or missing weight — NaN <= 0 is false, so use positive guard
-    if (!prs[ex.name] || w > prs[ex.name]) {
+    if (!prs[ex.name] || _prBeats(w, prs[ex.name])) {
       prs[ex.name] = w;
       newPRs.push(ex.name);
     }
@@ -4066,6 +4069,7 @@ function _applyImportedData(data) {
   var count = 0, dropped = [];
   BACKUP_KEYS.forEach(function(k){
     if (data[k] !== undefined) {
+      if (k === 'kt_prs' && Array.isArray(data[k])) return;   // derived from sessions; _syncPRCache rebuilds it below
       if (!_backupValueOk(k, data[k])) { dropped.push(k); return; }
       lsSet(k, data[k]); count++;
     } else {
@@ -8090,7 +8094,17 @@ function runnerToggleEngaged(){
 }
 function runnerStepWeight(delta){
   var ex = _runnerEx(); if(!ex) return;
-  runnerWeights[ex.name] = Math.max(0, Math.round(((runnerWeights[ex.name]||0) + delta)*100)/100);
+  var cur = runnerWeights[ex.name]||0;
+  if(_uW()==='kg'){
+    // Step in kg and store the way a typed kg value is stored (wStore), so one shown
+    // load is always one stored number: a stepped 102.5 kg was 226.02 lb and a typed
+    // one 226.0, which counted as a new record.
+    var kstep = Math.round(Math.abs(delta)/LB_PER_KG*100)/100 || 1.25;
+    var kg = Math.round((cur/LB_PER_KG + (delta>0?1:-1)*kstep)*4)/4;
+    runnerWeights[ex.name] = Math.max(0, wStore(Math.max(0, kg)));
+  } else {
+    runnerWeights[ex.name] = Math.max(0, Math.round((cur + delta)*100)/100);
+  }
   paintRunner();
 }
 function runnerSetWeight(val){
@@ -8213,7 +8227,7 @@ function runnerCompleteSet(){
   // ever lift has nothing to beat, so it stays quiet). One heavy haptic; the
   // gold surfaces render from state.
   var _best = parseFloat(getPRs()[ex.name])||0;
-  var _isBeat = _best > 0 && w > _best;
+  var _isBeat = _best > 0 && _prBeats(w, _best);
   if(_isBeat){
     _runnerPrBeat = {ex: ex.name, setIdx: done-1, w: w,
       r: runnerRepsLog[ex.name][done-1], best: _best, at: Date.now()};
@@ -8729,9 +8743,9 @@ function openCompleteSheet(c){
   var done=(rec.exercises||[]).length, planned=c.planned||done;
   var prRows=(rec.prs||[]).map(function(n){
     var ex=(rec.exercises||[]).find(function(e){ return e.name===n; });
-    var pair=ex?_lastPair(ex):null;
+    var top=ex?_prTop(ex):null;
     return '<div class="kt-cmp-pr"><div><div style="font-size:15px;font-weight:700;">'+_esc(n)+'</div>'+
-      (pair?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtW(pair.w)+' \u00d7 '+pair.r+' \u2014 best at this weight</div>':'')+
+      (top?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+_esc(_prSetTxt(n, top))+'</div>':'')+
       '</div><span class="kt-cmp-badge">PR</span></div>';
   }).join('');
   var tile=function(lbl,val,unit){ return '<div class="kt-cmp-tile"><div class="kt-cmp-lbl">'+lbl+'</div><div class="kt-cmp-val">'+val+(unit?'<span class="u">'+unit+'</span>':'')+'</div></div>'; };
@@ -9047,13 +9061,17 @@ function runnerSaveEditSet(){
   var ex=_runnerEx(); if(!ex) return;
   if(runnerEditSetIdx===null||runnerEditSetEx!==ex.name){ runnerCancelEditSet(); return; }
   var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
-  if(wEl){ var _raw=parseFloat(wEl.value); if(!isNaN(_raw)&&_raw>=0){ var w=wStore(_raw); if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
+  if(wEl){ var _raw=parseFloat(wEl.value); if(!isNaN(_raw)&&_raw>=0){
+    var _cur=(runnerWeightsLog[ex.name]||[])[runnerEditSetIdx];
+    // An untouched weight keeps its stored value (a reps-only fix used to re-round the load).
+    var w=(_cur!=null && _raw===wDisp(_cur)) ? _cur : wStore(_raw);
+    if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
   if(rEl){ var r=parseInt(rEl.value); if(!isNaN(r)&&r>0){ if(!runnerRepsLog[ex.name])runnerRepsLog[ex.name]=[]; runnerRepsLog[ex.name][runnerEditSetIdx]=r; } }
   // A live PR beat must follow the edit: retract when the corrected weight
   // no longer beats the old best, or track the corrected numbers.
   if(_runnerPrBeat && _runnerPrBeat.ex===ex.name && _runnerPrBeat.setIdx===runnerEditSetIdx){
     var _ew=(runnerWeightsLog[ex.name]||[])[runnerEditSetIdx];
-    if(!(parseFloat(_ew)>_runnerPrBeat.best)) _runnerPrBeat=null;
+    if(!_prBeats(_ew, _runnerPrBeat.best)) _runnerPrBeat=null;
     else { _runnerPrBeat.w=_ew; _runnerPrBeat.r=(runnerRepsLog[ex.name]||[])[runnerEditSetIdx]; }
   }
   _markPhoneEdit(ex.name, runnerCompleted[ex.name]||0);
@@ -9087,7 +9105,7 @@ function _renderCompletedSets(ex){
     } else {
       var _washed=_justLoggedSet && _justLoggedSet.ex===ex.name && i===_justLoggedSet.idx
         && (Date.now()-_justLoggedSet.at) < 900;
-      var _gold=best>0 && parseFloat(w)>best;
+      var _gold=best>0 && _prBeats(w, best);
       // Wrist-arrived rows carry a ⌚ stamp in the action slot; tapping it
       // still opens the same edit.
       var _stamp=(_wristStamps[ex.name]||{})[i];
@@ -10318,7 +10336,11 @@ function saveRunnerExEdit(){
      runnerSession.ownAt||{}, runnerSession.ownLen||{}].forEach(function(map){
       if(map && map[oldName]!==undefined){ map[newName]=map[oldName]; delete map[oldName]; }
     });
-    if(_runnerPrBeat && _runnerPrBeat.ex===oldName) _runnerPrBeat.ex=newName;
+    if(_runnerPrBeat && _runnerPrBeat.ex===oldName){
+      var _nb=parseFloat(getPRs()[newName])||0;
+      if(_nb>0 && _prBeats(_runnerPrBeat.w, _nb)){ _runnerPrBeat.ex=newName; _runnerPrBeat.best=_nb; }
+      else _runnerPrBeat=null;   // it does not beat the renamed lift's record (or there is none to beat)
+    }
   }
   if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight},
     touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_newR!==parseInt(_seedR), weight:ex.weight!==_seedW}});
@@ -11350,7 +11372,10 @@ function saveSessionEdit(){
       var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
       var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
       reps.push(Math.max(0, parseInt(rEl&&rEl.value)||0));
-      wts.push(Math.max(0, wStore(parseFloat(wEl&&wEl.value)||0)));   // typed in the display unit
+      // Typed in the display unit. An untouched field keeps the stored load exactly: in kg
+      // the prefilled value is rounded, and writing it back moved every set (and records).
+      var _typed=parseFloat(wEl&&wEl.value), _shown=(p[1]!==''&&p[1]!=null)?wDisp(p[1]):NaN;
+      wts.push((wEl && _typed===_shown) ? (parseFloat(p[1])||0) : Math.max(0, wStore(_typed||0)));
     });
     var top=wts.length?Math.max.apply(null,wts):0;
     var nEl=document.getElementById('se_'+ei+'_name');
@@ -18948,7 +18973,7 @@ function _mergeWristExercises(rec, wristExs){
 // failed (storage full) left the retry with no PR to award.
 function _pendingPRs(exercises){
   var prs=getPRs(), out=[];
-  (exercises||[]).forEach(function(ex){ var w=parseFloat(ex.weight); if(w>0 && (!prs[ex.name] || w>prs[ex.name]) && out.indexOf(ex.name)<0) out.push(ex.name); });
+  (exercises||[]).forEach(function(ex){ var w=parseFloat(ex.weight); if(w>0 && (!prs[ex.name] || _prBeats(w, prs[ex.name])) && out.indexOf(ex.name)<0) out.push(ex.name); });
   return out;
 }
 // Has this wrist session already been filed? Identity, not just date+slot:
@@ -19255,7 +19280,7 @@ function drainWatchSessions(){
         var w=parseFloat(ex.weight)||0;
         // Newer watch builds send per-set weights; older ones one number.
         var wl=(Array.isArray(ex.weightLog)&&ex.weightLog.length===reps.length)
-          ? ex.weightLog.map(function(x){ return parseFloat(x)||w; })
+          ? ex.weightLog.map(function(x){ var v=parseFloat(x); return (isFinite(v)&&v>=0)?v:w; })   // 0 = a bodyweight set, not a missing one
           : reps.map(function(){ return w; });
         if(wl.length) w=Math.max.apply(null, wl.concat([w]));
         // Per-set RPE from watch build 53; older watches send one number.

@@ -125,7 +125,16 @@ private func fmtW(_ lb: Double) -> String { fmtWeight(dispWeight(lb)) }
 private func storeWeight(_ typed: Double) -> Double { isKg ? (typed * lbPerKg * 10).rounded() / 10 : typed }
 private var weightStepLb: Double { isKg ? 1.25 * lbPerKg : 2.5 }
 private var weightStepLabel: String { isKg ? "1.25" : "2.5" }
-private func stepWeight(_ lb: Double, by delta: Double) -> Double { max(0, ((lb + delta) * 100).rounded() / 100) }
+// In kg, step in kg and store exactly as a typed kg value is stored, so one shown load
+// is always one stored number (a stepped 102.5 kg was 226.02 lb, a typed one 226.0,
+// which the phone counted as a new record).
+private func stepWeight(_ lb: Double, by delta: Double) -> Double {
+    if isKg {
+        let kg = ((lb / lbPerKg + (delta > 0 ? 1.25 : -1.25)) * 4).rounded() / 4
+        return max(0, storeWeight(max(0, kg)))
+    }
+    return max(0, ((lb + delta) * 100).rounded() / 100)
+}
 
 // MARK: - Plan model (mirrors the JSON the web app sends)
 

@@ -39,7 +39,8 @@ run('kg and miles convert on the way out and back; lb/km is byte-identical to be
     assert(out.kg.paceStore === '5:00', '8:03 /mi stores as 5:00 /km');
     assert(/72\.5/.test(out.runnerTarget) && /kg/i.test(out.runnerTarget), 'runner target in kg: ' + out.runnerTarget);
     assert(/KG/.test(out.stepLbl) && out.stepVal === '72.5', 'stepper labelled and valued in kg: ' + out.stepLbl + ' ' + out.stepVal);
-    assert(Math.abs(out.afterStep - (160 + 1.25 * 2.2046226218)) < 0.01, 'stepper adds 1.25 kg in lb: ' + out.afterStep);
+    // 160 lb = 72.57 kg; +1.25 kg lands on 73.75 kg, stored as a typed 73.75 kg would be (162.6 lb).
+    assert(out.afterStep === 162.6, 'stepper adds 1.25 kg and stores it like a typed kg value: ' + out.afterStep);
     assert(Math.abs(out.afterType - 165.3) < 0.2, 'typing 75 kg stores ~165.3 lb: ' + out.afterType);
     assert(Math.abs(out.runKm - 5.005) < 0.02, 'a 3.11 mi run stores as ~5 km: ' + out.runKm);
     assert(Math.abs(out.bwGoalLb - 176.4) < 0.2, '80 kg goal stores as ~176.4 lb: ' + out.bwGoalLb);
