@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-14"/>
+<meta name="build" content="20260924-15"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -13843,7 +13843,13 @@ function _cmpLiftBody(T, N){
   }
   if(a.prN>0 || b.prN>0) html+=_cmpRow('PRS', a.prN, b.prN, '', '');
   // Lifts in common: the literal top-set difference, toned by e1RM.
-  var dT=_cmpDay(T.date,'short'), dN=_cmpDay(N.date,'short');
+  var dT=_cmpDay(T.date,'short'), dN=_cmpDay(N.date,'short'), sameDay=false;
+  // One label on both sides (a same-day pair, or dates a year apart) made the 'only on'
+  // headers and 'logged as' lines ambiguous: add the year, or say then and now.
+  if(dT===dN){
+    if(String(T.date)!==String(N.date)){ dT=_cmpDay(T.date,'short',true); dN=_cmpDay(N.date,'short',true); }
+    else { dT='Then'; dN='Now'; sameDay=true; }
+  }
   var ar='<span class="ar" aria-hidden="true"> \u2192 </span><span class="kt-sr"> to </span>';
   var prMark='<span class="kt-vs-pr">PR</span>';
   var hasPr=function(names, set){ return names.some(function(nm){ return !!set['k:'+String(nm).trim().toLowerCase()]; }); };
@@ -13873,7 +13879,7 @@ function _cmpLiftBody(T, N){
   });
   var only=function(list, day){
     if(!list.length) return '';
-    return _cmpSecHd('ONLY ON '+day.toUpperCase()+' \u00b7 '+list.length, '')+list.map(function(g){
+    return _cmpSecHd((sameDay?'ONLY ':'ONLY ON ')+day.toUpperCase()+' \u00b7 '+list.length, '')+list.map(function(g){
       var st=_cmpExStats(g.names[0], g.pairs);
       return '<div class="kt-vs-row kt-vs-only"><div class="kt-vs-main"><div class="kt-vs-name">'+_esc(g.name)+'</div>'+
         '<div class="kt-vs-sub">'+_plural(st.sets,'set')+' \u00b7 '+_plural(st.reps,'rep')+' \u00b7 top '+st.topTxt+'</div></div></div>';

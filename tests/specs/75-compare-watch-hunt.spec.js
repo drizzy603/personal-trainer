@@ -84,3 +84,32 @@ run('compare: same-day order, tray names, share exit; watch: week clears, unit r
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('compare: only-on headers are unambiguous for same-day pairs and dates a year apart', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const X = (name, w) => ({ name, sets: 2, reps: [8, 8], weight: w, weightLog: [w, w] });
+      const base = getSessions().filter(s => !String(s.id).startsWith('77'));
+      const mk = (id, date, startedAt, exs) => ({ id, date, startedAt, type: 'Push', label: 'Push', week: 1, prs: [], exercises: exs });
+      lsSet('kt_sessions', [
+        mk(7701, '2026-07-10', new Date('2026-07-10T07:00:00').getTime(), [X('Bench Press', 150), X('Dips', 0)]),
+        mk(7702, '2026-07-10', new Date('2026-07-10T18:00:00').getTime(), [X('Bench Press', 155), X('Cable Fly', 40)]),
+        mk(7703, '2025-07-12', new Date('2025-07-12T07:00:00').getTime(), [X('Bench Press', 140), X('Dips', 0)]),
+        mk(7704, '2026-07-12', new Date('2026-07-12T07:00:00').getTime(), [X('Bench Press', 160), X('Cable Fly', 45)])].concat(base));
+      const heads = () => [...document.querySelectorAll('#cmpSheetOverlay .kt-vs-sec')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(t => /^ONLY/.test(t));
+      switchTab('progress');
+      cmpOn = true; cmpKind = 'lift'; cmpPicks = ['7701', '7702']; openCompareSheet(); await wait(50);
+      const same = heads();
+      closeCompareSheet(true);
+      cmpPicks = ['7703', '7704']; openCompareSheet(); await wait(50);
+      const year = heads();
+      _cmpExit();
+      return { same, year };
+    });
+    assert(out.same.length === 2 && /^ONLY THEN/.test(out.same[0]) && /^ONLY NOW/.test(out.same[1]), 'a same-day pair says then and now: ' + JSON.stringify(out.same));
+    assert(out.year.length === 2 && /2025/.test(out.year[0]) && /2026/.test(out.year[1]) && out.year[0] !== out.year[1], 'dates a year apart carry the year: ' + JSON.stringify(out.year));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
