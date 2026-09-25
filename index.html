@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-10"/>
+<meta name="build" content="20260925-11"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6663,7 +6663,10 @@ function _progressionLifts(){
   var best={};
   getSessions().forEach(function(sess){
     if(!sess.date || _mondayKeyOf(sess.date)!==lastMon) return;
-    var planExs=[]; try{ planExs=getSessionExercises(sess.type)||[]; }catch(e){}
+    // The plan of the session's OWN week: reps edited from this week on must not re-judge last week.
+    var planExs=[];
+    try{ var _crP=getCustomRoutine(), _wkP=Math.min(_crP.weeks.length, Math.max(1, weekForDate(sess.date))); planExs=(_crP.weeks[_wkP-1]&&_crP.weeks[_wkP-1][String(sess.type).toLowerCase()])||[]; }catch(e){}
+    if(!planExs.length){ try{ planExs=getSessionExercises(sess.type)||[]; }catch(e){} }
     (sess.exercises||[]).forEach(function(ex){
       if(!ex.isMain) return;
       // Per-set RPE log is the honest effort; the summary rpe can be a default.
@@ -13912,7 +13915,9 @@ function renderProgress() {
     if (curArr)   { for (var li=0;li<curArr.length;li++){if(curArr[li].isMain){curMain=curArr[li];break;}}   }
     if (!startMain && !curMain) return;
     var nameEx = curMain || startMain;
-    var curW   = curMain ? (parseFloat(curMain.weight)||0) : (parseFloat(startMain.weight)||0);
+    // An owner's edit to the plan is not progress: an edited row counts at what the coach planned
+    // (lifting it still counts, through the logged-weight boost below).
+    var curW   = curMain ? (parseFloat((curMain.rec && curMain.rec.weight!=null) ? curMain.rec.weight : curMain.weight)||0) : (parseFloat(startMain.weight)||0);
     // A gain is only a gain against the SAME lift at the block start. With no
     // main lift there, startW was 0 and a 230 lb bench read as "+230 lb"; with
     // a different lift there, two exercises were compared as one.

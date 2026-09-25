@@ -81,3 +81,20 @@ run('Routines at 320 pt and 125% text, both rooms: no sideways scroll', async ()
     } finally { await app.close(); }
   }
 });
+
+run('an edit to the plan is not shown as an earned gain', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const c = currentWeek - 1;
+      const delta = () => { switchTab('progress'); setProgressTab('lifts'); const row = [...document.querySelectorAll('.lift-row')].find(r => /Bench/.test(r.textContent)); return row ? (row.querySelector('.lift-delta') || {}).textContent || '' : 'none'; };
+      const before = delta();
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', c, 230, { markOwner: true })); await wait(30);
+      const after = delta();
+      return { before, after };
+    });
+    assert(out.after === out.before, 'raising the plan does not show as an earned gain: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
