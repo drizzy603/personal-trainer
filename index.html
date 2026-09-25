@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-12"/>
+<meta name="build" content="20260924-13"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1839,6 +1839,8 @@ html[data-room="heavyweight"] .tab svg{width:20px;height:20px;}
 html[data-room="heavyweight"] .tab.active{background:none;color:var(--accent);box-shadow:none;}
 html[data-room="heavyweight"] .tab.active svg{transform:none;stroke-width:2.2;}
 html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom-clear) + 14px);}
+/* With a sheet open the bottom is the sheet's Save/Delete: the toast (an error, an Undo) moves up, as in Lime. */
+html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
 </style>
 </head>
 <body>
@@ -3455,10 +3457,11 @@ function calcVolume(exercises) {
     var repsArr = Array.isArray(ex.reps) ? ex.reps : [];
     var wLog = Array.isArray(ex.weightLog) ? ex.weightLog : [];
     if(wLog.length && repsArr.length){
-      for(var i=0;i<repsArr.length;i++) vol += _effLoad(ex.name, wLog[i]) * (repsArr[i]||0);
+      for(var i=0;i<repsArr.length;i++) vol += _effLoad(ex.name, wLog[i]) * (parseInt(repsArr[i])||0);
     } else {
       var w=_effLoad(ex.name, ex.weight); if(w<=0) return;
-      var reps=repsArr.length?repsArr.reduce(function(a,b){return a+b;},0):(parseInt(ex.reps)||0)*(ex.sets||1);
+      // parseInt: string reps ('8') from hand-edited or imported data used to concatenate ('0888').
+      var reps=repsArr.length?repsArr.reduce(function(a,b){return a+(parseInt(b)||0);},0):(parseInt(ex.reps)||0)*(parseInt(ex.sets)||1);
       vol+=w*reps;
     }
   });
@@ -4341,13 +4344,18 @@ function _manualRunDupe(dateISO, km, durationSec, ctx){
 }
 // The same stand-in rule for Health sport logs (rides, swims…) once the ledger is gone: an
 // iCloud restore brought them back, and a re-import used to add every one a second time.
+// An edited Health sport log keeps its identity: hkOrig {date, duration} is what Health
+// recorded, stamped on the first saved edit (the notes text alone was the marker).
+function _isHealthSport(l){ return !!l && (l.notes==='From Apple Health' || !!l.hkOrig); }
 function _healthSportDupe(r, sid, ctx){
   if(_hkHasLedger()) return false;
   var iso=_hkLocalISO(r), mins=Math.round((parseFloat(r.durationSec)||0)/60), hit=null;
   getSportLogs().some(function(l){
-    if(!l || l.notes!=='From Apple Health' || l.type!==sid || String(l.date)!==iso) return false;
+    if(!l || !_isHealthSport(l) || l.type!==sid) return false;
+    var od=l.hkOrig ? l.hkOrig.date : l.date, ldur=l.hkOrig ? l.hkOrig.duration : l.duration;
+    if(String(od)!==iso) return false;
     if(ctx && ctx.skip && ctx.skip[l.id]) return false;
-    var ld=parseInt(l.duration,10)||0;
+    var ld=parseInt(ldur,10)||0;
     if(mins>0 && ld>0 && Math.abs(ld-mins)/Math.max(ld,mins) > 0.15) return false;
     hit=l; return true;
   });
@@ -13249,8 +13257,8 @@ function svgChart(data,color,goalVal) {
     goalLine+
     ((lastRaw===mx||(goalVal>0&&goalVal===mx))?'':'<text x="'+(PL-8)+'" y="'+(PT+6)+'" fill="var(--muted)" font-size="10" text-anchor="end" font-weight="700">'+_fmtChartVal(mx)+'</text>')+
     ((lastRaw===mn||(goalVal>0&&goalVal===mn))?'':'<text x="'+(PL-8)+'" y="'+base+'" fill="var(--muted)" font-size="10" text-anchor="end" font-weight="700">'+_fmtChartVal(mn)+'</text>')+
-    '<text x="'+PL+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" font-weight="600" opacity=".8">'+data[0].date.slice(5).replace('-','/')+'</text>'+
-    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" text-anchor="end" font-weight="600" opacity=".8">'+data[data.length-1].date.slice(5).replace('-','/')+'</text>'+
+    '<text x="'+PL+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" font-weight="600" opacity=".8">'+String(data[0].date||'').slice(5).replace('-','/')+'</text>'+
+    '<text x="'+(PL+iW)+'" y="'+(H-2)+'" fill="var(--muted)" font-size="8" text-anchor="end" font-weight="600" opacity=".8">'+String(data[data.length-1].date||'').slice(5).replace('-','/')+'</text>'+
     '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
     dots+lastDot+hits+'</svg>';
 }
@@ -15159,12 +15167,15 @@ function executeCoachTool(name,input){
           weight:wStore(parseFloat(ge.weight)||0),
           rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
       }
-      var gPRs=checkAndUpdatePRs(gclean);
-      var gsessions=getSessions();
-      gsessions.unshift({id:Date.now(), date:gdate, week:weekForDate(gdate),
+      // Judged first, committed only once the session is on disk (as the runner does): a
+      // failed save used to leave the records raised with no session behind them, and the
+      // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
+      var gPRs=_pendingPRs(gclean);
+      var gsessions=[{id:Date.now(), date:gdate, week:weekForDate(gdate),
         type:gtype, exercises:gclean,
-        note:String(input.note||'').trim(), prs:gPRs});
-      lsSet('kt_sessions',gsessions);
+        note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
+      if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
+      checkAndUpdatePRs(gclean);
       var gwts=getWeights();
       gclean.forEach(function(e){ if(e.weight>0) gwts[e.name]=e.weight; });
       lsSet('kt_weights',gwts);
@@ -15184,9 +15195,8 @@ function executeCoachTool(name,input){
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
       var snotes=String(input.notes||'').trim();
-      var slogs=getSportLogs();
-      slogs.unshift({id:Date.now(),date:sdate,type:stype,duration:sdur,data:{},notes:snotes});
-      lsSet('kt_sports',slogs);
+      var slogs=[{id:Date.now(),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
+      if(!lsSet('kt_sports',slogs)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       invalidateCoachCard();
       render();
       return {ok:true,message:stype+' logged: '+sdur+' min on '+sdate};
@@ -17516,7 +17526,7 @@ function openSportLogEditor(id){
       grid+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+field(f1)+field(f2)+'</div>'; i+=2;
     }
   }
-  var fromHealth = rec.notes==='From Apple Health';
+  var fromHealth = _isHealthSport(rec);
   var existing=document.getElementById('sportLogEditOverlay');
   if(existing)existing.remove();
   var overlay=document.createElement('div');
@@ -17534,7 +17544,7 @@ function openSportLogEditor(id){
     '</div>'+
     grid+
     '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
-      '<input id="sleNotes" type="text" value="'+_esc(rec.notes||'')+'" placeholder="Optional" style="'+inp+'"/></div>'+
+      '<input id="sleNotes" type="text" value="'+_esc(rec.notes==='From Apple Health'?'':(rec.notes||''))+'" placeholder="Optional" style="'+inp+'"/></div>'+
     '<button onclick="saveSportLogEdit('+rec.id+')" style="width:100%;padding:14px;background:'+sport.color+';color:#000;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Save changes</button>'+
   '</div>';
   document.body.appendChild(overlay);
@@ -17547,17 +17557,24 @@ function closeSportLogEditor(){
   if(el)el.remove();
 }
 function saveSportLogEdit(id){
-  var logs = getSportLogs();
-  var rec = logs.find(function(l){ return l.id===id; });
-  if(!rec){ closeSportLogEditor(); return; }
+  var logs = getSportLogs(), idx=-1;
+  for(var i=0;i<logs.length;i++){ if(logs[i] && logs[i].id===id){ idx=i; break; } }
+  if(idx<0){ closeSportLogEditor(); return; }
+  var orig = logs[idx];
+  // A copy: editing the cached record in place survived a failed save (storage full).
+  var rec = {}; Object.keys(orig).forEach(function(k){ rec[k]=orig[k]; });
+  rec.data = {}; Object.keys(orig.data||{}).forEach(function(k){ rec.data[k]=orig.data[k]; });
   var durEl = document.getElementById('sleDuration');
   var date = (document.getElementById('sleDate')||{value:''}).value;
   var notes = ((document.getElementById('sleNotes')||{value:''}).value||'').trim();
   // Blank = clear (a wrong duration could never be removed, only replaced).
   if(durEl) rec.duration = parseInt(durEl.value)||0;
   if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)) rec.date = date;
-  rec.notes = notes;
-  rec.data = rec.data||{};
+  // The Health marker is not the user's text: an empty notes field keeps it, and the first
+  // edit of an imported log stamps what Health recorded, so it stays Health (iCloud drops its
+  // heart rate and calories; a re-import after a restore brings no twin).
+  if(orig.notes==='From Apple Health' && !orig.hkOrig) rec.hkOrig = {date:String(orig.date||''), duration:parseInt(orig.duration)||0};
+  rec.notes = notes || (orig.notes==='From Apple Health' ? orig.notes : '');
   getSportFields(rec.type).forEach(function(f){
     var el = document.getElementById('sle_'+f.id);
     if(!el) return;
@@ -17565,13 +17582,13 @@ function saveSportLogEdit(id){
     if(v) rec.data[f.id] = f.type==='number'?_spKeep(f.unit,v):v;
     else delete rec.data[f.id];
   });
-  lsSet('kt_sports', logs);
+  var out = logs.slice(); out[idx] = rec;
+  if(!lsSet('kt_sports', out)) return;   // lsSet has toasted; the sheet stays open with what was typed
   invalidateCoachCard();
   closeSportLogEditor();
   showToast(rec.type+' updated');
   render();
 }
-
 // ── Exercise Library Modal ────────────────────────────────────────────────────
 function getCustomExercises(){ return lsGet('kt_custom_ex')||[]; }
 function saveCustomExercise(ex){ var a=getCustomExercises();a.push(ex);lsSet('kt_custom_ex',a); }
@@ -18454,7 +18471,10 @@ function _buildWatchLive(){
       reps[ex.name]=arr;
       var wl=(runnerWeightsLog[ex.name]||[]).slice(0, done).map(function(w){ return parseFloat(w)||0; });
       if(wl.length===arr.length) wlog[ex.name]=wl;
-      var rv=(runnerRpeLog[ex.name]||[]).slice(0, done).map(function(r){ return parseInt(r)||0; });
+      // A for loop, not map/every: both skip holes, and a hole went to the watch as null,
+      // which made build 53 reject the whole live payload.
+      var _rl=runnerRpeLog[ex.name]||[], rv=[];
+      for(var _ri=0; _ri<done; _ri++) rv.push(parseInt(_rl[_ri])||0);
       if(rv.length===arr.length && rv.every(function(x){ return x>0; })) rlog[ex.name]=rv;
     }
     weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
@@ -19041,7 +19061,7 @@ function _sanitizeForICloud(payload){
         var c={}; Object.keys(r).forEach(function(k){ if(k!=='hr') c[k]=r[k]; }); return c;
       });
       if(Array.isArray(o.kt_sports)) o.kt_sports=o.kt_sports.map(function(s){
-        if(!s || s.notes!=='From Apple Health' || !s.data) return s;
+        if(!s || !_isHealthSport(s) || !s.data) return s;
         var c={}; Object.keys(s).forEach(function(k){ c[k]=s[k]; });
         var d={}; Object.keys(s.data).forEach(function(k){ if(k!=='avgHR'&&k!=='calories') d[k]=s.data[k]; });
         c.data=d; return c;
