@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-6"/>
+<meta name="build" content="20260924-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1079,8 +1079,10 @@ button:active{transform:scale(.97);}
 .cal-day.sel .cal-n{color:var(--sel-ink,var(--on-accent));}
 .cal-day.kt-vs-on{box-shadow:inset 0 0 0 2px var(--text);}
 #cmp-tray{margin-top:12px;}
-.kt-vs-tray{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--card2);border:1px solid var(--border);}
-.kt-vs-tray-main{flex:1;min-width:0;}
+.kt-vs-tray{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--card2);border:1px solid var(--border);}
+/* Under ~100px the names would clip to nothing: the buttons drop to a right-aligned second line. */
+.kt-vs-tray-main{flex:1 1 100px;min-width:0;}
+.kt-vs-tray .btn:first-of-type{margin-left:auto;}
 .kt-vs-tray-t{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kt-vs-tray-s{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kt-vs-tray .btn{padding:8px 14px;font-size:13px;flex-shrink:0;}
@@ -4046,6 +4048,7 @@ function importFromHealth(){
       if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ seen.add(r.uuid); return; }
       existing.unshift({
         id: Date.now()+added,
+        startMs: d.getTime()||undefined,
         distance: Math.round(r.distanceKm*100)/100,
         time: _secsToMMSS(r.durationSec),
         date: localISO,
@@ -4217,6 +4220,7 @@ function _logHealthRun(r){
   if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ _hkMarkSeen(r.uuid); return null; }
   var rec = {
     id: _hkFreshId(getRuns()),
+    startMs: new Date(r.startDate).getTime()||undefined,
     distance: Math.round(r.distanceKm*100)/100,
     time: _secsToMMSS(r.durationSec),
     date: localISO,
@@ -7825,6 +7829,7 @@ async function checkPendingShare(){
     var r = await TS.getPendingShare();
     if(!r || !r.imageBase64) return;
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
+    if(cmpOn || document.getElementById('cmpSheetOverlay')) _cmpExit();   // the sheet would sit over the chat
     coachView = 'chat';
     currentTab = 'coach';
     render();
@@ -13196,16 +13201,22 @@ function _cmpName(rec){
   if(!rec) return '';
   return cmpKind==='run' ? _runTypeLabel(rec.type) : String(rec.label||_dayLabel(rec.type)||'');
 }
+// When a record started. The id is its save time, which is wrong for Health imports (a batch
+// saves the evening run first) and late wrist drains, so start times win when a record has one.
+function _cmpT(r){
+  var w=r.wristStartedAt?new Date(r.wristStartedAt).getTime():0;
+  return Number(r.startMs)||w||Number(r.startedAt)||Number(r.id)||0;
+}
 function _cmpByDateDesc(x,y){
   var dx=String(x.date||''), dy=String(y.date||'');
   if(dx!==dy) return dx<dy?1:-1;
-  return (Number(y.id)||0)-(Number(x.id)||0);
+  return _cmpT(y)-_cmpT(x);
 }
-// [T, N]: "then" is the earlier record (date, then id); tap order never matters.
+// [T, N]: "then" is the earlier record (date, then start time); tap order never matters.
 function _cmpOrder(a,b){
   var da=String(a.date||''), db=String(b.date||'');
   if(da!==db) return da<db?[a,b]:[b,a];
-  return (Number(a.id)||0)<=(Number(b.id)||0)?[a,b]:[b,a];
+  return _cmpT(a)<=_cmpT(b)?[a,b]:[b,a];
 }
 // 'short' Jul 15, 'long' Wed, Jul 15, 'caps' WED JUL 15
 function _cmpDay(iso, fmt, withYear){
@@ -18306,15 +18317,19 @@ function _pushWatchPlan(){
       dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
       slot:String(liveRun?(runnerSession.dayName||''):(hasPlan?(act.dayName||''):'')),
       short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan?(act.type==='lift'?_dayShort(act.dayName):(act.dayName||'')):'')),
-      type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens() };
+      type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens(),
+      unit:_uW() };   // display unit for the wrist (weights stay lb); older watches ignore it
     var json=JSON.stringify(plan);
     var live=_buildWatchLive();
     var liveJson=live?JSON.stringify(live):'';
     // The next six days, so the wrist and its face change day at midnight
     // without the phone app running (watch build 53+; older ones ignore it).
-    var weekJson='';
-    if(hasPlan){
-      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++) _wk.push(_watchPlanForDate(addDays(todayISO(), _wi))); weekJson=JSON.stringify(_wk); }catch(e){ weekJson=''; }
+    // '[]', never '': an empty week is dropped by the shell, and the wrist then kept an
+    // archived programme's days. '[]' decodes and clears them. A pending draft with no
+    // programme has no week either (it would be a made-up default cadence).
+    var weekJson='[]';
+    if(hasCustomRoutine()){
+      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++){ var _wp=_watchPlanForDate(addDays(todayISO(), _wi)); _wp.unit=_uW(); _wk.push(_wp); } weekJson=JSON.stringify(_wk); }catch(e){ weekJson='[]'; }
     }
     if(json+'|'+liveJson+'|'+weekJson===_lastWatchPlan) return;
     _lastWatchPlan=json+'|'+liveJson+'|'+weekJson;

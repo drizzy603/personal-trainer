@@ -121,7 +121,7 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
     assert(out.liftGot === out.liftExpect && out.liftGot > 0 && out.liftEx && typeof out.liftEx.weight === 'number' && out.liftEx.sets > 0 && out.liftEx.reps > 0,
       'a lift day carries that week\'s exercises with loads: ' + JSON.stringify([out.liftGot, out.liftExpect, out.liftEx]));
     assert(out.preStart && out.preStartSome, 'days before a programme\'s start are rest days');
-    assert(out.noPlanWeek === '', 'no programme, no week');
+    assert(out.noPlanWeek === '[]', 'no programme: an empty week the watch decodes and clears');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
