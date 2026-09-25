@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-13"/>
+<meta name="build" content="20260924-14"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -18564,7 +18564,13 @@ function _mergeWristExercises(rec, wristExs){
       if(Array.isArray(w.rpeLog) && w.rpeLog.length===wr.length) mine.rpeLog=w.rpeLog.slice();
     }
     mine.weight=Math.max.apply(null, mine.weightLog.map(function(x){ return parseFloat(x)||0; }).concat([0]));
-    if(Array.isArray(mine.rpeLog)){ while(mine.rpeLog.length<mine.reps.length) mine.rpeLog.push(mine.rpeLog.length?mine.rpeLog[mine.rpeLog.length-1]:''); }
+    if(Array.isArray(mine.rpeLog)){
+      while(mine.rpeLog.length<mine.reps.length) mine.rpeLog.push(mine.rpeLog.length?mine.rpeLog[mine.rpeLog.length-1]:'');
+      // The summary follows the merged sets (it stayed the phone's old mean, which progression,
+      // Compare and the coach read).
+      var _pv=mine.rpeLog.map(function(x){ return parseFloat(x)||0; }).filter(function(x){ return x>0; });
+      if(_pv.length) mine.rpe=Math.round(_pv.reduce(function(a,b){ return a+b; },0)/_pv.length);
+    }
     n++;
   });
   return n;

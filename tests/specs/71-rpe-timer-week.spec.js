@@ -45,9 +45,9 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
       r.adopted = runnerRpeLog[A].slice(0, runnerCompleted[A]);
 
       // ── C. the record merge carries the wrist copy's per-set RPE ──
-      const rec2 = { exercises: [{ name: 'Bench Press', sets: 2, reps: [8, 8], weight: 100, weightLog: [100, 100], rpeLog: [7, 7] }] };
+      const rec2 = { exercises: [{ name: 'Bench Press', sets: 2, reps: [8, 8], weight: 100, weightLog: [100, 100], rpe: 7, rpeLog: [7, 7] }] };
       _mergeWristExercises(rec2, [{ name: 'Bench Press', reps: [8, 8, 6], weight: 105, weightLog: [100, 100, 105], rpeLog: [7, 8, 9] }]);
-      r.merged = rec2.exercises[0].rpeLog;
+      r.merged = rec2.exercises[0].rpeLog; r.mergedRpe = rec2.exercises[0].rpe;
 
       // ── D. the rest timer: the next set in the user's units, superset-aware ──
       runnerWeights[A] = 100; runnerReps[A] = 8;
@@ -107,7 +107,7 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
     assert(out.drain.row && out.drain.row.rpeLog === undefined && out.drain.row.rpe === 7, 'an older watch still files one RPE: ' + JSON.stringify(out.drain.row));
     assert(JSON.stringify(out.liveRlog) === '[7,8]', 'the phone\'s per-set RPE rides to the wrist: ' + JSON.stringify(out.liveRlog));
     assert(JSON.stringify(out.adopted) === '[7,8,10]', 'a wrist set brings its RPE into the runner: ' + JSON.stringify(out.adopted));
-    assert(JSON.stringify(out.merged) === '[7,8,9]', 'the record merge takes the wrist\'s per-set RPE with its sets: ' + JSON.stringify(out.merged));
+    assert(JSON.stringify(out.merged) === '[7,8,9]' && out.mergedRpe === 8, 'the record merge takes the wrist\'s per-set RPE with its sets, and the summary follows: ' + JSON.stringify([out.merged, out.mergedRpe]));
     assert(out.timerLb && out.timerLb.detail === '100 lb × 8' && out.timerLb.nextSet === 3, 'the rest timer carries the next set: ' + JSON.stringify(out.timerLb));
     assert(out.timerKg && /kg × 8$/.test(out.timerKg.detail) && !/lb/.test(out.timerKg.detail), 'the timer detail follows kg: ' + JSON.stringify(out.timerKg));
     assert(out.timerSs && out.timerSs.exerciseName === out.timerSsExpect && out.timerSs.detail === '60 lb \u00d7 12' && out.timerSs.nextSet === 2,
