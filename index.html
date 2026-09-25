@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-7"/>
+<meta name="build" content="20260924-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1077,6 +1077,8 @@ button:active{transform:scale(.97);}
 .cal-n{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px;}
 .cal-day.today .cal-n{font-weight:900;color:var(--today,var(--accent));}
 .cal-day.sel .cal-n{color:var(--sel-ink,var(--on-accent));}
+/* The workout dot is the accent: on Heavyweight's accent-blue selected cell it would vanish. */
+.cal-day.sel .cal-dot-w{background:var(--sel-dot,var(--on-accent))!important;}
 .cal-day.kt-vs-on{box-shadow:inset 0 0 0 2px var(--text);}
 #cmp-tray{margin-top:12px;}
 .kt-vs-tray{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-radius:14px;background:var(--card2);border:1px solid var(--border);}
@@ -1379,7 +1381,7 @@ html[data-room="dark"] #screen svg circle[opacity=".18"]{display:none;}
 /* Lime room, second pass: what the first pass missed. Same rules: lime is the
    action and the earned state; eyebrows are --muted, tags --lite, links --text;
    selection is --sel with a --lite edge where the fill alone is too faint. */
-html[data-room="dark"]{--toast-pr:var(--earned);--sel-ink:var(--text);--today:var(--text);--cal-run:var(--text);--cal-sport:var(--muted);}
+html[data-room="dark"]{--toast-pr:var(--earned);--sel-ink:var(--text);--sel-dot:var(--accent);--today:var(--text);--cal-run:var(--text);--cal-sport:var(--muted);}
 /* Today: banners, done card, coach card, chips */
 html[data-room="dark"] .kt-resume-banner,html[data-room="dark"] .kt-session-done{background:var(--card);border-color:var(--border);}
 html[data-room="dark"] .kt-resume-eyebrow,html[data-room="dark"] .kt-coach-eyebrow,html[data-room="dark"] .kt-empty-contract-lbl,
@@ -1484,7 +1486,8 @@ html[data-room="dark"] #screen .chart-card[style*="border-left:2px solid var(--a
 html[data-room="dark"] #screen div[style*="border-color:rgba(255,230,0,.35)"]{border-color:var(--border)!important;}
 html[data-room="dark"] [onclick^="toggleStrengthChart"]>div:first-child>div:first-child{color:var(--text)!important;}
 html[data-room="dark"] #cal-detail div[style*="font-weight:900;color:var(--accent)"]{color:var(--text)!important;}
-html[data-room="dark"] .kt-empty-contract-body span[style*="--yellow"]{color:inherit!important;}
+html[data-room="dark"] .kt-empty-contract-body span[style*="--yellow"],
+html[data-room="dark"] .kt-empty-contract-body span[style*="--earned-ink"]{color:inherit!important;}   /* a promise, nothing earned yet */
 html[data-room="dark"] #screen span[style*="width:8px;height:8px;border-radius:50%"][style*="border:1.5px solid var(--border)"]{border-color:color-mix(in srgb,var(--text) 40%,transparent)!important;}
 /* Exercise library */
 html[data-room="dark"] .exlib-pill:not([style*="card2"]),html[data-room="dark"] .exadd-pill:not([style*="var(--card)"]){background:var(--sel)!important;color:var(--text)!important;}
@@ -13129,7 +13132,7 @@ function renderCalendar(sessions,runs,sports){
     var hasSess=acts.some(function(a){return a.type==='session';});
     var hasRun=acts.some(function(a){return a.type==='run';});
     var hasSport=acts.some(function(a){return a.type==='sport';});
-    if(hasSess)  dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
+    if(hasSess)  dots+='<div class="cal-dot-w" style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
     if(hasRun)   dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-run,var(--orange));margin:0 1px;"></div>';
     if(hasSport) dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-sport,#a78bfa);margin:0 1px;"></div>';
     cells+='<div class="cal-day'+(isToday?' today':'')+(isSelected?' sel':'')+(pickDates[dateStr]?' kt-vs-on':'')+'" data-date="'+dateStr+'"'+(acts.length?' data-act="1"':'')+' onclick="selectCalDate(\''+dateStr+'\')" style="'+
