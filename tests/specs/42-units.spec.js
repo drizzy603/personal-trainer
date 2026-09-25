@@ -36,7 +36,8 @@ run('kg and miles convert on the way out and back; lb/km is byte-identical to be
     assert(Math.abs(out.kg.store - 159.8) < 0.2 && Math.abs(out.kg.dstore - 5.005) < 0.02, 'typed kg/mi store as lb/km: ' + out.kg.store + ' / ' + out.kg.dstore);
     assert(/\/ side|Empty bar|^$/.test(out.kg.plate) && !/45/.test(out.kg.plate), 'plate math uses the 20 kg bar: ' + out.kg.plate);
     assert(/bar/.test(out.kg.ramp) && !/\d{3}/.test(out.kg.ramp.split('·')[1] || ''), 'warm-up ramp rounds in kg: ' + out.kg.ramp);
-    assert(out.kg.paceStore === '5:00', '8:03 /mi stores as 5:00 /km');
+    // Mile paces keep a tenth of a second when stored (since 20260925-5), so they read back as typed.
+    assert(out.kg.paceStore === '5:00.1', '8:03 /mi stores as 5:00.1 /km: ' + out.kg.paceStore);
     assert(/72\.5/.test(out.runnerTarget) && /kg/i.test(out.runnerTarget), 'runner target in kg: ' + out.runnerTarget);
     assert(/KG/.test(out.stepLbl) && out.stepVal === '72.5', 'stepper labelled and valued in kg: ' + out.stepLbl + ' ' + out.stepVal);
     // 160 lb = 72.57 kg; +1.25 kg lands on 73.75 kg, stored as a typed 73.75 kg would be (162.6 lb).

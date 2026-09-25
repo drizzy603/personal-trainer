@@ -110,7 +110,7 @@ run('kg + mi: totals, posters, library, runs and sport fields follow the unit se
     assert(out.sportSummary === '10 mi · 15 mph', 'the sport summary reads back what was typed: ' + out.sportSummary);
     assert(out.editorVal === '10' && /\(mi\)/.test(out.editorLbl) && out.afterEdit === 16.09, 'the log editor shows and keeps miles: ' + JSON.stringify([out.editorVal, out.editorLbl, out.afterEdit]));
     assert(/10\s*mi/.test(out.cycling) && !/16/.test(out.cycling.replace(/\d{4}-\d\d-\d\d/g, '')), 'cycling totals are in miles: ' + out.cycling.replace(/\s+/g, ' '));
-    assert(/^81\.5 kg,/.test(out.body), 'the Body headline: ' + out.body);
+    assert(/^81\.6 kg,/.test(out.body), 'the Body headline keeps a tenth of a kg: ' + out.body);
     assert(/total kg per session/.test(out.progress) && !/total lb/.test(out.progress), 'the volume chart label');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

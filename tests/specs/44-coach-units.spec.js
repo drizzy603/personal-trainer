@@ -48,7 +48,7 @@ run('kg/mi user: prompts, tool schemas and tool writes are all in kg and miles; 
     assert(Math.abs(out.benchLb - 220.5) < 0.2 && /100 kg/.test(out.bench.message), 'bench goal 100 kg stores ~220.5 lb: ' + out.benchLb);
     assert(Math.abs(out.runKm - 4.99) < 0.03 && /3\.1 mi/.test(out.run.message), 'a 3.1 mi run stores ~4.99 km: ' + out.runKm + ' / ' + out.run.message);
     assert(Math.abs(out.runMiKm - 3.22) < 0.02, 'explicit distance_mi converts: ' + out.runMiKm);
-    assert(out.paceStored === '4:58' && /8:00 \/mi/.test(out.pace.message), '8:00 /mi stores as 4:58 /km: ' + out.paceStored + ' / ' + out.pace.message);
+    assert(out.paceStored === '4:58.3' && /8:00 \/mi/.test(out.pace.message), '8:00 /mi stores as 4:58.3 /km (a tenth kept for miles): ' + out.paceStored + ' / ' + out.pace.message);
     assert(Math.abs(out.bwLb - 185.2) < 0.2 && /84 kg/.test(out.bw.message), '84 kg body weight stores ~185.2 lb: ' + out.bwLb);
     assert(Math.abs(out.sessW - 132.3) < 0.2, 'logged 60 kg session stores ~132.3 lb: ' + out.sessW);
     assert(Math.abs(out.wkW - 179.1) < 0.3, 'programme load 81 kg snaps to 81.25 kg = ~179.1 lb: ' + out.wkW);

@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-4"/>
+<meta name="build" content="20260925-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1840,6 +1840,8 @@ html[data-room="heavyweight"] .tab.active{background:none;color:var(--accent);bo
 html[data-room="heavyweight"] .tab.active svg{transform:none;stroke-width:2.2;}
 html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom-clear) + 14px);}
 /* With a sheet open the bottom is the sheet's Save/Delete: the toast (an error, an Undo) moves up, as in Lime. */
+/* The run and sport dots keep a paper ring on the blue selected day (1.9:1 and 2.5:1 without it). */
+html[data-room="heavyweight"] .cal-day.sel .cal-dot-r,html[data-room="heavyweight"] .cal-day.sel .cal-dot-s{box-shadow:0 0 0 1.5px var(--on-accent);}
 html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
 </style>
 </head>
@@ -9264,6 +9266,11 @@ function wDisp(lb){ var v=parseFloat(lb)||0; if(_uW()==='kg') return Math.round(
 // display number (typed) → lb for storage
 function wStore(v){ var n=parseFloat(v)||0; if(_uW()==='kg') return Math.round(n*LB_PER_KG*10)/10; return n; }
 function _wSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:wDisp(d.val)}; }); }
+// Body weight is a measurement, not a load: in kg it keeps a tenth (80.3 kg), where
+// loads round to the 0.5 kg plate grid (80.3 kg read 80.5; a 0.2 kg/week trend read −0).
+function wDispBW(lb){ var v=parseFloat(lb)||0; return _uW()==='kg' ? Math.round(v/LB_PER_KG*10)/10 : Math.round(v*10)/10; }
+function fmtBW(lb){ return wDispBW(lb)+' '+_uW(); }
+function _bwSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:wDispBW(d.val)}; }); }
 function fmtW(lb, opts){ opts=opts||{}; var v=wDisp(lb); return (opts.bare?v:v+(opts.nbsp?'\u00a0':' ')+_uW()); }
 function dDisp(km){ var v=parseFloat(km)||0; if(_uD()==='mi') return Math.round(v/KM_PER_MI*100)/100; return Math.round(v*100)/100; }
 function dStore(v){ var n=parseFloat(v)||0; if(_uD()==='mi') return Math.round(n*KM_PER_MI*100)/100; return n; }
@@ -9283,14 +9290,17 @@ function fmtPace(secPerKm, opts){
   return Math.floor(p/60)+':'+pad(p%60)+(opts.bare?'':' /'+_uD());
 }
 // "m:ss" per km (stored) → display pace string in the chosen unit.
-function _paceStrToSec(str){ var m=String(str||'').trim().match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):0; }
+function _paceStrToSec(str){ var m=String(str||'').trim().match(/^(\d{1,2}):(\d{2}(?:\.\d)?)$/); return m?(+m[1])*60+(+m[2]):0; }
 function fmtPaceStr(str, opts){ var sec=_paceStrToSec(str); return sec>0?fmtPace(sec, opts):String(str||''); }
 // display pace string (typed, per chosen unit) → "m:ss" per km for storage
 function paceStore(str){
   var sec=_paceStrToSec(str); if(!(sec>0)) return String(str||'').trim();
-  if(_uD()==='mi') sec=sec/KM_PER_MI;
-  var p=Math.round(sec), pad=function(n){ return (n<10?'0':'')+n; };
-  return Math.floor(p/60)+':'+pad(p%60);
+  var mi=_uD()==='mi';
+  if(mi) sec=sec/KM_PER_MI;
+  // A mile pace keeps a tenth of a second per km, so what was typed reads back
+  // exactly (9:00 /mi used to come back as 9:01 /mi, 5:00 as 4:59).
+  var p=mi?Math.round(sec*10)/10:Math.round(sec), m=Math.floor(p/60), ss=Math.round((p-m*60)*10)/10;
+  return m+':'+(ss<10?'0':'')+(ss%1?ss.toFixed(1):String(ss));
 }
 function _dSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:dDisp(d.val)}; }); }
 function _paceSeries(arr){ return (arr||[]).map(function(d){ return {date:d.date, val:_uD()==='mi'?Math.round(d.val*KM_PER_MI):d.val}; }); }
@@ -9364,9 +9374,9 @@ function _overloadSuggestion(ex){
   if(!(targetLow>0)) return null;
   var reps=(Array.isArray(last.reps)?last.reps:[last.reps]).map(function(x){return parseInt(x)||0;});
   if(!reps.length || Math.min.apply(null,reps)<targetLow) return null;
-  var inc=_isBarbellLift(ex.name)?5:2.5;
-  // Snap the target so a fractional logged weight can't propose 153.7.
-  return {to:_snap25(lastW+inc), from:lastW, reps:Math.min.apply(null,reps), rpe:rpe};
+  // In the unit on screen, on its plates: kg users were offered "TRY 102 KG" (+5 lb).
+  var inc=_isBarbellLift(ex.name)?_plateBarDisp():_plateStepDisp();
+  return {to:_coachLoadIn(wDisp(lastW)+inc), from:lastW, reps:Math.min.apply(null,reps), rpe:rpe};
 }
 function runnerApplySuggestion(w){
   var ex=_runnerEx(); if(!ex) return;
@@ -10525,10 +10535,14 @@ function buildStarterRoutine(a){
           if(isMain&&STARTER_W[name]){
             var w0=STARTER_W[name][a.exp||0];
             var step=_isBarbellLift(name)?5:2.5;
+            // kg users get kg loads on kg plates (they got 43 -> 45.5 -> 47.5 kg).
+            var _kgS=_uW()==='kg';
+            if(_kgS){ w0=Math.round(w0/LB_PER_KG/2.5)*2.5; step=_isBarbellLift(name)?2.5:1.25; }
             if(b.name==='BUILD') weight=w0+step*(wk-3);
             else if(b.name==='PEAK') weight=w0+step*4;
             else if(b.name==='DELOAD') weight=Math.round(((w0+step*3)*0.6)/step)*step;
             else weight=w0;
+            if(_kgS && weight>0) weight=_coachLoadIn(weight);   // back to lb, on the kg grid
           }
           return {name:name, isMain:isMain, sets:(isMain?sc[2]:(b.name==='DELOAD'?2:3)),
             reps:sc[0], rpe:sc[1], weight:weight};
@@ -10935,13 +10949,16 @@ function _renderWeekDetail(wd){
       var rd = (wd.runs && wd.runs[dayName]) || (dayName==='Tue' && wd.runTue) || (dayName==='Sat' && wd.runSat);
       if(rd){
         var bits=[];
-        if(rd.distance) bits.push(fmtD(rd.distance));
+        // The coach and the starter write {km, type}; older plans {distance, paceMin/Sec}.
+        var _rkm = rd.km!=null ? rd.km : rd.distance;
+        if(rd.type) bits.push(_runTypeLabel(rd.type));
+        if(_rkm) bits.push(fmtD(_rkm));
         if(rd.paceMin!=null && rd.paceSec!=null) bits.push(fmtPaceStr(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')));
         else if(rd.pace) bits.push(rd.pace);
         summary = bits.length ? bits.join(' · ') : 'Run';
         var detailParts = [];
-        if(rd.distance) detailParts.push(['DIST', fmtD(rd.distance)]);
-        if(rd.paceMin!=null && rd.paceSec!=null) detailParts.push(['PACE', rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')+' / km']);
+        if(_rkm) detailParts.push(['DIST', fmtD(_rkm)]);
+        if(rd.paceMin!=null && rd.paceSec!=null) detailParts.push(['PACE', fmtPaceStr(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0'))]);
         else if(rd.pace) detailParts.push(['PACE', rd.pace]);
         if(rd.hr) detailParts.push(['HR CAP', rd.hr+' bpm']);
         if(rd.duration) detailParts.push(['DURATION', rd.duration+' min']);
@@ -12228,7 +12245,7 @@ function undoLastBodyWeight(){
 function renderBwSavedStrip(){
   if(!bwLogConfirmed) return '';
   return '<div class="kt-rconfirm">'+
-    '<div>✓ '+fmtW(bwLogConfirmed.weight)+' logged</div>'+
+    '<div>✓ '+fmtBW(bwLogConfirmed.weight)+' logged</div>'+
     '<button class="kt-rconfirm-undo" onclick="undoLastBodyWeight()">UNDO</button>'+
     '</div>';
 }
@@ -12453,17 +12470,18 @@ function renderBodyEditorial(){
   if(bws.length){
     var trendH = calcBWTrend(bws);
     var goalH = getBWGoal();
-    line1 = fmtW(bws[0].weight)+',';
+    line1 = fmtBW(bws[0].weight)+',';
     line2 = trendH===null ? 'on the scale.'
       : trendH<=-0.1 ? 'trending down.'
       : trendH>=0.1 ? 'trending up.'
       : 'holding steady.';
     var bits=[];
     if(trendH!==null && Math.abs(trendH)>=0.1){
-      bits.push((trendH>0?'+':'−')+wDisp(Math.abs(trendH))+' '+_uW()+' a week');
+      var _rateD=wDispBW(Math.abs(trendH));
+      if(_rateD>0) bits.push((trendH>0?'+':'−')+_rateD+' '+_uW()+' a week');   // never "−0 kg a week"
     }
     if(goalH>0){
-      var toGoal=wDisp(Math.round(Math.abs(goalH-bws[0].weight)*10)/10);   // converted first: 0.1 lb is 0 kg, 'at your goal'
+      var toGoal=wDispBW(Math.round(Math.abs(goalH-bws[0].weight)*10)/10);   // converted first: 0.1 lb is 0 kg, 'at your goal'
       bits.push(toGoal>0 ? toGoal+' '+_uW()+' to goal' : 'at your goal');
     }
     heroBody = bits.length
@@ -12495,9 +12513,9 @@ function renderBodySection(){
   var chart=bwData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Body Weight</div>'+
-        '<div><span class="chart-val">'+wDisp(currentW)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
-        (bwGoal?'<div class="chart-delta plain">Goal: '+fmtW(bwGoal)+'</div>':'')+
-      '</div></div>'+svgChart(_wSeries(bwData),'var(--cyan)',bwGoal?wDisp(bwGoal):bwGoal)+'</div>'
+        '<div><span class="chart-val">'+wDispBW(currentW)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
+        (bwGoal?'<div class="chart-delta plain">Goal: '+fmtBW(bwGoal)+'</div>':'')+
+      '</div></div>'+svgChart(_bwSeries(bwData),'var(--cyan)',bwGoal?wDispBW(bwGoal):bwGoal)+'</div>'
     :'';
 
   // START / NOW / GOAL hairline band + a slim body-hue progress track —
@@ -12509,9 +12527,9 @@ function renderBodySection(){
     var covered=cutting?Math.max(0,startW-currentW):Math.max(0,currentW-startW);
     var pct=total>0?Math.min(100,Math.round(covered/total*100)):0;
     goalSection='<div class="kt-statband" style="margin-top:14px;margin-bottom:10px;">'+
-      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--muted);">'+startW+'</div><div class="kt-statband-lbl">Start</div></div>'+
-      '<div><div class="kt-statband-val" style="font-size:19px;">'+currentW+'</div><div class="kt-statband-lbl">Now</div></div>'+
-      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--cyan);">'+wDisp(bwGoal)+'</div><div class="kt-statband-lbl">Goal</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--muted);">'+wDispBW(startW)+'</div><div class="kt-statband-lbl">Start</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;">'+wDispBW(currentW)+'</div><div class="kt-statband-lbl">Now</div></div>'+
+      '<div><div class="kt-statband-val" style="font-size:19px;color:var(--cyan);">'+wDispBW(bwGoal)+'</div><div class="kt-statband-lbl">Goal</div></div>'+
     '</div>'+
     '<div style="height:4px;background:var(--card2);border-radius:2px;">'+
       '<div style="width:'+pct+'%;height:4px;background:var(--cyan);border-radius:2px;transition:width .4s;"></div>'+
@@ -12525,7 +12543,7 @@ function renderBodySection(){
     bwItems+='<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">'+
       '<span style="font-size:13px;color:var(--muted);font-weight:500;">'+fmtDate(e.date)+'</span>'+
       '<div style="display:flex;align-items:center;gap:12px;">'+
-        '<span style="font-size:14px;font-weight:700;">'+fmtW(e.weight)+'</span>'+
+        '<span style="font-size:14px;font-weight:700;">'+fmtBW(e.weight)+'</span>'+
         '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div></div>';
   });
@@ -12610,7 +12628,7 @@ function renderBodySection(){
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">'+
         '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL '+_uW()+'</div>'+
-        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDisp(bwGoal):'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
+        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDispBW(bwGoal):'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+
@@ -12691,7 +12709,7 @@ function renderWeekRecap(sessions,runs){
   if(wkBws.length>=2){
     var d=Math.round((parseFloat(wkBws[0].weight)-parseFloat(wkBws[wkBws.length-1].weight))*10)/10;
     // Convert before the zero check: a 0.1 lb change rounds to 0 kg ('up 0 kg').
-    var dd=isNaN(d)?0:wDisp(Math.abs(d));
+    var dd=isNaN(d)?0:wDispBW(Math.abs(d));
     if(dd) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+dd+' '+_uW()+' this week.</div>';
   }
   return '<div class="chart-card" style="border-left:2px solid var(--accent);">'+
@@ -13072,7 +13090,7 @@ function renderProgress() {
   var runGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Run goals</h2>'+
     (bestRun5kSec>0
       ? goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true)
-      : '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:500;">5k — log a ~5 km run to start tracking pace</div>')+
+      : '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;font-weight:500;">5k — log a ~'+(_uD()==='mi'?'3.1 mi':'5 km')+' run to start tracking pace</div>')+
     runPaceBar + runPaceInput +
     '</div>';
 
@@ -13544,9 +13562,9 @@ function renderProgress() {
   var bwChart=bwChartData.length>=2
     ?'<div class="chart-card"><div class="chart-head"><div>'+
         '<div class="chart-lbl">Body Weight</div>'+
-        '<div><span class="chart-val">'+wDisp(bwChartData[bwChartData.length-1].val)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
-        (bwGoalProg?'<div class="chart-delta plain">Goal: '+fmtW(bwGoalProg)+'</div>':'')+
-      '</div></div>'+svgChart(_wSeries(bwChartData),'var(--cyan)',bwGoalProg?wDisp(bwGoalProg):undefined)+'</div>'
+        '<div><span class="chart-val">'+wDispBW(bwChartData[bwChartData.length-1].val)+'</span><span class="chart-unit">'+_uW()+'</span></div>'+
+        (bwGoalProg?'<div class="chart-delta plain">Goal: '+fmtBW(bwGoalProg)+'</div>':'')+
+      '</div></div>'+svgChart(_bwSeries(bwChartData),'var(--cyan)',bwGoalProg?wDispBW(bwGoalProg):undefined)+'</div>'
     :'';
 
   // Slim programme-week stepper — utility, so it lives down by the calendar
@@ -13799,8 +13817,8 @@ function renderCalendar(sessions,runs,sports){
     var hasRun=acts.some(function(a){return a.type==='run';});
     var hasSport=acts.some(function(a){return a.type==='sport';});
     if(hasSess)  dots+='<div class="cal-dot-w" style="width:5px;height:5px;border-radius:50%;background:var(--accent);margin:0 1px;"></div>';
-    if(hasRun)   dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-run,var(--orange));margin:0 1px;"></div>';
-    if(hasSport) dots+='<div style="width:5px;height:5px;border-radius:50%;background:var(--cal-sport,#a78bfa);margin:0 1px;"></div>';
+    if(hasRun)   dots+='<div class="cal-dot-r" style="width:5px;height:5px;border-radius:50%;background:var(--cal-run,var(--orange));margin:0 1px;"></div>';
+    if(hasSport) dots+='<div class="cal-dot-s" style="width:5px;height:5px;border-radius:50%;background:var(--cal-sport,#a78bfa);margin:0 1px;"></div>';
     cells+='<div class="cal-day'+(isToday?' today':'')+(isSelected?' sel':'')+(pickDates[dateStr]?' kt-vs-on':'')+'" data-date="'+dateStr+'"'+(acts.length?' data-act="1"':'')+' onclick="selectCalDate(\''+dateStr+'\')" style="'+
       'text-align:center;border-radius:3px;padding:8px 2px;min-height:44px;box-sizing:border-box;cursor:'+(acts.length?'pointer':'default')+';'+
     '">'+
@@ -13979,7 +13997,15 @@ function _cmpTrayHTML(){
     btns=clear;
   } else {
     var o=_cmpOrder(recs[0],recs[1]);
-    t=_cmpDay(o[0].date,'short')+' vs '+_cmpDay(o[1].date,'short');
+    var _tA=_cmpDay(o[0].date,'short'), _tB=_cmpDay(o[1].date,'short');
+    if(_tA!==_tB) t=_tA+' vs '+_tB;
+    else if(String(o[0].date)!==String(o[1].date)) t=_cmpDay(o[0].date,'short',true)+' vs '+_cmpDay(o[1].date,'short',true);
+    else {
+      // Same day ("Sep 10 vs Sep 10" before): say when each started, else then / now.
+      var _hm=function(r){ var ms=_cmpT(r); return ms>1e12 ? new Date(ms).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : ''; };
+      var _ha=_hm(o[0]), _hb=_hm(o[1]);
+      t=_tA+' \u00b7 '+((_ha && _hb && _ha!==_hb) ? _ha+' vs '+_hb : 'then vs now');
+    }
     sub=_esc(_cmpName(o[0]))+' \u00b7 '+_esc(_cmpName(o[1]));
     btns=clear+'<button type="button" class="btn btn-primary" id="cmp-go" onclick="openCompareSheet()">Compare</button>';
   }
@@ -14875,7 +14901,7 @@ function _intakeKnownBlock(){
   if(runs.length){ var r4=runs.filter(function(r){ return r.date>=addDays(todayISO(),-28); }).length; lines.push('Runs: '+runs.length+' logged, '+r4+' in the last 4 weeks, last '+fmtD(runs[0].distance)+' in '+runs[0].time); }
   var sp=getSportLogs();
   if(sp.length){ var types={}; sp.slice(0,20).forEach(function(x){ types[x.type]=1; }); lines.push('Other sports logged: '+Object.keys(types).join(', ')); }
-  var bws=getBodyWeights(); if(bws.length) lines.push('Body weight: '+fmtW(bws[0].weight)+' ('+bws[0].date+')');
+  var bws=getBodyWeights(); if(bws.length) lines.push('Body weight: '+fmtBW(bws[0].weight)+' ('+bws[0].date+')');
   var _dn=_dayNames(), _dk=Object.keys(_dn).filter(function(k){ return LIFT_TYPES.indexOf(k)>=0; });
   if(_dk.length) lines.push('Day names (left: the slot id you use in weekPlan and the exercise arrays; right: what the user sees and says): '+_dk.map(function(k){ return k+' = "'+_cleanDayLabel(_dn[k])+'"'; }).join(', ')+'. Use the user\'s names when you talk about their days.');
   var cr=getCustomRoutine(); if(cr && Array.isArray(cr.weekPlan)) lines.push('Current cadence: '+DOW_NAMES.map(function(n,i){ return n+'='+cr.weekPlan[i]; }).join(', '));
@@ -15524,7 +15550,7 @@ function _executeCoachToolRaw(name,input){
       var bw=parseFloat(input.weight);
       if(!(bw>0)) return {ok:false,error:'weight must be > 0'};
       bw=wStore(bw); setBWGoal(bw);
-      return {ok:true,message:'body weight goal = '+fmtW(bw)};
+      return {ok:true,message:'body weight goal = '+fmtBW(bw)};
     }
     if(name==='log_bodyweight'){
       var bwVal=parseFloat(input.weight);
@@ -15537,7 +15563,7 @@ function _executeCoachToolRaw(name,input){
       bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
       lsSet('kt_bw',bws);
       render();
-      return {ok:true,message:'logged '+fmtW(bwVal)+' on '+bwDate};
+      return {ok:true,message:'logged '+fmtBW(bwVal)+' on '+bwDate};
     }
     if(name==='log_run'){
       var rkm=_coachRunKm(input);
@@ -16039,7 +16065,7 @@ function _planChangeLedger(tools, idx){
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
     } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
-    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(String(i.pace||'')))]); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||''))))]); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
     else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
   });
   if(!rows.length) return '';
@@ -16076,8 +16102,8 @@ function toolCallLabel(tc){
   if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
   if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(paceStore(i.pace));
   if(n==='set_5k_goal') return '5k goal '+i.time;
-  if(n==='set_bw_goal') return 'BW goal '+fmtW(wStore(i.weight));
-  if(n==='log_bodyweight') return 'Logged '+fmtW(wStore(i.weight));
+  if(n==='set_bw_goal') return 'BW goal '+fmtBW(wStore(i.weight));
+  if(n==='log_bodyweight') return 'Logged '+fmtBW(wStore(i.weight));
   if(n==='log_run') return 'Run logged · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
   if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
   if(n==='edit_session') return i.rename_to ? (String(i.exercise||'')+' \u2192 '+String(i.rename_to)) : (String(i.exercise||'Session')+' corrected');
@@ -16251,7 +16277,7 @@ function buildSystemPrompt(){
       }
     });
     getScheduledRuns(wd).forEach(function(s){
-      if(s.run) p+='RUN ('+s.name+'): '+fmtD(s.run.km)+' '+s.run.type+'\n';
+      if(s.run){ var _prk=s.run.km!=null?s.run.km:s.run.distance; p+='RUN ('+s.name+'): '+(_prk?fmtD(_prk):'distance not set')+(s.run.type?' '+s.run.type:'')+'\n'; }
       else p+='RUN ('+s.name+'): scheduled\n';
     });
     p+='\n';
@@ -16327,7 +16353,7 @@ function buildSystemPrompt(){
     p+='PRs: '+prKeys.map(function(k){return k+' '+fmtW(prs[k]);}).join(', ')+'\n';
   }
   if(bws.length){
-    p+='\nBODY WEIGHT: '+bws.slice(0,8).map(function(b){return fmtW(b.weight)+' ('+b.date+(b.id?',id:'+b.id:'')+')';}).join(' → ')+'\n';
+    p+='\nBODY WEIGHT: '+bws.slice(0,8).map(function(b){return fmtBW(b.weight)+' ('+b.date+(b.id?',id:'+b.id:'')+')';}).join(' → ')+'\n';
   }
 
   var runGoal=getRunGoal();
@@ -16335,7 +16361,7 @@ function buildSystemPrompt(){
   if(runGoal){p+='RUN PACE GOAL: '+fmtPaceStr(runGoal)+'\n';}
   var goal5k=get5kGoal();
   if(goal5k){var g5m=Math.floor(goal5k/60),g5s=goal5k%60;p+='5K TIME GOAL: '+(g5m+':'+(g5s<10?'0':'')+g5s)+'\n';}
-  if(bwGoal){p+='BODY WEIGHT GOAL: '+fmtW(bwGoal)+'\n';}
+  if(bwGoal){p+='BODY WEIGHT GOAL: '+fmtBW(bwGoal)+'\n';}
   var allWeights=getWeights();
   var wKeys=Object.keys(allWeights);
   if(wKeys.length){p+='\nCURRENT EXERCISE WEIGHTS ('+_uW()+'):\n'+wKeys.map(function(k){return '  '+k+': '+wDisp(allWeights[k]);}).join('\n')+'\n';}
