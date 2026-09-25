@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-3"/>
+<meta name="build" content="20260925-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3191,6 +3191,7 @@ var _DATE_SORTED_KEYS = { kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_mea
 // followed by lsSet keep the same array reference, so reference identity
 // alone can't detect change.
 var _logsVersion = 0;
+var _lsFailCount=0;   // saves of user data that failed (storage full); coach tools check it
 function lsSet(k,v) {
   if(_DATE_SORTED_KEYS[k] && Array.isArray(v)){
     v.sort(function(a,b){
@@ -3224,8 +3225,9 @@ function lsSet(k,v) {
       var _disk=localStorage.getItem(k);
       if(_disk==null) delete _lsCache[k]; else _lsCache[k]=JSON.parse(_disk);
     }catch(_r){ if(_hadPrev) _lsCache[k]=_prev; else delete _lsCache[k]; }
-    if(!_LS_SILENT_KEYS[k] && typeof showToast==='function'){
-      try{ showToast('Couldn\'t save — storage full. Export your data.','err'); }catch(_){}
+    if(!_LS_SILENT_KEYS[k]){
+      _lsFailCount++;
+      if(typeof showToast==='function'){ try{ showToast('Couldn\'t save — storage full. Export your data.','err'); }catch(_){} }
     }
     return false;
   }
@@ -4804,8 +4806,12 @@ function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.week
 // anchor (frozen while the previous plan sat on its last week) made
 // autoAdvanceWeek leap a freshly restored/built plan forward by weeks.
 function _setWeek(n, mondayISO){
-  currentWeek=n; lsSet('kt_week',n);
-  localStorage.setItem('kt_week_monday', mondayISO || _mostRecentMonday());
+  var prevMon=localStorage.getItem('kt_week_monday');
+  if(!lsSet('kt_week',n)) return false;
+  try{ localStorage.setItem('kt_week_monday', mondayISO || _mostRecentMonday()); }
+  catch(e){ lsSet('kt_week', currentWeek); return false; }
+  currentWeek=n;
+  return true;
 }
 // The ONE door for a NEW programme: week 1 day 1 on the next Monday. Restores,
 // resets and the week stepper do not come through here — they continue a plan
@@ -8215,9 +8221,16 @@ function runnerCompleteSet(){
   runnerRepsLog[ex.name].push(typeof r === 'number' ? r : parseInt(r)||0);
   var w = runnerWeights[ex.name] != null ? runnerWeights[ex.name] : (parseFloat(ex.weight)||0);
   if(!runnerWeightsLog[ex.name]) runnerWeightsLog[ex.name] = [];
-  runnerWeightsLog[ex.name].push(w);
   if(!runnerRpeLog[ex.name]) runnerRpeLog[ex.name] = [];
-  runnerRpeLog[ex.name].push(runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7));
+  var _rpeNow = runnerRpe[ex.name] != null ? runnerRpe[ex.name] : (parseInt(ex.rpe)||7);
+  // Keep the weight and RPE logs index-aligned with the reps log (sets that arrived
+  // from the wrist without either used to shift this set onto an earlier index).
+  var _at = runnerRepsLog[ex.name].length-1;
+  while(runnerWeightsLog[ex.name].length < _at) runnerWeightsLog[ex.name].push(w);
+  while(runnerRpeLog[ex.name].length < _at) runnerRpeLog[ex.name].push(_rpeNow);
+  runnerWeightsLog[ex.name][_at] = w;
+  runnerRpeLog[ex.name][_at] = _rpeNow;
+  runnerWeightsLog[ex.name].length = _at+1; runnerRpeLog[ex.name].length = _at+1;
   var done = (runnerCompleted[ex.name] || 0) + 1;
   runnerCompleted[ex.name] = done;
   _justLoggedSet = {ex: ex.name, idx: done-1, at: Date.now()};
@@ -8494,6 +8507,7 @@ function runnerFinishSession(){
     var repsArr = (runnerRepsLog[ex.name] || []).slice(0, doneSets);
     while(repsArr.length < doneSets) repsArr.push(typeof r === 'number' ? r : parseInt(r)||0);
     var weightsArr = (runnerWeightsLog[ex.name] || []).slice(0, doneSets);
+    for(var _hw=0; _hw<weightsArr.length; _hw++){ if(!isFinite(parseFloat(weightsArr[_hw]))) weightsArr[_hw]=wFallback; }   // no null loads filed
     while(weightsArr.length < doneSets) weightsArr.push(wFallback);
     var w = weightsArr.length ? Math.max.apply(null, weightsArr) : wFallback;
     var rpeArr = (runnerRpeLog[ex.name] || []).slice(0, doneSets);
@@ -9065,7 +9079,9 @@ function runnerSaveEditSet(){
     var _cur=(runnerWeightsLog[ex.name]||[])[runnerEditSetIdx];
     // An untouched weight keeps its stored value (a reps-only fix used to re-round the load).
     var w=(_cur!=null && _raw===wDisp(_cur)) ? _cur : wStore(_raw);
-    if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[]; runnerWeightsLog[ex.name][runnerEditSetIdx]=w; } }
+    if(!runnerWeightsLog[ex.name])runnerWeightsLog[ex.name]=[];
+    var _wl0=runnerWeightsLog[ex.name]; while(_wl0.length<runnerEditSetIdx) _wl0.push(_wl0.length?_wl0[_wl0.length-1]:w);   // no holes before the edited set
+    _wl0[runnerEditSetIdx]=w; } }
   if(rEl){ var r=parseInt(rEl.value); if(!isNaN(r)&&r>0){ if(!runnerRepsLog[ex.name])runnerRepsLog[ex.name]=[]; runnerRepsLog[ex.name][runnerEditSetIdx]=r; } }
   // A live PR beat must follow the edit: retract when the corrected weight
   // no longer beats the old best, or track the corrected numbers.
@@ -15213,7 +15229,26 @@ function _snapshotRoutineForUndo(){
   }catch(e){}
 }
 
+// Every coach tool: if any save failed while it ran (or a raw write threw on quota), the
+// coach is told so instead of "logged" / "updated" (body weight, goals, profile, week,
+// cadence, deletes and set_exercise_weight used to report success with nothing saved).
+var _COACH_FULL_ERR='Storage is full on the phone, so the change was not saved. Ask the user to export a backup from Settings and free space, then try again.';
 function executeCoachTool(name,input){
+  var _f0=_lsFailCount, _res;
+  try{ _res=_executeCoachToolRaw(name,input); }
+  catch(e){
+    if(e && (e.name==='QuotaExceededError' || /quota/i.test(String(e.message||e)))) return {ok:false,error:_COACH_FULL_ERR};
+    throw e;
+  }
+  if(_res && _res.ok===false){
+    // The tool's own error stands (it is more specific), except a raw write's exception
+    // caught inside ('quota').
+    return /quota/i.test(String(_res.error||'')) ? {ok:false,error:_COACH_FULL_ERR} : _res;
+  }
+  if(_lsFailCount>_f0) return {ok:false,error:_COACH_FULL_ERR};
+  return _res;
+}
+function _executeCoachToolRaw(name,input){
   input=input||{};
   try{
     if(name==='update_routine_weeks'){
@@ -15249,11 +15284,10 @@ function executeCoachTool(name,input){
           return {ok:false,error:'week '+(weeksIn[_wi].wk||weeksIn[_wi].week||_wi+1)+' weekPlan '+_weekPlanProblem(_wp)+' Nothing was changed.'};
         }
       }
-      _snapshotRoutineForUndo();
+      // A copy: day names used to be set on the cached programme even when nothing was
+      // saved, so the app (and the watch) showed a rename the coach was told had failed.
       var cr=getCustomRoutine();
-      if(!cr){
-        cr={name:'Custom Programme',weeks:[]};
-      }
+      cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[]};
       if(_inNames){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
         LIFT_TYPES.forEach(function(sl){
@@ -15366,6 +15400,9 @@ function executeCoachTool(name,input){
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
+      // The undo point is taken only when something will be saved (a rejected call used to
+      // overwrite Restore Previous with the current programme).
+      if(written.length||planSupplied) _snapshotRoutineForUndo();
       if((written.length||planSupplied) && !setCustomRoutine(cr)) return {ok:false,error:'Could not save the programme: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
@@ -15399,11 +15436,11 @@ function executeCoachTool(name,input){
       return {ok:true,message:'current week set to '+w};
     }
     if(name==='swap_cadence_days'){
-      _snapshotRoutineForUndo();
       var dowA=DOW_FROM_NAME[input.dayA];
       var dowB=DOW_FROM_NAME[input.dayB];
       if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
       if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
+      _snapshotRoutineForUndo();   // after validation: a rejected call must not burn the undo point
       if(input.scope==='global'){
         var crG=getCustomRoutine();
         if(!crG) return {ok:false,error:'No routine yet'};
@@ -15557,13 +15594,17 @@ function executeCoachTool(name,input){
       // failed save used to leave the records raised with no session behind them, and the
       // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
       var gPRs=_pendingPRs(gclean);
-      var gsessions=[{id:Date.now(), date:gdate, week:weekForDate(gdate),
+      var gsessions=[{id:Date.now(), date:gdate, week:weekForDate(gdate), source:'coach',
         type:gtype, exercises:gclean,
         note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
       if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       checkAndUpdatePRs(gclean);
       var gwts=getWeights();
-      gclean.forEach(function(e){ if(e.weight>0) gwts[e.name]=e.weight; });
+      // Only the newest log of a lift sets its working weight, and a backdated one can only
+      // raise it: a session logged for three weeks ago used to lower today's prescription.
+      var _newerLog=function(n){ return getSessions().some(function(x){ return x && String(x.date)>gdate && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
+      var _back=gdate<todayISO();
+      gclean.forEach(function(e){ if(e.weight>0 && !_newerLog(e.name) && !(_back && (parseFloat(gwts[e.name])||0)>e.weight)) gwts[e.name]=e.weight; });
       lsSet('kt_weights',gwts);
       invalidateCoachCard();
       checkMilestones({quiet:false, delayToast:600});
@@ -15648,33 +15689,33 @@ function executeCoachTool(name,input){
       if(dlStore==='run'){
         var dlRuns=getRuns();
         var dlBefore=dlRuns.length;
-        lsSet('kt_runs',dlRuns.filter(function(r){return r.id!==dlId;}));
-        if(getRuns().length===dlBefore) return {ok:false,error:'run id not found'};
+        if(!dlRuns.some(function(r){ return r.id===dlId; })) return {ok:false,error:'run id not found'};
+        if(!lsSet('kt_runs',dlRuns.filter(function(r){return r.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
         invalidateCoachCard(); render();
         return {ok:true,message:'Run deleted'};
       }
       if(dlStore==='sport'){
         var dlSports=getSportLogs();
         var dlBefore2=dlSports.length;
-        lsSet('kt_sports',dlSports.filter(function(s){return s.id!==dlId;}));
-        if(getSportLogs().length===dlBefore2) return {ok:false,error:'sport log id not found'};
+        if(!dlSports.some(function(x){ return x.id===dlId; })) return {ok:false,error:'sport log id not found'};
+        if(!lsSet('kt_sports',dlSports.filter(function(s){return s.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
         invalidateCoachCard(); render();
         return {ok:true,message:'Sport session deleted'};
       }
       if(dlStore==='session'){
         var dlSess=getSessions();
         var dlBefore3=dlSess.length;
-        lsSet('kt_sessions',dlSess.filter(function(s){return s.id!==dlId;}));
+        if(!dlSess.some(function(x){ return x.id===dlId; })) return {ok:false,error:'session id not found'};
+        if(!lsSet('kt_sessions',dlSess.filter(function(s){return s.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
         recomputePRs();
-        if(getSessions().length===dlBefore3) return {ok:false,error:'session id not found'};
         invalidateCoachCard(); render();
         return {ok:true,message:'Session deleted'};
       }
       if(dlStore==='bodyweight'){
         var dlBws=getBodyWeights();
         var dlBefore4=dlBws.length;
-        lsSet('kt_bw',dlBws.filter(function(b){return b.id!==dlId;}));
-        if(getBodyWeights().length===dlBefore4) return {ok:false,error:'bodyweight id not found'};
+        if(!dlBws.some(function(x){ return x.id===dlId; })) return {ok:false,error:'bodyweight id not found'};
+        if(!lsSet('kt_bw',dlBws.filter(function(b){return b.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
         render();
         return {ok:true,message:'Bodyweight entry deleted'};
       }
@@ -18862,8 +18903,11 @@ function _buildWatchLive(){
     // `reps`, the wrist (build 51) never saw the undo and kept the set.
     if(arr.length || (runnerSession.ownAt&&runnerSession.ownAt[ex.name])){
       reps[ex.name]=arr;
-      var wl=(runnerWeightsLog[ex.name]||[]).slice(0, done).map(function(w){ return parseFloat(w)||0; });
-      if(wl.length===arr.length) wlog[ex.name]=wl;
+      // An index loop: map() skips holes, and a hole reached the watch as null (build 53
+      // then rejected the whole live payload). Sent only when every set has a weight.
+      var _wsrc=runnerWeightsLog[ex.name]||[], wl=[], _wok=true;
+      for(var _wi2=0; _wi2<done; _wi2++){ var _wv2=parseFloat(_wsrc[_wi2]); if(!isFinite(_wv2)){ _wok=false; break; } wl.push(_wv2); }
+      if(_wok && wl.length===arr.length) wlog[ex.name]=wl;
       // A for loop, not map/every: both skip holes, and a hole went to the watch as null,
       // which made build 53 reject the whole live payload.
       var _rl=runnerRpeLog[ex.name]||[], rv=[];
@@ -18995,9 +19039,10 @@ function _wristSessionFiled(slot, startedMs){
 function _sameWristSession(rec, wristStartedISO){
   var ws=wristStartedISO?new Date(wristStartedISO).getTime():0;
   if(!(ws>0)) return true;   // an old watch without a start stamp: date + slot is all there is
+  if(rec.source==='coach') return false;   // logged by the coach: its own session, never a wrist copy
   if(rec.wristStartedAt) return Math.abs(new Date(rec.wristStartedAt).getTime()-ws)<1500;
   if(rec.startedAt) return (rec.id||0)>ws && Math.abs(rec.startedAt-ws)<6*3600*1000;
-  return (rec.id||0)>ws;
+  return (rec.id||0)>ws && (rec.id||0)-ws<6*3600*1000;   // saved within 6 h of the wrist start
 }
 // The wrist follows the phone's room: the resolved theme's tokens ride the plan payload.
 function _watchThemeTokens(){
@@ -19192,13 +19237,17 @@ function _onWatchLive(json){
         if(_rlIn) runnerRpeLog[name]=_rlo;
         runnerCompleted[name]=inc.length;
         var wv=s.weights&&s.weights[name]!=null?parseFloat(s.weights[name]):0;
-        if(wv>0){
-          runnerWeights[name]=wv;
-          // Pad only the tail — phone-logged sets keep their own weights.
-          var wl=runnerWeightsLog[name]||[];
-          while(wl.length<inc.length) wl.push(wv);
-          runnerWeightsLog[name]=wl;
-        }
+        if(wv>0) runnerWeights[name]=wv;
+        // Every wrist-arrived set gets a weight: the watch sends one only for a lift whose
+        // weight was changed on the wrist, so an untouched lift's sets arrived with none.
+        // Later phone sets then landed at the wrong index, or the hole went back to the
+        // watch as null and build 53 dropped the whole live mirror. The fill is what the
+        // wrist was showing: its weight, else the phone's, else the plan's.
+        var _exL=null; (runnerSession.exercises||[]).forEach(function(e){ if(e&&e.name===name) _exL=e; });
+        var _fillW=wv>0?wv:(runnerWeights[name]!=null?parseFloat(runnerWeights[name])||0:(parseFloat(_exL&&_exL.weight)||0));
+        var wl=(runnerWeightsLog[name]||[]).slice();
+        for(var _wfi=0;_wfi<inc.length;_wfi++){ if(!isFinite(parseFloat(wl[_wfi]))) wl[_wfi]=_fillW; }   // phone-logged sets keep their own weights
+        runnerWeightsLog[name]=wl;
         changed=true;
       } else if(loc.length>inc.length){
         localAhead=true;
@@ -19259,8 +19308,9 @@ function drainWatchSessions(){
     _wchLog('drain: '+arr.length+' pending');
     var added=0, saveFailed=false, drained=[];
     arr.forEach(function(json){
-      var s; try{ s=JSON.parse(json); }catch(e){ return; }
-      if(!s || !Array.isArray(s.exercises) || !s.exercises.length) return;
+      // An unreadable or empty payload has nothing to file; left queued it came back forever.
+      var s; try{ s=JSON.parse(json); }catch(e){ _wchLog('drain: unreadable payload dropped'); drained.push(json); return; }
+      if(!s || !Array.isArray(s.exercises) || !s.exercises.length){ drained.push(json); return; }
       // The slot first: the session's own day decides which lift is the main
       // one. Today's activity used to decide, so an off-schedule or next-
       // morning drain filed the main lift as isMain:false.
@@ -19311,6 +19361,16 @@ function drainWatchSessions(){
       var _dr=null;
       try{ _dr=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); }catch(e){}
       var _draftHere=!runnerOpen && _dr && _dr.session && _dr.session.dayName===dayType && localISO===todayISO();
+      // ...and only when it is the SAME session: a late wrist session from the morning
+      // used to swallow an evening phone draft of the same day, and its sets were lost.
+      // Same session = the two overlap in time (5 min slack): wrist [start, logged],
+      // phone [start, last draft save]. Started on the wrist and continued on the phone
+      // overlaps; a 00:05 wrist workout and an 18:00 phone workout do not.
+      if(_draftHere){
+        var _wsT=s.startedAt?new Date(s.startedAt).getTime():0, _dsT=Number(_dr.session.startedAt)||0;
+        var _weT=(s.loggedAt?new Date(s.loggedAt).getTime():0)||(_wsT+3*3600e3), _deT=Number(_dr.savedAt)||Date.now();
+        if(_wsT>0 && _dsT>0 && !(_wsT<=_deT+5*60e3 && _weT>=_dsT-5*60e3)) _draftHere=false;
+      }
       var _draftExs=[];
       if(_draftHere){
         (_dr.session.exercises||[]).forEach(function(ex){
@@ -19335,7 +19395,10 @@ function drainWatchSessions(){
         // changes nothing (longest log wins, present exercises stay).
         _changed=_mergeWristExercises(_prior, exsOut);
         if(_draftExs.length) _changed+=_mergeWristExercises(_prior, _draftExs);
-        if(!_changed){ _wchLog('drain: duplicate '+localISO+' '+dayType+' (nothing new)'); return; }
+        // Already represented: it is drained all the same. Left in the queue, the next
+        // foreground brought back a session the user had deleted, reverted corrections
+        // and re-added renamed lifts.
+        if(!_changed){ _wchLog('drain: duplicate '+localISO+' '+dayType+' (nothing new)'); drained.push(json); return; }
         _rec=_prior;
         var _mp=_pendingPRs(_rec.exercises);
         _rec.prs=(_rec.prs||[]).concat(_mp.filter(function(p){ return (_rec.prs||[]).indexOf(p)<0; }));
