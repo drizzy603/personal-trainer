@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-8"/>
+<meta name="build" content="20260924-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1127,6 +1127,31 @@ button:active{transform:scale(.97);}
 .kt-vs-d.up{color:var(--earned-ink);font-weight:800;}
 .kt-vs-pr{font-size:9px;font-weight:800;letter-spacing:.04em;color:var(--earned-ink);margin-left:4px;}
 .kt-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+/* PR history: Records pills and the exercise-detail PR row open RECORD HISTORY,
+   derived from the log (_prLedger). Only the current record's eyebrow and gain
+   carry the earned colour; replaced rows stay neutral. */
+.kt-pr-pill{display:inline-flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:5px;row-gap:2px;max-width:100%;min-height:44px;box-sizing:border-box;padding:6px 11px;background:color-mix(in srgb,var(--yellow) 9%,transparent);border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:12px;color:var(--text);font-family:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-pr-pill .n{font-size:12px;font-weight:700;min-width:0;overflow-wrap:anywhere;}
+.kt-pr-pill .w{font-size:12px;font-weight:800;color:var(--earned-ink);white-space:nowrap;}
+.kt-pr-pill .m{font-size:9.5px;color:var(--muted);white-space:nowrap;}
+.kt-ex-pr{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;box-sizing:border-box;margin-bottom:12px;padding:11px 14px;background:var(--card);border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:14px;color:var(--text);font-family:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-ex-pr .l{font-size:13px;font-weight:700;min-width:0;overflow-wrap:anywhere;}
+.kt-ex-pr .dot{color:var(--earned-ink);}
+.kt-ex-pr .r{font-size:9px;color:var(--muted);white-space:nowrap;flex-shrink:0;}
+#prHistTitle:focus{outline:none;}
+.kt-prh-meta{font-size:12px;color:var(--muted);margin-top:4px;}
+.kt-prh-cur{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:4px 0 6px;}
+.kt-prh-k{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--earned-ink);}
+.kt-prh-cur-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:4px;}
+.kt-prh-cur-v{font-size:28px;font-weight:800;letter-spacing:-.8px;line-height:1.1;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere;}
+.kt-prh-s{font-size:12px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;}
+.kt-prh-hd{margin:16px 0 2px;}
+.kt-prh-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px;padding:8px 0;border-bottom:1px solid var(--border);}
+.kt-prh-main{flex:1;min-width:0;}
+.kt-prh-v{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.kt-prh-d{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap;flex-shrink:0;text-align:right;}
+.kt-prh-d.up{color:var(--earned-ink);font-weight:800;}
+.kt-prh-empty{font-size:13px;color:var(--muted);padding:14px 0 4px;}
 /* Pre-session overview (board H-17) */
 .kt-ov-list{border:1px solid var(--border);border-radius:14px;padding:4px 14px;background:var(--card2);}
 .kt-ov-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);}
@@ -1480,7 +1505,7 @@ html[data-room="dark"] #screen [onclick^="toggleHistItem"] svg[stroke="var(--acc
 html[data-room="dark"] [onclick^="showAllPRs"]{border-color:var(--border)!important;}
 html[data-room="dark"] [onclick^="showAllPRs"] span[style*="background:var(--yellow)"]{background:var(--muted)!important;}
 html[data-room="dark"] [onclick^="showAllPRs"] .kt-mono[style*="color:var(--yellow)"]{color:var(--lite)!important;}
-html[data-room="dark"] #screen div[style*="var(--yellow) 9%"]{background:var(--card2)!important;border-color:var(--border)!important;}
+html[data-room="dark"] .kt-pr-pill{background:var(--card2);border-color:var(--border);}
 html[data-room="dark"] .stat-val[style*="color:var(--accent)"],html[data-room="dark"] .stat-val[style*="color:var(--orange)"]{color:var(--text)!important;}
 html[data-room="dark"] #screen .chart-card[style*="border-left:2px solid var(--accent)"]{border-left:1px solid var(--border)!important;}
 html[data-room="dark"] #screen div[style*="border-color:rgba(255,230,0,.35)"]{border-color:var(--border)!important;}
@@ -1495,7 +1520,7 @@ html[data-room="dark"] #exlibAddBtn{color:var(--text)!important;}
 html[data-room="dark"] #exlibAddSection div[style*="color:var(--accent);margin-bottom:12px"]{color:var(--muted)!important;}
 html[data-room="dark"] #exlibList [style*="var(--accent-soft)"]{background:transparent!important;border-color:var(--border)!important;}
 html[data-room="dark"] #exlibList [style*="display:inline-block;font-size:9px"]{color:var(--lite)!important;}
-html[data-room="dark"] #exlibList div[style*="var(--yellow) 28%"]{border-color:var(--border)!important;}
+html[data-room="dark"] .kt-ex-pr{border-color:var(--border);}
 html[data-room="dark"] #exlibList .kt-mono[style*="opacity:.6"],html[data-room="dark"] #exlibList .kt-mono[style*="opacity:.45"]{opacity:1!important;}
 /* Coach */
 html[data-room="dark"] .coach-bubble.user{background:var(--sel);color:var(--text);}
@@ -1624,6 +1649,8 @@ html[data-room="heavyweight"] .kt-vs-pick-dt .w,
 html[data-room="heavyweight"] .kt-vs-side-d,
 html[data-room="heavyweight"] .kt-vs-k,
 html[data-room="heavyweight"] .kt-vs-d,
+html[data-room="heavyweight"] .kt-prh-k,
+html[data-room="heavyweight"] .kt-prh-d,
 html[data-room="heavyweight"] [style*="JetBrains"]{font-family:'Archivo',sans-serif!important;font-variant-numeric:tabular-nums;}
 
 html[data-room="heavyweight"] #app::before{display:none;}
@@ -3645,28 +3672,103 @@ function calcStreak(sessions) {
   return streak;
 }
 
-// Returns array of exercise names that set new PRs
-// When (and for how many reps) a record was set — derived from the log, so
-// the kt_prs {name: weight} shape stays untouched. Newest session at that
-// weight wins; the heaviest set's own reps via _lastPair.
+// ── PR history: derived from kt_sessions, never stored ──────────────────────
+// A record is the heaviest logged load for one exact exercise name (added load
+// on bodyweight lifts; 0 is never a record), strictly heavier than every
+// earlier session's, sessions in date order (id breaks same-day ties). Same
+// load for more reps is NOT a record — checkAndUpdatePRs uses > too. Memoized
+// on _logsVersion, so edits, renames, deletes and restores follow for free.
+// _prTop: one logged exercise's heaviest load (recomputePRs's max over weight,
+// weightLog and legacy sets[]) and the most reps done at exactly that load.
+function _prTop(ex){
+  var w=parseFloat(ex.weight)||0;
+  if(Array.isArray(ex.weightLog)) ex.weightLog.forEach(function(x){ var v=parseFloat(x); if(v>w) w=v; });
+  if(Array.isArray(ex.sets)) ex.sets.forEach(function(st){ var v=parseFloat(st&&st.weight); if(v>w) w=v; });
+  if(!(w>0) || !isFinite(w)) return null;
+  var r=0;
+  _exSetPairs(ex).forEach(function(p){ if(Math.abs(p[1]-w)<0.01 && p[0]>r) r=p[0]; });
+  return {w:w, r:r};
+}
+var _prLedgerMemo=null, _prLedgerV=-1;
+// {chains:{'k:'+name:[entry oldest→newest]}, names:[first-seen order], latest:entry|null}
+// entry = {name, w (lb), r, date, id, type, label}. Treat as read-only.
+function _prLedger(){
+  if(_prLedgerMemo && _prLedgerV===_logsVersion) return _prLedgerMemo;
+  var asc=getSessions().slice().sort(function(a,b){
+    var ad=String((a&&a.date)||''), bd=String((b&&b.date)||'');
+    if(ad!==bd) return ad<bd?-1:1;
+    // Same day: by start time (a wrist session drained after a phone one can have started first).
+    return (a&&b) ? _cmpT(a)-_cmpT(b) : 0;
+  });
+  var chains={}, names=[], latest=null;
+  asc.forEach(function(s){
+    if(!s || !Array.isArray(s.exercises)) return;
+    // One top per name per session: a lift logged twice in one session is one entry.
+    var tops={}, order=[];
+    s.exercises.forEach(function(ex){
+      if(!ex || !ex.name) return;
+      var t=_prTop(ex); if(!t) return;
+      var n=String(ex.name), o=tops['k:'+n];
+      if(!o){ tops['k:'+n]={w:t.w, r:t.r}; order.push(n); }
+      else if(t.w>o.w || (t.w===o.w && t.r>o.r)){ o.w=t.w; o.r=t.r; }
+    });
+    var first=null;
+    order.forEach(function(n){
+      var t=tops['k:'+n], c=chains['k:'+n];
+      if(!c){ c=chains['k:'+n]=[]; names.push(n); }
+      var last=c[c.length-1];
+      if(last && !(t.w>last.w)) return;
+      var e={name:n, w:t.w, r:t.r, date:String(s.date||''), id:s.id, type:String(s.type||''), label:String(s.label||'')};
+      c.push(e);
+      if(!first) first=e;
+    });
+    if(first) latest=first;
+  });
+  _prLedgerMemo={chains:chains, names:names, latest:latest};
+  _prLedgerV=_logsVersion;
+  return _prLedgerMemo;
+}
+function _prChain(name){ return _prLedger().chains['k:'+String(name==null?'':name)]||null; }
+function _prHead(name){ var c=_prChain(name); return c?c[c.length-1]:null; }
+// A FRESH {name: lb} of the current records: callers mutate getPRs() results.
+function _prHeads(){
+  var L=_prLedger(), o={};
+  L.names.forEach(function(n){ var c=L.chains['k:'+n]; o[n]=c[c.length-1].w; });
+  return o;
+}
+// kt_prs is a cache of the heads (the runner's BEST WAS, the finish-time PR
+// call, the coach prompt and the PR milestone read it). Writes only on a real
+// difference; returns whether it wrote.
+function _syncPRCache(){
+  var heads=_prHeads(), raw=lsGet('kt_prs'), cur=getPRs();
+  var ka=Object.keys(heads), kb=Object.keys(cur||{});
+  var same=!Array.isArray(raw) && ka.length===kb.length && ka.every(function(k){
+    return Object.prototype.hasOwnProperty.call(cur,k) && parseFloat(cur[k])===heads[k]; });
+  if(same) return false;
+  lsSet('kt_prs', heads);
+  return true;
+}
+// The entry that SET this load: its date and reps (Records pills used to show
+// the newest session at that load).
 function _prMeta(name, weight){
   var w=parseFloat(weight); if(!(w>0)) return null;
-  var sessions=getSessions();
-  for(var i=0;i<sessions.length;i++){
-    var s=sessions[i], exs=s.exercises||[];
-    for(var j=0;j<exs.length;j++){
-      var ex=exs[j]; if(ex.name!==name) continue;
-      var top=parseFloat(ex.weight)||0;
-      if(Array.isArray(ex.weightLog)&&ex.weightLog.length) top=Math.max(top, Math.max.apply(null, ex.weightLog.map(function(x){ return parseFloat(x)||0; })));
-      if(Array.isArray(ex.sets)) ex.sets.forEach(function(st){ top=Math.max(top, parseFloat(st&&st.weight)||0); });
-      if(Math.abs(top-w)<0.01){
-        var pair=_lastPair(ex);
-        return {date:s.date, reps:pair&&pair.r!=null?parseInt(pair.r)||0:0};
-      }
-    }
-  }
+  var c=_prChain(name); if(!c) return null;
+  for(var i=c.length-1;i>=0;i--){ if(Math.abs(c[i].w-w)<0.01) return {date:c[i].date, reps:c[i].r}; }
   return null;
 }
+// Display: bodyweight lifts record the ADDED load, so it reads "+25 lb".
+function _prLoadTxt(name, w){ return (_isBodyweightLift(name)?'+':'')+fmtW(w); }
+function _prSetTxt(name, e){ return _prLoadTxt(name, e.w)+(e.r>0?' × '+e.r:''); }
+function _prWhen(e){ return e && e.date ? fmtDate(e.date) : 'Undated'; }
+function _prWhere(e){ var l=e.label||_dayLabel(e.type)||''; return _prWhen(e)+(l?' · '+l:''); }
+// Gain of chain[i] over the record it replaced, on the DISPLAYED numbers (so it
+// matches what is on screen); '' when rounding makes two records read the same.
+function _prGain(c, i){
+  if(i<1) return '';
+  var d=Math.round((wDisp(c[i].w)-wDisp(c[i-1].w))*100)/100;
+  return d>0 ? '+'+d+' '+_uW() : '';
+}
+// Returns array of exercise names that set new PRs
 function checkAndUpdatePRs(exercises) {
   var prs = getPRs();
   var newPRs = [];
@@ -3985,6 +4087,7 @@ function _applyImportedData(data) {
   // the next boot, with no welcome-back banner to undo it.
   localStorage.setItem('kt_week_monday', _mostRecentMonday());
   lapsePending = null;
+  _syncPRCache();
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');
@@ -10622,16 +10725,7 @@ function deleteSession(id){
 // the flat runner shape and the legacy nested sets[] shape. Per-session
 // prs arrays stay as written: they record what was a PR at the time.
 function recomputePRs(){
-  var prs={};
-  getSessions().forEach(function(s){
-    (s.exercises||[]).forEach(function(ex){
-      var w=parseFloat(ex.weight)||0;
-      if(Array.isArray(ex.weightLog)) ex.weightLog.forEach(function(x){ var v=parseFloat(x); if(v>w) w=v; });
-      if(Array.isArray(ex.sets)) ex.sets.forEach(function(st){ var v=parseFloat(st&&st.weight); if(v>w) w=v; });
-      if(!(w>0)) return;
-      if(!prs[ex.name] || w>prs[ex.name]) prs[ex.name]=w;
-    });
-  });
+  var prs=_prHeads();
   lsSet('kt_prs', prs);
   return prs;
 }
@@ -12769,36 +12863,22 @@ function renderProgress() {
   }
 
   // Records — one gold surface: count + latest PR, with the pill shelf
-  // behind the ALL → toggle. Gold stays scarce (border + dot, not a gold
-  // number per card).
-  var prData = getPRs();
-  var prNames = Object.keys(prData).sort(function(a,b){return prData[b]-prData[a];});
+  // behind the ALL → toggle. Reads the derived ledger, so the header, a pill
+  // and the RECORD HISTORY sheet it opens can never disagree.
+  var _prL = _prLedger();
+  var prNames = _prL.names.slice().sort(function(a,b){ return _prHead(b).w-_prHead(a).w; });
   var prCard = '';
   if(prNames.length){
-    var latestPR=null;
-    for(var _pi=0;_pi<sessions.length && !latestPR;_pi++){
-      var _psess=sessions[_pi];
-      if((_psess.prs||[]).length){
-        var _p0=_psess.prs[0];
-        latestPR={ex:_p0.ex||_p0.name||'', weight:_p0.weight, reps:_p0.reps, date:_psess.date};
-      }
-    }
-    var latestLine = latestPR && latestPR.ex
-      ? 'latest '+_esc(latestPR.ex)+' '+wDisp(latestPR.weight)
-      : 'best '+_esc(prNames[0])+' '+prData[prNames[0]];
-    var latestSub = latestPR && latestPR.ex
-      ? fmtDate(latestPR.date).toUpperCase()+(latestPR.reps?' · ×'+latestPR.reps:'')
-      : 'ALL-TIME BESTS · '+_uW().toUpperCase();
+    var _prLat=_prL.latest;
+    var latestLine = 'latest '+_esc(_prLat.name)+' '+_esc(_prLoadTxt(_prLat.name, _prLat.w));
+    var latestSub = _esc(_prWhen(_prLat).toUpperCase())+(_prLat.r>0?' · ×'+_prLat.r:'');
     var prPills = prNames.map(function(n){
-      var meta=_prMeta(n, prData[n]);
-      return '<div style="display:inline-flex;align-items:baseline;gap:5px;'+
-        'background:color-mix(in srgb,var(--yellow) 9%,transparent);'+
-        'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);'+
-        'border-radius:12px;padding:6px 11px;">'+
-        '<span style="font-size:12px;font-weight:700;">'+_esc(n)+'</span>'+
-        '<span style="font-size:12px;font-weight:800;color:var(--earned-ink);">'+wDisp(prData[n])+'</span>'+
-        (meta ? '<span class="kt-mono" style="font-size:9.5px;color:var(--muted);">'+(meta.reps?'\u00d7'+meta.reps+' \u00b7 ':'')+_esc(fmtDate(meta.date).toUpperCase())+'</span>' : '')+
-      '</div>';
+      var h=_prHead(n);
+      return '<button type="button" class="kt-pr-pill" data-ex="'+_esc(n)+'" onclick="openPRHistory(this.dataset.ex)">'+
+        '<span class="n">'+_esc(n)+'</span> '+
+        '<span class="w">'+_esc(_prLoadTxt(n, h.w))+'</span> '+
+        '<span class="m kt-mono">'+(h.r>0?'×'+h.r+' · ':'')+_esc(_prWhen(h).toUpperCase())+'</span>'+
+      '</button>';
     }).join('');
     prCard = '<div onclick="showAllPRs='+(!showAllPRs)+';render()" style="background:var(--card);'+
       'border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:16px;'+
@@ -13666,6 +13746,61 @@ function _cmpDevOpen(){
   _calNavToDate(newest.date); calSelectedDate=null;
   render();
   openCompareSheet();
+}
+
+// ── RECORD HISTORY ────────────────────────────────────────────────────────────
+// One lift's records from the derived ledger: the current one (load × reps,
+// the day it was set, the session it came from) and every record it replaced,
+// newest first. Read-only. Stacks above the exercise library (kt-sheet-over).
+var _prhReturnFocus=null;
+function openPRHistory(name){
+  var c=_prChain(name); if(!c || !c.length) return;
+  name=c[0].name;
+  var old=document.getElementById('prHistOverlay');
+  if(old) old.remove(); else _prhReturnFocus=document.activeElement;
+  var n=c.length, cur=c[n-1], curGain=_prGain(c, n-1);
+  var meta=(n>1?_plural(n,'record')+(c[0].date?' since '+_prWhen(c[0]):''):'1 record')+(_isBodyweightLift(name)?' · added load':'');
+  var rows='';
+  for(var i=n-2;i>=0;i--){
+    rows+='<div class="kt-prh-row"><div class="kt-prh-main">'+
+      '<div class="kt-prh-v">'+_esc(_prSetTxt(name, c[i]))+'</div>'+
+      '<div class="kt-prh-s">'+_esc(_prWhere(c[i]))+'</div></div>'+
+      '<span class="kt-prh-d">'+(i===0?'FIRST':_esc(_prGain(c, i)))+'</span></div>';
+  }
+  var overlay=document.createElement('div');
+  overlay.id='prHistOverlay';
+  overlay.className='kt-sheet-overlay kt-sheet-over';
+  overlay.innerHTML='<div class="kt-sheet" role="dialog" aria-modal="true" aria-labelledby="prHistTitle">'+
+    '<div class="kt-sheet-head" style="align-items:flex-start;">'+
+      '<div style="min-width:0;"><div class="screen-eyebrow" style="color:var(--muted);margin-bottom:6px;">RECORD HISTORY</div>'+
+      '<div class="kt-sheet-title" id="prHistTitle" tabindex="-1" style="font-size:20px;line-height:1.2;overflow-wrap:anywhere;">'+_esc(name)+'</div>'+
+      '<div class="kt-prh-meta">'+_esc(meta)+'</div></div>'+
+      '<button type="button" class="kt-sheet-x" onclick="closePRHistory()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div class="kt-prh-cur">'+
+      '<div class="kt-prh-k">CURRENT RECORD</div>'+
+      '<div class="kt-prh-cur-row"><div class="kt-prh-cur-v">'+_esc(_prSetTxt(name, cur))+'</div>'+
+        (curGain?'<span class="kt-prh-d up">'+_esc(curGain)+'</span>':'')+'</div>'+
+      '<div class="kt-prh-s">'+_esc(_prWhere(cur))+'</div>'+
+    '</div>'+
+    (rows
+      ? '<div class="kt-ledger-hd kt-prh-hd"><span class="l">REPLACED · '+(n-1)+'</span><span class="r">GAIN</span></div><div class="kt-prh-list">'+rows+'</div>'
+      : '<div class="kt-prh-empty">Nothing replaced yet — this is the first record for this lift.</div>')+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closePRHistory);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closePRHistory(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closePRHistory(); } });
+  _a11yPass();
+  var tt=document.getElementById('prHistTitle');
+  if(tt){ try{ tt.focus({preventScroll:true}); }catch(e){} }
+}
+function closePRHistory(noFocus){
+  var el=document.getElementById('prHistOverlay');
+  if(!el) return;
+  el.remove();
+  var tgt=_prhReturnFocus; _prhReturnFocus=null;
+  if(!noFocus && tgt && tgt.isConnected){ try{ tgt.focus({preventScroll:true}); }catch(e){} }
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
@@ -17409,12 +17544,12 @@ function _exDetailHTML(ex, hist, isCustom){
       '</div>';
     }
   }
-  var prW=getPRs()[ex.name];
-  if(prW){
-    html+='<div style="background:var(--card);border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:14px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'+
-      '<span style="font-size:13px;font-weight:700;"><span style="color:var(--earned-ink);">●</span>&nbsp; PR · '+fmtW(prW)+'</span>'+
-      '<span class="kt-mono" style="font-size:9px;color:var(--muted);">ALL-TIME</span>'+
-    '</div>';
+  var prH=_prHead(ex.name);
+  if(prH){
+    html+='<button type="button" class="kt-ex-pr" data-ex="'+_esc(ex.name)+'" onclick="openPRHistory(this.dataset.ex)">'+
+      '<span class="l"><span class="dot" aria-hidden="true">●</span>&nbsp; PR · '+_esc(_prSetTxt(ex.name, prH))+'</span> '+
+      '<span class="r kt-mono">'+_esc(_prWhen(prH).toUpperCase())+' <span aria-hidden="true">→</span></span>'+
+    '</button>';
   }
   html+='<div style="font-size:11px;color:var(--muted);margin-bottom:10px;"><span style="color:var(--text);font-weight:600;">Equipment:</span> '+_esc(ex.equip)+'</div>';
   if(ex.desc)html+='<p style="font-size:13px;color:var(--lite);line-height:1.55;margin-bottom:12px;">'+_esc(ex.desc)+'</p>';
@@ -17643,6 +17778,9 @@ if(_awayDays >= 10 && currentWeek > _weekBeforeAdvance && hasCustomRoutine()){
   lapsePending = {from:_weekBeforeAdvance, to:currentWeek, days:_awayDays};
 }
 lsSet('kt_last_open', Date.now());
+// kt_prs is a cache of the derived record heads; bring a stale one (pre-recompute
+// deletes, legacy nested sessions, old seeds) in line before the milestone baseline.
+try{ _syncPRCache(); }catch(e){}
 // Baseline milestones silently on first run; later boots record quietly
 // (an imported backup must not fire a toast barrage).
 checkMilestones({quiet:true});
@@ -18774,7 +18912,7 @@ window._trovoOpen=_handleDeepLink;
 // the screenshot helper can drive the sim without UI taps. The key is
 // consumed (deleted) on first read; absence is the no-op default. Routes:
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
-//   "progress" | "progress/compare" | "settings"
+//   "progress" | "progress/compare" | "progress/records" | "settings"
 //   "coach" (home) | "coach/chat"
 //   "modal/programme"
 //   "overlay/how" | "overlay/privacy"
@@ -18793,6 +18931,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='log' && sub){ switchLogSub(sub); }
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
+        if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
