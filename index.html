@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-9"/>
+<meta name="build" content="20260925-10"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -15672,11 +15672,11 @@ var _weekSchema={type:'object',
     weekPlan:{type:'array',minItems:7,maxItems:7,items:{type:'string',enum:LIFT_TYPES.concat(['Run','Rest','Cycling','CrossFit','Pickleball','Swimming','Tennis','Basketball','Yoga','Hiking','Climbing','Soccer','Rowing','Boxing','Golf','Other'])},
       description:'Optional. Per-week cadence override (Mon→Sun). Use Legs2 for a second distinct Legs session (posterior-chain focus). Use Arms for a biceps/triceps/abs day. If omitted, the routine-level weekPlan applies.'}
   },
-  required:['wk','bName','bColor','push','pull','legs']
+  required:['wk','bName','bColor']   // a lift day left out keeps what is stored; [] clears it
 };
 var COACH_TOOLS=[
   {name:'update_routine_weeks',
-   description:'Replace one or more weeks in the user\'s training programme. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (lift, rest, run, or sport per day). Commits immediately — the user sees each week update live.',
+   description:'Replace one or more weeks in the user\'s training programme. A lift day you leave out of a week keeps what is stored (send [] to clear it). The user\'s own edits (marked in THIS WEEK\'S PLAN) are kept when you rewrite a week; to change one of those, use edit_programme_exercise, and only when the user asks. Pass an array of week objects. For a single-week tweak, pass one week. For a full regenerate, pass every week from currentWeek through the end of the programme in a single call — this is much faster than splitting up the work. If the response would be too long, split into halves. Optionally include weekPlan to set the user\'s weekly cadence (lift, rest, run, or sport per day). Commits immediately — the user sees each week update live.',
    input_schema:{type:'object',
      properties:{
        weeks:{type:'array',minItems:1,maxItems:24,items:_weekSchema,description:'Array of week objects, each keyed by wk (1–24). On intake pass every week of the chosen programme length.'},
@@ -15699,6 +15699,17 @@ var COACH_TOOLS=[
        scope:{type:'string',enum:['week','global'],description:'Optional. "week" (default) only changes this week\'s cadence. "global" changes the routine-level default so every week shifts.'}
      },
      required:['dayA','dayB']}},
+  {name:'edit_programme_exercise',
+   description:'Change ONE exercise on one lift day, from a week on (default: the current week), carried through every later week with the programme\'s own progression (deload weeks keep their share). Use this for single-exercise changes, including ones the user asks you to make to lifts they edited themselves; use update_routine_weeks only to rebuild whole weeks. action: change (sets/reps/rpe/weight), add, remove, or swap (rename_to, optional weight). Weight in {W}.',
+   input_schema:{type:'object',properties:{
+     day:{type:'string',description:'lift slot id (Push, Pull, Legs, Legs2, Arms, Day6, Day7) or the day\'s name'},
+     exercise:{type:'string'}, action:{type:'string',enum:['change','add','remove','swap']},
+     rename_to:{type:'string'}, weight:{type:'number',description:'in {W}; 0 = the user picks the load'},
+     sets:{type:'integer'}, reps:{type:'integer'}, rpe:{type:'integer'},
+     from_week:{type:'integer'}, only_this_week:{type:'boolean'},
+     every_week:{type:'boolean',description:'sets/reps change every later week, not only weeks with the same scheme'},
+     after:{type:'string',description:'add: insert after this exercise'}},
+     required:['day','exercise','action']}},
   {name:'set_exercise_weight',
    description:'Set the working weight for a named exercise (case-insensitive match), from this week on: every later week of the programme moves with it and keeps its own progression (deload weeks keep their share). Weight in {W}.',
    input_schema:{type:'object',properties:{name:{type:'string'},weight:{type:'number'}},required:['name','weight']}},
@@ -15809,7 +15820,7 @@ function _routineReadback(written){
     var w=(cr.weeks||[])[wk-1]; if(!w) return;
     if(i<2){
       var full={};
-      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e&&e.name; }); });
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined?' (user\u2019s edit kept)':'') : e; }); });
       if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
       out.weeks[wk]=full;
     } else {
@@ -15903,6 +15914,7 @@ function _executeCoachToolRaw(name,input){
       var written=[];
       var skipped=[];
       var errored=null;
+      var _keptEdits=[];
       // Ascending order so a single call carrying weeks 13-16 fills them in
       // sequence; a week beyond length+1 would otherwise be padded with bare
       // {wk} placeholders that render as 'undefined Block' with no lifts.
@@ -15930,6 +15942,12 @@ function _executeCoachToolRaw(name,input){
           legs: Array.isArray(w.legs)?w.legs:[]
         };
         OPTIONAL_LIFT_KEYS.forEach(function(ok){ if(Array.isArray(w[ok])&&w[ok].length) weekObj[ok]=w[ok]; });
+        // A lift day left out of the call keeps what is stored ("add an Arms day" used to
+        // make the coach resend, and flatten, every other day). An explicit [] clears it.
+        var _prevW=cr.weeks[wk-1];
+        if(_prevW) LIFT_KEYS.forEach(function(k){ if(w[k]===undefined && Array.isArray(_prevW[k]) && _prevW[k].length) weekObj[k]=JSON.parse(JSON.stringify(_prevW[k])); });
+        // Marks are the app's, not the model's: drop any it echoed back.
+        LIFT_KEYS.forEach(function(k){ (Array.isArray(weekObj[k])?weekObj[k]:[]).forEach(function(e){ if(e && typeof e==='object' && w[k]!==undefined) delete e.rec; }); });
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
         LIFT_KEYS.forEach(function(sk){
@@ -15995,6 +16013,30 @@ function _executeCoachToolRaw(name,input){
             weekObj.sports=prev.sports;
           }
         }
+        // The owner's version wins: their edited and added lifts are kept over the coach's
+        // rewrite (the coach's new row becomes the "Coach:" original beside them), and a
+        // lift they removed stays removed.
+        if(_prevW) LIFT_KEYS.forEach(function(k){
+          var old=Array.isArray(_prevW[k])?_prevW[k]:[];
+          if(w[k]===undefined) return;   // kept as stored above, marks and all
+          var neu=Array.isArray(weekObj[k])?weekObj[k]:(weekObj[k]=[]);
+          old.forEach(function(orow, oi){
+            if(!orow || orow.rec===undefined) return;
+            var ni=-1;
+            neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.name) ni=i; });
+            if(ni<0 && orow.rec && orow.rec.name) neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.rec.name) ni=i; });
+            var keep=JSON.parse(JSON.stringify(orow));
+            if(ni>=0){ var coachRow=JSON.parse(JSON.stringify(neu[ni])); delete coachRow.rec; if(keep.rec!==null) keep.rec=coachRow; neu[ni]=keep; }
+            else neu.splice(Math.min(oi, neu.length), 0, keep);
+            if(_keptEdits.indexOf(orow.name)<0) _keptEdits.push(orow.name);
+          });
+          var ro=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [];
+          ro.forEach(function(e){
+            if(!e || !e.row) return;
+            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ var gone=neu.splice(i,1)[0]; delete gone.rec; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
+          });
+          if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
+        });
         cr.weeks[wk-1]=weekObj;
         written.push(wk);
       }
@@ -16018,7 +16060,11 @@ function _executeCoachToolRaw(name,input){
         var sRange=skipped.length===1?('week '+skipped[0]):('weeks '+sLo+'–'+sHi);
         label+='; skipped '+sRange+' (already in the past — current week is '+currentWeek+'; if the user says they are on an earlier week, call set_current_week first)';
       }
-      return {ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),
+      if(_keptEdits.length){
+        var _kAdd=_keptEdits.filter(function(x){ return x.charAt(0)!=='-'; }), _kRem=_keptEdits.filter(function(x){ return x.charAt(0)==='-'; }).map(function(x){ return x.slice(1); });
+        label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked.';
+      }
+      return {ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
         check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'};
     }
     if(name==='set_current_week'){
@@ -16073,6 +16119,52 @@ function _executeCoachToolRaw(name,input){
         return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' for week '+wkNum};
       }
       return {ok:false,error:'Could not swap (no routine for that week?)'};
+    }
+    if(name==='edit_programme_exercise'){
+      var slotE=(LIFT_TYPES.indexOf(input.day)>=0)?input.day:_slotForLabel(String(input.day||''));
+      if(!slotE || LIFT_TYPES.indexOf(slotE)<0) return {ok:false,error:'day must be a lift day ('+LIFT_TYPES.join(', ')+') or its name. Nothing was changed.'};
+      var keyE=slotE.toLowerCase(), exN=String(input.exercise||'').trim(), actE=String(input.action||'');
+      if(!exN) return {ok:false,error:'exercise required'};
+      if(['change','add','remove','swap'].indexOf(actE)<0) return {ok:false,error:'action must be change, add, remove or swap'};
+      var fw=parseInt(input.from_week)||currentWeek;
+      if(fw<currentWeek) return {ok:false,error:'weeks before the current week ('+currentWeek+') are locked. Nothing was changed.'};
+      var cE=fw-1, whyE=null, nmE=exN;
+      var wLbE=(input.weight!=null && isFinite(parseFloat(input.weight))) ? (parseFloat(input.weight)>0?_coachLoadIn(parseFloat(input.weight)):0) : null;
+      var resE=_commitRoutine(function(cr){
+        if(!cr.weeks[cE]){ whyE='the programme has no week '+fw; return false; }
+        var row=null; (cr.weeks[cE][keyE]||[]).forEach(function(e){ if(!row && e && String(e.name).toLowerCase()===exN.toLowerCase()) row=e; });
+        var o={onlyThisWeek:!!input.only_this_week, every:!!input.every_week}, n=0;
+        if(actE==='add'){
+          if(row){ whyE=row.name+' is already on '+_dayLabel(slotE); return false; }
+          var a=_progAdd(cr, keyE, {name:exN, sets:parseInt(input.sets)||3, reps:parseInt(input.reps)||10, rpe:parseInt(input.rpe)||8, weight:(wLbE!=null?wLbE:_knownLoadLb(exN, cr, cE))}, cE, input.after||null, {firstIsMain:false});
+          if(a===-1){ whyE=exN+' is already on '+_dayLabel(slotE); return false; }
+          return a;
+        }
+        if(!row){ whyE=exN+' is not on '+_dayLabel(slotE)+' in week '+fw; return false; }
+        nmE=row.name;
+        if(actE==='remove') return _progRemove(cr, keyE, nmE, cE);
+        if(actE==='swap'){
+          var to=String(input.rename_to||'').trim(); if(!to){ whyE='swap needs rename_to'; return false; }
+          var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {});
+          if(sw===-1){ whyE=to+' is already on '+_dayLabel(slotE); return false; }
+          n+=sw; nmE=to; row=_progRow(cr.weeks[cE], keyE, nmE); if(!row) return n;
+        }
+        var repsOld=JSON.parse(JSON.stringify(row.reps===undefined?null:row.reps));
+        if(input.sets!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'sets', parseInt(input.sets)||row.sets, o);
+        if(input.reps!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'reps', parseInt(input.reps)||row.reps, o);
+        if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
+        if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld});
+        // The coach changed it at the user's request: this is now the programme's version.
+        for(var j=cE;j<cr.weeks.length;j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
+        return n;
+      }, {scope:_routineScope||('coach:'+Date.now())});
+      if(!resE) return {ok:false,error:(whyE||'nothing to change')+'. Nothing was changed.'};
+      var crR=getCustomRoutine(), series=[];
+      for(var jj=cE;jj<crR.weeks.length;jj++){
+        var q=_progRow(crR.weeks[jj], keyE, nmE);
+        if(q) series.push('wk'+(jj+1)+(_isDeloadWk(crR.weeks[jj])?' deload':'')+' '+q.sets+'\u00d7'+q.reps+' '+(parseFloat(q.weight)>0?fmtW(q.weight):'your load'));
+      }
+      return {ok:true, message:_dayLabel(slotE)+': '+(actE==='remove'?exN+' removed':nmE+(actE==='add'?' added':' updated'))+' from week '+fw+(input.only_this_week?' (that week only)':' on'), series:series};
     }
     if(name==='set_exercise_weight'){
       var weights=getWeights();
@@ -16670,6 +16762,7 @@ function toolCallLabel(tc){
   if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
+  if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
   if(n==='set_bench_goal') return 'Bench goal '+fmtW(wStore(i.weight));
   if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
   if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(paceStore(i.pace));
@@ -16837,15 +16930,25 @@ function buildSystemPrompt(){
     p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
-    p+='THIS WEEK\'S PLAN:\n';
+    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user" or "added by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
     LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
         wd[sess].forEach(function(ex){
-          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+fmtW(ex.weight)+' RPE'+fmtRpe(ex.rpe)+'\n';
+          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+(parseFloat(ex.rec.weight)>0?fmtW(ex.rec.weight):'their load')+']':'');
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+(parseFloat(ex.weight)>0?fmtW(ex.weight):'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
         });
+        // Where each main lift is heading, so advice matches the rest of the programme.
+        try{
+          var _crA=getCustomRoutine(), _cA=currentWeek-1;
+          wd[sess].forEach(function(ex){
+            if(!ex.isMain || !(parseFloat(ex.weight)>0)) return;
+            var h=_rtHeading(_crA, sess, ex.name, _cA);
+            if(h) p+='  AHEAD '+ex.name+': '+h.replace('\u2192 ','to ')+'\n';
+          });
+        }catch(_a){}
       }
     });
     getScheduledRuns(wd).forEach(function(s){
