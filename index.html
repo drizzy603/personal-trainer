@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-5"/>
+<meta name="build" content="20260925-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1221,6 +1221,23 @@ button:active{transform:scale(.97);}
 .kt-re-src{font-size:12px;color:var(--muted);line-height:1.5;margin:-4px 0 12px;}
 .kt-re-err{font-size:12px;font-weight:700;color:var(--red);line-height:1.4;margin:0 0 10px;}
 .kt-re-err:empty{display:none;}
+.kt-bd-sub{font-size:13px;color:var(--muted);line-height:1.5;margin:-2px 0 12px;}
+.kt-bd-list{display:flex;flex-direction:column;}
+.kt-bd-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:10px 0;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-bd-box{width:22px;height:22px;border-radius:7px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;color:var(--on-accent);}
+.kt-bd-row.on .kt-bd-box{background:var(--accent);border-color:var(--accent);}
+.kt-bd-main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.kt-bd-n{font-size:15px;font-weight:700;overflow-wrap:anywhere;}
+.kt-bd-tag{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--muted);margin-left:4px;}
+.kt-bd-s{font-size:12px;color:var(--muted);margin-top:2px;}
+.kt-bd-more{margin-top:10px;padding:11px;font-size:13px;}
+.kt-bd-pick{margin-top:10px;display:flex;flex-direction:column;gap:4px;}
+.kt-bd-pick input{width:100%;box-sizing:border-box;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;margin-bottom:4px;}
+.kt-bd-hit{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;min-height:44px;padding:8px 2px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:14px;font-weight:600;font-family:inherit;text-align:left;cursor:pointer;}
+.kt-bd-hit span{font-size:11px;color:var(--muted);font-weight:600;}
+.kt-bd-none{font-size:13px;color:var(--muted);padding:8px 2px;}
+.kt-sched-build{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:700;cursor:pointer;}
+#bdTitle:focus{outline:none;}
 #reTitle:focus{outline:none;}   /* focused for VoiceOver on open, as #cmpSheetTitle */
 
 /* Rest-done flash */
@@ -3657,7 +3674,8 @@ function calcTrainingDayStreak(){
     var iso=_ymdLocal(d), dow=(d.getDay()+6)%7;
     var wk=Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso)));
     var plan=(getWeekPlanForWeek(wk)||[])[dow]||{};
-    if(!plan.isRest){
+    // An empty lift day neither keeps nor breaks the streak (there was nothing to do).
+    if(!plan.isRest && !(plan.isLift && _liftDayEmpty(plan.type, wk))){
       if(_loggedOn(iso)) streak++;
       else if(i>0) break;          // a missed training day ends it; today gets the benefit of the doubt
     }
@@ -5731,6 +5749,7 @@ function invalidateCoachCard(){
 function coachCardAction(label){
   var l=String(label||'').trim();
   dismissCoachCard();
+  if(/^build it$/i.test(l)){ var _ta=null; try{ _ta=getTodayActivity(); }catch(e){} if(_ta && _ta.type==='lift' && _liftDayEmpty(_ta.dayName)){ openBuildDay(_ta.dayName); return; } }
   var low=l.toLowerCase();
   if(!low || /^(got it|ok|okay|thanks|noted|dismiss|later)\b/.test(low)) return;
   if(/adjust|target|weight|load/.test(low)){
@@ -5746,6 +5765,10 @@ function coachCardAction(label){
 }
 // Local-only fallback that never blocks the screen.
 function fallbackCoachCard(activity){
+  if(activity.type === 'lift' && !(activity.exercises||[]).length && _liftDayEmpty(activity.dayName)){
+    return {message: _dayLabel(activity.dayName)+' has no exercises in your programme yet. Build it from your library in a tap, or train something else today.',
+      actions: [{label:'Got it', primary:false},{label:'Build it', primary:true}]};
+  }
   if(activity.type === 'lift' && activity.exercises && activity.exercises.length){
     var main = activity.exercises.find(function(e){return e.isMain;}) || activity.exercises[0];
     var last = getLastSessionData(main.name);
@@ -6046,6 +6069,8 @@ function renderTodayEditorial(){
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
         _esc(main.name)+upBit+rpeBit;
+    } else if(_liftDayEmpty(act.dayName)){
+      body = 'Nothing planned for '+_esc(_dayLabel(act.dayName))+' yet. Build it from your library in a tap, or train something else today.';
     } else {
       body = 'Tap to start when you\'re ready.';
     }
@@ -6208,6 +6233,16 @@ function renderTodayEditorial(){
         '<div class="kt-cta-title">'+_esc(_dayLabel(act.dayName))+' · '+_plural(act.exercises.length,'exercise')+'</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
+      '</button>';
+  } else if(act.type === 'lift' && _liftDayEmpty(act.dayName)){
+    // A day chosen in the schedule with nothing in it: the start is building it
+    // ("Tap to start" with no button, and every start path refused, before).
+    cta = '<button class="kt-cta" onclick="openBuildDay(\''+_esc(act.dayName)+'\')">'+
+      '<div style="text-align:left;">'+
+        '<div class="kt-cta-label">BUILD YOUR '+_esc(String(_dayLabel(act.dayName)).toUpperCase())+' DAY</div>'+
+        '<div class="kt-cta-title">Pick exercises</div>'+
+      '</div>'+
+      '<div class="kt-cta-arrow">\u2192</div>'+
       '</button>';
   } else if(act.type === 'run'){
     cta = '<button class="kt-cta" onclick="switchLogSub(\'run\')">'+
@@ -6844,7 +6879,7 @@ function _weekStats(monKey, weekNo){
   // overrides included), since the card is framed as WEEK currentWeek.
   var planned=0;
   if(getCustomRoutine()){
-    getWeekPlanForWeek(wkNo).forEach(function(p){ if(p.isLift) planned++; });
+    getWeekPlanForWeek(wkNo).forEach(function(p){ if(p.isLift && !_liftDayEmpty(p.type, wkNo)) planned++; });   // an empty day is not a planned session
   }
   return {count:count, volume:Math.round(volume), prs:prs, dayVol:dayVol,
     heaviest:heaviest, planned:planned, monday:mon, weekNo:wkNo};
@@ -8703,6 +8738,7 @@ function startTodaySession(){
   if(runnerSession || runnerOpen){ openDeckRunner(); return; }
   try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); if(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000){ openDeckRunner(); return; } }catch(e){}
   var act=getTodayActivity();
+  if(act.type==='lift' && _liftDayEmpty(act.dayName)){ openBuildDay(act.dayName); return; }
   if(act.type!=='lift' || !(act.exercises||[]).length){ openDeckRunner(); return; }
   openSessionOverview(act);
 }
@@ -10050,8 +10086,10 @@ function _progAdd(cr, slot, ex, c, after, o){
       var ro=w.recOut[slot];
       for(var q=0;q<ro.length;q++){ if(ro[q] && ro[q].row && ro[q].row.name===ex.name){ back=ro.splice(q,1)[0].row; break; } }
     }
-    var dl=_isDeloadWk(w), row;
+    var dl=_isDeloadWk(w), row, sch=o.perWeek ? o.perWeek(w, !!ex.isMain) : null;
     if(back) row=back;
+    else if(sch) row={name:ex.name, sets:sch.sets, reps:sch.reps, rpe:sch.rpe, weight:0,
+      isMain:!!(ex.isMain || (wasEmpty && !list.length && o.firstIsMain!==false)), rec:null};
     else row={name:ex.name, sets:dl?(_medianOf(w,slot,'sets')||ex.sets):ex.sets, reps:dl?(_medianOf(w,slot,'reps')||ex.reps):ex.reps,
       rpe:dl?(_medianOf(w,slot,'rpe')||ex.rpe||7):(ex.rpe||7), weight:0,
       isMain:!!(ex.isMain || (wasEmpty && !list.length && o.firstIsMain!==false)), rec:null};
@@ -10142,6 +10180,7 @@ function _commitRoutine(mutate, o){
   }
   if(!setCustomRoutine(cr)) return false;   // storage full: lsSet has said so; nothing changed
   invalidateCoachCard();
+  coachCard=null;   // the card on screen was written for the old programme (same day, different plan)
   if(!o.noRender) render();
   if(o.undoLabel) showUndoToast(o.undoLabel, function(){
     try{ lsSet('kt_routine', JSON.parse(raw)); }catch(e){}
@@ -10159,6 +10198,133 @@ function _progCarryByName(cr, name, c, N, o){
     });
   });
   return n;
+}
+
+// ── Empty lift days ──────────────────────────────────────────────────────────
+// A lift day with nothing in it for that week: a slot the programme never wrote
+// (Arms chosen in the schedule editor on a Push/Pull/Legs plan). Every surface
+// asks this one question, so none of them promises a start that cannot happen.
+function _liftDayEmpty(slot, wk){
+  if(LIFT_TYPES.indexOf(slot)<0) return false;
+  var cr=getCustomRoutine(); if(!cr || !Array.isArray(cr.weeks) || !cr.weeks.length) return false;
+  var i=Math.min(cr.weeks.length, Math.max(1, wk||currentWeek))-1;
+  var a=cr.weeks[i] && cr.weeks[i][String(slot).toLowerCase()];
+  return !(Array.isArray(a) && a.length);
+}
+// What the programme is built for: the starter's answer, the athlete profile,
+// else the equipment its own lifts use.
+function _routineEquip(cr){
+  if(cr && cr.starter && STARTER_POOLS[cr.starter.equip]) return cr.starter.equip;
+  var prof=lsGet('kt_profile'), eq=String((prof&&prof.equipment)||'').toLowerCase();
+  if(/bodyweight|no equipment|home.*nothing/.test(eq)) return 'bw';
+  if(/dumbbell/.test(eq) && !/barbell|gym|rack|cable|machine/.test(eq)) return 'db';
+  var names=[]; (cr&&cr.weeks||[]).slice(0,2).forEach(function(w){ LIFT_KEYS.forEach(function(k){ ((w&&w[k])||[]).forEach(function(e){ if(e) names.push(String(e.name)); }); }); });
+  var all=names.join('|');
+  if(/barbell|bench press|squat|deadlift|cable|machine|pulldown|leg press|smith/i.test(all)) return 'full';
+  if(/dumbbell|\bdb\b/i.test(all)) return 'db';
+  return names.length ? 'bw' : 'full';
+}
+// A week's own scheme for a new row: the median sets/reps/RPE of that week's
+// rows of the same kind (main or accessory), so a deload week gets a deload.
+function _weekScheme(w, main){
+  var s=[], r=[], p=[];
+  LIFT_KEYS.forEach(function(k){ ((w&&w[k])||[]).forEach(function(e){
+    if(!e || !!e.isMain!==!!main) return;
+    var ss=parseInt(e.sets)||0, rr=_repsNum(e.reps), pp=parseFloat(e.rpe)||0;
+    if(ss>0) s.push(ss); if(rr>0) r.push(rr); if(pp>0) p.push(pp);
+  }); });
+  // The most common value (ties to the lower): an average of 10s and 12s read "3×11".
+  var mode=function(a, d){ if(!a.length) return d; var c={}, best=a[0], bn=0; a.forEach(function(x){ c[x]=(c[x]||0)+1; if(c[x]>bn || (c[x]===bn && x<best)){ bn=c[x]; best=x; } }); return best; };
+  return {sets:mode(s,3), reps:mode(r,10), rpe:mode(p,8)};
+}
+var _bdSlot=null, _bdRows=[], _bdQuery='', _bdAdding=false;
+function _buildDaySuggestions(slot){
+  var key=String(slot).toLowerCase(), cr=getCustomRoutine(), c=currentWeek-1;
+  var pools=STARTER_POOLS[_routineEquip(cr)]||STARTER_POOLS.full;
+  var names=(pools[key]||[]).slice();
+  if(!names.length){
+    var cat={arms:'Arms', push:'Push', pull:'Pull', legs:'Legs', legs2:'Legs'}[key];
+    names=EXERCISE_DB.filter(function(e){ return !cat || e.cat===cat; }).slice(0,5).map(function(e){ return e.name; });
+  }
+  return names.slice(0,5).map(function(n, i){
+    return {name:n, on:true, weight:_knownLoadLb(n, cr, c), main:(i===0 && _isBarbellLift(n))};
+  });
+}
+function openBuildDay(slot){
+  if(LIFT_TYPES.indexOf(slot)<0 || !hasCustomRoutine()) return;
+  _bdSlot=slot; _bdRows=_buildDaySuggestions(slot); _bdQuery=''; _bdAdding=false;
+  var prev=document.getElementById('buildDayOverlay'); if(prev) prev.remove();
+  var overlay=document.createElement('div');
+  overlay.id='buildDayOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet" role="dialog" aria-modal="true" aria-labelledby="bdTitle" id="bdSheet"></div>';
+  document.body.appendChild(overlay);
+  _paintBuildDay();
+  _sheetDrag(overlay, closeBuildDay);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeBuildDay(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closeBuildDay(); } });
+  var t=document.getElementById('bdTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
+}
+function closeBuildDay(){ var el=document.getElementById('buildDayOverlay'); if(el) el.remove(); _bdSlot=null; }
+function _bdLoadTxt(r){ return r.weight>0 ? fmtW(r.weight) : (_isBodyweightLift(r.name)?'bodyweight':'your load'); }
+function _paintBuildDay(){
+  var sh=document.getElementById('bdSheet'); if(!sh || !_bdSlot) return;
+  var lbl=_dayLabel(_bdSlot), c=currentWeek-1, cr=getCustomRoutine(), w=cr&&cr.weeks&&cr.weeks[c];
+  var accS=_weekScheme(w,false), mainS=_weekScheme(w,true);
+  var rows=_bdRows.map(function(r,i){
+    var sc=r.main?mainS:accS;
+    return '<button type="button" class="kt-bd-row'+(r.on?' on':'')+'" role="checkbox" aria-checked="'+(r.on?'true':'false')+'" onclick="_bdToggle('+i+')">'+
+      '<span class="kt-bd-box" aria-hidden="true">'+(r.on?'✓':'')+'</span>'+
+      '<span class="kt-bd-main"><span class="kt-bd-n">'+_esc(r.name)+(r.main?' <span class="kt-bd-tag">MAIN</span>':'')+'</span>'+
+      '<span class="kt-bd-s">'+sc.sets+'×'+sc.reps+' · '+_esc(_bdLoadTxt(r))+'</span></span></button>';
+  }).join('');
+  var picker='';
+  if(_bdAdding){
+    var q=_bdQuery.trim().toLowerCase(), have={}; _bdRows.forEach(function(r){ have[r.name]=1; });
+    var cat={arms:'Arms', push:'Push', pull:'Pull', legs:'Legs', legs2:'Legs'}[String(_bdSlot).toLowerCase()];
+    var hits=getAllExercises().filter(function(e){ return !have[e.name] && (q ? (e.name.toLowerCase().indexOf(q)>=0 || String(e.muscles||'').toLowerCase().indexOf(q)>=0) : (!cat || e.cat===cat)); }).slice(0,12);
+    picker='<div class="kt-bd-pick"><input id="bdSearch" type="search" placeholder="Search the library" aria-label="Search the exercise library" value="'+_esc(_bdQuery)+'" oninput="_bdQuery=this.value;_paintBuildDay();var s=document.getElementById(\'bdSearch\');if(s){s.focus();s.setSelectionRange(s.value.length,s.value.length);}"/>'+
+      hits.map(function(e){ return '<button type="button" class="kt-bd-hit" data-n="'+_esc(e.name)+'" onclick="_bdAdd(this.dataset.n)">'+_esc(e.name)+'<span>'+_esc(e.cat||'')+'</span></button>'; }).join('')+
+      (hits.length?'':'<div class="kt-bd-none">No match in the library.</div>')+'</div>';
+  }
+  var n=_bdRows.filter(function(r){ return r.on; }).length;
+  sh.innerHTML=
+    '<div class="kt-sheet-head"><div><div class="screen-eyebrow" style="color:var(--muted);">NOTHING PLANNED YET</div>'+
+      '<div class="kt-sheet-title" id="bdTitle" tabindex="-1">Build your '+_esc(lbl)+' day</div></div>'+
+      '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeBuildDay()">✕</button></div>'+
+    '<div class="kt-bd-sub">Picked from your library at loads you have used. It goes into week '+(c+1)+' and every week after, and climbs with the programme.</div>'+
+    '<div class="kt-bd-list">'+rows+'</div>'+
+    (_bdAdding ? picker : '<button type="button" class="btn btn-ghost btn-full kt-bd-more" onclick="_bdAdding=true;_paintBuildDay();var s=document.getElementById(\'bdSearch\');if(s)s.focus();">+ Add another</button>')+
+    '<button type="button" class="btn btn-primary btn-full" id="bdGo" style="padding:14px;font-size:15px;margin-top:12px;"'+(n?'':' disabled')+' onclick="_bdCommit()">'+(n?'Use these '+n:'Pick at least one')+'</button>'+
+    (getApiKey()?'<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="_bdAskCoach()">Ask the coach to build it</button>':'');
+  _a11yPass();
+}
+function _bdToggle(i){ if(_bdRows[i]){ _bdRows[i].on=!_bdRows[i].on; _paintBuildDay(); } }
+function _bdAdd(name){
+  if(!name || _bdRows.some(function(r){ return r.name===name; })) return;
+  _bdRows.push({name:name, on:true, weight:_knownLoadLb(name, getCustomRoutine(), currentWeek-1), main:false});
+  _bdAdding=false; _bdQuery=''; _paintBuildDay();
+}
+function _bdCommit(){
+  var slot=_bdSlot; if(!slot) return;
+  var key=String(slot).toLowerCase(), c=currentWeek-1, pick=_bdRows.filter(function(r){ return r.on; });
+  if(!pick.length) return;
+  var lbl=_dayLabel(slot);
+  var res=_commitRoutine(function(cr){
+    if(!cr.weeks[c]) return false;
+    var n=0, after=null;
+    pick.forEach(function(r){
+      var a=_progAdd(cr, key, {name:r.name, sets:3, reps:10, rpe:8, weight:r.weight, isMain:!!r.main}, c, after,
+        {firstIsMain:false, perWeek:function(w, main){ return _weekScheme(w, main); }});
+      if(a>0){ n+=a; after=r.name; }
+    });
+    return n;
+  }, {undoLabel:lbl+' day built from week '+(c+1)+' on'});
+  if(res){ closeBuildDay(); }
+}
+function _bdAskCoach(){
+  var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
+  switchTab('coach'); coachView='chat'; render();
+  setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
 }
 
 // Write a session edit into the programme through the engine: this week and
@@ -17147,11 +17313,11 @@ function renderSettings() {
             if(_schedEditDow==null) return '';
             var cur=wPlan[_schedEditDow]||{}, curT=cur.type||'Rest';
             var pick=_schedTypes().map(function(t){
-              var lbl=_dayLabel(t), on=curT===t;
+              var lbl=_dayLabel(t)+(_liftDayEmpty(t)?' \u00b7 empty':''), on=curT===t;
               return '<button class="kt-sched-pick'+(on?' on':'')+'" onclick="setWeekPlanDay('+_schedEditDow+',\''+t+'\')">'+_esc(lbl)+'</button>';
             }).join('');
             var n=(cur.isLift)?getSessionExercises(curT).length:0;
-            var sub=cur.isRest?'Rest \u2014 nothing scheduled':(cur.isLift?'~'+Math.round(n*8.5)+' min \u00b7 '+_plural(n,'exercise'):(cur.isRun?'Run day':String(curT)));
+            var sub=cur.isRest?'Rest \u2014 nothing scheduled':(cur.isLift?(n?'~'+Math.round(n*8.5)+' min \u00b7 '+_plural(n,'exercise'):'No exercises yet \u00b7 <button type="button" class="kt-sched-build" onclick="openBuildDay(\''+curT+'\')">Build it \u203a</button>'):(cur.isRun?'Run day':String(curT)));
             // Name the day. The slot underneath stays what it is; the name is what
             // every screen and the wrist show. An auto-suggestion reads the muscle
             // groups actually programmed, so "Chest + Back" is one tap.
@@ -18849,6 +19015,7 @@ function _syncReminders(){
   for(var j=0;j<days.length;j++){
     var d=days[j];
     if(d.isRest || d.done) continue;
+    if(!(d.lifts>0) && LIFT_TYPES.indexOf(d.type)>=0) continue;   // an empty lift day: "Time to move" for nothing to start
     var at=new Date(d.date+'T'+hour+':00');
     if(at.getTime() <= Date.now()) continue;
     toSched.push({ id:9101+j,
@@ -18863,8 +19030,7 @@ function _syncReminders(){
 function _weekLiftCount(wk, type){
   try{
     var cr=getCustomRoutine(); var w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
-    var a=w&&w[String(type).toLowerCase()];
-    if(Array.isArray(a)) return a.length;
+    if(w){ var a=w[String(type).toLowerCase()]; return Array.isArray(a) ? a.length : 0; }   // a week without the slot has none (it used to borrow this week's count)
   }catch(e){}
   return getSessionExercises(type).length;
 }
@@ -19617,7 +19783,7 @@ window._trovoOpen=_handleDeepLink;
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "settings"
 //   "coach" (home) | "coach/chat"
-//   "modal/programme"
+//   "modal/programme" | "modal/build"
 //   "overlay/how" | "overlay/privacy"
 (function(){
   try {
@@ -19636,6 +19802,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
+        if(head==='modal' && sub==='build'){ var _bt=null; try{ _bt=getTodayActivity(); }catch(e){} openBuildDay(_bt && _bt.type==='lift' ? _bt.dayName : 'Arms'); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
         // App Preview auto-tour — drives the sim through the money screens on
