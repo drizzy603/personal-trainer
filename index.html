@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-4"/>
+<meta name="build" content="20260924-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3791,7 +3791,7 @@ var MILESTONE_DEFS = [
    value:function(){return getSessions().length;}},
   {k:'vol',    label:function(v){return (Math.round(wDisp(v)/100)/10)+'k '+_uW()+' lifted all-time';}, steps:[50000,100000,250000,500000,1000000],
    value:function(){var t=0;getSessions().forEach(function(s){t+=calcVolume(s.exercises||[]);});return t;}},
-  {k:'km',     label:function(v){return v+' km run all-time';},        steps:[25,50,100,250,500],
+  {k:'km',     label:function(v){return fmtD(v)+' run all-time';},        steps:[25,50,100,250,500],
    value:function(){var t=0;getRuns().forEach(function(r){t+=parseFloat(r.distance||r.dist)||0;});return t;}},
   {k:'streak', label:function(v){return v+'-day streak';},             steps:[7,14,30,60],
    value:function(){return calcStreakDays();}},
@@ -4540,8 +4540,8 @@ function renderHealthQuickLog(compact){
   var timeLabel = d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   var meta, ctaNoun;
   if(sid==='Cycling'){
-    var kmh = (r.distanceKm>0 && r.durationSec>0) ? Math.round(r.distanceKm/(r.durationSec/3600)*10)/10 : 0;
-    meta = (kmh?kmh+' km/h':'Ride')+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
+    var kmh = (r.distanceKm>0 && r.durationSec>0) ? Math.round(dDisp(r.distanceKm)/(r.durationSec/3600)*10)/10 : 0;
+    meta = (kmh?kmh+(_uD()==='mi'?' mph':' km/h'):'Ride')+(r.avgHr?' · '+r.avgHr+' bpm avg HR':'');
     ctaNoun = 'ride';
   } else if(sid){
     var sp = SPORTS.find(function(s){return s.id===sid;});
@@ -5833,7 +5833,7 @@ function renderTodayEditorial(){
   } else if(act.type === 'run'){
     // A run day HAS a workout — the old "No workout today." greeted runners
     // with the wrong voice (seen live in the simulator).
-    line1 = act.km > 0 ? act.km+' km run' : 'Run day';
+    line1 = act.km > 0 ? fmtD(act.km)+' run' : 'Run day';
     line2 = 'today.';
     line2Class = 'accent';
     body = 'No lifts scheduled — log the run from the Run tab.';
@@ -6231,7 +6231,7 @@ function renderTodayEditorial(){
       '<div style="font-size:28px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;margin-top:12px;">'+_wwLine1+(_wwLine2?'<br>'+_wwLine2:'')+'</div>'+
       '<div class="kt-statband" style="margin:16px 0 0;">'+
         '<div><div class="kt-statband-val" style="font-size:19px;">'+_ww.count+(_ww.planned>0?'<span class="u">/'+_ww.planned+'</span>':'')+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
-        '<div><div class="kt-statband-val" style="font-size:19px;">'+(_ww.volume>=1000?(Math.round(_ww.volume/100)/10)+'<span class="u">k</span>':Math.round(_ww.volume))+'</div><div class="kt-statband-lbl">Volume lb</div></div>'+
+        '<div><div class="kt-statband-val" style="font-size:19px;">'+(wDisp(_ww.volume)>=1000?(Math.round(wDisp(_ww.volume)/100)/10)+'<span class="u">k</span>':Math.round(wDisp(_ww.volume)))+'</div><div class="kt-statband-lbl">Volume '+_uW()+'</div></div>'+
         '<div><div class="kt-statband-val" style="font-size:19px;'+(_ww.prs?'color:var(--earned-ink);':'')+'">'+_ww.prs+'</div><div class="kt-statband-lbl">New PR'+(_ww.prs===1?'':'s')+'</div></div>'+
       '</div>'+
       '<div style="display:flex;gap:6px;margin-top:14px;">'+_wwBars+'</div>'+
@@ -6273,7 +6273,7 @@ function renderTodayEditorial(){
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
-  if(progressionBanner) cands.push({id:'progression', label:'+5 LB', dot:'var(--accent-ink)', html:progressionBanner});
+  if(progressionBanner) cands.push({id:'progression', label:'+'+fmtW(5).toUpperCase(), dot:'var(--accent-ink)', html:progressionBanner});
   if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
   var activeSlot=null;
@@ -6698,7 +6698,7 @@ function _drawWeekCard(st, accent){
   if(st.heaviest){ x.fillStyle=accent; x.fillText('Heaviest week yet.', M, 434); }
   ls('0px');
   x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
-  var volStr=st.volume?st.volume.toLocaleString():'0';
+  var volStr=st.volume?Math.round(wDisp(st.volume)).toLocaleString():'0';
   x.textAlign='left'; x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
   x.fillText(String(st.count)+(st.planned>0?'/'+st.planned:''), M, 664);
   x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
@@ -6710,7 +6710,7 @@ function _drawWeekCard(st, accent){
   x.fillText(st.prs===1?'PR':'PRS', R, 722);
   x.textAlign='left'; x.fillStyle=MUTED;
   x.fillText('SESSIONS', M, 722);
-  x.fillText('LB VOLUME', 400, 722);
+  x.fillText(_uW().toUpperCase()+' VOLUME', 400, 722);
   ls('0px');
   // Week strip — the bar grammar at poster scale; the heaviest day is lime.
   var maxV=Math.max.apply(null, st.dayVol.concat([1]));
@@ -6810,7 +6810,8 @@ function _drawWrapCard(mk, st, accent){
   // Three-stat footer — PRs are the only gold. Fixed positions clear even a
   // six-row month (grid bottom ≤ 1124).
   x.fillStyle=RULE; x.fillRect(M, 1158, 904, 2);
-  var volStr=st.volume?st.volume.toLocaleString():'0';
+  // The label says VOLUME <unit>: the number must be in that unit too.
+  var volStr=st.volume?Math.round(wDisp(st.volume)).toLocaleString():'0';
   var streakWk=calcStreak(_trainingDays());
   x.fillStyle=INK; x.font='700 54px "JetBrains Mono", ui-monospace, monospace'; ls('-1px');
   x.fillText(volStr, M, 1226);
@@ -7322,7 +7323,7 @@ function renderRunSavedStrip(){
   if(!runLogConfirmed) return '';
   var c = runLogConfirmed;
   return '<div class="kt-rconfirm">'+
-    '<div>✓ Run saved · '+_esc(c.km)+' km in '+_esc(c.time)+'</div>'+
+    '<div>✓ Run saved · '+_esc(fmtD(c.km))+' in '+_esc(c.time)+'</div>'+
     '<button class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button>'+
     '</div>'+
     renderRunReview(c.km, c.time, c.id);
@@ -7498,7 +7499,7 @@ function renderRunSegment(){
     slot = renderRunSavedStrip();
   } else if(_todayStoredRun){
     slot = '<div class="kt-rconfirm">'+
-      '<div>✓ Run logged · '+_esc(_todayStoredRun.distance)+' km in '+_esc(_todayStoredRun.time)+'</div>'+
+      '<div>✓ Run logged · '+_esc(fmtD(_todayStoredRun.distance))+' in '+_esc(_todayStoredRun.time)+'</div>'+
       '</div>'+
       renderRunReview(_todayStoredRun.distance, _todayStoredRun.time, _todayStoredRun.id);
   } else if(runLogOpen){
@@ -8913,6 +8914,13 @@ function fmtW(lb, opts){ opts=opts||{}; var v=wDisp(lb); return (opts.bare?v:v+(
 function dDisp(km){ var v=parseFloat(km)||0; if(_uD()==='mi') return Math.round(v/KM_PER_MI*100)/100; return Math.round(v*100)/100; }
 function dStore(v){ var n=parseFloat(v)||0; if(_uD()==='mi') return Math.round(n*KM_PER_MI*100)/100; return n; }
 function fmtD(km, opts){ opts=opts||{}; var v=dDisp(km); return opts.bare?v:v+' '+_uD(); }
+// Sport fields stored in km or km/h follow the distance setting on screen: the label
+// shows the user's unit, the input is typed in it, and saving converts back (dStore).
+// Metres and user-defined units pass through untouched.
+function _spConv(u){ return u==='km' || u==='km/h'; }
+function _spUnit(u){ return u==='km' ? _uD() : u==='km/h' ? (_uD()==='mi'?'mph':'km/h') : u; }
+function _spShow(u, v){ return (_spConv(u) && v!=null && v!=='' && isFinite(parseFloat(v))) ? dDisp(v) : v; }
+function _spKeep(u, v){ return _spConv(u) ? dStore(v) : (parseFloat(v)||0); }
 // seconds per km (stored) → "m:ss /km" or "/mi"
 function fmtPace(secPerKm, opts){
   opts=opts||{}; var sec=parseFloat(secPerKm)||0; if(!(sec>0)) return '\u2014';
@@ -10797,7 +10805,7 @@ function saveSportLog(){
   var data={};
   getSportFields(sport.id).forEach(function(f){
     var el=document.getElementById('sp_'+f.id);
-    if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?(parseFloat(v)||0):v;}
+    if(el){var v=el.value.trim();if(v) data[f.id]=f.type==='number'?_spKeep(f.unit,v):v;}
   });
   if(logSportType==='CrossFit'){
     var _mv=_cfMovesForSave();
@@ -10840,7 +10848,7 @@ function buildSportSummary(log){
   // Per-sport rich summaries (when forcedSportId path was used to log).
   if(log.type==='Cycling'){
     if(d.distance) parts.push(fmtD(d.distance));
-    if(d.avgSpeed) parts.push(d.avgSpeed+'km/h');
+    if(d.avgSpeed) parts.push(dDisp(d.avgSpeed)+' '+_spUnit('km/h'));
   } else if(log.type==='CrossFit'){
     if(d.wodName) parts.push(d.wodName);
     if(d.format)  parts.push(d.format);
@@ -10871,7 +10879,7 @@ function buildSportSummary(log){
       if(parts.length>=3) return;
       var v=d[f.id];
       if(v==null||v==='') return;
-      parts.push(v+(f.unit&&typeof v==='number'?' '+f.unit:''));
+      parts.push(_spShow(f.unit,v)+(f.unit&&typeof v==='number'?' '+_spUnit(f.unit):''));
     });
   }
   // Generic editorial-form fields: distance / intensity / calories. Show
@@ -10890,7 +10898,7 @@ function _renderSportField(f){
     'padding:11px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;'+
     'letter-spacing:.05em;text-transform:uppercase;';
-  var label=f.label+(f.unit?' ('+f.unit+')':'');
+  var label=f.label+(f.unit?' ('+_spUnit(f.unit)+')':'');
   if(f.type==='select'){
     return '<div><label style="'+lbl+'">'+label+'</label>'+
       '<select id="sp_'+f.id+'" style="'+inp+'">'+
@@ -11117,7 +11125,7 @@ function renderSportEditorial(){
   if(!d.f) d.f = {};
   var sync = ' oninput="sportLogDraft.';
   function _wellField(f, span){
-    var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(f.unit).toUpperCase()):'');
+    var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(_spUnit(f.unit)).toUpperCase()):'');
     var fSync = ' oninput="sportLogDraft.f[\''+f.id+'\']=this.value"';
     var val = d.f[f.id]!=null?String(d.f[f.id]):'';
     var spanStyle = span?' style="grid-column:1/-1;"':'';
@@ -11253,7 +11261,7 @@ function saveSportEditorial(){
   getSportFields(logSportType).forEach(function(f){
     var v = (d.f && d.f[f.id]!=null) ? String(d.f[f.id]).trim() : '';
     if(!v) return;
-    data[f.id] = f.type==='number' ? (parseFloat(v)||0) : v;
+    data[f.id] = f.type==='number' ? _spKeep(f.unit,v) : v;   // the draft holds what was typed, in the user's unit
   });
   if(logSportType==='CrossFit'){
     var mv = _cfMovesForSave();
@@ -11453,7 +11461,7 @@ function fillSportWithAI(){
   var fieldDesc='duration (minutes, integer)\n';
   getSportFields(sport.id).forEach(function(f){
     if(f.type==='select') fieldDesc+=f.id+' (one of: '+f.opts.join(', ')+')\n';
-    else fieldDesc+=f.id+(f.unit?' ('+f.unit+', number)':' (string or number as appropriate)')+'\n';
+    else fieldDesc+=f.id+(f.unit?' ('+_spUnit(f.unit)+', number)':' (string or number as appropriate)')+'\n';
   });
   fieldDesc+='notes (any extra context worth recording)\n';
   fieldDesc+='date (YYYY-MM-DD, only if a specific date is mentioned)\n';
@@ -11670,16 +11678,18 @@ function renderSportProgress(){
       var unit=type==='Cycling'?_uD():'m';
       var withDist=tl.filter(function(l){return l.data&&l.data.distance>0;});
       if(withDist.length){
-        var total=withDist.reduce(function(a,l){return a+(l.data.distance||0);},0);
+        // Cycling is stored in km: show it in the unit the label names. Swimming stays in metres.
+        var _cv=function(v){ return type==='Cycling' ? dDisp(v) : v; };
+        var total=_cv(withDist.reduce(function(a,l){return a+(l.data.distance||0);},0));
         var avg=Math.round(total/withDist.length*10)/10;
-        var maxD=0; withDist.forEach(function(l){ if(l.data.distance>maxD) maxD=l.data.distance; });
+        var maxD=0; withDist.forEach(function(l){ if(l.data.distance>maxD) maxD=l.data.distance; }); maxD=_cv(maxD);
         html+='<div style="display:flex;gap:20px;margin:12px 0 8px;">'+
           statBlock(Math.round(total),unit,'total')+
           statBlock(avg,unit,'avg / session')+
           statBlock(Math.round(maxD*10)/10,unit,'longest')+
         '</div>';
         if(withDist.length>=2){
-          var cd=withDist.slice(0,10).reverse().map(function(l){return{date:l.date,val:l.data.distance};});
+          var cd=withDist.slice(0,10).reverse().map(function(l){return{date:l.date,val:_cv(l.data.distance)};});
           html+=svgChart(cd,s.color);
         }
       }
@@ -11746,7 +11756,7 @@ function renderBodyEditorial(){
   if(bws.length){
     var trendH = calcBWTrend(bws);
     var goalH = getBWGoal();
-    line1 = bws[0].weight+' lb,';
+    line1 = fmtW(bws[0].weight)+',';
     line2 = trendH===null ? 'on the scale.'
       : trendH<=-0.1 ? 'trending down.'
       : trendH>=0.1 ? 'trending up.'
@@ -11756,8 +11766,8 @@ function renderBodyEditorial(){
       bits.push((trendH>0?'+':'−')+wDisp(Math.abs(trendH))+' '+_uW()+' a week');
     }
     if(goalH>0){
-      var toGoal=Math.round(Math.abs(goalH-bws[0].weight)*10)/10;
-      bits.push(toGoal>0 ? wDisp(toGoal)+' '+_uW()+' to goal' : 'at your goal');
+      var toGoal=wDisp(Math.round(Math.abs(goalH-bws[0].weight)*10)/10);   // converted first: 0.1 lb is 0 kg, 'at your goal'
+      bits.push(toGoal>0 ? toGoal+' '+_uW()+' to goal' : 'at your goal');
     }
     heroBody = bits.length
       ? bits.join(' · ')+'.'
@@ -11944,7 +11954,7 @@ function renderRetroCard(sessions){
   var thenW=parseFloat(main.weight)||0;
   var nowW=parseFloat(getWeights()[main.name])||0;
   var body;
-  if(nowW>thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You work at '+fmtW(nowW)+' now — up '+Math.round((wDisp(nowW)-wDisp(thenW))*100)/100+' lb in four weeks.';
+  if(nowW>thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You work at '+fmtW(nowW)+' now — up '+Math.round((wDisp(nowW)-wDisp(thenW))*100)/100+' '+_uW()+' in four weeks.';
   else if(nowW>0&&nowW<thenW) body=_esc(main.name)+' was '+fmtW(thenW)+' that day. You\'re at '+fmtW(nowW)+' now — trust the block, the load comes back.';
   else body=_esc(main.name)+' at '+fmtW(thenW)+'. Four weeks of showing up since.';
   var lbl=hit.label||_dayLabel(hit.type)||'Session';
@@ -11976,14 +11986,16 @@ function renderWeekRecap(sessions,runs){
   var pills='';
   var actCount=wkS.length+wkSp.length;
   if(actCount) pills+=pill(actCount,'session'+(actCount>1?'s':''));
-  if(vol>0) pills+=pill(vol.toLocaleString(),'lb volume');
-  if(km>0) pills+=pill(km,'km run');
+  if(vol>0) pills+=pill(Math.round(wDisp(vol)).toLocaleString(), _uW()+' volume');
+  if(km>0) pills+=pill(Math.round(dDisp(km)*10)/10, _uD()+' run');
   if(prCount) pills+=pill(prCount,'PR'+(prCount>1?'s':''),true);
   var bwLine='';
   var wkBws=getBodyWeights().filter(function(b){return b.date>=mon&&b.date<=today;});
   if(wkBws.length>=2){
     var d=Math.round((parseFloat(wkBws[0].weight)-parseFloat(wkBws[wkBws.length-1].weight))*10)/10;
-    if(!isNaN(d)&&d!==0) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+wDisp(Math.abs(d))+' '+_uW()+' this week.</div>';
+    // Convert before the zero check: a 0.1 lb change rounds to 0 kg ('up 0 kg').
+    var dd=isNaN(d)?0:wDisp(Math.abs(d));
+    if(dd) bwLine='<div style="font-size:12px;color:var(--lite);margin-top:10px;">Body weight '+(d>0?'up ':'down ')+dd+' '+_uW()+' this week.</div>';
   }
   return '<div class="chart-card" style="border-left:2px solid var(--accent);">'+
     '<div class="chart-lbl">Sunday · this week, wrapped</div>'+
@@ -12323,7 +12335,7 @@ function renderProgress() {
   var liftGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Goals</h2>'+
     goalRow('Bench Press',bestBench,benchGoal,'lb',false,'setBenchGoal')+
     goalRow('Back Squat',bestSquat,squatGoal,'lb',false,'setSquatGoal')+
-    (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500;">5k — log a ~5 km run to track pace</div>')+
+    (bestRun5kSec>0?goalBar('5k Time',bestRun5kSec,run5kGoalSec,'',true):'<div style="font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500;">5k — log a ~'+(_uD()==='mi'?'3.1 mi':'5 km')+' run to track pace</div>')+
     run5kGoalInp+
     '</div>';
 
@@ -12339,7 +12351,7 @@ function renderProgress() {
     runPaceBar = '<div style="margin-bottom:8px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
         '<div style="font-size:13px;font-weight:800;">Avg pace</div>'+
-        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km / '+runGoalPaceStr+'/km</div>'+
+        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+fmtPace(avgPaceSec,{bare:true})+' / '+fmtPaceStr(runGoalPaceStr)+'</div>'+
       '</div>'+
       '<div style="background:var(--card2);border-radius:4px;height:7px;overflow:hidden;">'+
         '<div style="height:7px;border-radius:4px;background:'+color+';width:'+pct+'%;transition:width .4s;"></div>'+
@@ -12350,7 +12362,7 @@ function renderProgress() {
     runPaceBar = '<div style="margin-bottom:8px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'+
         '<div style="font-size:13px;font-weight:800;">Avg pace</div>'+
-        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+secToPace(avgPaceSec)+'/km · set a target</div>'+
+        '<div style="font-size:11px;color:var(--muted);font-weight:700;">'+fmtPace(avgPaceSec)+' · set a target</div>'+
       '</div>'+
     '</div>';
   }
@@ -12532,14 +12544,14 @@ function renderProgress() {
     for(var i=0;i<sessions.length&&data.length<8;i++){
       var s=sessions[i]; if(s.type!==type) continue;
       var vol=calcVolume(s.exercises||[]);
-      if(vol>0) data.push({date:s.date,val:vol});
+      if(vol>0) data.push({date:s.date,val:wDisp(vol)});
     }
     return data.reverse();
   }
   var pushVol=getVolTrend('Push'), pullVol=getVolTrend('Pull'), legsVol=getVolTrend('Legs'), legs2Vol=getVolTrend('Legs2'), armsVol=getVolTrend('Arms');
   var volCharts='';
   if(pushVol.length>=2||pullVol.length>=2||legsVol.length>=2||legs2Vol.length>=2||armsVol.length>=2){
-    volCharts='<div class="chart-card"><div class="chart-lbl" style="margin-bottom:14px;">Volume · total lb per session</div>';
+    volCharts='<div class="chart-card"><div class="chart-lbl" style="margin-bottom:14px;">Volume · total '+_uW()+' per session</div>';
     if(pushVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Push</div>'+svgChart(pushVol,'var(--accent)')+'</div>';
     if(pullVol.length>=2) volCharts+='<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Pull</div>'+svgChart(pullVol,'var(--accent)')+'</div>';
     if(legsVol.length>=2) volCharts+='<div style="margin-bottom:'+(legs2Vol.length>=2||armsVol.length>=2?'16px':'4px')+';"><div style="font-size:12px;font-weight:600;color:var(--lite);margin-bottom:6px;">Legs A</div>'+svgChart(legsVol,'var(--accent)')+'</div>';
@@ -13730,8 +13742,8 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
   ls('0px');
   // Rules
   x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
-  // Stat table — SETS at x=88, LB VOLUME at x=400, PR right-aligned to x=992
-  var volStr=vol?vol.toLocaleString():'0';
+  // Stat table — SETS at x=88, <unit> VOLUME at x=400, PR right-aligned to x=992
+  var volStr=vol?Math.round(wDisp(vol)).toLocaleString():'0';
   var prVal=String(prs.length), prLbl=prs.length===1?'PR':'PRS';
   var prCol=prs.length?GOLD:MUTED;
   x.textAlign='left';
@@ -13746,7 +13758,7 @@ function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
   x.fillText(prLbl, R, 722);
   x.textAlign='left'; x.fillStyle=MUTED;
   x.fillText('SETS', M, 722);
-  x.fillText('LB VOLUME', 400, 722);
+  x.fillText(_uW().toUpperCase()+' VOLUME', 400, 722);
   ls('0px');
   // Lift list — 5 rows max, pitch 82; >5 -> 4 rows + "+ N more"
   var rows=exs.length>5?exs.slice(0,4):exs.slice(0,5);
@@ -16898,7 +16910,7 @@ var _sfSport = null;   // sport id the open sheet is editing
 function _buildSportFieldsSheet(){
   var fields = getSportFields(_sfSport);
   var rows = fields.map(function(f, i){
-    var meta = (f.type==='select' ? 'choice: '+(f.opts||[]).join(' / ') : f.type)+(f.unit?' · '+f.unit:'');
+    var meta = (f.type==='select' ? 'choice: '+(f.opts||[]).join(' / ') : f.type)+(f.unit?' · '+_spUnit(f.unit):'');
     return '<div style="display:flex;align-items:center;gap:10px;padding:12px 0;min-height:44px;box-sizing:border-box;border-bottom:1px solid var(--border);">'+
       '<div style="flex:1;min-width:0;">'+
         '<div style="font-size:14px;font-weight:700;">'+_esc(f.label)+'</div>'+
@@ -17128,8 +17140,8 @@ function openSportLogEditor(id){
   var inp='width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:16px;box-sizing:border-box;font-family:inherit;';
   var lbl='display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;';
   function field(f){
-    var v = d[f.id]!=null?String(d[f.id]):'';
-    var label=f.label+(f.unit?' ('+f.unit+')':'');
+    var v = d[f.id]!=null?String(_spShow(f.unit, d[f.id])):'';
+    var label=f.label+(f.unit?' ('+_spUnit(f.unit)+')':'');
     if(f.type==='select'){
       return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
         '<select id="sle_'+f.id+'" style="'+inp+'">'+
@@ -17197,7 +17209,7 @@ function saveSportLogEdit(id){
     var el = document.getElementById('sle_'+f.id);
     if(!el) return;
     var v = el.value.trim();
-    if(v) rec.data[f.id] = f.type==='number'?(parseFloat(v)||0):v;
+    if(v) rec.data[f.id] = f.type==='number'?_spKeep(f.unit,v):v;
     else delete rec.data[f.id];
   });
   lsSet('kt_sports', logs);
@@ -17301,7 +17313,7 @@ function _renderExLibList(){
         right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.6;">'+Math.round(age/7)+' WKS AGO</span>';
       } else {
         var when=age===0?'TODAY':fmtDate(hist[0].date).toUpperCase();
-        right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+when+(hist[0].w>0?' · '+hist[0].w+' LB':'')+'</span>';
+        right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);">'+when+(hist[0].w>0?' · '+fmtW(hist[0].w).toUpperCase():'')+'</span>';
       }
     } else {
       right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
@@ -17346,17 +17358,18 @@ function _exDetailHTML(ex, hist, isCustom){
   var weighted=hist.filter(function(h){ return h.w>0; });
   if(weighted.length){
     var latest=weighted[0], oldest=weighted[weighted.length-1];
-    var delta=latest.w-oldest.w;
+    // Displayed-unit delta, so the chip agrees with the two numbers it sits beside.
+    var delta=Math.round((wDisp(latest.w)-wDisp(oldest.w))*10)/10;
     html+='<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px;">'+
       '<div>'+
         '<div class="kt-mono" style="font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:4px;">TOP SET · LAST LOGGED</div>'+
-        '<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:34px;font-weight:800;letter-spacing:-1.4px;line-height:1;">'+latest.w+'</span>'+
-        '<span style="font-size:13px;font-weight:600;color:var(--muted);">lb'+(latest.reps?' × '+_esc(String(latest.reps)):'')+'</span></div>'+
+        '<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:34px;font-weight:800;letter-spacing:-1.4px;line-height:1;">'+wDisp(latest.w)+'</span>'+
+        '<span style="font-size:13px;font-weight:600;color:var(--muted);">'+_uW()+(latest.reps?' × '+_esc(String(latest.reps)):'')+'</span></div>'+
       '</div>'+
       (delta!==0 && weighted.length>=2
         ?'<span class="kt-mono" style="font-size:9px;font-weight:800;letter-spacing:.06em;padding:5px 10px;border-radius:12px;'+
           (delta>0?'color:var(--accent-ink);background:var(--accent-dim);border:1px solid var(--accent-soft);':'color:var(--muted);background:var(--card);border:1px solid var(--border);')+'">'+
-          (delta>0?'+':'−')+Math.abs(delta)+' LB · '+weighted.length+' SESSIONS</span>'
+          (delta>0?'+':'\u2212')+Math.abs(delta)+' '+_uW().toUpperCase()+' · '+weighted.length+' SESSIONS</span>'
         :'')+
     '</div>';
     if(weighted.length>=2){
@@ -17376,7 +17389,7 @@ function _exDetailHTML(ex, hist, isCustom){
   var prW=getPRs()[ex.name];
   if(prW){
     html+='<div style="background:var(--card);border:1px solid color-mix(in srgb,var(--yellow) 28%,transparent);border-radius:14px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'+
-      '<span style="font-size:13px;font-weight:700;"><span style="color:var(--earned-ink);">●</span>&nbsp; PR · '+prW+' lb</span>'+
+      '<span style="font-size:13px;font-weight:700;"><span style="color:var(--earned-ink);">●</span>&nbsp; PR · '+fmtW(prW)+'</span>'+
       '<span class="kt-mono" style="font-size:9px;color:var(--muted);">ALL-TIME</span>'+
     '</div>';
   }
