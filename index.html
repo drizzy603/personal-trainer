@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-3"/>
+<meta name="build" content="20260924-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -345,6 +345,11 @@ select option{background:var(--bg);}
   z-index:9999;transform:translateY(20px);opacity:0;
   transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 #toast.show{transform:translateY(0);opacity:1;}
+/* The toast lets taps through (pointer-events:none, inherited), so its Undo
+   must opt back in — every 6 s Undo was untappable from 20260910 to
+   20260924, and the tap landed on whatever sat underneath. Scoped to .show:
+   a dismissed toast keeps its invisible button in the DOM. */
+#toast.show .kt-toast-undo{pointer-events:auto;}
 .kt-toast-undo{margin-left:12px;background:var(--accent);color:var(--on-accent);border:none;border-radius:9px;font:inherit;font-weight:800;font-size:12px;letter-spacing:.02em;padding:6px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 /* ── Empty states ────────────────────────────────────────────────────────── */
@@ -9246,6 +9251,9 @@ function _renderRunnerDoneBody(ex, isLast){
     '</div>';
 }
 // ── Runner Exercise Edit Sheet ─────────────────────────────────────────────────
+// The sheet scrolls inside a max-height: with the steppers wrapped (320 pt, or
+// 125% text) it grew taller than the screen and its title, close button and
+// exercise swap row sat above the top edge, unreachable.
 function openRunnerExEdit(idx){
   closeRunnerExEdit();
   var ex=runnerSession&&runnerSession.exercises[idx]; if(!ex) return;
@@ -9277,7 +9285,7 @@ function openRunnerExEdit(idx){
   overlay.onclick=function(e){if(e.target===overlay)closeRunnerExEdit();};
   var sheet=document.createElement('div');
   sheet.id='runner-ex-edit-sheet';
-  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;';
+  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;max-height:calc(100% - env(safe-area-inset-top,0px) - 8px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
   sheet.innerHTML=_buildRunnerExEditHTML();
   overlay.appendChild(sheet); document.body.appendChild(overlay);
 }
@@ -9390,7 +9398,7 @@ function _openRunnerExPicker(mode){
 }
 function _closeRunnerExPicker(){
   var sheet=document.getElementById('runner-ex-edit-sheet'); if(!sheet) return;
-  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;';
+  sheet.style.cssText='width:100%;background:var(--card);border-radius:24px 24px 0 0;max-height:calc(100% - env(safe-area-inset-top,0px) - 8px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
   sheet.innerHTML=_buildRunnerExEditHTML();
 }
 function runnerExPickExercise(name){

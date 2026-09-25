@@ -36,6 +36,8 @@ run('start-now override, visible unknown day, all-slot progress, tap-not-scroll'
       }
 
       // ── C. an unrecognised day is visible and fixable ─────────────────────
+      // Part B may have started the programme next Monday (on a Sunday or Monday); anchor it to this week.
+      localStorage.setItem('kt_week_monday', _mostRecentMonday()); _todayActMemo = null;
       const cr2 = getCustomRoutine();
       const plan = ['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']; plan[dow] = 'Upper';
       cr2.weekPlan = plan; (cr2.weeks || []).forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr2);

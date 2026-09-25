@@ -81,7 +81,8 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
         r.liftEx = firstLift.exercises[0];
       }
       // a programme that starts next Monday: days before it are rest
-      const mondayNext = _nextMonday ? _nextMonday() : null;
+      // a Monday at least two days away, so some days in the window fall before it on any weekday
+      const mondayNext = _nextMonday ? _nextMonday(addDays(today, 2)) : null;
       if (mondayNext) {
         localStorage.setItem('kt_week_monday', mondayNext);
         _lastWatchPlan = ''; _pushWatchPlan();

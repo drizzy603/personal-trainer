@@ -16,7 +16,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       const r = {};
       // 'A few minutes ago', but never before 00:01 today: sessions file by their start, so a run
       // just after midnight would otherwise land on yesterday and miss the today-based lookups.
-      const recent = m => Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - m * 60000);
+      const recent = m => Math.min(Date.now() - 1000, Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - m * 60000));   // never in the future (00:00-00:01)
       const W = Capacitor.Plugins.TrovoWatch;
       let cleared = [], pending = [], ctx = null, pushes = [];
       W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
