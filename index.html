@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-10"/>
+<meta name="build" content="20260924-11"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4641,8 +4641,8 @@ function logPendingHealthRun(){
     var rec = _logHealthRun(r);
     if(rec){
       runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
-      // The undo strip lives on the Run tab; say so when logging from elsewhere.
-      if(!(currentTab==='log' && logSubTab==='run')) showToast(fmtD(rec.distance)+' run logged from Apple Health \u2014 undo on the Run tab');
+      // Off the Run tab the strip is out of sight: the toast carries the Undo itself.
+      if(!(currentTab==='log' && logSubTab==='run')) showUndoToast(fmtD(rec.distance)+' run logged from Apple Health', function(){ if(runLogConfirmed && runLogConfirmed.id===rec.id) undoLastRun(); });
       checkMilestones({delayToast:600});
     } else if(rec===null){
       showToast('Already logged by hand — skipped the duplicate');
@@ -6138,10 +6138,13 @@ function renderTodayEditorial(){
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
   } else if(act.type === 'sport'){
-    cta = '<button class="kt-cta" onclick="switchLogSub(\'sport\')">'+
+    // A scheduled sport day goes to that sport's own tab (as the widget's Start link
+    // does), not to the + tab's 'Not on the plan?' flow.
+    var _spTab = _isSportTab(act.sportType) ? String(act.sportType) : 'sport';
+    cta = '<button class="kt-cta" onclick="switchLogSub(\''+_esc(_spTab)+'\')">'+
       '<div style="text-align:left;">'+
         '<div class="kt-cta-label">GO TO</div>'+
-        '<div class="kt-cta-title">+ tab</div>'+
+        '<div class="kt-cta-title">'+(_spTab==='sport' ? '+ tab' : _esc(_logTabLabel(_spTab))+' tab')+'</div>'+
       '</div>'+
       '<div class="kt-cta-arrow">→</div>'+
       '</button>';
@@ -10260,8 +10263,14 @@ function getLogTabs(){
       return id==='run' || id==='body' || SPORTS.some(function(s){return s.id===id;});
     }).slice(0, LOG_TAB_MAX);
   }
+  // Default: what the routine schedules. The main activity first, then Run when a
+  // sport-first plan also has run days (a Cycling-first hybrid block had no Run tab,
+  // so its runs could not be logged or undone anywhere), then Body.
   var primary = getPrimaryActivity() || 'Run';
-  return [primary==='Run' ? 'run' : primary, 'body'];
+  var out = [primary==='Run' ? 'run' : primary];
+  if(primary!=='Run' && getWeekPlan().some(function(p){ return p && p.type==='Run'; })) out.push('run');
+  out.push('body');
+  return out.slice(0, LOG_TAB_MAX);
 }
 function _logTabLabel(id){
   if(id==='run') return 'Run';
@@ -10318,13 +10327,16 @@ function renderLog() {
   '</div>';
 
   // Middle tabs come from the user's pinned list (Settings / + tab editor);
-  // default derives from whatever activity they scheduled most in weekPlan.
-  var primaryAct = getPrimaryActivity() || 'Run';
-  var primaryIsSport = primaryAct !== 'Run';
+  // default derives from what the routine schedules (getLogTabs). A route into a
+  // tab that is not pinned (Today's run CTA, a deep link) shows it for the visit,
+  // so the bar always says where you are.
+  var _tabs = getLogTabs();
+  if(logSubTab!=='workout' && logSubTab!=='sport' && _tabs.indexOf(logSubTab)<0 &&
+     (logSubTab==='run' || logSubTab==='body' || _isSportTab(logSubTab))) _tabs = _tabs.concat([logSubTab]);
 
   var subBar = '<div class="log-subtabs">'+
     '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
-    getLogTabs().map(function(id){
+    _tabs.map(function(id){
       return '<button class="log-subtab '+(logSubTab===id?'active':'')+'" onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
     }).join('')+
     '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
@@ -10337,18 +10349,10 @@ function renderLog() {
   }
 
   if (logSubTab === 'run') {
-    if (primaryIsSport) {
-      // Pin logSportType so saveSportLog/fillSportWithAI act on the primary.
-      if (logSportType !== primaryAct) logSportType = primaryAct;
-      // Sub-tab bar first on every renderLog branch — it must not jump
-      // position between segments. The Apple Health quick-log card renders
-      // here too — Watch runs arrive regardless of the plan's primary sport,
-      // and this branch previously had no slot for the card at all.
-      return subBar + header + renderWeekHeader() + _healthCardSlot() + renderSportSection(primaryAct);
-    }
-    // Editorial Run segment with or without a programme — the legacy stack
-    // showed a blank "Week N Run Targets" card and never surfaced the Health
-    // import to a runner who opened this tab first.
+    // Always the Run segment, whatever the plan's main activity: it used to render the
+    // primary sport here, so on a sport-first plan Today's "Run tab" CTA, the coach's run
+    // link and the Health card's undo all landed on the sport log. The sport has its own
+    // tab. The Health quick-log card lives inside the Run segment.
     return subBar + renderRunSegment();
   }
 

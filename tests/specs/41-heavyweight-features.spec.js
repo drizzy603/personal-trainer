@@ -89,7 +89,8 @@ run('run log stores how it felt; coach ledger shows plan changes with Keep / Und
     const out = await app.page.evaluate(() => {
       switchTab('log'); switchLogSub('run'); openRunLog();
       _setRunFeel(4);
-      runLogDraft.dist = '5'; runLogDraft.time = '25:00';
+      // typed into the form on screen (the Run tab renders it on every plan since 20260924-11)
+      document.getElementById('kt-rlog-dist').value = '5'; document.getElementById('kt-rlog-time').value = '25:00';
       saveInlineRun();
       const feel = getRuns()[0].feel;
       localStorage.setItem('kt_apikey', 'sk-ant-test-not-real');

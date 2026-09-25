@@ -21,7 +21,9 @@ run('kg and miles convert on the way out and back; lb/km is byte-identical to be
       runnerSetWeight(wStore('75')); r.afterType = runnerWeights[ex.name];
       closeDeckRunner();
       // run form in miles stores km
-      switchTab('log'); switchLogSub('run'); openRunLog(); runLogDraft.dist = '3.11'; runLogDraft.time = '25:00'; saveInlineRun();
+      switchTab('log'); switchLogSub('run'); openRunLog();
+      // typed into the form on screen (the Run tab renders it on every plan since 20260924-11)
+      document.getElementById('kt-rlog-dist').value = '3.11'; document.getElementById('kt-rlog-time').value = '25:00'; saveInlineRun();
       r.runKm = getRuns()[0].distance;
       // body-weight goal typed in kg stored in lb
       setBWGoal(wStore(80)); r.bwGoalLb = getBWGoal();
