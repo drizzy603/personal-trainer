@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-1"/>
+<meta name="build" content="20260924-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1043,6 +1043,9 @@ button:active{transform:scale(.97);}
 .kt-done-scroll>:first-child{margin-top:auto;}
 .kt-done-scroll>:last-child{margin-bottom:auto;}
 .kt-done-foot{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.kt-done-foot.more{border-top:1px solid var(--border);padding-top:10px;}
+/* Short screens (iPhone SE): the celebration mark gives up room to the ledger. */
+@media (max-height:740px){ .kt-done-scroll{gap:10px;} .kt-done-scroll .kt-done-check{font-size:40px;} }
 .kt-done-check{font-size:64px;font-weight:600;letter-spacing:-2px;line-height:1;}
 /* COMPLETE sheet (board H-04): summary quartet, PR rows, one coach line. */
 .kt-cmp-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--accent-ink);margin:14px 0 8px;}
@@ -7830,7 +7833,9 @@ async function checkPendingShare(){
 // The set that follows this rest: the same exercise, or a superset's first
 // half when the pair returns to it.
 function _restNextEx(ex){
-  if(_ssReturnIdx!=null && runnerSession && runnerSession.exercises[_ssReturnIdx]) return runnerSession.exercises[_ssReturnIdx];
+  var sx=(_ssReturnIdx!=null && runnerSession) ? runnerSession.exercises[_ssReturnIdx] : null;
+  // Only a superset partner with sets left is "next"; a finished one never is.
+  if(sx && (runnerCompleted[sx.name]||0) < (parseInt(sx.sets)||0)) return sx;
   return ex;
 }
 // "160 lb × 8" for the next set of nx, in the user's units (the Live
@@ -8473,6 +8478,11 @@ function paintRunner(){
   root.style.display = 'block';
   if(seal) seal.style.display = 'block';
   root.innerHTML = renderDeckRunner();
+  // A done card whose middle overflows (a record, five sets and the log date
+  // on an iPhone SE with large text) gets a hairline above the pinned action,
+  // so the scrollable part reads as one.
+  var _ds = root.querySelector('.kt-done-scroll');
+  if(_ds && _ds.scrollHeight > _ds.clientHeight + 1){ var _df = root.querySelector('.kt-done-foot'); if(_df) _df.classList.add('more'); }
   // M-07 card-advance: the incoming card rises from the peek position when
   // the deck actually moved (never on same-card state repaints).
   if(_lastPaintExIdx !== null && _lastPaintExIdx !== runnerExIdx){

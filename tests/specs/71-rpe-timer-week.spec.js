@@ -60,6 +60,10 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
       _trovoTimerStart(runnerSession.exercises[0], 3);
       r.timerSs = timer[timer.length - 1];
       r.timerSsExpect = B.name;
+      // a partner already finished is never "next"
+      runnerCompleted[B.name] = parseInt(B.sets) || 3;
+      _trovoTimerStart(runnerSession.exercises[0], 3);
+      r.timerSsDone = timer[timer.length - 1];
       _ssReturnIdx = null;
       closeDeckRunner(); runnerSession = null;
 
@@ -99,6 +103,7 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
     assert(out.timerKg && /kg × 8$/.test(out.timerKg.detail) && !/lb/.test(out.timerKg.detail), 'the timer detail follows kg: ' + JSON.stringify(out.timerKg));
     assert(out.timerSs && out.timerSs.detail.indexOf(out.timerSsExpect + ' · 60 lb × 12') === 0 && out.timerSs.nextSet === 2,
       'a superset return names the other exercise and its set: ' + JSON.stringify(out.timerSs));
+    assert(out.timerSsDone && out.timerSsDone.detail === '100 lb \u00d7 8', 'a finished superset partner is never next: ' + JSON.stringify(out.timerSsDone));
     assert(out.week && out.week.length === 6 && JSON.stringify(out.week.map(p => p.date)) === JSON.stringify(out.dates), 'six dated plans after today: ' + JSON.stringify(out.week));
     assert(out.week.every(p => /date/.test(p.keys) && /dayName/.test(p.keys) && /exercises/.test(p.keys) && /week/.test(p.keys) && /type/.test(p.keys)),
       'every day has the fields the watch requires: ' + JSON.stringify(out.week.map(p => p.keys)));
