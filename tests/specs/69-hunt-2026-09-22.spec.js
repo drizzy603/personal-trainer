@@ -30,7 +30,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       // ── A. a restored draft's phone-only sets survive the wrist's finish ──
       openDeckRunner('Push');
       const A = runnerSession.exercises[0].name;
-      runnerRepsLog[A] = [8, 8, 8]; runnerWeightsLog[A] = [100, 100, 100]; runnerCompleted[A] = 3;
+      runnerRepsLog[A] = [8, 8, 8]; runnerWeightsLog[A] = [100, 100, 100]; runnerRpeLog[A] = [8, 9, 9]; runnerCompleted[A] = 3;
       _flushRunnerDraft();
       runnerOpen = false; runnerResumePending = true;   // cold launch: draft restored, runner closed
       pending = [JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: isoOf(recent(20)), loggedAt: isoOf(Date.now()),
@@ -38,6 +38,8 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
       drainWatchSessions(); await wait(300);
       const recA = getSessions().filter(x => x.date === today && x.type === 'Push');
       r.draft = { count: recA.length, names: recA[0] && recA[0].exercises.map(e => e.name + ':' + e.reps.join('/')), gone: !localStorage.getItem('kt_runner_draft'), pending: runnerResumePending, cleared: cleared.slice() };
+      const foldA = recA[0] && recA[0].exercises.find(e => e.name === A);
+      r.draftRpe = foldA && { rpe: foldA.rpe, rpeLog: foldA.rpeLog };
       runnerSession = null;
 
       // ── B. a second Push in the evening is its own record; the same session merges ──
@@ -203,6 +205,7 @@ run('bug hunt 2026-09-22: page-side pins', async () => {
     });
     assert(out.draft.count === 1 && out.draft.names.some(n => /^Overhead Press:10\/10$/.test(n)) && out.draft.names.some(n => /:8\/8\/8$/.test(n)) && out.draft.gone && !out.draft.pending,
       'a restored draft folds into the wrist record instead of vanishing: ' + JSON.stringify(out.draft));
+    assert(out.draftRpe && JSON.stringify(out.draftRpe.rpeLog) === '[8,9,9]' && out.draftRpe.rpe === 9, 'the folded draft keeps its per-set RPE and files the mean: ' + JSON.stringify(out.draftRpe));
     assert(out.draft.cleared.length === 1 && out.draft.cleared[0] === 1, 'the drain clears exactly what it drained: ' + JSON.stringify(out.draft.cleared));
     assert(out.second.count === 2 && out.second.evening.join(',') === '100,105' && out.second.redrainSame, 'an evening session of the same slot is its own record; re-draining it changes nothing: ' + JSON.stringify(out.second));
     assert(out.isMain.expect && out.isMain.got && out.isMain.pr && out.isMain.pr.length === 1 && out.isMain.kw === 200, 'main-lift flag, PR and weight follow the session\'s own day: ' + JSON.stringify(out.isMain));

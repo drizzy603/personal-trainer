@@ -16,6 +16,10 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
       W.updateContext = (p) => { ctx = p; return Promise.resolve({ sent: true }); };
       const timer = [];
       Capacitor.Plugins.TrovoTimer = { startTimer: (o) => { timer.push(o); return Promise.resolve(); }, endTimer: () => Promise.resolve() };
+      // Rest alerts granted, so the rest-done notification is scheduled and can be read back.
+      const alerts = [];
+      Capacitor.Plugins.LocalNotifications = { schedule: (o) => { alerts.push(o.notifications[0]); return Promise.resolve(); }, cancel: () => Promise.resolve(),
+        checkPermissions: () => Promise.resolve({ display: 'granted' }), requestPermissions: () => Promise.resolve({ display: 'granted' }) };
       const today = todayISO(), pushName = _dayLabel('Push');
 
       // ── A. the drain keeps the wrist's per-set RPE; rpe stays the mean ──
@@ -60,11 +64,15 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
       _trovoTimerStart(runnerSession.exercises[0], 3);
       r.timerSs = timer[timer.length - 1];
       r.timerSsExpect = B.name;
+      await wait(50); r.alertSs = alerts.length ? alerts[alerts.length - 1].body : null;
       // a partner already finished is never "next"
       runnerCompleted[B.name] = parseInt(B.sets) || 3;
       _trovoTimerStart(runnerSession.exercises[0], 3);
       r.timerSsDone = timer[timer.length - 1];
       _ssReturnIdx = null;
+      // an unloaded barbell lift says its reps, a bodyweight lift says Bodyweight
+      runnerWeights[A] = 0; r.unloaded = _restDetail(runnerSession.exercises[0]);
+      r.bw = _restDetail({ name: 'Pull Up', sets: 3, reps: 8, weight: 0 });
       closeDeckRunner(); runnerSession = null;
 
       // ── E. the week ahead: six dated plans after today in the watch's shape ──
@@ -102,8 +110,10 @@ run('per-set RPE from the wrist, next set on the rest timer, the week ahead for 
     assert(JSON.stringify(out.merged) === '[7,8,9]', 'the record merge takes the wrist\'s per-set RPE with its sets: ' + JSON.stringify(out.merged));
     assert(out.timerLb && out.timerLb.detail === '100 lb × 8' && out.timerLb.nextSet === 3, 'the rest timer carries the next set: ' + JSON.stringify(out.timerLb));
     assert(out.timerKg && /kg × 8$/.test(out.timerKg.detail) && !/lb/.test(out.timerKg.detail), 'the timer detail follows kg: ' + JSON.stringify(out.timerKg));
-    assert(out.timerSs && out.timerSs.detail.indexOf(out.timerSsExpect + ' · 60 lb × 12') === 0 && out.timerSs.nextSet === 2,
-      'a superset return names the other exercise and its set: ' + JSON.stringify(out.timerSs));
+    assert(out.timerSs && out.timerSs.exerciseName === out.timerSsExpect && out.timerSs.detail === '60 lb \u00d7 12' && out.timerSs.nextSet === 2,
+      'a superset return names the other exercise as the title, its load and reps in full, and its set: ' + JSON.stringify(out.timerSs));
+    assert(out.alertSs === out.timerSsExpect + ' \u2014 set 2 of ' + (out.timerSs && out.timerSs.totalSets), 'the rest-done alert names the set that is next: ' + out.alertSs);
+    assert(out.unloaded === '8 reps' && /^Bodyweight × 8$/.test(out.bw), 'an unloaded barbell lift is not Bodyweight: ' + JSON.stringify([out.unloaded, out.bw]));
     assert(out.timerSsDone && out.timerSsDone.detail === '100 lb \u00d7 8', 'a finished superset partner is never next: ' + JSON.stringify(out.timerSsDone));
     assert(out.week && out.week.length === 6 && JSON.stringify(out.week.map(p => p.date)) === JSON.stringify(out.dates), 'six dated plans after today: ' + JSON.stringify(out.week));
     assert(out.week.every(p => /date/.test(p.keys) && /dayName/.test(p.keys) && /exercises/.test(p.keys) && /week/.test(p.keys) && /type/.test(p.keys)),

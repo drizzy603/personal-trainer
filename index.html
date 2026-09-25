@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-5"/>
+<meta name="build" content="20260924-6"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7853,19 +7853,23 @@ function _restDetail(nx){
   var ti=Math.min(done, Math.max(0,(parseInt(nx.sets)||1)-1));
   var tr=Array.isArray(nx.reps)?nx.reps[Math.min(ti,nx.reps.length-1)]:nx.reps;
   var r=parseInt(runnerReps[nx.name])>0 ? parseInt(runnerReps[nx.name]) : (parseInt(tr)||0);
-  var load=w>0 ? fmtW(w) : 'Bodyweight';
-  return load+(r>0?' \u00d7 '+r:'');
+  // An unloaded barbell lift is not 'Bodyweight': say only the reps.
+  var load=w>0 ? fmtW(w) : (_isBodyweightLift(nx.name) ? 'Bodyweight' : '');
+  return load ? load+(r>0?' \u00d7 '+r:'') : (r>0 ? r+' reps' : '');
 }
 function _trovoTimerStart(ex, nextSet){
   // Backgrounded-phone alert when the rest is over (Live Activity shows the
   // countdown; the notification does the buzz). Cancelled on skip/return.
-  scheduleRestNotification(ex, nextSet, runnerRestLeft);
+  // In a superset the shared rest returns to the partner: the alert, the name, the set count
+  // and the load all describe that set (the name is the title, so the detail keeps its numbers).
+  var nx=_restNextEx(ex);
+  var nxSet=nx===ex ? nextSet : Math.min((runnerCompleted[nx.name]||0)+1, parseInt(nx.sets)||1);
+  scheduleRestNotification(nx, nxSet, runnerRestLeft);
   var TT = isNativeIOS() && window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoTimer;
   if(!TT) return;
-  var nx=_restNextEx(ex), detail='';
-  try{ detail=_restDetail(nx); if(detail && nx!==ex) detail=nx.name+' \u00b7 '+detail; }catch(e){ detail=''; }
-  var nxSet=nx===ex ? nextSet : Math.min((runnerCompleted[nx.name]||0)+1, parseInt(nx.sets)||1);
-  TT.startTimer({exerciseName: ex.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail}).catch(function(){});
+  var detail='';
+  try{ detail=_restDetail(nx); }catch(e){ detail=''; }
+  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail}).catch(function(){});
 }
 function _trovoTimerEnd(){
   cancelRestNotification();
@@ -8483,12 +8487,15 @@ function paintRunner(){
   _lastRunnerSig=_sig;
   root.style.display = 'block';
   if(seal) seal.style.display = 'block';
+  var _pds = root.querySelector('.kt-done-scroll'), _pst = _pds ? _pds.scrollTop : 0, _pidx = _lastPaintExIdx;
   root.innerHTML = renderDeckRunner();
   // A done card whose middle overflows (a record, five sets and the log date
   // on an iPhone SE with large text) gets a hairline above the pinned action,
   // so the scrollable part reads as one.
   var _ds = root.querySelector('.kt-done-scroll');
   if(_ds && _ds.scrollHeight > _ds.clientHeight + 1){ var _df = root.querySelector('.kt-done-foot'); if(_df) _df.classList.add('more'); }
+  // Same card, same scroll: an EDIT tap or a background render never throws the user back to the top.
+  if(_ds && _pst && _pidx === runnerExIdx) _ds.scrollTop = _pst;
   // M-07 card-advance: the incoming card rises from the peek position when
   // the deck actually moved (never on same-card state repaints).
   if(_lastPaintExIdx !== null && _lastPaintExIdx !== runnerExIdx){
@@ -8719,6 +8726,8 @@ function runnerStartEditSet(idx){
   var ex=_runnerEx(); if(!ex) return;
   if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
   runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
+  var ed=document.querySelector('#runner-root .kt-done-scroll input');
+  if(ed && ed.scrollIntoView) ed.scrollIntoView({block:'nearest'});
 }
 function runnerCancelEditSet(){
   runnerEditSetIdx=null; runnerEditSetEx=null; paintRunner();
@@ -9219,7 +9228,7 @@ function _renderRunnerDoneBody(ex, isLast){
     ? '<div style="margin-top:2px;font-size:11px;opacity:.45;font-family:\'JetBrains Mono\',monospace;letter-spacing:.05em;text-transform:uppercase;">Next · '+_esc(nextEx.name)+'</div>'
     : '';
   var dateField = isLast
-    ? '<div style="margin:14px 0 6px;text-align:left;">'+
+    ? '<div style="margin-top:14px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
         '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
         ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
@@ -18540,7 +18549,12 @@ function drainWatchSessions(){
           while(rl.length<dn) rl.push(parseInt((_dr.reps||{})[ex.name])||0);
           var wl=((_dr.weightsLog||{})[ex.name]||[]).slice(0, dn).map(function(w){ return parseFloat(w)||0; });
           var wf=(_dr.weights||{})[ex.name]; while(wl.length<dn) wl.push(parseFloat(wf)||0);
-          _draftExs.push({ name:String(ex.name), isMain:!!ex.isMain, sets:dn, reps:rl, weight:Math.max.apply(null, wl.concat([0])), weightLog:wl, rpe:'' });
+          // Per-set effort rides with the sets (as runnerFinishSession files it); rpe is the mean.
+          var pl=((_dr.rpeLog||{})[ex.name]||[]).slice(0, dn).map(function(x){ return parseInt(x)||0; });
+          var pf=parseInt((_dr.rpe||{})[ex.name])||parseInt(ex.rpe)||7;
+          for(var pk=0; pk<dn; pk++) if(!(pl[pk]>0)) pl[pk]=pf;
+          _draftExs.push({ name:String(ex.name), isMain:!!ex.isMain, sets:dn, reps:rl, weight:Math.max.apply(null, wl.concat([0])), weightLog:wl,
+            rpe:Math.round(pl.reduce(function(a,b){ return a+b; },0)/dn), rpeLog:pl });
         });
       }
       var _rec, _changed;
