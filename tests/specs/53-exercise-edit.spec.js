@@ -30,13 +30,14 @@ run('picker, create, add, remove, apply-to-programme, suggestion lists', async (
       // remove it again
       runnerExRemove();
       r.removed = { len: runnerSession.exercises.length, at1: runnerSession.exercises[1] ? runnerSession.exercises[1].name : null, sheetGone: !document.getElementById('runner-ex-edit-modal') };
-      // rename + sets, applied to the programme from this week on
+      // rename + sets, applied to the programme from this week on (to a lift not already on the day:
+      // since 20260925-2 a rename onto one of the day's lifts is refused)
       const cr = getCustomRoutine(); const wkIdx = currentWeek - 1;
       const before = (cr.weeks[wkIdx].push || []).map(e => e.name);
-      openRunnerExEdit(0); _rExEditName = 'Incline Dumbbell Press'; _rExEditSets = 4; _rExEditApply = true; saveRunnerExEdit();
+      openRunnerExEdit(0); _rExEditName = 'DB Bench Press'; _rExEditSets = 4; _rExEditApply = true; saveRunnerExEdit();
       const cr2 = getCustomRoutine();
-      const thisWk = (cr2.weeks[wkIdx].push || []).find(e => e.name === 'Incline Dumbbell Press');
-      const nextWk = cr2.weeks[wkIdx + 1] ? (cr2.weeks[wkIdx + 1].push || []).find(e => e.name === 'Incline Dumbbell Press') : null;
+      const thisWk = (cr2.weeks[wkIdx].push || []).find(e => e.name === 'DB Bench Press');
+      const nextWk = cr2.weeks[wkIdx + 1] ? (cr2.weeks[wkIdx + 1].push || []).find(e => e.name === 'DB Bench Press') : null;
       const prevWk = cr2.weeks[wkIdx - 1] ? (cr2.weeks[wkIdx - 1].push || []).some(e => e.name === first) : true;
       r.applied = { runner: runnerSession.exercises[0].name, before: before[0], first: first, thisWk: thisWk && thisWk.sets, nextWk: nextWk && nextWk.sets, prevUntouched: prevWk, backup: !!lsGet('kt_routine_backup') };
       closeDeckRunner();
@@ -48,7 +49,7 @@ run('picker, create, add, remove, apply-to-programme, suggestion lists', async (
     assert(out.createRow && out.created.inLib && out.created.picked, 'typing an unknown name offers Create and selects it: ' + JSON.stringify(out.created));
     assert(out.added.len === out.added.n0 + 1 && out.added.at1 === 'Face Pull' && out.added.editIdx === 1 && out.added.sets === 3 && out.added.reps === 10, 'add inserts after the current card and opens its editor: ' + JSON.stringify(out.added));
     assert(out.removed.len === out.added.n0 && out.removed.at1 !== 'Face Pull' && out.removed.sheetGone, 'remove takes it out of today: ' + JSON.stringify(out.removed));
-    assert(out.applied.runner === 'Incline Dumbbell Press' && out.applied.before === out.applied.first && out.applied.thisWk === 4 && out.applied.nextWk === 4 && out.applied.prevUntouched && out.applied.backup, 'apply writes the rename + sets into this week and later, snapshotting first: ' + JSON.stringify(out.applied));
+    assert(out.applied.runner === 'DB Bench Press' && out.applied.before === out.applied.first && out.applied.thisWk === 4 && out.applied.nextWk === 4 && out.applied.prevUntouched && out.applied.backup, 'apply writes the rename + sets into this week and later, snapshotting first: ' + JSON.stringify(out.applied));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
