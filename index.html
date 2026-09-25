@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260924-11"/>
+<meta name="build" content="20260924-12"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4144,8 +4144,12 @@ function importFromHealth(){
     if(res==null) return;
     var runs = (res&&res.runs)||[];
     var seen = new Set(lsGet('kt_hk_imported')||[]);
-    var existing = getRuns();
-    var sports = getSportLogs();
+    // Copies: getRuns()/getSportLogs() hand back the cached arrays, and a failed lsSet rolls
+    // the cache back to that same reference, so growing them in place left phantom records
+    // after 'storage full'. A copy also keeps this batch out of the duplicate checks.
+    var existing = getRuns().slice();
+    var sports = getSportLogs().slice();
+    var _dctx = {skip:{}};
     var added=0, rides=0, skippedNoDist=0;
     runs.forEach(function(r){
       if(!r||!r.uuid||seen.has(r.uuid)) return;
@@ -4153,6 +4157,7 @@ function importFromHealth(){
       if(sid){
         // Rides, court sports, swims… land in the sport log as their type.
         if(!r.durationSec||r.durationSec<=0) return;
+        if(_healthSportDupe(r, sid, _dctx)){ seen.add(r.uuid); return; }
         sports.unshift(_healthSportRec(r, sid, rides));
         seen.add(r.uuid);
         rides++;
@@ -4166,7 +4171,7 @@ function importFromHealth(){
         String(d.getMonth()+1).padStart(2,'0')+'-'+
         String(d.getDate()).padStart(2,'0');
       // Already logged by hand → mark seen, never import the twin.
-      if(_manualRunDupe(localISO, r.distanceKm, r.durationSec)){ seen.add(r.uuid); return; }
+      if(_manualRunDupe(localISO, r.distanceKm, r.durationSec, _dctx)){ seen.add(r.uuid); return; }
       existing.unshift({
         id: Date.now()+added,
         startMs: d.getTime()||undefined,
@@ -4260,7 +4265,7 @@ function checkRecentHealthRun(sinceOverride){
       var lastRun=null, sportNames=[];
       fresh.forEach(function(r){
         var sid=_hkSportId(r);
-        if(sid){ _logHealthSport(r, sid); sportNames.push(sid); }
+        if(sid){ if(_logHealthSport(r, sid)) sportNames.push(sid); }
         else lastRun=_logHealthRun(r);
       });
       if(lastRun) showToast('Run logged from Apple Health · '+fmtD(lastRun.distance));
@@ -4301,21 +4306,26 @@ function drainPendingHealth(){
 function _isHealthRun(r){ return !!r && (r.note==='From Apple Health' || !!r.hkOrig); }
 function _hkOrigOf(r){ return {date:String(r.date||''), km:parseFloat(r.distance||r.dist)||0, time:String(r.time||'')}; }
 // While the import ledger exists no Health run ever matches (as before). Once it is gone
-// (Reset import, an iCloud restore), an EDITED run stands in for its own workout so the next
-// import brings no twin. Never widen this to unedited Health runs: importFromHealth writes the
-// ledger after the batch, so a run imported earlier in the same batch would swallow a second
-// same-day workout.
-function _manualRunDupe(dateISO, km, durationSec){
+// (Reset import keeps only edited runs; an iCloud backup carries no ledger at all), a Health
+// run stands in for its own workout (an edited one by hkOrig, what Health recorded), so the
+// next import brings no twin. importFromHealth works on a copy, so records it adds in the same
+// batch are never candidates, and its ctx.skip lets each existing record absorb one workout.
+function _hkHasLedger(){
+  var led=lsGet('kt_hk_imported');
+  return Array.isArray(led) ? led.length>0 : !!(led && typeof led==='object' && Object.keys(led).length);
+}
+function _manualRunDupe(dateISO, km, durationSec, ctx){
   km = parseFloat(km)||0;
   if(!(km>0)) return false;
   var hkSec = parseFloat(durationSec)||0;
-  var led=lsGet('kt_hk_imported'), hasLedger=Array.isArray(led)?led.length>0:!!(led&&typeof led==='object'&&Object.keys(led).length);
-  return getRuns().some(function(r){
+  var hasLedger=_hkHasLedger(), hit=null;
+  getRuns().some(function(r){
     if(!r) return false;
+    if(ctx && ctx.skip && ctx.skip[r.id]) return false;
     var o=r;
     if(_isHealthRun(r)){
-      if(!r.hkOrig || hasLedger) return false;
-      o={date:r.hkOrig.date, distance:r.hkOrig.km, time:r.hkOrig.time};
+      if(hasLedger) return false;
+      if(r.hkOrig) o={date:r.hkOrig.date, distance:r.hkOrig.km, time:r.hkOrig.time};
     }
     if(String(o.date)!==String(dateISO)) return false;
     var rd=parseFloat(o.distance||o.dist)||0;
@@ -4323,9 +4333,26 @@ function _manualRunDupe(dateISO, km, durationSec){
     // Two genuinely different same-distance runs in one day exist (track
     // repeats) — when both sides know their duration, it must agree too.
     var rSec=_runSecsOf(o.time);
-    if(hkSec>0 && rSec>0) return Math.abs(rSec-hkSec)/Math.max(rSec,hkSec) <= 0.15;
-    return true;
+    if(hkSec>0 && rSec>0 && Math.abs(rSec-hkSec)/Math.max(rSec,hkSec) > 0.15) return false;
+    hit=r; return true;
   });
+  if(hit && ctx && ctx.skip) ctx.skip[hit.id]=1;
+  return !!hit;
+}
+// The same stand-in rule for Health sport logs (rides, swims…) once the ledger is gone: an
+// iCloud restore brought them back, and a re-import used to add every one a second time.
+function _healthSportDupe(r, sid, ctx){
+  if(_hkHasLedger()) return false;
+  var iso=_hkLocalISO(r), mins=Math.round((parseFloat(r.durationSec)||0)/60), hit=null;
+  getSportLogs().some(function(l){
+    if(!l || l.notes!=='From Apple Health' || l.type!==sid || String(l.date)!==iso) return false;
+    if(ctx && ctx.skip && ctx.skip[l.id]) return false;
+    var ld=parseInt(l.duration,10)||0;
+    if(mins>0 && ld>0 && Math.abs(ld-mins)/Math.max(ld,mins) > 0.15) return false;
+    hit=l; return true;
+  });
+  if(hit && ctx && ctx.skip) ctx.skip[hit.id]=1;
+  return !!hit;
 }
 function _hkLocalISO(r){
   var d = new Date(r.startDate);
@@ -4400,6 +4427,7 @@ function _healthSportRec(r, sportId, idOffset){
 }
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
+  if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (restored)
   var logs0 = getSportLogs();
   var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
   var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
@@ -4636,6 +4664,8 @@ function logPendingHealthRun(){
       sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
         label: sid+(srec.duration?' · '+srec.duration+' min':'')};
       showToast(sid+' logged from Apple Health');
+    } else if(srec===null){
+      showToast('Already in your log \u2014 skipped the duplicate');
     }
   } else {
     var rec = _logHealthRun(r);
@@ -7589,12 +7619,14 @@ function renderRunReview(km, time, excludeId){
   var goalStr=(getRunGoal()||'').trim();
   var goalSec=paceToSec(goalStr);
   if(goalSec>0){
-    var dp=paceSec-goalSec; // negative = faster than goal
+    // Compared in the unit on screen (a mile user used to read seconds per km under 'S/KM').
+    var _pf=_uD()==='mi'?KM_PER_MI:1;
+    var dp=Math.round(paceSec*_pf)-Math.round(goalSec*_pf); // negative = faster than goal
     var good=dp<=0;
     out+='<div style="display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:14px;margin:12px 0 2px;'+
       (good?'background:var(--accent-dim);border:1px solid var(--accent-soft);':'background:var(--card);border:1px solid var(--border);')+'">'+
       '<span class="kt-mono" style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:'+(good?'var(--accent-ink)':'var(--muted)')+';">'+
-        'GOAL '+_esc(goalStr)+' → '+secToPace(paceSec)+' · '+(dp<=0?'−':'+')+Math.abs(dp)+' S/KM</span>'+
+        'GOAL '+_esc(fmtPaceStr(goalStr,{bare:true}))+' → '+fmtPace(paceSec,{bare:true})+' · '+(dp<=0?'−':'+')+Math.abs(dp)+' S/'+_uD().toUpperCase()+'</span>'+
     '</div>';
   }
   var comps=[];
@@ -11021,8 +11053,15 @@ function moveSession(id,newDate){
 function moveRun(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var runs=getRuns();
-  runs.forEach(function(r){ if(r.id===id){ if(r.date!==newDate && r.note==='From Apple Health' && !r.hkOrig) r.hkOrig=_hkOrigOf(r); r.date=newDate; r.week=weekForDate(newDate); } });
-  lsSet('kt_runs',runs);
+  // A copy: editing the cached records in place survived a failed save (storage full).
+  runs=runs.map(function(r){
+    if(!r || r.id!==id) return r;
+    var c={}; Object.keys(r).forEach(function(k){ c[k]=r[k]; });
+    if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(r);
+    c.date=newDate; c.week=weekForDate(newDate); return c;
+  });
+  if(!lsSet('kt_runs',runs)){ render(); return; }   // lsSet has toasted; the date input snaps back
+  invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
 function moveSport(id,newDate){
