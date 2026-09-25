@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-8"/>
+<meta name="build" content="20260925-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6593,8 +6593,8 @@ function renderTodayEditorial(){
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
-  if(carryBanner) cands.push({id:'carry', label:'CARRY FORWARD', dot:'var(--accent-ink)', html:carryBanner});
   if(progressionBanner) cands.push({id:'progression', label:'+'+fmtW(5).toUpperCase(), dot:'var(--accent-ink)', html:progressionBanner});
+  if(carryBanner) cands.push({id:'carry', label:'CARRY FORWARD', dot:'var(--accent-ink)', html:carryBanner});   // after the programme's own progression
   if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
   var activeSlot=null;
