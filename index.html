@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-6"/>
+<meta name="build" content="20260925-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1238,6 +1238,47 @@ button:active{transform:scale(.97);}
 .kt-bd-none{font-size:13px;color:var(--muted);padding:8px 2px;}
 .kt-sched-build{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:700;cursor:pointer;}
 #bdTitle:focus{outline:none;}
+.kt-rt-sheet{max-height:92vh;}
+#rtTitle:focus,#rtEditTitle:focus{outline:none;}
+.kt-rt-sub{font-size:13px;color:var(--muted);line-height:1.5;margin:-2px 0 14px;}
+.kt-rt-note{font-size:12px;color:var(--muted);background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:9px 12px;margin:-4px 0 14px;}
+.kt-rt-card{background:var(--card2);border:1px solid var(--border);border-radius:16px;padding:12px 14px 10px;margin-bottom:12px;}
+.kt-rt-card-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px;}
+.kt-rt-day{font-size:17px;font-weight:800;}
+.kt-rt-when{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);}
+.kt-rt-empty{font-size:13px;color:var(--muted);margin:6px 0 10px;}
+.kt-rt-row{border-bottom:1px solid var(--border);}
+.kt-rt-row:last-of-type{border-bottom:none;}
+.kt-rt-open{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:52px;padding:10px 22px 10px 0;background:none;border:none;color:var(--text);font-family:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rt-n{font-size:15px;font-weight:700;overflow-wrap:anywhere;}
+.kt-rt-tag{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--muted);margin-left:6px;}
+.kt-rt-you{color:var(--accent);}
+html[data-room="dark"] .kt-rt-you{color:var(--text);}   /* Lime: a status label is neutral; lime is for actions and earned states */
+.kt-rt-t{font-size:13px;color:var(--text);}
+.kt-rt-h{font-size:11px;color:var(--muted);}
+.kt-rt-go{position:absolute;right:2px;top:50%;transform:translateY(-50%);font-size:18px;color:var(--muted);}
+.kt-rt-coach{font-size:12px;color:var(--muted);padding:0 0 10px;line-height:1.5;}
+.kt-rt-link{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:700;cursor:pointer;min-height:32px;}
+.kt-rt-danger{color:var(--red);}
+.kt-rt-add{display:block;width:100%;margin-top:6px;padding:10px;background:none;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;}
+.kt-rt-reset{display:block;width:100%;margin-top:8px;padding:8px;background:none;border:none;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;text-decoration:underline;cursor:pointer;}
+.kt-rt-back{background:none;border:none;padding:0 0 4px;color:var(--accent);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;min-height:32px;}
+.kt-rt-step{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.kt-rt-step-l{flex:1;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.kt-rt-step-v{min-width:76px;text-align:center;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;}
+.kt-rt-step-v small{font-size:12px;color:var(--muted);font-weight:600;}
+.kt-rt-sb{width:44px;height:44px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;font-weight:700;font-family:inherit;cursor:pointer;}
+.kt-rt-lbl{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);margin:14px 0 6px;}
+.kt-rt-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.kt-rt-chip{min-height:38px;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;}
+.kt-rt-chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-rt-cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;}
+.kt-rt-cell{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;}
+.kt-rt-cell .k{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--muted);}
+.kt-rt-cell .v{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;}
+.kt-rt-cell .o{font-size:10.5px;color:var(--muted);text-decoration:line-through;}
+.kt-rt-cell.ch{border-color:var(--accent);}
+.kt-rt-actions{display:flex;justify-content:space-between;gap:10px;margin-top:10px;}
 #reTitle:focus{outline:none;}   /* focused for VoiceOver on open, as #cmpSheetTitle */
 
 /* Rest-done flash */
@@ -5212,18 +5253,21 @@ function cycleWeekPlanDay(dow, forceType){
     return;
   }
   var nextType=forceType||CYCLE[(idx+1)%CYCLE.length];
-  // Update routine-level weekPlan
-  var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
-    ?cr.weekPlan.slice()
-    :curPlan.map(function(p){return p.type;});
-  base[dow]=nextType;
-  cr.weekPlan=base;
-  // Also patch current week's per-week override if one exists
-  if(cr.weeks&&cr.weeks[currentWeek-1]&&Array.isArray(cr.weeks[currentWeek-1].weekPlan)&&cr.weeks[currentWeek-1].weekPlan.length===7){
-    cr.weeks[currentWeek-1].weekPlan[dow]=nextType;
-  }
-  setCustomRoutine(cr);
-  render();
+  // Through the programme's one write door (a fresh copy, an undo snapshot, a save that must
+  // succeed, then everything that reads the programme follows, an open Routines sheet too).
+  _commitRoutine(function(cr){
+    // Update routine-level weekPlan
+    var base=Array.isArray(cr.weekPlan)&&cr.weekPlan.length===7
+      ?cr.weekPlan.slice()
+      :curPlan.map(function(p){return p.type;});
+    base[dow]=nextType;
+    cr.weekPlan=base;
+    // Also patch current week's per-week override if one exists
+    if(cr.weeks&&cr.weeks[currentWeek-1]&&Array.isArray(cr.weeks[currentWeek-1].weekPlan)&&cr.weeks[currentWeek-1].weekPlan.length===7){
+      cr.weeks[currentWeek-1].weekPlan[dow]=nextType;
+    }
+    return 1;
+  }, {scope:'cadence'});
 }
 
 // Returns the most-frequent non-lift, non-rest activity in the user's
@@ -10182,6 +10226,7 @@ function _commitRoutine(mutate, o){
   invalidateCoachCard();
   coachCard=null;   // the card on screen was written for the old programme (same day, different plan)
   if(!o.noRender) render();
+  if(document.getElementById('routinesOverlay')) _paintRoutines();   // an open Routines sheet shows the new programme
   if(o.undoLabel) showUndoToast(o.undoLabel, function(){
     try{ lsSet('kt_routine', JSON.parse(raw)); }catch(e){}
     invalidateCoachCard(); render(); if(o.onUndo) o.onUndo();
@@ -10325,6 +10370,302 @@ function _bdAskCoach(){
   var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
   switchTab('coach'); coachView='chat'; render();
   setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
+}
+
+// ── Resets: back to what the coach wrote ─────────────────────────────────────
+// A row the owner changed goes back to its rec (renames too); a row the owner
+// added goes away. Weeks before c are never touched.
+function _progUseCoach(cr, slot, name, c){
+  var W=cr.weeks, n=0;
+  for(var j=c;j<W.length;j++){
+    var list=W[j]&&W[j][slot]; if(!Array.isArray(list)) continue;
+    for(var i=0;i<list.length;i++){
+      var r=list[i]; if(!r || r.name!==name || r.rec===undefined) continue;
+      if(r.rec===null){ list.splice(i,1); i--; }
+      else { var back=JSON.parse(JSON.stringify(r.rec)); delete back.rec; list[i]=back; }
+      n++;
+    }
+  }
+  return n;
+}
+// A whole day back to the coach's version from week c on, removed rows included.
+function _progResetSlot(cr, slot, c){
+  var W=cr.weeks, n=0;
+  for(var j=c;j<W.length;j++){
+    var w=W[j]; if(!w) continue;
+    var list=Array.isArray(w[slot])?w[slot]:[];
+    var out=[];
+    list.forEach(function(r){
+      if(!r) return;
+      if(r.rec===null){ n++; return; }
+      if(r.rec){ var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec; out.push(b); n++; return; }
+      out.push(r);
+    });
+    var ro=(w.recOut&&Array.isArray(w.recOut[slot]))?w.recOut[slot]:[];
+    ro.slice().sort(function(a,b){ return (a.at||0)-(b.at||0); }).forEach(function(e){
+      if(!e || !e.row || out.some(function(x){ return x.name===e.row.name; })) return;
+      out.splice(Math.min(out.length, Math.max(0, e.at||0)), 0, JSON.parse(JSON.stringify(e.row))); n++;
+    });
+    if(w.recOut){ delete w.recOut[slot]; if(!Object.keys(w.recOut).length) delete w.recOut; }
+    if(out.length || Array.isArray(w[slot])) w[slot]=out;
+  }
+  return n;
+}
+function _progMakeMain(cr, slot, name, c){
+  var W=cr.weeks, n=0;
+  for(var j=c;j<W.length;j++){
+    var list=W[j]&&W[j][slot]; if(!Array.isArray(list) || !_progRow(W[j],slot,name)) continue;
+    list.forEach(function(r){ var m=(r.name===name); if(!!r.isMain!==m){ _markRec(r); r.isMain=m; n++; } });
+  }
+  return n;
+}
+
+// ── Routines ─────────────────────────────────────────────────────────────────
+// Every lift day as the coach (or starter) built it, what the owner changed next
+// to the original, and an editor whose changes carry through the rest of the
+// programme and keep climbing. Writes only through _commitRoutine, so Today, the
+// runner, the watch, the widget, reminders and the coach all follow.
+var _rtEdit=null, _rtAdd=null, _rtQuery='', _rtFocusSlot=null;
+function openRoutines(slot){
+  if(!hasCustomRoutine()){ openProgrammeModal(); return; }
+  _rtEdit=null; _rtAdd=null; _rtQuery=''; _rtFocusSlot=slot||null;
+  var prev=document.getElementById('routinesOverlay'); if(prev) prev.remove();
+  var overlay=document.createElement('div');
+  overlay.id='routinesOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet kt-rt-sheet" role="dialog" aria-modal="true" aria-labelledby="rtTitle" id="rtSheet"></div>';
+  document.body.appendChild(overlay);
+  _paintRoutines();
+  _sheetDrag(overlay, closeRoutines);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeRoutines(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); if(_rtEdit){ _rtEdit=null; _paintRoutines(); } else closeRoutines(); } });
+  if(_rtFocusSlot){ var el=document.getElementById('rt-card-'+_rtFocusSlot); if(el) try{ el.scrollIntoView({block:'start'}); }catch(e){} }
+  var t=document.getElementById('rtTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
+}
+function closeRoutines(){ var el=document.getElementById('routinesOverlay'); if(el) el.remove(); _rtEdit=null; _rtAdd=null; }
+function _rtLoadTxt(name, w){ return w>0 ? fmtW(w) : (_isBodyweightLift(name)?'bodyweight':'your load'); }
+function _rtScheme(r){ return (parseInt(r.sets)||0)+'×'+(Array.isArray(r.reps)?r.reps.join('/'):r.reps); }
+// Where a row is heading: its last working week and the deload after it.
+function _rtHeading(cr, slot, name, c){
+  var W=cr.weeks, cur=_progRow(W[c],slot,name), lastW=0, lastWk=0, dl='';
+  if(!cur || !(parseFloat(cur.weight)>0)) return '';
+  for(var j=c+1;j<W.length;j++){
+    var r=_progRow(W[j],slot,name); if(!r) continue;
+    if(_isDeloadWk(W[j])){ if(!dl && parseFloat(r.weight)>0) dl='deload wk '+(j+1)+' '+fmtW(r.weight); continue; }
+    if(parseFloat(r.weight)>0){ lastW=parseFloat(r.weight); lastWk=j+1; }
+  }
+  var bits=[];
+  if(lastWk && Math.abs(lastW-parseFloat(cur.weight))>0.05) bits.push('→ '+fmtW(lastW)+' by wk '+lastWk);
+  else if(lastWk) bits.push('holds through wk '+lastWk);
+  if(dl) bits.push(dl);
+  return bits.join(' · ');
+}
+function _rtDays(cr, c){
+  var plan=getWeekPlan(), days={}, order=[];
+  var DOW=['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  plan.forEach(function(p,i){ if(p && p.isLift){ if(!days[p.type]){ days[p.type]=[]; } days[p.type].push(DOW[i]); } });
+  LIFT_TYPES.forEach(function(t){
+    var has=((cr.weeks[c]&&cr.weeks[c][t.toLowerCase()])||[]).length>0;
+    if(days[t] || has) order.push({slot:t, when:days[t]||[], empty:!has});
+  });
+  return order;
+}
+function _rtChanges(cr, c){
+  var n=0, w=cr.weeks[c]; if(!w) return 0;
+  LIFT_KEYS.forEach(function(k){ ((w[k])||[]).forEach(function(r){ if(r && r.rec!==undefined) n++; }); if(w.recOut && w.recOut[k]) n+=w.recOut[k].length; });
+  return n;
+}
+function _paintRoutines(){
+  var sh=document.getElementById('rtSheet'); if(!sh) return;
+  var cr=getCustomRoutine(); if(!cr){ closeRoutines(); return; }
+  var c=currentWeek-1, total=getTotalWeeks();
+  if(_rtEdit){ sh.innerHTML=_rtEditHTML(cr, c); _a11yPass(); return; }
+  var starter=!!cr.starter || cr.name==='Your starter block';
+  var nCh=_rtChanges(cr, c);
+  var cards=_rtDays(cr, c).map(function(d){
+    var key=d.slot.toLowerCase(), lbl=_dayLabel(d.slot), rows=(cr.weeks[c][key]||[]);
+    var when=d.when.length ? d.when.join(' · ') : 'NOT SCHEDULED';
+    var body;
+    if(d.empty){
+      body='<div class="kt-rt-empty">Nothing here yet.</div>'+
+        '<button type="button" class="btn btn-primary btn-full" style="padding:12px;font-size:14px;" onclick="openBuildDay(\''+d.slot+'\')">Build your '+_esc(lbl)+' day</button>';
+    } else {
+      body=rows.map(function(r){
+        var tag=r.isMain?'<span class="kt-rt-tag">MAIN</span>':'';
+        var mark=r.rec===null?'<span class="kt-rt-tag kt-rt-you">ADDED</span>':(r.rec?'<span class="kt-rt-tag kt-rt-you">EDITED</span>':'');
+        var coach='';
+        if(r.rec){
+          coach='<div class="kt-rt-coach">Coach: '+_esc((r.rec.name!==r.name?r.rec.name+' ':'')+_rtScheme(r.rec)+' · '+_rtLoadTxt(r.rec.name, parseFloat(r.rec.weight)||0))+
+            ' <button type="button" class="kt-rt-link" data-s="'+d.slot+'" data-n="'+_esc(r.name)+'" onclick="_rtUseCoach(this.dataset.s,this.dataset.n)">Use coach\u2019s</button></div>';
+        }
+        var head=_rtHeading(cr, key, r.name, c);
+        return '<div class="kt-rt-row">'+
+          '<button type="button" class="kt-rt-open" data-s="'+d.slot+'" data-n="'+_esc(r.name)+'" onclick="_rtOpenEdit(this.dataset.s,this.dataset.n)" aria-label="Edit '+_esc(r.name)+'">'+
+            '<span class="kt-rt-n">'+_esc(r.name)+tag+mark+'</span>'+
+            '<span class="kt-rt-t">'+_esc(_rtScheme(r)+' · '+_rtLoadTxt(r.name, parseFloat(r.weight)||0))+'</span>'+
+            (head?'<span class="kt-rt-h">'+_esc(head)+'</span>':'')+
+            '<span class="kt-rt-go" aria-hidden="true">›</span>'+
+          '</button>'+coach+'</div>';
+      }).join('');
+      var ro=(cr.weeks[c].recOut&&cr.weeks[c].recOut[key])||[];
+      if(ro.length) body+='<div class="kt-rt-coach">'+_plural(ro.length,'coach lift')+' removed · <button type="button" class="kt-rt-link" onclick="_rtRestoreRemoved(\''+d.slot+'\')">Restore</button></div>';
+      if(_rtAdd===d.slot){
+        var q=_rtQuery.trim().toLowerCase(), have={}; rows.forEach(function(r){ have[r.name]=1; });
+        var hits=getAllExercises().filter(function(e){ return !have[e.name] && (!q || e.name.toLowerCase().indexOf(q)>=0 || String(e.muscles||'').toLowerCase().indexOf(q)>=0); }).slice(0,10);
+        body+='<div class="kt-bd-pick"><input id="rtSearch" type="search" placeholder="Search the library" aria-label="Search the exercise library" value="'+_esc(_rtQuery)+'" oninput="_rtQuery=this.value;_paintRoutines();var s=document.getElementById(\'rtSearch\');if(s){s.focus();s.setSelectionRange(s.value.length,s.value.length);}"/>'+
+          hits.map(function(e){ return '<button type="button" class="kt-bd-hit" data-s="'+d.slot+'" data-n="'+_esc(e.name)+'" onclick="_rtAddPick(this.dataset.s,this.dataset.n)">'+_esc(e.name)+'<span>'+_esc(e.cat||'')+'</span></button>'; }).join('')+'</div>';
+      } else {
+        body+='<button type="button" class="kt-rt-add" onclick="_rtAdd=\''+d.slot+'\';_rtQuery=\'\';_paintRoutines();var s=document.getElementById(\'rtSearch\');if(s)s.focus();">+ Add exercise</button>';
+      }
+      if(rows.some(function(r){ return r.rec!==undefined; }) || ro.length) body+='<button type="button" class="kt-rt-reset" onclick="_rtResetDay(\''+d.slot+'\')">Reset '+_esc(lbl)+' to the coach\u2019s version</button>';
+    }
+    return '<div class="kt-rt-card" id="rt-card-'+d.slot+'"><div class="kt-rt-card-hd"><span class="kt-rt-day">'+_esc(lbl)+'</span><span class="kt-rt-when">'+_esc(d.empty?when+' · EMPTY':when)+'</span></div>'+body+'</div>';
+  }).join('');
+  sh.innerHTML=
+    '<div class="kt-sheet-head"><div><div class="screen-eyebrow" style="color:var(--muted);">ROUTINES · WEEK '+(c+1)+' OF '+total+'</div>'+
+      '<div class="kt-sheet-title" id="rtTitle" tabindex="-1">Your days</div></div>'+
+      '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeRoutines()">✕</button></div>'+
+    '<div class="kt-rt-sub">'+(starter?'Your starter plan':'Built by your coach')+(nCh?' · '+_plural(nCh,'change')+' by you':'')+
+      '. A change here goes into week '+(c+1)+' and every week after, and keeps the programme\u2019s climb.</div>'+
+    (runnerSession||runnerOpen?'<div class="kt-rt-note">Today\u2019s session keeps the plan it started with; changes apply from your next session.</div>':'')+
+    cards+
+    '<button type="button" class="btn btn-ghost btn-full" style="margin-top:6px;padding:11px;font-size:13px;" onclick="closeRoutines();openProgrammeModal();">Week by week ›</button>';
+  _a11yPass();
+}
+function _rtUseCoach(slot, name){
+  _commitRoutine(function(cr){ return _progUseCoach(cr, slot.toLowerCase(), name, currentWeek-1); }, {undoLabel:name+' back to the coach\u2019s version', scope:'routines'});
+}
+function _rtRestoreRemoved(slot){
+  _commitRoutine(function(cr){
+    var c=currentWeek-1, key=slot.toLowerCase(), ro=((cr.weeks[c].recOut||{})[key]||[]).slice(), n=0;
+    ro.forEach(function(e){ if(e && e.row){ var a=_progAdd(cr, key, {name:e.row.name, sets:e.row.sets, reps:e.row.reps, rpe:e.row.rpe, weight:0}, c, null, {firstIsMain:false}); if(a>0) n+=a; } });
+    return n;
+  }, {undoLabel:'Coach lifts restored', scope:'routines'});
+}
+function _rtResetDay(slot){
+  var lbl=_dayLabel(slot);
+  _ktConfirm({title:'Reset '+lbl+'?', body:'Your changes to '+lbl+' from week '+currentWeek+' on go back to the coach\u2019s version. Undo stays available for a few seconds.', confirmLabel:'Reset', confirmStyle:'var(--red)', onConfirm:function(){
+    _commitRoutine(function(cr){ return _progResetSlot(cr, slot.toLowerCase(), currentWeek-1); }, {undoLabel:lbl+' reset to the coach\u2019s version', scope:'routines'});
+  }});
+}
+function _rtAddPick(slot, name){
+  var key=slot.toLowerCase(), c=currentWeek-1, cr=getCustomRoutine();
+  var rows=(cr.weeks[c][key]||[]), after=rows.length?rows[rows.length-1].name:null;
+  var N=_knownLoadLb(name, cr, c);
+  _rtAdd=null; _rtQuery='';
+  _commitRoutine(function(cr2){ return _progAdd(cr2, key, {name:name, sets:3, reps:10, rpe:8, weight:N}, c, after, {firstIsMain:false, perWeek:function(w, main){ return _weekScheme(w, main); }}); },
+    {undoLabel:name+' added to '+_dayLabel(slot)+' from week '+(c+1)+' on', scope:'routines'});
+}
+// ── the editor ──
+function _rtOpenEdit(slot, name){
+  var cr=getCustomRoutine(), c=currentWeek-1, r=_progRow(cr.weeks[c], slot.toLowerCase(), name); if(!r) return;
+  var repsN=_repsNum(r.reps), plain=(typeof r.reps==='number' || /^\d+$/.test(String(r.reps)));
+  _rtEdit={slot:slot, name:name, sets:parseInt(r.sets)||3, reps:plain?repsN:r.reps, repsPlain:plain, w:wDisp(parseFloat(r.weight)||0), rpe:parseInt(r.rpe)||8,
+    scope:'from', every:false, climb:'climb', swapTo:null, picking:false, q:''};
+  _paintRoutines();
+  var t=document.getElementById('rtEditTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
+}
+function _rtStep(field, d){
+  var e=_rtEdit; if(!e) return;
+  if(field==='sets') e.sets=Math.max(1, Math.min(10, e.sets+d));
+  else if(field==='reps' && e.repsPlain) e.reps=Math.max(1, Math.min(50, e.reps+d));
+  else if(field==='rpe') e.rpe=Math.max(5, Math.min(10, e.rpe+d));
+  else if(field==='w') e.w=Math.max(0, Math.round((e.w+d*_plateStepDisp())*100)/100);
+  _paintRoutines();
+}
+// Apply the editor's draft to a programme (the preview runs it on a copy).
+function _rtApply(cr, e){
+  var slot=e.slot.toLowerCase(), c=currentWeek-1, name=e.name, only=(e.scope==='only'), n=0;
+  var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
+  var wLb=e.w>0 ? wStore(e.w) : 0;
+  if(e.swapTo && e.swapTo!==name){
+    var sw=_progSwap(cr, slot, name, e.swapTo, c, wLb, {markOwner:true});
+    if(sw===-1) return -1;
+    n+=sw; name=e.swapTo; st=_progRow(cr.weeks[c], slot, name); if(!st) return n;
+  }
+  var repsOld=JSON.parse(JSON.stringify(st.reps===undefined?null:st.reps));
+  var so={markOwner:true, onlyThisWeek:only, every:e.every};
+  if(String(e.sets)!==String(st.sets)) n+=_progSetScheme(cr, slot, name, c, 'sets', e.sets, so);
+  if(e.repsPlain && JSON.stringify(e.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', e.reps, so);
+  if(String(e.rpe)!==String(st.rpe)) n+=_progSetScheme(cr, slot, name, c, 'rpe', e.rpe, so);
+  var cur=parseFloat(st.weight)||0;
+  if(!e.swapTo && Math.abs(wLb-cur)>0.05) n+=_progCarryLoad(cr, slot, name, c, wLb, {markOwner:true, onlyThisWeek:only, repsOld:repsOld, climb:(e.climb==='hold'?'hold':undefined)});
+  return n;
+}
+function _rtPreview(cr, e){
+  var copy=JSON.parse(JSON.stringify(cr)), c=currentWeek-1, slot=e.slot.toLowerCase(), name=e.swapTo||e.name;
+  var res=_rtApply(copy, e);
+  var cells=[];
+  for(var j=c;j<copy.weeks.length;j++){
+    var a=_progRow(cr.weeks[j],slot,e.name), b=_progRow(copy.weeks[j],slot,name);
+    if(!b) continue;
+    var was=a?(_rtScheme(a)+' '+(parseFloat(a.weight)>0?wDisp(a.weight):'—')):'', now=_rtScheme(b)+' '+(parseFloat(b.weight)>0?wDisp(b.weight):'—');
+    cells.push('<div class="kt-rt-cell'+(was!==now?' ch':'')+(_isDeloadWk(copy.weeks[j])?' dl':'')+'"><span class="k">WK '+(j+1)+(_isDeloadWk(copy.weeks[j])?' · DL':'')+'</span><span class="v">'+_esc(now)+'</span>'+(was!==now && was?'<span class="o">'+_esc(was)+'</span>':'')+'</div>');
+  }
+  return {refused:res===-1, html:cells.join('')};
+}
+function _rtEditHTML(cr, c){
+  var e=_rtEdit, key=e.slot.toLowerCase(), r=_progRow(cr.weeks[c], key, e.name);
+  if(!r){ _rtEdit=null; return ''; }
+  var flat=true, any=false, P=parseFloat(r.weight)||0;
+  for(var j=c+1;j<cr.weeks.length;j++){ if(_isDeloadWk(cr.weeks[j])) continue; var x=_progRow(cr.weeks[j],key,e.name); if(!x) continue; any=true; if(Math.abs((parseFloat(x.weight)||0)-P)>0.05) flat=false; }
+  flat=flat && any && P>0;
+  var wChanged=Math.abs(wStore(e.w||0)-P)>0.05, schemeChanged=(String(e.sets)!==String(r.sets) || (e.repsPlain && JSON.stringify(e.reps)!==JSON.stringify(r.reps)));
+  var stepper=function(lbl, field, val, unit){
+    return '<div class="kt-rt-step"><span class="kt-rt-step-l">'+lbl+'</span>'+
+      '<button type="button" class="kt-rt-sb" aria-label="Less '+lbl+'" onclick="_rtStep(\''+field+'\',-1)">−</button>'+
+      '<span class="kt-rt-step-v">'+_esc(String(val))+(unit?' <small>'+unit+'</small>':'')+'</span>'+
+      '<button type="button" class="kt-rt-sb" aria-label="More '+lbl+'" onclick="_rtStep(\''+field+'\',1)">+</button></div>';
+  };
+  var chips=function(opts, cur, key){ return '<div class="kt-rt-chips">'+opts.map(function(o){ return '<button type="button" class="kt-rt-chip'+(o[0]===cur?' on':'')+'" aria-pressed="'+(o[0]===cur)+'" onclick="_rtSet(\''+key+'\',\''+o[0]+'\')">'+_esc(o[1])+'</button>'; }).join('')+'</div>'; };
+  var pv=_rtPreview(cr, e);
+  var picker='';
+  if(e.picking){
+    var q=String(e.q||'').trim().toLowerCase(), have={}; (cr.weeks[c][key]||[]).forEach(function(x){ have[x.name]=1; });
+    var hits=getAllExercises().filter(function(x){ return !have[x.name] && (!q || x.name.toLowerCase().indexOf(q)>=0 || String(x.muscles||'').toLowerCase().indexOf(q)>=0); }).slice(0,10);
+    picker='<div class="kt-bd-pick"><input id="rtSwapSearch" type="search" placeholder="Swap for…" aria-label="Search the library for a swap" value="'+_esc(e.q||'')+'" oninput="_rtEdit.q=this.value;_paintRoutines();var s=document.getElementById(\'rtSwapSearch\');if(s){s.focus();s.setSelectionRange(s.value.length,s.value.length);}"/>'+
+      hits.map(function(x){ return '<button type="button" class="kt-bd-hit" data-n="'+_esc(x.name)+'" onclick="_rtEdit.swapTo=this.dataset.n;_rtEdit.picking=false;_paintRoutines();">'+_esc(x.name)+'<span>'+_esc(x.cat||'')+'</span></button>'; }).join('')+'</div>';
+  }
+  return '<div class="kt-sheet-head"><div><button type="button" class="kt-rt-back" onclick="_rtEdit=null;_paintRoutines();">‹ Your days</button>'+
+      '<div class="kt-sheet-title" id="rtEditTitle" tabindex="-1">'+_esc(e.swapTo||e.name)+'</div>'+
+      '<div class="kt-rt-sub" style="margin:2px 0 0;">'+_esc(_dayLabel(e.slot))+' · week '+(c+1)+(e.swapTo?' · swapping '+_esc(e.name):'')+'</div></div>'+
+      '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeRoutines()">✕</button></div>'+
+    stepper('Sets','sets',e.sets,'')+
+    (e.repsPlain?stepper('Reps','reps',e.reps,''):'<div class="kt-rt-step"><span class="kt-rt-step-l">Reps</span><span class="kt-rt-step-v">'+_esc(String(e.reps))+'</span></div>')+
+    stepper('Weight','w',e.w>0?e.w:'—',e.w>0?_uW():'')+
+    stepper('RPE','rpe',e.rpe,'')+
+    '<div class="kt-rt-lbl">APPLIES</div>'+chips([['from','From week '+(c+1)+' on'],['only','Week '+(c+1)+' only']], e.scope, 'scope')+
+    (schemeChanged && e.scope==='from'?'<div class="kt-rt-lbl">SETS AND REPS</div>'+chips([['same','Weeks with the same scheme'],['every','Every week']], e.every?'every':'same', 'every'):'')+
+    (flat && wChanged && e.scope==='from'?'<div class="kt-rt-lbl">THE COACH HELD THIS FLAT</div>'+chips([['climb','Climb like my other lifts'],['hold','Hold at this weight']], e.climb, 'climb'):'')+
+    '<div class="kt-rt-lbl">HOW IT CLIMBS</div><div class="kt-rt-cells">'+pv.html+'</div>'+
+    (pv.refused?'<div class="kt-re-err">That lift is already on this day.</div>':'')+
+    (e.picking?picker:'<button type="button" class="btn btn-ghost btn-full" style="margin-top:10px;padding:11px;font-size:13px;" onclick="_rtEdit.picking=true;_rtEdit.q=\'\';_paintRoutines();var s=document.getElementById(\'rtSwapSearch\');if(s)s.focus();">Change exercise ›</button>')+
+    '<button type="button" class="btn btn-primary btn-full" id="rtSave" style="margin-top:10px;padding:14px;font-size:15px;"'+(pv.refused?' disabled':'')+' onclick="_rtSave()">Save</button>'+
+    '<div class="kt-rt-actions">'+
+      (r.isMain?'':'<button type="button" class="kt-rt-link" onclick="_rtMakeMain()">Make main lift</button>')+
+      '<button type="button" class="kt-rt-link kt-rt-danger" onclick="_rtRemove()">Remove from this day</button>'+
+    '</div>';
+}
+function _rtSet(k, v){ var e=_rtEdit; if(!e) return; if(k==='every') e.every=(v==='every'); else e[k]=v; _paintRoutines(); }
+function _rtSave(){
+  var e=_rtEdit; if(!e) return;
+  var c=currentWeek-1, lbl=_dayLabel(e.slot);
+  var res=_commitRoutine(function(cr){ return _rtApply(cr, e); },
+    {undoLabel:lbl+' updated '+(e.scope==='only'?'for week '+(c+1):'from week '+(c+1)+' on'), scope:'routines', noRender:false});
+  if(res===-1){ showToast('That lift is already on this day','err'); return; }
+  _rtEdit=null; _paintRoutines();
+}
+function _rtMakeMain(){
+  var e=_rtEdit; if(!e) return;
+  _commitRoutine(function(cr){ return _progMakeMain(cr, e.slot.toLowerCase(), e.name, currentWeek-1); }, {undoLabel:e.name+' is the main lift from week '+currentWeek+' on', scope:'routines'});
+  _rtEdit=null; _paintRoutines();
+}
+function _rtRemove(){
+  var e=_rtEdit; if(!e) return;
+  var slot=e.slot, name=e.name;
+  _ktConfirm({title:'Remove '+name+'?', body:'It leaves '+_dayLabel(slot)+' from week '+currentWeek+' on. Your logged sessions keep it.', confirmLabel:'Remove', confirmStyle:'var(--red)', onConfirm:function(){
+    _commitRoutine(function(cr){ return _progRemove(cr, slot.toLowerCase(), name, currentWeek-1); }, {undoLabel:name+' removed from '+_dayLabel(slot), scope:'routines'});
+    _rtEdit=null; _paintRoutines();
+  }});
 }
 
 // Write a session edit into the programme through the engine: this week and
@@ -17347,14 +17688,14 @@ function renderSettings() {
       var progGroup='<div class="settings-group" id="settings-workout-group">'+
         '<div class="settings-group-hd">Programme</div>'+
         schedHTML+
-        '<div class="settings-row" onclick="openProgrammeModal()">'+
+        '<div class="settings-row" onclick="openRoutines()">'+
           '<div class="settings-row-ic" style="background:#1a2e1a;">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" width="17" height="17">'+
               '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'+
             '</svg>'+
           '</div>'+
           '<div class="settings-row-body">'+
-            '<div class="settings-row-title">Training plan</div>'+
+            '<div class="settings-row-title">Routines</div>'+
           '</div>'+
           '<span class="settings-row-val">'+(getCustomRoutine()?'WEEK '+currentWeek+' OF '+totalWks:'NOT SET')+'</span>'+
           '<span class="settings-row-chev">›</span>'+
@@ -19783,7 +20124,7 @@ window._trovoOpen=_handleDeepLink;
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "settings"
 //   "coach" (home) | "coach/chat"
-//   "modal/programme" | "modal/build"
+//   "modal/programme" | "modal/build" | "modal/routines"
 //   "overlay/how" | "overlay/privacy"
 (function(){
   try {
@@ -19802,6 +20143,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
+        if(head==='modal' && sub==='routines'){ openRoutines(); }
         if(head==='modal' && sub==='build'){ var _bt=null; try{ _bt=getTodayActivity(); }catch(e){} openBuildDay(_bt && _bt.type==='lift' ? _bt.dayName : 'Arms'); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }

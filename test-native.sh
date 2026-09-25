@@ -25,7 +25,7 @@ DERIVED=/tmp/supero-build
 OUT=screenshots/out/native
 APP_ID=app.kt.trainer
 WATCH_ID=app.kt.trainer.watchkitapp
-ROUTES="log/workout progress progress/compare progress/records coach settings log/sport modal/build"
+ROUTES="log/workout progress progress/compare progress/records coach settings log/sport modal/build modal/routines"
 mkdir -p "$OUT"
 
 if [ "${1:-}" != "--no-build" ]; then
