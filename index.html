@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-7"/>
+<meta name="build" content="20260925-8"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6479,6 +6479,25 @@ function renderTodayEditorial(){
       '</div></div>';
   }
   // Clean week on the main lifts — a +5 lb bump is earned.
+  // A lift logged above the plan in the last three days (the COMPLETE sheet offers it too, but a
+  // wrist-finished session never opens that sheet).
+  var carryBanner='';
+  try{
+    var _seenC=_carrySeen(), _from=addDays(todayISO(),-3);
+    getSessions().some(function(ss){
+      if(!ss || String(ss.date)<_from || _seenC.indexOf(ss.id)>=0) return false;
+      var cc=_carryCandidates(ss); if(!cc.length) return false;
+      var k=cc[0];
+      carryBanner='<div class="kt-resume-banner">'+
+        '<div><div class="kt-resume-eyebrow">YOU LIFTED MORE THAN THE PLAN</div>'+
+        '<div class="kt-resume-ttl">'+_esc(k.name)+' went '+_esc(fmtW(k.to))+' \u2014 the plan said '+_esc(fmtW(k.from))+'. Carry it forward?</div></div>'+
+        '<div class="kt-resume-actions">'+
+          '<button class="kt-resume-discard" onclick="dismissCarry('+ss.id+')">Not now</button>'+
+          '<button class="kt-resume-cta" data-s="'+_esc(k.slot)+'" data-n="'+_esc(k.name)+'" data-w="'+k.to+'" data-c="'+k.c+'" onclick="_carryTap(this,'+ss.id+');render();">Carry it \u2192</button>'+
+        '</div></div>';
+      return true;
+    });
+  }catch(e){}
   var progressionBanner='';
   if(_progressionDue()){
     var _pg=_progressionLifts();
@@ -6574,6 +6593,7 @@ function renderTodayEditorial(){
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
   if(plateauBanner) cands.push({id:'plateau', label:'PLATEAU', dot:'var(--yellow)', html:plateauBanner});
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
+  if(carryBanner) cands.push({id:'carry', label:'CARRY FORWARD', dot:'var(--accent-ink)', html:carryBanner});
   if(progressionBanner) cands.push({id:'progression', label:'+'+fmtW(5).toUpperCase(), dot:'var(--accent-ink)', html:progressionBanner});
   if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
@@ -8864,6 +8884,7 @@ function openCompleteSheet(c){
       tile('Vs last '+_esc(label.toLowerCase()), pct==null?'\u2014':((pct>0?'+':'')+pct+'%'), '')+
     '</div>'+
     (prRows?'<div class="kt-cmp-hd">PERSONAL RECORDS</div><div class="kt-cmp-prs">'+prRows+'</div>':'')+
+    (function(){ var cc=_carryCandidates(rec); return cc.length ? '<div class="kt-cmp-hd">ABOVE THE PLAN</div>'+_carryButtons(cc, rec.id) : ''; })()+
     '<div class="kt-cmp-hd">COACH INSIGHT</div>'+
     '<div class="kt-cmp-insight" id="kt-complete-insight">'+_esc(_ins)+'</div>'+
     _reminderOfferHTML()+
@@ -10666,6 +10687,50 @@ function _rtRemove(){
     _commitRoutine(function(cr){ return _progRemove(cr, slot.toLowerCase(), name, currentWeek-1); }, {undoLabel:name+' removed from '+_dayLabel(slot), scope:'routines'});
     _rtEdit=null; _paintRoutines();
   }});
+}
+
+
+// ── Carry forward ────────────────────────────────────────────────────────────
+// A lift logged at least one plate above what the programme planned for it (at
+// the planned reps or more) can carry forward: the programme then climbs from
+// what was actually lifted. One tap, never automatic: one good day is not a new
+// baseline unless the owner says so. The carried lift counts as the owner's edit.
+function _carryCandidates(sess){
+  if(!sess || !Array.isArray(sess.exercises) || LIFT_TYPES.indexOf(sess.type)<0) return [];
+  var cr=getCustomRoutine(); if(!cr || !Array.isArray(cr.weeks) || !cr.weeks.length) return [];
+  var slot=String(sess.type).toLowerCase();
+  var wk=Math.min(cr.weeks.length, Math.max(1, weekForDate(sess.date)));
+  var c=Math.min(cr.weeks.length, Math.max(wk, currentWeek))-1;   // carry from this week at the earliest
+  var planW=cr.weeks[wk-1], nowW=cr.weeks[c], out=[];
+  sess.exercises.forEach(function(ex){
+    if(!ex || out.length>=2) return;
+    var pr=_progRow(planW, slot, ex.name), cur=_progRow(nowW, slot, ex.name);
+    if(!pr || !cur) return;
+    var P=parseFloat(pr.weight)||0, now=parseFloat(cur.weight)||0; if(!(P>0)) return;
+    var top=_prTop(ex); if(!top || !(top.w>0)) return;
+    var need=_repsNum(pr.reps); if(need>0 && !(top.r>=need)) return;
+    if(wDisp(top.w)-wDisp(P) < _plateStepDisp()-0.001) return;   // at least a plate over the plan
+    if(now >= top.w-0.05) return;                                  // the programme already asks for it
+    out.push({slot:sess.type, name:ex.name, to:top.w, from:P, c:c});
+  });
+  return out;
+}
+function _carrySeen(){ var a=lsGet('kt_carry_seen'); return Array.isArray(a)?a:[]; }
+function dismissCarry(id){ var a=_carrySeen().filter(function(x){ return x!==id; }); a.unshift(id); lsSet('kt_carry_seen', a.slice(0,30)); render(); }
+function carryForward(slot, name, lb, c){
+  c=(c>=0)?c:currentWeek-1;
+  return _commitRoutine(function(cr){ return _progCarryLoad(cr, String(slot).toLowerCase(), name, c, parseFloat(lb)||0, {markOwner:true}); },
+    {undoLabel:name+' carries '+fmtW(lb)+' forward', scope:'carry:'+Date.now()});
+}
+function _carryTap(btn, sessId){
+  var d=btn&&btn.dataset; if(!d) return;
+  if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10)) && sessId) { var a=_carrySeen(); if(a.indexOf(sessId)<0){ a.unshift(sessId); lsSet('kt_carry_seen', a.slice(0,30)); } }
+  var row=btn.closest && btn.closest('.kt-carry-row'); if(row) row.remove();
+}
+function _carryButtons(cands, sessId){
+  return cands.map(function(k){
+    return '<div class="kt-carry-row"><button type="button" class="btn btn-primary btn-full" style="padding:12px;font-size:14px;margin-top:8px;" data-s="'+_esc(k.slot)+'" data-n="'+_esc(k.name)+'" data-w="'+k.to+'" data-c="'+k.c+'" onclick="_carryTap(this,'+(sessId||0)+')">Carry '+_esc(fmtW(k.to))+' forward on '+_esc(k.name)+'</button></div>';
+  }).join('');
 }
 
 // Write a session edit into the programme through the engine: this week and
