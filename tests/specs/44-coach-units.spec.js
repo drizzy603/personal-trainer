@@ -8,6 +8,7 @@ run('kg/mi user: prompts, tool schemas and tool writes are all in kg and miles; 
       const r = {};
       setUnitW('kg'); setUnitD('mi');
       setBenchGoal(220.5); setBWGoal(176.4); setRunGoal('5:00'); // stored lb / per-km
+      lsSet('kt_weights', { 'Bench Press': 176.4 });   // a saved working weight (no demo fallback since 20260926-2)
       r.prompt = buildSystemPrompt();
       r.intake = buildIntakeSystemPrompt();
       r.tools = JSON.stringify(_cachedCoachTools());

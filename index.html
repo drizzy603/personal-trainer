@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260926-1"/>
+<meta name="build" content="20260926-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3213,7 +3213,8 @@ function todayISO() {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function fmtDate(iso) {
-  var d = new Date(iso+'T00:00:00');
+  var d = new Date(String(iso||'').slice(0,10)+'T00:00:00');
+  if(isNaN(d.getTime())) return '\u2014';   // an undated record read "Invalid Date"
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 // Parsed-value cache: renders re-read the same keys dozens of times, and the
@@ -3298,11 +3299,14 @@ function lsSet(k,v) {
     return false;
   }
 }
-function getWeights() { return lsGet('kt_weights')||defaultWeights(); }
+function getWeights() { return lsGet('kt_weights')||{}; }
 function getSessions() { return lsGet('kt_sessions')||[]; }
 function getRuns() { return lsGet('kt_runs')||[]; }
 function getWeek() { return lsGet('kt_week')||1; }
 
+// The demo programme's loads. Never read as the user's (getWeights() fell back to them, the
+// coach prompt listed them as CURRENT EXERCISE WEIGHTS, and the first finished session saved
+// them all); kept only so the boot sweep can take back the ones that were saved.
 function defaultWeights() {
   return {
     'Barbell Bench Press':165,'Incline Dumbbell Press':67.5,'Cable Fly':42.5,
@@ -9381,10 +9385,18 @@ function _plateMath(total){
 // only changes what the user sees and types. kg shows to 0.5 kg; miles and
 // per-mile paces convert on the way out and back.
 var LB_PER_KG=2.2046226218, KM_PER_MI=1.609344;
-function _uW(){ return localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb'; }
-function _uD(){ return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
-function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); _scheduleNativeSync(); render(); }
-function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); render(); }
+var _unitsAt=null;   // set only while a past coach tool call is labelled in the units it ran in
+function _uW(){ if(_unitsAt) return _unitsAt.w==='kg'?'kg':'lb'; return localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb'; }
+function _uD(){ if(_unitsAt) return _unitsAt.d==='mi'?'mi':'km'; return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
+// The morning coach card is text written in the old unit: it goes with the switch.
+function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
+function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); invalidateCoachCard(); coachCard=null; render(); }
+function _inUnitsOf(tc, fn){
+  var u=tc&&tc.units;
+  if(!u || _unitsAt || (u.w===_uW() && u.d===_uD())) return fn();
+  _unitsAt=u;
+  try{ return fn(); } finally { _unitsAt=null; }
+}
 // lb (stored) → display number in the chosen unit
 function wDisp(lb){ var v=parseFloat(lb)||0; if(_uW()==='kg') return Math.round(v/LB_PER_KG*2)/2; return Math.round(v*100)/100; }
 // display number (typed) → lb for storage
@@ -16080,14 +16092,21 @@ function _routineReadback(written){
   });
   return out;
 }
-function _snapshotRoutineForUndo(){
+// One undo point per scope: a coach reply that changes the programme three times is
+// undone as one (each tool used to overwrite the snapshot, so Undo reverted the last only).
+function _snapshotRoutineForUndo(scope){
+  if(scope && scope===_routineScope) return;
   try{
     var raw=localStorage.getItem('kt_routine');
     if(!raw) return;
     var prev=JSON.parse(raw);
     if(prev&&prev.weeks&&prev.weeks.length) lsSet('kt_routine_backup',prev);
+    _routineScope=scope||null;
   }catch(e){}
 }
+var _coachTurnScope=null, _coachSoloN=0;
+// Inside a reply every change shares the reply's scope; a call outside one is its own.
+function _coachScope(){ return _coachTurnScope || ('coach:solo:'+(++_coachSoloN)); }
 
 // Every coach tool: if any save failed while it ran (or a raw write threw on quota), the
 // coach is told so instead of "logged" / "updated" (body weight, goals, profile, week,
@@ -16293,7 +16312,7 @@ function _executeCoachToolRaw(name,input){
       }
       // The undo point is taken only when something will be saved (a rejected call used to
       // overwrite Restore Previous with the current programme).
-      if(written.length||planSupplied) _snapshotRoutineForUndo();
+      if(written.length||planSupplied) _snapshotRoutineForUndo(_coachScope());
       if((written.length||planSupplied) && !setCustomRoutine(cr)) return {ok:false,error:'Could not save the programme: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
@@ -16335,7 +16354,7 @@ function _executeCoachToolRaw(name,input){
       var dowB=DOW_FROM_NAME[input.dayB];
       if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
       if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
-      _snapshotRoutineForUndo();   // after validation: a rejected call must not burn the undo point
+      _snapshotRoutineForUndo(_coachScope());   // after validation: a rejected call must not burn the undo point
       if(input.scope==='global'){
         var crG=getCustomRoutine();
         if(!crG) return {ok:false,error:'No routine yet'};
@@ -16408,7 +16427,7 @@ function _executeCoachToolRaw(name,input){
         // The coach changed it at the user's request: this is now the programme's version.
         for(var j=cE;j<cr.weeks.length;j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
         return n;
-      }, {scope:_routineScope||('coach:'+Date.now())});
+      }, {scope:_coachScope()});
       if(!resE) return {ok:false,error:(whyE||'nothing to change')+'. Nothing was changed.'};
       var crR=getCustomRoutine(), series=[];
       for(var jj=cE;jj<crR.weeks.length;jj++){
@@ -16433,7 +16452,7 @@ function _executeCoachToolRaw(name,input){
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {}); }, {noRender:true, scope:_routineScope||('coach:'+Date.now())});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {}); }, {noRender:true, scope:_coachScope()});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
@@ -16739,6 +16758,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   var _cutShort=false;
   var totalText='';
   var allToolCalls=[];
+  _coachTurnScope='coach:'+Date.now();   // this reply's changes share one undo point
   var hadError=false;
   // Error copy is deferred to after the loop so partial work (text + already
   // executed tool calls) can be committed FIRST — a dropped connection used
@@ -16880,7 +16900,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // Execute each tool and build tool_result blocks
     var toolResultBlocks=toolUses.map(function(tu){
       var out=executeCoachTool(tu.name,tu.input);
-      var call={name:tu.name,input:tu.input,result:out};
+      var call={name:tu.name,input:tu.input,result:out,units:{w:_uW(),d:_uD()}};
       allToolCalls.push(call);
       _runningTools.push(call);
       return {
@@ -16897,6 +16917,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
   _runningTools=[];
   _streamingTool=null;
+  _coachTurnScope=null;
   // Silent truncation looked like a finished answer. Name it.
   if(!errText && t>=MAX_TURNS) errText='The coach used up its '+MAX_TURNS+' turns before finishing \u2014 this reply may be incomplete. Tap Try again or ask it to continue.';
   else if(!errText && _cutShort) errText='That reply hit the length limit and may be incomplete \u2014 ask the coach to continue.';
@@ -16967,7 +16988,7 @@ function _backupWeightFor(name){
 }
 function _planChangeLedger(tools, idx){
   var rows=[];
-  (tools||[]).forEach(function(tc){
+  (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
     if(!tc || !tc.result || tc.result.ok===false) return;
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
@@ -16982,7 +17003,7 @@ function _planChangeLedger(tools, idx){
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||''))))]); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
     else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
-  });
+  }); });
   if(!rows.length) return '';
   var canUndo=!!(lsGet('kt_routine_backup')&&lsGet('kt_routine_backup').weeks);
   return '<div class="kt-ledger-card">'+
@@ -16997,7 +17018,8 @@ function _planChangeLedger(tools, idx){
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
 function _ledgerUndo(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } restoreRoutineBackup(); }
-function toolCallLabel(tc){
+function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
+function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
     // Prefer what was actually written (result.weeks) over what was requested —
@@ -17919,6 +17941,17 @@ function _buildThemeRows(){
 // drag zone (body content keeps normal scrolling); drag past 90px or flick
 // to dismiss. Animates the sheet element itself, which is created once per
 // open — remount-safe, unlike sheet rows.
+// Escape closes the top sheet even when focus has left it: a tap on a sheet's text
+// moves focus to <body>, and the sheet's own keydown listener never heard the key.
+document.addEventListener('keydown', function(e){
+  if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
+  var ovs=document.querySelectorAll('.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg');
+  if(!ovs.length) return;
+  var top=ovs[ovs.length-1];
+  if(top.contains(e.target)) return;   // its own listener has it
+  e.preventDefault();
+  top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
+});
 function _sheetDrag(overlay, closeFn){
   var sheet=overlay.querySelector('.kt-sheet');
   if(!sheet) return;
@@ -19057,7 +19090,6 @@ function _renderExLibList(){
   var todayD=new Date(todayISO()+'T00:00:00');
   function rowHTML(ex){
     var expanded=_libExpanded===ex.name;
-    var safeN=ex.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     var isCustom=!!ex._custom;
     var hist=_exSessionHistory(ex.name, 6);
     // Right column: last-used + load in mono; stale goes dimmer (no load).
@@ -19073,7 +19105,7 @@ function _renderExLibList(){
     } else {
       right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
     }
-    var html='<div onclick="toggleLibEx(\''+safeN+'\')" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
+    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
     html+='<div style="display:flex;align-items:center;gap:10px;">';
     html+='<div style="flex:1;min-width:0;">';
     html+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.name)+'</span>'+
@@ -19081,7 +19113,7 @@ function _renderExLibList(){
     html+='<div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.equip)+' · '+_esc(ex.muscles.toLowerCase())+'</div>';
     html+='</div>';
     html+=right;
-    if(isCustom)html+='<button onclick="event.stopPropagation();deleteCustomEx(\''+safeN+'\')" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
     html+='</div>';
     if(expanded) html+=_exDetailHTML(ex, hist, isCustom);
     html+='</div>';
@@ -19499,6 +19531,23 @@ loadCoachHistory();
       });
     });
     if(moved) setCustomRoutine(_mig);
+  }catch(e){}
+})();
+// Once: take back the demo loads the first finished session saved as the user's own —
+// an entry still at its demo value for a lift that was never logged.
+(function(){
+  try{
+    if(localStorage.getItem('kt_demo_w_swept')) return;
+    var kw=lsGet('kt_weights'), dm=defaultWeights(), logged={}, gone=0;
+    if(kw && typeof kw==='object'){
+      getSessions().forEach(function(ss){ ((ss&&ss.exercises)||[]).forEach(function(e){ if(e&&e.name) logged[e.name]=1; }); });
+      Object.keys(dm).forEach(function(k){
+        if(kw[k]===undefined || logged[k]) return;
+        if(Math.abs((parseFloat(kw[k])||0)-dm[k])<0.05){ delete kw[k]; gone++; }
+      });
+      if(gone && !lsSet('kt_weights', kw)) return;
+    }
+    localStorage.setItem('kt_demo_w_swept','1');
   }catch(e){}
 })();
 _restoreRunnerDraft();

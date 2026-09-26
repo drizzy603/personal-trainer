@@ -136,7 +136,7 @@ run('PR history: derived records, pills, sheet, detail row, units, rooms, edits'
       // the library row that leads to the detail speaks the display unit too
       const ss = getSessions(); ss.unshift({ id: 9901, date: todayISO(), type: 'Push', prs: [], exercises: [{ name: BBP, sets: 1, reps: [12], weight: 25, weightLog: [25] }] }); lsSet('kt_sessions', ss);
       localStorage.setItem('kt_unit_w', 'kg'); openExLib(BBP);
-      r.a14row = txt(qa('#exlibList [onclick^="toggleLibEx"]').find(el => el.getAttribute('onclick') === "toggleLibEx('" + BBP + "')")); closeExLib(); localStorage.setItem('kt_unit_w', 'lb');
+      r.a14row = txt(qa('#exlibList [data-n]').find(el => el.dataset.n === BBP && el.tagName === 'DIV')); closeExLib(); localStorage.setItem('kt_unit_w', 'lb');
 
       // 20. hundreds of sessions
       const G = []; const base = new Date('2023-01-02T00:00:00');
