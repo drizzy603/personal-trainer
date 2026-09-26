@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260925-12"/>
+<meta name="build" content="20260926-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1272,6 +1272,12 @@ html[data-room="dark"] .kt-rt-you{color:var(--text);}   /* Lime: a status label 
 .kt-rt-chips{display:flex;flex-wrap:wrap;gap:6px;}
 .kt-rt-chip{min-height:38px;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;}
 .kt-rt-chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-nr-day{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin:14px 0 2px;}
+.kt-nr-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--border);}
+.kt-nr-n{font-size:15px;font-weight:700;overflow-wrap:anywhere;}
+.kt-nr-s{font-size:12.5px;color:var(--muted);}
+.kt-nr-s b{color:var(--text);font-weight:700;}
+.kt-nr-lbl{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);margin:16px 0 8px;}
 .kt-rt-cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;}
 .kt-rt-cell{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;}
 .kt-rt-cell .k{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--muted);}
@@ -3331,7 +3337,7 @@ function openRoutineArchiveModal(){
   } else {
     rows=arr.map(function(entry){
       var r=entry.routine;
-      var name=r.blockName||r.name||'Programme';
+      var name=(r.blockName||r.name||'Programme')+((parseInt(r.cycle,10)||1)>1?' \u00b7 round '+parseInt(r.cycle,10):'');
       var wks=r.weeks?r.weeks.length:0;
       var ds=entry.archivedAt?fmtDate(entry.archivedAt):'';
       return '<div style="background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:10px;">'+
@@ -3387,6 +3393,7 @@ function startNewProgramme(){
   _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
     archiveCurrentRoutine();
     clearCustomRoutine();
+    lsDel('kt_routine_next'); lsDel('kt_round_intro');
     _setWeek(1);
     _setIntakeMode(false);
     clearCoachHistory();
@@ -3873,7 +3880,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_final_since','kt_round_intro'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -4872,6 +4879,7 @@ function _setWeek(n, mondayISO){
   try{ localStorage.setItem('kt_week_monday', mondayISO || _mostRecentMonday()); }
   catch(e){ lsSet('kt_week', currentWeek); return false; }
   currentWeek=n;
+  try{ if(n>=getTotalWeeks()) localStorage.setItem('kt_final_since', mondayISO || _mostRecentMonday()); else localStorage.removeItem('kt_final_since'); }catch(e){}
   return true;
 }
 // The ONE door for a NEW programme: week 1 day 1 on the next Monday. Restores,
@@ -4882,6 +4890,7 @@ function _setWeek(n, mondayISO){
 // from the previous block's stall, or a week wrap labelling old week-12
 // sessions "WEEK 1 WRAPPED", lands on day one of a brand-new programme.
 function _startProgramme(){
+  lsDel('kt_routine_next'); lsDel('kt_round_intro');
   _setWeek(1, _nextMonday(todayISO()));
   lsSet('kt_last_plateau_week', 1);
   lsSet('kt_last_prog_week', 1);
@@ -4919,6 +4928,7 @@ function _nextMonday(iso){
 function _weekAnchor(){ return localStorage.getItem('kt_week_monday') || _mostRecentMonday(); }
 function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 function autoAdvanceWeek(){
+  _applyNextRound(false);
   var total=getTotalWeeks();
   var stored=localStorage.getItem('kt_week_monday');
   var thisMonday=_mostRecentMonday();
@@ -4932,6 +4942,9 @@ function autoAdvanceWeek(){
     // still follow the calendar — a frozen anchor made the next restore,
     // rebuild or extension jump forward by every week spent parked here.
     localStorage.setItem('kt_week_monday',thisMonday);
+    // The Monday the final week began is kept apart, so "the programme ended"
+    // can be told from "this is its last week" (a page from before this knew neither).
+    if(total && !localStorage.getItem('kt_final_since')) localStorage.setItem('kt_final_since',thisMonday);
     return;
   }
   if(!stored){ localStorage.setItem('kt_week_monday',thisMonday); return; }
@@ -4946,6 +4959,7 @@ function autoAdvanceWeek(){
     return;
   }
   var newWeek=Math.min(total,currentWeek+elapsed);
+  if(newWeek===total && currentWeek<total){ try{ localStorage.setItem('kt_final_since', addDays(stored, 7*(total-currentWeek))); }catch(e){} }
   if(newWeek!==currentWeek){
     currentWeek=newWeek;
     lsSet('kt_week',currentWeek);
@@ -6583,11 +6597,15 @@ function renderTodayEditorial(){
   // Priority: live-on-watch > resume > welcome-back > Watch quick-log >
   // review > plateau > recovery > progression > wrapped > debrief.
   var watchCard=_healthCardSlot(true);
+  var roundCard=null, roundIntro=null;
+  try{ roundCard=_nextRoundCard(); roundIntro=_roundIntroCard(); }catch(e){}
   var cands=[];
   if(watchLiveBanner) cands.push({id:'watchlive', label:'ON WRIST', dot:'var(--accent-ink)', html:watchLiveBanner});
   if(resumeBanner) cands.push({id:'resume', label:'IN PROGRESS', dot:'var(--accent-ink)', html:resumeBanner});
   if(lapseBanner) cands.push({id:'lapse', label:'WELCOME BACK', dot:'var(--accent-ink)', html:lapseBanner});
   if(watchCard) cands.push({id:'watch', label:'APPLE WATCH', dot:'var(--accent-ink)', html:watchCard});
+  if(roundIntro) cands.push(roundIntro);
+  if(roundCard && roundCard.rank==='early') cands.push(roundCard);   // the programme has ended: week 12 is repeating
   // Sunday's wrap card is the more current thing; the review is Monday's follow-up.
   if(weekWrapCard) cands.push({id:'weekwrap', label:'WRAPPED', dot:'var(--accent-ink)', html:weekWrapCard});
   if(reviewBanner) cands.push({id:'review', label:'REVIEW', dot:'var(--accent-ink)', html:reviewBanner});
@@ -6595,8 +6613,10 @@ function renderTodayEditorial(){
   if(recoveryBanner) cands.push({id:'recovery', label:'RECOVERY', dot:'var(--red)', html:recoveryBanner});
   if(progressionBanner) cands.push({id:'progression', label:'+'+fmtW(5).toUpperCase(), dot:'var(--accent-ink)', html:progressionBanner});
   if(carryBanner) cands.push({id:'carry', label:'CARRY FORWARD', dot:'var(--accent-ink)', html:carryBanner});   // after the programme's own progression
+  if(roundCard && roundCard.rank==='mid') cands.push(roundCard);
   if(wrapBanner) cands.push({id:'wrap', label:'MONTH', dot:'var(--accent-ink)', html:wrapBanner});
   if(debriefCard) cands.push({id:'debrief', label:'DEBRIEF', dot:'var(--accent-ink)', html:debriefCard});
+  if(roundCard && roundCard.rank==='late') cands.push(roundCard);
   var activeSlot=null;
   for(var ci=0;ci<cands.length;ci++){ if(cands[ci].id===todayBannerOverride){ activeSlot=cands[ci]; break; } }
   if(!activeSlot) activeSlot=cands[0]||null;
@@ -10548,10 +10568,11 @@ function _paintRoutines(){
     '<div class="kt-sheet-head"><div><div class="screen-eyebrow" style="color:var(--muted);">ROUTINES · WEEK '+(c+1)+' OF '+total+'</div>'+
       '<div class="kt-sheet-title" id="rtTitle" tabindex="-1">Your days</div></div>'+
       '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeRoutines()">✕</button></div>'+
-    '<div class="kt-rt-sub">'+(starter?'Your starter plan':'Built by your coach')+(nCh?' · '+_plural(nCh,'change')+' by you':'')+
+    '<div class="kt-rt-sub">'+((parseInt(cr.cycle,10)||1)>1?'Round '+parseInt(cr.cycle,10)+' of your programme':starter?'Your starter plan':'Built by your coach')+(nCh?' · '+_plural(nCh,'change')+' by you':'')+
       '. A change here goes into week '+(c+1)+' and every week after, and keeps the programme\u2019s climb.</div>'+
     (runnerSession||runnerOpen?'<div class="kt-rt-note">Today\u2019s session keeps the plan it started with; changes apply from your next session.</div>':'')+
     cards+
+    _rtRoundRow(cr)+
     '<button type="button" class="btn btn-ghost btn-full" style="margin-top:6px;padding:11px;font-size:13px;" onclick="closeRoutines();openProgrammeModal();">Week by week ›</button>';
   _a11yPass();
 }
@@ -10701,6 +10722,7 @@ function _rtRemove(){
 function _carryCandidates(sess){
   if(!sess || !Array.isArray(sess.exercises) || LIFT_TYPES.indexOf(sess.type)<0) return [];
   var cr=getCustomRoutine(); if(!cr || !Array.isArray(cr.weeks) || !cr.weeks.length) return [];
+  if(String(sess.date||'').slice(0,10) < _roundStartISO()) return [];   // logged before this programme (a new round starts lower)
   var slot=String(sess.type).toLowerCase();
   var wk=Math.min(cr.weeks.length, Math.max(1, weekForDate(sess.date)));
   var c=Math.min(cr.weeks.length, Math.max(wk, currentWeek))-1;   // carry from this week at the earliest
@@ -10729,6 +10751,230 @@ function _carryTap(btn, sessId){
   var d=btn&&btn.dataset; if(!d) return;
   if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10)) && sessId) { var a=_carrySeen(); if(a.indexOf(sessId)<0){ a.unshift(sessId); lsSet('kt_carry_seen', a.slice(0,30)); } }
   var row=btn.closest && btn.closest('.kt-carry-row'); if(row) row.remove();
+}
+// ── Next round ───────────────────────────────────────────────────────────────
+// When a programme runs out the counter parks on its last week, and before this
+// that week (usually a deload) simply repeated until someone noticed. The next
+// round is the same programme week for week (days, lifts, sets, reps, cadence,
+// runs and sports) with every weighted lift re-based on what the owner proved
+// this round: about 10% under the best estimated at the lift's own reps, at
+// least a plate over where this round started it, never above that best. The
+// engine then carries it through the weeks with the programme's own steps. It
+// is set for a start date and built on that morning from the programme as it
+// stands then, so the final week's sessions and edits count.
+function _roundInfo(){
+  var cr=getCustomRoutine(); if(!cr || !_programmeStarted()) return null;
+  var total=cr.weeks.length; if(currentWeek<total) return null;
+  var since=localStorage.getItem('kt_final_since')||_weekAnchor();
+  var end=addDays(since,6);
+  return {total:total, since:since, endISO:end, ended:todayISO()>end};
+}
+// The Monday this round's week 1 began.
+function _roundStartISO(){
+  var ri=_roundInfo();
+  return ri ? addDays(ri.since, -7*(ri.total-1)) : addDays(_weekAnchor(), -7*(currentWeek-1));
+}
+function _nextRoundSet(){
+  var p=lsGet('kt_routine_next');
+  return (p && typeof p==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(p.startsOn||''))) ? p : null;
+}
+// The Monday a following round starts: the one after the final week, else the
+// first Monday after today.
+function _nextRoundMonday(){
+  var ri=_roundInfo();
+  if(ri && !ri.ended) return addDays(ri.since, 7);
+  return _nextMonday(addDays(todayISO(),1));
+}
+function _nrCanToday(){ return ((new Date().getDay()+6)%7)!==6; }   // on a Sunday week 1 starts tomorrow anyway
+function _nrDay(iso){
+  var d=new Date(String(iso)+'T00:00:00');
+  return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
+}
+function _nextRoundBuild(cr){
+  var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), from=_roundStartISO(), best={}, rows=[], seen={};
+  nr.cycle=(parseInt(cr.cycle,10)||1)+1;
+  // A new round is the programme's own version: no "edited by you" marks.
+  W.forEach(function(w){
+    if(!w) return; delete w.recOut;
+    LIFT_KEYS.forEach(function(k){ if(Array.isArray(w[k])) w[k].forEach(function(r){ if(r) delete r.rec; }); });
+  });
+  getSessions().forEach(function(s){
+    if(!s || !Array.isArray(s.exercises) || String(s.date||'').slice(0,10)<from) return;
+    s.exercises.forEach(function(ex){
+      if(!ex || !ex.name) return;
+      _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)) best[ex.name]=e; } });
+    });
+  });
+  for(var c=0;c<W.length;c++){
+    if(!W[c] || _isDeloadWk(W[c])) continue;
+    LIFT_KEYS.forEach(function(k){
+      (Array.isArray(W[c][k])?W[c][k]:[]).forEach(function(r){
+        if(!r || !r.name || seen[k+'|'+r.name]) return;
+        seen[k+'|'+r.name]=1;
+        var P=parseFloat(r.weight)||0; if(!(P>0)) return;   // bodyweight and "your load" rows stay as they are
+        var it={slot:k, name:r.name, main:!!r.isMain, from:P, to:P, best:0, reps:_repsNum(r.reps)||1}, e=best[r.name];
+        if(e>0){
+          var atR=e/(1+Math.min(it.reps,10)/30);
+          it.best=atR;
+          var N=_snapU(Math.min(atR, Math.max(atR*0.9, P+pl)));
+          if(N>atR+0.05) N=_snapU(N-pl);
+          if(N>P+0.05){ _progCarryLoad(nr, k, r.name, c, N, {}); it.to=N; }
+        }
+        rows.push(it);
+      });
+    });
+  }
+  return {routine:nr, rows:rows};
+}
+// Swaps the set round in on its start morning (autoAdvanceWeek), or now.
+function _applyNextRound(now){
+  var p=_nextRoundSet(); if(!p) return null;
+  if(!now && todayISO()<p.startsOn) return null;
+  var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
+  var nb=_nextRoundBuild(cr);
+  archiveCurrentRoutine();
+  if(!setCustomRoutine(nb.routine)) return null;   // storage full: this round stays, and the next stays set
+  lsDel('kt_routine_next');
+  var start=now ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
+  _setWeek(1, start);
+  if(now){
+    // Days already gone in week 1 are not owed (as startProgrammeNow).
+    var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
+    for(var i=0;i<7;i++){ var d=addDays(start,i); if(d>=todayISO()) break; var e=p1[i]; if(e && !e.isRest && e.type) saveSkip(d, e.type); }
+  }
+  // As _startProgramme: the once-a-week cards must not judge the new round by the old one.
+  lsSet('kt_last_plateau_week', 1);
+  lsSet('kt_last_prog_week', 1);
+  lsSet('kt_last_weekwrap', _mostRecentMonday());
+  var top=nb.rows.filter(function(x){ return x.to>x.from; })
+    .sort(function(a,b){ return ((b.main?1:0)-(a.main?1:0)) || ((b.to-b.from)-(a.to-a.from)); })
+    .slice(0,3).map(function(x){ return {name:x.name, to:x.to}; });
+  lsSet('kt_round_intro', {cycle:nb.routine.cycle, top:top, until:addDays(start,7)});
+  invalidateCoachCard(); coachCard=null; _todayActMemo=null;
+  return nb;
+}
+function setNextRound(when){
+  var cr=getCustomRoutine(); if(!cr) return false;
+  var prev=_nextRoundSet();
+  if(when==='today' && _nrCanToday()){
+    if(!lsSet('kt_routine_next', {startsOn:todayISO(), at:todayISO()})) return false;
+    var nb=_applyNextRound(true);
+    if(!nb){ if(prev) lsSet('kt_routine_next', prev); else lsDel('kt_routine_next'); return false; }
+    closeNextRound();
+    showToast('Round '+nb.routine.cycle+' started — week 1 is on the card');
+    render();
+    return true;
+  }
+  var mon=_nextRoundMonday();
+  if(!lsSet('kt_routine_next', {startsOn:mon, at:todayISO()})) return false;
+  closeNextRound();
+  showToast('Round '+((parseInt(cr.cycle,10)||1)+1)+' starts '+_nrDay(mon));
+  invalidateCoachCard(); render();
+  return true;
+}
+function cancelNextRound(){
+  var p=_nextRoundSet(); if(!p) return;
+  lsDel('kt_routine_next');
+  closeNextRound();
+  showUndoToast('Next round cancelled', function(){ lsSet('kt_routine_next', p); invalidateCoachCard(); render(); });
+  invalidateCoachCard(); render();
+}
+function snoozeNextRound(){ lsSet('kt_round_snooze', getMondayISO()); render(); }
+var _nrWhen='monday';
+function openNextRound(){
+  if(!hasCustomRoutine()) return;
+  var ri=_roundInfo(), p=_nextRoundSet();
+  _nrWhen=(!p && ri && ri.ended && _nrCanToday()) ? 'today' : 'monday';
+  var prev=document.getElementById('nextRoundOverlay'); if(prev) prev.remove();
+  var overlay=document.createElement('div');
+  overlay.id='nextRoundOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet kt-rt-sheet" role="dialog" aria-modal="true" aria-labelledby="nrTitle" id="nrSheet"></div>';
+  document.body.appendChild(overlay);
+  _paintNextRound();
+  _sheetDrag(overlay, closeNextRound);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeNextRound(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closeNextRound(); } });
+  var t=document.getElementById('nrTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
+}
+function closeNextRound(){ var el=document.getElementById('nextRoundOverlay'); if(el) el.remove(); }
+function _nrSetWhen(w){ _nrWhen=w; _paintNextRound(); }
+function _paintNextRound(){
+  var sh=document.getElementById('nrSheet'); if(!sh) return;
+  var cr=getCustomRoutine(); if(!cr){ closeNextRound(); return; }
+  var nb=_nextRoundBuild(cr), total=cr.weeks.length, nxt=nb.routine.cycle, ri=_roundInfo(), p=_nextRoundSet();
+  var mon=p?p.startsOn:_nextRoundMonday(), canToday=_nrCanToday();
+  if(_nrWhen==='today' && !canToday) _nrWhen='monday';
+  var by={};
+  nb.rows.forEach(function(x){ (by[x.slot]=by[x.slot]||[]).push(x); });
+  var list=LIFT_TYPES.map(function(t){
+    var a=by[t.toLowerCase()]; if(!a || !a.length) return '';
+    return '<div class="kt-nr-day">'+_esc(_dayLabel(t))+'</div>'+a.map(function(x){
+      var load=x.to>x.from ? _esc(fmtW(x.from))+' → <b>'+_esc(fmtW(x.to))+'</b>' : 'stays at '+_esc(fmtW(x.from));
+      var why=x.best>0 ? (x.to>x.from ? 'you reached about '+fmtW(_snapU(x.best))+' × '+x.reps : 'not past where it started yet') : 'not logged this round';
+      return '<div class="kt-nr-row"><span class="kt-nr-n">'+_esc(x.name)+(x.main?' <span class="kt-bd-tag">MAIN</span>':'')+'</span><span class="kt-nr-s">'+load+' · '+_esc(why)+'</span></div>';
+    }).join('');
+  }).join('');
+  var left=total-currentWeek;
+  var ctx=ri ? (ri.ended ? 'This programme ended '+_nrDay(ri.endISO)+'. Week '+total+' repeats until the next round starts.' : 'This is the last week of the programme. It ends '+_nrDay(ri.endISO)+'.')
+             : (left>0 ? 'This programme has '+_plural(left,'week')+' left after this one. Starting the next round ends it early.' : '');
+  if(_nrWhen==='monday') ctx+=(ctx?' ':'')+'The round is built on the morning it starts, so sessions before then still count.';
+  var keep=!!(p && _nrWhen==='monday' && p.startsOn===mon);
+  var go=_nrWhen==='today' ? 'Start round '+nxt+' today' : (keep ? 'Keep it for '+_nrDay(mon) : 'Start round '+nxt+' on '+_nrDay(mon));
+  sh.innerHTML=
+    '<div class="kt-sheet-head"><div><div class="screen-eyebrow" style="color:var(--muted);">'+(p?'SET · ':'')+'ROUND '+nxt+' · '+_plural(total,'WEEK').toUpperCase()+'</div>'+
+      '<div class="kt-sheet-title" id="nrTitle" tabindex="-1">Your next '+_plural(total,'week')+'</div></div>'+
+      '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeNextRound()">✕</button></div>'+
+    '<div class="kt-rt-sub">The same days, lifts, sets and reps, week for week. Each lift starts about 10% under your best from this round and climbs past it the same way. Runs and sports stay as they are.</div>'+
+    (ctx?'<div class="kt-rt-note">'+_esc(ctx)+'</div>':'')+
+    (list||'<div class="kt-rt-empty">No weighted lifts to re-base: the next round repeats this one.</div>')+
+    '<div class="kt-nr-lbl">STARTS</div>'+
+    '<div class="kt-rt-chips">'+
+      '<button type="button" class="kt-rt-chip'+(_nrWhen==='monday'?' on':'')+'" aria-pressed="'+(_nrWhen==='monday')+'" onclick="_nrSetWhen(\'monday\')">'+_esc(_nrDay(mon))+'</button>'+
+      (canToday?'<button type="button" class="kt-rt-chip'+(_nrWhen==='today'?' on':'')+'" aria-pressed="'+(_nrWhen==='today')+'" onclick="_nrSetWhen(\'today\')">Today</button>':'')+
+    '</div>'+
+    '<button type="button" class="btn btn-primary btn-full" id="nrGo" style="padding:14px;font-size:15px;margin-top:14px;" onclick="'+(keep?'closeNextRound()':'setNextRound(_nrWhen)')+'">'+_esc(go)+'</button>'+
+    (p?'<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="cancelNextRound()">Cancel the next round</button>':'')+
+    '<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="closeNextRound();startNewProgramme();">Start something different</button>';
+  _a11yPass();
+}
+// Today: the last week, the end, a set round, and week 1 of a new round.
+function _nextRoundCard(){
+  var cr=getCustomRoutine(); if(!cr) return null;
+  var p=_nextRoundSet(), total=cr.weeks.length, nxt=(parseInt(cr.cycle,10)||1)+1;
+  var cta=function(lbl){ return '<button class="kt-resume-cta" onclick="openNextRound()">'+lbl+'</button>'; };
+  if(p) return {id:'round', label:'ROUND '+nxt, rank:'late', dot:'var(--accent-ink)', html:'<div class="kt-resume-banner"><div><div class="kt-resume-eyebrow">YOUR NEXT '+_plural(total,'WEEK').toUpperCase()+' ARE SET</div>'+
+    '<div class="kt-resume-ttl">Round '+nxt+' starts '+_esc(_nrDay(p.startsOn))+', built from your best lifts of this round.</div></div>'+
+    '<div class="kt-resume-actions">'+cta('See it →')+'</div></div>'};
+  var ri=_roundInfo(); if(!ri) return null;
+  if(lsGet('kt_round_snooze')===getMondayISO()) return null;
+  var tt=ri.ended ? 'It ended '+_nrDay(ri.endISO)+'. Week '+total+' repeats until your next '+_plural(total,'week')+' start.'
+                  : 'It ends '+_nrDay(ri.endISO)+'. Your next '+_plural(total,'week')+' can pick up from here: same days and lifts, starting heavier.';
+  return {id:'round', label:ri.ended?'PROGRAMME DONE':'LAST WEEK', rank:ri.ended?'early':'mid', dot:'var(--accent-ink)', html:'<div class="kt-resume-banner"><div><div class="kt-resume-eyebrow">'+(ri.ended?'PROGRAMME DONE':'LAST WEEK OF THE PROGRAMME')+'</div>'+
+    '<div class="kt-resume-ttl">'+_esc(tt)+'</div></div>'+
+    '<div class="kt-resume-actions"><button class="kt-resume-discard" onclick="snoozeNextRound()">Not now</button>'+cta(ri.ended?'Start the next round →':'Set it up →')+'</div></div>'};
+}
+function _roundIntroCard(){
+  var it=lsGet('kt_round_intro'); if(!it || typeof it!=='object') return null;
+  if(currentWeek>1 || !(todayISO()<String(it.until||''))) return null;
+  var n=parseInt(it.cycle,10)||2, top=Array.isArray(it.top)?it.top:[];
+  var tt=top.length ? 'Every lift starts from what you proved last round: '+top.map(function(x){ return x.name+' '+fmtW(x.to); }).join(', ')+'.' : 'Same days and lifts, carried on from last round.';
+  return {id:'roundintro', label:'ROUND '+n, dot:'var(--accent-ink)', html:'<div class="kt-resume-banner"><div><div class="kt-resume-eyebrow">ROUND '+n+' · WEEK 1</div>'+
+    '<div class="kt-resume-ttl">'+_esc(tt)+'</div></div>'+
+    '<div class="kt-resume-actions"><button class="kt-resume-discard" onclick="lsDel(\'kt_round_intro\');render();">Got it</button><button class="kt-resume-cta" onclick="lsDel(\'kt_round_intro\');render();openRoutines();">See your days →</button></div></div>'};
+}
+function _rtRoundRow(cr){
+  var p=_nextRoundSet(), total=cr.weeks.length, nxt=(parseInt(cr.cycle,10)||1)+1;
+  var sub=p ? 'Round '+nxt+' starts '+_nrDay(p.startsOn) : 'Same days and lifts, starting from your best';
+  return '<button type="button" class="btn btn-ghost btn-full" style="margin-top:6px;padding:11px;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="closeRoutines();openNextRound();">Your next '+_plural(total,'week')+' ›<span style="font-size:11.5px;font-weight:500;color:var(--muted);">'+_esc(sub)+'</span></button>';
+}
+function _nextRoundPrompt(){
+  var cr=getCustomRoutine(); if(!cr) return '';
+  var out='', ri=_roundInfo(), p=_nextRoundSet(), cy=parseInt(cr.cycle,10)||1, total=cr.weeks.length;
+  if(cy>1) out+=' — round '+cy+' of this programme (the app rebuilt it from round '+(cy-1)+' with every weighted lift re-based on the user\u2019s best)';
+  if(ri) out+=ri.ended ? ' — THE PROGRAMME HAS ENDED ('+ri.endISO+'); its last week repeats until the next round starts' : ' — the LAST week of the programme (it ends '+ri.endISO+')';
+  if(p) out+='. The user has set the next round to start '+p.startsOn+': the app rebuilds this programme week for week with each weighted lift starting about 10% under their best this round; you can edit it once it starts';
+  else if(ri) out+='. Settings > Routines > "Your next '+total+' weeks" (or the Today card) starts the next round on the phone; offer it, or a new programme if they want something different';
+  return out;
 }
 function _carryButtons(cands, sessId){
   return cands.map(function(k){
@@ -16926,6 +17172,7 @@ function buildSystemPrompt(){
   p+='\nHow the counter works: it advances by one every Monday from the week that was set (by the user, the week stepper, or your set_current_week). It is NOT derived from logged sessions. Weeks before the current one are locked against rewriting.';
   p+='\nThe week counter is the user\'s to set. If they state the week or ask to change it ("it\'s week 1 now", "put me on week 3"), call set_current_week with that number in the SAME turn. Never explain the numbering instead, never call it "just a label", never suggest waiting. They can also change it themselves with the \u2212 / + stepper under the week number on the Log tab.';
   if(!_programmeStarted()) p+=' — NOT STARTED YET: week 1 day 1 is Monday '+_weekAnchor()+'. Nothing is scheduled before then; do not tell them they are mid-week.';
+  try{ p+=_nextRoundPrompt(); }catch(e){}
   if(cr&&cr.name)p+=' ('+cr.name+')';
   p+='\n';
   p+=_profilePrompt();
@@ -20297,7 +20544,7 @@ window._trovoOpen=_handleDeepLink;
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "settings"
 //   "coach" (home) | "coach/chat"
-//   "modal/programme" | "modal/build" | "modal/routines"
+//   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
 (function(){
   try {
@@ -20317,6 +20564,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
         if(head==='modal' && sub==='routines'){ openRoutines(); }
+        if(head==='modal' && sub==='nextround'){ openNextRound(); }
         if(head==='modal' && sub==='build'){ var _bt=null; try{ _bt=getTodayActivity(); }catch(e){} openBuildDay(_bt && _bt.type==='lift' ? _bt.dayName : 'Arms'); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
