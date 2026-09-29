@@ -49,7 +49,7 @@ run('kg + mi: totals, posters, library, runs and sport fields follow the unit se
       r.week = grab(() => _drawWeekCard(wst, '#d8ff63'));
       const mk = today.slice(0, 7), mst = _monthStats(mk); r.monthVol = pv(mst.volume);
       r.month = grab(() => _drawWrapCard(mk, mst, '#d8ff63'));
-      r.share = grab(() => _drawShareCard(getSessions()[0], '#d8ff63', '#000', '#fff', '#888', '#999', '#222', '#fd0'));
+      r.share = grab(() => _paintShareCard(_shareCardModel(getSessions()[0]), _shareCardPalette()));
       CanvasRenderingContext2D.prototype.fillText = rf;
 
       // ── exercise library ──
@@ -98,7 +98,7 @@ run('kg + mi: totals, posters, library, runs and sport fields follow the unit se
     assert(out.wrap && out.wrap.lbl === 'Volume kg' && /^1\.1k$/.test(out.wrap.val), 'the Today week wrap: ' + JSON.stringify(out.wrap));
     assert(out.week.includes(out.weekVol.kg) && out.week.includes('KG VOLUME') && !out.week.includes(out.weekVol.lb), 'the week poster: ' + JSON.stringify([out.weekVol, out.week]));
     assert(out.month.includes(out.monthVol.kg) && out.month.includes('VOLUME KG') && !out.month.includes(out.monthVol.lb), 'the monthly poster (the lb total was labelled KG): ' + JSON.stringify([out.monthVol, out.month]));
-    assert(out.share.includes(out.volKg) && out.share.includes('KG VOLUME') && !out.share.includes('2,400'), 'the session poster: ' + JSON.stringify(out.share));
+    assert(out.share.includes(out.volKg) && out.share.includes('VOLUME') && out.share.includes('kg') && !out.share.includes('2,400'), 'the session poster: ' + JSON.stringify(out.share));
     assert(!out.week.concat(out.month, out.share).some(t => L.test(t)), 'no poster draws lb or km');
     assert(/45\.5 KG/.test(out.lib) && /\+4\.5 KG · 2 SESSIONS/.test(out.lib) && /PR · 45\.5 kg/.test(out.lib) && !L.test(out.lib),
       'the exercise library row, hero, chip and PR are in kg: ' + out.lib.replace(/\s+/g, ' ').slice(0, 400));

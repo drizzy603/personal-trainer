@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260926-3"/>
+<meta name="build" content="20260928-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -15307,105 +15307,226 @@ function toggleHistItem(id){
   histExpandedId = histExpandedId===id ? null : id;
   render(); // in-tab re-render — scroll position is preserved
 }
-// ── Share card: editorial session image → iOS share sheet ────────────────────
+// ── Share card: the session as the app shows it → iOS share sheet ─────────────
+// 1080x1350, drawn in the owner's room: Heavyweight is paper, blue for the action
+// and lime for what was earned, set in Anton and Archivo; Lime is its dark base.
+// It says the day and when, how long, the totals and the change against the last
+// time this day was trained, every record with what it beat, and every lift with
+// its sets and its top set against last time. _shareCardModel is what it says,
+// _paintShareCard only draws it.
 function shareSessionCard(id){
-  var sess=getSessions().find(function(x){return x.id===id;});
+  var sess=getSessions().find(function(x){ return x.id===id; });
   if(!sess) return;
-  // Editorial poster, 1080x1350 (screen 06): always the dark brand surface;
-  // the accent is the user's theme accent, except Light -> Lime (a dark green
-  // has no presence on near-black). All other colors are fixed base values.
-  var css=getComputedStyle(document.documentElement);
-  var accent=(css.getPropertyValue('--accent')||'#c8ff00').trim()||'#c8ff00';
-  accent=_posterAccent(accent);
-  var BG='#0b0b0d', INK='#fafafa', MUTED='#808089', LITE='#9ca3af', RULE='#1f1f24', GOLD='#ffd60a';
-  // Inter is self-hosted and in use across the page; draw once fonts settle.
-  document.fonts.ready.then(function(){ _drawShareCard(sess, accent, BG, INK, MUTED, LITE, RULE, GOLD); });
+  var P=_shareCardPalette();
+  _shareCardFonts(P).then(function(){
+    var c=_paintShareCard(_shareCardModel(sess), P);
+    c.toBlob(function(blob){
+      if(!blob){ showToast('Could not build card','err'); return; }
+      _shareFile(new File([blob], 'fitness-programmer-'+(sess.date||todayISO())+'.png', {type:'image/png'}));
+    }, 'image/png');
+  });
 }
-function _drawShareCard(s, accent, BG, INK, MUTED, LITE, RULE, GOLD){
-  var W=1080,H=1350,M=88,R=992;
+// A canvas only draws a face the page has loaded; Anton is on screen only in the
+// hero, so ask for every face the card uses before drawing.
+function _shareCardFonts(P){
+  var loads=[];
+  try{
+    loads.push(document.fonts.load(P.dispW+' 100px "'+P.display+'"'));
+    ['800','700','500'].forEach(function(w){ loads.push(document.fonts.load(w+' 30px "'+P.body+'"')); });
+  }catch(e){}
+  return Promise.all(loads).catch(function(){});
+}
+function _shareCardPalette(){
+  var name=currentTheme==='auto'?_systemTheme():currentTheme;
+  var t=THEMES[name]||THEMES.heavyweight, hw=(name==='heavyweight'), paper=!!t.paper;
+  return {
+    bg:t.bg, card:t.card, ink:t.text, muted:t.muted, lite:t.lite||t.muted,
+    rule:paper?'rgba(15,15,15,.12)':'rgba(255,255,255,.10)',
+    accent:t.accent, earned:t.earned||t.accent, onEarned:t.earned?'#0f0f0f':(t['on-accent']||'#0b0b0c'),
+    up:t['earned-ink']||t['accent-ink']||t.accent,
+    display:hw?'Anton':'Inter', dispW:hw?'400':'900', body:hw?'Archivo':'Inter'
+  };
+}
+// Everything the card says, in the display units, from the stored session.
+function _shareCardModel(s){
+  var U=_uW(), all=getSessions();
+  var exs=(s.exercises||[]).filter(function(e){ return e && e.name; });
+  var label=String(s.label||_dayLabel(s.type)||s.type||'Session');
+  var prs=(s.prs||[]).map(function(p){ return typeof p==='string'?p:(p&&(p.ex||p.name))||''; }).filter(Boolean);
+  var sd=String(s.date||todayISO());
+  function before(o){ var od=String(o.date||''); return o.id!==s.id && (od<sd || (od===sd && Number(o.id)<Number(s.id))); }
+  function later(o, b){ return !b || String(o.date)>String(b.date) || (String(o.date)===String(b.date) && Number(o.id)>Number(b.id)); }
+  function maxReps(ex){ var m=0; _exSetPairs(ex).forEach(function(p){ if(p[0]>m) m=p[0]; }); return m; }
+  function num(d){ return Math.round(d*100)/100; }
+  function repsTxt(d){ return (d>0?'+':'−')+Math.abs(d)+' rep'+(Math.abs(d)===1?'':'s'); }
+  var sets=0, reps=0;
+  exs.forEach(function(ex){ _exSetPairs(ex).forEach(function(p){ if(p[0]>0){ sets++; reps+=p[0]; } }); });
+  var vol=calcVolume(exs), prevDay=null;
+  all.forEach(function(o){ if(o && o.type===s.type && before(o) && (o.exercises||[]).length && later(o, prevDay)) prevDay=o; });
+  var pct=null;
+  if(prevDay){ var pv=calcVolume(prevDay.exercises||[]); if(pv>0) pct=Math.round((vol-pv)/pv*100); }
+  var dur=_cmpDurMs(s), rpe=_cmpAvgRpe(s);
+  var durTxt=dur ? (dur>=3600000 ? Math.floor(dur/3600000)+' h '+Math.round((dur%3600000)/60000)+' min' : Math.round(dur/60000)+' min') : '';
+  var d=new Date(sd+'T00:00:00');
+  var dateTxt=isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'}).toUpperCase();
+  var records=prs.map(function(n){
+    var ch=_prChain(n)||[], i=-1;
+    for(var k=ch.length-1;k>=0;k--){ if(ch[k] && ch[k].id===s.id){ i=k; break; } }
+    var ex=exs.find(function(e){ return e.name===n; }), top=ex?_prTop(ex):null;
+    var e=i>=0 ? ch[i] : top;
+    return {name:n, set:e ? _prSetTxt(n, e) : '', gain:i>=0 ? (_prGain(ch, i) || (i===0?'first record':'')) : ''};
+  });
+  var rows=exs.map(function(ex){
+    var ps=_exSetPairs(ex).filter(function(p){ return p[0]>0; });
+    var bw=_isBodyweightLift(ex.name);
+    var load=function(w){ return w>0 ? _prLoadTxt(ex.name, w) : (bw?'bodyweight':''); };
+    var scheme='';
+    if(ps.length){
+      var ws=ps.map(function(p){ return p[1]; }), rs=ps.map(function(p){ return p[0]; });
+      var sameW=ws.every(function(w){ return Math.abs(w-ws[0])<0.05; }), sameR=rs.every(function(r){ return r===rs[0]; });
+      if(sameW && sameR) scheme=ps.length+' × '+rs[0]+(load(ws[0])?' · '+load(ws[0]):'');
+      else if(sameW) scheme=(load(ws[0])?load(ws[0])+' · ':'')+rs.join(', ')+' reps';
+      else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):'BW')+'×'+p[0]; }).join('  ')+' '+U;
+    }
+    var top=_prTop(ex), mr=maxReps(ex);
+    var topTxt=top ? _prSetTxt(ex.name, top) : (mr>0 ? mr+(mr===1?' rep':' reps') : '');
+    var pe=null, pSess=null;
+    all.forEach(function(o){ if(!o || !before(o)) return; (o.exercises||[]).forEach(function(e){ if(e && e.name===ex.name && later(o, pSess)){ pe=e; pSess=o; } }); });
+    var delta='', up=false;
+    if(!pe) delta='first time';
+    else {
+      var pt=_prTop(pe);
+      if(top && pt){
+        var dw=num(wDisp(top.w)-wDisp(pt.w));
+        if(dw>0){ delta='+'+dw+' '+U; up=true; }
+        else if(dw<0) delta='−'+Math.abs(dw)+' '+U;
+        else { var dr=top.r-pt.r; if(dr){ delta=repsTxt(dr); up=dr>0; } else delta='same as last'; }
+      } else if(!top && !pt){
+        var dm=mr-maxReps(pe);
+        if(dm){ delta=repsTxt(dm); up=dm>0; } else delta='same as last';
+      }
+    }
+    return {name:ex.name, pr:prs.indexOf(ex.name)>=0, scheme:scheme, top:topTxt, delta:delta, up:up};
+  });
+  var wk=parseInt(s.week,10)||0, cr=getCustomRoutine(), wkRow=cr && wk>0 ? cr.weeks[wk-1] : null;
+  return {
+    date:dateTxt, week:wk, phase:wkRow && wkRow.bName ? String(wkRow.bName).toUpperCase() : '', label:label, duration:durTxt, rpe:rpe,
+    lifts:exs.length, sets:sets, reps:reps, volume:Math.round(wDisp(vol)), unit:U,
+    vsLast:pct, records:records, rows:rows
+  };
+}
+function _paintShareCard(m, P){
+  var W=1080, H=1350, M=72, R=W-M, CW=R-M, BOTTOM=1226, FOOT=1292;
   var c=document.createElement('canvas'); c.width=W; c.height=H;
   var x=c.getContext('2d');
-  var exs=s.exercises||[];
-  var prs=(s.prs||[]).map(function(p){ return typeof p==='string'?p:(p&&(p.ex||p.name))||''; });
-  var vol=calcVolume(exs);
-  // Legacy nested shape support (sets as [{reps,weight,rpe}] from old backups).
-  function exSets(ex){ return Array.isArray(ex.sets)?ex.sets.length:(parseInt(ex.sets)||(Array.isArray(ex.reps)?ex.reps.length:0)); }
-  function exWeight(ex){
-    if(Array.isArray(ex.sets)) return ex.sets.reduce(function(m,st){ var w=parseFloat(st.weight)||0; return w>m?w:m; },0);
-    return parseFloat(ex.weight)||0;
-  }
-  var sets=exs.reduce(function(a,ex){ return a+exSets(ex); },0);
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
-  x.fillStyle=BG; x.fillRect(0,0,W,H);
-  // Eyebrow — FITNESS PROGRAMMER · WEEK NN · SUN JUL 20
-  var d=new Date((s.date||todayISO())+'T00:00:00');
-  var dp=d.toDateString().toUpperCase().split(' '); // ["SUN","JUL","20","2026"]
-  var eyebrow='FITNESS PROGRAMMER'+(s.week?' · WEEK '+String(s.week).padStart(2,'0'):'')+' · '+dp[0]+' '+dp[1]+' '+parseInt(dp[2],10);
-  x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
-  x.fillText(eyebrow, M, 136);
-  // Headline — "{Type} day," in ink / "done." in accent
-  var line1=(s.type||'Session')+' day,';
-  x.font='800 136px Inter, sans-serif'; ls('-4px');
-  var y1=312, y2=444;
-  if(x.measureText(line1).width>904){ x.font='800 112px Inter, sans-serif'; y1=300; y2=420; }
-  x.fillStyle=INK;   x.fillText(line1, M, y1);
-  x.fillStyle=accent; x.fillText('done.', M, y2);
-  ls('0px');
-  // Rules
-  x.fillStyle=RULE; x.fillRect(M,523,904,2); x.fillRect(M,786,904,2);
-  // Stat table — SETS at x=88, <unit> VOLUME at x=400, PR right-aligned to x=992
-  var volStr=vol?Math.round(wDisp(vol)).toLocaleString():'0';
-  var prVal=String(prs.length), prLbl=prs.length===1?'PR':'PRS';
-  var prCol=prs.length?GOLD:MUTED;
-  x.textAlign='left';
-  x.fillStyle=INK; x.font='800 100px Inter, sans-serif'; ls('-3px');
-  x.fillText(String(sets), M, 664);
-  x.font=(volStr.length>=6?'800 88px Inter, sans-serif':'800 100px Inter, sans-serif');
-  x.fillText(volStr, 400, 664);
-  x.textAlign='right'; x.fillStyle=prCol;
-  x.font='800 100px Inter, sans-serif';
-  x.fillText(prVal, R, 664);
-  ls('2.5px'); x.font='700 22px "JetBrains Mono", ui-monospace, monospace';
-  x.fillText(prLbl, R, 722);
-  x.textAlign='left'; x.fillStyle=MUTED;
-  x.fillText('SETS', M, 722);
-  x.fillText(_uW().toUpperCase()+' VOLUME', 400, 722);
-  ls('0px');
-  // Lift list — 5 rows max, pitch 82; >5 -> 4 rows + "+ N more"
-  var rows=exs.length>5?exs.slice(0,4):exs.slice(0,5);
-  var ly=884;
-  rows.forEach(function(ex){
-    var isPR=prs.indexOf(ex.name)>-1;
-    var name=ex.name;
-    x.font='600 40px Inter, sans-serif';
-    while(x.measureText(name).width>620 && name.length>2){ name=name.slice(0,-2)+'…'; }
-    x.fillStyle=isPR?GOLD:INK;
-    x.fillText(name, M, ly);
-    var w=exWeight(ex);
-    var wStr=(w>0?fmtW(w).toUpperCase():'BW')+(isPR?' ★':'');
-    x.textAlign='right'; x.fillStyle=isPR?GOLD:LITE;
-    x.font='700 34px "JetBrains Mono", ui-monospace, monospace';
-    x.fillText(wStr, R, ly);
-    x.textAlign='left';
-    ly+=82;
-  });
-  if(exs.length>5){
-    x.fillStyle=MUTED; x.font='600 32px Inter, sans-serif';
-    x.fillText('+ '+(exs.length-4)+' more', M, ly);
+  function fB(w, px){ return w+' '+px+'px "'+P.body+'", Inter, -apple-system, sans-serif'; }
+  function fD(px){ return P.dispW+' '+px+'px "'+P.display+'", "'+P.body+'", Impact, sans-serif'; }
+  function box(x0, y0, w, h, r){
+    x.beginPath();
+    if(x.roundRect) x.roundRect(x0, y0, w, h, r);
+    else { x.moveTo(x0+r,y0); x.arcTo(x0+w,y0,x0+w,y0+h,r); x.arcTo(x0+w,y0+h,x0,y0+h,r); x.arcTo(x0,y0+h,x0,y0,r); x.arcTo(x0,y0,x0+w,y0,r); x.closePath(); }
   }
-  // Footer — accent square + brand lockup / AI TRAINER
-  x.fillStyle=accent; x.fillRect(M,1242,20,20);
-  x.fillStyle=INK; x.font='800 30px Inter, sans-serif'; ls('4px');
-  x.fillText('FITNESS PROGRAMMER', 122, 1262);
-  x.textAlign='right'; x.fillStyle=MUTED;
-  x.font='700 22px "JetBrains Mono", ui-monospace, monospace'; ls('2px');
-  x.fillText('AI TRAINER', R, 1262);
-  x.textAlign='left'; ls('0px');
-  c.toBlob(function(blob){
-    if(!blob){ showToast('Could not build card','err'); return; }
-    var file=new File([blob], 'fitness-programmer-'+s.date+'.png', {type:'image/png'});
-    _shareFile(file);
-  }, 'image/png');
+  function fit(t, maxW){
+    t=String(t||''); if(x.measureText(t).width<=maxW) return t;
+    while(t.length>1 && x.measureText(t+'…').width>maxW) t=t.slice(0,-1);
+    return t.replace(/\s+$/,'')+'…';
+  }
+  function txt(t, px, y, o){
+    o=o||{}; x.font=o.font||fB(o.w||'800', px); ls(o.ls||'0px'); x.fillStyle=o.color||P.ink;
+    x.textAlign=o.align||'left'; x.fillText(o.maxW?fit(t, o.maxW):String(t), o.x==null?M:o.x, y); x.textAlign='left'; ls('0px');
+  }
+  function width(t, font){ x.font=font; return x.measureText(String(t)).width; }
+  // The whole workout has to fit: the headline, the totals, the records and the
+  // rows step down together until every lift has a row.
+  var n=m.rows.length, recs=m.records.slice(0,3), L=null;
+  var LEVELS=[[170,150,92,54],[150,140,84,52],[132,130,76,50],[116,120,68,46],[100,110,60,44],[90,100,54,42]];
+  function heights(lv){
+    var heroBase=150+Math.round(lv[0]*0.82), tilesY=heroBase+98, cy=tilesY+lv[1]+26;
+    if(recs.length) cy+=60+recs.length*lv[3]+8+26;
+    return {heroBase:heroBase, tilesY:tilesY, rowsY:cy+42, cap:Math.floor((BOTTOM-(cy+42))/lv[2])};
+  }
+  for(var li=0; li<LEVELS.length && !L; li++){ var h0=heights(LEVELS[li]); if(h0.cap>=n) L={lv:LEVELS[li], h:h0}; }
+  if(!L) L={lv:LEVELS[LEVELS.length-1], h:heights(LEVELS[LEVELS.length-1])};
+  var S=L.lv[0], TH=L.lv[1], RH=L.lv[2], RECH=L.lv[3], G=L.h;
+  // A short workout gets roomier rows instead of a gap above the footer.
+  if(n && n<=G.cap){ RH=Math.max(RH, Math.min(108, Math.floor((BOTTOM-G.rowsY)/n))); G.cap=Math.floor((BOTTOM-G.rowsY)/RH); }
+  x.fillStyle=P.bg; x.fillRect(0, 0, W, H);
+  // Eyebrow: the app's status line (dot and day), and where it sits in the programme
+  x.fillStyle=P.accent; x.beginPath(); x.arc(M+8, 96, 8, 0, Math.PI*2); x.fill();
+  txt(m.date, 24, 104, {x:M+28, ls:'3px'});
+  txt([m.week?'WEEK '+(m.week<10?'0':'')+m.week:'', m.phase].filter(Boolean).join(' · '), 22, 104, {x:R, align:'right', color:P.muted, ls:'3px', maxW:CW*0.5});
+  // Hero, one line: the day, then DONE. in the action colour
+  var day=m.label.toUpperCase(), done=' DONE.', size=S;
+  while(size>72 && width(day+done, fD(size))>CW) size-=4;
+  var dw=Math.min(width(day, fD(size)), CW-width(done, fD(size)));
+  txt(day, size, G.heroBase, {font:fD(size), maxW:dw});
+  txt(done, size, G.heroBase, {font:fD(size), x:M+dw, color:P.accent});
+  var sub=[m.duration, m.lifts+(m.lifts===1?' lift':' lifts'), m.sets+(m.sets===1?' set':' sets'), m.rpe?'avg RPE '+m.rpe:''].filter(Boolean).join(' · ');
+  txt(sub, 32, G.heroBase+62, {w:'500', color:P.lite, maxW:CW});
+  // Totals: volume, reps, and the change against the last time this day was trained
+  var ty=G.tilesY, tw=(CW-40)/3, lblPx=Math.round(TH*0.13), valPx=Math.round(TH*0.39);
+  var vsLbl='VS LAST '+m.label.toUpperCase();
+  x.font=fB('800', lblPx); ls('2.5px'); if(x.measureText(vsLbl).width>tw-52) vsLbl='VS LAST TIME'; ls('0px');
+  var tiles=[
+    ['VOLUME', Number(m.volume||0).toLocaleString(), m.unit, P.ink],
+    ['REPS', String(m.reps), '', P.ink],
+    m.vsLast!=null
+      ? [vsLbl, (m.vsLast>0?'+':m.vsLast<0?'−':'')+Math.abs(m.vsLast)+'%', '', m.vsLast>0?P.up:P.ink]
+      : ['RECORDS', String(m.records.length), '', m.records.length?P.up:P.ink]
+  ];
+  tiles.forEach(function(t, i){
+    var tx=M+i*(tw+20);
+    box(tx, ty, tw, TH, 26); x.fillStyle=P.card; x.fill(); x.strokeStyle=P.rule; x.lineWidth=2; x.stroke();
+    txt(t[0], lblPx, ty+Math.round(TH*0.31), {x:tx+26, color:P.muted, ls:'2.5px', maxW:tw-52});
+    var vw=Math.min(width(t[1], fB('800', valPx)), tw-52);
+    txt(t[1], valPx, ty+Math.round(TH*0.79), {x:tx+26, color:t[3], maxW:tw-52});
+    var up=Math.round(valPx*0.45);
+    if(t[2] && vw+8+width(t[2], fB('700', up))<=tw-52) txt(t[2], up, ty+Math.round(TH*0.79), {x:tx+26+vw+8, w:'700', color:P.muted});
+  });
+  var cy=ty+TH+26;
+  // Records: the earned colour, each with what it beat
+  if(recs.length){
+    var bh=60+recs.length*RECH+8, rPx=Math.round(RECH*0.6);
+    box(M, cy, CW, bh, 26); x.fillStyle=P.earned; x.fill();
+    txt(m.records.length===1?'NEW RECORD':m.records.length+' NEW RECORDS'+(m.records.length>3?' · '+(m.records.length-3)+' MORE':''), 20, cy+42, {x:M+28, color:P.onEarned, ls:'2.5px'});
+    recs.forEach(function(r, i){
+      var yy=cy+42+RECH*(i+1), right=r.set+(r.gain?'  '+r.gain:'');
+      var rw=Math.min(width(right, fB('800', rPx-2)), CW*0.55);
+      txt(right, rPx-2, yy, {x:R-28, align:'right', color:P.onEarned, maxW:CW*0.55});
+      txt(r.name, rPx, yy, {x:M+28, color:P.onEarned, maxW:CW-56-rw-24});
+    });
+    cy+=bh+26;
+  }
+  // The workout: every lift, its sets, its top set and the change since last time
+  txt('THE WORKOUT', 20, cy+22, {color:P.muted, ls:'2.5px'});
+  txt('TOP SET · VS LAST', 20, cy+22, {x:R, align:'right', color:P.muted, ls:'2.5px'});
+  var top0=G.rowsY, list=n>G.cap ? m.rows.slice(0, Math.max(1, G.cap-1)) : m.rows;
+  var nPx=Math.round(RH*0.37), dPx=Math.round(RH*0.27), tPx=Math.round(RH*0.35), ePx=Math.round(RH*0.26);
+  x.fillStyle=P.rule; x.fillRect(M, top0, CW, 2);
+  list.forEach(function(r, i){
+    var ry=top0+i*RH, nameY=ry+Math.round(RH*0.45), detY=ry+Math.round(RH*0.83);
+    var topW=Math.min(width(r.top, fB('800', tPx)), 330);
+    txt(r.top, tPx, nameY, {x:R, align:'right', maxW:330});
+    if(r.delta) txt(r.delta, ePx, detY, {x:R, align:'right', w:'700', color:r.up?P.up:P.muted, maxW:330});
+    var pillW=Math.round(nPx*1.7), nameMax=CW-topW-36-(r.pr?pillW+16:0);
+    txt(r.name, nPx, nameY, {w:'700', maxW:nameMax});
+    if(r.pr){
+      var nw=Math.min(width(r.name, fB('700', nPx)), nameMax), px0=M+nw+14, ph=Math.round(nPx*0.88);
+      box(px0, nameY-ph+Math.round(nPx*0.14), pillW, ph, ph/2); x.fillStyle=P.earned; x.fill();
+      txt('PR', Math.round(nPx*0.5), nameY-Math.round(nPx*0.1), {x:px0+pillW/2, align:'center', color:P.onEarned, ls:'1.5px'});
+    }
+    if(r.scheme) txt(r.scheme, dPx, detY, {w:'500', color:P.muted, maxW:CW-topW-36});
+    x.fillStyle=P.rule; x.fillRect(M, ry+RH, CW, 2);
+  });
+  if(n>list.length) txt('+ '+(n-list.length)+' more '+(n-list.length===1?'lift':'lifts'), 24, top0+list.length*RH+36, {w:'700', color:P.muted});
+  if(!n) txt('No lifts logged', 28, top0+46, {w:'600', color:P.muted});
+  c.setAttribute('data-rows', String(list.length));
+  // Footer: the brand lockup
+  x.fillStyle=P.accent; x.fillRect(M, FOOT-20, 18, 18);
+  txt('FITNESS PROGRAMMER', 30, FOOT, {x:M+32, font:fD(30), ls:'1px'});
+  txt('AI TRAINER', 20, FOOT-2, {x:R, align:'right', color:P.muted, ls:'2.5px'});
+  return c;
 }
 function renderHistory() {
   var sessions=getSessions();
