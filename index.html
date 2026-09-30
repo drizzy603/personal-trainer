@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-2"/>
+<meta name="build" content="20260930-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -4347,6 +4347,7 @@ function importFromHealth(){
     var _led = _prior.concat(_dupeIds, _okRuns ? _runIds : [], _okSports ? _sportIds : []);
     lsSet('kt_hk_imported', _led.filter(function(u,i){ return _led.indexOf(u)===i; }));
     if(_okRuns && _okSports) localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+    if(_hkPendingRun && _led.indexOf(_hkPendingRun.uuid)>=0) _hkPendingRun=null;   // its card would log a second copy
     var _svR = _okRuns ? added : 0, _svS = _okSports ? rides : 0;
     if(_svR || _svS){
       invalidateCoachCard();
@@ -4552,9 +4553,16 @@ function _hkMarkSeen(uuid){
   var seen = lsGet('kt_hk_imported')||[];
   if(seen.indexOf(uuid)===-1){ seen.push(uuid); lsSet('kt_hk_imported', seen); }
 }
+// A workout the ledger already holds (a batch import took it while its card was up): the tap
+// used to write a second copy, since a manual-dupe check skips Health runs.
+function _hkAlreadyImported(r){ return !!(r && r.uuid && (lsGet('kt_hk_imported')||[]).indexOf(r.uuid)>=0); }
+// kt_hk_last_sync is the batch import's cursor (and "connected"): a quick-log only sets it when
+// there is none. Moving it to now made "Import from Health" skip every older workout for good.
+function _hkTouchCursor(){ try{ if(!localStorage.getItem('kt_hk_last_sync')) localStorage.setItem('kt_hk_last_sync', String(Date.now())); }catch(e){} }
 function _logHealthRun(r){
+  if(_hkAlreadyImported(r)) return null;
   var localISO = _hkLocalISO(r);
-  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  _hkTouchCursor();
   // A manual duplicate is a deliberate skip, so it is marked seen and never
   // re-offered. Everything else is marked only after the run reaches disk —
   // marking first meant a quota failure lost the workout with nothing left to
@@ -4607,11 +4615,12 @@ function _healthSportRec(r, sportId, idOffset){
 }
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
+  if(_hkAlreadyImported(r)) return null;
   if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (restored)
   var logs0 = getSportLogs();
   var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
   var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
-  localStorage.setItem('kt_hk_last_sync', String(Date.now()));
+  _hkTouchCursor();
   if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(r.uuid);
   invalidateCoachCard();
