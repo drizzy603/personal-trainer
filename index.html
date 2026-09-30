@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260929-2"/>
+<meta name="build" content="20260929-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1104,7 +1104,7 @@ button:active{transform:scale(.97);}
 /* A day is a block: workouts blue, runs green, activities purple (the room's --blk-*
    tokens), two kinds on one day split on the diagonal, rest days blank. Selection and
    COMPARE picks are rings in --text, so a block always keeps its colour. */
-.cal-day{position:relative;display:block;aspect-ratio:1;width:100%;border:none;border-radius:6px;background:color-mix(in srgb,var(--text) 7%,transparent);padding:0;margin:0;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;transition:transform .12s ease;}
+.cal-day{-webkit-appearance:none;appearance:none;position:relative;display:block;aspect-ratio:1;width:100%;border:none;border-radius:6px;background:color-mix(in srgb,var(--text) 7%,transparent);padding:0;margin:0;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;transition:transform .12s ease;}
 .cal-day:not([data-act]){cursor:default;}
 .cal-day.future{opacity:.4;}
 .cal-n{position:absolute;top:4px;left:5px;font-size:10px;font-weight:700;line-height:1;color:var(--muted);font-variant-numeric:tabular-nums;}
@@ -20740,7 +20740,7 @@ window._trovoOpen=_handleDeepLink;
 // the screenshot helper can drive the sim without UI taps. The key is
 // consumed (deleted) on first read; absence is the no-op default. Routes:
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
-//   "progress" | "progress/compare" | "progress/records" | "progress/day" | "settings"
+//   "progress" | "progress/compare" | "progress/records" | "progress/day" | "progress/calendar" | "settings"
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
@@ -20759,6 +20759,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='log' && sub){ switchLogSub(sub); }
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
+        if(head==='progress' && sub==='calendar'){ var _cc=document.querySelector('.kt-cal-card'); if(_cc) _cc.scrollIntoView({block:'start'}); }
         if(head==='progress' && sub==='day'){ var _ad=_calActiveDays(); if(_ad.length){ _calNavToDate(_ad[_ad.length-1]); render(); openCalDay(_ad[_ad.length-1]); } }
         if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
