@@ -106,8 +106,9 @@ run('coach: storage full is reported; rejected calls change nothing; backdated l
       W.clearPendingSessions = () => { pending = []; return Promise.resolve({}); };
       lsSet('kt_sessions', getSessions().filter(s => s.date !== todayISO()));
       executeCoachTool('log_session', { type: 'Push', date: todayISO(), exercises: [{ name: 'Bench Press', sets: 5, reps: 5, weight: 185 }] });
-      const morning = new Date(Date.now() - 3 * 3600e3);
-      pending = [JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: morning.toISOString(), loggedAt: new Date(morning.getTime() + 3600e3).toISOString(),
+      // Earlier today, never yesterday: just after midnight "3 hours ago" was the day before (CI in UTC).
+      const morning = new Date(Math.max(new Date(todayISO() + 'T00:00:30').getTime(), Date.now() - 3 * 3600e3));
+      pending = [JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: morning.toISOString(), loggedAt: new Date(Math.min(morning.getTime() + 3600e3, Date.now())).toISOString(),
         exercises: [{ name: 'Bench Press', reps: [10, 10, 10], weight: 135, weightLog: [135, 135, 135] }] })];
       drainWatchSessions(); await wait(300);
       r.coachRec = getSessions().filter(s => s.date === todayISO() && s.type === 'Push').length;

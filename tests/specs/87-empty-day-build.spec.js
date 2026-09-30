@@ -18,6 +18,10 @@ run('an empty Arms day: honest everywhere, built in a tap, then Start', async ()
         checkPermissions: () => Promise.resolve({ display: 'granted' }), requestPermissions: () => Promise.resolve({ display: 'granted' }), getPending: () => Promise.resolve({ notifications: [] }) };
       const orig = localStorage.getItem('kt_routine');
       const planned0 = _weekStats().planned;
+      // Today's slot is replaced: a lift day with exercises leaves the count, anything else changes nothing
+      // (the assertion held only on run and rest days, so CI failed midweek).
+      const was = getWeekPlanForWeek(currentWeek)[dow];
+      r.lost = (was && was.isLift && !_liftDayEmpty(was.type, currentWeek)) ? 1 : 0;
       setWeekPlanDay(dow, 'Arms'); await wait(30);
       switchTab('log'); switchLogSub('workout'); await wait(30);
       const scr = document.getElementById('screen').textContent;
@@ -55,7 +59,7 @@ run('an empty Arms day: honest everywhere, built in a tap, then Start', async ()
     });
     assert(!out.today.tapToStart && out.today.nothing && /BUILD YOUR ARMS DAY/.test(out.today.cta), 'Today says the day is empty and offers to build it: ' + JSON.stringify(out.today));
     assert(!/No lifts, no runs/.test(out.card) && /no exercises/.test(out.card), 'the coach card does not call it a rest day: ' + out.card);
-    assert(out.planned[1] === out.planned[0], 'the week count does not gain an empty session: ' + JSON.stringify(out.planned));
+    assert(out.planned[1] === out.planned[0] - out.lost, 'the week count does not gain an empty session: ' + JSON.stringify([out.planned, out.lost]));
     assert(!out.reminderToday, 'no reminder for a day that cannot be started');
     assert(out.liftCount9 === 0, 'a week without the slot counts 0 lifts (it borrowed this week): ' + out.liftCount9);
     assert(out.startOpens, 'the start link opens the builder instead of refusing');
