@@ -121,7 +121,7 @@ run('next round: starts on its morning; week 1, archive, intro; old sessions are
       _setWeek(12, addDays(mon, -7));   // the final week was last week
       lsSet('kt_routine_next', { startsOn: mon, at: addDays(mon, -2) });
       const archived = getRoutineArchive().length;
-      autoAdvanceWeek();
+      autoAdvanceWeek(); await wait(80);   // with a watch bridge the swap waits for the drain
       const cr = getCustomRoutine();
       r.swapped = cr.cycle === 2 && currentWeek === 1 && localStorage.getItem('kt_week_monday') === mon && _programmeStarted();
       r.bench1 = cr.weeks[0].push.find(e => e.name === 'Bench Press').weight;
@@ -178,6 +178,30 @@ run('next round: today, kg plates, and the final week found by the week clock', 
     assert(out.walk && out.walkPast, 'the final week\'s Monday is found by the clock, also when it walked past it: ' + JSON.stringify([out.walk, out.walkPast]));
     assert(out.kg[0] === 70 && out.kg[1], 'a kg user gets a 1.25 kg plate start (70 kg): ' + JSON.stringify(out.kg));
     if (!out.sunday) assert(out.today && out.started, 'Today starts round 2 now, as this week: ' + JSON.stringify([out.today, out.started]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('next round: the swap morning waits for the watch queue', async () => {
+  const mon = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; })();
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const lastMon = new Date(mon); lastMon.setDate(mon.getDate() - 7);
+  const sunday = new Date(mon); sunday.setDate(mon.getDate() - 1); sunday.setHours(10, 0, 0, 0);
+  const wrist = JSON.stringify({ dayName: 'Push', slot: 'Push', startedAt: sunday.toISOString(), loggedAt: new Date(sunday.getTime() + 3600e3).toISOString(),
+    exercises: [{ name: 'Bench Press', reps: [8, 8, 8], weight: 180, weightLog: [180, 180, 180] }] });
+  const app = await boot({ native: true, watchPending: [wrist], seed: {
+    kt_week: '12', kt_week_monday: iso(lastMon), kt_final_since: iso(lastMon),
+    kt_routine_next: JSON.stringify({ startsOn: iso(mon), at: iso(lastMon) }) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      await new Promise(r => setTimeout(r, 400));
+      const cr = getCustomRoutine();
+      const drained = getSessions().find(s => s.note === 'From Apple Watch' || s.wristStartedAt);
+      return { cycle: cr.cycle, week: currentWeek, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight, drainedWeek: drained && drained.week };
+    });
+    assert(out.cycle === 2 && out.week === 1, 'the round starts on its Monday: ' + JSON.stringify(out));
+    assert(out.bench1 === 162.5, 'the wrist session drained first is in the re-base (180 x 8 -> 162.5): ' + JSON.stringify(out));
+    assert(out.drainedWeek === 12, 'the drained Sunday session keeps its final week: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

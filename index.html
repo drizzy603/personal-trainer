@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-4"/>
+<meta name="build" content="20260930-5"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -5031,8 +5031,23 @@ function _nextMonday(iso){
 // anchor (fresh install, every test seed) behaves exactly as it always has.
 function _weekAnchor(){ return localStorage.getItem('kt_week_monday') || _mostRecentMonday(); }
 function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
+// The swap morning waits for the watch queue: a final-week session logged on the wrist and
+// drained a second after launch was left out of round 2's loads and filed as its week 1. With
+// a watch bridge the swap runs once the drain has settled (at most 6 s), then the week clock
+// catches up (the start may have been weeks ago).
+var _nrDrainWait=null;
+function _applyNextRoundAfterDrain(){
+  var p=_nextRoundSet(); if(!p || todayISO()<p.startsOn) return;
+  var TWch=_plug('TrovoWatch');
+  if(!TWch || !TWch.getPendingSessions){ _applyNextRound(false); return; }
+  if(_nrDrainWait) return;
+  var done=false, go=function(){ if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null; if(_applyNextRound(false)){ autoAdvanceWeek(); render(); } };
+  _nrDrainWait=setTimeout(go, 6000);
+  Promise.resolve(drainWatchSessions()).then(go, go);
+}
 function autoAdvanceWeek(){
-  _applyNextRound(false);
+  _applyNextRoundAfterDrain();
+  if(_nrDrainWait) return;   // the swap re-anchors the clock (then this runs again); a drained final-week session keeps its week meanwhile
   var total=getTotalWeeks();
   var stored=localStorage.getItem('kt_week_monday');
   var thisMonday=_mostRecentMonday();
@@ -20600,8 +20615,8 @@ function _onWatchLive(json){
 function hideWatchLive(){ _watchLive=null; render(); }
 function drainWatchSessions(){
   var TWch=_plug('TrovoWatch');
-  if(!TWch || !TWch.getPendingSessions) return;
-  TWch.getPendingSessions().then(function(res){
+  if(!TWch || !TWch.getPendingSessions) return Promise.resolve();
+  return Promise.resolve(TWch.getPendingSessions()).then(function(res){
     var arr=(res&&res.sessions)||[];
     if(!arr.length) return;
     _wchLog('drain: '+arr.length+' pending');
