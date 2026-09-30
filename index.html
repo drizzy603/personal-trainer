@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-1"/>
+<meta name="build" content="20260930-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -6808,7 +6808,7 @@ function _prescribedLb(name){
 // change this week only, so next week dropped back to the old curve).
 function _writeLoadLocal(name, nw){
   var weights=getWeights(); weights[name]=nw; lsSet('kt_weights', weights);
-  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {}); }, {noRender:true, scope:'local:'+Date.now()});
+  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {workScale:true}); }, {noRender:true, scope:'local:'+Date.now()});
 }
 function _loadUndoState(){
   var prevW=JSON.stringify(getWeights()), prevR=localStorage.getItem('kt_routine');
@@ -10159,7 +10159,19 @@ function _progClimb(cr, slot, name, c, N, o){
 // unless climb:'hold'. Weeks before c are never touched.
 function _progCarryLoad(cr, slot, name, c, N, o){
   o=o||{};
-  var W=cr.weeks, row=_progRow(W[c], slot, name); if(!row) return 0;
+  var W=cr.weeks;
+  // A deload week is its own. A working weight (carry forward, +5, the plateau reset, the
+  // coach's loads) starts at the next working week and leaves the deload as planned; a change
+  // to the deload week itself (Routines, the runner) stays in that week. Carried from the
+  // deload row, 160 over a 112.5 deload scaled every later week by ~1.42 (162.5 became 230).
+  if(W[c] && _isDeloadWk(W[c]) && !o.onlyThisWeek){
+    if(o.workScale){
+      for(var j=c+1;j<W.length;j++){ if(!_isDeloadWk(W[j]) && _progRow(W[j], slot, name)) return _progCarryLoad(cr, slot, name, j, N, o); }
+      return 0;
+    }
+    var oc={}; Object.keys(o).forEach(function(k){ oc[k]=o[k]; }); oc.onlyThisWeek=true; o=oc;
+  }
+  var row=_progRow(W[c], slot, name); if(!row) return 0;
   var Pc=parseFloat(row.weight)||0;
   N=N>0?_snapU(N):0;
   var repsNew=row.reps, repsOld=(o.repsOld!==undefined)?o.repsOld:row.reps;
@@ -10696,6 +10708,10 @@ function _rtOpenEdit(slot, name){
   var repsN=_repsNum(r.reps), plain=(typeof r.reps==='number' || /^\d+$/.test(String(r.reps)));
   _rtEdit={slot:slot, name:name, sets:parseInt(r.sets)||3, reps:plain?repsN:r.reps, repsPlain:plain, w:wDisp(parseFloat(r.weight)||0), rpe:parseInt(r.rpe)||8,
     scope:'from', every:false, climb:'climb', swapTo:null, picking:false, q:''};
+  // What the editor opened with: Save writes only what differs from it. Comparing the shown
+  // kg (rounded to 0.5) with the stored lb, or a defaulted RPE 8 with none, rewrote untouched
+  // loads down the programme and marked the row EDITED.
+  _rtEdit.sets0=_rtEdit.sets; _rtEdit.reps0=_rtEdit.reps; _rtEdit.w0=_rtEdit.w; _rtEdit.rpe0=_rtEdit.rpe;
   _paintRoutines();
   var t=document.getElementById('rtEditTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
 }
@@ -10711,19 +10727,23 @@ function _rtStep(field, d){
 function _rtApply(cr, e){
   var slot=e.slot.toLowerCase(), c=currentWeek-1, name=e.name, only=(e.scope==='only'), n=0;
   var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
+  var wTouched=(e.w0===undefined) || Math.abs(e.w-e.w0)>0.001;
   var wLb=e.w>0 ? wStore(e.w) : 0;
   if(e.swapTo && e.swapTo!==name){
-    var sw=_progSwap(cr, slot, name, e.swapTo, c, wLb, {markOwner:true});
+    // An untouched weight is the new lift's own known load (the old lift's load put Dips at
+    // +60 lb and a Lateral Raise at 70 lb), or "your load" when it has none.
+    var sw=_progSwap(cr, slot, name, e.swapTo, c, wTouched ? wLb : _knownLoadLb(e.swapTo, cr, c), {markOwner:true});
     if(sw===-1) return -1;
     n+=sw; name=e.swapTo; st=_progRow(cr.weeks[c], slot, name); if(!st) return n;
   }
   var repsOld=JSON.parse(JSON.stringify(st.reps===undefined?null:st.reps));
   var so={markOwner:true, onlyThisWeek:only, every:e.every};
-  if(String(e.sets)!==String(st.sets)) n+=_progSetScheme(cr, slot, name, c, 'sets', e.sets, so);
-  if(e.repsPlain && JSON.stringify(e.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', e.reps, so);
-  if(String(e.rpe)!==String(st.rpe)) n+=_progSetScheme(cr, slot, name, c, 'rpe', e.rpe, so);
+  var changed=function(k){ return e[k+'0']===undefined ? true : JSON.stringify(e[k])!==JSON.stringify(e[k+'0']); };
+  if(changed('sets') && String(e.sets)!==String(st.sets)) n+=_progSetScheme(cr, slot, name, c, 'sets', e.sets, so);
+  if(e.repsPlain && changed('reps') && JSON.stringify(e.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', e.reps, so);
+  if(changed('rpe') && String(e.rpe)!==String(st.rpe)) n+=_progSetScheme(cr, slot, name, c, 'rpe', e.rpe, so);
   var cur=parseFloat(st.weight)||0;
-  if(!e.swapTo && Math.abs(wLb-cur)>0.05) n+=_progCarryLoad(cr, slot, name, c, wLb, {markOwner:true, onlyThisWeek:only, repsOld:repsOld, climb:(e.climb==='hold'?'hold':undefined)});
+  if(!e.swapTo && wTouched && Math.abs(wLb-cur)>0.05) n+=_progCarryLoad(cr, slot, name, c, wLb, {markOwner:true, onlyThisWeek:only, repsOld:repsOld, climb:(e.climb==='hold'?'hold':undefined)});
   return n;
 }
 function _rtPreview(cr, e){
@@ -10815,8 +10835,13 @@ function _carryCandidates(sess){
   if(String(sess.date||'').slice(0,10) < _roundStartISO()) return [];   // logged before this programme (a new round starts lower)
   var slot=String(sess.type).toLowerCase();
   var wk=Math.min(cr.weeks.length, Math.max(1, weekForDate(sess.date)));
-  var c=Math.min(cr.weeks.length, Math.max(wk, currentWeek))-1;   // carry from this week at the earliest
-  var planW=cr.weeks[wk-1], nowW=cr.weeks[c], out=[];
+  // A deload session is judged against the working plan (its normal loads were always above
+  // the deload's), and what the programme already asks for is read from a working week too.
+  var work=function(i){ while(i<cr.weeks.length && _isDeloadWk(cr.weeks[i])) i++; return i<cr.weeks.length ? i : -1; };
+  var pw=work(wk-1); if(pw<0) return [];
+  var c=Math.min(cr.weeks.length, Math.max(pw+1, currentWeek))-1;   // carry from this week at the earliest
+  var nw=work(c); if(nw<0) return [];
+  var planW=cr.weeks[pw], nowW=cr.weeks[nw], out=[];
   sess.exercises.forEach(function(ex){
     if(!ex || out.length>=2) return;
     var pr=_progRow(planW, slot, ex.name), cur=_progRow(nowW, slot, ex.name);
@@ -10834,7 +10859,7 @@ function _carrySeen(){ var a=lsGet('kt_carry_seen'); return Array.isArray(a)?a:[
 function dismissCarry(id){ var a=_carrySeen().filter(function(x){ return x!==id; }); a.unshift(id); lsSet('kt_carry_seen', a.slice(0,30)); render(); }
 function carryForward(slot, name, lb, c){
   c=(c>=0)?c:currentWeek-1;
-  return _commitRoutine(function(cr){ return _progCarryLoad(cr, String(slot).toLowerCase(), name, c, parseFloat(lb)||0, {markOwner:true}); },
+  return _commitRoutine(function(cr){ return _progCarryLoad(cr, String(slot).toLowerCase(), name, c, parseFloat(lb)||0, {markOwner:true, workScale:true}); },
     {undoLabel:name+' carries '+fmtW(lb)+' forward', scope:'carry:'+Date.now()});
 }
 function _carryTap(btn, sessId){
@@ -16637,7 +16662,7 @@ function _executeCoachToolRaw(name,input){
         if(input.sets!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'sets', parseInt(input.sets)||row.sets, o);
         if(input.reps!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'reps', parseInt(input.reps)||row.reps, o);
         if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
-        if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld});
+        if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
         // The coach changed it at the user's request: this is now the programme's version.
         for(var j=cE;j<cr.weeks.length;j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
         return n;
@@ -16666,7 +16691,7 @@ function _executeCoachToolRaw(name,input){
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {}); }, {noRender:true, scope:_coachScope()});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:_coachScope()});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
