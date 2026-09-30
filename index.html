@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260929-5"/>
+<meta name="build" content="20260930-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3815,9 +3815,14 @@ function calcStreak(sessions) {
 // weightLog and legacy sets[]) and the most reps done at exactly that load.
 // The heaviest set that has reps. A 0-rep entry (Log all on a 'Max' target, a missed single
 // edited to 0) is not a lift, so it never makes a record.
+// [reps, lb] per set from any stored shape; a row with reps but no set count reads its reps.
+function _exPairs(ex){
+  var ps=_exSetPairs(ex||{});
+  if(!ps.length && ex && ex.reps!=null){ ps=(Array.isArray(ex.reps)?ex.reps:[ex.reps]).map(function(x, i){ var wl=Array.isArray(ex.weightLog)?parseFloat(ex.weightLog[i]):NaN; return [parseInt(x)||0, wl>=0?wl:(parseFloat(ex.weight)||0)]; }); }
+  return ps;
+}
 function _prTop(ex){
-  var ps=_exSetPairs(ex);
-  if(!ps.length && ex && ex.reps!=null){ ps=(Array.isArray(ex.reps)?ex.reps:[ex.reps]).map(function(x){ return [parseInt(x)||0, parseFloat(ex.weight)||0]; }); }
+  var ps=_exPairs(ex);
   var w=0, r=0;
   ps.forEach(function(p){ if(p[0]>0 && p[1]>w) w=p[1]; });
   if(!(w>0) || !isFinite(w)) return null;
@@ -3920,6 +3925,9 @@ function _setWorkingWeights(exs, date){
   });
   return lsSet('kt_weights', w);
 }
+// A new record id: Date.now(), never equal to one already in the list. Several log calls in
+// one coach reply ran in the same millisecond, and delete_log then removed all of them.
+function _freshId(list){ var id=Date.now(); (list||[]).forEach(function(x){ var v=x ? Number(x.id) : 0; if(v>=id) id=v+1; }); return id; }
 function checkAndUpdatePRs(exercises) {
   var prs = getPRs();
   var newPRs = [];
@@ -10345,7 +10353,7 @@ function _commitRoutine(mutate, o){
   var res=mutate(cr);
   if(res===false || res===-1 || res===0) return res;
   if(!o.scope || o.scope!==_routineScope){
-    try{ var prev=JSON.parse(raw); if(prev && prev.weeks && prev.weeks.length) lsSet('kt_routine_backup', prev); }catch(e){}
+    try{ var prev=JSON.parse(raw); if(prev && prev.weeks && prev.weeks.length){ lsSet('kt_routine_backup', prev); _setBackupScope(o.scope||''); } }catch(e){}
     _routineScope=o.scope||null;
   }
   if(!setCustomRoutine(cr)) return false;   // storage full: lsSet has said so; nothing changed
@@ -16294,7 +16302,7 @@ function _snapshotRoutineForUndo(scope){
     var raw=localStorage.getItem('kt_routine');
     if(!raw) return;
     var prev=JSON.parse(raw);
-    if(prev&&prev.weeks&&prev.weeks.length) lsSet('kt_routine_backup',prev);
+    if(prev&&prev.weeks&&prev.weeks.length){ lsSet('kt_routine_backup',prev); _setBackupScope(scope||''); }
     _routineScope=scope||null;
   }catch(e){}
 }
@@ -16476,6 +16484,15 @@ function _executeCoachToolRaw(name,input){
           if(!weekObj.sports && prev.sports && typeof prev.sports==='object'){
             weekObj.sports=prev.sports;
           }
+          // A one-day tweak or a day rename left these out and wiped them: the week's run
+          // plan, its note, and the lifts the owner removed (which the next rebuild put back).
+          if(!weekObj.runs && w.runs===undefined && w.runTue===undefined && w.runSat===undefined && prev.runs && typeof prev.runs==='object'){
+            weekObj.runs=JSON.parse(JSON.stringify(prev.runs));
+          }
+          if(w.wkNote===undefined && prev.wkNote) weekObj.wkNote=String(prev.wkNote);
+          if(prev.recOut && typeof prev.recOut==='object') LIFT_KEYS.forEach(function(k){
+            if(w[k]===undefined && Array.isArray(prev.recOut[k]) && prev.recOut[k].length){ weekObj.recOut=weekObj.recOut||{}; weekObj.recOut[k]=JSON.parse(JSON.stringify(prev.recOut[k])); }
+          });
         }
         // The owner's version wins: their edited and added lifts are kept over the coach's
         // rewrite (the coach's new row becomes the "Coach:" original beside them), and a
@@ -16497,7 +16514,10 @@ function _executeCoachToolRaw(name,input){
           var ro=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [];
           ro.forEach(function(e){
             if(!e || !e.row) return;
-            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ var gone=neu.splice(i,1)[0]; delete gone.rec; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
+            var _hit=false;
+            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ _hit=true; var gone=neu.splice(i,1)[0]; delete gone.rec; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
+            // not re-sent: it stays removed, and stays restorable
+            if(!_hit){ weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(JSON.parse(JSON.stringify(e))); }
           });
           if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
         });
@@ -16687,7 +16707,7 @@ function _executeCoachToolRaw(name,input){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
       var bws=getBodyWeights();
       bwVal=wStore(bwVal);
-      bws.push({id:Date.now(),date:bwDate,weight:bwVal});
+      bws.push({id:_freshId(bws),date:bwDate,weight:bwVal});
       bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
       lsSet('kt_bw',bws);
       render();
@@ -16706,7 +16726,7 @@ function _executeCoachToolRaw(name,input){
       var rtype=input.type||'easy';
       var rhr=parseInt(input.hr)||0;
       var rnote=String(input.note||'').trim();
-      var rruns=[{id:Date.now(),distance:Math.round(rkm*100)/100,time:rtime,
+      var rruns=[{id:_freshId(getRuns()),distance:Math.round(rkm*100)/100,time:rtime,
         date:rdate,week:weekForDate(rdate),note:rnote,hr:rhr,type:rtype}].concat(getRuns());
       if(!lsSet('kt_runs',rruns)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       invalidateCoachCard();
@@ -16748,7 +16768,7 @@ function _executeCoachToolRaw(name,input){
       // failed save used to leave the records raised with no session behind them, and the
       // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
       var gPRs=_pendingPRs(gclean);
-      var gsessions=[{id:Date.now(), date:gdate, week:weekForDate(gdate), source:'coach',
+      var gsessions=[{id:_freshId(getSessions()), date:gdate, week:weekForDate(gdate), source:'coach',
         type:gtype, exercises:gclean,
         note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
       if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
@@ -16770,7 +16790,7 @@ function _executeCoachToolRaw(name,input){
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
       var snotes=String(input.notes||'').trim();
-      var slogs=[{id:Date.now(),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
+      var slogs=[{id:_freshId(getSportLogs()),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
       if(!lsSet('kt_sports',slogs)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       invalidateCoachCard();
       render();
@@ -16800,7 +16820,7 @@ function _executeCoachToolRaw(name,input){
         esW=esW.slice(0, esReps.length);
       }
       if(input.weight!=null){
-        var esLoad=_coachLoadIn(input.weight);
+        var _ew=parseFloat(input.weight), esLoad=(_ew>=0)?wStore(_ew):NaN;   // logged loads are exact (22 kg stays 22 kg); only programme loads land on plates
         if(!(esLoad>=0)) return {ok:false,error:'weight must be a number. Nothing was changed.'};
         esW=esReps.map(function(){ return esLoad; });
       }
@@ -17105,6 +17125,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
   _runningTools=[];
   _streamingTool=null;
+  var _turnUndo=_backupScopeIs(_coachTurnScope)?_coachTurnScope:null;   // this reply changed the programme and its snapshot is current
   _coachTurnScope=null;
   // Silent truncation looked like a finished answer. Name it.
   if(!errText && t>=MAX_TURNS) errText='The coach used up its '+MAX_TURNS+' turns before finishing \u2014 this reply may be incomplete. Tap Try again or ask it to continue.';
@@ -17117,7 +17138,8 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     coachMessages.push({
       role:'assistant',
       content:totalText.trim() || (hadError?'I made these changes before the connection dropped:':'Done — changes applied:'),
-      _tools:allToolCalls.length?allToolCalls:null
+      _tools:allToolCalls.length?allToolCalls:null,
+      _undo:_turnUndo
     });
   } else if(!hadError){
     // A reply with no text and no tools (refusal, thinking-only, cap hit on a
@@ -17187,13 +17209,17 @@ function _planChangeLedger(tools, idx){
     } else if(tc.name==='update_routine_weeks'){
       var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
+    } else if(tc.name==='edit_programme_exercise'){
+      var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
+      if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
+      rows.push([_esc(i.exercise||'Exercise'), _act]);
     } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||''))))]); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
     else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
   }); });
   if(!rows.length) return '';
-  var canUndo=!!(lsGet('kt_routine_backup')&&lsGet('kt_routine_backup').weeks);
+  var _m=coachMessages[idx], canUndo=!!(_m && _backupScopeIs(_m._undo));
   return '<div class="kt-ledger-card">'+
     '<div class="kt-ledger-card-hd">PLAN CHANGES \u00b7 WEEK '+currentWeek+'</div>'+
     rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('')+
@@ -17238,6 +17264,12 @@ function _toolCallLabel(tc){
 }
 
 function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.weeks); }
+// Which change took kt_routine_backup (a coach reply's scope, 'routines', a carry…): a reply's
+// Undo is offered only while the snapshot is still the one it took. Undo used to restore
+// whatever was there: an older programme under a goal-only reply, or the snapshot of the
+// owner's later Routines edit, which kept the coach's change and threw away the owner's.
+function _setBackupScope(sc){ try{ if(sc) localStorage.setItem('kt_routine_backup_scope', String(sc)); else localStorage.removeItem('kt_routine_backup_scope'); }catch(e){} }
+function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routine_backup_scope')===String(sc) && hasRoutineBackup(); }catch(e){ return false; } }
 function restoreRoutineBackup(){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
@@ -17245,6 +17277,7 @@ function restoreRoutineBackup(){
     var cur=getCustomRoutine();
     setCustomRoutine(b);
     if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
+    _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
     var total=(b.weeks||[]).length||1;
     if(currentWeek<1||currentWeek>total){ _setWeek(1); }
     showToast('Previous programme restored'); render();
@@ -17424,9 +17457,14 @@ function buildSystemPrompt(){
     p+='RECENT SESSIONS:\n';
     sessions.forEach(function(s){
       p+='[id:'+s.id+'] '+s.type+' '+s.date+' (Wk'+s.week+'): ';
+      // Every set from _exPairs (the legacy nested shape printed "[object Object]×(undefined)@BW"),
+      // with per-set loads when they changed.
       var exStrs=(s.exercises||[]).map(function(ex){
-        var r=Array.isArray(ex.reps)?ex.reps.join('/'):ex.reps;
-        return ex.name+' '+ex.sets+'×('+r+')@'+(parseFloat(ex.weight)>0?fmtW(ex.weight):'BW')+' RPE'+fmtRpe(ex.rpe);
+        var ps=_exPairs(ex), loads=ps.map(function(p){ return p[1]; });
+        var same=loads.every(function(v){ return Math.abs(v-loads[0])<0.05; });
+        var load=!ps.length ? (parseFloat(ex.weight)>0?fmtW(ex.weight):'BW') : same ? (loads[0]>0?fmtW(loads[0]):'BW') : loads.map(function(v){ return v>0?wDisp(v):'BW'; }).join('/')+' '+_uW();
+        var rpe=ex.rpe!=null ? ex.rpe : (Array.isArray(ex.sets) && ex.sets[0] ? ex.sets[0].rpe : null);
+        return ex.name+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+load+' RPE'+fmtRpe(rpe);
       });
       p+=exStrs.join(' | ')+'\n';
     });
@@ -17654,7 +17692,7 @@ function coachStop(){
   streamingContent='';
   var hadTools=_runningTools.length>0;
   if(hadTools){
-    coachMessages.push({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true});
+    coachMessages.push({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true,_undo:_backupScopeIs(_coachTurnScope)?_coachTurnScope:null});
   } else {
     coachMessages.push({role:'assistant',content:'Stopped.',_local:true});
   }

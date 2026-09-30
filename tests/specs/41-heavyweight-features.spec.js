@@ -94,10 +94,11 @@ run('run log stores how it felt; coach ledger shows plan changes with Keep / Und
       saveInlineRun();
       const feel = getRuns()[0].feel;
       localStorage.setItem('kt_apikey', 'sk-ant-test-not-real');
-      lsSet('kt_routine_backup', JSON.parse(JSON.stringify(getCustomRoutine())));
+      // the snapshot a reply takes, owned by that reply (Undo is offered only while it is current)
+      _snapshotRoutineForUndo('coach:t41');
       const ex = getSessionExercises('Push')[0];
       coachMessages.push({ role: 'user', content: 'Drop my bench a bit' });
-      coachMessages.push({ role: 'assistant', content: 'Done.', _tools: [{ name: 'set_exercise_weight', input: { name: ex.name, weight: 100 }, result: { ok: true } }] });
+      coachMessages.push({ role: 'assistant', content: 'Done.', _undo: 'coach:t41', _tools: [{ name: 'set_exercise_weight', input: { name: ex.name, weight: 100 }, result: { ok: true } }] });
       coachView = 'chat'; currentTab = 'coach'; render();
       const card = document.querySelector('.kt-ledger-card');
       const txt = card ? card.textContent : '';
