@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-3"/>
+<meta name="build" content="20260930-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3366,12 +3366,15 @@ function setCustomRoutine(r){ return lsSet('kt_routine',r); }
 function clearCustomRoutine(){ lsDel('kt_routine'); }
 function getRoutineArchive(){ return lsGet('kt_routine_archive')||[]; }
 function setRoutineArchive(a){ lsSet('kt_routine_archive',a); }
+// true when the current programme is safely in Programme History. A failed write used to be
+// ignored, so a new programme, a restored archive or the next round replaced a programme that
+// was archived nowhere. The newest entry already being this programme (a retried swap) adds
+// nothing: the retry used to push real programmes out of the five-entry history.
 function archiveCurrentRoutine(){
-  var cr=getCustomRoutine(); if(!cr) return;
+  var cr=getCustomRoutine(); if(!cr) return true;
   var arr=getRoutineArchive();
-  arr.unshift({id:Date.now(),archivedAt:todayISO(),routine:cr});
-  if(arr.length>5) arr.length=5;
-  setRoutineArchive(arr);
+  if(arr.length && arr[0] && JSON.stringify(arr[0].routine)===JSON.stringify(cr)) return true;
+  return lsSet('kt_routine_archive', [{id:Date.now(),archivedAt:todayISO(),routine:cr}].concat(arr).slice(0,5));
 }
 function openRoutineArchiveModal(){
   closeRoutineArchiveModal();
@@ -3420,9 +3423,12 @@ function restoreArchivedRoutine(id){
   var entry=arr.find(function(e){return e.id===id;});
   if(!entry){showToast('Programme not found','err');return;}
   _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
-    archiveCurrentRoutine();
+    // The restored programme is written before its entry leaves the archive, and a failure
+    // puts the archive back: the current one is never left archived nowhere.
+    var prevArr=getRoutineArchive().slice();
+    if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+    if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
     setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
-    setCustomRoutine(entry.routine);
     _startProgramme();
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();
@@ -3436,7 +3442,7 @@ function deleteArchivedRoutine(id){
 }
 function startNewProgramme(){
   _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
-    archiveCurrentRoutine();
+    if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     clearCustomRoutine();
     lsDel('kt_routine_next'); lsDel('kt_round_intro');
     _setWeek(1);
@@ -4198,18 +4204,36 @@ function _backupValueOk(k, v){
   return true;
 }
 function _applyImportedData(data) {
-  // Safety net: the restore REPLACES everything, so keep what was here for a
-  // week. Settings → Data shows "Undo last restore" while it exists.
-  try{
-    var _snap=buildBackupJSON(); delete _snap._manifest;
-    if(Object.keys(_snap).length) localStorage.setItem('kt_pre_restore', JSON.stringify({at:Date.now(), data:_snap}));
-  }catch(e){}
+  // The restore REPLACES everything, so it is all or nothing. The undo copy (Settings → Data,
+  // "Undo last restore", a week) must be written first; if it cannot be, nothing is restored.
+  // A write that fails puts every key back. A nearly full phone used to end with half of each
+  // dataset, no undo, and "Restored N data items".
+  var _snapRaw=null;
+  try{ var _snap=buildBackupJSON(); delete _snap._manifest; if(Object.keys(_snap).length) _snapRaw=JSON.stringify({at:Date.now(), data:_snap}); }catch(e){}
+  if(_snapRaw){
+    var _put=function(){ try{ localStorage.setItem('kt_pre_restore', _snapRaw); return true; }catch(e){ return false; } };
+    if(!_put()){ try{ localStorage.removeItem('kt_cached_html'); }catch(e){} }   // the cached page is the first thing that can go
+    if(!_put()){ showToast('Not enough space on the phone to keep an undo copy \u2014 nothing was restored. Free some space and try again.','err'); return false; }
+  }
+  var _before={}, _touch=BACKUP_KEYS.concat(RAW_STRING_KEYS, ['kt_hk_last_sync','kt_week_monday']);
+  _touch.forEach(function(k){ try{ _before[k]=localStorage.getItem(k); }catch(e){} });
+  var _failed=false;
+  var _rollback=function(){
+    _touch.forEach(function(k){ try{ if(_before[k]==null) localStorage.removeItem(k); else localStorage.setItem(k, _before[k]); }catch(e){} delete _lsCache[k]; });
+    _logsVersion++; _todayActMemo=null;
+    currentWeek=parseInt(localStorage.getItem('kt_week'))||currentWeek;
+    showToast('Restore stopped \u2014 the phone ran out of space. Nothing was changed. Free some space and try again.','err');
+    render();
+    return false;
+  };
   var count = 0, dropped = [];
   BACKUP_KEYS.forEach(function(k){
+    if (_failed) return;
     if (data[k] !== undefined) {
       if (k === 'kt_prs' && Array.isArray(data[k])) return;   // derived from sessions; _syncPRCache rebuilds it below
       if (!_backupValueOk(k, data[k])) { dropped.push(k); return; }
-      lsSet(k, data[k]); count++;
+      if (!lsSet(k, data[k])) { _failed=true; return; }
+      count++;
     } else {
       // The restore dialog promises a REPLACE — keys the backup doesn't
       // carry must not silently survive from this device (kt_log_tabs is
@@ -4223,14 +4247,16 @@ function _applyImportedData(data) {
   // establish — importing them as 'On' showed working switches that did
   // nothing. They stay whatever THIS phone has.
   var DEVICE_OPTIN_KEYS=['kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_autolog_runs'];
+  if (_failed) return _rollback();
   RAW_STRING_KEYS.forEach(function(k){
-    if (DEVICE_OPTIN_KEYS.indexOf(k)>=0) return;
-    if (data[k] !== undefined) { localStorage.setItem(k, String(data[k])); count++; }
+    if (_failed || DEVICE_OPTIN_KEYS.indexOf(k)>=0) return;
+    if (data[k] !== undefined) { try{ localStorage.setItem(k, String(data[k])); count++; }catch(e){ _failed=true; } }
     // Absent raw keys: only data-ish ones are cleared. Device-capability
     // opt-ins (Health write, notifications, readiness, theme…) belong to
     // THIS phone — an old backup must not silently switch them off.
     else if (k === 'kt_run_goal' || k === 'kt_user_name' || k === 'kt_final_since') localStorage.removeItem(k);
   });
+  if (_failed) return _rollback();
   if (dropped.length) {
     showToast('Skipped corrupt entries: ' + dropped.join(', '));
   }
@@ -4248,6 +4274,7 @@ function _applyImportedData(data) {
   localStorage.setItem('kt_week_monday', _mostRecentMonday());
   lapsePending = null;
   _syncPRCache();
+  _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');
@@ -10956,8 +10983,11 @@ function _applyNextRound(now){
   if(!now && todayISO()<p.startsOn) return null;
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
   var nb=_nextRoundBuild(cr);
-  archiveCurrentRoutine();
-  if(!setCustomRoutine(nb.routine)) return null;   // storage full: this round stays, and the next stays set
+  // All or nothing: the round being replaced must reach Programme History, and a failed
+  // routine write takes the archive entry back (each boot retries on the start morning).
+  var prevArr=getRoutineArchive().slice();
+  if(!archiveCurrentRoutine()) return null;
+  if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
   lsDel('kt_routine_next');
   var start=now ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
@@ -11543,8 +11573,9 @@ function applyStarterIntake(){
 }
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
-  if(getCustomRoutine()) archiveCurrentRoutine();
-  setCustomRoutine(r);
+  var prevArr=getRoutineArchive().slice();
+  if(getCustomRoutine() && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+  if(!setCustomRoutine(r)){ lsSet('kt_routine_archive', prevArr); return; }
   _startProgramme();
   closeStarterIntake();
   logSubTab='workout'; switchTab('log');
@@ -19796,13 +19827,15 @@ loadCoachHistory();
 // kt_final_since is a raw date; backups used to read it as JSON, which parked a copy here
 // and toasted "unreadable data" on every final-week launch. Nothing else writes this key.
 try{ localStorage.removeItem('kt_final_since_corrupt'); }catch(e){}
-// Once: take back the demo loads the first finished session saved as the user's own —
-// an entry still at its demo value for a lift that was never logged.
-(function(){
+// Take back the demo loads the first finished session saved as the user's own: an entry still
+// at its demo value for a lift that was never logged. Once per device at boot, and after every
+// restore (an older backup carries them again).
+function _sweepDemoWeights(force){
   try{
-    if(localStorage.getItem('kt_demo_w_swept')) return;
+    if(!force && localStorage.getItem('kt_demo_w_swept')) return;
     var kw=lsGet('kt_weights'), dm=defaultWeights(), logged={}, gone=0;
     if(kw && typeof kw==='object'){
+      kw=JSON.parse(JSON.stringify(kw));
       getSessions().forEach(function(ss){ ((ss&&ss.exercises)||[]).forEach(function(e){ if(e&&e.name) logged[e.name]=1; }); });
       Object.keys(dm).forEach(function(k){
         if(kw[k]===undefined || logged[k]) return;
@@ -19812,7 +19845,8 @@ try{ localStorage.removeItem('kt_final_since_corrupt'); }catch(e){}
     }
     localStorage.setItem('kt_demo_w_swept','1');
   }catch(e){}
-})();
+}
+_sweepDemoWeights(false);
 _restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
