@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260928-1"/>
+<meta name="build" content="20260929-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -1272,6 +1272,27 @@ html[data-room="dark"] .kt-rt-you{color:var(--text);}   /* Lime: a status label 
 .kt-rt-chips{display:flex;flex-wrap:wrap;gap:6px;}
 .kt-rt-chip{min-height:38px;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;}
 .kt-rt-chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-cd-nav{display:flex;justify-content:space-between;gap:8px;margin:-2px 0 14px;}
+.kt-cd-nav button{min-height:36px;padding:6px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-cd-nav button[disabled]{opacity:.35;cursor:default;}
+.kt-cd-item{background:var(--card2);border:1px solid var(--border);border-radius:16px;padding:14px 14px 12px;margin-bottom:12px;}
+.kt-cd-hd{display:flex;align-items:center;gap:11px;margin-bottom:8px;}
+.kt-cd-badge{width:34px;height:34px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;letter-spacing:-.3px;}
+.kt-cd-ttl{font-size:16px;font-weight:800;letter-spacing:-.2px;overflow-wrap:anywhere;}
+.kt-cd-wk{font-size:13px;font-weight:600;color:var(--muted);}
+.kt-cd-sub{font-size:12px;color:var(--muted);margin-top:1px;}
+.kt-cd-pr{font-size:10px;font-weight:800;color:var(--earned-ink);flex-shrink:0;}
+.kt-cd-note{font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+.kt-cd-stats{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 4px;}
+.kt-cd-stat b{display:block;font-size:18px;font-weight:900;letter-spacing:-.5px;}
+.kt-cd-stat span{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.kt-cd-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;}
+.kt-cd-btn{min-height:36px;padding:7px 12px;border-radius:10px;border:1px solid var(--border);background:none;color:var(--text);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-cd-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.kt-cd-btn.danger{color:var(--red);}
+.kt-cd-date{display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:0 2px 0 10px;border:1px solid var(--border);border-radius:10px;font-size:12px;font-weight:700;color:var(--muted);}
+.kt-cd-date input{background:none;border:none;color:var(--text);font-size:12px;font-weight:700;font-family:inherit;padding:8px 6px;min-height:34px;}
+#cdTitle:focus{outline:none;}
 .kt-nr-day{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin:14px 0 2px;}
 .kt-nr-row{display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--border);}
 .kt-nr-n{font-size:15px;font-weight:700;overflow-wrap:anywhere;}
@@ -1579,8 +1600,8 @@ html[data-room="dark"] .kt-bars .bar:not(.cur):not(.empty){background:color-mix(
 html[data-room="dark"] .kt-bars .bar .pr-dot{background:var(--earned);}
 /* Progress */
 html[data-room="dark"] #screen div[style^="width:34px;height:34px;border-radius:11px"]{background:var(--card2)!important;color:var(--lite)!important;box-shadow:inset 0 0 0 1px var(--border);}
-html[data-room="dark"] #screen [onclick^="toggleHistItem"] svg[stroke="var(--accent)"]{stroke:var(--text);}
 html[data-room="dark"] [onclick^="showAllPRs"]{border-color:var(--border)!important;}
+html[data-room="dark"] .kt-cd-badge{background:var(--card)!important;color:var(--lite)!important;box-shadow:inset 0 0 0 1px var(--border);}
 html[data-room="dark"] [onclick^="showAllPRs"] span[style*="background:var(--yellow)"]{background:var(--muted)!important;}
 html[data-room="dark"] [onclick^="showAllPRs"] .kt-mono[style*="color:var(--yellow)"]{color:var(--lite)!important;}
 html[data-room="dark"] .kt-pr-pill{background:var(--card2);border-color:var(--border);}
@@ -2150,9 +2171,7 @@ var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
-var showAllHist = false;     // Session History collapsed to recent rows by default
 var showAllRunHist = false;  // Run history, the same
-var histExpandedId = null;   // session id open in the Session History accordion
 var strengthChartOpen = null; // lift name expanded to a full e1RM chart
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', notes:'', date:'', f:{}};
@@ -5096,6 +5115,7 @@ function render() {
   if(_lt) _lt.innerHTML=_buildLogTabsRows();
   var _ts=document.getElementById('themeSheetList');
   if(_ts) _ts.innerHTML=_buildThemeRows();
+  _syncCalDay();
   paintRunner();
 }
 
@@ -7692,7 +7712,9 @@ function deleteRun(id){
   if(!gone.length) return null;
   if(!lsSet('kt_runs', kept)) return false;
   if(runLogConfirmed && runLogConfirmed.id===id) runLogConfirmed=null;
-  invalidateCoachCard(); calSelectedDate=null; render();
+  invalidateCoachCard();
+  if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
+  render();
   showUndoToast('Run deleted', function(){
     if(getRuns().some(function(r){ return r && r.id===id; })) return;
     if(lsSet('kt_runs', gone.concat(getRuns()))){ invalidateCoachCard(); render(); }
@@ -12130,14 +12152,16 @@ function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
   var gone=getSportLogs().find(function(l){return l.id===id;}); if(!gone) return;
   lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
-  calSelectedDate=null; render();
+  if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
+  render();
   showUndoToast((gone.type||'Activity')+' deleted', function(){ var ls=getSportLogs(); ls.unshift(gone); lsSet('kt_sports',ls); render(); });
 }
 function deleteSession(id){
   var gone=getSessions().find(function(s){return s.id===id;}); if(!gone) return;
   lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
   recomputePRs();
-  calSelectedDate=null; render();
+  if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
+  render();
   showUndoToast('Session deleted', function(){ var ss=getSessions(); ss.unshift(gone); lsSet('kt_sessions',ss); recomputePRs(); render(); });
 }
 // Rebuild kt_prs from the full session log. checkAndUpdatePRs only ever
@@ -14438,7 +14462,7 @@ function renderProgress() {
     eyebrow('Overview') + toggle + stats +
     midGroups + renderMilestones() + _renderMonthPoster() + renderRetroCard(sessions) +
     eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
-    (progressTab==='lifts' ? renderHistory() : (progressTab==='runs' ? renderRunHistory() : ''));
+    (progressTab==='runs' ? renderRunHistory() : '');
 }
 
 // Catmull-Rom → cubic bezier, so charts draw as smooth curves not zig-zags.
@@ -14532,6 +14556,12 @@ function calNav(delta){
   render();
 }
 function selectCalDate(d){
+  // Outside COMPARE a day opens its own sheet with everything logged on it; in
+  // COMPARE it filters the pick list below the calendar.
+  if(!cmpOn){
+    if(!_calDayHas(d)){ showToast('Nothing logged on '+_calDayName(d)); return; }
+    openCalDay(d); return;
+  }
   calSelectedDate=(calSelectedDate===d)?null:d;
   // re-render just the detail pane
   var el=document.getElementById('cal-detail');
@@ -14540,76 +14570,133 @@ function selectCalDate(d){
   document.querySelectorAll('.cal-day').forEach(function(c){ c.classList.toggle('sel', c.getAttribute('data-date')===calSelectedDate); });
 }
 function renderCalDetail(sessions,runs,sports){
-  sports=sports||[];
   if(cmpOn) return _cmpListHTML(sessions,runs);
-  if(!calSelectedDate) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Tap a day to see what you did</div>';
-  var daySessions=sessions.filter(function(s){return s.date===calSelectedDate;});
-  var dayRuns=runs.filter(function(r){return r.date===calSelectedDate;});
-  var daySports=sports.filter(function(sp){return sp.date===calSelectedDate;});
-  if(!daySessions.length&&!dayRuns.length&&!daySports.length) return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Rest day</div>';
-  // Destructive ✕ next to a date input needs a real hit area: visual stays
-  // compact, padding+negative-margin grows the target past 40px.
-  var actBtnStyle='background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;padding:3px 8px;-webkit-tap-highlight-color:transparent;';
-  var dateInpStyle='background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;font-family:inherit;padding:8px 6px;cursor:pointer;';
-  var html='';
-  daySessions.forEach(function(s){
-    var _d0=SESS[s.type]||{icon:'',label:s.type}; var def={}; for(var _dk in _d0){ def[_dk]=_d0[_dk]; }
-    def.label=s.label||_dayLabel(s.type);   // the day's name, as it was called when logged
-    var sessionPRs=s.prs||[];
-    var exRows=_buildHistExRows(s.exercises,sessionPRs,s.supersets);
-    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
-        '<div style="font-size:14px;font-weight:800;letter-spacing:-.2px;">'+_esc(def.label)+(s.week?' · Wk '+s.week:'')+'</div>'+
-        '<div style="display:flex;align-items:center;gap:6px;">'+
-          '<input type="date" value="'+s.date+'" style="'+dateInpStyle+'" onchange="moveSession('+s.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteSession('+s.id+')" title="Delete session">✕</button>'+
-        '</div>'+
-      '</div>'+
-      exRows+
-      (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
+  return '<div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">Tap a day to see what you did</div>';
+}
+// ── Calendar day sheet ───────────────────────────────────────────────────────
+// A tapped day opens everything logged on it (workouts, runs, activities) with
+// each one's actions: share card, edit, move to another date, delete. It took
+// the place of the always-open Session history list under the calendar. A
+// delete or a move repaints it (a move follows the log to its new day), ‹ and ›
+// step to the previous and next day with something logged, and it closes itself
+// when its day is empty. COMPARE keeps the inline pick list.
+var _cdPainted='', _cdReturnFocus=null;
+function _calDayLogs(d){
+  var on=function(x){ return x && String(x.date||'').slice(0,10)===d; };
+  var t=function(x){ return Number(x.startMs||x.startedAt||(x.wristStartedAt?new Date(x.wristStartedAt).getTime():0)||x.id)||0; };
+  var by=function(a,b){ return t(a)-t(b); };
+  return {s:getSessions().filter(on).sort(by), r:getRuns().filter(on).sort(by), p:getSportLogs().filter(on).sort(by)};
+}
+function _calDayHas(d){ var L=_calDayLogs(d); return !!(L.s.length||L.r.length||L.p.length); }
+function _calActiveDays(){
+  var seen={};
+  [getSessions(), getRuns(), getSportLogs()].forEach(function(a){ (a||[]).forEach(function(x){ if(x && x.date) seen[String(x.date).slice(0,10)]=1; }); });
+  return Object.keys(seen).sort();
+}
+function _calDayName(d, long){
+  var dt=new Date(String(d)+'T00:00:00'); if(isNaN(dt.getTime())) return String(d);
+  var o=long ? {weekday:'long', month:'short', day:'numeric'} : {weekday:'short', month:'short', day:'numeric'};
+  if(dt.getFullYear()!==new Date().getFullYear()) o.year='numeric';
+  return dt.toLocaleDateString('en-US', o);
+}
+function _calMarkSel(){ document.querySelectorAll('.cal-day').forEach(function(c){ c.classList.toggle('sel', c.getAttribute('data-date')===calSelectedDate); }); }
+function openCalDay(d){
+  calSelectedDate=d; _calMarkSel();
+  if(document.getElementById('calDayOverlay')){ _cdPainted=''; _paintCalDay(); return; }
+  _cdReturnFocus=document.activeElement;
+  var overlay=document.createElement('div');
+  overlay.id='calDayOverlay'; overlay.className='kt-sheet-overlay';
+  overlay.innerHTML='<div class="kt-sheet kt-cd-sheet" role="dialog" aria-modal="true" aria-labelledby="cdTitle" id="cdSheet"><div id="cdBody"></div></div>';
+  document.body.appendChild(overlay);
+  _cdPainted=''; _paintCalDay();
+  _sheetDrag(overlay, closeCalDay);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeCalDay(); });
+  overlay.addEventListener('keydown', function(e){ if(e.key==='Escape'||e.key==='Esc'){ e.preventDefault(); closeCalDay(); } });
+  var t=document.getElementById('cdTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
+}
+function closeCalDay(){
+  var el=document.getElementById('calDayOverlay'); if(el) el.remove();
+  _cdPainted=''; calSelectedDate=null; _calMarkSel();
+  var f=_cdReturnFocus; _cdReturnFocus=null;
+  if(f && f.isConnected){ try{ f.focus({preventScroll:true}); }catch(e){} }
+}
+// ‹ and ›: the month follows, so the calendar behind the sheet shows the day.
+function _calDayGo(d){ _calNavToDate(d); render(); }
+// render() calls this: the sheet follows deletes, moves, undos and edits.
+function _syncCalDay(){
+  if(!document.getElementById('calDayOverlay')) return;
+  if(!calSelectedDate || !_calDayHas(calSelectedDate)){ closeCalDay(); return; }
+  _paintCalDay();
+}
+function _paintCalDay(){
+  var body=document.getElementById('cdBody'); if(!body) return;
+  var html=_calDayHTML(calSelectedDate);
+  if(html===_cdPainted) return;   // nothing changed: keep focus, scroll and an open date picker
+  _cdPainted=html; body.innerHTML=html;
+  _a11yPass();
+}
+function _cdDate(v, on){
+  return '<label class="kt-cd-date">Date<input type="date" value="'+_esc(String(v||''))+'" max="'+todayISO()+'" onchange="'+on+'"/></label>';
+}
+function _calDayHTML(d){
+  var L=_calDayLogs(d), days=_calActiveDays(), prevD=null, nextD=null, i;
+  for(i=days.length-1;i>=0;i--){ if(days[i]<d){ prevD=days[i]; break; } }
+  for(i=0;i<days.length;i++){ if(days[i]>d){ nextD=days[i]; break; } }
+  var wk=0; L.s.forEach(function(x){ if(!wk && parseInt(x.week,10)>0) wk=parseInt(x.week,10); });
+  var counts=[L.s.length?_plural(L.s.length,'workout'):'', L.r.length?_plural(L.r.length,'run'):'', L.p.length?L.p.length+(L.p.length===1?' activity':' activities'):''].filter(Boolean).join(' · ');
+  var html='<div class="kt-sheet-head"><div style="min-width:0;"><div class="screen-eyebrow" style="color:var(--muted);">'+_esc(((wk?'WEEK '+(wk<10?'0':'')+wk+' · ':'')+counts).toUpperCase())+'</div>'+
+      '<div class="kt-sheet-title" id="cdTitle" tabindex="-1">'+_esc(_calDayName(d, true))+'</div></div>'+
+      '<button type="button" class="kt-sheet-x" aria-label="Close" onclick="closeCalDay()">✕</button></div>'+
+    '<div class="kt-cd-nav">'+
+      '<button type="button" '+(prevD?'aria-label="Previous day with a log, '+_esc(_calDayName(prevD))+'" onclick="_calDayGo(\''+prevD+'\')"':'disabled aria-label="No earlier log"')+'>‹'+(prevD?' '+_esc(_calDayName(prevD)):'')+'</button>'+
+      '<button type="button" '+(nextD?'aria-label="Next day with a log, '+_esc(_calDayName(nextD))+'" onclick="_calDayGo(\''+nextD+'\')"':'disabled aria-label="No later log"')+'>'+(nextD?_esc(_calDayName(nextD))+' ':'')+'›</button>'+
     '</div>';
+  L.s.forEach(function(x){
+    var d0=SESS[x.type]||{}, color=d0.color||'var(--accent)';
+    var label=String(x.label||_dayLabel(x.type)||x.type||'Workout');
+    var exs=x.exercises||[], prs=x.prs||[];
+    var vol=Math.round(wDisp(calcVolume(exs))), dur=_cmpDurMs(x), watch=!!(x.wristStartedAt||x.note==='From Apple Watch');
+    var sub=[_plural(exs.length,'lift'), vol>0?vol.toLocaleString()+' '+_uW():'', dur?Math.round(dur/60000)+' min':'', watch?'Apple Watch':''].filter(Boolean).join(' · ');
+    html+='<div class="kt-cd-item">'+
+      '<div class="kt-cd-hd"><div class="kt-cd-badge" style="background:color-mix(in srgb,'+color+' 14%,transparent);color:'+color+';">'+_esc(label.slice(0,2).toUpperCase())+'</div>'+
+        '<div style="flex:1;min-width:0;"><div class="kt-cd-ttl">'+_esc(label)+(x.week?' <span class="kt-cd-wk">· Wk '+x.week+'</span>':'')+'</div><div class="kt-cd-sub">'+_esc(sub)+'</div></div>'+
+        (prs.length?'<div class="kt-cd-pr">'+prs.length+' PR'+(prs.length>1?'s':'')+'</div>':'')+'</div>'+
+      _buildHistExRows(exs, prs, x.supersets)+
+      (x.note && x.note!=='From Apple Watch'?'<div class="kt-cd-note">'+_esc(x.note)+'</div>':'')+
+      '<div class="kt-cd-acts">'+
+        '<button type="button" class="kt-cd-btn primary" onclick="shareSessionCard('+x.id+')">Share card</button>'+
+        '<button type="button" class="kt-cd-btn" onclick="openSessionEditor('+x.id+')">Edit sets</button>'+
+        _cdDate(x.date, 'moveSession('+x.id+',this.value)')+
+        '<button type="button" class="kt-cd-btn danger" onclick="deleteSession('+x.id+')">Delete</button>'+
+      '</div></div>';
   });
-  dayRuns.forEach(function(r){
-    var dist=parseFloat(r.distance||r.dist||0);
-    var p=calcPace(dist,r.time);
-    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
-        '<div style="font-size:14px;font-weight:700;">Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'')+'</div>'+
-        '<div style="display:flex;align-items:center;gap:6px;">'+
-          '<input type="date" value="'+r.date+'" style="'+dateInpStyle+'" onchange="moveRun('+r.id+',this.value)" title="Move to a different date"/>'+
-          '<button type="button" id="cal-edit-'+r.id+'" style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="openRunEditor('+r.id+')" title="Edit run">EDIT</button>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteRun('+r.id+')" title="Delete run">✕</button>'+
-        '</div>'+
-      '</div>'+
-      '<div style="display:flex;gap:16px;margin-bottom:4px;">'+
-        '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+fmtD(dist)+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">dist</div></div>'+
-        '<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.time+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">time</div></div>'+
-        '<div><div style="font-size:18px;font-weight:900;color:var(--accent);letter-spacing:-.5px;">'+fmtPaceStr(p)+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">pace</div></div>'+
-        (r.hr?'<div><div style="font-size:18px;font-weight:900;letter-spacing:-.5px;">'+r.hr+'</div><div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;">bpm</div></div>':'')+
-      '</div>'+
-      (r.note?'<div style="font-size:12px;color:var(--muted);">'+_esc(r.note)+'</div>':'')+
-    '</div>';
+  L.r.forEach(function(r){
+    var dist=parseFloat(r.distance||r.dist||0), p=calcPace(dist, r.time);
+    var ttl='Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'');
+    var stat=function(v, l){ return '<div class="kt-cd-stat"><b>'+_esc(String(v))+'</b><span>'+l+'</span></div>'; };
+    html+='<div class="kt-cd-item">'+
+      '<div class="kt-cd-hd"><div class="kt-cd-badge" style="background:color-mix(in srgb,var(--cal-run,var(--orange)) 14%,transparent);color:var(--cal-run,var(--orange));">RN</div>'+
+        '<div style="flex:1;min-width:0;"><div class="kt-cd-ttl">'+_esc(ttl)+'</div>'+(_isHealthRun(r)?'<div class="kt-cd-sub">Apple Health</div>':'')+'</div></div>'+
+      '<div class="kt-cd-stats">'+stat(dist>0?fmtD(dist):'—','dist')+stat(r.time||'—','time')+stat(fmtPaceStr(p),'pace')+(r.hr?stat(r.hr,'bpm'):'')+'</div>'+
+      (r.note && r.note!=='From Apple Health'?'<div class="kt-cd-note">'+_esc(r.note)+'</div>':'')+
+      '<div class="kt-cd-acts">'+
+        '<button type="button" class="kt-cd-btn primary" id="cal-edit-'+r.id+'" onclick="openRunEditor('+r.id+')">Edit run</button>'+
+        _cdDate(r.date, 'moveRun('+r.id+',this.value)')+
+        '<button type="button" class="kt-cd-btn danger" onclick="deleteRun('+r.id+')">Delete</button>'+
+      '</div></div>';
   });
-  var sMap={};SPORTS.forEach(function(s){sMap[s.id]=s;});
-  daySports.forEach(function(sp){
-    var s=sMap[sp.type]||{icon:'+',color:'#888'};
-    var sum=buildSportSummary(sp);
-    html+='<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
-        '<div style="display:flex;align-items:center;gap:10px;">'+
-          sportChip(s,32)+
-          '<div>'+
-            '<div style="font-size:14px;font-weight:800;">'+sp.type+(sp.duration?' · '+sp.duration+' min':'')+'</div>'+
-            (sum?'<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+_esc(sum)+'</div>':'')+
-            (sp.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+_esc(sp.notes)+'</div>':'')+
-          '</div>'+
-        '</div>'+
-        '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">'+
-          '<input type="date" value="'+sp.date+'" style="'+dateInpStyle+'" onchange="moveSport('+sp.id+',this.value)" title="Move to a different date"/>'+
-          '<button style="'+actBtnStyle+'color:var(--muted);font-size:14px;padding:12px 10px;margin:-10px -4px;" onclick="deleteSportLog('+sp.id+')" title="Delete session">✕</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
+  var sMap={}; SPORTS.forEach(function(x){ sMap[x.id]=x; });
+  L.p.forEach(function(sp){
+    var so=sMap[sp.type]||{icon:'+', color:'#888'}, sum=buildSportSummary(sp);
+    html+='<div class="kt-cd-item">'+
+      '<div class="kt-cd-hd">'+sportChip(so,34)+
+        '<div style="flex:1;min-width:0;"><div class="kt-cd-ttl">'+_esc(String(sp.type||'Activity')+(sp.duration?' · '+sp.duration+' min':''))+'</div>'+(sum?'<div class="kt-cd-sub">'+_esc(sum)+'</div>':'')+'</div></div>'+
+      (sp.notes && sp.notes!=='From Apple Health'?'<div class="kt-cd-note">'+_esc(sp.notes)+'</div>':'')+
+      '<div class="kt-cd-acts">'+
+        '<button type="button" class="kt-cd-btn primary" onclick="openSportLogEditor('+sp.id+')">Edit</button>'+
+        _cdDate(sp.date, 'moveSport('+sp.id+',this.value)')+
+        '<button type="button" class="kt-cd-btn danger" onclick="deleteSportLog('+sp.id+')">Delete</button>'+
+      '</div></div>';
   });
   return html;
 }
@@ -15303,10 +15390,6 @@ function _buildHistExRows(exercises, prs, supersets){
   return rows;
 }
 
-function toggleHistItem(id){
-  histExpandedId = histExpandedId===id ? null : id;
-  render(); // in-tab re-render — scroll position is preserved
-}
 // ── Share card: the session as the app shows it → iOS share sheet ─────────────
 // 1080x1350, drawn in the owner's room: Heavyweight is paper, blue for the action
 // and lime for what was earned, set in Anton and Archivo; Lime is its dark base.
@@ -15528,66 +15611,6 @@ function _paintShareCard(m, P){
   txt('AI TRAINER', 20, FOOT-2, {x:R, align:'right', color:P.muted, ls:'2.5px'});
   return c;
 }
-function renderHistory() {
-  var sessions=getSessions();
-  if(!sessions.length) return '<div class="card"><div class="empty"><p>No sessions yet. Hit Log to get started!</p></div></div>';
-  // Compact, week-grouped rows in one card — recent few by default. The old
-  // one-card-per-session list made this section half the tab's height.
-  var HIST_LIMIT=6;
-  var visible=showAllHist?sessions.slice(0,60):sessions.slice(0,HIST_LIMIT);
-  var rows='', lastWk=null;
-  visible.forEach(function(s) {
-    var _d1=SESS[s.type]||{icon:'',label:s.type,color:'var(--accent)'}; var def={}; for(var _dk1 in _d1){ def[_dk1]=_d1[_dk1]; }
-    def.label=s.label||_dayLabel(s.type);   // the day's name, as it was called when logged
-    var sessionPRs=s.prs||[];
-    var open = histExpandedId===s.id;
-    var exs = s.exercises||[];
-    var top = null;
-    for(var t=0;t<exs.length;t++){ var e=exs[t]; if(e.isMain){top=e;break;} if(!top)top=e; }
-    var summary = exs.length+' lift'+(exs.length!==1?'s':'')+
-      (top?' · '+top.name+(parseFloat(top.weight)>0?' '+fmtW(top.weight):''):'');
-    if(s.week!==lastWk){
-      lastWk=s.week;
-      rows+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);padding:12px 0 4px;">'+
-        (s.week?'WEEK '+String(s.week).padStart(2,'0'):'UNSCHEDULED')+'</div>';
-    }
-    var body = open
-      ? '<div style="padding:2px 0 10px;">'+
-          _buildHistExRows(exs,sessionPRs,s.supersets)+
-          (s.note?'<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">'+_esc(s.note)+'</div>':'')+
-          '<div style="display:flex;gap:8px;margin-top:10px;">'+
-          '<button onclick="event.stopPropagation();shareSessionCard('+s.id+')" style="background:var(--accent);border:none;border-radius:10px;color:var(--on-accent);font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Share card →</button>'+
-          '<button onclick="event.stopPropagation();openSessionEditor('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Edit sets</button>'+
-          '<button onclick="event.stopPropagation();deleteSession('+s.id+')" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--red);font-size:11px;font-weight:700;padding:7px 12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Delete session</button>'+
-          '</div>'+
-        '</div>'
-      : '';
-    rows+='<div onclick="toggleHistItem('+s.id+')" style="border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
-      '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;">'+
-        '<div style="width:34px;height:34px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;'+
-          'background:color-mix(in srgb,'+def.color+' 14%,transparent);color:'+def.color+';font-size:11px;font-weight:900;letter-spacing:-.3px;">'+
-          _esc(def.label.slice(0,2).toUpperCase())+'</div>'+
-        '<div style="flex:1;min-width:0;">'+
-          '<div style="display:flex;align-items:baseline;gap:7px;">'+
-            '<span style="font-size:13px;font-weight:800;">'+_esc(def.label)+'</span>'+
-            '<span style="font-size:11px;color:var(--muted);">'+fmtDate(s.date)+'</span>'+
-          '</div>'+
-          '<div style="font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(summary)+'</div>'+
-        '</div>'+
-        (sessionPRs.length?'<div style="font-size:10px;font-weight:800;color:var(--earned-ink);flex-shrink:0;">'+sessionPRs.length+' PR'+(sessionPRs.length>1?'s':'')+'</div>':'')+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="'+(open?'var(--accent)':'var(--muted)')+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="flex-shrink:0;transition:transform .2s;'+(open?'transform:rotate(180deg);':'')+'"><polyline points="6 9 12 15 18 9"/></svg>'+
-      '</div>'+
-      body+
-    '</div>';
-  });
-  var moreBtn = sessions.length>HIST_LIMIT
-    ? '<button onclick="showAllHist='+(!showAllHist)+';histExpandedId=null;render()" style="width:100%;margin-top:12px;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
-      (showAllHist?'Show recent ↑':'Show all '+sessions.length+' →')+'</button>'
-    : '';
-  return '<div class="chart-card"><div class="chart-head"><div><div class="chart-lbl">Session history · '+sessions.length+' logged</div></div></div>'+rows+moreBtn+'</div>';
-}
-
-
 // Progress › Runs › Run history: every logged run, newest first, each row opens the run
 // editor. It lives here, not on the Run tab, because a sport-primary plan has no Run tab.
 function renderRunHistory(){
@@ -20712,7 +20735,7 @@ window._trovoOpen=_handleDeepLink;
 // the screenshot helper can drive the sim without UI taps. The key is
 // consumed (deleted) on first read; absence is the no-op default. Routes:
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
-//   "progress" | "progress/compare" | "progress/records" | "settings"
+//   "progress" | "progress/compare" | "progress/records" | "progress/day" | "settings"
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
@@ -20731,6 +20754,7 @@ window._trovoOpen=_handleDeepLink;
         if(head==='log' && sub){ switchLogSub(sub); }
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
+        if(head==='progress' && sub==='day'){ var _ad=_calActiveDays(); if(_ad.length){ _calNavToDate(_ad[_ad.length-1]); render(); openCalDay(_ad[_ad.length-1]); } }
         if(head==='progress' && sub==='records'){ var _pl=_prLedger().latest; showAllPRs=true; render(); if(_pl) openPRHistory(_pl.name); }
         if(head==='modal' && sub==='programme'){ openProgrammeModal(); }
         if(head==='modal' && sub==='routines'){ openRoutines(); }
