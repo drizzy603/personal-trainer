@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260929-3"/>
+<meta name="build" content="20260929-4"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -3923,9 +3923,9 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
+var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_final_since','kt_round_intro'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -3982,7 +3982,7 @@ function exportData() {
         lsSet('kt_last_export', Date.now());
         showToast('Saved to Files \u203a On My iPhone \u203a Supero \u203a '+name);
         var TS=_plug('TrovoShare');
-        if(TS && TS.saveToICloud) Promise.resolve(TS.saveToICloud({name:name, content:payload})).catch(function(){});
+        if(TS && TS.saveToICloud) Promise.resolve(TS.saveToICloud({name:name, content:_sanitizeForICloud(payload)})).catch(function(){});   // App Review 5.1.3, privacy policy: no Health HR or calories in iCloud
         render();
       })
       .catch(function(e){ showToast('Export failed \u2014 '+((e&&e.message)||'could not write the file'),'err'); });
@@ -4206,7 +4206,7 @@ function _applyImportedData(data) {
     // Absent raw keys: only data-ish ones are cleared. Device-capability
     // opt-ins (Health write, notifications, readiness, theme…) belong to
     // THIS phone — an old backup must not silently switch them off.
-    else if (k === 'kt_run_goal' || k === 'kt_user_name') localStorage.removeItem(k);
+    else if (k === 'kt_run_goal' || k === 'kt_user_name' || k === 'kt_final_since') localStorage.removeItem(k);
   });
   if (dropped.length) {
     showToast('Skipped corrupt entries: ' + dropped.join(', '));
@@ -19682,6 +19682,9 @@ loadCoachHistory();
     if(moved) setCustomRoutine(_mig);
   }catch(e){}
 })();
+// kt_final_since is a raw date; backups used to read it as JSON, which parked a copy here
+// and toasted "unreadable data" on every final-week launch. Nothing else writes this key.
+try{ localStorage.removeItem('kt_final_since_corrupt'); }catch(e){}
 // Once: take back the demo loads the first finished session saved as the user's own —
 // an entry still at its demo value for a lift that was never logged.
 (function(){
