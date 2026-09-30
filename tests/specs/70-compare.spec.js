@@ -153,7 +153,9 @@ run('compare two: flow, maths, deltas, units, matching, state, rooms, a11y', asy
         closeCompareSheet(true);
         selectCalDate('2026-07-04');
         const sel = q('.cal-day.sel');
-        o.sel = sel && getComputedStyle(sel).backgroundColor; o.selTok = bg('var(--sel, var(--accent))'); o.accent = bg('var(--accent)');
+        // the selected day is a ring in --text; the block keeps its own colour
+        o.sel = sel && getComputedStyle(sel).outlineColor; o.selStyle = sel && getComputedStyle(sel).outlineStyle; o.textRgb = rgb('var(--text)');
+        o.keeps = !!(sel && /background/.test(sel.getAttribute('style') || ''));
         _cmpExit(); render();
         return o;
       };
@@ -207,8 +209,8 @@ run('compare two: flow, maths, deltas, units, matching, state, rooms, a11y', asy
     assert(out.a22.gone, '22 a deleted pick is pruned');
     assert(!out.a23.on && !out.a23.tray && /Tap a day to see what you did/.test(out.a23.detail), '23 leaving Progress exits: ' + JSON.stringify(out.a23));
     assert(out.a24.closed && out.a24.focus === 'cmp-go' && out.a24.still && out.a24.one === 1, '24 escape / single overlay: ' + JSON.stringify(out.a24));
-    assert(out.a25.up === out.a25.earnedInk && out.a25.disc === out.a25.text && out.a25.sel === out.a25.selTok && out.a25.sel !== 'rgb(216, 255, 99)' && out.a25.bad === 0, '25 Lime room: ' + JSON.stringify(out.a25));
-    assert(out.a26.up === 'rgb(79, 112, 0)' && out.a26.sel === out.a26.accent && out.a26.bad === 0, '26 Heavyweight: ' + JSON.stringify(out.a26));
+    assert(out.a25.up === out.a25.earnedInk && out.a25.disc === out.a25.text && out.a25.sel === out.a25.textRgb && out.a25.selStyle === 'solid' && out.a25.keeps && out.a25.sel !== 'rgb(216, 255, 99)' && out.a25.bad === 0, '25 Lime room: ' + JSON.stringify(out.a25));
+    assert(out.a26.up === 'rgb(79, 112, 0)' && out.a26.sel === out.a26.textRgb && out.a26.selStyle === 'solid' && out.a26.keeps && out.a26.bad === 0, '26 Heavyweight: ' + JSON.stringify(out.a26));
     assert(out.a28.picksAreButtons && out.a28.radios, '28 a11y: ' + JSON.stringify(out.a28));
     assert(app.errors.length === 0, '31 no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }

@@ -58,16 +58,16 @@ run('kg + mi: body weight, pace goals, ledger, run days, kg chips and starter, t
   } finally { await app.close(); }
 });
 
-run('Heavyweight: the selected day keeps its run and sport dots visible', async () => {
+run('Heavyweight: a run day is a green block and stays green when selected', async () => {
   const app = await boot({ seed: { kt_theme: 'heavyweight' } });
   try {
     const out = await app.page.evaluate(() => {
       switchTab('progress'); calYear = 2026; calMonth = 6; render();
-      const day = [...document.querySelectorAll('.cal-day')].find(d => d.querySelector('.cal-dot-r'));
+      const day = document.querySelector('.kt-cal-grid .cal-day.r:not(.w):not(.s)');
       selectCalDate(day.getAttribute('data-date'));
-      const r = document.querySelector('.cal-day.sel .cal-dot-r');
-      return r && getComputedStyle(r).boxShadow;
+      const r = document.querySelector('.cal-day.sel');
+      return r && [getComputedStyle(r).backgroundColor, getComputedStyle(r).outlineStyle];
     });
-    assert(/255, 255, 255/.test(out || ''), 'the run dot has a paper ring on the blue selected day: ' + out);
+    assert(out && out[0] === 'rgb(22, 163, 74)' && out[1] === 'solid', 'the run day is green with a selection ring: ' + JSON.stringify(out));
   } finally { await app.close(); }
 });
