@@ -82,3 +82,85 @@ run('runs live in the Activity card and its day sheet', async () => {
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// Review fixes (web 20260930-9): a legacy time reads the way the run editor reads it ('25.50' is
+// 25:50, '45 min' is 45:00) and 59.6 s carries into the minute; the pace is worked from the
+// exact seconds; a run dated in a later month stays reachable (› goes to the last month holding
+// a log), and the Log › Run form and the coach's log_run refuse a future date like the editor
+// does; closing the sheet after an edit re-rendered the card lands on the day's block.
+run('review fixes: legacy times, exact pace, a later month, future dates, focus after close', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const txt = el => el ? el.textContent.replace(/\s+/g, ' ').trim() : null;
+      const stats = id => { const e = document.getElementById('cal-edit-' + id); return e ? [...e.closest('.kt-cd-item').querySelectorAll('.kt-cd-stat b')].map(txt) : null; };
+      const toMonth = () => { calMonth = new Date().getMonth(); calYear = new Date().getFullYear(); render(); };
+      const T = todayISO(), r = {};
+      r.carry = [_fmtRunSecs(1559.6), _fmtRunSecs(59.6), _fmtRunSecs(3599.5)];
+      // legacy time strings, and a pace the old per-km rounding got a second wrong in miles
+      lsSet('kt_runs', [
+        { id: 8101, date: T, distance: 5, time: '25.50', type: 'easy' },
+        { id: 8102, date: T, distance: 5, time: '25:59.6', type: 'easy' },
+        { id: 8103, date: T, distance: 5, time: '45 min', type: 'easy' },
+        { id: 8104, date: T, distance: 5, time: '26:42', type: 'easy' }]);
+      switchTab('progress'); setProgressTab('runs'); await wait(20);
+      openCalDay(T); await wait(20);
+      r.legacy = [stats(8101), stats(8102), stats(8103)];
+      openRunEditor(8101); r.editor = [document.getElementById('re_time').value, txt(document.getElementById('re_pace'))]; closeRunEditor();
+      closeCalDay();
+      localStorage.setItem('kt_unit_d', 'mi');
+      openCalDay(T); await wait(20); r.mi = stats(8104); closeCalDay();
+      localStorage.setItem('kt_unit_d', 'km');
+      // a run in a later month, as the only log
+      const nx = new Date(); nx.setDate(1); nx.setMonth(nx.getMonth() + 1); nx.setDate(5);
+      const F = _ymdLocal(nx);
+      lsSet('kt_runs', [{ id: 8201, date: F, distance: 4, time: '22:00', type: 'easy' }]);
+      toMonth(); await wait(20);
+      const next = () => document.querySelector('#screen .kt-cal-nav button[aria-label="Next month"]');
+      r.future = { enabled: !!next() && !next().disabled };
+      next().click(); await wait(20);
+      const fb = document.querySelector('#screen .cal-day[data-date="' + F + '"]');
+      r.future.block = !!fb && fb.classList.contains('r');
+      r.future.stops = !!next() && next().disabled;
+      fb.click(); await wait(20);
+      r.future.sheet = !!document.getElementById('cal-edit-8201');
+      closeCalDay();
+      // the Log > Run form and the coach refuse a future date
+      const tm = new Date(); tm.setDate(tm.getDate() + 1); const TM = _ymdLocal(tm);
+      lsSet('kt_runs', []);
+      localStorage.setItem('kt_log_tabs', JSON.stringify(['run', 'body'])); _lsCache = {};
+      switchTab('log'); switchLogSub('run'); openRunLog(); await wait(20);
+      const di = document.getElementById('kt-rlog-date');
+      r.form = { max: !!di && di.getAttribute('max') === T };
+      document.getElementById('kt-rlog-dist').value = '5'; document.getElementById('kt-rlog-time').value = '25:00'; di.value = TM;
+      saveInlineRun(); await wait(20);
+      r.form.refused = getRuns().length === 0 && /today or an earlier date/.test(txt(document.getElementById('toast')) || '');
+      document.getElementById('kt-rlog-date').value = T;
+      saveInlineRun(); await wait(20);
+      r.form.today = getRuns().length === 1 && getRuns()[0].date === T;
+      const c1 = executeCoachTool('log_run', { distance: 5, time: '25:00', date: TM });
+      const c2 = executeCoachTool('log_run', { distance: 5, time: '25:00', date: T });
+      r.coach = { future: c1.ok === false && /future/.test(c1.error || ''), today: !!c2.ok, n: getRuns().length };
+      // focus after an edit and a close
+      lsSet('kt_runs', [{ id: 8301, date: T, distance: 5, time: '25:00', type: 'easy' }]);
+      switchTab('progress'); setProgressTab('runs'); toMonth(); await wait(20);
+      const tb = document.querySelector('#screen .cal-day[data-date="' + T + '"]'); tb.focus(); tb.click(); await wait(20);
+      const ce = document.getElementById('cal-edit-8301'); ce.focus(); ce.click();
+      document.getElementById('re_dist').value = '6'; saveRunEdit(8301); await wait(20);
+      document.getElementById('calDayOverlay').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      const a = document.activeElement;
+      r.focus = { closed: !document.getElementById('calDayOverlay'), onBlock: !!a && !!a.classList && a.classList.contains('cal-day') && a.getAttribute('data-date') === T };
+      return r;
+    });
+    assert(JSON.stringify(out.carry) === JSON.stringify(['26:00', '1:00', '1:00:00']), '59.6 s carries into the minute: ' + JSON.stringify(out.carry));
+    assert(JSON.stringify(out.legacy) === JSON.stringify([['5 km', '25:50', '5:10 /km'], ['5 km', '26:00', '5:12 /km'], ['5 km', '45:00', '9:00 /km']]), 'legacy times read like the editor reads them: ' + JSON.stringify(out.legacy));
+    assert(out.editor[0] === '25:50' && /5:10/.test(out.editor[1] || ''), 'the editor agrees: ' + JSON.stringify(out.editor));
+    assert(JSON.stringify(out.mi) === JSON.stringify(['3.11 mi', '26:42', '8:36 /mi']), 'the pace is worked from the exact seconds: ' + JSON.stringify(out.mi));
+    assert(out.future.enabled && out.future.block && out.future.stops && out.future.sheet, 'a later month holding the only run is reachable: ' + JSON.stringify(out.future));
+    assert(out.form.max && out.form.refused && out.form.today, 'the Log > Run form refuses a future date: ' + JSON.stringify(out.form));
+    assert(out.coach.future && out.coach.today && out.coach.n === 2, 'the coach refuses a future date: ' + JSON.stringify(out.coach));
+    assert(out.focus.closed && out.focus.onBlock, 'closing after an edit lands on the day\'s block: ' + JSON.stringify(out.focus));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

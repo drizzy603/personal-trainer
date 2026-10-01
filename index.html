@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-8"/>
+<meta name="build" content="20260930-9"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -7592,6 +7592,7 @@ function saveInlineRun(){
   time=_norm;
   var hr = parseInt(runLogDraft.hr) || 0;
   var date = (runLogDraft.date||'').trim() || todayISO();
+  if(date > todayISO()){ showToast('Pick today or an earlier date','err'); return; }
   var note = (runLogDraft.note||'').trim();
   var rec = {
     id: Date.now(),
@@ -7837,7 +7838,7 @@ function renderInlineRunLog(){
     '</div>'+
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">DATE</label>'+
-        '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
+        '<input id="kt-rlog-date" class="kt-rlog-input small" type="date" max="'+todayISO()+'" value="'+_esc(d.date)+'"'+sync+'date=this.value"/></div>'+
     '</div>'+
     '<div class="kt-rlog-row" style="grid-template-columns:1fr;">'+
       '<div><label class="kt-rlog-field-lbl">HOW DID IT FEEL? · OPTIONAL</label>'+
@@ -7873,7 +7874,8 @@ function _runSecsOf(t){
   return p.length===3 ? p[0]*3600+p[1]*60+(p[2]||0) : p[0]*60+(p[1]||0);
 }
 function _fmtRunSecs(s){
-  var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=Math.round(s%60);
+  s=Math.round(s);   // round first, so 59.6 s carries into the minute instead of reading :60
+  var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60;
   return (h?h+':'+String(m).padStart(2,'0'):String(m))+':'+String(ss).padStart(2,'0');
 }
 function renderRunReview(km, time, excludeId){
@@ -14674,11 +14676,23 @@ function svgChart(data,color,goalVal) {
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────────
+// The card's last month: this one, or a later one holding a log (a mis-picked date has to
+// stay reachable so it can be fixed or deleted; the list that used to show it is gone).
+function _calLastMonth(){
+  var now=new Date(), L={y:now.getFullYear(), m:now.getMonth()}, days=_calActiveDays();
+  for(var i=days.length-1;i>=0;i--){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(days[i])) continue;
+    var y=parseInt(days[i].slice(0,4),10), m=parseInt(days[i].slice(5,7),10)-1;
+    if(y>L.y || (y===L.y && m>L.m)) L={y:y, m:m};
+    break;
+  }
+  return L;
+}
 function calNav(delta){
-  var m=calMonth+delta, y=calYear, now=new Date();
+  var m=calMonth+delta, y=calYear, L=_calLastMonth();
   if(m>11){ m=0; y++; }
   if(m<0){ m=11; y--; }
-  if(y>now.getFullYear() || (y===now.getFullYear() && m>now.getMonth())) return;
+  if(y>L.y || (y===L.y && m>L.m)) return;
   calMonth=m; calYear=y;
   calSelectedDate=null;
   render();
@@ -14744,8 +14758,12 @@ function openCalDay(d){
 }
 function closeCalDay(){
   var el=document.getElementById('calDayOverlay'); if(el) el.remove();
+  var day=calSelectedDate;
   _cdPainted=''; calSelectedDate=null; _calMarkSel();
   var f=_cdReturnFocus; _cdReturnFocus=null;
+  // An edit, a delete or ‹ › re-rendered the card under the sheet: the block that opened it is
+  // gone, so focus lands on the block of the day the sheet was showing.
+  if(!(f && f.isConnected) && day) f=document.querySelector('.cal-day[data-date="'+day+'"]');
   if(f && f.isConnected){ try{ f.focus({preventScroll:true}); }catch(e){} }
 }
 // ‹ and ›: the month follows, so the calendar behind the sheet shows the day.
@@ -14800,8 +14818,9 @@ function _calDayHTML(d){
   });
   L.r.forEach(function(r){
     // Reads like the Run history rows it replaced: the run's own type, the time as m:ss, the pace in the owner's unit.
-    var dist=parseFloat(r.distance||r.dist||0), secs=_runSecsOf(r.time);
-    var ttl=_runTypeLabel(r.type), tStr=secs>0?_fmtRunSecs(secs):(r.time||'—'), pace=(dist>0&&secs>0)?fmtPace(secs/dist):'—';
+    // A legacy time ('25.50', '45 min') is read the way the run editor reads it, so the two agree.
+    var dist=parseFloat(r.distance||r.dist||0), norm=_normRunTime(r.time), secs=_runSecsOf(norm||r.time);
+    var ttl=_runTypeLabel(r.type), tStr=norm||(secs>0?_fmtRunSecs(secs):(r.time||'—')), pace=(dist>0&&secs>0)?fmtPace(secs/dist):'—';
     var stat=function(v, l){ return '<div class="kt-cd-stat"><b>'+_esc(String(v))+'</b><span>'+l+'</span></div>'; };
     html+='<div class="kt-cd-item">'+
       '<div class="kt-cd-hd"><div class="kt-cd-badge" style="background:color-mix(in srgb,var(--blk-run) 14%,transparent);color:var(--blk-run);">RN</div>'+
@@ -14869,7 +14888,7 @@ function renderCalendar(sessions,runs,sports){
       ' aria-label="'+_esc(_calDayName(iso)+(what?', '+what:''))+'" onclick="selectCalDate(\''+iso+'\')"><span class="cal-n">'+d+'</span></button>';
   }
   var monthName=first.toLocaleString('en-US',{month:'long'}).toUpperCase()+' '+calYear;
-  var now=new Date(), atNow=(calYear>now.getFullYear() || (calYear===now.getFullYear() && calMonth>=now.getMonth()));
+  var L=_calLastMonth(), atNow=(calYear>L.y || (calYear===L.y && calMonth>=L.m));
   var sv=wDisp(st.volume), volStr=sv>=1000?(Math.round(sv/100)/10)+'k':String(Math.round(sv));
   var dist=dDisp(st.km), distStr=dist>=100?String(Math.round(dist)):String(Math.round(dist*10)/10);
   var stat=function(v, l, earned){ return '<div class="kt-cal-stat kt-mono"><b'+(earned?' class="earned"':'')+'>'+v+'</b><span>'+l+'</span></div>'; };
@@ -16772,6 +16791,7 @@ function _executeCoachToolRaw(name,input){
       rtime=_rn;
       var rdate=String(input.date||'').trim()||todayISO();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(rdate)) rdate=todayISO();
+      if(rdate>todayISO()) return {ok:false,error:'date '+rdate+' is in the future; log runs on or before today ('+todayISO()+')'};
       var rtype=input.type||'easy';
       var rhr=parseInt(input.hr)||0;
       var rnote=String(input.note||'').trim();
