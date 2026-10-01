@@ -1,4 +1,5 @@
-// Run editor (web 20260924-10): Progress › Runs › Run history and the Run tab strips open the
+// Run editor (web 20260924-10): the calendar day sheet's Edit run (Progress › Runs › Run history
+// until web 20260930-7, when runs moved into the Activity card) and the Run tab strips open the
 // sheet; only touched fields are validated or written; miles, legacy records, validation,
 // storage full, Undo (a real click), delete, and Apple Health identity (hkOrig) through an edit,
 // a date move, Reset import and a re-import. Built from the reviewed spec (run-editor).
@@ -11,27 +12,29 @@ run('A: ways in + sheet + units + legacy + validation', async () => {
     const out = await app.page.evaluate(() => {
       const r = {};
       const set = (id, v) => { document.getElementById(id).value = v; };
-      // Progress > Runs history on the demo seed (Cycling-primary, runs stored oldest-first)
+      // Progress > Runs on the demo seed (Cycling-primary, runs stored oldest-first): no run list;
+      // the newest run is its day's block on the Activity card, and its sheet has Edit run
       switchTab('progress'); setProgressTab('runs');
-      const card = document.querySelector('#screen .kt-run-hist');
-      const rows = card ? Array.from(card.querySelectorAll('.kt-run-hist-row')) : [];
-      const want = getRuns().slice().sort(_cmpByDateDesc).slice(0, 6).map(x => 'openRunEditor(' + x.id + ')');
-      r.hist = { has: !!card, head: card && card.querySelector('.chart-lbl').textContent, n: rows.length,
-        order: rows.map(x => x.getAttribute('onclick')).join() === want.join(),
-        roles: rows.every(x => x.getAttribute('role') === 'button' && x.getAttribute('tabindex') === '0'),
-        firstSub: rows[0] && rows[0].textContent, noColor: !/#[0-9a-f]{3,8}\b|rgba?\(/i.test(card.innerHTML) };
-      card.querySelector('.kt-run-hist-more').click();
-      r.hist.all = document.querySelectorAll('#screen .kt-run-hist-row').length;
-      // open from the first row, focus title, Escape closes and returns focus
-      const first = document.querySelector('#screen .kt-run-hist-row');
-      first.focus(); first.click();
+      const newest = getRuns().slice().sort(_cmpByDateDesc)[0];
+      _calNavToDate(newest.date); calSelectedDate = null; render();
+      const blk = document.querySelector('#screen .cal-day[data-date="' + newest.date + '"]');
+      r.cal = { id: newest.id, noList: !document.querySelector('#screen .kt-run-hist') && !/Run history/.test(document.getElementById('screen').textContent),
+        block: !!blk && blk.classList.contains('r') && blk.getAttribute('data-act') === '1' };
+      blk.click();
+      const edit = document.getElementById('cal-edit-' + newest.id);
+      r.cal.sheet = !!document.getElementById('calDayOverlay') && !!edit;
+      // open from the sheet, focus title, Escape closes and returns focus to Edit run
+      edit.focus(); edit.click();
       const ov = document.getElementById('runEditOverlay');
       r.sheet = { open: !!ov, title: document.getElementById('reTitle').textContent, focused: document.activeElement && document.activeElement.id,
         dialog: ov.querySelector('.kt-sheet').getAttribute('role'), labels: Array.from(ov.querySelectorAll('input,select')).every(i => ov.querySelector('label[for="' + i.id + '"]')),
         noColor: !/#[0-9a-f]{3,8}\b|rgba?\(/i.test(ov.innerHTML) };
-      ov.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      // a real key press is cancelable: the editor's preventDefault keeps the page-wide Escape off the day sheet under it
+      ov.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      r.sheet.dayKept = !!document.getElementById('calDayOverlay');
       r.sheet.escClosed = !document.getElementById('runEditOverlay');
       r.sheet.focusBack = document.activeElement && document.activeElement.id;
+      closeCalDay();
       // no-op save
       const before = localStorage.getItem('kt_runs');
       const id0 = getRuns().slice().sort(_cmpByDateDesc)[0].id;
@@ -87,8 +90,8 @@ run('A: ways in + sheet + units + legacy + validation', async () => {
       openRunEditor(905); _reSetFeel(5); saveRunEdit(905); r.glitch = [getRuns()[0].feel, !document.getElementById('runEditOverlay')];
       return r;
     });
-    assert(out.hist.has && out.hist.n === 6 && out.hist.order && out.hist.roles && out.hist.all === 8 && out.hist.noColor, 'history');
-    assert(out.sheet.open && out.sheet.focused === 'reTitle' && out.sheet.labels && out.sheet.escClosed && out.sheet.noColor, 'sheet');
+    assert(out.cal.noList && out.cal.block && out.cal.sheet, 'runs live in the Activity card and its day sheet: ' + JSON.stringify(out.cal));
+    assert(out.sheet.open && out.sheet.focused === 'reTitle' && out.sheet.labels && out.sheet.escClosed && out.sheet.noColor && out.sheet.dayKept && out.sheet.focusBack === 'cal-edit-' + out.cal.id, 'sheet: ' + JSON.stringify(out.sheet));
     assert(out.noop.same && out.noop.closed && !out.noop.undo, 'noop');
     assert(out.best.tc && out.best.pace && out.best.card === null && out.best.undoBtn && out.best.restored, 'best');
     assert(out.mi.v === '3.11' && /\/MI/.test(out.mi.pace) && out.mi.untouched === 5 && out.mi.feelOnly[0] === 5 && out.mi.sameNumber === 5 && Math.abs(out.mi.typed - 9.978) < 0.01, 'mi');
@@ -178,7 +181,10 @@ run('C: Apple Health identity', async () => {
       const cloud = JSON.parse(_sanitizeForICloud(JSON.stringify(buildBackupJSON())));
       r.cloud = { hr501: cloud.kt_runs.find(x => x.id === 501).hr, hr503: cloud.kt_runs.find(x => x.id === 503).hr, hk: !!cloud.kt_runs.find(x => x.id === 501).hkOrig };
       switchTab('progress'); setProgressTab('runs');
-      r.row = document.getElementById('rh-501').textContent;
+      openCalDay(D);
+      const e501 = document.getElementById('cal-edit-501');
+      r.row = e501 ? e501.closest('.kt-cd-item').textContent : null;
+      closeCalDay();
       // moveRun stamps
       const newest502 = getRuns().find(x => x.date === D2);
       moveRun(newest502.id, '2026-09-17');
@@ -190,7 +196,7 @@ run('C: Apple Health identity', async () => {
     assert(out.afterSync[0] === 3 && out.afterSync[1] === 5, 'sync');
     assert(out.afterReset === '501,503', 'reset keeps edited: ' + out.afterReset);
     assert(out.afterImport.n === 3 && out.afterImport.fives === 1 && out.afterImport.d2 === 1 && out.afterImport.ledger === 'hk-501,hk-502', 'no twin');
-    assert(out.health && out.cloud.hr501 === undefined && out.cloud.hr503 === 160 && /HEALTH/.test(out.row), 'identity');
+    assert(out.health && out.cloud.hr501 === undefined && out.cloud.hr503 === 160 && /Apple Health/.test(out.row || ''), 'identity: ' + out.row);
     assert(out.moved && out.moved.date === D2, 'moveRun stamps');
     assert(app.errors.length === 0, 'errors ' + app.errors.join('|'));
   } finally { await app.close(); }

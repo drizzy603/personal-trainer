@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-6"/>
+<meta name="build" content="20260930-7"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -638,14 +638,6 @@ html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .kt-run-row-km{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--lite);}
 .kt-run-row-hr{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--muted);margin-top:2px;}
 .kt-run-note{font-size:13px;color:var(--lite);line-height:1.5;margin-top:8px;letter-spacing:-.011em;}
-.kt-run-hist-row{display:flex;align-items:center;gap:11px;min-height:44px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.kt-run-hist-row:active{background:color-mix(in srgb,var(--text) 5%,transparent);}
-.kt-run-hist-main{flex:1;min-width:0;}
-.kt-run-hist-t{font-size:13px;font-weight:800;color:var(--text);}
-.kt-run-hist-d{font-size:11px;color:var(--muted);margin-left:7px;}
-.kt-run-hist-s{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.kt-run-hist-go{font-size:18px;line-height:1;color:var(--muted);flex-shrink:0;}
-.kt-run-hist-more{width:100%;margin-top:12px;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 /* Inline Log-Run form (addendum 0e) — editorial, no nested card. */
 .kt-rlog{transform-origin:top center;animation:kt-rlog-in .35s ease-out;margin-bottom:24px;}
@@ -2193,7 +2185,6 @@ var runLogDraft = {dist:'', time:'', hr:'', date:'', note:''};
 // Progress tab: which detail charts are showing.
 var progressTab = 'lifts';   // 'lifts' | 'runs'
 var showAllPRs  = false;
-var showAllRunHist = false;  // Run history, the same
 var strengthChartOpen = null; // lift name expanded to a full e1RM chart
 // + sub-tab editorial form draft, captured on every input.
 var sportLogDraft = {duration:'', notes:'', date:'', f:{}};
@@ -14597,8 +14588,7 @@ function renderProgress() {
   return progressHeader + streakHero + renderWeekRecap(sessions,runs) +
     eyebrow('Overview') + toggle + stats +
     midGroups + renderMilestones() + renderRetroCard(sessions) +
-    eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML +
-    (progressTab==='runs' ? renderRunHistory() : '');
+    eyebrow('History') + renderBackupNudge() + weekAdjustRow + calHTML;
 }
 
 // Catmull-Rom → cubic bezier, so charts draw as smooth curves not zig-zags.
@@ -14714,7 +14704,7 @@ function renderCalDetail(sessions,runs,sports){
 // ── Calendar day sheet ───────────────────────────────────────────────────────
 // A tapped day opens everything logged on it (workouts, runs, activities) with
 // each one's actions: share card, edit, move to another date, delete. It took
-// the place of the always-open Session history list under the calendar. A
+// the place of the always-open Session history and Run history lists. A
 // delete or a move repaints it (a move follows the log to its new day), ‹ and ›
 // step to the previous and next day with something logged, and it closes itself
 // when its day is empty. COMPARE keeps the inline pick list.
@@ -14809,16 +14799,17 @@ function _calDayHTML(d){
       '</div></div>';
   });
   L.r.forEach(function(r){
-    var dist=parseFloat(r.distance||r.dist||0), p=calcPace(dist, r.time);
-    var ttl='Run'+(r.type&&r.type!=='easy'?' · '+_runTypeLabel(r.type):'');
+    // Reads like the Run history rows it replaced: the run's own type, the time as m:ss, the pace in the owner's unit.
+    var dist=parseFloat(r.distance||r.dist||0), secs=_runSecsOf(r.time);
+    var ttl=_runTypeLabel(r.type), tStr=secs>0?_fmtRunSecs(secs):(r.time||'—'), pace=(dist>0&&secs>0)?fmtPace(secs/dist):'—';
     var stat=function(v, l){ return '<div class="kt-cd-stat"><b>'+_esc(String(v))+'</b><span>'+l+'</span></div>'; };
     html+='<div class="kt-cd-item">'+
       '<div class="kt-cd-hd"><div class="kt-cd-badge" style="background:color-mix(in srgb,var(--blk-run) 14%,transparent);color:var(--blk-run);">RN</div>'+
         '<div style="flex:1;min-width:0;"><div class="kt-cd-ttl">'+_esc(ttl)+'</div>'+(_isHealthRun(r)?'<div class="kt-cd-sub">Apple Health</div>':'')+'</div></div>'+
-      '<div class="kt-cd-stats">'+stat(dist>0?fmtD(dist):'—','dist')+stat(r.time||'—','time')+stat(fmtPaceStr(p),'pace')+(r.hr?stat(r.hr,'bpm'):'')+'</div>'+
+      '<div class="kt-cd-stats">'+stat(dist>0?fmtD(dist):'—','dist')+stat(tStr,'time')+stat(pace,'pace')+(r.hr?stat(r.hr,'bpm'):'')+'</div>'+
       (r.note && r.note!=='From Apple Health'?'<div class="kt-cd-note">'+_esc(r.note)+'</div>':'')+
       '<div class="kt-cd-acts">'+
-        '<button type="button" class="kt-cd-btn primary" id="cal-edit-'+r.id+'" onclick="openRunEditor('+r.id+')">Edit run</button>'+
+        '<button type="button" class="kt-cd-btn primary" id="cal-edit-'+r.id+'" aria-label="'+_esc('Edit run, '+ttl+(dist>0?', '+fmtD(dist):''))+'" onclick="openRunEditor('+r.id+')">Edit run</button>'+
         _cdDate(r.date, 'moveRun('+r.id+',this.value)')+
         '<button type="button" class="kt-cd-btn danger" onclick="deleteRun('+r.id+')">Delete</button>'+
       '</div></div>';
@@ -15748,28 +15739,6 @@ function _paintShareCard(m, P){
   txt('FITNESS PROGRAMMER', 30, FOOT, {x:M+32, font:fD(30), ls:'1px'});
   txt('AI TRAINER', 20, FOOT-2, {x:R, align:'right', color:P.muted, ls:'2.5px'});
   return c;
-}
-// Progress › Runs › Run history: every logged run, newest first, each row opens the run
-// editor. It lives here, not on the Run tab, because a sport-primary plan has no Run tab.
-function renderRunHistory(){
-  var all=getRuns().slice().sort(_cmpByDateDesc);
-  if(!all.length) return '';
-  var LIM=6, CAP=60, list=all.slice(0, showAllRunHist?CAP:LIM);
-  var rows=list.map(function(r){
-    var km=parseFloat(r.distance||r.dist)||0, secs=_runSecsOf(r.time);
-    var when=r.date?fmtDate(r.date):'—';
-    var sub=[(km>0?fmtD(km):'—')+(secs>0?' · '+_fmtRunSecs(secs):'')];
-    if(km>0&&secs>0) sub.push(fmtPace(secs/km));
-    if(_isHealthRun(r)) sub.push('HEALTH');
-    var t=_runTypeLabel(r.type);
-    return '<div class="kt-run-hist-row" id="rh-'+r.id+'" role="button" tabindex="0" onclick="openRunEditor('+r.id+')" aria-label="'+_esc('Edit run, '+t+', '+when+', '+sub[0])+'">'+
-      '<div class="kt-run-hist-main"><div><span class="kt-run-hist-t">'+_esc(t)+'</span><span class="kt-run-hist-d">'+_esc(when)+'</span></div>'+
-      '<div class="kt-run-hist-s">'+_esc(sub.join(' · '))+'</div></div>'+
-      '<span class="kt-run-hist-go" aria-hidden="true">›</span></div>';
-  }).join('');
-  var more=all.length>LIM ? '<button type="button" class="kt-run-hist-more" onclick="showAllRunHist='+(!showAllRunHist)+';render()">'+
-    (showAllRunHist ? 'Show recent ↑' : (all.length<=CAP ? 'Show all '+all.length+' →' : 'Show latest '+CAP+' →'))+'</button>' : '';
-  return '<div class="chart-card kt-run-hist"><div class="chart-head"><div><div class="chart-lbl">Run history · '+all.length+' logged</div></div></div>'+rows+more+'</div>';
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
