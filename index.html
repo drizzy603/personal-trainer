@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20260930-9"/>
+<meta name="build" content="20261001-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -8442,7 +8442,10 @@ function _trovoTimerStart(ex, nextSet){
   if(!TT) return;
   var detail='';
   try{ detail=_restDetail(nx); }catch(e){ detail=''; }
-  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail}).catch(function(){});
+  // total = the rest granted so far (it grows with +30s), so the Lock Screen bar drains like
+  // the in-app one; theme = the room, so the Live Activity wears it (shells before build 57 ignore both).
+  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail,
+    total: Math.max(runnerRestLeft, runnerRestTotal||0), theme: _timerThemeTokens()}).catch(function(){});
 }
 function _trovoTimerEnd(){
   cancelRestNotification();
@@ -18152,9 +18155,10 @@ var THEMES = {
 // keep kt_theme='auto' and currentTheme='auto'. The old single function
 // persisted whatever it painted, so Auto degraded to a fixed theme on the
 // next launch (and at sunset, when the listener repainted).
-// Accent for surfaces that are always dark (widgets, Live Activity, share
-// posters). Paper rooms (Light, Heavyweight) hand over the Studio lime; a
-// paper accent tuned for white cards has no contrast on a near-black base.
+// Accent for the surfaces that are always dark (the week poster). Paper rooms
+// hand over the Studio lime; a paper accent tuned for white cards has no
+// contrast on a near-black base. (The Home Screen widget and the rest Live
+// Activity wear the room instead: _widgetThemeTokens, _timerThemeTokens.)
 function _posterAccent(accent){
   var name=currentTheme==='auto'?_systemTheme():currentTheme;
   var t=THEMES[name];
@@ -20356,13 +20360,24 @@ function _watchThemeTokens(){
 }
 // The Home Screen widget wears the room (Heavyweight paper, Lime near-black).
 // Unlike the watch face, the card IS the room's background, so a paper room
-// sends its own blue, not the satellite blue tuned for black. `accent` above
-// stays the Lime for the Live Activity, which is always dark.
+// sends its own blue, not the satellite blue tuned for black. The summary's
+// top-level `accent` (the Lime for paper rooms) is only the fallback of widget
+// extensions from before build 57, whose Live Activity was always dark.
 function _widgetThemeTokens(){
   var name=currentTheme==='auto'?_systemTheme():currentTheme;
   var T=THEMES[name]||THEMES.dark;
   return { room:name, paper:!!T.paper, bg:T.bg, text:T.text||T.textColor, muted:T.muted,
     accent:T.accent, onAccent:T['on-accent'], earnedInk:T['earned-ink']||T.accent };
+}
+// The rest Live Activity wears the room too: the Lock Screen card in the room's own colours
+// (Heavyweight paper/white, ink, the blue bar; Lime near-black, the lime bar), the always-black
+// Dynamic Island in the accent tuned for black (sat-accent; Lime's own lime).
+function _timerThemeTokens(){
+  var name=currentTheme==='auto'?_systemTheme():currentTheme;
+  var T=THEMES[name]||THEMES.dark;
+  return { room:name, paper:!!T.paper, bg:T.bg, card:T.card, text:T.text||T.textColor, muted:T.muted,
+    accent:T.accent, onAccent:T['on-accent'], earned:T.earned||T.accent, earnedInk:T['earned-ink']||T.accent,
+    satAccent:T['sat-accent']||T.accent };
 }
 // One day's plan in the watch's shape, for a date after today: that week's
 // exercises (loads resolved like today's), or the run/sport/rest it holds.
@@ -20758,8 +20773,9 @@ function drainWatchSessions(){
 function _runNativeSync(){
   _nativeSyncTimer=null;
   try{
-    // Widgets + Live Activity render on dark surfaces, so the Light theme
-    // sends Lime (same rule as the share card).
+    // `accent`: the Lime for paper rooms. Widget extensions before build 57 drew
+    // their always-dark Live Activity with it; newer ones read `theme` (and the
+    // Live Activity carries its own room, _timerThemeTokens).
     var _appliedT=currentTheme==='auto'
       ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')
       : currentTheme;
@@ -20896,6 +20912,9 @@ window._trovoOpen=_handleDeepLink;
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
+//   "runner/rest" (today's lift day, or the first with lifts: logs sets until a rest starts, so a
+//   real rest and its Live Activity run in the simulator for checking by hand; it leaves a
+//   workout under way, so a scripted run should use it last)
 (function(){
   try {
     var nav = localStorage.getItem('kt_dev_nav');
@@ -20920,6 +20939,16 @@ window._trovoOpen=_handleDeepLink;
         if(head==='modal' && sub==='build'){ var _bt=null; try{ _bt=getTodayActivity(); }catch(e){} openBuildDay(_bt && _bt.type==='lift' ? _bt.dayName : 'Arms'); }
         if(head==='overlay' && sub==='how'){ openWorkflow(); }
         if(head==='overlay' && sub==='privacy'){ openPrivacy(); }
+        if(head==='runner' && sub==='rest'){
+          switchTab('log');
+          var _rs=null; try{ var _ta=getTodayActivity(); if(_ta && _ta.type==='lift') _rs=_ta.dayName; }catch(e){}
+          if(!_rs || _liftDayEmpty(_rs, currentWeek)){ _rs=null; for(var _li=0;_li<LIFT_TYPES.length;_li++){ if(!_liftDayEmpty(LIFT_TYPES[_li], currentWeek)){ _rs=LIFT_TYPES[_li]; break; } } }
+          if(_rs){
+            if(_runnerInProgress()){ runnerResumePending=false; _clearRunnerDraft(); }   // a dev route: start clean
+            openDeckRunner(_rs, true);
+            for(var _sn=0; _sn<4 && !runnerResting && _runnerEx(); _sn++) runnerCompleteSet();   // a superset's first part rests nothing
+          }
+        }
         // App Preview auto-tour — drives the sim through the money screens on
         // a timer while simctl records. Dev-only; unreachable in normal use.
         if(head==='demo' && sub==='tour'){

@@ -28,6 +28,13 @@
 		A700000000000000000000A7 /* TrovoTimerWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A300000000000000000000A3 /* TrovoTimerWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C500000000000000000000C5 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C100000000000000000000C1 /* ShareViewController.swift */; };
 		C600000000000000000000C6 /* TrovoShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C300000000000000000000C3 /* TrovoShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FA5700000000000000000002 /* TrovoRestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000001 /* TrovoRestViews.swift */; };
+		FA5700000000000000000101 /* AntonFP-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000100 /* AntonFP-Regular.ttf */; };
+		FA5700000000000000000103 /* ArchivoFP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000102 /* ArchivoFP-Bold.ttf */; };
+		FA5700000000000000000105 /* JetBrainsMonoFP-Clock.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000104 /* JetBrainsMonoFP-Clock.ttf */; };
+		FA5700000000000000000107 /* JetBrainsMonoFP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000106 /* JetBrainsMonoFP-Bold.ttf */; };
+		FA5700000000000000000109 /* InterFP-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000108 /* InterFP-ExtraBold.ttf */; };
+		FA570000000000000000010B /* InterFP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA570000000000000000010A /* InterFP-Bold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,6 +132,13 @@
 		C80F9E9FB0999BC397BE97F1 /* SuperoWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperoWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7483CDCC342A55B75924827 /* SuperoWatchWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperoWatchWidget.swift; sourceTree = "<group>"; };
 		F992C105CCB83436385AADE5 /* SuperoWatchApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperoWatchApp.swift; sourceTree = "<group>"; };
+		FA5700000000000000000001 /* TrovoRestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrovoRestViews.swift; sourceTree = "<group>"; };
+		FA5700000000000000000100 /* AntonFP-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = AntonFP-Regular.ttf; sourceTree = "<group>"; };
+		FA5700000000000000000102 /* ArchivoFP-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ArchivoFP-Bold.ttf; sourceTree = "<group>"; };
+		FA5700000000000000000104 /* JetBrainsMonoFP-Clock.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = JetBrainsMonoFP-Clock.ttf; sourceTree = "<group>"; };
+		FA5700000000000000000106 /* JetBrainsMonoFP-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = JetBrainsMonoFP-Bold.ttf; sourceTree = "<group>"; };
+		FA5700000000000000000108 /* InterFP-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = InterFP-ExtraBold.ttf; sourceTree = "<group>"; };
+		FA570000000000000000010A /* InterFP-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = InterFP-Bold.ttf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -242,6 +256,8 @@
 			isa = PBXGroup;
 			children = (
 				A100000000000000000000A1 /* TrovoTimerWidget.swift */,
+				FA5700000000000000000001 /* TrovoRestViews.swift */,
+				FA570000000000000000F000 /* Fonts */,
 				A200000000000000000000A2 /* Info.plist */,
 			);
 			path = TrovoTimerWidget;
@@ -265,6 +281,19 @@
 			);
 			name = SuperoWatch;
 			path = SuperoWatch;
+			sourceTree = "<group>";
+		};
+		FA570000000000000000F000 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				FA5700000000000000000100 /* AntonFP-Regular.ttf */,
+				FA5700000000000000000102 /* ArchivoFP-Bold.ttf */,
+				FA5700000000000000000104 /* JetBrainsMonoFP-Clock.ttf */,
+				FA5700000000000000000106 /* JetBrainsMonoFP-Bold.ttf */,
+				FA5700000000000000000108 /* InterFP-ExtraBold.ttf */,
+				FA570000000000000000010A /* InterFP-Bold.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -440,6 +469,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA5700000000000000000101 /* AntonFP-Regular.ttf in Resources */,
+				FA5700000000000000000103 /* ArchivoFP-Bold.ttf in Resources */,
+				FA5700000000000000000105 /* JetBrainsMonoFP-Clock.ttf in Resources */,
+				FA5700000000000000000107 /* JetBrainsMonoFP-Bold.ttf in Resources */,
+				FA5700000000000000000109 /* InterFP-ExtraBold.ttf in Resources */,
+				FA570000000000000000010B /* InterFP-Bold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -489,6 +524,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA5700000000000000000002 /* TrovoRestViews.swift in Sources */,
 				A500000000000000000000A5 /* TrovoTimerWidget.swift in Sources */,
 				A600000000000000000000A6 /* TrovoTimerAttributes.swift in Sources */,
 			);

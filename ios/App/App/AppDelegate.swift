@@ -57,12 +57,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         endCurrentActivity()
 
-        let attrs = TrovoTimerAttributes(exerciseName: exerciseName)
+        var theme: TimerTheme? = nil
+        if let t = info["theme"] as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: t) {
+            theme = try? JSONDecoder().decode(TimerTheme.self, from: data)
+        }
+        // The bar drains over the rest granted so far (the page's total), never less than
+        // what is left; pages before 20261001-1 send none, so the bar starts full now.
+        let total = max(seconds, (info["total"] as? Int) ?? seconds)
+        let end = Date().addingTimeInterval(TimeInterval(seconds))
+        let attrs = TrovoTimerAttributes(exerciseName: exerciseName, theme: theme)
         let state = TrovoTimerAttributes.ContentState(
-            endDate:    Date().addingTimeInterval(TimeInterval(seconds)),
+            endDate:    end,
             nextSet:    nextSet,
             totalSets:  totalSets,
-            detail:     info["detail"] as? String
+            detail:     info["detail"] as? String,
+            startDate:  end.addingTimeInterval(-TimeInterval(total))
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(TimeInterval(seconds) + 5))
         do {

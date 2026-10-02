@@ -2,9 +2,9 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-// App accent. The web app writes its applied theme's accent into the App
-// Group summary (Light sends Lime — these surfaces render on dark). Falls
-// back to the classic lime when no summary exists yet.
+// The summary's top-level accent (the Lime for paper rooms): only the Home
+// Screen widget's fallback for a summary without a `theme` (pages before
+// 20260922-5). The rest Live Activity wears the room (TrovoRestViews.swift).
 private let limeDefault = Color(red: 0.78, green: 1.0, blue: 0.0)
 // Parsed once per distinct summary string: every view body read `lime`
 // several times and each read re-parsed the whole summary JSON.
@@ -35,133 +35,58 @@ extension Color {
     }
 }
 
-// Every timer text builds Date.now...endDate — once rest expires while the
-// phone is locked, JS never ends the activity and the next render would
-// construct an INVALID range. Guarded views render a done state instead.
-// The clock is one line, always: a monospaced 48 pt "1:17" needs ~116 pt, and
-// in its old 110 pt slot SwiftUI wrapped it to "1:1" over "7" on the Lock
-// Screen. lineLimit(1) lets minimumScaleFactor shrink a long "10:00" instead.
-private func restTimerText(_ end: Date, size: CGFloat, color: Color, width: CGFloat? = nil) -> some View {
-    Group {
-        if end > .now {
-            Text(timerInterval: Date.now...end, countsDown: true)
-                .font(.system(size: size, weight: .bold, design: .monospaced))
-                .foregroundColor(color)
-                .monospacedDigit()
-        } else {
-            Text("DONE")
-                .font(.system(size: size * 0.8, weight: .heavy, design: .monospaced))
-                .foregroundColor(color)
-        }
-    }
-    .lineLimit(1)
-    .minimumScaleFactor(0.5)
-    .multilineTextAlignment(.trailing)
-    .frame(width: width, alignment: .trailing)
-}
-
-// Grey for the always-dark surfaces. .secondary follows the phone's
-// appearance, so in light mode it drew dark grey on the black card.
+// Grey for the Home Screen widget's dark card (the Lime room). .secondary
+// follows the phone's appearance, so in light mode it drew dark grey on black.
 private let dimOnDark = Color(white: 0.62)
 
+// The rest timer wears the phone's room (TrovoRestViews.swift draws it): the
+// Lock Screen card in the room's colours and type, the Dynamic Island in the
+// accent tuned for black. The room rides on the activity; a page before
+// 20261001-1 sends none, so the Home Screen widget's summary decides, then Lime.
 struct TrovoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TrovoTimerAttributes.self) { context in
             // ── Lock Screen / StandBy banner ─────────────────────────────
-            LockScreenView(context: context)
-                .activityBackgroundTint(Color.black)
-                .activitySystemActionForegroundColor(lime)
+            let m = restModel(context), p = restPalette(context)
+            RestLockScreen(m: m, p: p)
+                .activityBackgroundTint(p.lockBackground)
+                .activitySystemActionForegroundColor(p.lockActionForeground)
         } dynamicIsland: { context in
-            DynamicIsland {
+            let m = restModel(context), p = restPalette(context)
+            return DynamicIsland {
                 // Expanded (long-press)
-                DynamicIslandExpandedRegion(.leading) {
-                    Label {
-                        Text("REST")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    } icon: {
-                        Image(systemName: "dumbbell.fill")
-                            .foregroundColor(lime)
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    restTimerText(context.state.endDate, size: 22, color: lime)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.exerciseName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 2) {
-                        Text("SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        if let detail = context.state.detail {
-                            Text("Next: \(detail)")
-                                .font(.system(size: 14, weight: .bold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                    }
-                }
+                DynamicIslandExpandedRegion(.leading) { RestExpandedLeading(m: m, p: p) }
+                DynamicIslandExpandedRegion(.trailing) { RestExpandedTrailing(m: m, p: p) }
+                DynamicIslandExpandedRegion(.center) { RestExpandedCenter(m: m, p: p) }
+                DynamicIslandExpandedRegion(.bottom) { RestExpandedBottom(m: m, p: p) }
             } compactLeading: {
-                Image(systemName: "dumbbell.fill")
-                    .foregroundColor(lime)
-                    .font(.system(size: 13))
+                RestCompactLeading(m: m, p: p)
             } compactTrailing: {
-                restTimerText(context.state.endDate, size: 13, color: lime, width: 44)
+                RestCompactTrailing(m: m, p: p)
             } minimal: {
-                restTimerText(context.state.endDate, size: 11, color: lime)
+                RestMinimal(m: m, p: p)
             }
-            .keylineTint(lime)
+            .keylineTint(p.keyline)
         }
     }
 }
 
-// ── Lock Screen view ─────────────────────────────────────────────────────────
+private func restModel(_ c: ActivityViewContext<TrovoTimerAttributes>) -> RestModel {
+    let s = c.state
+    // An activity started by a shell before build 57 has no start: assume the default 90 s rest.
+    return RestModel(exerciseName: c.attributes.exerciseName, nextSet: s.nextSet, totalSets: s.totalSets,
+                     detail: s.detail, start: s.startDate ?? s.endDate.addingTimeInterval(-90), end: s.endDate)
+}
 
-struct LockScreenView: View {
-    let context: ActivityViewContext<TrovoTimerAttributes>
+private func restPalette(_ c: ActivityViewContext<TrovoTimerAttributes>) -> RestPalette {
+    RestPalette.of(c.attributes.theme ?? loadSummary()?.theme.map(TimerTheme.init(widget:)))
+}
 
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                // With a detail line the set count moves up into the eyebrow,
-                // so the Lock Screen still reads in three lines.
-                Text(context.state.detail == nil ? "REST" : "REST · SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
-                    .kerning(1.0)
-                    .foregroundColor(dimOnDark)
-                    .lineLimit(1)
-                // Wraps rather than shrinks: with two shrinkable lines SwiftUI
-                // scaled the name down whenever the detail line was present.
-                Text(context.attributes.exerciseName)
-                    .font(.system(size: 17, weight: .heavy))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let detail = context.state.detail {
-                    // The next set, so the phone need not be unlocked between sets.
-                    Text("Next: \(detail)")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white.opacity(0.88))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                } else {
-                    Text("NEXT · SET \(context.state.nextSet) OF \(context.state.totalSets)")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .kerning(0.5)
-                        .foregroundColor(dimOnDark)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
-            // 124 pt holds "1:17" at 46 pt with room to spare; "10:00" scales.
-            restTimerText(context.state.endDate, size: 46, color: lime, width: 124)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+extension TimerTheme {
+    // The Home Screen widget's copy of the room (pages from 20260922-5).
+    init(widget t: WidgetTheme) {
+        self.init(room: t.paper == true ? "heavyweight" : "dark", paper: t.paper, bg: t.bg, card: nil, text: t.text,
+                  muted: t.muted, accent: t.accent, onAccent: t.onAccent, earned: nil, earnedInk: t.earnedInk, satAccent: nil)
     }
 }
 

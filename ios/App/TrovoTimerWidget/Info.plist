@@ -23,5 +23,14 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>AntonFP-Regular.ttf</string>
+		<string>ArchivoFP-Bold.ttf</string>
+		<string>JetBrainsMonoFP-Clock.ttf</string>
+		<string>JetBrainsMonoFP-Bold.ttf</string>
+		<string>InterFP-ExtraBold.ttf</string>
+		<string>InterFP-Bold.ttf</string>
+	</array>
 </dict>
 </plist>
