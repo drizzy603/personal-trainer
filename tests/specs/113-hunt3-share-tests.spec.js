@@ -15,6 +15,9 @@
 //   30 s of every hour read "1 h 60 min" (and 59:30 read "60 min").
 // - L48: a 0-load set on a loaded lift reads 0 in the card's set list ("0×10  20×10  20×10 lb",
 //   as the day sheet has it); BW is for bodyweight lifts only.
+// - L49: the card's font wait asks for latin-ext too (document.fonts.load() fetches only the
+//   subsets its sample text needs), so a day named Ściąganie is drawn in Anton/Archivo (Inter in
+//   Lime) on the first share, not with a fallback Ś and ą until the second.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -139,4 +142,44 @@ run('L48: a 0-load set reads BW only on a bodyweight lift', async () => {
     assert(out[1] === 'BW×8  +25×8  +25×8 lb', 'a bodyweight lift keeps BW and its added load: ' + out[1]);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+run('L49: the first share card already draws latin-ext letters in the room\'s faces', async () => {
+  for (const theme of ['heavyweight', 'dark']) {
+    const app = await boot({ native: true, seed: { kt_theme: theme } });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const P = _shareCardPalette(), fams = [P.display, P.body];
+        const faces = () => Array.from(document.fonts).filter(f => fams.indexOf(f.family.replace(/"/g, '')) >= 0);
+        setDayName('Pull', 'Ściąganie'); await wait(50);
+        const s = getSessions().find(x => x.type === 'Pull' && (x.exercises || []).length);
+        // share it twice, as two taps on Share card: the hero must not change between them
+        const shareOnce = async () => {
+          let canvas = null, shared = null;
+          const paint = window._paintShareCard, send = window._shareFile;
+          window._paintShareCard = function (m, P2) { canvas = paint(m, P2); return canvas; };
+          window._shareFile = f => { shared = f; };
+          shareSessionCard(s.id);
+          for (let i = 0; i < 150 && !shared; i++) await wait(20);
+          window._paintShareCard = paint; window._shareFile = send;
+          const d = canvas.getContext('2d').getImageData(0, 150, 1080, 260).data;
+          let h = 0; for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) >>> 0;
+          return h;
+        };
+        // what the card waits for, before anything is drawn (drawing loads a face, too late)
+        await _shareCardFonts(P);
+        const loaded = faces().map(f => f.family.replace(/"/g, '') + ' ' + f.unicodeRange.slice(0, 9) + ':' + f.status);
+        const first = await shareOnce();
+        await wait(300);
+        const second = await shareOnce();
+        return { hero: _shareCardModel(s).label, same: first === second, loaded };
+      });
+      assert(out.hero === 'Ściąganie', theme + ': the card names the day: ' + out.hero);
+      // Heavyweight draws in Anton and Archivo, Lime in Inter: latin and latin-ext of each
+      assert(out.loaded.length === (theme === 'heavyweight' ? 4 : 2) && out.loaded.every(f => /:loaded$/.test(f)), theme +': both subsets of every face the card uses are loaded before it draws: ' + JSON.stringify(out.loaded));
+      assert(out.same, theme + ': the first card\'s hero is drawn as the second one is');
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });

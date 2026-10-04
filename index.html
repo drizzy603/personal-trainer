@@ -15561,12 +15561,14 @@ function shareSessionCard(id){
   });
 }
 // A canvas only draws a face the page has loaded; Anton is on screen only in the
-// hero, so ask for every face the card uses before drawing.
+// hero, so ask for every face the card uses before drawing. load() fetches only the
+// subsets its sample text needs (a space by default), so the sample takes in latin-ext:
+// a day named Ściąganie drew Ś and ą in a fallback face on the first share.
 function _shareCardFonts(P){
-  var loads=[];
+  var loads=[], sample=' \u0104\u015a\u0141\u0150';
   try{
-    loads.push(document.fonts.load(P.dispW+' 100px "'+P.display+'"'));
-    ['800','700','500'].forEach(function(w){ loads.push(document.fonts.load(w+' 30px "'+P.body+'"')); });
+    loads.push(document.fonts.load(P.dispW+' 100px "'+P.display+'"', sample));
+    ['800','700','500'].forEach(function(w){ loads.push(document.fonts.load(w+' 30px "'+P.body+'"', sample)); });
   }catch(e){}
   return Promise.all(loads).catch(function(){});
 }
