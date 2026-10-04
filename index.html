@@ -9051,7 +9051,15 @@ function openCompleteSheet(c){
   var rec=c&&c.rec; if(!rec) return;
   var label=rec.label||_dayLabel(rec.type)||'Session';
   var vol=Math.round(calcVolume(rec.exercises||[]));
-  var prev=getSessions().find(function(x){ return x.id!==rec.id && x.type===rec.type && (x.exercises||[]).length; });
+  // The same day logged before this one, the share card's rule: a backdated workout was
+  // compared with the newest one, logged after it ('-67%' with no earlier day at all).
+  var rd=String(rec.date||''), prev=null;
+  getSessions().forEach(function(x){
+    if(!x || x.id===rec.id || x.type!==rec.type || !(x.exercises||[]).length) return;
+    var xd=String(x.date||'');
+    if(!(xd<rd || (xd===rd && Number(x.id)<Number(rec.id)))) return;
+    if(!prev || xd>String(prev.date||'') || (xd===String(prev.date||'') && Number(x.id)>Number(prev.id))) prev=x;
+  });
   var prevVol=prev?Math.round(calcVolume(prev.exercises||[])):0;
   var pct=(prevVol>0)?Math.round((vol-prevVol)/prevVol*100):null;
   var ws=_weekStats();

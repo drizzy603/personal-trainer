@@ -14,6 +14,8 @@
 // - M33 kg: a load that reads the same as the record (a programme load from the lb grid, a coach
 //   load) is not a new record: no live beat, no PR on the session, one RECORD HISTORY line; a real
 //   step up still is, lb is unchanged, and the records follow a unit switch.
+// - L12 the COMPLETE sheet's 'Vs last' and insight compare a backdated workout with the same day
+//   logged before it (the share card's rule), and read '—' when there is none.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -344,6 +346,53 @@ run('M33 kg: a load that reads the same as the record is not a new record', asyn
     assert(out.coach === false && out.up === true, 'a coach load that reads the same is not a record, a real step up is: ' + JSON.stringify([out.coach, out.up]));
     assert(out.lb.history === 2 && out.lb.cache === 135 && out.lb.beats === true, 'in lb the heavier load is a record: ' + JSON.stringify(out.lb));
     assert(out.kgAgain.history === 1 && out.kgAgain.cache === 134.5, 'back in kg the ledger and the cache follow: ' + JSON.stringify(out.kgAgain));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L12 the COMPLETE sheet compares a backdated workout with the day before it', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const pushes = getSessions().filter(s => s.type === 'Push' && (s.exercises || []).length).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
+      r.pushes = pushes.map(s => s.date);
+      const finishOn = async (date) => {
+        openDeckRunner('Push', true); await wait(20);
+        runnerSession.exercises = runnerSession.exercises.slice(0, 1);
+        runnerSessionDate = date;
+        runnerExIdx = 0; runnerEngaged = true; runnerSetWeight(135);
+        [8, 8, 8].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; });
+        const df = document.getElementById('runner-date'); if (df) df.value = date;
+        runnerFinishSession(); await wait(250);
+        const sh = document.getElementById('completeSheetOverlay');
+        const o = {
+          tile: sh ? [...sh.querySelectorAll('.kt-cmp-tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()).find(t => /^Vs last/.test(t)) : null,
+          insight: (document.getElementById('kt-complete-insight') || {}).textContent || ''
+        };
+        closeCompleteSheet();
+        const rec = getSessions().filter(s => s.date === date && s.type === 'Push').sort((a, b) => b.id - a.id)[0];
+        o.date = rec && rec.date; o.vsLast = rec ? _shareCardModel(rec).vsLast : 'none';
+        o.vol = rec ? calcVolume(rec.exercises) : 0;
+        return o;
+      };
+      // before every logged Push: nothing to compare with
+      r.first = await finishOn(addDays(pushes[0].date, -7));
+      // between the first two: compared with the first, as the share card does
+      const mid = addDays(pushes[0].date, 1);
+      r.midOk = mid < pushes[1].date;
+      r.mid = await finishOn(mid);
+      const pv = calcVolume(pushes[0].exercises);
+      r.expect = Math.round((r.mid.vol - pv) / pv * 100);
+      return r;
+    });
+    assert(out.pushes.length >= 2 && out.midOk, 'the demo seed has two Push days a few days apart: ' + JSON.stringify(out.pushes));
+    assert(out.first.date && /^Vs last .*\u2014$/.test(out.first.tile) && out.first.vsLast === null && !/Lighter than last time|Volume up/.test(out.first.insight),
+      'no earlier day reads \u2014 and the insight compares nothing: ' + JSON.stringify(out.first));
+    const pct = (out.expect > 0 ? '+' : '') + out.expect + '%';
+    assert(out.mid.tile && out.mid.tile.endsWith(pct) && out.mid.vsLast === out.expect,
+      'a day between two is compared with the one before it, like the share card: ' + JSON.stringify([out.mid, out.expect]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
