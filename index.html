@@ -5550,23 +5550,26 @@ function addDays(iso, n) {
 // because the caller uses this to set a default lift sub-tab.
 // The most recent planned LIFT day of this calendar week (Monday → yesterday)
 // that was neither logged nor skipped — the make-up a rest day should offer.
+// A lift done (or skipped) on another day this week covers it: Push and Pull
+// trained on each other's days were both offered again. A day logged as
+// planned keeps its own log; any other log of the slot this week covers the
+// earliest day still open.
 function _missedThisWeek(){
   if(!hasCustomRoutine()) return null;
   if(!_programmeStarted()) return null;
-  var today=todayISO(), mon=_mostRecentMonday();
-  var sessions=getSessions(), skips=getSkips();
-  var found=null;
+  var today=todayISO(), mon=_mostRecentMonday(), plan=getWeekPlan();
+  var have={}, onDay={}, open=[], found=null;
+  var count=function(x){ if(x && x.type && x.date>=mon && x.date<=today){ have[x.type]=(have[x.type]||0)+1; onDay[x.date+'|'+x.type]=1; } };
+  getSessions().forEach(count); getSkips().forEach(count);
   for(var i=0;i<7;i++){
     var date=addDays(mon,i);
     if(date>=today) break;
-    var dow=(new Date(date+'T00:00:00').getDay()+6)%7;
-    var plan=getWeekPlan()[dow];
-    if(!plan || !plan.isLift) continue;
-    if(skips.some(function(k){ return k.date===date && k.type===plan.type; })) continue;
-    if(sessions.some(function(x){ return x.date===date && x.type===plan.type; })) continue;
-    if(!_todayLiftExercises(plan.type).length) continue;
-    found={date:date, type:plan.type, dow:dow};
+    var p=plan[i];
+    if(!p || !p.isLift || !_todayLiftExercises(p.type).length) continue;
+    if(onDay[date+'|'+p.type]) have[p.type]--;
+    else open.push({date:date, type:p.type, dow:i});
   }
+  open.forEach(function(o){ if(have[o.type]>0) have[o.type]--; else found=o; });
   return found;
 }
 function skipMissed(date, type){

@@ -3,6 +3,8 @@
 //   edit in Settings or by the coach, a new programme, archiving it and round 2's first Monday no
 //   longer rewrite past days, so the streak survives them (M09, M10). The days between building
 //   a programme and its first Monday never break the streak, and a log on one still counts.
+// - The rest-day make-up counts the week's logs per lift: Push and Pull done on each other's
+//   days leave nothing open (both were offered again, one after the other) (M48).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -142,6 +144,43 @@ run('round 2\'s first Monday reads the days before it as round 1\'s last week (M
     assert(out.round2.swapped && out.round2.week === 1 && out.round2.cycle === 2 && out.round2.streak === 7,
       'round 2\'s first Monday keeps the streak (Sunday was a rest day in week 12): ' + JSON.stringify(out.round2));
     assert(out.unwritten === 7, 'the days before week 1 are read as round 1\'s weeks: ' + out.unwritten);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a lift done on another day this week is not offered as a make-up (M48)', async () => {
+  const r0 = JSON.parse(SEED.kt_routine);
+  r0.weekPlan = ['Push', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest', 'Rest'];
+  r0.weeks.forEach(w => { delete w.weekPlan; });
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(r0), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const screen = () => { switchTab('log'); logSubTab = 'workout'; render(); return document.getElementById('screen').innerText; };
+      // Wednesday (a rest day): Monday's Push and Tuesday's Pull were done on each other's days.
+      const W = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(W, 2) + 'T10:00:00');
+      currentWeek = 6; lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', W);
+      lsSet('kt_sessions', logs([[W, 'Pull'], [addDays(W, 1), 'Push']]));
+      const t1 = screen();
+      r.swapped = { missed: _missedThisWeek(), open: /still open/i.test(t1), makeUp: /MAKE-UP/.test(t1) };
+      // Only Monday's Pull: Monday's Push is the one still open, and skipping it settles the week.
+      lsSet('kt_sessions', logs([[W, 'Pull']]));
+      r.one = _missedThisWeek();
+      if (r.one) skipMissed(r.one.date, r.one.type);
+      r.afterSkip = _missedThisWeek();
+      // Two Push days, one done (on its own day): the other is the open one.
+      const cr = getCustomRoutine(); cr.weekPlan = ['Push', 'Rest', 'Rest', 'Push', 'Rest', 'Rest', 'Rest']; setCustomRoutine(cr);
+      lsSet('kt_skips', []);
+      __setNow(addDays(W, 4) + 'T10:00:00');
+      lsSet('kt_sessions', logs([[addDays(W, 3), 'Push']]));
+      r.twoPush = _missedThisWeek();
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.swapped.missed === null && !out.swapped.open && !out.swapped.makeUp, 'swapped days leave nothing open: ' + JSON.stringify(out.swapped));
+    assert(out.one && out.one.type === 'Push' && out.one.dow === 0, 'Monday\'s Push is still open: ' + JSON.stringify(out.one));
+    assert(out.afterSkip === null, 'skipping it leaves nothing open (Pull was done on Monday): ' + JSON.stringify(out.afterSkip));
+    assert(out.twoPush && out.twoPush.type === 'Push' && out.twoPush.dow === 0, 'the Push day not done is the open one: ' + JSON.stringify(out.twoPush));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
