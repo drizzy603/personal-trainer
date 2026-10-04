@@ -11,6 +11,9 @@
 //   undone by Reset, not kept out of a later rebuild.
 // - M13: Use coach's on a swapped lift whose original the owner added back keeps one copy (the day
 //   held it twice and the runner logged both cards as one lift); a row renamed to it is refused.
+// - M14: removing the main lift hands its tag on as the owner's change, and Restore, Reset, adding
+//   it back and Use coach's (after Make main) give back one main, the coach's, first on the day; a
+//   removed superset partner comes back paired; rows come back where they were.
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -237,6 +240,56 @@ seq('M13: Use coach\'s never puts the same lift on a day twice', async () => {
     assert(r.ohp === '1111111' && r.arnold === '0000000' && r.day === coachDay, 'one Overhead Press a week, the coach\'s day back: ' + JSON.stringify(r));
     assert(r.cards === 1, 'the runner shows one Overhead Press card: ' + r.cards);
     assert(r.refused.same && /Overhead Press is already on Push/.test(r.refused.toast), 'a row renamed to the coach\'s lift is changed first: ' + JSON.stringify(r.refused));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M14: Restore, Reset and Use coach\'s give back the coach\'s day: the main lift first and alone, the superset paired', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // the coach supersets Incline Dumbbell Press with Cable Triceps Pushdown
+      const cr0 = getCustomRoutine(); cr0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; }); setCustomRoutine(cr0);
+      const orig = localStorage.getItem('kt_routine');
+      const reset = () => { closeRoutines(); lsSet('kt_routine', JSON.parse(orig)); };
+      // ! = main, ~ = superset opener, + = added by the owner, * = edited by the owner
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); };
+      const resetPush = () => _commitRoutine(cr => _progResetSlot(cr, 'push', c));
+      r.coach = day(); r.coach12 = day(11);
+      // the main lift removed: its tag goes on, marked; Restore, Reset and adding it back give it back
+      await remove('Bench Press');
+      r.removed = day();
+      r.line = [...document.querySelectorAll('#rt-card-Push .kt-rt-coach')].map(d => d.textContent).join(' / ');
+      _rtRestoreRemoved('Push'); await wait(10);
+      r.restored = [day(), day(11)]; reset();
+      await remove('Bench Press'); resetPush(); r.reset = day(); reset();
+      await remove('Bench Press'); _rtAddPick('Push', 'Bench Press'); await wait(10); r.addBack = day(); reset();
+      // the superset's second half removed: Restore and Reset pair it again
+      await remove('Cable Triceps Pushdown'); r.unpaired = day();
+      _rtRestoreRemoved('Push'); await wait(10); r.ssRestore = day(); reset();
+      await remove('Cable Triceps Pushdown'); resetPush(); r.ssReset = day(); reset();
+      // two removed one after the other: Reset puts each where it was
+      await remove('Overhead Press'); await remove('Incline Dumbbell Press'); resetPush(); r.two = day(); reset();
+      // Make main, then Use coach's on either lift: one main, the coach's
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtMakeMain(); await wait(5);
+      _rtUseCoach('Push', 'Overhead Press'); await wait(5); r.mmOhp = day(); reset();
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtMakeMain(); await wait(5);
+      _rtUseCoach('Push', 'Bench Press'); await wait(5); r.mmBench = day(); reset();
+      return r;
+    });
+    const C = out.coach;
+    assert(C === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise', 'the coach\'s day: ' + C);
+    assert(out.removed === 'Overhead Press!* | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise' && /not main/.test(out.line), 'the handed-on tag is the owner\'s change: ' + JSON.stringify([out.removed, out.line]));
+    assert(out.restored[0] === C && out.restored[1] === out.coach12, 'Restore: Bench first and the only main lift, in every week: ' + JSON.stringify(out.restored));
+    assert(out.reset === C, 'Reset: one main lift: ' + out.reset);
+    assert(out.addBack === C, 'adding the removed lift back puts it where it was: ' + out.addBack);
+    assert(out.unpaired === 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise', 'the opener is unpaired while its partner is out: ' + out.unpaired);
+    assert(out.ssRestore === C && out.ssReset === C, 'Restore and Reset pair the superset again: ' + JSON.stringify([out.ssRestore, out.ssReset]));
+    assert(out.two === C, 'two removals come back where they were: ' + out.two);
+    assert(out.mmOhp === C && out.mmBench === C, 'Use coach\'s after Make main leaves one main lift, the coach\'s: ' + JSON.stringify([out.mmOhp, out.mmBench]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
