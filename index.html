@@ -10772,7 +10772,8 @@ function _rtDays(cr, c){
   plan.forEach(function(p,i){ if(p && p.isLift){ if(!days[p.type]){ days[p.type]=[]; } days[p.type].push(DOW[i]); } });
   LIFT_TYPES.forEach(function(t){
     var has=((cr.weeks[c]&&cr.weeks[c][t.toLowerCase()])||[]).length>0;
-    if(days[t] || has) order.push({slot:t, when:days[t]||[], empty:!has});
+    // a day the owner emptied stays listed, with its Restore and Reset
+    if(days[t] || has || _progOut(cr.weeks[c], t.toLowerCase()).length) order.push({slot:t, when:days[t]||[], empty:!has});
   });
   return order;
 }
@@ -10793,8 +10794,12 @@ function _paintRoutines(){
     var when=d.when.length ? d.when.join(' · ') : 'NOT SCHEDULED';
     var body;
     if(d.empty){
+      // Every lift removed: the coach's day is still one tap away (only Build was offered).
+      var roE=_progOut(cr.weeks[c], key);
       body='<div class="kt-rt-empty">Nothing here yet.</div>'+
-        '<button type="button" class="btn btn-primary btn-full" style="padding:12px;font-size:14px;" onclick="openBuildDay(\''+d.slot+'\')">Build your '+_esc(lbl)+' day</button>';
+        (roE.length?'<div class="kt-rt-coach">'+_plural(roE.length,'coach lift')+' removed · <button type="button" class="kt-rt-link" onclick="_rtRestoreRemoved(\''+d.slot+'\')">Restore</button></div>':'')+
+        '<button type="button" class="btn btn-primary btn-full" style="padding:12px;font-size:14px;" onclick="openBuildDay(\''+d.slot+'\')">Build your '+_esc(lbl)+' day</button>'+
+        (roE.length?'<button type="button" class="kt-rt-reset" onclick="_rtResetDay(\''+d.slot+'\')">Reset '+_esc(lbl)+' to the coach\u2019s version</button>':'');
     } else {
       body=rows.map(function(r){
         var tag=r.isMain?'<span class="kt-rt-tag">MAIN</span>':'';

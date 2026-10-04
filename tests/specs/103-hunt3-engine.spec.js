@@ -21,6 +21,8 @@
 //   in those weeks, so Reset and Use coach's give it back (it was gone for good).
 // - M45: Undo on a Routines change repaints an open Routines sheet (it kept showing the undone
 //   edit, with links that acted on a programme that was gone).
+// - M46: a day with every lift removed keeps its Restore and Reset (only Build was offered), and an
+//   emptied day that is not on the schedule stays on the sheet.
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -409,6 +411,40 @@ seq('M45: Undo on a Routines change repaints the open sheet', async () => {
     assert(out.undoneEditing.stored === 160 && !out.undoneEditing.edited && out.undoneEditing.list, 'an editor open at the Undo goes back to the days: ' + JSON.stringify(out.undoneEditing));
     assert(!out.add, 'an undone add leaves no ghost row');
     assert(out.removed && out.remove.back && !out.remove.line, 'an undone remove shows the lift again: ' + JSON.stringify(out.remove));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M46: a day with every lift removed still offers Restore and Reset', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // the coach also wrote an Arms day that is not on the schedule
+      const cr0 = getCustomRoutine(); cr0.weeks.forEach(w => { w.arms = [{ name: 'Barbell Curl', sets: 3, reps: 10, weight: 60, isMain: true }, { name: 'Hammer Curl', sets: 3, reps: 12, weight: 30 }]; }); setCustomRoutine(cr0);
+      const day = (k) => getCustomRoutine().weeks[c][k].map(e => e.name + (e.isMain ? '!' : '') + (e.rec !== undefined ? '*' : '')).join(' | ');
+      const coachLegs = day('legs'), coachArms = day('arms');
+      const card = (s) => document.getElementById('rt-card-' + s);
+      const removeAll = async (k, slot) => {
+        for (const n of getCustomRoutine().weeks[c][k].map(e => e.name)) { _rtOpenEdit(slot, n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); }
+      };
+      openRoutines();
+      await removeAll('legs', 'Legs'); await removeAll('arms', 'Arms');
+      const links = (s) => { const el = card(s); return el ? [...el.querySelectorAll('button')].map(b => b.textContent.trim()).filter(t => /Restore|Reset|Build/.test(t)) : null; };
+      r.legs = { left: getCustomRoutine().weeks[c].legs.length, links: links('Legs') };
+      r.arms = links('Arms');
+      [...card('Legs').querySelectorAll('.kt-rt-link')].find(b => /Restore/.test(b.textContent)).click(); await wait(10);
+      r.legsBack = day('legs') === coachLegs;
+      card('Arms').querySelector('.kt-rt-reset').click(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10);
+      r.armsBack = day('arms') === coachArms;
+      closeRoutines();
+      return r;
+    });
+    assert(out.legs.left === 0 && JSON.stringify(out.legs.links) === '["Restore","Build your Legs day","Reset Legs to the coach\u2019s version"]', 'the emptied Legs day offers Restore and Reset beside Build: ' + JSON.stringify(out.legs));
+    assert(out.arms && out.arms.indexOf('Restore') >= 0, 'an emptied day that is not scheduled stays on the sheet: ' + JSON.stringify(out.arms));
+    assert(out.legsBack && out.armsBack, 'Restore and Reset bring the coach\'s days back: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
