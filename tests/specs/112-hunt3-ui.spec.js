@@ -5,7 +5,8 @@
 //   native payload drops a stray half as a backstop (H10).
 // - Short day names keep what tells days apart: Full Body A / B read Full A / Full B, Lower Body
 //   reads Lower (no trailing space), and two names that shorten alike get their last initial (L44).
-const { boot, assert, run } = require('../lib/harness');
+// - Progress > Strength opens the curve of a lift with an apostrophe (Farmer's Carry) (M40).
+const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
 const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(^|[^\ud800-\udbff])[\udc00-\udfff]/;
@@ -83,6 +84,24 @@ run('short day names keep what tells days apart (L44)', async () => {
     assert(JSON.stringify(out.clash) === JSON.stringify(['Upper P', 'Upper V', 'C+B']), 'names that shorten alike get their last initial: ' + JSON.stringify(out.clash));
     assert(out.alone === 'Upper', 'without a clash the first word is enough: ' + out.alone);
     assert(out.chips.every(c => c === c.trim() && Array.from(c).length <= 7), 'chips are trimmed and at most seven characters: ' + JSON.stringify(out.chips));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a lift with an apostrophe opens its Strength curve (M40)', async () => {
+  const sessions = JSON.parse(SEED.kt_sessions);
+  sessions.forEach((s) => { if (Array.isArray(s.exercises)) s.exercises.push({ name: "Farmer's Carry", sets: 3, reps: ['12', '12', '12'], weight: 70 }); });
+  const app = await boot({ native: true, seed: { kt_sessions: JSON.stringify(sessions) } });
+  try {
+    const p = app.page;
+    await p.evaluate(() => switchTab('progress'));
+    const row = p.locator('#screen [onclick^="toggleStrengthChart"]').filter({ hasText: "Farmer's Carry" }).first();
+    await row.scrollIntoViewIfNeeded();
+    await row.click();
+    const open = await p.evaluate(() => ({ open: strengthChartOpen, curve: !!Array.from(document.querySelectorAll('#screen [onclick^="toggleStrengthChart"]')).find(r => /Farmer/.test(r.textContent) && r.nextElementSibling && r.nextElementSibling.querySelector('svg')) }));
+    assert(open.open === "Farmer's Carry" && open.curve, 'the row opens its curve: ' + JSON.stringify(open));
+    await p.locator('#screen [onclick^="toggleStrengthChart"]').filter({ hasText: "Farmer's Carry" }).first().click();
+    assert(await p.evaluate(() => strengthChartOpen) === null, 'a second tap closes it');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

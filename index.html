@@ -13856,7 +13856,7 @@ function renderStrengthTrends(extraHTML){
         '</div>'
       : '';
     return '<div style="border-bottom:1px solid var(--border);">'+
-      '<div onclick="toggleStrengthChart(\''+_esc(n)+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      '<div onclick="toggleStrengthChart(this.dataset.n)" data-n="'+_esc(n)+'" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
         '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:'+(open?'var(--accent)':'var(--text)')+';">'+_esc(n)+'</div>'+flag+'</div>'+
         (open?'':_sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)'))+
         '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(wDisp(cur))+'<span style="font-size:10px;color:var(--muted);"> '+_uW()+'</span></div>'+
