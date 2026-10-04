@@ -3922,6 +3922,42 @@ function _setWorkingWeights(exs, date){
   });
   return lsSet('kt_weights', w);
 }
+// A delete or a date move takes back the working weight a log set: deleting a 1,850 lb typo kept
+// 1,850 as Bench's working weight, which the coach was told and the plateau deload wrote into the
+// programme. Read _newestLoads before the change (for each of the log's lifts, its newest logged
+// load; sessions are newest first); once the change is saved, _workingWeightsFollow moves a working
+// weight that held that load to the lift's new newest log (none left: it goes), as an edit already
+// does. A load the coach, +5 or a deload wrote since differs from the log: it is the owner's plan
+// and stays. It returns what it replaced, for Undo (_workingWeightsPut).
+function _newestLoad(n, ss){
+  var v=null;
+  (ss||getSessions()).some(function(s){ return ((s&&s.exercises)||[]).some(function(e){ if(e && e.name===n && parseFloat(e.weight)>0){ v=parseFloat(e.weight); return true; } return false; }); });
+  return v;
+}
+function _newestLoads(recs){
+  var out={}, ss=getSessions();
+  (recs||[]).forEach(function(r){ ((r&&r.exercises)||[]).forEach(function(e){
+    if(e && e.name && parseFloat(e.weight)>0 && !Object.prototype.hasOwnProperty.call(out, e.name)) out[e.name]=_newestLoad(e.name, ss);
+  }); });
+  return out;
+}
+function _workingWeightsFollow(before){
+  var w=getWeights(), ss=getSessions(), prev={}, any=false;
+  Object.keys(before||{}).forEach(function(n){
+    var b=before[n], a=_newestLoad(n, ss);
+    if(b==null || a===b || Math.abs((parseFloat(w[n])||0)-b)>0.01) return;
+    prev[n]=w[n]; any=true;
+    if(a!=null) w[n]=a; else delete w[n];
+  });
+  if(!any) return null;
+  return lsSet('kt_weights', w) ? prev : null;
+}
+function _workingWeightsPut(prev){
+  if(!prev) return;
+  var w=getWeights();
+  Object.keys(prev).forEach(function(n){ if(prev[n]==null) delete w[n]; else w[n]=prev[n]; });
+  lsSet('kt_weights', w);
+}
 // A new record id: Date.now(), never equal to one already in the list. Several log calls in
 // one coach reply ran in the same millisecond, and delete_log then removed all of them.
 function _freshId(list){ var id=Date.now(); (list||[]).forEach(function(x){ var v=x ? Number(x.id) : 0; if(v>=id) id=v+1; }); return id; }
@@ -12302,14 +12338,16 @@ function deleteSession(id){
   var gone=[], kept=[];
   getSessions().forEach(function(s){ (s && s.id===id ? gone : kept).push(s); });
   if(!gone.length) return null;
+  var loads=_newestLoads(gone);
   if(!lsSet('kt_sessions', kept)) return false;
+  var wPrev=_workingWeightsFollow(loads);
   recomputePRs();
   invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
   showUndoToast(gone.length>1 ? gone.length+' sessions deleted' : 'Session deleted', function(){
     if(getSessions().some(function(s){ return s && s.id===id; })) return;
-    if(lsSet('kt_sessions', gone.concat(getSessions()))){ recomputePRs(); invalidateCoachCard(); render(); }
+    if(lsSet('kt_sessions', gone.concat(getSessions()))){ _workingWeightsPut(wPrev); recomputePRs(); invalidateCoachCard(); render(); }
   });
   return true;
 }
@@ -12492,9 +12530,11 @@ function moveSession(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   var sessions=getSessions(), rec=_logById(sessions, id, fromDate);
   if(!rec) return;
-  var c=Object.assign({}, rec);
+  var c=Object.assign({}, rec), loads=_newestLoads([rec]);
   c.date=newDate; c.week=weekForDate(newDate);
   lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }));
+  _workingWeightsFollow(loads);   // moved behind a later log, or back in front of it
+  invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
 function moveRun(id,newDate,fromDate){
@@ -16974,7 +17014,9 @@ function _executeCoachToolRaw(name,input){
         var dlSess=getSessions();
         var dlBefore3=dlSess.length;
         if(!dlSess.some(function(x){ return x.id===dlId; })) return {ok:false,error:'session id not found'};
+        var dlLoads=_newestLoads(dlSess.filter(function(s){return s.id===dlId;}));
         if(!lsSet('kt_sessions',dlSess.filter(function(s){return s.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
+        _workingWeightsFollow(dlLoads);   // the working weights it set follow the newest log left, as the day sheet's Delete
         recomputePRs();
         invalidateCoachCard(); render();
         return {ok:true,message:'Session deleted'};

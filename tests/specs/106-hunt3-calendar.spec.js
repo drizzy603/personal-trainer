@@ -3,6 +3,11 @@
 //   ids at boot and after a restore, so the day sheet's Edit sets, Share, Delete and Date act on the
 //   log shown. Delete and Undo take and give back every record with an id (as deleteRun), and a
 //   Date move takes only the log on the sheet's day.
+// - H03: deleting a log (day sheet or the coach's delete_log) or moving it behind a later one takes
+//   back the working weight it set: a 1,850 lb typo no longer stays Bench's working weight (the
+//   coach was told it and the plateau deload wrote 1,665 into the programme). It follows the lift's
+//   newest log left (or goes with the last one), comes back on Undo, and a load the coach wrote
+//   after the log stays.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -87,6 +92,64 @@ run('H04: shared-id twins get their own ids; the day sheet acts on the log shown
     assert(out.twinDel.left === 0 && /^2 sessions deleted/.test(out.twinDel.toast) && out.twinUndo.join() === [A + ' Push', B + ' Pull'].join(), 'twins left in the log: Delete takes both and Undo gives both back: ' + JSON.stringify([out.twinDel, out.twinUndo]));
     assert(out.twinSport.left === 0 && /^2 activities deleted/.test(out.twinSport.toast) && out.twinSportUndo.join() === 'Cycling,Yoga', 'activity twins: both go, the toast names no single one, Undo gives both back: ' + JSON.stringify([out.twinSport, out.twinSportUndo]));
     assert(out.twinMove.length === 2 && out.twinMove.indexOf(B + ' Pull') >= 0 && !out.twinMove.some(x => x.slice(0, 10) === A), 'a Date move takes only the log on the sheet\'s day: ' + JSON.stringify(out.twinMove));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('H03: a deleted or moved log takes back the working weight it set; the coach\'s later load stays', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), d3 = addDays(T, -3), d10 = addDays(T, -10);
+      const mk = (id, date, name, w) => ({ id, date, week: weekForDate(date), type: 'Push', label: 'Push', prs: [], exercises: [{ name, sets: 3, reps: [5, 5, 5], weight: w, weightLog: [w, w, w], isMain: true }] });
+      lsSet('kt_sessions', [mk(101, d10, 'Bench Press', 180)]); recomputePRs();
+      lsSet('kt_weights', { 'Bench Press': 180 });
+      const W = n => getWeights()[n];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const r = {};
+      // the typo, logged today: it is the newest log, so it sets the working weight
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 5, weight: 1850 }] });
+      const typo = getSessions().find(s => s.date === T);
+      r.logged = W('Bench Press');
+      // deleted from the day sheet: back to the newest log left; Undo puts the typo's back
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+      [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+      r.deleted = { w: W('Bench Press'), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      const u = document.querySelector('#toast .kt-toast-undo'); if (u) u.click(); await wait(40);
+      r.undone = { w: W('Bench Press'), back: getSessions().some(s => s.id === typo.id) };
+      // the coach's delete_log follows the same rule
+      const dl = executeCoachTool('delete_log', { store: 'session', id: typo.id });
+      r.coachDel = { ok: dl.ok, w: W('Bench Press') };
+      // a load the coach wrote after the log is the owner's plan: deleting the log keeps it
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 5, weight: 185 }] });
+      const real = getSessions().find(s => s.date === T);
+      lsSet('kt_weights', Object.assign(getWeights(), { 'Bench Press': 190 }));
+      deleteSession(real.id); await wait(20);
+      r.override = W('Bench Press');
+      lsSet('kt_weights', Object.assign(getWeights(), { 'Bench Press': 180 }));
+      // the only log of a lift: its working weight goes with it
+      executeCoachTool('log_session', { type: 'Push', date: d3, exercises: [{ name: 'Zercher Squat', sets: 3, reps: 5, weight: 135 }] });
+      const only = getSessions().find(s => (s.exercises || []).some(e => e.name === 'Zercher Squat'));
+      r.onlyLogged = W('Zercher Squat');
+      deleteSession(only.id); await wait(20);
+      r.onlyGone = Object.prototype.hasOwnProperty.call(getWeights(), 'Zercher Squat');
+      // a move behind a later log hands the working weight to that log, and moving back takes it back
+      lsSet('kt_sessions', [mk(102, T, 'Bench Press', 185), mk(103, d3, 'Bench Press', 180)].concat(getSessions())); lsSet('kt_weights', Object.assign(getWeights(), { 'Bench Press': 185 }));
+      moveSession(102, addDays(T, -5)); await wait(20);
+      r.movedBack = W('Bench Press');
+      moveSession(102, T); await wait(20);
+      r.movedFront = W('Bench Press');
+      return r;
+    });
+    assert(out.logged === 1850, 'the typo is the newest log, so it set the working weight: ' + out.logged);
+    assert(out.deleted.w === 180 && out.deleted.line === '  Bench Press: 180' && out.deleted.prescribed === 180, 'deleting it takes the working weight back to the newest log left: ' + JSON.stringify(out.deleted));
+    assert(out.undone.w === 1850 && out.undone.back, 'Undo puts the log and its working weight back: ' + JSON.stringify(out.undone));
+    assert(out.coachDel.ok && out.coachDel.w === 180, 'the coach\'s delete_log does the same: ' + JSON.stringify(out.coachDel));
+    assert(out.override === 190, 'a load written after the log stays: ' + out.override);
+    assert(out.onlyLogged === 135 && out.onlyGone === false, 'the last log of a lift takes its working weight with it: ' + JSON.stringify([out.onlyLogged, out.onlyGone]));
+    assert(out.movedBack === 180 && out.movedFront === 185, 'a move behind a later log hands it the working weight; moving back takes it back: ' + JSON.stringify([out.movedBack, out.movedFront]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
