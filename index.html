@@ -8560,7 +8560,9 @@ function runnerCompleteSet(){
     runnerRestTotal = runnerRestLeft;
     runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
     if(runnerRestTick) clearInterval(runnerRestTick);
-    _trovoTimerStart(ex, Math.min(done + 1, ex.sets));
+    // Unclamped: after +1 set the next one is past the plan ('SET 6', as the rest card says);
+    // clamped, the Lock Screen and the alert named set 4 of 4, done long before.
+    _trovoTimerStart(ex, done + 1);
     runnerRestTick = setInterval(function(){
       runnerRestLeft = Math.max(0, Math.round((runnerRestEndsAt - Date.now())/1000));
       if(runnerRestLeft <= 0){ _restFinish(); return; }
@@ -8763,7 +8765,7 @@ function runnerAddRest(delta){
   // the original clock and the alert fired early or late.
   var ex = _runnerEx();
   if(ex){
-    var nextSet = Math.min((runnerCompleted[ex.name]||0) + 1, ex.sets);
+    var nextSet = (runnerCompleted[ex.name]||0) + 1;   // past the plan after +1 set, as when the rest began
     _trovoTimerStart(ex, nextSet); // schedules the rest-done alert too
   }
   _paintRestClock();
@@ -20133,7 +20135,7 @@ function scheduleRestNotification(ex, nextSet, seconds){
     LN.schedule({notifications:[{
       id: REST_NOTIF_ID,
       title: 'Rest done',
-      body: ex.name+' — set '+nextSet+' of '+ex.sets,
+      body: ex.name+' — set '+nextSet+(nextSet<=(parseInt(ex.sets)||0)?' of '+ex.sets:''),   // past the plan (+1 set) just 'set 6'
       schedule: { at: new Date(Date.now()+seconds*1000) },
       sound: 'default'
     }]}).catch(function(){});

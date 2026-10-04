@@ -23,6 +23,8 @@
 //   a typed correction on a plain card still survives the rest's end.
 // - L15 the PR toast at finish names the record's load (it showed the working weight, which a
 //   backdated finish leaves alone, or nothing without one); a bodyweight lift shows its added load.
+// - L16 after '+1 set' the rest Live Activity and the rest alert name the set the runner names
+//   (set 6 past a 4-set plan, no 'of 4'; build 57's view drops 'OF m' itself), and +30s resends it.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -540,4 +542,46 @@ run('L15 the PR toast at finish names the record\'s load', async () => {
   const c = await prToast('{}', { name: 'Pull Up', sets: 2, reps: 6, weight: 25, rpe: 8 });
   assert(c.toast === 'PR · Pull Up +25 lb', 'a bodyweight lift names its added load: ' + JSON.stringify(c));
   assert(!a.errors.length && !b.errors.length && !c.errors.length, 'no page errors: ' + a.errors.concat(b.errors, c.errors).join('|'));
+});
+
+run('L16 after +1 set the Live Activity and the alert name the next set past the plan', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      window.__tt = []; window.__ln = [];
+      Capacitor.Plugins.TrovoTimer = { startTimer: a => { window.__tt.push(a); return Promise.resolve({}); }, endTimer: () => Promise.resolve({}) };
+      Capacitor.Plugins.LocalNotifications.checkPermissions = () => Promise.resolve({ display: 'granted' });
+      Capacitor.Plugins.LocalNotifications.schedule = a => { window.__ln.push(a); return Promise.resolve({}); };
+      const last = () => { const a = window.__tt[window.__tt.length - 1], n = window.__ln[window.__ln.length - 1]; return { set: a && a.nextSet, of: a && a.totalSets, alert: n && n.notifications[0].body }; };
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const ex = runnerSession.exercises[0];
+      r.name = ex.name; r.planned = ex.sets;
+      runnerEngaged = true; runnerCompleteSet(); await wait(30);
+      r.inPlan = last();
+      runnerSkipRest(); runnerEngaged = true;
+      for (let i = 1; i < ex.sets; i++) { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+      runnerEngaged = false; paintRunner(); await wait(20);
+      // +1 set on the done card, logged: the rest that follows
+      [...document.querySelectorAll('#runner-root button')].find(b => b.textContent.trim() === '+1 set').click(); await wait(20);
+      window.__tt.length = 0; window.__ln.length = 0;
+      runnerCompleteSet(); await wait(30);
+      r.extra = last();
+      r.card = [...document.querySelectorAll('#runner-root div')].map(d => d.textContent.trim()).find(t => /^UP NEXT · SET \d+$/.test(t)) || '';
+      window.__tt.length = 0; window.__ln.length = 0;
+      runnerAddRest(30); await wait(30);
+      r.plus30 = last();
+      closeDeckRunner();
+      return r;
+    });
+    const n = out.planned;
+    assert(out.inPlan.set === 2 && out.inPlan.of === n && out.inPlan.alert === out.name + ' \u2014 set 2 of ' + n, 'an in-plan rest is unchanged: ' + JSON.stringify(out.inPlan));
+    assert(out.card === 'UP NEXT · SET ' + (n + 2), 'the rest card names the set after the extra one: ' + out.card);
+    assert(out.extra.set === n + 2 && out.extra.of === n, 'the Live Activity gets that set, past the plan: ' + JSON.stringify(out.extra));
+    assert(out.extra.alert === out.name + ' \u2014 set ' + (n + 2), 'the alert names it with no "of": ' + JSON.stringify(out.extra));
+    assert(JSON.stringify(out.plus30) === JSON.stringify(out.extra), '+30s resends the same set: ' + JSON.stringify(out.plus30));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
