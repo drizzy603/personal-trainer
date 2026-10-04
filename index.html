@@ -14188,11 +14188,12 @@ function renderProgress() {
   // default text color so the screen keeps one emphasis.
   var weekVol=0;
   sessions.forEach(function(s){ if(_inThisCalWeek(s)) weekVol+=calcVolume(s.exercises||[]); });
+  var dayStreak=calcStreakDays();   // THE streak, as the hero and the Today chip read it
 
   var liftStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
     '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(wDisp(weekVol)).toLocaleString():'—')+'</div><div class=\"kt-statband-lbl\">'+_uW()+' · this week</div></div>'+
-    '<div><div class="kt-statband-val">'+calcTrainingDayStreak()+'<span class="u">'+(calcTrainingDayStreak()===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
+    '<div><div class="kt-statband-val">'+dayStreak+'<span class="u">'+(dayStreak===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
     '</div>'+_weekDotsRow();
 
   var runStats = '<div class="kt-statband">'+

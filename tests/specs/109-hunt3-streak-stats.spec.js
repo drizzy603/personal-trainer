@@ -5,6 +5,7 @@
 //   a programme and its first Monday never break the streak, and a log on one still counts.
 // - The rest-day make-up counts the week's logs per lift: Push and Pull done on each other's
 //   days leave nothing open (both were offered again, one after the other) (M48).
+// - Progress shows one streak: with no programme its statband said 0 beside the hero's 4 (M49).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -181,6 +182,21 @@ run('a lift done on another day this week is not offered as a make-up (M48)', as
     assert(out.one && out.one.type === 'Push' && out.one.dow === 0, 'Monday\'s Push is still open: ' + JSON.stringify(out.one));
     assert(out.afterSkip === null, 'skipping it leaves nothing open (Pull was done on Monday): ' + JSON.stringify(out.afterSkip));
     assert(out.twoPush && out.twoPush.type === 'Push' && out.twoPush.dow === 0, 'the Push day not done is the open one: ' + JSON.stringify(out.twoPush));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('with no programme the Progress statband shows the same streak as the hero (M49)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: '' }) });
+  try {
+    const out = await app.page.evaluate(([LOGS]) => {
+      const logs = eval(LOGS);
+      lsSet('kt_sessions', logs([0, 1, 2, 3].map(n => [addDays(todayISO(), -n), 'Push'])));
+      switchTab('progress'); setProgressTab('lifts');
+      const band = Array.from(document.querySelectorAll('#screen .kt-statband > div')).find(d => /Streak/i.test(d.textContent));
+      return { routine: hasCustomRoutine(), streak: calcStreakDays(), band: band ? band.querySelector('.kt-statband-val').textContent : null };
+    }, [LOGS]);
+    assert(!out.routine && out.streak === 4 && out.band === '4days', 'four days in a row, on the hero and the statband alike: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
