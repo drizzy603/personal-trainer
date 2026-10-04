@@ -2215,6 +2215,12 @@ var SESS = {
 var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms','Day6','Day7'];
 var LIFT_KEYS  = LIFT_TYPES.map(function(t){ return t.toLowerCase(); });   // the week arrays
 var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // present on a week only when they hold something
+// Text counted in characters, not UTF-16 units: an emoji is two units, and a
+// cut between them leaves half a character that Swift's JSONDecoder rejects,
+// taking the whole watch plan or widget summary with it. A half already cut
+// off by an older page is dropped.
+function _chars(s){ return String(s==null?'':s).match(/[\ud800-\udbff][\udc00-\udfff]|[^\ud800-\udfff]/g)||[]; }
+function _wellFormed(s){ s=String(s==null?'':s); return /[\ud800-\udfff]/.test(s)?_chars(s).join(''):s; }
 // ── Named slots ───────────────────────────────────────────────────────────────
 // A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
 // reads, how history groups, how the runner walks it. Its NAME is the user's:
@@ -2222,8 +2228,8 @@ var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // pr
 // value, so an older bundled page ignores dayNames and still renders the same
 // exercises under the stock label. _dayLabel() is the ONE read path.
 function _cleanDayLabel(s){
-  var t=String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim();
-  return t.slice(0,24);
+  var t=_wellFormed(String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,'')).replace(/\s+/g,' ').trim();
+  return _chars(t).slice(0,24).join('').trim();
 }
 function _dayNames(){ var cr=getCustomRoutine(); return (cr && cr.dayNames && typeof cr.dayNames==='object') ? cr.dayNames : {}; }
 function _dayLabel(t){
@@ -2232,12 +2238,24 @@ function _dayLabel(t){
   return (SESS[t] && SESS[t].label) || String(t);
 }
 function _sessLabel(t){ return _dayLabel(t); }
-// The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B".
-function _dayShort(t){
-  var l=_dayLabel(t); if(l.length<=7) return l;
+// The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B",
+// "Full Body A" -> "Full A", "Lower Body" -> "Lower". Seven characters at most
+// (an emoji is one), and two days never shorten to the same word.
+function _dayShortOf(l){
+  if(_chars(l).length<=7) return l;
   var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
-  if(parts.length>1) return parts.map(function(p){ return p.charAt(0).toUpperCase(); }).join('+');
-  return l.slice(0,6);
+  if(parts.length>1) return parts.map(function(p){ return (_chars(p)[0]||'').toUpperCase(); }).join('+');
+  var w=l.split(' '), first=_chars(w[0]), last=w.length>1?_chars(w[w.length-1]):[];
+  // A short last word ("A", "B", "2") is what tells two days apart: keep it.
+  if(last.length && last.length<=2) return first.slice(0,6-last.length).join('')+' '+last.join('');
+  return first.slice(0,6).join('');
+}
+function _dayShort(t){
+  var l=_wellFormed(_dayLabel(t)), s=_dayShortOf(l), w=l.split(' ');
+  if(s===l || w.length<2 || /[+\/&]/.test(l)) return s;
+  // "Upper Power" and "Upper Volume" both read "Upper": add the last word's initial.
+  var clash=LIFT_TYPES.some(function(k){ return k!==t && _dayShortOf(_dayLabel(k))===s; });
+  return clash ? _chars(w[0]).slice(0,5).join('')+' '+(_chars(w[w.length-1])[0]||'').toUpperCase() : s;
 }
 // Reverse lookup: a slot id, the name the user gave one (any case), or a stock
 // label -> the slot. `extra` lets a coach call that names AND uses a day in the
@@ -20149,6 +20167,9 @@ function _weekLiftCount(wk, type){
   }catch(e){}
   return getSessionExercises(type).length;
 }
+// JSON the shell hands to Swift's JSONDecoder (watch plan, week, live mirror,
+// widget summary): half an emoji in any string fails the whole payload.
+function _nativeJSON(v){ return JSON.stringify(v, function(k, x){ return typeof x==='string'?_wellFormed(x):x; }); }
 // 7-day plan summary — widget + reminders share this.
 function _nativeSummaryDays(n){
   var out=[], total=getTotalWeeks();
@@ -20437,9 +20458,9 @@ function _pushWatchPlan(){
       short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan?(act.type==='lift'?_dayShort(act.dayName):(act.dayName||'')):'')),
       type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens(),
       unit:_uW() };   // display unit for the wrist (weights stay lb); older watches ignore it
-    var json=JSON.stringify(plan);
+    var json=_nativeJSON(plan);
     var live=_buildWatchLive();
-    var liveJson=live?JSON.stringify(live):'';
+    var liveJson=live?_nativeJSON(live):'';
     // The next six days, so the wrist and its face change day at midnight
     // without the phone app running (watch build 53+; older ones ignore it).
     // '[]', never '': an empty week is dropped by the shell, and the wrist then kept an
@@ -20447,7 +20468,7 @@ function _pushWatchPlan(){
     // programme has no week either (it would be a made-up default cadence).
     var weekJson='[]';
     if(hasCustomRoutine()){
-      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++){ var _wp=_watchPlanForDate(addDays(todayISO(), _wi)); _wp.unit=_uW(); _wk.push(_wp); } weekJson=JSON.stringify(_wk); }catch(e){ weekJson='[]'; }
+      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++){ var _wp=_watchPlanForDate(addDays(todayISO(), _wi)); _wp.unit=_uW(); _wk.push(_wp); } weekJson=_nativeJSON(_wk); }catch(e){ weekJson='[]'; }
     }
     if(json+'|'+liveJson+'|'+weekJson===_lastWatchPlan) return;
     _lastWatchPlan=json+'|'+liveJson+'|'+weekJson;
@@ -20783,7 +20804,7 @@ function _runNativeSync(){
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
       streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc,
       theme:_widgetThemeTokens() };
-    var json=JSON.stringify(summary);
+    var json=_nativeJSON(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;
       var TW=_plug('TrovoWidget');
