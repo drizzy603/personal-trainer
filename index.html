@@ -10083,6 +10083,9 @@ function runnerExRemove(){
   var done=runnerCompleted[ex.name]||0;
   var doIt=function(){
     var idx=runnerExEditIdx, name=ex.name;
+    // The wrist mirrored these sets: marked as corrected to nothing, so it drops them too and its
+    // copy of the session never files them again (they came back on the next drain).
+    if((runnerCompleted[name]||0)>0 || (_wristLen[name]||0)>0) _markPhoneEdit(name, runnerCompleted[name]||0);
     runnerSession.exercises.splice(idx,1);
     var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss && idx>=runnerSession.exercises.length) prev.ss=false;
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,runnerWeights,runnerReps,_wristStamps].forEach(function(m){ if(m) delete m[name]; });
@@ -11344,10 +11347,15 @@ function saveRunnerExEdit(){
   if(oldName!==newName || _newR!==parseInt(_seedR)) runnerReps[newName]=_newR;
   else if(runnerReps[oldName]!=null) runnerReps[newName]=runnerReps[oldName];
   if(oldName!==newName){
+    // What the wrist may hold under the old name, read before its logs move to the new one.
+    var _oldLen=Math.max(runnerCompleted[oldName]||0, _wristLen[oldName]||0, (runnerSession.ownLen||{})[oldName]||0);
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,_wristStamps,_wristLen,
      runnerSession.ownAt||{}, runnerSession.ownLen||{}].forEach(function(map){
       if(map && map[oldName]!==undefined){ map[newName]=map[oldName]; delete map[oldName]; }
     });
+    // The sets moved to the new name; the wrist still holds them under the old one. Marked as
+    // corrected to nothing, so it drops them and its copy never files them twice.
+    if(_oldLen>0) _markPhoneEdit(oldName, _oldLen);
     if(_runnerPrBeat && _runnerPrBeat.ex===oldName){
       var _nb=parseFloat(getPRs()[newName])||0;
       if(_nb>0 && _prBeats(_runnerPrBeat.w, _nb)){ _runnerPrBeat.ex=newName; _runnerPrBeat.best=_nb; }
@@ -20223,6 +20231,9 @@ function _buildWatchLive(){
     }
     weights[ex.name]=runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   });
+  // A lift removed or renamed here mid-session: an empty log with its `own` stamp, so the wrist
+  // drops the sets it mirrored instead of sending them back with its copy.
+  Object.keys(runnerSession.ownAt||{}).forEach(function(nm){ if(!Object.prototype.hasOwnProperty.call(reps, nm)) reps[nm]=[]; });
   // The plan and ended payloads carry the day's NAME (what the wrist shows and
   // compares); this one carried the slot id, so a renamed day, or the stock
   // "Legs B" whose label differs from its id, failed the watch's equality guard
@@ -20249,7 +20260,9 @@ function _markPhoneEdit(name, prevLen){
   if(!runnerSession.ownAt) runnerSession.ownAt={};
   if(!runnerSession.ownLen) runnerSession.ownLen={};
   runnerSession.ownAt[name]=Date.now();
-  runnerSession.ownLen[name]=Math.max(_wristLen[name]||0, prevLen||0);
+  // Never below an earlier correction's: a second undo the wrist has not adopted yet leaves it
+  // holding as many sets as before (an adopted one already moved the baseline down).
+  runnerSession.ownLen[name]=Math.max(runnerSession.ownLen[name]||0, _wristLen[name]||0, prevLen||0);
   runnerSession.lastSetAt=Date.now();
 }
 // Records the wrist's latest log length for an exercise; returns the sets it
@@ -20272,7 +20285,8 @@ function _watchSendDiscard(){
 function discardDeckRunner(){ closeDeckRunner(); _watchSendDiscard(); }
 // Fold a wrist session's exercises into a logged record. An exercise only the
 // wrist has is added; one both have keeps the longer set log, unless the phone
-// corrected that exercise during the session (undo/edit), whose log stands.
+// corrected that exercise during the session (undo/edit, or removed/renamed it:
+// phoneOwned with no row here), whose log stands.
 // Returns how many exercises changed. The drain used to skip the whole wrist
 // session as a duplicate, and the phone's finish used to delete it.
 function _mergeWristExercises(rec, wristExs){
@@ -20284,7 +20298,15 @@ function _mergeWristExercises(rec, wristExs){
     if(!w || !w.name) return;
     var key=String(w.name).toLowerCase(), mine=null;
     for(var i=0;i<rec.exercises.length;i++){ var e=rec.exercises[i]; if(e && String(e.name||'').toLowerCase()===key){ mine=e; break; } }
-    if(!mine){ rec.exercises.push(JSON.parse(JSON.stringify(w))); n++; return; }
+    if(!mine && !owned[key]){ rec.exercises.push(JSON.parse(JSON.stringify(w))); n++; return; }
+    if(!mine){
+      // Removed or renamed on the phone mid-session (or undone to zero there): the sets the wrist
+      // mirrored went with it. Only sets it logged after that correction are added, below.
+      if(!((Array.isArray(w.reps)?w.reps.length:0) > (ownLen[owned[key]]||0))) return;
+      mine=JSON.parse(JSON.stringify(w)); mine.reps=[]; mine.weightLog=[];
+      if(Array.isArray(mine.rpeLog)) mine.rpeLog=[];
+      rec.exercises.push(mine);
+    }
     var wr=Array.isArray(w.reps)?w.reps:[], mr=Array.isArray(mine.reps)?mine.reps:[];
     var fill=parseFloat(w.weight)||parseFloat(mine.weight)||0;
     var wwl=(Array.isArray(w.weightLog)&&w.weightLog.length===wr.length)?w.weightLog:wr.map(function(){ return fill; });
@@ -20508,7 +20530,15 @@ function _onWatchLive(json){
     var changed=false, localAhead=false;
     var known={}; (runnerSession.exercises||[]).forEach(function(ex){ known[ex.name]=true; });
     Object.keys(s.reps||{}).forEach(function(name){
-      if(!known[name]) return;
+      if(!known[name]){
+        // Removed or renamed here: once the wrist has dropped it too (its ack), a set it logs for
+        // that name afterwards is its own, so the baseline falls to what it holds (never rises:
+        // this phone does not take those sets, the finished copy brings them).
+        var _dropAt=(runnerSession.ownAt||{})[name];
+        if(_dropAt && s.ack && s.ack[name]===_dropAt && runnerSession.ownLen)
+          runnerSession.ownLen[name]=Math.min(runnerSession.ownLen[name]||0, (s.reps[name]||[]).length);
+        return;
+      }
       var inc=(s.reps[name]||[]).map(function(r){ return parseInt(r)||0; });
       var loc=runnerRepsLog[name]||[];
       var _prevLen=_wristLen[name]||0; _wristLen[name]=inc.length;

@@ -890,6 +890,9 @@ final class Runner: ObservableObject {
         if changed {
             if startedAt == 0 { startedAt = live.startedAt }
             if sessionPlan == nil, let p = Connectivity.shared.plan, p.type == "lift" { sessionPlan = withLogged(p, from: nil) }
+            // A lift removed or renamed on the phone arrives as an empty log: with its sets gone
+            // here too, it leaves the list (the plan that came with this payload no longer has it).
+            else if let p = Connectivity.shared.plan { adopt(p) }
             WKInterfaceDevice.current().play(.click)
         }
         // The phone is missing sets we have — send ours back once; its own

@@ -32,15 +32,18 @@ run('mid-workout exercise edit reaches the watch plan push', async () => {
         pushed: pushes.length >= 1,
         swapped: first.name === 'Incline Dumbbell Press' && first.sets === 4 && first.reps === 12 && first.weight === 45,
         oldGone: !(plan.exercises || []).some(e => e.name === oldName),
+        // The old name rides as an empty log with its own stamp, so the wrist drops the sets it
+        // mirrored under it (hunt 3, H06: they came back with the wrist's copy).
         liveMoved: !!live && Array.isArray(live.reps['Incline Dumbbell Press'])
-          && live.reps['Incline Dumbbell Press'].length === 1 && !live.reps[oldName],
+          && live.reps['Incline Dumbbell Press'].length === 1
+          && Array.isArray(live.reps[oldName]) && live.reps[oldName].length === 0 && !!(live.own && live.own[oldName]),
         type: plan.type, day: plan.dayName,
       };
     });
     assert(out.pushed, 'runner edit schedules a watch push');
     assert(out.swapped, 'plan carries the edited exercise, not the routine copy');
     assert(out.oldGone, 'the old exercise name leaves the plan');
-    assert(out.liveMoved, 'logged sets travel under the new name in the live payload');
+    assert(out.liveMoved, 'logged sets travel under the new name in the live payload; the old name is emptied');
     assert(out.type === 'lift' && out.day === 'Push', 'plan framed as the live session');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
