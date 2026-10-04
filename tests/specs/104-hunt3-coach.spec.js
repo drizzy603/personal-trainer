@@ -31,6 +31,9 @@
 //   changed"), a call that failed after saving a week says which weeks it saved and which it did
 //   not, with a card and Undo (a red "Weeks 6–15 updated" and no Undo), a call that saved
 //   nothing says so; a logged session goes by its day's name.
+// - L10 set_exercise_weight saves the working weight under the programme's spelling (else a saved
+//   key's, else the library's) and folds case variants into it: "face pull" was saved beside
+//   "Face Pull", reported as set, and the "your load" row on Today never showed it.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -433,6 +436,37 @@ run('L40: pills and PLAN CHANGES say what was saved: a day swap, a cadence chang
     assert(out.part.rows[0] === 'Week ' + out.wk + 'rewritten' && out.part.undo && out.undone, 'and its card undoes it: ' + JSON.stringify(out.part) + ' undone ' + out.undone);
     assert(out.none.pill === '✕ No weeks changed' && !out.none.rows.length, 'a call that saved nothing says so, with no card: ' + JSON.stringify(out.none));
     assert(out.logged.pill === '✓ Chest + Tris logged · ' + out.yday, 'a logged session goes by its day\'s name: ' + out.logged.pill);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L10: set_exercise_weight saves under the programme\'s spelling, whatever the casing', async () => {
+  const app = await boot({ native: true, seed: { kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(() => {
+      const r = {};
+      // Face Pull as a "your load" row: Today shows the working weight saved under its name
+      const cr = getCustomRoutine();
+      cr.weeks.forEach(w => { (w.pull || []).forEach(e => { if (e.name === 'Face Pull') e.weight = 0; }); });
+      setCustomRoutine(cr);
+      const today = () => (_todayLiftExercises('Pull').find(e => e.name === 'Face Pull') || {}).weight;
+      const keys = (re) => Object.keys(getWeights()).filter(k => re.test(k)).map(k => k + '=' + getWeights()[k]);
+      r.before = today();
+      r.face = executeCoachTool('set_exercise_weight', { name: 'face pull', weight: 40 });
+      r.faceToday = today(); r.faceKeys = keys(/^face pull$/i);
+      // a stray casing saved earlier folds into the programme's key
+      const w = getWeights(); w['bench press'] = 150; lsSet('kt_weights', w);
+      r.bench = executeCoachTool('set_exercise_weight', { name: 'BENCH PRESS', weight: 170 });
+      r.benchKeys = keys(/^bench press$/i);
+      // a library lift the programme does not hold, and a name nothing knows
+      r.hip = executeCoachTool('set_exercise_weight', { name: 'hip thrust', weight: 200 }).message;
+      r.odd = executeCoachTool('set_exercise_weight', { name: 'zercher carry deluxe', weight: 100 }).message;
+      return r;
+    });
+    assert(!(out.before > 0) && out.face.ok && out.face.message === 'Face Pull = 40 lb', 'the coach is told the lift it set: ' + JSON.stringify(out.face));
+    assert(out.faceToday === 40 && JSON.stringify(out.faceKeys) === '["Face Pull=40"]', 'Today shows it, under one key: ' + out.faceToday + ' ' + JSON.stringify(out.faceKeys));
+    assert(out.bench.ok && JSON.stringify(out.benchKeys) === '["Bench Press=170"]', 'a stray casing folds into the programme\'s key: ' + JSON.stringify(out.benchKeys));
+    assert(out.hip === 'Hip Thrust = 200 lb' && out.odd === 'zercher carry deluxe = 100 lb', 'the library\'s spelling, else the name as given: ' + out.hip + ' / ' + out.odd);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -16443,6 +16443,22 @@ var _coachTurnScope=null, _coachSoloN=0;
 // Inside a reply every change shares the reply's scope; a call outside one is its own.
 function _coachScope(){ return _coachTurnScope || ('coach:solo:'+(++_coachSoloN)); }
 
+// The name a coach-set working weight is saved under: the programme's spelling (this week's
+// first), else a saved working weight's, else the library's. Today reads working weights by
+// exact name, so "face pull" was saved beside "Face Pull" and its "your load" row never showed
+// it. Case variants already saved fold into that key (the weights object is edited in place).
+// null when nothing knows the name.
+function _weightKeyFor(name, weights){
+  var low=String(name||'').trim().toLowerCase(), key=null;
+  if(!low) return null;
+  var cr=getCustomRoutine(), wks=(cr&&Array.isArray(cr.weeks))?cr.weeks:[];
+  [wks[currentWeek-1]].concat(wks).forEach(function(w){ LIFT_KEYS.forEach(function(k){ ((w&&w[k])||[]).forEach(function(e){ if(!key && e && String(e.name||'').toLowerCase()===low) key=String(e.name); }); }); });
+  if(!key) key=Object.keys(weights).find(function(k){ return k.toLowerCase()===low; })||null;
+  if(!key){ var le=getAllExercises().find(function(e){ return e && String(e.name).toLowerCase()===low; }); if(le) key=le.name; }
+  if(key) Object.keys(weights).forEach(function(k){ if(k!==key && k.toLowerCase()===low) delete weights[k]; });
+  return key;
+}
+
 // Every coach tool: if any save failed while it ran (or a raw write threw on quota), the
 // coach is told so instead of "logged" / "updated" (body weight, goals, profile, week,
 // cadence, deletes and set_exercise_weight used to report success with nothing saved).
@@ -16800,7 +16816,7 @@ function _executeCoachToolRaw(name,input){
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
       newW=_coachLoadIn(newW);
       if(!input.name) return {ok:false,error:'name required'};
-      var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
+      var key=_weightKeyFor(input.name, weights);
       if(!key) key=String(input.name);
       weights[key]=newW;
       lsSet('kt_weights',weights);
