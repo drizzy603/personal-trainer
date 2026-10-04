@@ -10138,7 +10138,10 @@ function runnerExRemove(){
   var doIt=function(){
     var idx=runnerExEditIdx, name=ex.name;
     runnerSession.exercises.splice(idx,1);
-    var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss && idx>=runnerSession.exercises.length) prev.ss=false;
+    // The card above was paired with the removed one; it must not pair with whatever moved up
+    // (no rest between two unrelated lifts, and a superset filed that was never made).
+    var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss) prev.ss=false;
+    _ssReturnIdx=null;   // an index into the list just spliced
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,runnerWeights,runnerReps,_wristStamps].forEach(function(m){ if(m) delete m[name]; });
     if(_runnerPrBeat && _runnerPrBeat.ex===name) _runnerPrBeat=null;
     if(_rExEditApply) _runnerApplyToProgramme('remove', {name:name});

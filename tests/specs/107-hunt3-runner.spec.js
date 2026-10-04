@@ -6,6 +6,8 @@
 //   launch too), its wrist copy folds into it, and Save lifts to Health still writes it.
 // - M31 undoing the top set of a top-set/back-off scheme puts the weight stepper back on the top
 //   set's load (it stayed on the back-off load and the redone set was filed at it).
+// - M32 removing the second half of a superset unpairs the first half: it rests, it never pairs
+//   with the lift that moved up, no superset is filed, and a pending pair return is dropped.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -176,6 +178,56 @@ run('M31 undoing a top set puts the stepper back on its load', async () => {
     assert(JSON.stringify(out.afterUndo) === '[225,3]' && out.inputs[0] === '225' && out.inputs[1] === '3' && /225/.test(out.target),
       'Undo puts the steppers back on the top set: ' + JSON.stringify([out.afterUndo, out.inputs, out.target]));
     assert(JSON.stringify(out.relogged) === '[[225],[3]]' && JSON.stringify(out.next) === '[185,8]', 'the redone top set is filed at its load: ' + JSON.stringify([out.relogged, out.next]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M32 removing the second half of a superset unpairs the first', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press' || e.name === 'Incline Dumbbell Press') e.ss = true; });
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const names = () => runnerSession.exercises.map(e => e.name + (e.ss ? '(ss)' : ''));
+      r.before = names();
+      // 1. Overhead Press (Bench's partner) removed before any set
+      openRunnerExEdit(1); runnerExRemove(); await wait(20);
+      r.after1 = names();
+      runnerGoTo(0); runnerEngaged = true; runnerCompleteSet(); await wait(20);
+      r.benchSet = { card: _runnerEx().name, resting: runnerResting };
+      runnerSkipRest();
+      // 2. Incline + Pushdown: the pushdown's set starts the pair's rest, then it is removed
+      const ii = runnerSession.exercises.findIndex(e => e.name === 'Incline Dumbbell Press');
+      runnerGoTo(ii); runnerEngaged = true; runnerCompleteSet(); await wait(20);
+      r.handoff = _runnerEx().name;
+      runnerCompleteSet(); await wait(20);
+      r.pairRest = { resting: runnerResting, returnsTo: _ssReturnIdx };
+      openRunnerExEdit(runnerExIdx); runnerExRemove(); await wait(20);
+      const ok = [...document.querySelectorAll('.kt-close-sheet button')].find(b => /^\s*Remove\s*$/.test(b.textContent));
+      ok.click(); await wait(20);
+      r.after2 = { names: names(), card: _runnerEx().name, returnsTo: _ssReturnIdx };
+      runnerEngaged = true; runnerCompleteSet(); await wait(20);
+      runnerSkipRest(); await wait(20);
+      r.afterRest = _runnerEx().name;
+      runnerFinishSession(); await wait(250);
+      closeCompleteSheet();
+      const s = getSessions()[0];
+      r.saved = { supersets: s.supersets || null, ss: s.exercises.filter(e => e.ss).map(e => e.name) };
+      return r;
+    });
+    assert(JSON.stringify(out.after1) === JSON.stringify(['Bench Press', 'Incline Dumbbell Press(ss)', 'Cable Triceps Pushdown', 'Lateral Raise']),
+      'the first half is unpaired: ' + JSON.stringify([out.before, out.after1]));
+    assert(out.benchSet.card === 'Bench Press' && out.benchSet.resting, 'its set rests instead of jumping to the next lift: ' + JSON.stringify(out.benchSet));
+    assert(out.handoff === 'Cable Triceps Pushdown' && out.pairRest.resting && out.pairRest.returnsTo != null, 'the pair still runs as a pair: ' + JSON.stringify([out.handoff, out.pairRest]));
+    assert(JSON.stringify(out.after2.names) === JSON.stringify(['Bench Press', 'Incline Dumbbell Press', 'Lateral Raise']) && out.after2.card === 'Lateral Raise' && out.after2.returnsTo === null,
+      'removing the second half mid-rest unpairs the first and drops the return: ' + JSON.stringify(out.after2));
+    assert(out.afterRest === 'Lateral Raise', 'the next rest stays on the card it was on: ' + out.afterRest);
+    assert(out.saved.supersets === null && out.saved.ss.length === 0, 'no superset is filed: ' + JSON.stringify(out.saved));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
