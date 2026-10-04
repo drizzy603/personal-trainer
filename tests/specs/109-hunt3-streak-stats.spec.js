@@ -16,6 +16,8 @@
 //   the round-swap morning is week 12, not "Week 13 of 12" (M01).
 // - The streak chip asks the streak's own question: an empty lift day (BUILD YOUR ARMS DAY) is
 //   not "TRAIN TODAY TO KEEP IT" (L33).
+// - Progress THIS WEEK does not count an empty lift day as planned: 3 / 3, as Today says, not
+//   3 / 4 for good (L34).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -377,6 +379,27 @@ run('an empty lift day does not put the streak on the line (L33)', async () => {
     assert(/2-DAY STREAK · TRAIN TODAY TO KEEP IT/.test(out.legsDay), 'a training day is on the line: ' + out.legsDay);
     assert(out.armsDay.empty && /3-DAY STREAK/.test(out.armsDay.chip) && !/KEEP IT/.test(out.armsDay.chip), 'the empty Arms day does not nag: ' + JSON.stringify(out.armsDay));
     assert(out.friday === 3, 'skipping it left the streak whole: ' + out.friday);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Progress THIS WEEK leaves an empty lift day out of the planned days (L34)', async () => {
+  const r0 = JSON.parse(SEED.kt_routine);
+  r0.weekPlan = ['Push', 'Pull', 'Legs', 'Arms', 'Rest', 'Rest', 'Rest'];
+  r0.weeks.forEach(w => { delete w.weekPlan; delete w.arms; });
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(r0), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS);
+      const W = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(W, 3) + 'T18:00:00');
+      currentWeek = 6; lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', W);
+      lsSet('kt_sessions', logs([[W, 'Push'], [addDays(W, 1), 'Pull'], [addDays(W, 2), 'Legs']]));
+      switchTab('progress'); setProgressTab('lifts');
+      const m = document.getElementById('screen').innerText.replace(/\s+/g, ' ').match(/THIS WEEK \d+ \/ \d+ DAYS/);
+      return { row: m ? m[0] : '', today: _weekStats().planned };
+    }, [CLOCK, LOGS]);
+    assert(/THIS WEEK 3 \/ 3 DAYS/.test(out.row) && out.today === 3, 'three of three, as Today counts: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

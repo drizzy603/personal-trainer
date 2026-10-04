@@ -14169,7 +14169,9 @@ function renderProgress() {
     runs.forEach(function(r){ if(r.date) trained[r.date]=1; });
     getSportLogs().forEach(function(l){ if(l.date) trained[l.date]=1; });
     var plan=getWeekPlan();
-    var planned=plan.filter(function(p){return !p.isRest;}).length;
+    // An empty lift day asks for nothing (as Today's count): planned with it, the row never met.
+    var off=function(p){ return !p || p.isRest || (p.isLift && _liftDayEmpty(p.type)); };
+    var planned=plan.filter(function(p){return !off(p);}).length;
     var m=new Date(mon+'T00:00:00');
     var done=0, dots='';
     for(var i=0;i<7;i++){
@@ -14177,7 +14179,7 @@ function renderProgress() {
       var iso=_ymdLocal(d);
       var isDone=!!trained[iso]; if(isDone) done++;
       var isToday=iso===todayS;
-      var isRest=plan[i]&&plan[i].isRest;
+      var isRest=off(plan[i]);
       dots+='<span style="width:8px;height:8px;border-radius:50%;box-sizing:border-box;flex-shrink:0;'+
         'background:'+(isDone?'var(--accent)':'transparent')+';'+
         (isDone?'':'border:1.5px solid '+(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)'))+';')+
