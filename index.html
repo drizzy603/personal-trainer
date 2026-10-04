@@ -3944,7 +3944,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
+var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero','kt_week_monday'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro'];
 function buildBackupJSON() {
@@ -4281,8 +4281,13 @@ function _applyImportedData(data, opts) {
   currentWeek = parseInt(data.kt_week) || 1;
   // Re-anchor the week clock like every other week-setting path — a stale
   // anchor makes autoAdvanceWeek silently jump the restored week forward on
-  // the next boot, with no welcome-back banner to undo it.
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  // the next boot, with no welcome-back banner to undo it. A programme that
+  // had not started keeps its start (week 1 on a Monday still ahead, at most a
+  // week out): a weekend restore used to start it this Monday, owe the days
+  // already gone, and open week 2 on what was to be its first day.
+  var _anc=String(data.kt_week_monday||'');
+  var _notStarted=currentWeek===1 && _anc>_mostRecentMonday() && _anc<=_nextMonday(addDays(todayISO(),1)) && _nextMonday(_anc)===_anc;
+  localStorage.setItem('kt_week_monday', _notStarted ? _anc : _mostRecentMonday());
   lapsePending = null;
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved

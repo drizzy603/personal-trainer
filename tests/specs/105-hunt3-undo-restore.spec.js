@@ -18,6 +18,8 @@
 //   working-weight-only reply is an undo point too (M20).
 // - Restore previous programme is a row in Settings › Programme whenever there is a previous
 //   version (keyless owners included), and How It Works points there (M22).
+// - A restore (or Undo last restore) before a new programme has started keeps its start: the
+//   backup carries kt_week_monday, and week 1 on a Monday still ahead is kept (M23).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -355,6 +357,44 @@ run('Restore previous programme is a Settings row, keyless too, where How It Wor
     assert(!out.noBackup, 'no row without a previous version');
     assert(out.shown === 'Programme' && out.restored, 'the row sits under Programme and restores the previous version: ' + JSON.stringify(out));
     assert(out.how, 'How It Works points at the row that exists');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a restore (or its undo) before a new programme starts keeps its start', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const st = () => ({ anchor: localStorage.getItem('kt_week_monday'), started: _programmeStarted(), week: currentWeek });
+      const start = _nextMonday(addDays(todayISO(), 1)), thisMon = _mostRecentMonday();
+      _setWeek(1, start);
+      const r = { start, thisMon, before: st() };
+      const file = JSON.parse(JSON.stringify(buildBackupJSON()));
+      r.carried = file.kt_week_monday === start;
+      _applyImportedData(JSON.parse(JSON.stringify(file)));
+      r.restored = st();
+      // a file whose start has passed, one further out than a week, and a later week: this Monday, as before
+      const f2 = JSON.parse(JSON.stringify(file)); f2.kt_week_monday = addDays(thisMon, -14);
+      _applyImportedData(f2); r.past = st();
+      const f3 = JSON.parse(JSON.stringify(file)); f3.kt_week_monday = addDays(start, 7);
+      _applyImportedData(f3); r.far = st();
+      const f4 = JSON.parse(JSON.stringify(file)); f4.kt_week = 5;
+      _applyImportedData(f4); r.week5 = st();
+      // Undo last restore brings back the programme that had not started
+      _setWeek(1, start);
+      _applyImportedData(JSON.parse(JSON.stringify(f4)));
+      r.other = st();
+      _undoLastRestore(); await wait(20); confirm(); await wait(30);
+      r.undone = st();
+      return r;
+    });
+    assert(out.before.anchor === out.start && !out.before.started, 'seed: week 1 starts on the coming Monday: ' + JSON.stringify(out.before));
+    assert(out.carried, 'the backup carries the start');
+    assert(out.restored.anchor === out.start && !out.restored.started && out.restored.week === 1, 'a restore keeps the start: ' + JSON.stringify(out.restored));
+    for (const k of ['past', 'far', 'week5']) assert(out[k].anchor === out.thisMon && out[k].started, k + ': re-anchored on this Monday: ' + JSON.stringify(out[k]));
+    assert(out.other.week === 5 && out.undone.anchor === out.start && !out.undone.started && out.undone.week === 1, 'Undo last restore keeps the start: ' + JSON.stringify([out.other, out.undone]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
