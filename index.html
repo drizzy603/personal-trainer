@@ -7552,9 +7552,10 @@ function _runFromSlot(slot){
 // Returns the most relevant run to feature in the hero — today's if today is
 // a run day, otherwise the next run forward in the week, otherwise null.
 // No programme, no planned runs: the hard-coded fallback week told a new user
-// "Easy run today" (there is no silent fallback programme).
+// "Easy run today" (there is no silent fallback programme). Before week 1 begins
+// nothing is due either (Today says STARTS MON; this tab said "5 km today").
 function getRunFocus(){
-  if(!hasCustomRoutine()) return null;
+  if(!hasCustomRoutine() || !_programmeStarted()) return null;
   var todayDow = (new Date().getDay()+6)%7;
   var weekPlan = getWeekPlan();
   var wd = getWkData();
@@ -7569,7 +7570,7 @@ function getRunFocus(){
 }
 function getThisWeekRuns(){
   if(!hasCustomRoutine()) return [];
-  var todayDow = (new Date().getDay()+6)%7;
+  var todayDow = (new Date().getDay()+6)%7, started = _programmeStarted();
   var weekPlan = getWeekPlan();
   var wd = getWkData();
   var runs = (wd && wd.runs) || {};
@@ -7578,7 +7579,7 @@ function getThisWeekRuns(){
     if(!weekPlan[d].isRun) continue;
     var slot = _runFromSlot(runs[DOW_NAMES[d]]);
     out.push(Object.assign({
-      dow:d, abbrev:DOW_NAMES[d].toUpperCase(), full:_DOW_FULL[d], isToday:d===todayDow
+      dow:d, abbrev:DOW_NAMES[d].toUpperCase(), full:_DOW_FULL[d], isToday:started && d===todayDow   // week 1 is ahead: no day of it is today
     }, slot));
   }
   return out;
@@ -7613,7 +7614,7 @@ function renderRunTargetsList(){
       '</div>';
   }).join('');
   return '<div class="kt-marquee">'+
-    '<div class="kt-marquee-hd">THIS WEEK</div>'+
+    '<div class="kt-marquee-hd">'+(_programmeStarted() ? 'THIS WEEK' : 'WEEK 1')+'</div>'+
     rows+'</div>';
 }
 function scrollToRunForm(){
@@ -8128,6 +8129,11 @@ function renderRunSegment(){
     else { line1 = 'Easy run'; line2 = focus.dayName.toLowerCase()+'.'; }
     var hrBit = focus.hr ? ' HR cap '+focus.hr+' bpm.' : '';
     body = 'Next run is '+focus.dayName+'.'+hrBit;
+  } else if(cr && !_programmeStarted()){
+    // As Today says it: nothing is due before week 1's Monday.
+    var _ps = _preStartInfo();
+    line1 = 'Week 1 starts'; line2 = _ps.days === 1 ? 'tomorrow.' : 'Monday.';
+    body = 'No run is due before then. Log one below if you go anyway.';
   } else {
     line1 = 'Run.'; line2 = 'This week.'; line2Class = '';
     body = cr ? 'No runs scheduled this week. Tap below to log one anyway.' : 'No programme yet — log any run below.';

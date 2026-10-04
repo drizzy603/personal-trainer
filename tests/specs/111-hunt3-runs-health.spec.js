@@ -37,6 +37,8 @@
 // - L31: with no programme, Log › Run plans no run (no "Easy run today", no coach run card, no
 //   THIS WEEK list) and the widget summary carries no days and hasPlan:false, so the widget
 //   asks to set up a plan instead of showing the hard-coded fallback week.
+// - L32: before week 1 begins, Log › Run says when it starts (as Today's STARTS MON), offers
+//   "Log a run" rather than today's run, and lists WEEK 1 with no day marked today.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -630,6 +632,38 @@ run('L31: with no programme, Log › Run plans no run and the widget shows no we
     assert(/No programme yet/.test(out.none.hero) && !/today/i.test(out.none.hero), 'the hero says there is no programme: ' + out.none.hero);
     assert(out.none.widget && out.none.widget.days === 0 && out.none.widget.hasPlan === false, 'the widget gets no week: ' + JSON.stringify(out.none.widget));
     assert(out.plan.widget && out.plan.widget.days === 7 && out.plan.widget.hasPlan === true, 'with a programme the widget gets the week: ' + JSON.stringify(out.plan.widget));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L32: before week 1 begins, Log › Run says when it starts and plans no run today', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const dow = (new Date().getDay() + 6) % 7;
+      // week 1 has a 5 km run on today's weekday, and begins next Monday
+      const cr = getCustomRoutine(), w1 = cr.weeks[0];
+      const plan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; plan[dow] = 'Run';
+      w1.weekPlan = plan; w1.runs = {}; w1.runs[DOW_NAMES[dow]] = { km: 5, type: 'easy' };
+      setCustomRoutine(cr);
+      const scr = () => document.getElementById('screen');
+      const read = () => ({ hero: (scr().querySelector('.kt-hero') || {}).textContent || '', cta: (scr().querySelector('.kt-cta') || {}).textContent || '',
+        list: (scr().querySelector('.kt-run-row') ? scr().querySelector('.kt-marquee-hd').textContent : ''), today: !!scr().querySelector('.kt-marquee-idx.main') });
+      localStorage.setItem('kt_week', '1'); currentWeek = 1;
+      localStorage.setItem('kt_week_monday', addDays(_mostRecentMonday(), 7));
+      switchTab('log'); switchLogSub('run'); await wait(50);
+      const r = { pre: read(), started: _programmeStarted() };
+      // once week 1 is under way, today's run is today's again
+      localStorage.setItem('kt_week_monday', _mostRecentMonday()); render(); await wait(30);
+      r.on = read();
+      return r;
+    });
+    assert(out.started === false, 'the programme has not started');
+    assert(/Week 1 starts(tomorrow|Monday)\./.test(out.pre.hero) && !/today/i.test(out.pre.hero), 'the hero says when week 1 starts: ' + out.pre.hero);
+    assert(/Log a run/.test(out.pre.cta) && !/Start run/.test(out.pre.cta), 'the CTA logs a run, it does not start today\'s: ' + out.pre.cta);
+    assert(out.pre.list === 'WEEK 1' && out.pre.today === false, 'the list is week 1 with no day marked today: ' + JSON.stringify(out.pre));
+    assert(/today\./.test(out.on.hero) && /Start run/.test(out.on.cta) && out.on.list === 'THIS WEEK' && out.on.today, 'once started, today\'s run is today\'s: ' + JSON.stringify(out.on));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
