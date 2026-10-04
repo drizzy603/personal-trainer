@@ -3345,6 +3345,7 @@ function lsSet(k,v) {
     if(!_LS_SILENT_KEYS[k]){
       try{
         localStorage.removeItem('kt_cached_html'); localStorage.removeItem('kt_cached_build');
+        _dropStalePreRestore();   // and a restore's undo copy past its week
         localStorage.setItem(k,JSON.stringify(v)); return true;
       }catch(e2){}
     }
@@ -3449,11 +3450,15 @@ function restoreArchivedRoutine(id){
   if(!entry){showToast('Programme not found','err');return;}
   _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     // The restored programme is written before its entry leaves the archive, and a failure
-    // puts the archive back: the current one is never left archived nowhere.
-    var prevArr=getRoutineArchive().slice();
-    if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+    // puts the archive back: the current one is never left archived nowhere. The current one
+    // goes in on top of every entry (six for a moment) and only the restored one leaves:
+    // archiving first trimmed a full history to five, which cost it its oldest programme.
+    var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
+    var withCur=(cur && !(prevArr[0] && JSON.stringify(prevArr[0].routine)===JSON.stringify(cur))) ? [{id:Date.now(),archivedAt:todayISO(),routine:cur}].concat(prevArr) : prevArr;
+    if(!lsSet('kt_routine_archive', withCur)){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
-    setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
+    _routineReplaced(cur, 'history:'+id);
+    setRoutineArchive(withCur.filter(function(e){return e.id!==id;}).slice(0,5));
     _startProgramme();
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();
@@ -3467,8 +3472,10 @@ function deleteArchivedRoutine(id){
 }
 function startNewProgramme(){
   _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
+    var cur=getCustomRoutine();
     if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     clearCustomRoutine();
+    _routineReplaced(cur, 'new:'+Date.now());   // Restore Previous brings it back as it was, not a stale copy from before its last edit
     lsDel('kt_routine_next'); lsDel('kt_round_intro');
     _setWeek(1);
     _setIntakeMode(false);
@@ -4017,7 +4024,7 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero'];
+var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero','kt_week_monday'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro'];
 function buildBackupJSON() {
@@ -4043,7 +4050,20 @@ function _undoLastRestore(){
   _ktConfirm({title:'Undo the last restore?',
     body:'Brings back '+_plural(sess,'session')+' and '+_plural(runs,'run')+' from '+fmtDate(_ymdLocal(new Date(snap.at)))+', replacing what the restore put here.',
     confirmLabel:'Undo restore', confirmStyle:'var(--accent)',
-    onConfirm:function(){ _applyImportedData(snap.data); try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} }});
+    // The copy goes only once it is back: an undo that ran out of space used to delete it anyway.
+    onConfirm:function(){ if(_applyImportedData(snap.data, {undo:true})===true){ try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} render(); } }});
+}
+// The undo copy lives the week Settings offers it. It used to stay for good (a full copy of the
+// replaced data, about half of the storage) and saves failed near the quota while it sat there.
+// Run at boot and before lsSet's retry; the age is read off the front, not the whole copy parsed.
+function _dropStalePreRestore(){
+  try{
+    var raw=localStorage.getItem('kt_pre_restore'); if(!raw) return false;
+    var m=/^\{"at":(\d+)/.exec(raw.slice(0,32)), at=m?parseInt(m[1],10):0;
+    if(!m){ try{ at=parseInt((JSON.parse(raw)||{}).at,10)||0; }catch(e){} }
+    if(at && Date.now()-at<=7*86400000) return false;
+    localStorage.removeItem('kt_pre_restore'); return true;
+  }catch(e){ return false; }
 }
 // 38/56 — storage meter. localStorage is ~5 MB in WKWebView and the app used
 // to discover the ceiling only when a save failed.
@@ -4247,7 +4267,9 @@ function importData() {
       var sess = (data.kt_sessions || []).length;
       var runs = (data.kt_runs || []).length;
       var m = data._manifest && typeof data._manifest==='object' ? data._manifest : null;
-      var origin = m && m.exportedAt ? ' Exported '+fmtDate(String(m.exportedAt).slice(0,10))+(m.build?' · build '+m.build:'')+'.' : '';
+      // The local day, like the file's name (the UTC day said "Oct 4" for a Saturday evening backup).
+      var exS = m && m.exportedAt ? String(m.exportedAt) : '', exAt = exS.length > 10 ? new Date(exS) : null;
+      var origin = exS ? ' Exported '+fmtDate(exAt && !isNaN(exAt.getTime()) ? _ymdLocal(exAt) : exS.slice(0,10))+(m.build?' · build '+m.build:'')+'.' : '';
       _ktConfirm({title:'Restore this backup?',
         body:sess+' sessions and '+runs+' runs will replace the data currently on this phone.'+origin+' You can undo this from Settings for 7 days.',
         confirmLabel:'Restore', confirmStyle:'var(--accent)',
@@ -4268,13 +4290,18 @@ function _backupValueOk(k, v){
   if(_BACKUP_OBJECT_KEYS.indexOf(k) !== -1) return v && typeof v === 'object' && !Array.isArray(v);
   return true;
 }
-function _applyImportedData(data) {
+function _applyImportedData(data, opts) {
+  opts=opts||{};
   // The restore REPLACES everything, so it is all or nothing. The undo copy (Settings → Data,
   // "Undo last restore", a week) must be written first; if it cannot be, nothing is restored.
   // A write that fails puts every key back. A nearly full phone used to end with half of each
   // dataset, no undo, and "Restored N data items".
+  // The copy an earlier restore kept is held here and put back if this one stops (a stopped
+  // restore left its own copy, so Undo brought back the first backup, not what was here before
+  // it). Undoing a restore (opts.undo) writes no copy: the one it undoes stays the safety net.
+  var _prevSnap=null; try{ _prevSnap=localStorage.getItem('kt_pre_restore'); }catch(e){}
   var _snapRaw=null;
-  try{ var _snap=buildBackupJSON(); delete _snap._manifest; if(Object.keys(_snap).length) _snapRaw=JSON.stringify({at:Date.now(), data:_snap}); }catch(e){}
+  if(!opts.undo){ try{ var _snap=buildBackupJSON(); delete _snap._manifest; if(Object.keys(_snap).length) _snapRaw=JSON.stringify({at:Date.now(), data:_snap}); }catch(e){} }
   if(_snapRaw){
     var _put=function(){ try{ localStorage.setItem('kt_pre_restore', _snapRaw); return true; }catch(e){ return false; } };
     if(!_put()){ try{ localStorage.removeItem('kt_cached_html'); }catch(e){} }   // the cached page is the first thing that can go
@@ -4284,10 +4311,23 @@ function _applyImportedData(data) {
   _touch.forEach(function(k){ try{ _before[k]=localStorage.getItem(k); }catch(e){} });
   var _failed=false;
   var _rollback=function(){
-    _touch.forEach(function(k){ try{ if(_before[k]==null) localStorage.removeItem(k); else localStorage.setItem(k, _before[k]); }catch(e){} delete _lsCache[k]; });
+    // Free first, then put back, and read each key back. Putting keys back in list order failed
+    // whenever one needed the room a later key still held (kt_sessions before the backup's longer
+    // kt_runs left), and the failure was swallowed under "Nothing was changed".
+    var bad=[];
+    _touch.forEach(function(k){ try{ if(localStorage.getItem(k)!==_before[k]) localStorage.removeItem(k); }catch(e){} delete _lsCache[k]; });
+    _touch.forEach(function(k){
+      try{ if(_before[k]!=null && localStorage.getItem(k)!==_before[k]) localStorage.setItem(k, _before[k]); }catch(e){}
+      try{ if(localStorage.getItem(k)!==_before[k] && bad.indexOf(k)<0) bad.push(k); }catch(e){ bad.push(k); }
+    });
+    // Everything is back: so is the earlier restore's undo copy (or this one's goes). If not,
+    // the copy this restore took holds what was here, and Undo last restore brings it back.
+    if(!bad.length && _snapRaw){ try{ if(_prevSnap==null) localStorage.removeItem('kt_pre_restore'); else localStorage.setItem('kt_pre_restore', _prevSnap); }catch(e){} }
     _logsVersion++; _todayActMemo=null;
     currentWeek=parseInt(localStorage.getItem('kt_week'))||currentWeek;
-    showToast('Restore stopped \u2014 the phone ran out of space. Nothing was changed. Free some space and try again.','err');
+    var what=opts.undo?'Undo':'Restore';
+    showToast(!bad.length ? what+' stopped \u2014 the phone ran out of space. Nothing was changed. Free some space and try again.'
+      : what+' stopped \u2014 the phone ran out of space before everything could be put back. Free some space, then tap Undo last restore in Settings \u203a Data'+(opts.undo?' again.':' to bring back what was here.'),'err');
     render();
     return false;
   };
@@ -4335,8 +4375,13 @@ function _applyImportedData(data) {
   currentWeek = parseInt(data.kt_week) || 1;
   // Re-anchor the week clock like every other week-setting path — a stale
   // anchor makes autoAdvanceWeek silently jump the restored week forward on
-  // the next boot, with no welcome-back banner to undo it.
-  localStorage.setItem('kt_week_monday', _mostRecentMonday());
+  // the next boot, with no welcome-back banner to undo it. A programme that
+  // had not started keeps its start (week 1 on a Monday still ahead, at most a
+  // week out): a weekend restore used to start it this Monday, owe the days
+  // already gone, and open week 2 on what was to be its first day.
+  var _anc=String(data.kt_week_monday||'');
+  var _notStarted=currentWeek===1 && _anc>_mostRecentMonday() && _anc<=_nextMonday(addDays(todayISO(),1)) && _nextMonday(_anc)===_anc;
+  localStorage.setItem('kt_week_monday', _notStarted ? _anc : _mostRecentMonday());
   lapsePending = null;
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
@@ -4347,6 +4392,7 @@ function _applyImportedData(data) {
   applyTheme(THEMES[importedTheme]?importedTheme:'heavyweight');
   render();
   showToast('Restored '+count+' data items');
+  return true;
 }
 
 // ── Apple Health import (Capacitor / iOS shell only) ─────────────────────────
@@ -5072,6 +5118,7 @@ function _startProgramme(){
   lsSet('kt_last_weekwrap', _mostRecentMonday());
   invalidateCoachCard();
   _todayActMemo = null;
+  _routineScope = null;   // the new programme's first edit takes its own undo snapshot (a scope left open took none)
 }
 function adjustWeek(delta) {
   var next = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
@@ -10852,6 +10899,7 @@ var _rtEdit=null, _rtAdd=null, _rtQuery='', _rtFocusSlot=null;
 function openRoutines(slot){
   if(!hasCustomRoutine()){ openProgrammeModal(); return; }
   _rtEdit=null; _rtAdd=null; _rtQuery=''; _rtFocusSlot=slot||null;
+  if(_routineScope==='routines') _routineScope=null;   // each visit is its own undo point (two visits were undone as one)
   var prev=document.getElementById('routinesOverlay'); if(prev) prev.remove();
   var overlay=document.createElement('div');
   overlay.id='routinesOverlay'; overlay.className='kt-sheet-overlay';
@@ -11257,6 +11305,7 @@ function _applyNextRound(now){
   var prevArr=getRoutineArchive().slice();
   if(!archiveCurrentRoutine()) return null;
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
+  _routineReplaced(cr, 'round:'+nb.routine.cycle);
   lsDel('kt_routine_next');
   // First opened after its start week had gone (away, or the app never opened): the round starts
   // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
@@ -11866,9 +11915,10 @@ function applyStarterIntake(){
 }
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
-  var prevArr=getRoutineArchive().slice();
-  if(getCustomRoutine() && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+  var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
+  if(cur && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
   if(!setCustomRoutine(r)){ lsSet('kt_routine_archive', prevArr); return; }
+  _routineReplaced(cur, 'starter:'+Date.now());
   _startProgramme();
   closeStarterIntake();
   logSubTab='workout'; switchTab('log');
@@ -13551,10 +13601,11 @@ function saveBodyWeight(){
   if(!v){showToast('Enter a weight');return;}
   v=wStore(v);   // typed in the display unit, stored in lb
   var rec={id:Date.now(),date:d,weight:v};
-  var bws=getBodyWeights();
-  bws.push(rec);
+  var bws=getBodyWeights().concat([rec]);
   bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
-  lsSet('kt_bw',bws);
+  // A new array; on storage full nothing reads as logged and the field keeps what was typed
+  // (lsSet has said so; "✓ logged · UNDO" used to show over a save that never happened).
+  if(!lsSet('kt_bw',bws)) return;
   bwLogConfirmed={id:rec.id,weight:v,date:d};
   render();
 }
@@ -13594,7 +13645,8 @@ function saveMeasurement(){
     if(v>0){entry[f[1]]=v;hasAny=true;}
   });
   if(!hasAny){showToast('Enter at least one measurement');return;}
-  var ms=getMeasurements();ms.unshift(entry);lsSet('kt_measurements',ms);
+  // Storage full: lsSet's error stands ("Measurements saved" used to replace it) and the fields keep what was typed.
+  if(!lsSet('kt_measurements',[entry].concat(getMeasurements()))) return;
   showToast('Measurements saved');render();
 }
 function deleteMeasurement(idx){
@@ -17041,6 +17093,10 @@ function _executeCoachToolRaw(name,input){
       var dowB=DOW_FROM_NAME[input.dayB];
       if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
       if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
+      // A week the programme does not have is refused before the snapshot too (the refusal
+      // replaced the undo point of an earlier change).
+      var wkNum=parseInt(input.week)||currentWeek, crW=getCustomRoutine();
+      if(input.scope!=='global' && !(crW && crW.weeks && crW.weeks[wkNum-1])) return {ok:false,error:'Could not swap (no routine for that week?)'};
       _snapshotRoutineForUndo(_coachScope());   // after validation: a rejected call must not burn the undo point
       if(input.scope==='global'){
         var crG=getCustomRoutine();
@@ -17071,7 +17127,6 @@ function _executeCoachToolRaw(name,input){
         setCustomRoutine(crG);
         return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' globally'};
       }
-      var wkNum=parseInt(input.week)||currentWeek;
       if(swapWeekPlanDays(wkNum,dowA,dowB)){
         return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' for week '+wkNum};
       }
@@ -17131,15 +17186,19 @@ function _executeCoachToolRaw(name,input){
       if(!input.name) return {ok:false,error:'name required'};
       var key=_weightKeyFor(input.name, weights);
       if(!key) key=String(input.name);
+      // The reply's undo point holds the working weight too: Undo restored the programme and
+      // left the undone load as the working weight (the prompt, keyless +5 and the deload read it).
+      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(weights,key)?weights[key]:null;
+      _snapshotRoutineForUndo(scW);
       weights[key]=newW;
-      lsSet('kt_weights',weights);
+      if(lsSet('kt_weights',weights)) _noteBackupWeight(scW, key, wasW, newW);
       // The cache alone never reaches Today when the programme prescribes an
       // explicit weight (the prescription wins in _todayLiftExercises) — so
       // also update the current week's prescription. Future weeks keep their
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:_coachScope()});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:scW});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
@@ -17733,7 +17792,8 @@ function _planChangeLedger(tools, idx){
   '</div>';
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
-function _ledgerUndo(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } restoreRoutineBackup(); }
+// The card retires once the restore is done: Cancel (or a write that failed) hid it for good.
+function _ledgerUndo(i){ restoreRoutineBackup(function(){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
 function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
@@ -17774,16 +17834,81 @@ function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.we
 // owner's later Routines edit, which kept the coach's change and threw away the owner's.
 function _setBackupScope(sc){ try{ if(sc) localStorage.setItem('kt_routine_backup_scope', String(sc)); else localStorage.removeItem('kt_routine_backup_scope'); }catch(e){} }
 function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routine_backup_scope')===String(sc) && hasRoutineBackup(); }catch(e){ return false; } }
-function restoreRoutineBackup(){
+// A programme replaced as a whole (the next round, a Programme History restore, the starter
+// plan, a new programme, a reset): the one it replaced becomes Restore Previous under its own
+// scope (when there was none, what was set aside before stays), so no undo point taken before
+// reaches across. An earlier coach reply's Undo restored its stale snapshot of round 1 over
+// round 2 (at week 1, under ROUND 2 · WEEK 1), and Restore Previous after a history restore and an
+// edit brought back the other programme.
+function _routineReplaced(prev, scope){
+  _routineScope=null;   // a scope still open would take no snapshot of the new programme
+  if(prev && prev.weeks && prev.weeks.length){
+    if(lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
+    else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of the replaced programme
+  } else _setBackupScope('');
+  _retireLedgers();
+}
+// A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
+// card retires (it read "WEEK 1" over the old round's changes).
+function _retireLedgers(){
+  var n=0;
+  coachMessages.forEach(function(m){ if(m && Array.isArray(m._tools) && m._tools.length && !m._ledgerSeen){ m._ledgerSeen=true; n++; } });
+  if(n) saveCoachHistory();
+}
+// A change that also moved a working weight (the coach's set_exercise_weight) notes it on its
+// snapshot as {name:[before, after]}, so Undo / Restore Previous puts the weight back with the
+// programme. A later snapshot is a fresh copy of the programme: a note never outlives its change.
+function _noteBackupWeight(sc, key, from, to){
+  if(!_backupScopeIs(sc)) return;
+  try{
+    var b=JSON.parse(localStorage.getItem('kt_routine_backup')), w=(b._w&&typeof b._w==='object')?b._w:{};
+    w[key]=[w[key]?w[key][0]:from, to];   // the first change in the scope keeps what was there before it
+    b._w=w;
+    localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
+  }catch(e){}
+}
+// The noted weights put back: each only while it still holds what the change wrote (a newer log
+// or edit keeps its own). `back` is the reverse note for the version set aside, so Restore
+// Previous again swaps them back.
+function _swapNotedWeights(w){
+  if(!w || typeof w!=='object') return null;
+  var weights=JSON.parse(JSON.stringify(getWeights())), back={}, n=0;
+  Object.keys(w).forEach(function(k){
+    var p=w[k]; if(!Array.isArray(p) || p.length<2) return;
+    var now=Object.prototype.hasOwnProperty.call(weights,k)?weights[k]:null;
+    if(!(now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])))) return;
+    if(p[0]==null) delete weights[k]; else weights[k]=p[0];
+    back[k]=[p[1], p[0]]; n++;
+  });
+  return n ? {weights:weights, back:back} : null;
+}
+function restoreRoutineBackup(onDone){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
-  _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
+  // It swaps: the current one is what Restore Previous brings back next (it said "discarded").
+  _ktConfirm({title:'Restore previous programme?',body:hasCustomRoutine()?'Your current one is set aside: restoring again brings it back.':'',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
-    setCustomRoutine(b);
-    if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
+    // The working weights the change noted go back with the programme; the version set aside
+    // carries the reverse note.
+    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w); delete prog._w;
+    var w0=sw?JSON.parse(JSON.stringify(getWeights())):null, putW=function(){ if(sw) lsSet('kt_weights', w0); };
+    var aside=cur; if(cur && sw){ aside=JSON.parse(JSON.stringify(cur)); aside._w=sw.back; }
+    // The weights and the programme must land before the backup moves: a failed write used to
+    // overwrite the backup with the current programme anyway (the previous one was then in no
+    // key) and say "restored" over the storage-full error. lsSet has said so; nothing changed.
+    if(sw && !lsSet('kt_weights', sw.weights)) return;
+    if(!setCustomRoutine(prog)){ putW(); return; }
+    if(cur && !lsSet('kt_routine_backup',aside)){ setCustomRoutine(cur); putW(); return; }
+    if(!cur) lsDel('kt_routine_backup');
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
+    _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
+    // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
+    if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
-    if(currentWeek<1||currentWeek>total){ _setWeek(1); }
+    // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
+    // week. Week 1 sent the owner back to the start and cleared the final-week state.
+    if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
+    if(typeof onDone==='function') onDone();
     showToast('Previous programme restored'); render();
   }});
 }
@@ -17795,7 +17920,9 @@ function restoreRoutineBackup(){
 
 function resetCustomRoutine(){
   _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
+    var cur=getCustomRoutine();
     clearCustomRoutine();
+    _routineReplaced(cur, 'reset:'+Date.now());   // it is archived nowhere: Restore Previous brings it back as it was
     _setWeek(1);
     _setIntakeMode(false); clearCoachHistory();
     render(); showToast('Programme reset. You can generate a new one anytime.');
@@ -17859,6 +17986,9 @@ function saveCoachHistory(){
       if(m._local) out._local=true;
       if(m._error) out._error=true;
       if(m._ledgerSeen) out._ledgerSeen=true;
+      // The reply's undo point: PLAN CHANGES offered Undo only until the app was relaunched.
+      // It stays checked against the snapshot (_backupScopeIs), and a new round retires it.
+      if(m._undo) out._undo=m._undo;
       if(Array.isArray(m.content)){
         // Storage projection: collapse multimodal/tool-use content to text +
         // a _hadImage flag. The rich in-memory version is preserved.
@@ -18929,6 +19059,21 @@ function renderSettings() {
             '<div class="settings-row-title">Programme history</div>'+
           '</div>'+
           '<span class="settings-row-val">'+getRoutineArchive().length+' ARCHIVED</span>'+
+          '<span class="settings-row-chev">›</span>'+
+        '</div>':'')+
+        // Restore Previous was reachable only from an empty coach chat (never without a key),
+        // while How It Works and the runner pointed here.
+        (hasRoutineBackup()?
+        '<div class="settings-row" onclick="restoreRoutineBackup()">'+
+          '<div class="settings-row-ic">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+              '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'+
+            '</svg>'+
+          '</div>'+
+          '<div class="settings-row-body">'+
+            '<div class="settings-row-title">Restore previous programme</div>'+
+            '<div class="settings-row-sub">Swaps back the version before the last change</div>'+
+          '</div>'+
           '<span class="settings-row-chev">›</span>'+
         '</div>':'')+
         '<div class="settings-row" onclick="openExLib()">'+
@@ -20302,6 +20447,7 @@ loadCoachHistory();
 // kt_final_since is a raw date; backups used to read it as JSON, which parked a copy here
 // and toasted "unreadable data" on every final-week launch. Nothing else writes this key.
 try{ localStorage.removeItem('kt_final_since_corrupt'); }catch(e){}
+_dropStalePreRestore();   // a restore's undo copy past its week
 // Take back the demo loads the first finished session saved as the user's own: an entry still
 // at its demo value for a lift that was never logged. Once per device at boot, and after every
 // restore (an older backup carries them again).
@@ -21679,7 +21825,7 @@ window._trovoOpen=_handleDeepLink;
           <div class="ed-row-body">
             <div class="ed-row-title">Undo any programme change</div>
             <div class="ed-row-sub">If a Coach edit isn't right, roll it back instantly — no questions asked.</div>
-            <div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Restore Previous Programme</div>
+            <div class="ed-row-sub mono" style="margin-top:5px;">PLAN CHANGES → Undo · Settings → Programme → Restore previous programme</div>
           </div>
         </div>
         <div class="ed-row">

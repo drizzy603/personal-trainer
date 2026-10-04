@@ -42,16 +42,18 @@ run('coach: pills keep their units; the card goes with a switch; one reply is on
       r.card = localStorage.getItem('kt_coach_card_test') === null && coachCard === null;
       setUnitW('lb');
       // one reply, two programme changes, one undo point
+      // (the snapshot's _w notes the working weights the reply moved, spec 105: the programme is the rest)
+      const prog = o => { const c = JSON.parse(JSON.stringify(o)); delete c._w; return JSON.stringify(c); };
       const before = localStorage.getItem('kt_routine');
       _coachTurnScope = 'coach:test-1';
       const a = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 170 });
       const b = executeCoachTool('set_exercise_weight', { name: 'Overhead Press', weight: 110 });
       r.ok = a.ok && b.ok;
-      r.oneUndo = JSON.stringify(lsGet('kt_routine_backup')) === JSON.stringify(JSON.parse(before));
+      r.oneUndo = prog(lsGet('kt_routine_backup')) === JSON.stringify(JSON.parse(before));
       const mid = localStorage.getItem('kt_routine');
       _coachTurnScope = 'coach:test-2';
       executeCoachTool('set_exercise_weight', { name: 'Overhead Press', weight: 115 });
-      r.nextReply = JSON.stringify(lsGet('kt_routine_backup')) === JSON.stringify(JSON.parse(mid));
+      r.nextReply = prog(lsGet('kt_routine_backup')) === JSON.stringify(JSON.parse(mid));
       return r;
     });
     assert(out.pill === 'Bench Press → 80 kg', 'a kg-era pill still says kg after switching to lb: ' + out.pill);
