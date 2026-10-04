@@ -8,6 +8,8 @@
 // - Progress shows one streak: with no programme its statband said 0 beside the hero's 4 (M49).
 // - The week review (keyless sheet, banner, coach message) is about last calendar week against
 //   that week's cadence: not a rolling 7 days against this week's ("DONE 7 of 6") (M50).
+// - The shared week-wrap image carries the week the card is for: a Monday's poster said next
+//   week's number over last week's stats (M51).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -241,3 +243,36 @@ run('the week review is about last calendar week, against its own plan (M50)', a
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// The Today week-wrap card, then its shared image: header, card label and file name.
+const WRAP = `async () => {
+  const texts = [], orig = CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { texts.push(String(t)); return orig.call(this, t, ...a); };
+  let file = null; window._shareFile = (f) => { file = f.name; };
+  switchTab('log'); logSubTab = 'workout'; render();
+  const scr = document.getElementById('screen').innerText.replace(/\\s+/g, ' '), i = scr.indexOf('· WRAPPED');
+  const due = _weekWrapDue();
+  if (due) { _shareWeekCard(); await new Promise(res => setTimeout(res, 400)); }
+  CanvasRenderingContext2D.prototype.fillText = orig;
+  return { due, card: i < 0 ? '' : scr.slice(Math.max(0, i - 9), i + 9), png: texts.find(t => /WRAPPED/.test(t)) || '', file };
+}`;
+
+run('a Monday\'s shared week wrap carries last week\'s number, as the card does (M51)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_week: '7' }) });
+  try {
+    const out = await app.page.evaluate(async ([CLOCK, LOGS, WRAP]) => {
+      eval(CLOCK); const logs = eval(LOGS);
+      const W = addDays(_mostRecentMonday(), 7);
+      __setNow(W + 'T08:00:00');
+      currentWeek = 7; lsSet('kt_week', 7); localStorage.setItem('kt_week_monday', W);
+      lsSet('kt_last_weekwrap', addDays(W, -14)); lsSet('kt_last_review_week', 7);
+      lsSet('kt_sessions', logs([[addDays(W, -5), 'Push'], [addDays(W, -4), 'Pull']]));
+      return Object.assign({ W }, await eval(WRAP)());
+    }, [CLOCK, LOGS, WRAP]);
+    assert(out.due && /WEEK 6 · WRAPPED/.test(out.card), 'Monday wraps week 6: ' + JSON.stringify(out));
+    assert(/WEEK 6 · WRAPPED/.test(out.png) && out.file === 'fitness-programmer-week-' + addDaysNode(out.W, -7) + '-wrapped.png', 'the shared image says week 6 too: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+// addDays for a YYYY-MM-DD string, here in Node (calendar math only, no time zone involved).
+function addDaysNode(iso, n) { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }

@@ -7148,7 +7148,7 @@ function _drawWeekCard(st, accent){
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
   x.fillStyle=BG; x.fillRect(0,0,W,H);
   x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
-  x.fillText('FITNESS PROGRAMMER · WEEK '+currentWeek+' · WRAPPED', M, 136);
+  x.fillText('FITNESS PROGRAMMER · WEEK '+(st.weekNo||currentWeek)+' · WRAPPED', M, 136);   // the week the card was for (a Monday wrap is last week's)
   var nums=['Zero','One','Two','Three','Four','Five','Six','Seven'];
   var line1=(st.planned>0 && st.count===st.planned && st.count<=7)
     ? nums[st.count]+' for '+nums[st.count].toLowerCase()+'.'
