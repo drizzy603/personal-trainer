@@ -5,6 +5,9 @@
 //   logs after it dropped the lift are still its own; an exercise undone to zero stays at zero.
 // - M30: a top-set/back-off row reaches the wrist with its per-set targets (repsList, weights) in
 //   today's plan, the week ahead and a live run; uniform rows send neither, and no entry is null.
+// - M04: a drained wrist session sets working weights by the runner's rule (_setWorkingWeights):
+//   a late session from days ago never tops a newer log, a newer lighter one sets it, and a merge
+//   speaks only for the lifts it changed (a working weight changed since the phone's finish stands).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -145,6 +148,50 @@ run('M30: per-set targets reach the wrist (today, the week ahead, a live run)', 
       assert(flat.repsList === undefined && flat.weights === undefined, k + ': a uniform row sends no lists: ' + JSON.stringify(flat));
     }
     assert(!out.nulls, 'no null anywhere in the plan, the week or the live plan (the wrist would reject it)');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('M04: drained wrist sessions set working weights by the runner\u2019s rule', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const W = Capacitor.Plugins.TrovoWatch; let pending = [];
+      W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
+      W.clearPendingSessions = (a) => { const d = (a && a.sessions) || []; pending = pending.filter(x => d.indexOf(x) < 0); return Promise.resolve({}); };
+      window.showToast = () => {};
+      const today = todayISO(), L = 'Bench Press', X = 'Spec Wrist Fly', pushName = _dayLabel('Push');
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const at = (day, h) => new Date(day + 'T' + String(h).padStart(2, '0') + ':00:00').getTime();
+      const nowish = Math.max(at(today, 0) + 60e3, Date.now() - 3600e3);
+      const wrist = (startMs, exs) => JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: iso(startMs), loggedAt: iso(Math.min(Date.now(), startMs + 3600e3)),
+        exercises: exs.map(([n, w, reps]) => ({ name: n, weight: w, reps, weightLog: reps.map(() => w), rpe: 8, rpeLog: reps.map(() => 8) })) });
+      const rec = (date, w, start) => ({ id: start + 1800e3, date, type: 'Push', label: pushName, week: currentWeek, note: '', prs: [], startedAt: start,
+        exercises: [{ name: L, sets: 3, reps: [5, 5, 5], weight: w, weightLog: [w, w, w] }] });
+      const r = {};
+      // (a) the newest log is today's phone session at 185; a wrist session from two days ago at 200 drains late
+      lsSet('kt_sessions', [rec(today, 185, nowish)]); lsSet('kt_weights', { [L]: 185 });
+      pending = [wrist(at(addDays(today, -2), 9), [[L, 200, [5, 5, 5]]])];
+      await drainWatchSessions(); await wait(50);
+      r.stale = { w: getWeights()[L], filed: getSessions().length };
+      // (b) a lighter wrist session today is the newest log (the phone's was three days ago at 185)
+      lsSet('kt_sessions', [rec(addDays(today, -3), 185, at(addDays(today, -3), 11))]); lsSet('kt_weights', { [L]: 185 });
+      pending = [wrist(nowish, [[L, 155, [8, 8, 8]]])];
+      await drainWatchSessions(); await wait(50);
+      r.lighter = getWeights()[L];
+      // (c) the phone filed today's session at 185, the working weight moved to 190 since; the wrist's copy
+      //     of the same session adds only another lift: 190 stands, the new lift gets its weight
+      lsSet('kt_sessions', [rec(today, 185, nowish)]); lsSet('kt_weights', { [L]: 190 });
+      pending = [wrist(nowish + 1000, [[L, 185, [5, 5, 5]], [X, 40, [12, 12]]])];
+      await drainWatchSessions(); await wait(50);
+      const recC = getSessions().find(x => x.date === today);
+      r.merge = { w: getWeights()[L], x: getWeights()[X], merged: getSessions().length === 1 && !!(recC && recC.exercises.find(e => e.name === X)) };
+      return r;
+    });
+    assert(out.stale.w === 185 && out.stale.filed === 2, 'a late wrist session from days ago does not top today\u2019s newer log: ' + JSON.stringify(out.stale));
+    assert(out.lighter === 155, 'a newer, lighter wrist session sets the working weight (as a phone finish would): ' + out.lighter);
+    assert(out.merge.merged && out.merge.w === 190 && out.merge.x === 40, 'a merge speaks only for the lifts it changed: ' + JSON.stringify(out.merge));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

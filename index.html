@@ -20747,12 +20747,15 @@ function drainWatchSessions(){
             rpe:Math.round(pl.reduce(function(a,b){ return a+b; },0)/dn), rpeLog:pl });
         });
       }
-      var _rec, _changed;
+      var _rec, _changed, _wwExs;
       if(_prior){
         // Merge rather than skip: a workout split between phone and wrist, or
         // sets the wrist logged out of range, used to vanish here while the
         // watch said "Synced to iPhone". Draining the same payload twice
         // changes nothing (longest log wins, present exercises stay).
+        // What it was before: only the exercises this drain adds or changes speak for the
+        // working weight (the phone's finish set it for the rest, and a change since stands).
+        var _was={}; (_prior.exercises||[]).forEach(function(e){ if(e && e.name) _was[e.name]=JSON.stringify(e); });
         _changed=_mergeWristExercises(_prior, exsOut);
         if(_draftExs.length) _changed+=_mergeWristExercises(_prior, _draftExs);
         // Already represented: it is drained all the same. Left in the queue, the next
@@ -20760,6 +20763,7 @@ function drainWatchSessions(){
         // and re-added renamed lifts.
         if(!_changed){ _wchLog('drain: duplicate '+localISO+' '+dayType+' (nothing new)'); drained.push(json); return; }
         _rec=_prior;
+        _wwExs=_rec.exercises.filter(function(e){ return e && _was[e.name]!==JSON.stringify(e); });
         var _mp=_pendingPRs(_rec.exercises);
         _rec.prs=(_rec.prs||[]).concat(_mp.filter(function(p){ return (_rec.prs||[]).indexOf(p)<0; }));
         if(!lsSet('kt_sessions', _all)){ saveFailed=true; return; }
@@ -20780,12 +20784,14 @@ function drainWatchSessions(){
         var sessions=getSessions();
         sessions.unshift(_rec);
         if(!lsSet('kt_sessions', sessions)){ saveFailed=true; return; }
+        _wwExs=_rec.exercises;
       }
       // Committed only after the record is on disk: a failed save used to
       // leave PRs and working weights raised with no session behind them.
-      var weights=getWeights(), wTouched=false;
-      _rec.exercises.forEach(function(ex){ var w=parseFloat(ex.weight); if(w>0 && !(parseFloat(weights[ex.name])>w)){ weights[ex.name]=w; wTouched=true; } });
-      if(wTouched) lsSet('kt_weights', weights);
+      // The runner's rule: only the newest log of a lift sets it, a backdated one only raises
+      // it. Raise-only here let a late Friday session top today's lighter log, and a newer,
+      // lighter wrist session never set it.
+      _setWorkingWeights(_wwExs, _rec.date);
       checkAndUpdatePRs(_rec.exercises);
       if(_draftHere){
         localStorage.removeItem('kt_runner_draft');
