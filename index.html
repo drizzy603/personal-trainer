@@ -4319,6 +4319,9 @@ function importFromHealth(){
     var existing = getRuns().slice();
     var sports = getSportLogs().slice();
     var _dctx = {skip:{}};
+    // This batch's new records with the workout each came from: a second copy of one of them
+    // (the Watch and Strava or Garmin both wrote it to Health) folds into it, burned with it.
+    var _batch = [];
     var added=0, rides=0, skippedNoDist=0;
     runs.forEach(function(r){
       if(!r||!r.uuid||seen.has(r.uuid)) return;
@@ -4326,8 +4329,10 @@ function importFromHealth(){
       if(sid){
         // Rides, court sports, swims… land in the sport log as their type.
         if(!r.durationSec||r.durationSec<=0) return;
+        if(_hkBatchTwin(_batch, r, sid)){ seen.add(r.uuid); _sportIds.push(r.uuid); return; }
         if(_healthSportDupe(r, sid, _dctx)){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }
-        sports.unshift(_healthSportRec(r, sid, rides));
+        var srec=_healthSportRec(r, sid, rides);
+        sports.unshift(srec); _batch.push({sid:sid, w:r, rec:srec});
         seen.add(r.uuid); _sportIds.push(r.uuid);
         rides++;
         return;
@@ -4339,9 +4344,10 @@ function importFromHealth(){
       var localISO = d.getFullYear()+'-'+
         String(d.getMonth()+1).padStart(2,'0')+'-'+
         String(d.getDate()).padStart(2,'0');
+      if(_hkBatchTwin(_batch, r, null)){ seen.add(r.uuid); _runIds.push(r.uuid); return; }
       // Already logged by hand → mark seen, never import the twin.
       if(_manualRunDupe(localISO, r.distanceKm, r.durationSec, _dctx, d.getTime())){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }
-      existing.unshift({
+      var rrec={
         id: Date.now()+added,
         startMs: d.getTime()||undefined,
         distance: Math.round(r.distanceKm*100)/100,
@@ -4351,7 +4357,8 @@ function importFromHealth(){
         note: 'From Apple Health',
         hr: r.avgHr||0,
         type: 'easy'
-      });
+      };
+      existing.unshift(rrec); _batch.push({sid:null, w:r, rec:rrec});
       seen.add(r.uuid); _runIds.push(r.uuid);
       added++;
     });
@@ -4435,6 +4442,17 @@ function checkRecentHealthRun(sinceOverride){
       if(_hkSportId(r)) return r.durationSec > 0 && !_healthSportDupe(r, _hkSportId(r), null);
       return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime());
     });
+    // One activity two apps wrote to Health is offered (or auto-logged) once, as its richer
+    // copy; the other folds into it when it is logged.
+    fresh = fresh.filter(function(r, i){
+      var sid=_hkSportId(r), st=new Date(r.startDate).getTime()||0, mine=_hkRichness(r);
+      return !fresh.some(function(o, j){
+        if(j===i || _hkSportId(o)!==sid) return false;
+        if(!_hkSameActivity(new Date(o.startDate).getTime()||0, o.durationSec, o.distanceKm, st, r.durationSec, r.distanceKm)) return false;
+        var theirs=_hkRichness(o);
+        return theirs>mine || (theirs===mine && j<i);
+      });
+    });
     if(!fresh.length) return;
     if(localStorage.getItem('kt_autolog_runs')==='1'){
       // Auto mode: log every fresh workout without the confirmation card. The
@@ -4482,14 +4500,49 @@ function drainPendingHealth(){
 // stamped on the first saved change or date move (the note alone was the marker before).
 function _isHealthRun(r){ return !!r && (r.note==='From Apple Health' || !!r.hkOrig); }
 function _hkOrigOf(r){ return {date:String(r.date||''), km:parseFloat(r.distance||r.dist)||0, time:String(r.time||'')}; }
-// While the import ledger exists no Health run ever matches (as before). Once it is gone
-// (Reset import keeps only edited runs; an iCloud backup carries no ledger at all), a Health
-// run stands in for its own workout (an edited one by hkOrig, what Health recorded), so the
-// next import brings no twin. importFromHealth works on a copy, so records it adds in the same
-// batch are never candidates, and its ctx.skip lets each existing record absorb one workout.
+// While the import ledger exists a Health run matches only a copy of its own workout (by start
+// time, _hkSameActivity). Once it is gone (Reset import keeps only edited runs; an iCloud backup
+// carries no ledger at all), a Health run stands in for its own workout (an edited one by hkOrig,
+// what Health recorded), so the next import brings no twin. importFromHealth works on a copy, so
+// records it adds in the same batch are never candidates (_hkBatchTwin folds a batch's own second
+// copies), and its ctx.skip lets each existing record absorb one workout by tolerance.
 function _hkHasLedger(){
   var led=lsGet('kt_hk_imported');
   return Array.isArray(led) ? led.length>0 : !!(led && typeof led==='object' && Object.keys(led).length);
+}
+// Two workouts of one kind are one activity when their time (within 15%, or a minute for the
+// minute-rounded sport logs) and distance (when both have one) agree and they start within a
+// minute of each other or overlap for most of the shorter one: a run the Watch and Strava or
+// Garmin both wrote to Health came in twice. (st in ms, sec in s, km)
+function _hkSameActivity(st1, sec1, km1, st2, sec2, km2){
+  if(!(st1>0) || !(st2>0)) return false;
+  if(sec1>0 && sec2>0 && Math.abs(sec1-sec2) > Math.max(60, 0.15*Math.max(sec1, sec2))) return false;
+  if(km1>0 && km2>0 && Math.abs(km1-km2)/Math.max(km1, km2) > 0.15) return false;
+  if(Math.abs(st1-st2) <= 60000) return true;
+  if(!(sec1>0) || !(sec2>0)) return false;
+  return Math.min(st1+sec1*1000, st2+sec2*1000)-Math.max(st1, st2) >= 500*Math.min(sec1, sec2);
+}
+// Of two copies of one workout, the one with heart rate (then calories, distance) is kept.
+function _hkRichness(w){ return w ? (w.avgHr>0?4:0)+(w.kcal>0?2:0)+(w.distanceKm>0?1:0) : 0; }
+// A workout that is a second copy of one this import batch already took: the batch keeps one
+// record, rebuilt from the richer copy (same id), and the caller burns both UUIDs with it.
+function _hkBatchTwin(batch, r, sid){
+  var st=new Date(r.startDate).getTime()||0, b=null;
+  batch.some(function(x){
+    if(x.sid!==sid || !_hkSameActivity(new Date(x.w.startDate).getTime()||0, x.w.durationSec, x.w.distanceKm, st, r.durationSec, r.distanceKm)) return false;
+    b=x; return true;
+  });
+  if(!b) return false;
+  if(_hkRichness(r) > _hkRichness(b.w)){
+    b.w=r;
+    if(sid){ var nx=_healthSportRec(r, sid, 0); Object.keys(nx).forEach(function(k){ if(k!=='id') b.rec[k]=nx[k]; }); }
+    else {
+      var iso=_hkLocalISO(r);
+      b.rec.startMs=st||undefined; b.rec.distance=Math.round(r.distanceKm*100)/100; b.rec.time=_secsToMMSS(r.durationSec);
+      b.rec.date=iso; b.rec.week=weekForDate(iso); b.rec.hr=r.avgHr||0;
+    }
+  }
+  return true;
 }
 function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
   km = parseFloat(km)||0;
@@ -4498,22 +4551,25 @@ function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
   var hasLedger=_hkHasLedger(), hit=null;
   getRuns().some(function(r){
     if(!r) return false;
-    if(ctx && ctx.skip && ctx.skip[r.id]) return false;
     var o=r;
     if(_isHealthRun(r)){
-      if(hasLedger) return false;
       // A Health record that knows when it started is that workout and no other. Tolerance
       // alone let a same-day evening run claim the morning run's record (Health lists a day
-      // newest first), which lost the evening run and imported the morning one twice.
+      // newest first), which lost the evening run and imported the morning one twice. Ledger
+      // or not, it also stands for a second copy of the same run (two apps wrote it to Health).
       if(Number(r.startMs)>0 && st>0){
-        if(Math.abs(Number(r.startMs)-st) > 60000) return false;
+        var hk=r.hkOrig||{km:r.distance||r.dist, time:r.time};
+        if(!_hkSameActivity(Number(r.startMs), _runSecsOf(hk.time), parseFloat(hk.km)||0, st, hkSec, km)) return false;
         hit=r; return true;
       }
+      if(hasLedger) return false;
+      if(ctx && ctx.skip && ctx.skip[r.id]) return false;
       if(r.hkOrig) o={date:r.hkOrig.date, distance:r.hkOrig.km, time:r.hkOrig.time};
-    } else if(st>0 && Number(r.id)>1e12 && Number(r.id)<st){
+    } else {
+      if(ctx && ctx.skip && ctx.skip[r.id]) return false;
       // Typed in before this workout even began (the id is the save time): it cannot be that
       // workout. A run logged by hand in the morning used to swallow a real afternoon Watch run.
-      return false;
+      if(st>0 && Number(r.id)>1e12 && Number(r.id)<st) return false;
     }
     if(String(o.date)!==String(dateISO)) return false;
     var rd=parseFloat(o.distance||o.dist)||0;
@@ -4541,18 +4597,20 @@ function _healthSportDupe(r, sid, ctx){
   var st=new Date(r.startDate).getTime()||0;
   getSportLogs().some(function(l){
     if(!l || l.type!==sid) return false;
-    if(ctx && ctx.skip && ctx.skip[l.id]) return false;
     var od=l.date, ldur=l.duration;
     if(_isHealthSport(l)){
-      if(hasLedger) return false;
-      // Start time is identity when the record has one (as for runs).
+      // Start time is identity when the record has one (as for runs), ledger or not.
       if(Number(l.startMs)>0 && st>0){
-        if(Math.abs(Number(l.startMs)-st) > 60000) return false;
+        var lmin=parseInt(l.hkOrig ? l.hkOrig.duration : l.duration, 10)||0;
+        if(!_hkSameActivity(Number(l.startMs), lmin*60, 0, st, parseFloat(r.durationSec)||0, 0)) return false;
         hit=l; return true;
       }
+      if(hasLedger) return false;
+      if(ctx && ctx.skip && ctx.skip[l.id]) return false;
       if(l.hkOrig){ od=l.hkOrig.date; ldur=l.hkOrig.duration; }
-    } else if(st>0 && Number(l.id)>1e12 && Number(l.id)<st){
-      return false;   // logged before this workout began (the id is the save time): not this one
+    } else {
+      if(ctx && ctx.skip && ctx.skip[l.id]) return false;
+      if(st>0 && Number(l.id)>1e12 && Number(l.id)<st) return false;   // logged before this workout began (the id is the save time)
     }
     if(String(od)!==iso) return false;
     var ld=parseInt(ldur,10)||0;

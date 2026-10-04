@@ -8,6 +8,10 @@
 // - M47: Progress › Runs reads a legacy time with no colon ('24.30', '30') as minutes, as the day
 //   sheet and the run editor do: the all-time avg pace read it as hours (155:30 /km), and the
 //   bests and the pace chart skipped or misread it.
+// - M28: one run (or ride) written to Health by two apps (Watch + Strava/Garmin: start within a
+//   minute, or mostly overlapping, with time and distance agreeing) is one record: a batch keeps
+//   the richer copy and burns both UUIDs, auto-log and the card take it once, and a stored copy
+//   absorbs the other even while the import ledger exists.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -157,6 +161,75 @@ run('M47: Progress › Runs reads a legacy time with no colon as minutes (avg pa
     assert(/4:57\s*\/km\s*Avg pace/i.test(out.band), 'avg pace is (25:00 + 24:30) / 10 km = 4:57 /km: ' + out.band);
     assert(/4:54 \/kmbest 5k pace/i.test(out.txt) && /4:54 \/kmfastest pace/i.test(out.txt), 'the legacy run is the best 5k and the fastest pace: ' + (out.txt.match(/Bests.{0,120}/) || [''])[0]);
     assert(JSON.stringify(out.chart) === '[300,294]', 'the pace chart reads 24:30 as 294 s/km: ' + JSON.stringify(out.chart));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M28: one run written to Health by two apps is one run (batch, auto-log, card, stored copy)', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const yd = new Date(); yd.setDate(yd.getDate() - 1);
+      const y = _ymdLocal(yd);
+      const at = (h, m, s) => { const d = new Date(y + 'T00:00:00'); d.setHours(h, m, s || 0, 0); return d.getTime(); };
+      const iso = ms => new Date(ms).toISOString();
+      // the Watch's copy (with heart rate) and Strava's (none), 20 s apart
+      const watch = { uuid: 'watch-1', type: 'run', startDate: iso(at(7, 0, 20)), distanceKm: 8.02, durationSec: 44 * 60 + 58, avgHr: 152 };
+      const strava = { uuid: 'strava-1', type: 'run', startDate: iso(at(7, 0, 0)), distanceKm: 8.0, durationSec: 45 * 60, avgHr: 0 };
+      // Garmin started 3 minutes late and stopped with the others: most of the run overlaps
+      const garmin = { uuid: 'garmin-1', type: 'run', startDate: iso(at(7, 3, 0)), distanceKm: 7.5, durationSec: 42 * 60 };
+      // the run straight after (no overlap) and an evening run are different runs
+      const next = { uuid: 'next-1', type: 'run', startDate: iso(at(7, 46, 0)), distanceKm: 8, durationSec: 45 * 60, avgHr: 150 };
+      const eve = { uuid: 'eve-1', type: 'run', startDate: iso(at(18, 0, 0)), distanceKm: 5, durationSec: 27 * 60, avgHr: 160 };
+      // two copies of a ride, 30 s apart
+      const ride = { uuid: 'ride-w', type: 'ride', startDate: iso(at(12, 0, 30)), distanceKm: 30, durationSec: 3600, avgHr: 140 };
+      const rideB = { uuid: 'ride-s', type: 'ride', startDate: iso(at(12, 0, 0)), distanceKm: 30.2, durationSec: 3610 };
+      const r = {};
+      const day = () => getRuns().filter(x => x.date === y).map(x => x.distance + '@' + x.hr).sort().join();
+
+      // A. a batch import (first connect): one record per run, from the richer copy; every UUID burned
+      lsDel('kt_hk_imported'); localStorage.removeItem('kt_hk_last_sync');
+      window.__hk = [watch, strava, garmin, next, eve, ride, rideB];
+      importFromHealth(); await wait(300);
+      r.batch = { runs: day(), rides: getSportLogs().filter(x => x.date === y).map(x => x.duration + '@' + (x.data && x.data.avgHR)).join(),
+        ledger: (lsGet('kt_hk_imported') || []).slice().sort().join(), toast: document.getElementById('toast').textContent };
+
+      // B. connected earlier, auto-log: the copies are logged once
+      lsSet('kt_runs', []); lsSet('kt_sports', []); lsSet('kt_hk_imported', ['older-1']); localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5));
+      localStorage.setItem('kt_autolog_runs', '1');
+      window.__hk = [strava, watch, ride, rideB];
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(300);
+      r.auto = { runs: day(), rides: getSportLogs().length };
+
+      // C. the card offers the richer copy once; after logging it the other is not offered, and logging it is a skipped duplicate
+      lsSet('kt_runs', []); lsSet('kt_sports', []); lsSet('kt_hk_imported', ['older-1']);
+      localStorage.setItem('kt_autolog_runs', '0'); _hkPendingRun = null; _hkPendingDismissed = false;
+      window.__hk = [strava, watch];
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(200);
+      r.card1 = _hkPendingRun && _hkPendingRun.uuid;
+      logPendingHealthRun(); await wait(50);
+      _hkPendingRun = null; _hkPendingDismissed = false;
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(200);
+      r.card2 = _hkPendingRun && _hkPendingRun.uuid;
+      r.again = _logHealthRun(strava);
+      r.cRuns = day();
+      r.cSeen = (lsGet('kt_hk_imported') || []).indexOf('strava-1') >= 0;
+      // the rule itself: same start but different runs, back to back, minute-rounded sport logs
+      const t = at(7, 0, 0);
+      r.rule = [_hkSameActivity(t, 900, 3, t, 1200, 4), _hkSameActivity(t, 1800, 5, t + 1800e3, 1800, 5),
+        _hkSameActivity(t, 120, 0, t + 20e3, 90, 0), _hkSameActivity(t, 2700, 8, t + 20e3, 2698, 8.02)];
+      return r;
+    });
+    assert(JSON.stringify(out.rule) === '[false,false,true,true]', 'same activity: different runs at one start, back to back, a rounded 2-min log, copies: ' + JSON.stringify(out.rule));
+    assert(out.batch.runs === ['5@160', '8.02@152', '8@150'].sort().join(), 'the batch keeps one record per run, the richer copy: ' + out.batch.runs);
+    assert(out.batch.rides === '60@140', 'the two ride copies are one ride, the one with heart rate: ' + out.batch.rides);
+    assert(out.batch.ledger === 'eve-1,garmin-1,next-1,ride-s,ride-w,strava-1,watch-1', 'every copy is burned: ' + out.batch.ledger);
+    assert(/3 runs · 1 activity imported/.test(out.batch.toast), 'the toast counts runs, not copies: ' + out.batch.toast);
+    assert(out.auto.runs === '8.02@152' && out.auto.rides === 1, 'auto-log logs each activity once: ' + JSON.stringify(out.auto));
+    assert(out.card1 === 'watch-1' && out.card2 === null, 'the card offers the richer copy, then nothing: ' + JSON.stringify([out.card1, out.card2]));
+    assert(out.again === null && out.cSeen && out.cRuns === '8.02@152', 'the other copy is a skipped duplicate: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
