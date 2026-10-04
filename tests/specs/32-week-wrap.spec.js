@@ -8,9 +8,9 @@ run('week stats are honest; wrapped block renders and dismisses', async () => {
   try {
     const out = await app.page.evaluate(() => {
       const dow = (new Date().getDay() + 6) % 7;
-      // One session today; one much heavier session last week.
-      const lastWk = new Date(Date.now() - 7 * 86400000);
-      const lastISO = lastWk.getFullYear() + '-' + String(lastWk.getMonth() + 1).padStart(2, '0') + '-' + String(lastWk.getDate()).padStart(2, '0');
+      // One session today; one much heavier session last week. (Calendar days, not 7 × 24 h: on
+      // the Sunday the clocks go back, 168 h before 23:30 is Monday of this week.)
+      const lastISO = addDays(todayISO(), -7);
       lsSet('kt_sessions', [
         { id: 1, date: todayISO(), type: 'Push', week: 2,
           exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 100, isMain: true }], prs: ['Bench Press'] },

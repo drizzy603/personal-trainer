@@ -18,6 +18,10 @@
 // - L49: the card's font wait asks for latin-ext too (document.fonts.load() fetches only the
 //   subsets its sample text needs), so a day named Ściąganie is drawn in Anton/Archivo (Inter in
 //   Lime) on the first share, not with a fallback Ś and ą until the second.
+// - L57: specs 31 and 32 step back calendar days (addDays(todayISO(), -1 / -7)), not 24 h: on the
+//   Sunday the clocks go back (Los Angeles, London), from 23:00 "yesterday" was still today and
+//   "last week" was this Monday, and both failed for that hour. Pinned here: addDays counts
+//   calendar days across that night.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -182,4 +186,28 @@ run('L49: the first share card already draws latin-ext letters in the room\'s fa
       assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('L57: a calendar day or week back stays one across the night the clocks go back', async () => {
+  const app = await boot({ native: true });
+  try {
+    const cdp = await app.page.context().newCDPSession(app.page);
+    const out = {};
+    // this year's last Sunday of October (London) and first Sunday of November (Los Angeles)
+    for (const [tz, month, pick] of [['Europe/London', 9, 'last'], ['America/Los_Angeles', 10, 'first']]) {
+      await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
+      out[tz] = await app.page.evaluate(({ month, pick }) => {
+        const y = new Date().getFullYear(), suns = [];
+        for (let d = 1; d <= 31; d++) { const t = new Date(y, month, d); if (t.getMonth() === month && t.getDay() === 0) suns.push(t); }
+        const day = _ymdLocal(pick === 'last' ? suns[suns.length - 1] : suns[0]);
+        const back = n => { const t = new Date(day + 'T12:00:00'); t.setDate(t.getDate() - n); return _ymdLocal(t); };
+        return { zone: Intl.DateTimeFormat().resolvedOptions().timeZone, day, got: [addDays(day, -1), addDays(day, -7), addDays(day, 1)], want: [back(1), back(7), back(-1)] };
+      }, { month, pick });
+    }
+    for (const tz of Object.keys(out)) {
+      const o = out[tz];
+      assert(o.zone === tz && JSON.stringify(o.got) === JSON.stringify(o.want), tz + ': addDays counts calendar days (specs 31 and 32 use it, not 24 h steps): ' + JSON.stringify(o));
+    }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
