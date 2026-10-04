@@ -6,6 +6,11 @@
 //   159.8 lb (a programme load, then − and + on the stepper) read TOP SET 72.5 kg × 5 and −3 reps
 //   (the reps of the set heavier only in storage) and split "72.5×5  72.5×6  72.5×6 kg"; now
 //   72.5 kg × 6, −2 reps and "72.5 kg · 5, 6, 6 reps", and a record reads the same top set.
+// - L46: a session is stamped with its week's block when it is filed (runner, wrist, the coach's
+//   log_session), so its card keeps it after a new programme (an old week-4 BASE session read
+//   WEEK 04 · BUILD). This round's sessions read the programme as it stands (and follow a log
+//   moved to another week); an unstamped older one reads it only while no programme or round has
+//   replaced it since, else no block.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -54,6 +59,49 @@ run('L45: the kg share card reads its top set, vs last and the scheme on the sho
     assert(out.row.scheme === '72.5 kg · 5, 6, 6 reps' && out.row.top === '72.5 kg × 6' && out.row.delta === '−2 reps' && !out.row.up, 'one shown load is one load: ' + JSON.stringify(out.row));
     assert(out.rec.set === '72.5 kg × 6' && out.rec.gain === '+4.5 kg' && out.recRow.top === '72.5 kg × 6' && out.recRow.delta === '+4.5 kg', 'the record and its row agree: ' + JSON.stringify([out.rec, out.recRow]));
     assert(out.lb.scheme === '160×5  159.8×6  159.8×6 lb' && out.lb.top === '160 lb × 5', 'lb shows what was stored: ' + JSON.stringify(out.lb));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L46: a shared card keeps the block its session was trained in', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, cr = getCustomRoutine();
+      r.live = String(cr.weeks[currentWeek - 1].bName);
+      // every writer stamps the week's block: the coach's log, the wrist and the runner
+      executeCoachTool('log_session', { type: 'Pull', date: todayISO(), exercises: [{ name: 'Barbell Row', sets: 3, reps: 8, weight: 135 }] });
+      window.__mock.pending.push(JSON.stringify({ dayName: 'Legs', loggedAt: todayISO() + 'T07:00:00', exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 185 }] }));
+      await drainWatchSessions(); await wait(30);
+      openDeckRunner('Push'); await wait(30);
+      if (!runnerEngaged) runnerToggleEngaged();
+      runnerSetReps(8); runnerCompleteSet(); runnerFinishSession(); await wait(30);
+      const today = getSessions().filter(s => s.date === todayISO());
+      const filed = [today.find(s => s.source === 'coach'), today.find(s => s.note === 'From Apple Watch'), today.find(s => s.type === 'Push' && s.note === '')];
+      r.stamps = filed.map(s => s && s.bName);
+      // a log from before the stamp, older than this round: the programme still answers for it
+      const legacy = getSessions().find(s => !s.bName && s.week && s.date < _roundStartISO() && (s.exercises || []).length);
+      r.legacy0 = _shareCardModel(legacy).phase === String(cr.weeks[legacy.week - 1].bName).toUpperCase();
+      // a new programme whose blocks are named otherwise (as the starter intake swaps it in)
+      const nr = JSON.parse(JSON.stringify(cr));
+      nr.weeks.forEach((w, i) => { w.bName = 'NEW' + (i + 1); });
+      archiveCurrentRoutine(); setCustomRoutine(nr); _startProgramme();
+      r.after = filed.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+      r.legacy = _shareCardModel(legacy).phase;
+      // in the new programme's own weeks a card reads it as it stands, and follows a log to another week
+      _setWeek(2, _mostRecentMonday());
+      executeCoachTool('log_session', { type: 'Legs', date: todayISO(), exercises: [{ name: 'Leg Press', sets: 3, reps: 10, weight: 200 }] });
+      const fresh = getSessions().find(s => s.source === 'coach' && s.type === 'Legs');
+      r.fresh = [fresh.bName, _shareCardModel(fresh).phase];
+      const ss = getSessions(); ss.find(x => x.id === fresh.id).week = 1; lsSet('kt_sessions', ss);
+      r.moved = _shareCardModel(getSessions().find(x => x.id === fresh.id)).phase;
+      return r;
+    });
+    assert(out.stamps.every(b => b === out.live), 'the coach, the wrist and the runner stamp this week\'s block: ' + JSON.stringify(out));
+    assert(out.legacy0, 'an old unstamped log reads the programme while it is still the one it was logged in');
+    assert(out.after.every(p => p === out.live.toUpperCase()) && out.legacy === '', 'after a new programme, a stamped card keeps its block and an unstamped one claims none: ' + JSON.stringify([out.after, out.legacy]));
+    assert(out.fresh[0] === 'NEW2' && out.fresh[1] === 'NEW2' && out.moved === 'NEW1', 'the current programme\'s weeks read live: ' + JSON.stringify([out.fresh, out.moved]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

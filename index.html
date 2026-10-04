@@ -8806,6 +8806,7 @@ function runnerFinishSession(){
     supersets:(_ssIdx.length?_ssIdx:undefined),
     phoneOwned:(_owned.length?_owned:undefined),
     phoneOwnedLen:(_owned.length?(runnerSession.ownLen||{}):undefined)};
+  _stampBlock(_newRec);
   _wristCopies.forEach(function(w){
     _mergeWristExercises(_newRec, w.exercises);
     (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });
@@ -15581,6 +15582,22 @@ function _shareCardPalette(){
     display:hw?'Anton':'Inter', dispW:hw?'400':'900', body:hw?'Archivo':'Inter'
   };
 }
+// The block (phase) a session was trained in. One in this round reads the programme as it
+// stands (a log moved to another week follows it); an older one reads the block stamped when
+// it was filed. One from before the stamp reads the programme only while no programme or round
+// has replaced it since (Programme History's newest entry), else none: the current programme's
+// week 4 is not an old programme's week 4 (an old BASE session's card read BUILD).
+function _sessBlock(s){
+  if(!s) return '';
+  var wk=parseInt(s.week,10)||0, cr=getCustomRoutine(), d=String(s.date||'').slice(0,10);
+  var w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
+  if(live && d>=_roundStartISO()) return live;
+  if(s.bName) return String(s.bName);
+  var arc=getRoutineArchive()[0];
+  return (!arc || d>String(arc.archivedAt||'')) ? live : '';
+}
+// Every writer of a new session stamps it, so its card keeps its block after this programme.
+function _stampBlock(s){ var b=_sessBlock(s); if(b) s.bName=b; return s; }
 // Everything the card says, in the display units, from the stored session.
 function _shareCardModel(s){
   var U=_uW(), all=getSessions();
@@ -15652,9 +15669,9 @@ function _shareCardModel(s){
     }
     return {name:ex.name, pr:prs.indexOf(ex.name)>=0, scheme:scheme, top:topTxt, delta:delta, up:up};
   });
-  var wk=parseInt(s.week,10)||0, cr=getCustomRoutine(), wkRow=cr && wk>0 ? cr.weeks[wk-1] : null;
+  var wk=parseInt(s.week,10)||0;
   return {
-    date:dateTxt, week:wk, phase:wkRow && wkRow.bName ? String(wkRow.bName).toUpperCase() : '', label:label, duration:durTxt, rpe:rpe,
+    date:dateTxt, week:wk, phase:_sessBlock(s).toUpperCase(), label:label, duration:durTxt, rpe:rpe,
     lifts:exs.length, sets:sets, reps:reps, volume:Math.round(wDisp(vol)), unit:U,
     vsLast:pct, records:records, rows:rows
   };
@@ -16853,6 +16870,7 @@ function _executeCoachToolRaw(name,input){
       var gsessions=[{id:_freshId(getSessions()), date:gdate, week:weekForDate(gdate), source:'coach',
         type:gtype, exercises:gclean,
         note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
+      _stampBlock(gsessions[0]);
       if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       checkAndUpdatePRs(gclean);
       _setWorkingWeights(gclean, gdate);
@@ -20736,6 +20754,7 @@ function drainWatchSessions(){
         _rec={ id:Date.now()+added, date:localISO, type:dayType, label:_dayLabel(dayType),
           week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:[],
           wristStartedAt:s.startedAt||undefined };
+        _stampBlock(_rec);
         if(_draftExs.length){
           // The phone's draft is the base (its corrections stand), the wrist copy folds in.
           _rec.exercises=_draftExs; _rec.note='';
