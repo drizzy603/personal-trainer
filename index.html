@@ -8118,6 +8118,7 @@ function openDeckRunner(overrideType, force){
     }
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
+  sessExs = _runnerFoldRepeats(sessExs);
   runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now()};
   _watchEndedPayload = null;   // a new session: the last one's 'ended' is done with
   runnerExIdx = 0;
@@ -8159,6 +8160,31 @@ function openDeckRunner(overrideType, force){
   });
   runnerOpen = true;
   paintRunner();
+}
+// One card per lift. The runner keys its state by name, so a day that lists a lift twice (a
+// top set and its back-off written as two rows, or a coach lift brought back beside its swap)
+// gave two cards one set log, and the session was saved with those sets twice. A repeat folds
+// into the first card as per-set targets: 1x3 at 225 then 3x8 at 185 is 4 sets, 3/8/8/8 at
+// 225/185/185/185, the shape a top-set/back-off row already has.
+function _runnerFoldRepeats(exs){
+  var out=[], at={};
+  var perSet=function(v, n){ var a=[]; for(var k=0;k<n;k++) a.push(Array.isArray(v) ? (v.length ? v[Math.min(k, v.length-1)] : '8-10') : v); return a; };
+  // A per-set load of 0 means the card's own load, as it does for the runner's steppers.
+  var loads=function(e, n){ var base=parseFloat(e.weight)||0; return perSet(Array.isArray(e.weights) && e.weights.length ? e.weights : base, n).map(function(x){ return parseFloat(x)>0 ? parseFloat(x) : base; }); };
+  var same=function(a){ return a.every(function(x){ return String(x)===String(a[0]); }); };
+  (exs||[]).forEach(function(ex){
+    if(!ex) return;
+    if(!at.hasOwnProperty(ex.name)){ at[ex.name]=out.length; out.push(ex); return; }
+    var a=out[at[ex.name]], na=parseInt(a.sets)||1, nb=parseInt(ex.sets)||1;
+    var reps=perSet(a.reps, na).concat(perSet(ex.reps, nb)), w=loads(a, na).concat(loads(ex, nb));
+    a.sets=na+nb;
+    a.reps=same(reps) ? reps[0] : reps;
+    if(same(w)){ delete a.weights; a.weight=w[0]; } else a.weights=w;
+    a.isMain=!!(a.isMain || ex.isMain);
+    // The card above the repeat was paired with it, not with whatever follows it.
+    var above=out[out.length-1]; if(above && above.ss) above.ss=false;
+  });
+  return out;
 }
 var _draftTO=null;
 function _saveRunnerDraft(){
@@ -10033,7 +10059,14 @@ function _closeRunnerExPicker(){
 }
 function runnerExPickExercise(name){
   if(_rExPickMode==='add'){ runnerExAddPick(name); return; }
+  // Swapping onto a lift another card holds merged the two: its sets were overwritten and the
+  // session saved the same sets twice (the add path below already refuses it).
+  if(_runnerNameTaken(name, runnerExEditIdx)){ showToast(name+' is already in today\u2019s session \u2014 use +1 set on its card','err'); return; }
   _rExEditName=name; _closeRunnerExPicker();
+}
+// Another card in the session (not the one at idx) already holds this name.
+function _runnerNameTaken(name, idx){
+  return !!runnerSession && runnerSession.exercises.some(function(e, i){ return i!==idx && e && e.name===name; });
 }
 function runnerExPickerSetCat(c){
   _rExPickCat=c||'All';
@@ -11284,6 +11317,8 @@ function saveRunnerExEdit(){
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
   if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1','err');return;}
   var oldName=ex.name, newName=_rExEditName;
+  // The logs below move to the new name: onto another card's lift they replaced its sets.
+  if(newName!==oldName && _runnerNameTaken(newName, runnerExEditIdx)){ showToast(newName+' is already in today\u2019s session \u2014 use +1 set on its card','err'); return; }
   ex.name   =newName;
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
   ex.reps   =parseInt(_rExEditReps)||ex.reps;
