@@ -6622,7 +6622,7 @@ function renderTodayEditorial(){
   var reviewBanner='';
   if(_weekReviewDue()){
     reviewBanner='<div class="kt-resume-banner">'+
-      '<div><div class="kt-resume-eyebrow">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div><div class="kt-resume-eyebrow">WEEK '+_lastWeekReview().wk+' WRAPPED</div>'+
       '<div class="kt-resume-ttl">'+(getApiKey()?'Your coach can review last week and tune what\'s next.':'Last week in numbers \u2014 done, volume, records, what\'s earned.')+'</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="dismissWeeklyReview()">Skip</button>'+
@@ -6948,11 +6948,7 @@ function applyPlateauFixLocal(){
 // Keyless week review: the same facts the coach would be sent, as a sheet.
 function openLocalWeekReview(){
   lsSet('kt_last_review_week', currentWeek);
-  var cutoff=addDays(todayISO(),-7);
-  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
-  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
-  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
-  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var lw=_lastWeekReview(), sessions=lw.sessions, runs=lw.runs, sports=lw.sports, planned=lw.planned;
   var doneN=sessions.length+runs.length+sports.length;
   var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
   var _prBook=getPRs(), prs=[];
@@ -6969,7 +6965,7 @@ function openLocalWeekReview(){
   var overlay=document.createElement('div'); overlay.id='weekReviewOverlay'; overlay.className='kt-sheet-overlay';
   overlay.innerHTML='<div class="kt-sheet">'+
     '<div class="kt-sheet-head" style="align-items:flex-start;">'+
-      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WEEK '+lw.wk+' WRAPPED</div>'+
       '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">'+_esc(verdict)+'</div></div>'+
       '<button class="kt-sheet-x" onclick="closeLocalWeekReview()" aria-label="Close">\u2715</button>'+
     '</div>'+
@@ -13910,17 +13906,23 @@ function renderStrengthTrends(extraHTML){
 function _weekReviewDue(){
   if(!hasCustomRoutine() || currentWeek<=1) return false;
   if(String(lsGet('kt_last_review_week'))===String(currentWeek)) return false;
-  var cutoff=addDays(todayISO(),-7);
-  return getSessions().some(function(s){ return s.date>=cutoff; }) ||
-         getRuns().some(function(r){ return r.date>=cutoff; }) ||
-         getSportLogs().some(function(l){ return l.date>=cutoff; });
+  var lw=_lastWeekReview();
+  return !!(lw.sessions.length || lw.runs.length || lw.sports.length);
+}
+// The week a review is about: last calendar week, Monday to Sunday, and the programme week it
+// was, with that week's planned days (an empty lift day is none). A rolling 7 days counted
+// this Monday's ride as last week's ("7 of 6 planned") and, later in the week, this week's
+// sessions as last week's, all against this week's cadence.
+function _lastWeekReview(){
+  var mon=addDays(_mostRecentMonday(),-7), end=addDays(mon,6);
+  var inWk=function(x){ var d=String((x&&x.date)||'').slice(0,10); return d>=mon && d<=end; };
+  var wk=Math.min(getTotalWeeks(), Math.max(1, weekForDate(mon))), planned=0;
+  getWeekPlanForWeek(wk).forEach(function(p){ if(!p.isRest && !(p.isLift && _liftDayEmpty(p.type, wk))) planned++; });
+  return {mon:mon, wk:wk, planned:planned,
+    sessions:getSessions().filter(inWk), runs:getRuns().filter(inWk), sports:getSportLogs().filter(inWk)};
 }
 function _buildWeekReviewMsg(){
-  var cutoff=addDays(todayISO(),-7);
-  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
-  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
-  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
-  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var lw=_lastWeekReview(), sessions=lw.sessions, runs=lw.runs, sports=lw.sports, planned=lw.planned;
   var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
   var _prBook=getPRs();
   var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){
@@ -13929,7 +13931,7 @@ function _buildWeekReviewMsg(){
     if(typeof p==='string') prs.push(p+(_prBook[p]?' '+fmtW(_prBook[p]):''));
     else if(p&&p.ex) prs.push(p.ex+' '+(p.weight?fmtW(p.weight):'')+(p.reps?'×'+p.reps:''));
   }); });
-  var lines=['Review my last 7 days and adjust next week if needed.',
+  var lines=['Review my last week (week '+lw.wk+', Monday to Sunday) and adjust what comes next if needed.',
     'Done: '+sessions.length+' lifts'+(sessions.length?' ('+sessions.map(function(s){ return s.type; }).join(', ')+')':'')+
     (runs.length?', '+runs.length+' run'+(runs.length>1?'s':''):'')+
     (sports.length?', '+sports.length+' sport session'+(sports.length>1?'s':''):'')+

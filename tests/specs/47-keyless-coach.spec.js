@@ -11,7 +11,9 @@ function lastWeekDate(offset) {
 function daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
 
 run('keyless progression, plateau deload, week review sheet and debrief card', async () => {
-  const clean = { id: 1, date: lastWeekDate(1), week: 1, type: 'Push', prs: [],
+  // The week review reads last calendar week only, so its RECORDS row comes from this session
+  // (yesterday's is this week's unless today is Monday).
+  const clean = { id: 1, date: lastWeekDate(1), week: 1, type: 'Push', prs: ['Bench Press'],
     exercises: [{ name: 'Bench Press', isMain: true, sets: 3, reps: [12, 12, 12], weight: 185, rpe: 7, rpeLog: [7, 7, 7] }] };
   const recent = { id: 2, date: daysAgo(1), week: 2, type: 'Pull', prs: ['Barbell Row'],
     exercises: [{ name: 'Barbell Row', isMain: true, sets: 3, reps: [8, 8, 8], weight: 160, rpe: 8 }] };

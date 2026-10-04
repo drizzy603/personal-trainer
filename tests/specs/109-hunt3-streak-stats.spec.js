@@ -6,6 +6,8 @@
 // - The rest-day make-up counts the week's logs per lift: Push and Pull done on each other's
 //   days leave nothing open (both were offered again, one after the other) (M48).
 // - Progress shows one streak: with no programme its statband said 0 beside the hero's 4 (M49).
+// - The week review (keyless sheet, banner, coach message) is about last calendar week against
+//   that week's cadence: not a rolling 7 days against this week's ("DONE 7 of 6") (M50).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -197,6 +199,45 @@ run('with no programme the Progress statband shows the same streak as the hero (
       return { routine: hasCustomRoutine(), streak: calcStreakDays(), band: band ? band.querySelector('.kt-statband-val').textContent : null };
     }, [LOGS]);
     assert(!out.routine && out.streak === 4 && out.band === '4days', 'four days in a row, on the hero and the statband alike: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('the week review is about last calendar week, against its own plan (M50)', async () => {
+  // The demo cadence: Cycling, Run, Push, Pull, Rest, Cycling, Legs (six planned days).
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_week: '7', kt_apikey: '' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      localStorage.removeItem('kt_apikey');
+      const sheet = () => { lsDel('kt_last_review_week'); openLocalWeekReview(); const el = document.getElementById('weekReviewOverlay'); const t = el ? el.innerText.replace(/\s+/g, ' ') : ''; closeLocalWeekReview(); lsDel('kt_last_review_week'); return t; };
+      const banner = () => { lsSet('kt_last_weekwrap', _mostRecentMonday()); switchTab('log'); logSubTab = 'workout'; render(); const t = document.getElementById('screen').innerText.replace(/\s+/g, ' '); const i = t.indexOf('WRAPPED'); return i < 0 ? '' : t.slice(Math.max(0, i - 12), i + 7); };
+      // Monday evening of week 7: week 6 done as planned, and today's ride logged.
+      const W = addDays(_mostRecentMonday(), 7);
+      __setNow(W + 'T19:00:00');
+      currentWeek = 7; lsSet('kt_week', 7); localStorage.setItem('kt_week_monday', W);
+      lsSet('kt_sessions', logs([[addDays(W, -5), 'Push'], [addDays(W, -4), 'Pull'], [addDays(W, -1), 'Legs']]));
+      lsSet('kt_runs', [{ id: 1789000000200, date: addDays(W, -6), distance: 5, time: '30:00', type: 'easy', week: 6 }]);
+      lsSet('kt_sports', [{ id: 1789000000300, date: addDays(W, -7), type: 'Cycling', duration: 40, week: 6 },
+        { id: 1789000000301, date: addDays(W, -2), type: 'Cycling', duration: 40, week: 6 },
+        { id: 1789000000302, date: W, type: 'Cycling', duration: 40, week: 7 }]);
+      r.monday = { due: (lsDel('kt_last_review_week'), _weekReviewDue()), banner: banner(), sheet: sheet(), msg: _buildWeekReviewMsg() };
+      // An empty lift day in week 6 is not a planned day.
+      const cr = getCustomRoutine(); cr.weeks[5].weekPlan = ['Cycling', 'Run', 'Push', 'Pull', 'Arms', 'Cycling', 'Legs']; setCustomRoutine(cr);
+      r.emptyDay = _lastWeekReview().planned;
+      // Thursday after a week 6 with nothing in it: four lifts this week are not last week's.
+      __setNow(addDays(W, 3) + 'T19:00:00');
+      lsSet('kt_sessions', logs([[W, 'Push'], [addDays(W, 1), 'Pull'], [addDays(W, 2), 'Legs'], [addDays(W, 3), 'Push']]));
+      lsSet('kt_runs', []); lsSet('kt_sports', []);
+      lsDel('kt_last_review_week');
+      r.thursday = { due: _weekReviewDue(), sheet: sheet() };
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.monday.due && /WEEK 6 WRAPPED/.test(out.monday.banner), 'Monday offers week 6\'s review: ' + JSON.stringify(out.monday));
+    assert(/WEEK 6 WRAPPED/.test(out.monday.sheet) && /DONE 6 of 6 planned/.test(out.monday.sheet), 'week 6 done as planned, today\'s ride left out: ' + out.monday.sheet);
+    assert(/week 6/.test(out.monday.msg) && /Done: 3 lifts \(.*\), 1 run, 2 sport sessions vs 6 planned activity days/.test(out.monday.msg), 'the coach is sent the same week: ' + out.monday.msg);
+    assert(out.emptyDay === 6, 'an empty lift day is not planned: ' + out.emptyDay);
+    assert(!out.thursday.due && /DONE 0 of 6 planned/.test(out.thursday.sheet), 'this week\'s lifts are not last week\'s: ' + JSON.stringify(out.thursday));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
