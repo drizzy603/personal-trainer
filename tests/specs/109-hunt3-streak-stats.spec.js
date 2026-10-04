@@ -31,6 +31,9 @@ const CLOCK = `(() => { if (window.__setNow) return; const R = Date; let off = 0
 const LOGS = `(rows) => rows.map(([d, t], i) => ({ id: 1789000000000 + i, date: d, type: t, week: 0, prs: [],
   exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 150, weightLog: [150, 150, 150], rpe: 8 }] }))`;
 const EMPTY = { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]', kt_skips: '[]' };
+// One case at a time: eleven browsers at once is a lot for a CI runner.
+let queue = Promise.resolve();
+function runInTurn(name, fn) { queue = queue.then(() => new Promise(done => run(name, () => fn().finally(done)))); }
 // The demo programme on a Mon/Wed/Fri cadence (every week reads the programme's own).
 function mwf(sun) {
   const r = JSON.parse(SEED.kt_routine);
@@ -39,7 +42,7 @@ function mwf(sun) {
   return r;
 }
 
-run('a cadence edit or a new programme applies from today on: the days already lived keep their schedule (M09, M10)', async () => {
+runInTurn('a cadence edit or a new programme applies from today on: the days already lived keep their schedule (M09, M10)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '6' }) });
   try {
     const out = await app.page.evaluate(([CLOCK, LOGS]) => {
@@ -83,7 +86,7 @@ run('a cadence edit or a new programme applies from today on: the days already l
   } finally { await app.close(); }
 });
 
-run('the days before a new programme starts never break the streak; archiving keeps it (M10)', async () => {
+runInTurn('the days before a new programme starts never break the streak; archiving keeps it (M10)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: '', kt_week: '1' }) });
   try {
     const out = await app.page.evaluate(([CLOCK, LOGS]) => {
@@ -125,7 +128,7 @@ run('the days before a new programme starts never break the streak; archiving ke
   } finally { await app.close(); }
 });
 
-run('round 2\'s first Monday reads the days before it as round 1\'s last week (M10)', async () => {
+runInTurn('round 2\'s first Monday reads the days before it as round 1\'s last week (M10)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf('Legs')), kt_week: '6' }) });
   try {
     const out = await app.page.evaluate(([CLOCK, LOGS]) => {
@@ -161,7 +164,7 @@ run('round 2\'s first Monday reads the days before it as round 1\'s last week (M
   } finally { await app.close(); }
 });
 
-run('a lift done on another day this week is not offered as a make-up (M48)', async () => {
+runInTurn('a lift done on another day this week is not offered as a make-up (M48)', async () => {
   const r0 = JSON.parse(SEED.kt_routine);
   r0.weekPlan = ['Push', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest', 'Rest'];
   r0.weeks.forEach(w => { delete w.weekPlan; });
@@ -198,7 +201,7 @@ run('a lift done on another day this week is not offered as a make-up (M48)', as
   } finally { await app.close(); }
 });
 
-run('with no programme the Progress statband shows the same streak as the hero (M49)', async () => {
+runInTurn('with no programme the Progress statband shows the same streak as the hero (M49)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: '' }) });
   try {
     const out = await app.page.evaluate(([LOGS]) => {
@@ -213,7 +216,7 @@ run('with no programme the Progress statband shows the same streak as the hero (
   } finally { await app.close(); }
 });
 
-run('the week review is about last calendar week, against its own plan (M50)', async () => {
+runInTurn('the week review is about last calendar week, against its own plan (M50)', async () => {
   // The demo cadence: Cycling, Run, Push, Pull, Rest, Cycling, Legs (six planned days).
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_week: '7', kt_apikey: '' }) });
   try {
@@ -265,7 +268,7 @@ const WRAP = `async () => {
   return { due, card: i < 0 ? '' : scr.slice(Math.max(0, i - 9), i + 9), png: texts.find(t => /WRAPPED/.test(t)) || '', file };
 }`;
 
-run('a Monday\'s shared week wrap carries last week\'s number, as the card does (M51)', async () => {
+runInTurn('a Monday\'s shared week wrap carries last week\'s number, as the card does (M51)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_week: '7' }) });
   try {
     const out = await app.page.evaluate(async ([CLOCK, LOGS, WRAP]) => {
@@ -294,7 +297,7 @@ function parkedRoutine() {
   return r;
 }
 
-run('parked on the final week, every parked week is week 12: streak, Monday wrap, stamps (M01)', async () => {
+runInTurn('parked on the final week, every parked week is week 12: streak, Monday wrap, stamps (M01)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(parkedRoutine()), kt_week: '12' }) });
   try {
     const out = await app.page.evaluate(async ([CLOCK, LOGS, WRAP]) => {
@@ -326,7 +329,7 @@ run('parked on the final week, every parked week is week 12: streak, Monday wrap
   } finally { await app.close(); }
 });
 
-run('a wrist session drained on the round-swap morning is week 12, never 13 (M01)', async () => {
+runInTurn('a wrist session drained on the round-swap morning is week 12, never 13 (M01)', async () => {
   const app = await boot({ native: true, seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(parkedRoutine()), kt_week: '12' }) });
   try {
     const out = await app.page.evaluate(async ([CLOCK]) => {
@@ -352,7 +355,7 @@ run('a wrist session drained on the round-swap morning is week 12, never 13 (M01
   } finally { await app.close(); }
 });
 
-run('an empty lift day does not put the streak on the line (L33)', async () => {
+runInTurn('an empty lift day does not put the streak on the line (L33)', async () => {
   // Thursday is Arms, which this programme never wrote: an empty day.
   const r0 = JSON.parse(SEED.kt_routine);
   r0.weekPlan = ['Push', 'Pull', 'Legs', 'Arms', 'Rest', 'Rest', 'Rest'];
@@ -383,7 +386,7 @@ run('an empty lift day does not put the streak on the line (L33)', async () => {
   } finally { await app.close(); }
 });
 
-run('Progress THIS WEEK leaves an empty lift day out of the planned days (L34)', async () => {
+runInTurn('Progress THIS WEEK leaves an empty lift day out of the planned days (L34)', async () => {
   const r0 = JSON.parse(SEED.kt_routine);
   r0.weekPlan = ['Push', 'Pull', 'Legs', 'Arms', 'Rest', 'Rest', 'Rest'];
   r0.weeks.forEach(w => { delete w.weekPlan; delete w.arms; });
