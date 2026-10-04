@@ -17,6 +17,10 @@
 // - M54 the session debrief prompt reads every set from _exPairs: a previous session in the
 //   legacy nested shape read "[object Object],…×[undefined] @ 0 lb", back-offs read as top sets;
 //   the day goes by its name.
+// - L35 the coach chips compare the last session's date with today and yesterday on the local
+//   calendar (it was read as UTC midnight: after 20:00 west of UTC today's session was
+//   "yesterday's", east of UTC the reverse) and name the day by its name, without the quotes
+//   and markup the chip's inline handler cannot carry.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -260,4 +264,59 @@ run('M54: the debrief prompt reads every set of either session shape, in the own
       assert(app.errors.length === 0, u + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('L35: the coach chips read today and yesterday on the local calendar and name the day', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const cdp = await app.page.context().newCDPSession(app.page);
+    const clock = {};
+    // west of UTC (a session read as UTC midnight turned into yesterday's at 20:00) and east of it
+    for (const tz of ['America/Puerto_Rico', 'Asia/Tokyo']) {
+      await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
+      clock[tz] = await app.page.evaluate(() => {
+        const RealDate = Date, r = {}, day = todayISO();
+        const at = (t) => { const shift = new RealDate(day + 'T' + t + ':00').getTime() - RealDate.now(); window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + shift); } static now() { return RealDate.now() + shift; } }; };
+        const chipFor = (n) => { const s = getSessions().filter(x => x.id !== 900020); s.push({ id: 900020, date: addDays(todayISO(), -n), type: 'Push', week: currentWeek, exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 165, weightLog: [165, 165, 165] }] }); lsSet('kt_sessions', s); return getCoachChips()[0]; };
+        try {
+          for (const t of ['08:00', '20:30', '23:30']) { at(t); r[t] = [chipFor(0), chipFor(1), chipFor(2)]; }
+        } finally { window.Date = RealDate; }
+        return r;
+      });
+    }
+    await cdp.send('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
+    const named = await app.page.evaluate(async () => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const s = getSessions().filter(x => x.id !== 900020);
+      s.push({ id: 900020, date: todayISO(), type: 'Push', week: currentWeek, exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 165, weightLog: [165, 165, 165] }] });
+      lsSet('kt_sessions', s);
+      setDayName('Push', 'Chest + Tris');
+      const r = { plain: getCoachChips()[0] };
+      // a name the chip's inline handler cannot carry as typed
+      setDayName('Push', 'Mike\'s "A" <Day> & Co');
+      r.odd = getCoachChips()[0];
+      const sent = [];
+      window.sendCoachMessage = () => { sent.push(document.getElementById('coach-input').value); };
+      coachMessages = []; currentTab = 'coach'; coachView = 'chat'; render(); await wait(30);
+      const chips = getCoachChips();
+      const btns = [...document.querySelectorAll('#screen button')].filter(b => chips.indexOf(b.textContent) >= 0);
+      r.rendered = btns.map(b => b.textContent);
+      const first = btns.find(b => b.textContent === r.odd);
+      if (first) first.click();
+      r.sent = sent;
+      return r;
+    });
+    for (const tz of Object.keys(clock)) {
+      for (const t of Object.keys(clock[tz])) {
+        const [today, yday, older] = clock[tz][t];
+        assert(today === 'How did my Push session look?', tz + ' ' + t + ': today\'s session is today\'s: ' + today);
+        assert(yday === 'Recovery tips after yesterday\'s Push?', tz + ' ' + t + ': yesterday\'s session is yesterday\'s: ' + yday);
+        assert(!/Push/.test(older), tz + ' ' + t + ': an older session has no chip: ' + older);
+      }
+    }
+    assert(named.plain === 'How did my Chest + Tris session look?', 'the chip names the day: ' + named.plain);
+    assert(named.odd === 'How did my Mikes A Day + Co session look?', 'quotes and markup stay out of the chip: ' + named.odd);
+    assert(named.rendered[0] === named.odd && named.sent.length === 1 && named.sent[0] === named.odd, 'the chip renders and sends what it says: ' + JSON.stringify(named));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
