@@ -6,6 +6,9 @@
 //   it began (routine.startedAt) and only logs that began after it are its own.
 // - M07 From week 2 of a new round the plateau card judged the deliberate re-base by round 1's
 //   peak ("stalled 21 days", a further 10% deload every week). A round is judged by its own logs.
+// - M25 A set round first opened weeks after its start date (away, app closed) was anchored on
+//   the old date, so the week clock landed on week 3-4 of a round nobody saw, with no round intro.
+//   It now starts this week as "Today" does (days gone are not owed) and says ROUND 2 · WEEK 1.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -157,4 +160,42 @@ run('M07: a new round is not a plateau; a stall inside the round still is', asyn
     assert(out.week5.length === 1 && out.week5[0][1] === 215.3 && out.week5[0][0] === out.days5, 'a stall inside the round is judged by the round\'s own best (170 x 8): ' + JSON.stringify(out.week5));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+run('M25: a set round first opened weeks after its start begins this week, with its intro', async () => {
+  // This week's Wednesday (week 1 is this week, Monday and Tuesday not owed) and its Sunday
+  // (week 1 starts tomorrow, as "Today" does on a Sunday); on the phone and on the web.
+  for (const dow of [2, 6]) for (const native of [true, false]) {
+    const app = await boot({ native, seed: { kt_week: '12' } });
+    try {
+      await withClock(app);
+      await app.page.evaluate((dow) => {
+        const mon = _mostRecentMonday();
+        __setNow(addDays(mon, dow) + 'T10:00:00');
+        localStorage.setItem('kt_week_monday', addDays(mon, -21)); localStorage.setItem('kt_final_since', addDays(mon, -21));
+        lsSet('kt_routine_next', { startsOn: addDays(mon, -14), at: addDays(mon, -16) });
+        lsSet('kt_last_open', Date.now() - 18 * 86400000);
+        lsSet('kt_skips', []);
+      }, dow);
+      await coldBoot(app);
+      const out = await app.page.evaluate(async (LOGS) => {
+        eval(LOGS);
+        await new Promise(res => setTimeout(res, 500));
+        const mon = _mostRecentMonday(), sunday = ((new Date().getDay() + 6) % 7) === 6, cr = getCustomRoutine();
+        const owed = [], p1 = getWeekPlanForWeek(1), start = localStorage.getItem('kt_week_monday');
+        for (let i = 0; i < 7; i++) { const d = addDays(start, i); if (d >= todayISO()) break; if (p1[i] && !p1[i].isRest && p1[i].type) owed.push(d + ' ' + p1[i].type); }
+        const skipped = getSkips().map(k => k.date + ' ' + k.type);
+        switchTab('log'); switchLogSub('workout'); promoteTodayItem('roundintro');
+        return { sunday, owed: owed.length, cycle: cr.cycle, week: currentWeek, anchorOk: localStorage.getItem('kt_week_monday') === (sunday ? addDays(mon, 7) : mon),
+          intro: !!_roundIntroCard() && /ROUND 2 · WEEK 1/.test(txt()), lapse: lapsePending,
+          notOwed: owed.every(o => skipped.indexOf(o) >= 0), skips: skipped.length };
+      }, LOGS);
+      const tag = (native ? 'native' : 'web') + (dow === 6 ? ', Sunday' : ', Wednesday');
+      assert(out.sunday === (dow === 6), tag + ': the clock is on the right day: ' + JSON.stringify(out));
+      assert(out.cycle === 2 && out.week === 1 && out.anchorOk, tag + ': round 2 starts at week 1 this week, not weeks in: ' + JSON.stringify(out));
+      assert(out.intro && !out.lapse, tag + ': Today says ROUND 2 · WEEK 1: ' + JSON.stringify(out));
+      assert(out.notOwed && out.skips === out.owed && (dow === 6 || out.owed > 0), tag + ': the days of week 1 already gone are not owed: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });

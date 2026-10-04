@@ -11014,9 +11014,13 @@ function _applyNextRound(now){
   if(!archiveCurrentRoutine()) return null;
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
   lsDel('kt_routine_next');
-  var start=now ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
+  // First opened after its start week had gone (away, or the app never opened): the round starts
+  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
+  // of a round nobody saw, at loads already past the re-base.
+  var late=!now && p.startsOn<_mostRecentMonday();
+  var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
-  if(now){
+  if(now||late){
     // Days already gone in week 1 are not owed (as startProgrammeNow).
     var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
     for(var i=0;i<7;i++){ var d=addDays(start,i); if(d>=todayISO()) break; var e=p1[i]; if(e && !e.isRest && e.type) saveSkip(d, e.type); }
