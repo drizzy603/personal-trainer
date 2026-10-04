@@ -1302,6 +1302,7 @@ struct OffDayView: View {
     // Match the emoji to the day — a Cycling day showing a runner reads wrong.
     private var emoji: String {
         if plan.type == "rest" { return "😴" }
+        if plan.type == "lift" { return "🏋️" }
         let n = plan.dayName.lowercased()
         if n.contains("cycl") || n.contains("bike") || n.contains("ride") { return "🚴" }
         if n.contains("swim") { return "🏊" }
@@ -1318,6 +1319,14 @@ struct OffDayView: View {
         return "🏅"
     }
 
+    // A lift day lands here only with no exercises (nobody has built it yet). Health never brings
+    // a strength workout back, so the cardio line told it to track a day it cannot.
+    private var detail: String {
+        if plan.type == "rest" { return "Recover well." }
+        if plan.type == "lift" { return "No lifts in it yet. Build it in Fitness Programmer on your iPhone — it lands here." }
+        return "Track it with your workout app — Fitness Programmer picks it up from Health."
+    }
+
     var body: some View {
         // A stale rest/run plan masquerading as today is exactly as wrong as
         // a stale lift plan — same banner, same one-tap sync.
@@ -1331,7 +1340,7 @@ struct OffDayView: View {
                     .font(.system(size: 34))
                 Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
                     .font(.system(size: 17, weight: .heavy))
-                Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Fitness Programmer picks it up from Health.")
+                Text(detail)
                     .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 6)

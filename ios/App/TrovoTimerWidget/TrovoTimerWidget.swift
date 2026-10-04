@@ -102,10 +102,16 @@ struct SummaryDay: Decodable {
     let short: String?     // the same, fitted to a chip ("C+B")
     let isRest: Bool
     let lifts: Int         // exercise count for lift days, else 0
-    let done: Bool         // session already logged that day
+    var done: Bool         // session already logged that day
+    // "lift" | "run" | "sport" | "rest" (older pages omit it). A lift day with no lifts is one
+    // nobody has built yet, not a cardio day.
+    var kind: String? = nil
 
     var name: String { label ?? type }
     var chip: String { short ?? String(type.prefix(5)) }
+    var isLiftDay: Bool { kind.map { $0 == "lift" } ?? (!isRest && lifts > 0) }
+    // A copy marked done, every other field kept.
+    func markedDone() -> SummaryDay { var d = self; d.done = true; return d }
 }
 
 // The phone's room, as the page sends it: Heavyweight is paper/ink/blue,
@@ -183,7 +189,7 @@ private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
     // used to render "Run, done." until the next day's summary.
     let days = summary.days.map { d -> SummaryDay in
         guard !d.done, !d.isRest, d.lifts > 0, done.contains(d.date) else { return d }
-        return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
+        return d.markedDone()
     }
     return summary.with(days: days)
 }
@@ -203,9 +209,9 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     })
     guard !pendingDays.isEmpty else { return summary }
     let days = summary.days.map { d -> SummaryDay in
-        // Only cardio days (not rest, no lifts planned) get auto-completed.
-        guard !d.done, !d.isRest, d.lifts == 0, pendingDays.contains(d.date) else { return d }
-        return SummaryDay(date: d.date, type: d.type, label: d.label, short: d.short, isRest: d.isRest, lifts: d.lifts, done: true)
+        // Only cardio days get auto-completed: never a rest day or a lift day (an empty one too).
+        guard !d.done, !d.isRest, !d.isLiftDay, pendingDays.contains(d.date) else { return d }
+        return d.markedDone()
     }
     return summary.with(days: days)
 }
@@ -297,7 +303,9 @@ struct SuperoTodayView: View {
         guard let d = day, let s = entry.summary else { return "SET UP YOUR PLAN" }
         if d.done { return "NICE WORK · WK \(s.week)" }
         if d.isRest { return "RECOVER WELL" }
-        return d.lifts > 0 ? "\(d.lifts) LIFTS · ~\(d.lifts * 8) MIN" : "LOG IT WHEN DONE"
+        if d.lifts > 0 { return "\(d.lifts) LIFTS · ~\(d.lifts * 8) MIN" }
+        // A lift day nobody has built yet: the tap opens the builder ("LOG IT WHEN DONE" before).
+        return d.kind == "lift" ? "NO LIFTS YET · BUILD IT" : "LOG IT WHEN DONE"
     }
 
     private var metaLine: String {

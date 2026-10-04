@@ -12,6 +12,10 @@
 //   widget summary and the reminders as round 2's own weeks (its cadence, its re-based loads, week
 //   1 then 2), not as round 1's final week repeating. The preview follows new logs and goes away
 //   when the round is cancelled; the days before the start stay the current programme's.
+// - L19: every widget summary day says what it is (kind: lift | run | sport | rest), so the widget
+//   tells an empty lift day (kind lift, 0 lifts: "NO LIFTS YET · BUILD IT") from a cardio day and
+//   never marks it done from a Health workout; the wrist gets the empty day as a lift plan with no
+//   exercises, which it now says to build on the iPhone (it said Health would pick it up).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -251,6 +255,32 @@ run('M08: a set next round reaches the watch week, the widget and the reminders 
     assert(out.pushed.n === 6 && out.pushed.after && out.pushed.beforeOk, 'the pushed week ahead: round 2 week 1 from the start, the final week before it: ' + JSON.stringify(out.pushed));
     assert(out.relog.bench === out.relog.want && out.relog.bench > out.mon.bench, 'a heavier log this round re-bases the preview: ' + JSON.stringify(out.relog));
     assert(out.cancelled.week === out.lastWk, 'a cancelled round leaves the final week in place: ' + JSON.stringify(out.cancelled));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('L19: an empty lift day reaches the widget as a lift day and the wrist as a lift plan with nothing in it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const cr = getCustomRoutine(), dow = (new Date().getDay() + 6) % 7, seq = ['Arms', 'Run', 'Cycling', 'Push', 'Rest', 'Pull', 'Yoga'];
+      cr.weeks.forEach(w => { delete w.weekPlan; delete w.arms; });   // no week has an Arms day built
+      cr.weekPlan = [0, 1, 2, 3, 4, 5, 6].map(i => seq[(i - dow + 7) % 7]);   // today Arms, then Run, Cycling…
+      setCustomRoutine(cr);
+      const days = _nativeSummaryDays(7);
+      _lastWatchPlan = ''; _pushWatchPlan();
+      const plan = JSON.parse(__mock.updateContext[__mock.updateContext.length - 1].json);
+      // before a programme's start every day is a rest day, and says so
+      localStorage.setItem('kt_week_monday', addDays(_mostRecentMonday(), 7));
+      const pre = _nativeSummaryDays(1)[0];
+      return { kinds: days.map(d => d.kind), types: days.map(d => d.type), lifts: days.map(d => d.lifts), rest: days.map(d => d.isRest),
+        watch: { type: plan.type, slot: plan.slot, n: plan.exercises.length }, pre: { kind: pre.kind, isRest: pre.isRest } };
+    });
+    assert(JSON.stringify(out.kinds) === '["lift","run","sport","lift","rest","lift","sport"]', 'each day says what it is: ' + JSON.stringify(out));
+    assert(out.types[0] === 'Arms' && out.lifts[0] === 0 && out.rest[0] === false && out.lifts[3] > 0,
+      'the empty Arms day is a lift day with 0 lifts (not a rest or cardio day); a built day keeps its count: ' + JSON.stringify(out));
+    assert(out.watch.type === 'lift' && out.watch.slot === 'Arms' && out.watch.n === 0, 'the wrist gets the empty day as a lift plan with no exercises: ' + JSON.stringify(out.watch));
+    assert(out.pre.kind === 'rest' && out.pre.isRest, 'a day before the programme starts is a rest day: ' + JSON.stringify(out.pre));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
