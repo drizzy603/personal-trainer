@@ -16,6 +16,9 @@
 //   "Work up to <heavy single>" keeps its words and no markup renders (L52).
 // - A first name that starts with an emoji shows the whole emoji as the avatar on every tab, and the
 //   avatar letter is text (L53).
+// - Escape closes the top sheet with focus inside it too (sheets without a listener of their own,
+//   the Exercise library, confirms), a sheet that handles Escape itself closes alone, and focus
+//   returns to what opened the sheet (L54).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -256,6 +259,45 @@ run('an emoji first name is a whole avatar on every tab (L53)', async () => {
     const all = Object.keys(out.seen).map(k => [k, out.seen[k]]);
     assert(all.every(([, a]) => a.length >= 1 && a.every(t => t === '\u{1F98A}')), 'every avatar shows the whole fox: ' + JSON.stringify(out.seen));
     assert(out.lt.avatars.every(t => t === '<') && !out.lt.injected, 'a name starting with markup shows its first character as text: ' + JSON.stringify(out.lt));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Escape closes the top sheet with focus inside it, and focus goes back to the opener (L54)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const ev = (fn) => p.evaluate(fn);
+    const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(30); };
+    const state = () => ev(() => ({
+      theme: !!document.getElementById('themeSheetOverlay'), lib: !!document.getElementById('exlibOverlay'),
+      profile: !!document.getElementById('profileOverlay'), confirm: !!document.querySelector('.kt-close-sheet'),
+      pr: !!document.getElementById('prHistOverlay'), focus: (document.activeElement && document.activeElement.id) || (document.activeElement && document.activeElement.tagName),
+    }));
+    await ev(() => { switchTab('settings'); const b = document.createElement('button'); b.id = '__opener'; b.textContent = 'opener'; document.body.appendChild(b); });
+    const r = {};
+    // a sheet with no Escape listener of its own, focus on its ✕
+    await ev(() => { document.getElementById('__opener').focus(); openThemeSheet(); document.querySelector('#themeSheetOverlay button').focus(); });
+    await esc(); r.theme = await state();
+    // the Exercise library, focus inside it, then focus on <body>
+    await ev(() => { document.getElementById('__opener').focus(); openExLib(); document.getElementById('exlibAddBtn').focus(); });
+    await esc(); r.libInside = await state();
+    await ev(() => { openExLib(); document.activeElement && document.activeElement.blur(); });
+    await esc(); r.libBody = await state();
+    // a confirm over a sheet: Escape takes the confirm, the next one the sheet
+    await ev(() => { document.getElementById('__opener').focus(); openProfileSheet(); document.querySelector('#profileOverlay button').focus(); _ktConfirm({ title: 'Sure?', confirmLabel: 'Yes', onConfirm: function () {} }); });
+    await esc(); r.confirm = await state();
+    await esc(); r.profile = await state();
+    // a sheet with its own listener over the library closes alone, for a real key and a synthetic one
+    await ev(() => { openExLib(); openPRHistory('Bench Press'); });
+    await esc(); r.prReal = await state();
+    await ev(() => { openPRHistory('Bench Press'); document.getElementById('prHistOverlay').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    await p.waitForTimeout(30); r.prSynthetic = await state();
+    await esc(); r.libLast = await state();
+    assert(!r.theme.theme && r.theme.focus === '__opener', 'a sheet closes with focus inside it, and focus returns to the opener: ' + JSON.stringify(r.theme));
+    assert(!r.libInside.lib && r.libInside.focus === '__opener' && !r.libBody.lib, 'the Exercise library closes on Escape: ' + JSON.stringify([r.libInside, r.libBody]));
+    assert(!r.confirm.confirm && r.confirm.profile && !r.profile.profile && r.profile.focus === '__opener', 'Escape closes the top sheet only: ' + JSON.stringify([r.confirm, r.profile]));
+    assert(!r.prReal.pr && r.prReal.lib && !r.prSynthetic.pr && r.prSynthetic.lib && !r.libLast.lib, 'a sheet that handles Escape closes alone: ' + JSON.stringify([r.prReal, r.prSynthetic, r.libLast]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -18261,17 +18261,49 @@ function _buildThemeRows(){
 // drag zone (body content keeps normal scrolling); drag past 90px or flick
 // to dismiss. Animates the sheet element itself, which is created once per
 // open — remount-safe, unlike sheet rows.
-// Escape closes the top sheet even when focus has left it: a tap on a sheet's text
-// moves focus to <body>, and the sheet's own keydown listener never heard the key.
+// Escape closes the top sheet wherever focus is: on <body> (a tap on a sheet's text moves
+// it there) or inside a sheet that has no keydown listener of its own. A sheet that does
+// handle Escape has already prevented the default, or removed the key's target by closing
+// or repainting itself.
+var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg';
 document.addEventListener('keydown', function(e){
   if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
-  var ovs=document.querySelectorAll('.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg');
+  if(e.target && e.target.nodeType===1 && !e.target.isConnected) return;
+  var ovs=document.querySelectorAll(_SHEETS_SEL);
   if(!ovs.length) return;
   var top=ovs[ovs.length-1];
-  if(top.contains(e.target)) return;   // its own listener has it
   e.preventDefault();
   top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
 });
+// When a sheet closes (Escape, its ✕, the backdrop) focus goes back to what was focused
+// when it opened; a keyboard or VoiceOver user used to land on <body>. Sheets that place
+// focus themselves on close are left alone, and a text field is never refocused (that would
+// raise the iOS keyboard).
+var _sheetFocus=null;   // the last element focused outside every sheet
+document.addEventListener('focusin', function(e){
+  var t=e.target;
+  if(t && t.nodeType===1 && t!==document.body && !(t.closest && t.closest(_SHEETS_SEL))) _sheetFocus=t;
+});
+if(window.MutationObserver) new MutationObserver(function(muts){
+  var closed=null;
+  muts.forEach(function(m){
+    Array.prototype.forEach.call(m.addedNodes, function(n){
+      if(n.nodeType!==1 || !n.matches || !n.matches(_SHEETS_SEL)) return;
+      var a=document.activeElement;
+      n._ktOpener=(a && a!==document.body && !n.contains(a)) ? a : _sheetFocus;
+      n._ktOpenerId=(n._ktOpener && n._ktOpener.id) || '';
+    });
+    Array.prototype.forEach.call(m.removedNodes, function(n){ if(n.nodeType===1 && n.matches && n.matches(_SHEETS_SEL)) closed=n; });
+  });
+  if(!closed) return;
+  var a=document.activeElement; if(a && a!==document.body) return;
+  var t=closed._ktOpener;
+  if(!(t && t.isConnected)) t=closed._ktOpenerId ? document.getElementById(closed._ktOpenerId) : null;
+  if(!t || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
+  var ovs=document.querySelectorAll(_SHEETS_SEL);
+  if(ovs.length && !ovs[ovs.length-1].contains(t)) return;   // a sheet is still up, and the opener is not in it
+  try{ t.focus({preventScroll:true}); }catch(err){}
+}).observe(document.body, {childList:true});
 function _sheetDrag(overlay, closeFn){
   var sheet=overlay.querySelector('.kt-sheet');
   if(!sheet) return;
@@ -19341,6 +19373,7 @@ function openExLib(prefill){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='exlibOverlay';
+  overlay.className='kt-sheet-overlay';   // a sheet like the others: Escape closes it
   overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
   overlay.innerHTML=_buildExLibHTML();
   document.body.appendChild(overlay);
