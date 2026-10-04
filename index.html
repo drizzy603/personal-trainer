@@ -11445,8 +11445,8 @@ function renderWeekHeader() {
   return '<div class="hero-card">'+
     '<div class="hero-label">Current week</div>'+
     '<div><span class="hero-num">'+wkStr+'</span><span class="hero-of">/ '+totalWks+'</span></div>'+
-    '<div class="hero-block">● '+(bName||'Block')+'</div>'+
-    (summary ? '<div class="hero-focus">'+summary+'</div>' : '')+
+    '<div class="hero-block">● '+_esc(bName||'Block')+'</div>'+
+    (summary ? '<div class="hero-focus">'+_esc(summary)+'</div>' : '')+
     '<div class="hero-bar"><div class="hero-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="hero-meta"><span>Programme progress</span><span style="color:var(--text);font-weight:600">'+pct+'%</span></div>'+
     '<div class="week-stepper">'+
@@ -12096,8 +12096,8 @@ function openProgrammeModal(){
     }).join('');
     return '<div style="margin-bottom:16px;">'+
       '<div style="display:flex;align-items:center;gap:8px;padding:10px 16px 0;">'+
-        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+bl.bColor+';flex-shrink:0;"></span>'+
-        '<span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--lite);">'+bl.bName+'</span>'+
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+_esc(bl.bColor)+';flex-shrink:0;"></span>'+
+        '<span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--lite);">'+_esc(bl.bName)+'</span>'+
       '</div>'+
       '<div style="margin-top:8px;background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;">'+wkRows+'</div>'+
     '</div>';
@@ -12110,7 +12110,7 @@ function openProgrammeModal(){
       '<div class="ex-modal-head">'+
         '<div>'+
           '<div style="font-size:17px;font-weight:800;letter-spacing:-.3px;">Programme</div>'+
-          '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+progName+'</div>'+
+          '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+_esc(progName)+'</div>'+
         '</div>'+
         '<button class="ex-modal-close" onclick="closeProgrammeModal()">✕</button>'+
       '</div>'+
@@ -14296,7 +14296,7 @@ function renderProgress() {
   var progressHeader = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">PROGRESS · WEEK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWksP+
-      (wd2 && wd2.bName ? ' · '+wd2.bName.toUpperCase() : '')+
+      (wd2 && wd2.bName ? ' · '+_esc(String(wd2.bName).toUpperCase()) : '')+
     '</div>'+
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
@@ -14393,7 +14393,7 @@ function renderProgress() {
 
   // Block-progression rows fold into the Strength card when it exists;
   // standalone card only as a fallback (no e1RM data yet).
-  var blockLabel = (wd2b?wd2b.bName+' block':'Current block');
+  var blockLabel = (wd2b?_esc(wd2b.bName)+' block':'Current block');
   var blockInner = liftRows
     ? '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">'+
         '<div class="chart-lbl" style="margin-bottom:10px;">'+blockLabel+' · main lifts</div>'+liftRows+'</div>'
@@ -17848,7 +17848,7 @@ function renderCoach(){
   var header = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">COACH · WK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWksC+
-      (wd3 && wd3.bName ? ' · '+wd3.bName.toUpperCase() : '')+
+      (wd3 && wd3.bName ? ' · '+_esc(String(wd3.bName).toUpperCase()) : '')+
     '</div>'+
     '<div class="kt-meta-ava">'+avInitialC+'</div>'+
     '</div>';
@@ -18386,7 +18386,7 @@ function renderSettings() {
       '</div>'
     : '<div style="flex:1;min-width:0;">'+
         '<div class="profile-name">'+_esc(displayName)+'</div>'+
-        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
+        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+_esc(wd4.bName)+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
       '</div>';
   var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
     '<div class="profile-row"'+(settingsNameEdit?'':' onclick="openUserNameEdit()" style="cursor:pointer;-webkit-tap-highlight-color:transparent;"')+'>'+

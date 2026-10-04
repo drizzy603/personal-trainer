@@ -12,6 +12,8 @@
 //   text (M43).
 // - Log > Body keeps Log and the goal's Set on screen and tappable at Larger Text (zoom up to 1.25)
 //   on 390/375-pt phones and on 320-pt layouts (M36).
+// - The coach's block name, week note and programme name read as text on every screen: a note like
+//   "Work up to <heavy single>" keeps its words and no markup renders (L52).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -197,6 +199,34 @@ run('Log > Body keeps Log and Set on screen at Larger Text and on 320-pt layouts
       }, z));
     }
     assert(out.every(o => o.log && o.set && o.overflow <= 1), 'Log and Set are tappable and nothing overflows sideways: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('coach-written block name, week note and programme name read as text (L52)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const cr = getCustomRoutine();
+      cr.name = 'Block <b data-leak="name">X</b> & Co';
+      cr.weeks.forEach(w => { w.bName = 'Peak <i data-leak="bname">A</i>'; w.wkNote = 'Work up to <heavy single> then <u data-leak="note">3x5</u>'; });
+      lsSet('kt_routine', cr);
+      const leaks = [];
+      const scan = (where) => { const el = document.querySelector('[data-leak]'); if (el) leaks.push(where + ':' + el.getAttribute('data-leak')); };
+      const sport = getLogTabs().find(t => _isSportTab(t)) || 'Cycling';   // a sport tab shows the week header
+      const r = { leaks };
+      switchTab('log'); switchLogSub(sport); await wait(20); scan('log/' + sport);
+      r.header = (document.querySelector('#screen .hero-card') || {}).textContent || '';
+      for (const t of ['progress', 'coach', 'settings']) { switchTab(t); await wait(20); scan(t); }
+      openProgrammeModal(); await wait(20); scan('programme');
+      r.modal = document.getElementById('prog-modal').textContent;
+      closeProgrammeModal();
+      return r;
+    });
+    assert(out.leaks.length === 0, 'no coach-written markup renders: ' + out.leaks.join(', '));
+    assert(out.header.indexOf('Work up to <heavy single> then') >= 0 && out.header.indexOf('Peak <i') >= 0, 'the week header keeps every word: ' + out.header);
+    assert(out.modal.indexOf('Block <b data-leak="name">X</b> & Co') >= 0 && out.modal.indexOf('Peak <i data-leak="bname">A</i>') >= 0, 'the programme sheet shows the names as typed: ' + out.modal.slice(0, 160));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
