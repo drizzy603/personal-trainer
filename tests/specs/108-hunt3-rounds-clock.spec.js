@@ -17,6 +17,12 @@
 //   weeks 13-16 (or the week was stepped back), so those weeks were never trained. A round set
 //   to follow the programme now starts the Monday after its final week as it stands (Today, the
 //   sheet and the coach say the new date); one set mid-programme still ends it early.
+// - L07 A lift first given a load after week 1 ("your load" before) was never re-based for the
+//   next round and left off its sheet. It is re-based from the first week that has a load.
+// - L08 A weighted Max/AMRAP row was re-based as a single (+20%) and the sheet said "× 1". It is
+//   judged at the reps its best set was done for.
+// - L23 The next-round sheet painted before midnight (or left on screen overnight) set the round
+//   a week late when tapped after it. It starts on the Monday it showed (now, if that has come).
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -389,6 +395,42 @@ run('L07/L08: the next round re-bases a lift first loaded in a later week, and a
     assert(/Weighted Dipstays at 25 lb · not past where it started yet/.test(out.sheetDip), 'the sheet says it stays: ' + out.sheetDip);
     assert(out.dip2 && out.dip2.from === 25 && out.dip2.to === 40 && out.dip2.reps === 8 && out.dip2Load === 40, 'heavier dips (45 x 8) re-base it at 8 reps: ' + JSON.stringify(out.dip2));
     assert(/Weighted Dip25 lb → 40 lb · you reached about 45 lb × 8/.test(out.sheetDip2), 'and the sheet names the reps logged: ' + out.sheetDip2);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L23: the round starts on the Monday the sheet showed, tapped after midnight or after a night on screen', async () => {
+  const app = await boot({ native: true });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async ({ LOGS, VIS }) => {
+      eval(LOGS); eval(VIS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const mon = _mostRecentMonday(), next = addDays(mon, 7), r = { next };
+      const tap = async (paintAt, tapAt, week, resume) => {
+        lsDel('kt_routine_next'); setCustomRoutine(Object.assign(getCustomRoutine(), { cycle: 1 }));
+        __setNow(paintAt); _setWeek(week, mon); _lastSeenDay = todayISO();
+        openNextRound(); await wait(20);
+        const shown = document.getElementById('nrGo').textContent;
+        if (resume) { leave(); __setNow(tapAt); back(); await wait(30); } else __setNow(tapAt);
+        document.getElementById('nrGo').click(); await wait(20);
+        return { shown, set: lsGet('kt_routine_next'), toast: (document.getElementById('toast') || {}).textContent, cycle: getCustomRoutine().cycle, week: currentWeek, anchor: localStorage.getItem('kt_week_monday') };
+      };
+      // The final week's Sunday, 23:58: tapped a minute after midnight, and the next morning.
+      r.midnight = await tap(addDays(mon, 6) + 'T23:58:30', next + 'T00:01:10', 12, false);
+      r.overnight = await tap(addDays(mon, 6) + 'T22:00:00', next + 'T07:30:00', 12, true);
+      // Mid-programme, a Tuesday night into Wednesday: still that Monday, not the one after.
+      r.midweek = await tap(addDays(mon, 1) + 'T23:58:30', addDays(mon, 2) + 'T00:01:10', 8, false);
+      r.day = _nrDay(next);
+      return r;
+    }, { LOGS, VIS });
+    for (const k of ['midnight', 'overnight']) {
+      const o = out[k];
+      assert(o.shown === 'Start round 2 on ' + out.day, k + ': the sheet showed the Monday after the final week: ' + o.shown);
+      assert(o.set === null && o.cycle === 2 && o.week === 1 && o.anchor === out.next && /Round 2 started/.test(o.toast), k + ': round 2 starts on that Monday, now: ' + JSON.stringify(o));
+    }
+    const m = out.midweek;
+    assert(m.shown === 'Start round 2 on ' + out.day && m.set && m.set.startsOn === out.next && m.cycle === 1 && m.week === 8 && /starts/.test(m.toast), 'mid-week: set for the Monday it showed: ' + JSON.stringify(m));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
