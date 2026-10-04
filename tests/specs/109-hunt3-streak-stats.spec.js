@@ -1,0 +1,147 @@
+// Hunt 3, streak and week stats:
+// - The days already lived keep the schedule they were lived under (kt_streak_days): a cadence
+//   edit in Settings or by the coach, a new programme, archiving it and round 2's first Monday no
+//   longer rewrite past days, so the streak survives them (M09, M10). The days between building
+//   a programme and its first Monday never break the streak, and a log on one still counts.
+// Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
+// today, and builds its logs from there.
+const { boot, assert, run, SEED } = require('../lib/harness');
+
+// Functions read Date when they run, so swapping it in the page pins "now" for what follows.
+const CLOCK = `(() => { if (window.__setNow) return; const R = Date; let off = 0;
+  function F(...a) { if (!(this instanceof F)) return new R(R.now() + off).toString(); return a.length ? new R(...a) : new R(R.now() + off); }
+  F.prototype = R.prototype; F.now = () => R.now() + off; F.parse = R.parse; F.UTC = R.UTC;
+  window.Date = F; window.__setNow = (s) => { off = new R(s).getTime() - R.now(); _todayActMemo = null; }; })()`;
+// Logs on the given days: [[date, type], …].
+const LOGS = `(rows) => rows.map(([d, t], i) => ({ id: 1789000000000 + i, date: d, type: t, week: 0, prs: [],
+  exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 150, weightLog: [150, 150, 150], rpe: 8 }] }))`;
+const EMPTY = { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]', kt_skips: '[]' };
+// The demo programme on a Mon/Wed/Fri cadence (every week reads the programme's own).
+function mwf(sun) {
+  const r = JSON.parse(SEED.kt_routine);
+  r.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', sun || 'Rest'];
+  r.weeks.forEach(w => { delete w.weekPlan; });
+  return r;
+}
+
+run('a cadence edit or a new programme applies from today on: the days already lived keep their schedule (M09, M10)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      // A Wednesday evening, three trained Mon/Wed/Fri weeks and this Monday behind it.
+      const W = addDays(_mostRecentMonday(), 7), rows = [];
+      __setNow(addDays(W, 2) + 'T18:00:00');
+      currentWeek = 6; lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', W);
+      [21, 14, 7].forEach(b => { rows.push([addDays(W, -b), 'Push'], [addDays(W, -b + 2), 'Pull'], [addDays(W, -b + 4), 'Legs']); });
+      rows.push([W, 'Push']);
+      lsSet('kt_sessions', logs(rows));
+      r.before = calcStreakDays();
+      // Settings > Schedule: Friday's Legs moves to Saturday.
+      setWeekPlanDay(4, 'Rest'); setWeekPlanDay(5, 'Legs');
+      const due = _streakDueFn();
+      r.moved = { streak: calcStreakDays(), thisWeek: getWeekPlanForWeek(6).map(p => p.type).join(','),
+        friAhead: due(addDays(W, 4)), satAhead: due(addDays(W, 5)), lastFri: due(addDays(W, -3)), lastSat: due(addDays(W, -2)) };
+      setWeekPlanDay(5, 'Rest'); setWeekPlanDay(4, 'Legs');
+      r.reverted = calcStreakDays();
+      // The coach swaps Monday and Tuesday for the whole programme (written in place, then saved).
+      const res = executeCoachTool('swap_cadence_days', { dayA: 'Mon', dayB: 'Tue', scope: 'global' });
+      r.coach = { ok: res && res.ok, streak: calcStreakDays(), monAhead: _streakDueFn()(addDays(W, 7)), tueAhead: _streakDueFn()(addDays(W, 8)) };
+      r.ledger = Object.keys(lsGet('kt_streak_days') || {}).length;
+      r.inBackup = BACKUP_KEYS.indexOf('kt_streak_days') >= 0 && !!buildBackupJSON().kt_streak_days;
+      // A new programme (from next Monday) leaves the ten days as they were (it used to wipe them).
+      applyStarterRoutine({ goal: 'muscle', days: 4, runs: 0, equip: 'full', exp: 1 });
+      r.newProgramme = { started: _programmeStarted(), streak: calcStreakDays() };
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.before === 10, 'ten trained days behind a Wednesday evening: ' + JSON.stringify(out));
+    assert(out.moved.streak === 10, 'moving Friday to Saturday keeps the streak (past Fridays were trained, past Saturdays were rest): ' + JSON.stringify(out.moved));
+    assert(out.moved.thisWeek === 'Push,Rest,Pull,Rest,Rest,Legs,Rest' && out.moved.friAhead === 0 && out.moved.satAhead === 1,
+      'the new cadence holds from today on: ' + JSON.stringify(out.moved));
+    assert(out.moved.lastFri === 1 && out.moved.lastSat === 0, 'last week reads as it was lived: ' + JSON.stringify(out.moved));
+    assert(out.reverted === 10, 'reverting changes nothing either: ' + out.reverted);
+    assert(out.coach.ok && out.coach.streak === 10 && out.coach.monAhead === 0 && out.coach.tueAhead === 1,
+      'the coach swapping Monday and Tuesday keeps the streak and holds from today on: ' + JSON.stringify(out.coach));
+    assert(out.ledger > 0 && out.inBackup, 'the lived days are written down and travel in backups: ' + JSON.stringify(out));
+    assert(!out.newProgramme.started && out.newProgramme.streak === 10, 'a new programme keeps the streak: ' + JSON.stringify(out.newProgramme));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('the days before a new programme starts never break the streak; archiving keeps it (M10)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: '', kt_week: '1' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const chip = () => { const d = document.createElement('div'); d.innerHTML = _streakChip(); return d.textContent; };
+      // No programme; Monday to Wednesday trained; the starter plan is built Wednesday evening.
+      const W = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(W, 2) + 'T18:00:00');
+      lsSet('kt_sessions', logs([[W, 'Push'], [addDays(W, 1), 'Pull'], [addDays(W, 2), 'Legs']]));
+      r.before = calcStreakDays();
+      applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 });
+      const S = addDays(W, 7), p1 = getWeekPlanForWeek(1);
+      r.built = { anchor: localStorage.getItem('kt_week_monday'), S, started: _programmeStarted(), streak: calcStreakDays(), mondayLift: !!p1[0].isLift };
+      // Before the start nothing is due: a rest never breaks the streak, a session still counts.
+      __setNow(addDays(W, 3) + 'T18:00:00');
+      lsSet('kt_sessions', getSessions().concat(logs([[addDays(W, 3), 'Push']]).map(s => Object.assign(s, { id: s.id + 50 }))));
+      r.thu = calcStreakDays();
+      __setNow(addDays(W, 5) + 'T10:00:00');
+      r.sat = { streak: calcStreakDays(), chip: chip() };
+      __setNow(S + 'T10:00:00');
+      r.startDay = { streak: calcStreakDays(), chip: chip() };
+      // Week 1's Monday was a training day and went by unlogged: that one ends it.
+      __setNow(addDays(S, 1) + 'T10:00:00');
+      r.missed = calcStreakDays();
+      // Archiving the programme (no programme now) keeps what was lived under it.
+      __setNow(addDays(W, 5) + 'T10:00:00');
+      clearCustomRoutine();
+      r.archived = calcStreakDays();
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.before === 3, 'three calendar days with no programme: ' + JSON.stringify(out));
+    assert(out.built.anchor === out.built.S && !out.built.started && out.built.streak === 3, 'building the plan keeps the streak: ' + JSON.stringify(out.built));
+    assert(out.thu === 4, 'a session before the start counts: ' + out.thu);
+    assert(out.sat.streak === 4 && !/KEEP IT/.test(out.sat.chip), 'resting before the start keeps it and nothing nags: ' + JSON.stringify(out.sat));
+    assert(out.startDay.streak === 4 && (out.built.mondayLift ? /TRAIN TODAY TO KEEP IT/.test(out.startDay.chip) : true), 'day 1 is on the line, not yet lost: ' + JSON.stringify(out.startDay));
+    assert(out.built.mondayLift ? out.missed === 0 : out.missed === 4, 'a missed week-1 training day ends it: ' + out.missed);
+    assert(out.archived === 4, 'archiving keeps the days lived under the programme: ' + out.archived);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('round 2\'s first Monday reads the days before it as round 1\'s last week (M10)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf('Legs')), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const W = addDays(_mostRecentMonday(), 7), rows = [];
+      __setNow(addDays(W, 2) + 'T18:00:00');
+      // Week 12 (the last) began on W, Sundays are rest there and Legs everywhere else.
+      const cr = getCustomRoutine(); cr.weeks[11].weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; setCustomRoutine(cr);
+      currentWeek = 12; lsSet('kt_week', 12); localStorage.setItem('kt_week_monday', W); localStorage.setItem('kt_final_since', W);
+      lsSet('kt_streak_days', {});
+      rows.push([addDays(W, -7), 'Push'], [addDays(W, -5), 'Pull'], [addDays(W, -3), 'Legs'], [addDays(W, -1), 'Legs'], [W, 'Push'], [addDays(W, 2), 'Pull']);
+      lsSet('kt_sessions', logs(rows));
+      // Round 2 set for the Monday after; Friday's Legs done; Sunday evening.
+      lsSet('kt_routine_next', { startsOn: addDays(W, 7), at: addDays(W, 2) });
+      __setNow(addDays(W, 4) + 'T18:00:00');
+      lsSet('kt_sessions', getSessions().concat(logs([[addDays(W, 4), 'Legs']]).map(s => Object.assign(s, { id: s.id + 50 }))));
+      __setNow(addDays(W, 6) + 'T20:00:00');
+      r.sunday = calcStreakDays();
+      // The round swaps in on its morning.
+      __setNow(addDays(W, 7) + 'T08:00:00');
+      const nb = _applyNextRound(false);
+      r.round2 = { swapped: !!nb, week: currentWeek, cycle: getCustomRoutine().cycle, streak: calcStreakDays() };
+      // With nothing written down (a round started on an older page), round 1's weeks still answer.
+      lsDel('kt_streak_days');
+      r.unwritten = calcStreakDays();
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.sunday === 7, 'seven trained days by the final Sunday: ' + out.sunday);
+    assert(out.round2.swapped && out.round2.week === 1 && out.round2.cycle === 2 && out.round2.streak === 7,
+      'round 2\'s first Monday keeps the streak (Sunday was a rest day in week 12): ' + JSON.stringify(out.round2));
+    assert(out.unwritten === 7, 'the days before week 1 are read as round 1\'s weeks: ' + out.unwritten);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
