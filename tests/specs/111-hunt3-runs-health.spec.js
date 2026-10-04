@@ -39,6 +39,8 @@
 //   asks to set up a plan instead of showing the hard-coded fallback week.
 // - L32: before week 1 begins, Log › Run says when it starts (as Today's STARTS MON), offers
 //   "Log a run" rather than today's run, and lists WEEK 1 with no day marked today.
+// - Extra (found while fixing L32, in no cluster's list): the coach's run note in the Log › Run
+//   hero body was inserted as HTML; the hero body is plain text now.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -664,6 +666,25 @@ run('L32: before week 1 begins, Log › Run says when it starts and plans no run
     assert(/Log a run/.test(out.pre.cta) && !/Start run/.test(out.pre.cta), 'the CTA logs a run, it does not start today\'s: ' + out.pre.cta);
     assert(out.pre.list === 'WEEK 1' && out.pre.today === false, 'the list is week 1 with no day marked today: ' + JSON.stringify(out.pre));
     assert(/today\./.test(out.on.hero) && /Start run/.test(out.on.cta) && out.on.list === 'THIS WEEK' && out.on.today, 'once started, today\'s run is today\'s: ' + JSON.stringify(out.on));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('extra (found with L32): the coach\'s run note in the Log › Run hero shows as text', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const dow = (new Date().getDay() + 6) % 7;
+      const cr = getCustomRoutine(), w = cr.weeks[currentWeek - 1];
+      const plan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; plan[dow] = 'Run';
+      w.weekPlan = plan; w.runs = {}; w.runs[DOW_NAMES[dow]] = { km: 5, note: 'Strides <b>x6</b> <img src=x onerror="window.__ran=(window.__ran||0)+1">' };
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('run'); await wait(80);
+      const hero = document.querySelector('#screen .kt-hero-body');
+      return { ran: window.__ran || 0, tags: hero.querySelectorAll('b, img').length, text: hero.textContent };
+    });
+    assert(out.ran === 0 && out.tags === 0 && /Strides <b>x6<\/b>/.test(out.text), 'the note reads as written and runs nothing: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

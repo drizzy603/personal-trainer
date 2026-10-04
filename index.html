@@ -8146,7 +8146,7 @@ function renderRunSegment(){
       '<span class="kt-line2'+(line2Class?' '+line2Class:'')+'">'+_esc(line2)+'</span>'+
     '</h1>'+
     deloadBadge+
-    '<div class="kt-hero-body">'+body+'</div>'+
+    '<div class="kt-hero-body">'+_esc(body)+'</div>'+   // plain text: it carries the coach's run note
     renderRunGoalLine()+
     '</div>';
 
