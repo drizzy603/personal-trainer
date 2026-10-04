@@ -17113,6 +17113,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   }
   var MAX_TURNS=15;
   var _cutShort=false;
+  var _carryOn=false;   // the next text continues a reply cut off at max_tokens
   var totalText='';
   var allToolCalls=[];
   _coachTurnScope='coach:'+Date.now();   // this reply's changes share one undo point
@@ -17227,8 +17228,15 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     }
     stopReason=(data&&data.stop_reason)||'';
 
-    // Accumulate text across all turns for final display
-    finishedBlocks.forEach(function(b){ if(b.type==='text') totalText+=b.text; });
+    // Accumulate text across all turns for final display. Each text block is its own paragraph
+    // ("On it." + "Bench is 170 lb" read "On it.Bench is 170 lb", and a %% block glued to the
+    // line before it printed raw), except the text that carries on a cut-off reply.
+    var _cont=_carryOn; _carryOn=false;
+    finishedBlocks.forEach(function(b){
+      if(b.type!=='text' || !b.text) return;
+      totalText+=(totalText && !_cont ? '\n\n' : '')+b.text;
+      _cont=false;
+    });
 
     // Record tool calls for pill UI
     var toolUses=finishedBlocks.filter(function(b){return b.type==='tool_use';});
@@ -17244,6 +17252,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // the turn through the tool_result continuation anyway.
     if(stopReason==='max_tokens' && !toolUses.length && _mtContinues<2){
       _mtContinues++;
+      _carryOn=true;
       apiMsgs.push({role:'user',content:'You were cut off (max_tokens). Continue exactly where you left off'+(intakeMode?' — finish the remaining weeks with a single update_routine_weeks call':'')+'.'});
       render(); scrollChatBottom();
       continue;

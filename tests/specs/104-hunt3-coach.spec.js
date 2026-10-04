@@ -23,6 +23,9 @@
 //   and markup the chip's inline handler cannot carry.
 // - L36 THIS WEEK'S PLAN prints each set's load when a top set and back-offs differ ("3×3,8,8 @
 //   225 lb" hid 225/185/185), in the "[edited by the user; you had …]" mark too.
+// - L39 a reply's text blocks from separate tool rounds are separate paragraphs ("On it.Bench is
+//   …" ran together and a %% block glued to the line before it printed raw); the text that
+//   carries on a reply cut off at max_tokens still joins it mid-word.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -351,4 +354,32 @@ run('L36: THIS WEEK\'S PLAN prints a top set and its back-offs, in the coach\'s 
       assert(app.errors.length === 0, u + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('L39: text from separate tool rounds is separate paragraphs; a cut-off reply carries on', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const mock = eval(MOCK), r = {};
+      const turn = async (replies, ask) => { mock(replies); coachMessages.push({ role: 'user', content: ask }); await runCoachTurn('sys', 'claude-haiku-4-5', 512); return coachMessages[coachMessages.length - 1].content; };
+      r.plain = await turn([{ content: [{ type: 'text', text: 'On it.' }, { type: 'tool_use', id: 't1', name: 'set_bench_goal', input: { weight: 250 } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: 'Your bench goal is 250 lb.' }], stop_reason: 'end_turn', usage: {} }], 'Set my bench goal to 250');
+      r.cut = await turn([{ content: [{ type: 'text', text: 'Your squat has climbed for three wee' }], stop_reason: 'max_tokens', usage: {} },
+        { content: [{ type: 'text', text: 'ks straight, so hold the load this week.' }], stop_reason: 'end_turn', usage: {} }], 'How is my squat?');
+      // a structured answer written after a tool round
+      r.blocks = await turn([{ content: [{ type: 'text', text: 'Logging that run now.' }, { type: 'tool_use', id: 't2', name: 'log_run', input: { distance: 5, time: '25:00' } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: '%%type: Run analysis\n%%metric: Distance | 5 km\nSolid steady effort.' }], stop_reason: 'end_turn', usage: {} }], 'I ran 5k in 25:00, log it');
+      currentTab = 'coach'; coachView = 'chat'; render(); await wait(30);
+      const screen = document.getElementById('screen');
+      r.eyebrows = [...screen.querySelectorAll('.kt-cmb-eyebrow')].map(e => e.textContent);
+      r.raw = screen.textContent.indexOf('%%') >= 0;
+      return r;
+    }, MOCK);
+    assert(out.plain === 'On it.\n\nYour bench goal is 250 lb.', 'two rounds, two paragraphs: ' + JSON.stringify(out.plain));
+    assert(out.cut === 'Your squat has climbed for three weeks straight, so hold the load this week.', 'a reply cut off at max_tokens carries on mid-word: ' + JSON.stringify(out.cut));
+    assert(out.blocks.indexOf('Logging that run now.\n\n%%type: Run analysis') === 0, 'the %% block starts its own line: ' + JSON.stringify(out.blocks));
+    assert(out.eyebrows.indexOf('COACH · Run analysis') >= 0 && !out.raw, 'the structured answer renders, no raw markers: ' + JSON.stringify(out.eyebrows));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
