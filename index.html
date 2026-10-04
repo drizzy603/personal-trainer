@@ -19979,6 +19979,7 @@ loadCoachHistory();
 // kt_final_since is a raw date; backups used to read it as JSON, which parked a copy here
 // and toasted "unreadable data" on every final-week launch. Nothing else writes this key.
 try{ localStorage.removeItem('kt_final_since_corrupt'); }catch(e){}
+_dropStalePreRestore();   // a restore's undo copy past its week
 // Take back the demo loads the first finished session saved as the user's own: an entry still
 // at its demo value for a lift that was never logged. Once per device at boot, and after every
 // restore (an older backup carries them again).
@@ -19999,7 +20000,6 @@ function _sweepDemoWeights(force){
   }catch(e){}
 }
 _sweepDemoWeights(false);
-_dropStalePreRestore();
 _restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
