@@ -7,6 +7,9 @@
 //   reads Lower (no trailing space), and two names that shorten alike get their last initial (L44).
 // - Progress > Strength opens the curve of a lift with an apostrophe (Farmer's Carry) (M40).
 // - The runner's exercise picker swaps in, adds and creates a name with a double quote (Box Jump 30") (M41).
+// - A custom CrossFit movement with an apostrophe (Devil's Press) can be picked again on the next WOD (M42).
+// - Coach starter chips send their text whatever it holds (yesterday's, a quote, markup) and show it as
+//   text (M43).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -132,6 +135,39 @@ run('the runner picker takes a name with a double quote (M41)', async () => {
     assert(swapped === 'Box Jump 30"', 'swap picks the quoted name: ' + JSON.stringify(swapped));
     assert(added[1] === 'Box Jump 30"', 'add puts it after the card: ' + JSON.stringify(added));
     assert(created.session[1] === 'Box Jump 24"' && created.custom.indexOf('Box Jump 24"') >= 0, 'Create files and adds the typed name, trimmed: ' + JSON.stringify(created));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('list buttons survive an apostrophe: CrossFit movements and coach chips (M42, M43)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test', kt_coach_msgs: '[]' } });
+  try {
+    const p = app.page;
+    // M42: add "Devil's Press" once, then pick it from the list on the next WOD
+    await p.evaluate(() => { switchTab('log'); switchLogSub('sport'); pickSport('CrossFit'); });
+    await p.locator('#screen button', { hasText: '+ Add movement' }).first().click();
+    await p.locator('#cfPickerSearch').fill("Devil's Press");
+    await p.locator('#cfPickerList button', { hasText: '+ Add' }).click();
+    await p.evaluate(() => { cfDraftMoves = []; render(); });
+    await p.locator('#screen button', { hasText: '+ Add movement' }).first().click();
+    await p.locator('#cfPickerSearch').fill('devil');
+    await p.locator('#cfPickerList button', { hasText: "Devil's Press" }).first().click();
+    const cf = await p.evaluate(() => ({ moves: cfDraftMoves.map(m => m.name), open: !!document.getElementById('cfPickerOverlay') }));
+    assert(cf.moves.length === 1 && cf.moves[0] === "Devil's Press" && !cf.open, 'the saved movement is picked and the picker closes: ' + JSON.stringify(cf));
+    // M43: every starter chip sends exactly its text
+    const CH = ["Recovery tips after yesterday's Pull?", 'Is a 30" box jump <b>too</b> high?', 'Am I progressing on track?'];
+    await p.evaluate((CH) => {
+      window.__sent = [];
+      window.sendCoachMessage = function () { const i = document.getElementById('coach-input'); window.__sent.push(i ? i.value : '(no input)'); };
+      window.getCoachChips = function () { return CH.slice(); };
+      switchTab('coach'); openCoachChat();
+    }, CH);
+    const chips = p.locator('#screen button[onclick^="sendCoachChip"]');
+    const shown = await chips.allTextContents();
+    for (let i = 0; i < CH.length; i++) await chips.nth(i).click();
+    const sent = await p.evaluate(() => window.__sent);
+    assert(JSON.stringify(shown) === JSON.stringify(CH), 'chips show their text as text: ' + JSON.stringify(shown));
+    assert(JSON.stringify(sent) === JSON.stringify(CH), 'each chip sends its own text: ' + JSON.stringify(sent));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

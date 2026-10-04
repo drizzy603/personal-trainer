@@ -18020,10 +18020,10 @@ function renderCoach(){
     :'')+
     '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">'+
     CHIPS.map(function(c){
-      return '<button onclick="sendCoachChip(\''+c.replace(/'/g,"&#39;")+'\')" '+
+      return '<button data-msg="'+_esc(c)+'" onclick="sendCoachChip(this.dataset.msg)" '+
         'style="background:transparent;border:1px solid var(--border);border-radius:999px;'+
         'padding:8px 14px;font-size:13px;font-weight:500;color:var(--lite);cursor:pointer;font-family:inherit;'+
-        'white-space:nowrap;-webkit-tap-highlight-color:transparent;">'+c+'</button>';
+        'white-space:nowrap;-webkit-tap-highlight-color:transparent;">'+_esc(c)+'</button>';
     }).join('')+
     '</div>';
   }else{
@@ -19150,7 +19150,7 @@ function _buildCFPickerList(){
   var all=getAllCFMovements();
   var hits=all.filter(function(m){ return !q || m.toLowerCase().indexOf(q)>-1; });
   var html=hits.slice(0,60).map(function(m){
-    return '<button onclick="addCFMove(\''+_esc(m).replace(/'/g,'&#39;')+'\')" style="display:block;width:100%;text-align:left;'+
+    return '<button data-n="'+_esc(m)+'" onclick="addCFMove(this.dataset.n)" style="display:block;width:100%;text-align:left;'+
       'padding:12px 4px;min-height:44px;box-sizing:border-box;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);'+
       'font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_esc(m)+'</button>';
   }).join('');
