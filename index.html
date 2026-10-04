@@ -12736,13 +12736,13 @@ function _renderSportField(f){
   if(f.type==='select'){
     // Starts on "—" (as the + tab's wells do): the first option was saved for every log, so
     // every pickup game was a Win and an empty tap passed the "add a detail" guard.
-    return '<div><label style="'+lbl+'">'+label+'</label>'+
+    return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
       '<select id="sp_'+f.id+'" style="'+inp+'"><option value="" selected>—</option>'+
-      f.opts.map(function(o){return '<option>'+o+'</option>';}).join('')+'</select></div>';
+      (f.opts||[]).map(function(o){return '<option>'+_esc(o)+'</option>';}).join('')+'</select></div>';
   }
-  return '<div><label style="'+lbl+'">'+label+'</label>'+
-    '<input type="'+f.type+'" id="sp_'+f.id+'" placeholder="'+(f.ph||'')+'"'+
-    (f.step?' step="'+f.step+'"':'')+' style="'+inp+'"/></div>';
+  return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
+    '<input type="'+(f.type==='number'?'number':'text')+'" id="sp_'+f.id+'" placeholder="'+_esc(f.ph||'')+'"'+
+    (f.step?' step="'+_esc(f.step)+'"':'')+' style="'+inp+'"/></div>';
 }
 
 function _renderSportFields(sport){
@@ -12776,9 +12776,9 @@ function renderRecentSportLogs(){
       return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'+
         sportChip(s,36,false,'kt-sport-chip-row')+
         '<div style="flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openSportLogEditor('+log.id+')">'+
-          '<div style="font-size:14px;font-weight:700;">'+log.type+(log.duration?' · '+log.duration+' min':'')+'</div>'+
-          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+sum:'')+'</div>'+
-          (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+log.notes+'</div>':'')+
+          '<div style="font-size:14px;font-weight:700;">'+_esc(log.type)+(log.duration?' · '+_esc(log.duration)+' min':'')+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+_esc(sum):'')+'</div>'+
+          (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(log.notes)+'</div>':'')+
         '</div>'+
         '<button onclick="deleteSportLog('+log.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
       '</div>';
@@ -12815,8 +12815,8 @@ function renderActivityCards(){
       '<div style="font-size:11px;color:var(--muted);line-height:1.7;">'+
         count+' session'+(count===1?'':'s')+
         (freqStr?'<br>'+freqStr:'')+
-        (last.duration&&last.duration>0?'<br>Last: '+last.duration+'min':'')+
-        (sum?'<br>'+sum:'')+
+        (last.duration&&last.duration>0?'<br>Last: '+_esc(last.duration)+'min':'')+
+        (sum?'<br>'+_esc(sum):'')+
       '</div>'+
       '<div class="kt-actcard-log" style="margin-top:10px;padding:6px 0;border-radius:10px;background:'+s.color+';text-align:center;'+
         'font-size:11px;font-weight:800;color:#000;">Log '+(active?'✓':'+')+'</div>'+
@@ -12974,7 +12974,7 @@ function renderSportEditorial(){
   if(!d.f) d.f = {};
   var sync = ' oninput="sportLogDraft.';
   function _wellField(f, span){
-    var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(_spUnit(f.unit)).toUpperCase()):'');
+    var lblTxt = _esc(String(f.label||'').toUpperCase())+(f.unit?' · '+_esc(String(_spUnit(f.unit)).toUpperCase()):'');
     var fSync = ' oninput="sportLogDraft.f[\''+f.id+'\']=this.value"';
     var val = d.f[f.id]!=null?String(d.f[f.id]):'';
     var spanStyle = span?' style="grid-column:1/-1;"':'';
@@ -13247,7 +13247,7 @@ function renderSportSection(forcedSportId){
           '<div class="run-dot" style="background:'+sport.color+';"></div>'+
           '<div class="run-card-body">'+
             '<div class="run-card-day">'+FULL_DAY[s.dow]+' · '+sport.id+'</div>'+
-            '<div class="run-card-main">'+(s.data.note||'No specific plan — log whatever you do.')+'</div>'+
+            '<div class="run-card-main">'+_esc(s.data.note||'No specific plan — log whatever you do.')+'</div>'+
           '</div>'+
         '</div>';
       }).join('');
@@ -13521,7 +13521,7 @@ function renderSportProgress(){
     var html='<div class="chart-card" style="margin-bottom:12px;">'+
       '<div class="chart-head"><div style="display:flex;align-items:center;gap:10px;">'+
         sportChip(s,32)+
-        '<div><div class="chart-lbl">'+type+'</div>'+
+        '<div><div class="chart-lbl">'+_esc(type)+'</div>'+
         '<div style="font-size:12px;color:var(--muted);">'+n+' session'+(n===1?'':'s')+'</div></div>'+
       '</div></div>';
 
@@ -13568,8 +13568,8 @@ function renderSportProgress(){
     } else if(type==='CrossFit'){
       var last=tl[0];
       html+='<div style="margin:10px 0 4px;">';
-      if(last.data&&last.data.wodName) html+='<div style="font-size:13px;color:var(--muted);">Last WOD: <span style="color:var(--text);font-weight:700;">'+last.data.wodName+'</span></div>';
-      if(last.data&&last.data.score) html+='<div style="font-size:13px;color:var(--muted);margin-top:4px;">Score: <span style="color:var(--text);font-weight:700;">'+last.data.score+'</span></div>';
+      if(last.data&&last.data.wodName) html+='<div style="font-size:13px;color:var(--muted);">Last WOD: <span style="color:var(--text);font-weight:700;">'+_esc(last.data.wodName)+'</span></div>';
+      if(last.data&&last.data.score) html+='<div style="font-size:13px;color:var(--muted);margin-top:4px;">Score: <span style="color:var(--text);font-weight:700;">'+_esc(last.data.score)+'</span></div>';
       html+='</div>';
     }
 

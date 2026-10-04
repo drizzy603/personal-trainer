@@ -26,6 +26,9 @@
 // - M03: no log is filed ahead of today, as runs already were: the runner's finish (its date
 //   field stops at today), the coach's log_session / log_sport / log_bodyweight, the + tab, the
 //   pinned activity form, the activity editor, the day sheet's typed date, weigh-ins.
+// - M44: activity tabs (Recent, My Activities, the pinned form's custom fields, the + tab's wells,
+//   the coach's day note) and Progress › Sports show notes, opponents, WODs, types and custom
+//   field labels / options / placeholders as text: "<Mike>" vanished and coach markup ran.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -471,6 +474,56 @@ run('M03: nothing is filed ahead of today (runner, coach logs, activity forms an
     assert(out.moves.run && out.moves.sess && out.moves.sport && /earlier date/.test(out.moves.toast), 'a typed future date moves nothing: ' + JSON.stringify(out.moves));
     assert(out.moveBack, 'a past date still moves the run');
     assert(out.bw === 0, 'a weigh-in ahead is refused');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M44: activity tabs show notes, opponents, WODs, types and custom fields as text, never markup', async () => {
+  const XSS = '<img src=x onerror="window.__ran=(window.__ran||0)+1">';
+  const app = await boot({ native: true, seed: {
+    kt_sports: '[]', kt_log_tabs: JSON.stringify(['Cycling', 'run', 'body']),
+    kt_sport_fields: JSON.stringify({
+      Cycling: [{ id: 'c_waves', label: '<i>Waves</i>', type: 'select', opts: ['<u>Big</u>', 'Small'] }, { id: 'c_cad', label: 'Cadence', type: 'number', unit: '<s>rpm</s>', ph: '"9" <b>' }],
+      Yoga: [{ id: 'c_mood', label: '<i>Mood</i> & feel', type: 'text', ph: '<b>calm</b>' }],
+    }) } });
+  try {
+    const out = await app.page.evaluate(async (XSS) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const d = addDays(todayISO(), -1);
+      lsSet('kt_sports', [
+        { id: 1785000000005, date: d, type: 'Cycling', duration: 45, data: { c_waves: '<u>Big</u>' }, notes: 'Rode with <Mike> and Sam ' + XSS },
+        { id: 1785000000004, date: d, type: 'Pickleball', duration: 60, data: { setsWon: 2, setsLost: 1, opponent: 'Tom & Ana <the twins>' }, notes: '' },
+        { id: 1785000000003, date: d, type: 'CrossFit', duration: 20, data: { wodName: '<b>Fran</b>', score: '3:10' + XSS }, notes: '' },
+        { id: 1785000000002, date: d, type: '<b>Rugby</b>' + XSS, duration: 80, data: {}, notes: '' },
+      ]);
+      // a coach-written note on this week's Cycling day
+      const cr = getCustomRoutine(), wk = cr.weeks[currentWeek - 1];
+      wk.sports = Object.assign({}, wk.sports || {}, { Mon: { type: 'Cycling', note: 'Spin <b>easy</b>' + XSS } });
+      setCustomRoutine(cr);
+      const scr = () => document.getElementById('screen');
+      // elements built from the logged text (the page's own <b>s say other things)
+      const tags = () => scr().querySelectorAll('img[src="x"]').length +
+        [...scr().querySelectorAll('i, u, s, b')].filter(e => /^(Waves|Big|rpm|Fran|Rugby|easy|calm|Mood)$/.test(e.textContent.trim())).length;
+      const r = { pages: {} };
+      switchTab('log'); switchLogSub('Cycling'); await wait(50);
+      r.pages.cycling = { tags: tags(), text: scr().textContent };
+      switchLogSub('sport'); pickSport('Yoga'); await wait(50);
+      r.pages.plus = { tags: tags(), text: scr().textContent, ph: (scr().querySelector('.kt-sport-well-input[placeholder*="calm"]') || {}).placeholder || '' };
+      progressTab = 'sports'; switchTab('progress'); await wait(50);
+      r.pages.progress = { tags: tags(), text: scr().textContent };
+      progressTab = 'lifts';
+      r.ran = window.__ran || 0;
+      return r;
+    }, XSS);
+    const c = out.pages.cycling, p = out.pages.plus, g = out.pages.progress;
+    assert(out.ran === 0, 'no logged or coach-written markup runs: ' + out.ran);
+    assert(c.tags === 0 && p.tags === 0 && g.tags === 0, 'no element is made from log text: ' + JSON.stringify([c.tags, p.tags, g.tags]));
+    assert(c.text.includes('Rode with <Mike> and Sam') && c.text.includes('vs Tom & Ana <the twins>'), 'notes and opponents read as typed on the activity tab');
+    assert(c.text.includes('<b>Rugby</b>') && c.text.includes('<b>Fran</b>'), 'types and WOD names read as typed in the cards and Recent');
+    assert(c.text.includes('<I>WAVES</I>') || c.text.includes('<i>Waves</i>'), 'a custom field label reads as typed on the pinned form');
+    assert(c.text.includes('<u>Big</u>') && c.text.includes('Spin <b>easy</b>'), 'custom options and the coach\'s day note read as typed');
+    assert(p.text.includes('<I>MOOD</I> & FEEL') && p.ph === '<b>calm</b>', 'the + tab well label and placeholder read as typed: ' + p.ph);
+    assert(g.text.includes('<b>Fran</b>') && g.text.includes('<b>Rugby</b>'), 'Progress › Sports shows the WOD and the type as typed');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
