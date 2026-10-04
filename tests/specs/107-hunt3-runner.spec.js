@@ -11,6 +11,9 @@
 // - M34 the runner Edit sheet on a 'Max' row: the reps field is empty with 'Max' as its hint, a swap
 //   or a load change saves and keeps 'Max' (in the programme too, with Apply), typed reps are still
 //   an edit; untouched reps keep a range or per-set reps, an untouched load keeps per-set loads.
+// - M33 kg: a load that reads the same as the record (a programme load from the lb grid, a coach
+//   load) is not a new record: no live beat, no PR on the session, one RECORD HISTORY line; a real
+//   step up still is, lb is unchanged, and the records follow a unit switch.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -296,6 +299,51 @@ run('M34 the Edit sheet saves a swap or a load change on a Max row and keeps Max
     assert(JSON.stringify(out.perSet) === JSON.stringify(['Pendlay Row', [3, 8, 8], [225, 185, 185]]), 'a swap keeps a per-set scheme: ' + JSON.stringify(out.perSet));
     assert(JSON.stringify(out.perSetLoad) === JSON.stringify([[3, 8, 8], null, 135]), 'an edited load replaces the per-set loads: ' + JSON.stringify(out.perSetLoad));
     assert(JSON.stringify(out.range) === JSON.stringify([4, '8-10', 10]), 'a range stays a range: ' + JSON.stringify(out.range));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M33 kg: a load that reads the same as the record is not a new record', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_w: 'kg', kt_weights: '{}', kt_prs: '{}', kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      // the record: 61 kg typed a week ago; the programme still says 135 lb (written on the lb grid)
+      const rec = wStore('61');
+      lsSet('kt_sessions', [{ id: Date.now() - 7 * 864e5, date: addDays(todayISO(), -7), type: 'Push', label: 'Push', week: currentWeek, note: '', prs: ['Bench Press'],
+        exercises: [{ name: 'Bench Press', isMain: true, sets: 1, reps: [5], weight: rec, weightLog: [rec], rpe: 8, rpeLog: [8] }] }]);
+      recomputePRs();
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press') { e.weight = 135; delete e.weights; } });
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      r.shown = [fmtW(runnerWeights['Bench Press']), fmtW(getPRs()['Bench Press'])];
+      runnerSession.exercises = runnerSession.exercises.filter(e => e.name === 'Bench Press');
+      runnerExIdx = 0; runnerEngaged = true; runnerSetReps(5); runnerCompleteSet(); await wait(20);
+      r.beat = !!_runnerPrBeat;
+      r.eyebrow = !!document.querySelector('#runner-root .kt-pr-eyebrow');
+      runnerFinishSession(); await wait(250);
+      closeCompleteSheet();
+      r.prs = getSessions()[0].prs;
+      r.history = (_prChain('Bench Press') || []).length;
+      // the coach's 61.25 kg is stored as 135 lb and reads 61 kg too; a real step up is a record
+      r.coach = _prBeats(_coachLoadIn(61.25), rec);
+      r.up = _prBeats(wStore('62.5'), rec);
+      // the records follow a unit switch (lb counts the 135 over the 134.5)
+      setUnitW('lb'); await wait(20);
+      r.lb = { history: (_prChain('Bench Press') || []).length, cache: getPRs()['Bench Press'], beats: _prBeats(135, rec) };
+      setUnitW('kg'); await wait(20);
+      r.kgAgain = { history: (_prChain('Bench Press') || []).length, cache: getPRs()['Bench Press'] };
+      return r;
+    });
+    assert(out.shown[0] === out.shown[1], 'the programme load reads the same as the record: ' + JSON.stringify(out.shown));
+    assert(!out.beat && !out.eyebrow, 'no live record beat: ' + JSON.stringify([out.beat, out.eyebrow]));
+    assert(Array.isArray(out.prs) && out.prs.length === 0 && out.history === 1, 'no PR filed and one RECORD HISTORY line: ' + JSON.stringify([out.prs, out.history]));
+    assert(out.coach === false && out.up === true, 'a coach load that reads the same is not a record, a real step up is: ' + JSON.stringify([out.coach, out.up]));
+    assert(out.lb.history === 2 && out.lb.cache === 135 && out.lb.beats === true, 'in lb the heavier load is a record: ' + JSON.stringify(out.lb));
+    assert(out.kgAgain.history === 1 && out.kgAgain.cache === 134.5, 'back in kg the ledger and the cache follow: ' + JSON.stringify(out.kgAgain));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

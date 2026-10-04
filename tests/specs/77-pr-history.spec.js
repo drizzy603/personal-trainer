@@ -182,7 +182,10 @@ run('PR history: derived records, pills, sheet, detail row, units, rooms, edits'
     assert(/59 kg ?×1/.test(out.a14.pill) && !out.a14.shelfLb && /latest Pull Up \+11\.5 kg/.test(out.a14.head), '14 kg pills + header: ' + JSON.stringify(out.a14));
     assert(out.a14.s.cur === '59 kg × 1' && out.a14.s.gain === '+2.5 kg' && eq(out.a14.s.rows, ['56.5 kg × 2', '54.5 kg × 4', '45.5 kg × 5']) && eq(out.a14.s.chips, ['+2 kg', '+9 kg', 'FIRST']) && !out.a14.sheetLb,
       '14 kg sheet, gains on the displayed numbers: ' + JSON.stringify(out.a14.s));
-    assert(out.a14.curl.cur === '71.5 kg × 10' && out.a14.curl.gain === null && eq(out.a14.curl.chips, ['FIRST']), '14 records that round to the same kg carry no "+0": ' + JSON.stringify(out.a14.curl));
+    // A load that reads the same kg is not a new record (hunt 3, M33): one line, never a "+0" or a
+    // second '71.5 kg × 10' row under it.
+    assert(out.a14.curl.cur === '71.5 kg × 10' && out.a14.curl.gain === null && out.a14.curl.meta === '1 record' && out.a14.curl.rows.length === 0 && out.a14.curl.empty,
+      '14 a load that rounds to the same kg is not a new record: ' + JSON.stringify(out.a14.curl));
     assert(/PR · 59 kg × 1/.test(out.a14.detail), '14 kg detail row: ' + out.a14.detail);
     assert(/LAST LOGGED ?59 ?kg × 1/.test(out.a14.card) && /[+\u2212][\d.]+ KG · \d+ SESSIONS/.test(out.a14.card) && !/\blb\b|\bLB\b/.test(out.a14.card),
       '14 kg exercise card: hero, change chip and PR row agree on the unit: ' + out.a14.card);

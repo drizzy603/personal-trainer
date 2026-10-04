@@ -3827,11 +3827,12 @@ function _prTop(ex){
   ps.forEach(function(p){ if(p[0]>0 && Math.abs(p[1]-w)<0.01 && p[0]>r) r=p[0]; });
   return {w:w, r:r};
 }
-var _prLedgerMemo=null, _prLedgerV=-1;
+var _prLedgerMemo=null, _prLedgerV=-1, _prLedgerU='';
 // {chains:{'k:'+name:[entry oldest→newest]}, names:[first-seen order], latest:entry|null}
 // entry = {name, w (lb), r, date, id, type, label}. Treat as read-only.
+// Keyed on the weight unit too: in kg a record must read heavier (_prBeats).
 function _prLedger(){
-  if(_prLedgerMemo && _prLedgerV===_logsVersion) return _prLedgerMemo;
+  if(_prLedgerMemo && _prLedgerV===_logsVersion && _prLedgerU===_uW()) return _prLedgerMemo;
   var asc=getSessions().slice().sort(function(a,b){
     var ad=String((a&&a.date)||''), bd=String((b&&b.date)||'');
     if(ad!==bd) return ad<bd?-1:1;
@@ -3863,7 +3864,7 @@ function _prLedger(){
     if(first) latest=first;
   });
   _prLedgerMemo={chains:chains, names:names, latest:latest};
-  _prLedgerV=_logsVersion;
+  _prLedgerV=_logsVersion; _prLedgerU=_uW();
   return _prLedgerMemo;
 }
 function _prChain(name){ return _prLedger().chains['k:'+String(name==null?'':name)]||null; }
@@ -3909,7 +3910,10 @@ function _prGain(c, i){
 // Returns array of exercise names that set new PRs
 // A record beats the old one by more than storage rounding (kg loads are stored in
 // lb at 0.1, and older builds stepped at 0.01): the smallest real plate is 2.5 lb.
-function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2; }
+// In kg it must also read heavier, since loads show to 0.5 kg: a programme or coach
+// load of 135 lb and a typed 61 kg (134.5 lb) both read 61 kg, and logging the first
+// over the second said 'NEW RECORD · BEST WAS 61 KG'.
+function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2 && (_uW()!=='kg' || wDisp(w) > wDisp(best)); }
 // Only the newest log of a lift sets its working weight, and a backdated one can only raise
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
@@ -9558,7 +9562,8 @@ var _unitsAt=null;   // set only while a past coach tool call is labelled in the
 function _uW(){ if(_unitsAt) return _unitsAt.w==='kg'?'kg':'lb'; return localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb'; }
 function _uD(){ if(_unitsAt) return _unitsAt.d==='mi'?'mi':'km'; return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
 // The morning coach card is text written in the old unit: it goes with the switch.
-function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
+// The records cache follows too: in kg a record must read heavier (_prBeats).
+function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); try{ _syncPRCache(); }catch(e){} invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
 function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); invalidateCoachCard(); coachCard=null; render(); }
 function _inUnitsOf(tc, fn){
   var u=tc&&tc.units;
