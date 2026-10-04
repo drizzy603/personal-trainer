@@ -11353,7 +11353,11 @@ function runnerExEditStepReps(d){
 // A cleared field is no edit: the target stays as it was.
 function runnerExEditSetReps(v){ _rExEditReps=String(v).trim()===''&&_rExEditSeed ? _rExEditSeed.r : Math.max(1,parseInt(v)||1); }
 function runnerExEditStepWeight(d){
-  _rExEditWeight=Math.max(0,wStore(wDisp(_rExEditWeight||0)+parseFloat(d)));
+  var cur=parseFloat(_rExEditWeight)||0;
+  // kg steps from the exact load onto the 0.25 kg grid, stored like a typed value (as
+  // runnerStepWeight does): stepping from the display, rounded to 0.5 kg, made 80 kg + 3 steps 83.25.
+  if(_uW()==='kg') _rExEditWeight=wStore(Math.max(0, Math.round((cur/LB_PER_KG+parseFloat(d))*4)/4));
+  else _rExEditWeight=Math.max(0, Math.round((cur+parseFloat(d))*100)/100);
   var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=wDisp(_rExEditWeight);
 }
 function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,wStore(v)); }

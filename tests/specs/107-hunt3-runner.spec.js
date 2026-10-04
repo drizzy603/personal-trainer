@@ -16,6 +16,8 @@
 //   step up still is, lb is unchanged, and the records follow a unit switch.
 // - L12 the COMPLETE sheet's 'Vs last' and insight compare a backdated workout with the same day
 //   logged before it (the share card's rule), and read '—' when there is none.
+// - L13 kg: the runner Edit sheet's weight stepper steps from the exact load onto the 0.25 kg grid,
+//   like the runner's own stepper (it stepped from the 0.5 kg display: 80 kg + 3 steps stored 83.25).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -393,6 +395,38 @@ run('L12 the COMPLETE sheet compares a backdated workout with the day before it'
     const pct = (out.expect > 0 ? '+' : '') + out.expect + '%';
     assert(out.mid.tile && out.mid.tile.endsWith(pct) && out.mid.vsLast === out.expect,
       'a day between two is compared with the one before it, like the share card: ' + JSON.stringify([out.mid, out.expect]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L13 kg: the Edit sheet weight stepper lands where the runner stepper does', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_w: 'kg' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const n = runnerSession.exercises[0].name;
+      runnerWeights[n] = wStore('80'); runnerExIdx = 0;
+      openRunnerExEdit(0); await wait(20);
+      [1, 2, 3].forEach(() => runnerExEditStepWeight(1.25));
+      r.sheet = _rExEditWeight;
+      r.shown = document.getElementById('runner-ex-weight-input').value;
+      runnerExEditStepWeight(1.25); runnerExEditStepWeight(-1.25);
+      r.roundTrip = _rExEditWeight;
+      saveRunnerExEdit(); await wait(20);
+      r.saved = runnerWeights[n];
+      runnerWeights[n] = wStore('80');
+      [1, 2, 3].forEach(() => runnerStepWeight(wStepLb()));
+      r.runner = runnerWeights[n];
+      r.grid = wStore('83.75'); r.gridShown = String(wDisp(r.grid));
+      closeDeckRunner();
+      return r;
+    });
+    assert(out.sheet === out.grid && out.runner === out.grid && out.saved === out.grid, 'three 1.25 kg steps from 80 kg store 83.75 kg, as the runner stepper does: ' + JSON.stringify(out));
+    assert(out.roundTrip === out.grid, 'a step up and back lands on the same load: ' + JSON.stringify(out));
+    assert(out.shown === out.gridShown, 'the field shows the load: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
