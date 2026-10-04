@@ -12636,6 +12636,11 @@ function saveSportLog(){
   var logs=[rec].concat(getSportLogs());
   if(!lsSet('kt_sports',logs)) return;   // storage full: the form keeps what was typed
   invalidateCoachCard();
+  // The form starts over: render() keeps typed values, so a second tap filed the log again.
+  ['spDuration','spNotes','spAIDesc'].concat(getSportFields(sport.id).map(function(f){ return 'sp_'+f.id; })).forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  var _spd=document.getElementById('spDate'); if(_spd) _spd.value=todayISO();
   cfDraftMoves=[];
   sportLogConfirmed={id:rec.id,type:logSportType,label:sport.id+(dur?' · '+dur+' min':'')};
   checkMilestones({delayToast:600});
@@ -12715,8 +12720,10 @@ function _renderSportField(f){
     'letter-spacing:.05em;text-transform:uppercase;';
   var label=f.label+(f.unit?' ('+_spUnit(f.unit)+')':'');
   if(f.type==='select'){
+    // Starts on "—" (as the + tab's wells do): the first option was saved for every log, so
+    // every pickup game was a Win and an empty tap passed the "add a detail" guard.
     return '<div><label style="'+lbl+'">'+label+'</label>'+
-      '<select id="sp_'+f.id+'" style="'+inp+'">'+
+      '<select id="sp_'+f.id+'" style="'+inp+'"><option value="" selected>—</option>'+
       f.opts.map(function(o){return '<option>'+o+'</option>';}).join('')+'</select></div>';
   }
   return '<div><label style="'+lbl+'">'+label+'</label>'+

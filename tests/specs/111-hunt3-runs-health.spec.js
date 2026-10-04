@@ -16,6 +16,8 @@
 //   date + size for an old import; no UUIDs or readings) that rides in the iCloud copy, so a
 //   restore and an import no longer bring deleted workouts back; Undo takes it back, the coach's
 //   delete leaves one, Reset import clears them.
+// - M35: a pinned sport tab's selects start on "—" (every pickup game was a Win), an empty tap
+//   files nothing, and the form starts over after a save so a second tap does not duplicate it.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -292,6 +294,38 @@ run('M29: a Health run or ride the owner deleted stays deleted after a restore f
       'importing after the restore brings no deleted workout back: ' + JSON.stringify(out.afterImport));
     assert(out.coach === 4 && out.coachAfter === '8', 'a run the coach deleted stays deleted: ' + JSON.stringify([out.coach, out.coachAfter]));
     assert(out.reset === null, 'Reset import clears the tombstones: ' + JSON.stringify(out.reset));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M35: a pinned sport tab saves only what was chosen, refuses an empty tap and starts over after a save', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_log_tabs: JSON.stringify(['Basketball', 'run', 'body']) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const tap = () => [...document.querySelectorAll('#screen button')].find(b => /^Log Basketball$/.test(b.textContent.trim())).click();
+      switchTab('log'); switchLogSub('Basketball'); await wait(50);
+      r.selects = [...document.querySelectorAll('#screen select')].map(s => s.id + '=' + s.value).join();
+      tap(); await wait(30);
+      r.empty = { n: getSportLogs().length, toast: document.getElementById('toast').textContent };
+      const y = addDays(todayISO(), -1);
+      document.getElementById('spDate').value = y;
+      document.getElementById('spDuration').value = '45';
+      document.getElementById('sp_points').value = '12';
+      document.getElementById('sp_result').value = 'Loss';
+      tap(); await wait(30);
+      r.saved = getSportLogs().map(l => [l.date === y, l.duration, JSON.stringify(l.data)]);
+      r.form = ['spDuration', 'sp_points', 'sp_result', 'sp_gameType', 'spNotes'].map(id => document.getElementById(id).value).join('|') + ' date:' + (document.getElementById('spDate').value === todayISO());
+      tap(); await wait(30);   // a second tap on the cleared form files nothing
+      r.after = getSportLogs().length;
+      return r;
+    });
+    assert(out.selects === 'sp_result=,sp_gameType=', 'selects start on "—": ' + out.selects);
+    assert(out.empty.n === 0 && /Add a duration or a detail/.test(out.empty.toast), 'an empty tap files nothing: ' + JSON.stringify(out.empty));
+    assert(JSON.stringify(out.saved) === JSON.stringify([[true, 45, '{"result":"Loss","points":12}']]), 'the save holds only what was chosen: ' + JSON.stringify(out.saved));
+    assert(out.form === '|||| date:true', 'the form starts over after a save: ' + out.form);
+    assert(out.after === 1, 'a second tap does not file the log again: ' + out.after);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
