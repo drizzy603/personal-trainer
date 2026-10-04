@@ -28,6 +28,7 @@
 //   the earlier change keeps its undo point (L38).
 // - A restore's undo copy (kt_pre_restore) goes once its week is over: at launch, and before
 //   lsSet's retry when a save needs the room; a copy inside its week is never dropped (L01).
+// - The restore confirm names the local day the backup was exported, not the UTC one (L50).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -522,6 +523,29 @@ run('a restore\'s undo copy goes after its week: at launch, and when a save need
     assert(out.liveDrop === false && out.liveRow, 'inside its week it stays and Settings offers it: ' + JSON.stringify(out));
     assert(out.stale.ok === true && out.stale.copy === false, 'a save that needs the room drops a stale copy: ' + JSON.stringify(out.stale));
     assert(out.live.ok === false && out.live.copy === true, 'a live copy is never dropped for a save: ' + JSON.stringify(out.live));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('the restore confirm names the backup\'s local export day', async () => {
+  const app = await boot({ native: true });
+  try {
+    const seen = [];
+    // late evening and just after midnight, local: whichever side of UTC this runs on, one of them
+    // falls on another UTC day (TZ=UTC checks the plain case)
+    for (const at of [{ h: 23, m: 30 }, { h: 0, m: 30 }, { date: true }]) {
+      const { file, expect } = await app.page.evaluate((at) => {
+        const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(at.date ? 12 : at.h, at.date ? 0 : at.m, 0, 0);
+        const f = buildBackupJSON(); f._manifest.exportedAt = at.date ? _ymdLocal(d) : d.toISOString();
+        return { file: JSON.stringify(f), expect: fmtDate(_ymdLocal(d)) };
+      }, at);
+      const [fc] = await Promise.all([app.page.waitForEvent('filechooser'), app.page.evaluate(() => importData())]);
+      await fc.setFiles({ name: 'supero-backup.json', mimeType: 'application/json', buffer: Buffer.from(file) });
+      await app.page.waitForSelector('.kt-close-sheet');
+      const body = await app.page.evaluate(() => { const s = document.querySelector('.kt-close-sheet .kt-close-sheet-sub'); const t = s ? s.textContent : ''; document.querySelectorAll('.kt-close-sheet').forEach(e => e.remove()); return t; });
+      seen.push({ at, expect, ok: body.indexOf('Exported ' + expect + ' ') >= 0, body });
+    }
+    assert(seen.every(s => s.ok), 'the confirm says the local day it was exported: ' + JSON.stringify(seen));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

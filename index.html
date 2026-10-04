@@ -4191,7 +4191,9 @@ function importData() {
       var sess = (data.kt_sessions || []).length;
       var runs = (data.kt_runs || []).length;
       var m = data._manifest && typeof data._manifest==='object' ? data._manifest : null;
-      var origin = m && m.exportedAt ? ' Exported '+fmtDate(String(m.exportedAt).slice(0,10))+(m.build?' · build '+m.build:'')+'.' : '';
+      // The local day, like the file's name (the UTC day said "Oct 4" for a Saturday evening backup).
+      var exS = m && m.exportedAt ? String(m.exportedAt) : '', exAt = exS.length > 10 ? new Date(exS) : null;
+      var origin = exS ? ' Exported '+fmtDate(exAt && !isNaN(exAt.getTime()) ? _ymdLocal(exAt) : exS.slice(0,10))+(m.build?' · build '+m.build:'')+'.' : '';
       _ktConfirm({title:'Restore this backup?',
         body:sess+' sessions and '+runs+' runs will replace the data currently on this phone.'+origin+' You can undo this from Settings for 7 days.',
         confirmLabel:'Restore', confirmStyle:'var(--accent)',
