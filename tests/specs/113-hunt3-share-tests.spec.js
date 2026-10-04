@@ -11,6 +11,8 @@
 //   WEEK 04 · BUILD). This round's sessions read the programme as it stands (and follow a log
 //   moved to another week); an unstamped older one reads it only while no programme or round has
 //   replaced it since, else no block.
+// - L47: the card's duration rounds to whole minutes before it splits off the hours: the last
+//   30 s of every hour read "1 h 60 min" (and 59:30 read "60 min").
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -102,6 +104,20 @@ run('L46: a shared card keeps the block its session was trained in', async () =>
     assert(out.legacy0, 'an old unstamped log reads the programme while it is still the one it was logged in');
     assert(out.after.every(p => p === out.live.toUpperCase()) && out.legacy === '', 'after a new programme, a stamped card keeps its block and an unstamped one claims none: ' + JSON.stringify([out.after, out.legacy]));
     assert(out.fresh[0] === 'NEW2' && out.fresh[1] === 'NEW2' && out.moved === 'NEW1', 'the current programme\'s weeks read live: ' + JSON.stringify([out.fresh, out.moved]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L47: the share card rounds the minutes before it splits off the hours', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(() => {
+      const t = Date.now();
+      const dur = sec => _shareCardModel({ id: t, startedAt: t - sec * 1000, date: todayISO(), type: 'Push', week: 1, prs: [], exercises: [] }).duration;
+      // 1:59:40, 59:30, 1:00:10, 1:29:29, 64:00, 59:29
+      return [7180, 3570, 3610, 5369, 3840, 3569].map(dur);
+    });
+    assert(JSON.stringify(out) === JSON.stringify(['2 h 0 min', '1 h 0 min', '1 h 0 min', '1 h 29 min', '1 h 4 min', '59 min']), 'never "1 h 60 min" or "60 min": ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

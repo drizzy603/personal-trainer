@@ -15626,7 +15626,9 @@ function _shareCardModel(s){
   var pct=null;
   if(prevDay){ var pv=calcVolume(prevDay.exercises||[]); if(pv>0) pct=Math.round((vol-pv)/pv*100); }
   var dur=_cmpDurMs(s), rpe=_cmpAvgRpe(s);
-  var durTxt=dur ? (dur>=3600000 ? Math.floor(dur/3600000)+' h '+Math.round((dur%3600000)/60000)+' min' : Math.round(dur/60000)+' min') : '';
+  // Whole minutes first, then the hours: 1:59:40 read "1 h 60 min".
+  var durMin=dur ? Math.round(dur/60000) : 0;
+  var durTxt=durMin ? (durMin>=60 ? Math.floor(durMin/60)+' h '+(durMin%60)+' min' : durMin+' min') : '';
   var d=new Date(sd+'T00:00:00');
   var dateTxt=isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'}).toUpperCase();
   var records=prs.map(function(n){
