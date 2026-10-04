@@ -83,7 +83,7 @@ private struct UnfinishedRow: View {
                 .font(.system(size: 10, weight: .heavy, design: .monospaced))
                 .foregroundColor(.orange)
             Spacer()
-            Button { runner.reset(); WorkoutManager.shared.end() } label: {
+            Button { runner.reset(); WorkoutManager.shared.discard() } label: {
                 Text("Discard").font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
@@ -145,7 +145,23 @@ struct WatchExercise: Codable, Identifiable, Hashable {
     let weight: Double
     let rest: Int?              // seconds — phone resolves per-exercise/default
     let rpe: Int?               // target RPE from the programme (0/nil = none)
+    // A top-set/back-off row's per-set targets ([3,8,8] at [225,185,185]); older pages send only
+    // the first set's numbers above, and every set was prescribed and logged as the top set.
+    var repsList: [Int]? = nil
+    var weights: [Double]? = nil
     var id: String { name }
+    var perSetWeights: Bool { !(weights ?? []).isEmpty }
+    // Set i's target (0-based), the last entry repeating, as the phone's runner prescribes it.
+    func targetReps(_ i: Int) -> Int {
+        guard let l = repsList, !l.isEmpty else { return reps }
+        let r = l[min(max(0, i), l.count - 1)]
+        return r > 0 ? r : reps
+    }
+    func targetWeight(_ i: Int) -> Double {
+        guard let l = weights, !l.isEmpty else { return weight }
+        let w = l[min(max(0, i), l.count - 1)]
+        return w > 0 ? w : weight
+    }
 }
 
 struct WatchPlan: Codable, Equatable {
@@ -496,6 +512,18 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
         DispatchQueue.main.async { self.active = false; self.heartRate = 0 }
     }
 
+    // A session thrown away (Discard on the phone or here): its Health workout goes too. end()
+    // saved it, with its energy and ring credit, for sets nobody kept.
+    func discard() {
+        idleTimer?.invalidate(); idleTimer = nil
+        guard let s = session, let b = builder else { return }
+        session = nil
+        builder = nil
+        s.end()
+        b.discardWorkout()
+        DispatchQueue.main.async { self.active = false; self.heartRate = 0 }
+    }
+
     // MARK: HKWorkoutSessionDelegate
     func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
     func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
@@ -638,7 +666,7 @@ final class Runner: ObservableObject {
         restoring = false
     }
 
-    func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.weight }
+    func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.targetWeight(done(ex)) }
     func done(_ ex: WatchExercise) -> Int { repsDone[ex.name]?.count ?? 0 }
     func isComplete(_ ex: WatchExercise) -> Bool { done(ex) >= ex.sets }
 
@@ -676,9 +704,13 @@ final class Runner: ObservableObject {
         var rl = alignedRpe(ex.name, count: arr.count - 1, target: ex.rpe)   // sets merged from the phone
         rl.append(effort)
         rpeLog[ex.name] = rl
+        // A top-set/back-off row: the push carries this set's load (the phone fills the arrived
+        // set with it), then the next set opens at its own target, as on the phone.
+        if ex.perSetWeights { weights[ex.name] = wl[wl.count - 1] }
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
         pushLive()
+        if ex.perSetWeights && arr.count < ex.sets { weights[ex.name] = nil }
         if arr.count < ex.sets { startRest(seconds: ex.rest ?? 90) }
     }
 
@@ -890,6 +922,9 @@ final class Runner: ObservableObject {
         if changed {
             if startedAt == 0 { startedAt = live.startedAt }
             if sessionPlan == nil, let p = Connectivity.shared.plan, p.type == "lift" { sessionPlan = withLogged(p, from: nil) }
+            // A lift removed or renamed on the phone arrives as an empty log: with its sets gone
+            // here too, it leaves the list (the plan that came with this payload no longer has it).
+            else if let p = Connectivity.shared.plan { adopt(p) }
             WKInterfaceDevice.current().play(.click)
         }
         // The phone is missing sets we have — send ours back once; its own
@@ -978,10 +1013,12 @@ struct RootView: View {
                 // phone finish or discard after the wrist's own Finish used to
                 // drop it back to the plan at 0 sets.
                 if runner.synced && !runner.hasSets { WorkoutManager.shared.end(); return }
+                // Thrown away on the phone: the wrist drops its sets and its Health workout.
+                if live.discarded == true { runner.reset(); WorkoutManager.shared.discard(); return }
                 // Sets the phone never received (out of range) go to it as a
                 // wrist session, which the phone merges, rather than vanish;
                 // finish() leaves the Synced screen up, reset() would clear it.
-                if live.discarded != true && runner.hasSetsBeyond(live) { runner.finish(plan: plan) } else { runner.reset() }
+                if runner.hasSetsBeyond(live) { runner.finish(plan: plan) } else { runner.reset() }
                 WorkoutManager.shared.end(); return
             }
             guard live.isFresh, !runner.synced else { return }
@@ -1109,16 +1146,18 @@ struct ExerciseView: View {
     }
 
     private func seed(_ ex: WatchExercise) {
+        // The next set's own target: a back-off set after the top set opens at its reps.
+        let target = ex.targetReps(runner.done(ex))
         if let prev = seeded, prev != ex {
             // Swapped or edited on the phone while this screen was open:
             // adopt the new targets and say so — silently changing the
             // lift under the user's wrist would be worse than a banner.
-            reps = ex.reps
+            reps = target
             rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
-            changedOnPhone = prev.name != ex.name || prev.sets != ex.sets || prev.reps != ex.reps
+            changedOnPhone = prev.name != ex.name || prev.sets != ex.sets || prev.reps != ex.reps || prev.repsList != ex.repsList
             if changedOnPhone { WKInterfaceDevice.current().play(.notification) }
         } else if seeded == nil {
-            if reps == 0 { reps = ex.reps }
+            if reps == 0 { reps = target }
             rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
         }
         seeded = ex
@@ -1187,6 +1226,8 @@ struct ExerciseView: View {
             .navigationTitle(ex.name)
             .onAppear { seed(ex) }
             .onChange(of: ex) { newEx in seed(newEx) }
+            // A set logged here or mirrored from the phone: the next one opens at its own reps.
+            .onChange(of: runner.done(ex)) { n in if ex.repsList != nil { reps = ex.targetReps(n) } }
             .sheet(isPresented: $editingWeight) {
                 VStack(spacing: 12) {
                     Text("WEIGHT · " + unitLabel.uppercased())
@@ -1261,6 +1302,7 @@ struct OffDayView: View {
     // Match the emoji to the day — a Cycling day showing a runner reads wrong.
     private var emoji: String {
         if plan.type == "rest" { return "😴" }
+        if plan.type == "lift" { return "🏋️" }
         let n = plan.dayName.lowercased()
         if n.contains("cycl") || n.contains("bike") || n.contains("ride") { return "🚴" }
         if n.contains("swim") { return "🏊" }
@@ -1277,6 +1319,14 @@ struct OffDayView: View {
         return "🏅"
     }
 
+    // A lift day lands here only with no exercises (nobody has built it yet). Health never brings
+    // a strength workout back, so the cardio line told it to track a day it cannot.
+    private var detail: String {
+        if plan.type == "rest" { return "Recover well." }
+        if plan.type == "lift" { return "No lifts in it yet. Build it in Fitness Programmer on your iPhone — it lands here." }
+        return "Track it with your workout app — Fitness Programmer picks it up from Health."
+    }
+
     var body: some View {
         // A stale rest/run plan masquerading as today is exactly as wrong as
         // a stale lift plan — same banner, same one-tap sync.
@@ -1290,7 +1340,7 @@ struct OffDayView: View {
                     .font(.system(size: 34))
                 Text(plan.type == "rest" ? "Rest day" : "\(plan.dayName) day")
                     .font(.system(size: 17, weight: .heavy))
-                Text(plan.type == "rest" ? "Recover well." : "Track it with your workout app — Fitness Programmer picks it up from Health.")
+                Text(detail)
                     .font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
             .padding(.horizontal, 6)
