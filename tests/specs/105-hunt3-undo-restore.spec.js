@@ -75,3 +75,95 @@ run('a round that swaps in at launch retires the stored PLAN CHANGES card', asyn
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// A storage quota measured like the browser's (a replaced value counts once): `room` characters
+// above what is stored now.
+const QUOTA = `(room) => { const orig = window.__origSet || Storage.prototype.setItem; window.__origSet = orig;
+  const used = () => { let u = 0; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); u += k.length + (localStorage.getItem(k) || '').length; } return u; };
+  const limit = used() + room;
+  Storage.prototype.setItem = function (k, v) { const old = this.getItem(k); const next = used() - (old == null ? 0 : k.length + old.length) + k.length + String(v).length;
+    if (next > limit) { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); }; }`;
+const ROOM = `() => { if (window.__origSet) Storage.prototype.setItem = window.__origSet; }`;
+
+run('a restore or an undo that runs out of space keeps the undo copy of what was here', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ([QUOTA, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const quota = eval(QUOTA), room = eval(ROOM), r = {};
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      const copy = () => { const s = JSON.parse(localStorage.getItem('kt_pre_restore') || 'null'); return s ? s.data.kt_sessions.length : null; };
+      const clone = o => JSON.parse(JSON.stringify(o));
+      const base = buildBackupJSON(), O = getSessions().length;
+      const A = clone(base); A.kt_sessions = A.kt_sessions.slice(0, 3).map(s => Object.assign({}, s, { id: s.id + 7000000 }));
+      const B = clone(base); B.kt_runs = []; for (let i = 0; i < 2000; i++) B.kt_runs.push(Object.assign({}, base.kt_runs[i % base.kt_runs.length], { id: 9000000 + i }));
+      r.a = { res: _applyImportedData(clone(A)), sessions: getSessions().length, copy: copy() };
+      // a second restore that cannot fit: nothing changes, and Undo still brings back what was here before the first
+      quota(5000);
+      const resB = _applyImportedData(clone(B));
+      room();
+      r.b = { res: resB, sessions: getSessions().length, copy: copy(), toast: toast() };
+      // Undo on a nearly full phone: it stops, and the copy stays
+      quota(500);
+      _undoLastRestore(); await wait(20); confirm(); await wait(30);
+      room();
+      r.undoFull = { sessions: getSessions().length, copy: copy(), toast: toast() };
+      // with room it brings the data back, and the copy goes
+      _undoLastRestore(); await wait(20); confirm(); await wait(30);
+      r.undo = { sessions: getSessions().length, copy: copy() };
+      r.O = O;
+      return r;
+    }, [QUOTA, ROOM]);
+    assert(out.a.res === true && out.a.sessions === 3 && out.a.copy === out.O, 'the first restore applies and keeps a copy: ' + JSON.stringify(out.a));
+    assert(out.b.res === false && out.b.sessions === 3 && out.b.copy === out.O && /Nothing was changed/.test(out.b.toast), 'a stopped restore puts the earlier copy back: ' + JSON.stringify(out.b));
+    assert(out.undoFull.sessions === 3 && out.undoFull.copy === out.O && /Undo stopped/.test(out.undoFull.toast), 'an undo that runs out of space keeps the copy: ' + JSON.stringify(out.undoFull));
+    assert(out.undo.sessions === out.O && out.undo.copy === null, 'with room, Undo brings the data back and the copy goes: ' + JSON.stringify(out.undo));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a restore that stops half way puts every key back, or says so and keeps the copy', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ([QUOTA, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const quota = eval(QUOTA), room = eval(ROOM), r = {};
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      const msgs = []; for (let i = 0; i < 6; i++) msgs.push({ role: i % 2 ? 'assistant' : 'user', content: 'message ' + i + ' ' + 'lorem ipsum '.repeat(40) });
+      localStorage.setItem('kt_coach_msgs', JSON.stringify(msgs)); delete _lsCache['kt_coach_msgs'];
+      const sess0 = localStorage.getItem('kt_sessions'), runs0 = localStorage.getItem('kt_runs'), chat0 = localStorage.getItem('kt_coach_msgs');
+      // the backup: fewer sessions, more runs (fitting only in the room the sessions free) and a longer chat (the write that fails)
+      const b = buildBackupJSON(); delete b._manifest;
+      const S0 = JSON.stringify(b.kt_sessions).length;
+      b.kt_sessions = b.kt_sessions.slice(0, 4);
+      const S4 = JSON.stringify(b.kt_sessions).length, R0 = JSON.stringify(b.kt_runs).length;
+      const extra = Object.assign({}, b.kt_runs[0], { id: 1700000000000, date: '2026-05-01', note: '' });
+      b.kt_runs = b.kt_runs.concat([extra]);
+      extra.note = 'n'.repeat(R0 + (S0 - S4) - 1000 - JSON.stringify(b.kt_runs).length);
+      b.kt_coach_msgs = msgs.concat([{ role: 'user', content: 'z'.repeat(10000) }]);
+      const snap = buildBackupJSON(); delete snap._manifest;
+      quota('kt_pre_restore'.length + JSON.stringify({ at: Date.now(), data: snap }).length + 2000);
+      const res = _applyImportedData(JSON.parse(JSON.stringify(b)));
+      room();
+      r.ordered = { res, sess: localStorage.getItem('kt_sessions') === sess0, runs: localStorage.getItem('kt_runs') === runs0, chat: localStorage.getItem('kt_coach_msgs') === chat0,
+        copy: localStorage.getItem('kt_pre_restore') === null ? null : 'kept', toast: toast(), app: getSessions().length === JSON.parse(sess0).length };
+      // a key that cannot be put back: the toast says so, and the copy holds what was here
+      let n = 0; const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === 'kt_coach_msgs' || (k === 'kt_sessions' && ++n > 1)) { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); };
+      const res2 = _applyImportedData(JSON.parse(JSON.stringify(b)));
+      Storage.prototype.setItem = orig;
+      const c = JSON.parse(localStorage.getItem('kt_pre_restore') || 'null');
+      r.stuck = { res: res2, toast: toast(), copy: !!c && JSON.stringify(c.data.kt_sessions) === sess0 };
+      _undoLastRestore(); await wait(20); confirm(); await wait(30);
+      r.back = { sess: localStorage.getItem('kt_sessions') === sess0, copy: localStorage.getItem('kt_pre_restore') === null ? null : 'kept' };
+      return r;
+    }, [QUOTA, ROOM]);
+    assert(out.ordered.res === false && out.ordered.sess && out.ordered.runs && out.ordered.chat && out.ordered.app, 'every key is put back: ' + JSON.stringify(out.ordered));
+    assert(/Nothing was changed/.test(out.ordered.toast) && out.ordered.copy === null, 'nothing changed, and no stray undo copy: ' + JSON.stringify(out.ordered));
+    assert(out.stuck.res === false && /before everything could be put back/.test(out.stuck.toast) && out.stuck.copy, 'a key that cannot be put back is said, and the copy holds what was here: ' + JSON.stringify(out.stuck));
+    assert(out.back.sess && out.back.copy === null, 'Undo last restore brings it back: ' + JSON.stringify(out.back));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

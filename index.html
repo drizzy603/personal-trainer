@@ -3969,7 +3969,8 @@ function _undoLastRestore(){
   _ktConfirm({title:'Undo the last restore?',
     body:'Brings back '+_plural(sess,'session')+' and '+_plural(runs,'run')+' from '+fmtDate(_ymdLocal(new Date(snap.at)))+', replacing what the restore put here.',
     confirmLabel:'Undo restore', confirmStyle:'var(--accent)',
-    onConfirm:function(){ _applyImportedData(snap.data); try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} }});
+    // The copy goes only once it is back: an undo that ran out of space used to delete it anyway.
+    onConfirm:function(){ if(_applyImportedData(snap.data, {undo:true})===true){ try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} render(); } }});
 }
 // 38/56 — storage meter. localStorage is ~5 MB in WKWebView and the app used
 // to discover the ceiling only when a save failed.
@@ -4194,13 +4195,18 @@ function _backupValueOk(k, v){
   if(_BACKUP_OBJECT_KEYS.indexOf(k) !== -1) return v && typeof v === 'object' && !Array.isArray(v);
   return true;
 }
-function _applyImportedData(data) {
+function _applyImportedData(data, opts) {
+  opts=opts||{};
   // The restore REPLACES everything, so it is all or nothing. The undo copy (Settings → Data,
   // "Undo last restore", a week) must be written first; if it cannot be, nothing is restored.
   // A write that fails puts every key back. A nearly full phone used to end with half of each
   // dataset, no undo, and "Restored N data items".
+  // The copy an earlier restore kept is held here and put back if this one stops (a stopped
+  // restore left its own copy, so Undo brought back the first backup, not what was here before
+  // it). Undoing a restore (opts.undo) writes no copy: the one it undoes stays the safety net.
+  var _prevSnap=null; try{ _prevSnap=localStorage.getItem('kt_pre_restore'); }catch(e){}
   var _snapRaw=null;
-  try{ var _snap=buildBackupJSON(); delete _snap._manifest; if(Object.keys(_snap).length) _snapRaw=JSON.stringify({at:Date.now(), data:_snap}); }catch(e){}
+  if(!opts.undo){ try{ var _snap=buildBackupJSON(); delete _snap._manifest; if(Object.keys(_snap).length) _snapRaw=JSON.stringify({at:Date.now(), data:_snap}); }catch(e){} }
   if(_snapRaw){
     var _put=function(){ try{ localStorage.setItem('kt_pre_restore', _snapRaw); return true; }catch(e){ return false; } };
     if(!_put()){ try{ localStorage.removeItem('kt_cached_html'); }catch(e){} }   // the cached page is the first thing that can go
@@ -4210,10 +4216,23 @@ function _applyImportedData(data) {
   _touch.forEach(function(k){ try{ _before[k]=localStorage.getItem(k); }catch(e){} });
   var _failed=false;
   var _rollback=function(){
-    _touch.forEach(function(k){ try{ if(_before[k]==null) localStorage.removeItem(k); else localStorage.setItem(k, _before[k]); }catch(e){} delete _lsCache[k]; });
+    // Free first, then put back, and read each key back. Putting keys back in list order failed
+    // whenever one needed the room a later key still held (kt_sessions before the backup's longer
+    // kt_runs left), and the failure was swallowed under "Nothing was changed".
+    var bad=[];
+    _touch.forEach(function(k){ try{ if(localStorage.getItem(k)!==_before[k]) localStorage.removeItem(k); }catch(e){} delete _lsCache[k]; });
+    _touch.forEach(function(k){
+      try{ if(_before[k]!=null && localStorage.getItem(k)!==_before[k]) localStorage.setItem(k, _before[k]); }catch(e){}
+      try{ if(localStorage.getItem(k)!==_before[k] && bad.indexOf(k)<0) bad.push(k); }catch(e){ bad.push(k); }
+    });
+    // Everything is back: so is the earlier restore's undo copy (or this one's goes). If not,
+    // the copy this restore took holds what was here, and Undo last restore brings it back.
+    if(!bad.length && _snapRaw){ try{ if(_prevSnap==null) localStorage.removeItem('kt_pre_restore'); else localStorage.setItem('kt_pre_restore', _prevSnap); }catch(e){} }
     _logsVersion++; _todayActMemo=null;
     currentWeek=parseInt(localStorage.getItem('kt_week'))||currentWeek;
-    showToast('Restore stopped \u2014 the phone ran out of space. Nothing was changed. Free some space and try again.','err');
+    var what=opts.undo?'Undo':'Restore';
+    showToast(!bad.length ? what+' stopped \u2014 the phone ran out of space. Nothing was changed. Free some space and try again.'
+      : what+' stopped \u2014 the phone ran out of space before everything could be put back. Free some space, then tap Undo last restore in Settings \u203a Data'+(opts.undo?' again.':' to bring back what was here.'),'err');
     render();
     return false;
   };
@@ -4272,6 +4291,7 @@ function _applyImportedData(data) {
   applyTheme(THEMES[importedTheme]?importedTheme:'heavyweight');
   render();
   showToast('Restored '+count+' data items');
+  return true;
 }
 
 // ── Apple Health import (Capacitor / iOS shell only) ─────────────────────────
