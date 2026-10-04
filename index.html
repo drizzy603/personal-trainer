@@ -10287,18 +10287,29 @@ function _progSetScheme(cr, slot, name, c, field, val, o){
   }
   return n;
 }
-// The shape a new row borrows: per later week, the median of the day's weighted
-// accessory (or main) rows relative to week c; null when the day has none.
-function _progBorrowShape(cr, slot, c, name, main){
-  var W=cr.weeks, w0=W[c], rows=((w0&&w0[slot])||[]).filter(function(r){ return r && r.name!==name && !!r.isMain===!!main && parseFloat(r.weight)>0; });
+// The shape a new row borrows: per week from c on, the median of the day's weighted
+// accessory (or main) rows relative to week b (default c); null when the day has none.
+function _progBorrowShape(cr, slot, c, name, main, b){
+  if(b==null) b=c;
+  var W=cr.weeks, w0=W[b], rows=((w0&&w0[slot])||[]).filter(function(r){ return r && r.name!==name && !!r.isMain===!!main && parseFloat(r.weight)>0; });
   if(!rows.length) return null;
   var shape={};
-  for(var j=c+1;j<W.length;j++){
+  for(var j=c;j<W.length;j++){
+    if(j===b) continue;
     var rs=[];
     rows.forEach(function(r0){ var r=_progRow(W[j],slot,r0.name); var P=r?parseFloat(r.weight)||0:0; if(P>0) rs.push(P/parseFloat(r0.weight)); });
     if(rs.length) shape[j]=_median(rs);
   }
   return shape;
+}
+// The working week a working weight is read against when week c is a deload: the next one
+// (holding `name` when given), else the last one before it (a programme that ends on its
+// deload); -1 when there is none.
+function _progWorkWk(W, c, slot, name){
+  var ok=function(j){ return !_isDeloadWk(W[j]) && (!name || !!_progRow(W[j], slot, name)); };
+  for(var j=c+1;j<W.length;j++){ if(ok(j)) return j; }
+  for(var k=c-1;k>=0;k--){ if(ok(k)) return k; }
+  return -1;
 }
 function _medianOf(w, slot, field){
   var v=((w&&w[slot])||[]).filter(function(r){ return r && !r.isMain; }).map(function(r){ return parseFloat(r[field])||0; }).filter(function(x){ return x>0; });
@@ -10336,16 +10347,23 @@ function _progAdd(cr, slot, ex, c, after, o){
   }
   var r0=_progRow(W[c],slot,ex.name);
   if(r0 && N>0 && !(parseFloat(r0.weight)>0)){
-    r0.weight=N;
-    var shape=_progBorrowShape(cr, slot, c, ex.name, !!r0.isMain) || _progBorrowShape(cr, slot, c, ex.name, !r0.isMain);
+    // N is a working weight (a load the owner has lifted, or the coach's): added in a deload week
+    // the curve is read from the working week and the deload takes its share. Read from the deload
+    // week's rows it put every later week ~1.45x over N.
+    var b=c;
+    if(_isDeloadWk(W[c]) && (!o.onlyThisWeek || o.workScale)){ var bw=_progWorkWk(W, c); if(bw>=0) b=bw; }
+    var shape=_progBorrowShape(cr, slot, c, ex.name, !!r0.isMain, b) || _progBorrowShape(cr, slot, c, ex.name, !r0.isMain, b);
     if(shape){
-      var lastR=1;
-      for(var k=c+1;k<W.length;k++){
-        if(shape[k]!=null) lastR=shape[k];
-        var rk=_progRow(W[k],slot,ex.name); if(rk && rk.rec===null) rk.weight=_snapU(N*lastR);
+      var lastR=(b!==c)?0.6:1;
+      for(var k=c;k<W.length;k++){
+        if(k===b) lastR=1; else if(shape[k]!=null) lastR=shape[k];
+        var rk=_progRow(W[k],slot,ex.name); if(rk && (k===c || rk.rec===null)) rk.weight=_snapU(N*lastR);
       }
     } else {
-      _progClimb(cr, slot, ex.name, c, N, {climb:o.climb, Pc0:0});
+      // No curve on the day: the working weeks climb from N, a deload takes 60% (as in _progClimb).
+      var b0=Math.max(b,c);
+      for(var k2=c;k2<=b0;k2++){ var rd=_progRow(W[k2],slot,ex.name); if(rd && (k2===c || rd.rec===null)) rd.weight=(k2===b)?N:_snapU(N*0.6); }
+      _progClimb(cr, slot, ex.name, b0, N, {climb:o.climb, Pc0:0});
     }
   }
   return n;
@@ -10382,7 +10400,17 @@ function _progSwap(cr, slot, from, to, c, N, o){
   if(_progRow(W[c],slot,to)) return -1;
   var r0=_progRow(W[c],slot,from); if(!r0) return 0;
   var Pc=parseFloat(r0.weight)||0;
+  var work=!!o.workScale || !(N>0);
   if(!(N>0)) N=_knownLoadLb(to, cr, c);
+  var Nw=N;
+  // A working weight (B's known load, or o.workScale: the coach's) swapped in during a deload
+  // week is the deload's share of it, read off A (deload row / working row). Taken as the
+  // deload's own load it put every later week ~1.45x over anything lifted.
+  if(work && N>0 && _isDeloadWk(W[c])){
+    var b=_progWorkWk(W, c, slot, from), rb=b>=0?_progRow(W[b],slot,from):null, Pb=rb?parseFloat(rb.weight)||0:0;
+    var sh=(Pc>0 && Pb>0) ? null : (_progBorrowShape(cr, slot, c, from, false, b) || _progBorrowShape(cr, slot, c, from, true, b));
+    N=N*((Pc>0 && Pb>0) ? Pc/Pb : ((sh && sh[c]!=null) ? sh[c] : 0.6));
+  }
   var n=0;
   for(var j=c;j<W.length;j++){
     var w=W[j], r=_progRow(w,slot,from); if(!r) continue;
@@ -10395,7 +10423,7 @@ function _progSwap(cr, slot, from, to, c, N, o){
     else if(!(N>0)){ r.weight=0; delete r.weights; }
     n++;
   }
-  if(N>0 && !(Pc>0)) _progClimb(cr, slot, to, c, _snapU(N), {markOwner:o.markOwner, Pc0:0});
+  if(N>0 && !(Pc>0)) _progClimb(cr, slot, to, c, _snapU(Nw), {markOwner:o.markOwner, Pc0:0});
   return n;
 }
 // The one way to write the programme: a fresh copy of what is stored (never the
@@ -10778,8 +10806,9 @@ function _rtApply(cr, e){
   var wLb=e.w>0 ? wStore(e.w) : 0;
   if(e.swapTo && e.swapTo!==name){
     // An untouched weight is the new lift's own known load (the old lift's load put Dips at
-    // +60 lb and a Lateral Raise at 70 lb), or "your load" when it has none.
-    var sw=_progSwap(cr, slot, name, e.swapTo, c, wTouched ? wLb : _knownLoadLb(e.swapTo, cr, c), {markOwner:true});
+    // +60 lb and a Lateral Raise at 70 lb), or "your load" when it has none: _progSwap reads it
+    // when N is 0, as a working weight (a typed one is the week's own).
+    var sw=_progSwap(cr, slot, name, e.swapTo, c, wTouched ? wLb : 0, {markOwner:true});
     if(sw===-1) return -1;
     n+=sw; name=e.swapTo; st=_progRow(cr.weeks[c], slot, name); if(!st) return n;
   }
@@ -16700,7 +16729,7 @@ function _executeCoachToolRaw(name,input){
         if(actE==='remove') return _progRemove(cr, keyE, nmE, cE);
         if(actE==='swap'){
           var to=String(input.rename_to||'').trim(); if(!to){ whyE='swap needs rename_to'; return false; }
-          var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {});
+          var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {workScale:!o.onlyThisWeek});
           if(sw===-1){ whyE=to+' is already on '+_dayLabel(slotE); return false; }
           n+=sw; nmE=to; row=_progRow(cr.weeks[cE], keyE, nmE); if(!row) return n;
         }
