@@ -8896,6 +8896,9 @@ function runnerFinishSession(){
   var _dateEl = document.getElementById('runner-date');
   var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
   var sessions = getSessions();
+  // Never filed ahead (the log_run rule): a slipped date wheel made it the newest log of its
+  // lifts, so real sessions stopped setting their working weights until that day.
+  if(_sessionDate > todayISO()){ showToast('Pick today or an earlier date for this workout','err'); return; }
   // Double-log guard: a watch-synced copy of this same session (same day, same
   // type) gets replaced by the richer phone log. Manual entries are never touched.
   // A wrist copy of this same session (same day, same slot) folds into the
@@ -9955,7 +9958,7 @@ function _renderRunnerDoneBody(ex, isLast){
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
         '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
         ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
-        ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
+        ' max="'+todayISO()+'" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'
     : '';
@@ -12572,6 +12575,7 @@ function _calNavToDate(dateStr){
 }
 function moveSession(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   var sessions=getSessions();
   sessions.forEach(function(s){ if(s.id===id){ s.date=newDate; s.week=weekForDate(newDate); } });
   lsSet('kt_sessions',sessions);
@@ -12579,6 +12583,7 @@ function moveSession(id,newDate){
 }
 function moveRun(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   var runs=getRuns();
   // A copy: editing the cached records in place survived a failed save (storage full).
   runs=runs.map(function(r){
@@ -12593,6 +12598,7 @@ function moveRun(id,newDate){
 }
 function moveSport(id,newDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   // A copy, and a moved Health ride keeps its identity (hkOrig), as moveRun does: Reset
   // import or a restore used to bring it back a second time on its original day.
   var sports=getSportLogs().map(function(sp){
@@ -12604,6 +12610,13 @@ function moveSport(id,newDate){
   if(!lsSet('kt_sports',sports)){ render(); return; }
   invalidateCoachCard();
   _calNavToDate(newDate); render();
+}
+// The day sheet's date field binds only its picker to today (max): a typed date passed, and
+// a log moved ahead. Refused as a run logged ahead is; the repaint puts the stored date back.
+function _cdMoveAhead(d){
+  if(d<=todayISO()) return false;
+  showToast('Pick today or an earlier date','err'); _cdPainted=''; render();
+  return true;
 }
 function pickSport(id){
   if(id!=='CrossFit') cfDraftMoves=[];
@@ -12632,6 +12645,7 @@ function saveSportLog(){
     showToast('Add a duration or a detail first','err');
     return;
   }
+  if(date > todayISO()){ showToast('Pick today or an earlier date','err'); return; }   // as runs: never filed ahead
   var rec={id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes};
   var logs=[rec].concat(getSportLogs());
   if(!lsSet('kt_sports',logs)) return;   // storage full: the form keeps what was typed
@@ -12990,7 +13004,7 @@ function renderSportEditorial(){
           ' oninput="sportLogDraft.duration=this.value;this.style.width=((this.value.length||1)+0.6)+\'ch\'"/>'+
         '<span style="font-size:15px;font-weight:600;color:var(--muted);">min</span>'+
       '</div></div>'+
-    '<input class="kt-sport-date" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/>'+
+    '<input class="kt-sport-date" type="date" max="'+todayISO()+'" value="'+_esc(d.date)+'"'+sync+'date=this.value"/>'+
   '</div>';
   var sportFields = getSportFields(logSportType);
   var fieldRows = '', fi = 0;
@@ -13092,6 +13106,7 @@ function saveSportEditorial(){
   var date = (d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) ? d.date : todayISO();
   // Require at least duration so we don't write a blank log.
   if(!dur){ showToast('Enter a duration'); return; }
+  if(date > todayISO()){ showToast('Pick today or an earlier date','err'); return; }   // as runs: never filed ahead
   var data = {};
   getSportFields(logSportType).forEach(function(f){
     var v = (d.f && d.f[f.id]!=null) ? String(d.f[f.id]).trim() : '';
@@ -13266,7 +13281,7 @@ function renderSportSection(forcedSportId){
     aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Date</label>'+
-        '<input type="date" id="spDate" value="'+todayISO()+'" style="'+inp+'"/></div>'+
+        '<input type="date" id="spDate" value="'+todayISO()+'" max="'+todayISO()+'" style="'+inp+'"/></div>'+
       '<div><label style="'+lbl+'">Duration (min)</label>'+
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
@@ -13346,6 +13361,7 @@ function saveBodyWeight(){
   var v=parseFloat(document.getElementById('bwVal')?document.getElementById('bwVal').value:0);
   var d=(document.getElementById('bwDate')||{}).value||todayISO();
   if(!v){showToast('Enter a weight');return;}
+  if(d>todayISO()){showToast('Pick today or an earlier date','err');return;}   // a weigh-in ahead read as the current body weight
   v=wStore(v);   // typed in the display unit, stored in lb
   var rec={id:Date.now(),date:d,weight:v};
   var bws=getBodyWeights();
@@ -13384,6 +13400,7 @@ function saveBWGoal(){
 function getMeasurements(){return lsGet('kt_measurements')||[];}
 function saveMeasurement(){
   var d=(document.getElementById('msDate')||{}).value||todayISO();
+  if(d>todayISO()){showToast('Pick today or an earlier date','err');return;}   // as weigh-ins
   var fields=[['msWaist','waist'],['msChest','chest'],['msArms','arms'],['msHips','hips'],['msThighs','thighs']];
   var entry={date:d};var hasAny=false;
   fields.forEach(function(f){
@@ -16904,6 +16921,7 @@ function _executeCoachToolRaw(name,input){
       if(!(bwVal>0)) return {ok:false,error:'weight must be > 0'};
       var bwDate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
+      if(bwDate>todayISO()) return {ok:false,error:'date '+bwDate+' is in the future; log body weight on or before today ('+todayISO()+'). Nothing was saved.'};
       var bws=getBodyWeights();
       bwVal=wStore(bwVal);
       bws.push({id:_freshId(bws),date:bwDate,weight:bwVal});
@@ -16945,6 +16963,9 @@ function _executeCoachToolRaw(name,input){
       if(!gexsIn.length) return {ok:false,error:'exercises array required'};
       var gdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(gdate)) gdate=todayISO();
+      // As log_run: a session filed ahead is the newest log of its lifts, so the working
+      // weights stopped following real sessions until that day.
+      if(gdate>todayISO()) return {ok:false,error:'date '+gdate+' is in the future; log sessions on or before today ('+todayISO()+'). Nothing was saved.'};
       var gclean=[];
       for(var gi=0; gi<gexsIn.length; gi++){
         var ge=gexsIn[gi]||{};
@@ -16989,6 +17010,7 @@ function _executeCoachToolRaw(name,input){
       if(!(sdur>0)) return {ok:false,error:'duration must be > 0 minutes'};
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
+      if(sdate>todayISO()) return {ok:false,error:'date '+sdate+' is in the future; log activities on or before today ('+todayISO()+'). Nothing was saved.'};
       var snotes=String(input.notes||'').trim();
       var slogs=[{id:_freshId(getSportLogs()),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
       if(!lsSet('kt_sports',slogs)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
@@ -19385,7 +19407,7 @@ function openSportLogEditor(id){
     (fromHealth?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Imported from Apple Health — the watch data stays; add what it couldn\'t know.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Duration (min)</label><input id="sleDuration" type="number" min="0" value="'+_esc(rec.duration||'')+'" style="'+inp+'"/></div>'+
-      '<div><label style="'+lbl+'">Date</label><input id="sleDate" type="date" value="'+_esc(rec.date||todayISO())+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'">Date</label><input id="sleDate" type="date" max="'+todayISO()+'" value="'+_esc(rec.date||todayISO())+'" style="'+inp+'"/></div>'+
     '</div>'+
     grid+
     '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
@@ -19414,7 +19436,10 @@ function saveSportLogEdit(id){
   var notes = ((document.getElementById('sleNotes')||{value:''}).value||'').trim();
   // Blank = clear (a wrong duration could never be removed, only replaced).
   if(durEl) rec.duration = parseInt(durEl.value)||0;
-  if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)) rec.date = date;
+  if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)){
+    if(date > todayISO() && date !== orig.date){ showToast('Pick today or an earlier date','err'); return; }   // the sheet stays open
+    rec.date = date;
+  }
   // The Health marker is not the user's text: an empty notes field keeps it, and the first
   // edit of an imported log stamps what Health recorded, so it stays Health (iCloud drops its
   // heart rate and calories; a re-import after a restore brings no twin).

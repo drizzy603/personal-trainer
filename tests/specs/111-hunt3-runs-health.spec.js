@@ -23,6 +23,9 @@
 //   coach-logged type with an apostrophe no longer breaks the card's handler.
 // - M55: My Activities counts days between local midnights: today's ride read 'Yesterday' from
 //   noon on, and the 2-week count dropped its edge day.
+// - M03: no log is filed ahead of today, as runs already were: the runner's finish (its date
+//   field stops at today), the coach's log_session / log_sport / log_bodyweight, the + tab, the
+//   pinned activity form, the activity editor, the day sheet's typed date, weigh-ins.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -398,6 +401,76 @@ run('M55: My Activities says Today for today\'s activity in the afternoon, and c
     });
     const want = 'Cycling:Today:1 Yoga:Yesterday:2';
     assert(out.h9 === want && out.h15 === want && out.h23 === want, 'the cards read the same at 09:30, 15:30 and 23:30: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M03: nothing is filed ahead of today (runner, coach logs, activity forms and editor, day sheet moves, body)', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_sports: '[]', kt_runs: '[]', kt_log_tabs: JSON.stringify(['Cycling', 'run', 'body']) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const t = todayISO(), tm = addDays(t, 1), y = addDays(t, -1);
+      const toast = () => document.getElementById('toast').textContent;
+      const r = {};
+      // the runner: a slipped date wheel is refused and the workout stays open to fix it
+      openDeckRunner('Push'); runnerCompleteSet();
+      r.runnerMax = /id="runner-date"[^>]*max="(\d{4}-\d{2}-\d{2})"/.exec(_renderRunnerDoneBody(runnerSession.exercises[0], true));
+      r.runnerMax = r.runnerMax && r.runnerMax[1] === t;
+      runnerSessionDate = tm; runnerFinishSession();
+      r.runner = { filed: getSessions().length, open: !!runnerSession && runnerOpen, toast: toast() };
+      runnerSessionDate = null; runnerFinishSession();
+      r.runnerToday = getSessions().map(s => s.date).join();
+      closeDeckRunner && closeDeckRunner();
+      // the coach's log tools refuse a future date, as log_run does
+      const ex = [{ name: 'Bench Press', sets: 3, reps: 8, weight: 185 }];
+      r.coach = [executeCoachTool('log_session', { type: 'Push', date: tm, exercises: ex }), executeCoachTool('log_sport', { type: 'Cycling', duration: 40, date: tm }),
+        executeCoachTool('log_bodyweight', { weight: 180, date: tm }), executeCoachTool('log_run', { distance: 5, time: '25:00', date: tm })].map(x => x.ok);
+      r.coachToday = executeCoachTool('log_sport', { type: 'Cycling', duration: 40, date: y }).ok;
+      r.coachStored = { s: getSessions().filter(s => s.date === tm).length, sp: getSportLogs().filter(s => s.date === tm).length, bw: getBodyWeights().filter(b => b.date === tm).length };
+      // the + tab form and the pinned tab's form
+      switchTab('log'); switchLogSub('sport'); pickSport('Yoga'); await wait(30);
+      r.plusMax = (document.querySelector('.kt-sport-date') || {}).max === t;
+      sportLogDraft.duration = '30'; sportLogDraft.date = tm; saveSportEditorial();
+      r.plus = { n: getSportLogs().length, toast: toast() };
+      switchLogSub('Cycling'); await wait(30);
+      r.pinMax = document.getElementById('spDate').max === t;
+      document.getElementById('spDate').value = tm; document.getElementById('spDuration').value = '45';
+      saveSportLog();
+      r.pin = { n: getSportLogs().length, toast: toast() };
+      // the activity editor
+      const sid = getSportLogs()[0].id;
+      openSportLogEditor(sid); await wait(20);
+      r.edMax = document.getElementById('sleDate').max === t;
+      document.getElementById('sleDate').value = tm; saveSportLogEdit(sid);
+      r.ed = { date: getSportLogs()[0].date, open: !!document.getElementById('sportLogEditOverlay') };
+      closeSportLogEditor();
+      // the day sheet's typed date
+      lsSet('kt_runs', [{ id: 1785000000009, date: y, distance: 5, time: '25:00', week: weekForDate(y), note: '', hr: 0, type: 'easy' }]);
+      const sessId = getSessions()[0].id;
+      moveRun(1785000000009, tm); moveSession(sessId, tm); moveSport(sid, tm);
+      r.moves = { run: getRuns()[0].date === y, sess: getSessions()[0].date === t, sport: getSportLogs()[0].date === y, toast: toast() };
+      moveRun(1785000000009, addDays(t, -2));
+      r.moveBack = getRuns()[0].date === addDays(t, -2);
+      // body weight and measurements
+      switchLogSub('body'); await wait(30);
+      const n0 = getBodyWeights().length;
+      document.getElementById('bwVal').value = '181'; document.getElementById('bwDate').value = tm; saveBodyWeight();
+      r.bw = getBodyWeights().length - n0;
+      r.t = t; r.tm = tm;
+      return r;
+    });
+    assert(out.runnerMax, 'the runner\'s date field stops at today');
+    assert(out.runner.filed === 0 && out.runner.open && /earlier date/.test(out.runner.toast), 'a workout dated ahead is refused and stays open: ' + JSON.stringify(out.runner));
+    assert(out.runnerToday === out.t, 'the same workout files on today: ' + out.runnerToday);
+    assert(JSON.stringify(out.coach) === '[false,false,false,false]' && out.coachToday === true, 'the coach\'s log tools refuse a future date: ' + JSON.stringify(out.coach));
+    assert(out.coachStored.s + out.coachStored.sp + out.coachStored.bw === 0, 'nothing was stored ahead: ' + JSON.stringify(out.coachStored));
+    assert(out.plusMax && out.plus.n === 1 && /earlier date/.test(out.plus.toast), 'the + tab refuses a future date: ' + JSON.stringify(out.plus));
+    assert(out.pinMax && out.pin.n === 1 && /earlier date/.test(out.pin.toast), 'the pinned tab refuses a future date: ' + JSON.stringify(out.pin));
+    assert(out.edMax && out.ed.open && out.ed.date !== out.tm, 'the editor refuses a future date and stays open: ' + JSON.stringify(out.ed));
+    assert(out.moves.run && out.moves.sess && out.moves.sport && /earlier date/.test(out.moves.toast), 'a typed future date moves nothing: ' + JSON.stringify(out.moves));
+    assert(out.moveBack, 'a past date still moves the run');
+    assert(out.bw === 0, 'a weigh-in ahead is refused');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
