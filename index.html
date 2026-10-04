@@ -16672,6 +16672,10 @@ function _executeCoachToolRaw(name,input){
       var dowB=DOW_FROM_NAME[input.dayB];
       if(dowA==null||dowB==null) return {ok:false,error:'dayA/dayB must be Mon..Sun'};
       if(dowA===dowB) return {ok:false,error:'dayA and dayB must differ'};
+      // A week the programme does not have is refused before the snapshot too (the refusal
+      // replaced the undo point of an earlier change).
+      var wkNum=parseInt(input.week)||currentWeek, crW=getCustomRoutine();
+      if(input.scope!=='global' && !(crW && crW.weeks && crW.weeks[wkNum-1])) return {ok:false,error:'Could not swap (no routine for that week?)'};
       _snapshotRoutineForUndo(_coachScope());   // after validation: a rejected call must not burn the undo point
       if(input.scope==='global'){
         var crG=getCustomRoutine();
@@ -16702,7 +16706,6 @@ function _executeCoachToolRaw(name,input){
         setCustomRoutine(crG);
         return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' globally'};
       }
-      var wkNum=parseInt(input.week)||currentWeek;
       if(swapWeekPlanDays(wkNum,dowA,dowB)){
         return {ok:true,message:'Swapped '+input.dayA+' and '+input.dayB+' for week '+wkNum};
       }

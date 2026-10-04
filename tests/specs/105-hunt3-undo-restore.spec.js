@@ -24,6 +24,8 @@
 //   and a failed write changes nothing (M27).
 // - PLAN CHANGES retires only once its Undo is done: Cancel, or an Undo that could not be saved,
 //   keeps the card and its Undo (L37).
+// - swap_cadence_days on a week the programme does not have is refused before the snapshot, so
+//   the earlier change keeps its undo point (L38).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -461,6 +463,28 @@ run('PLAN CHANGES stays until its Undo is done: Cancel or a full phone keeps the
     assert(out.cancel.card && out.cancel.card.undo && out.cancel.bench === 170, 'Cancel keeps the card and its Undo: ' + JSON.stringify(out.cancel));
     assert(out.fullPhone.card && out.fullPhone.card.undo && out.fullPhone.bench === 170, 'an Undo that could not be saved keeps the card: ' + JSON.stringify(out.fullPhone));
     assert(out.undone.card === null && out.undone.bench !== 170 && out.undone.stored, 'a done Undo retires the card: ' + JSON.stringify(out.undone));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a refused swap_cadence_days keeps the undo point of the earlier change', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(() => {
+      const ohp = o => o.weeks[currentWeek - 1].push.find(e => e.name === 'Overhead Press').weight;
+      const o0 = ohp(getCustomRoutine()), r = { o0 };
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Overhead Press', currentWeek - 1, o0 + 10, { markOwner: true }), { scope: 'routines' });
+      const bk = () => ({ ohp: ohp(lsGet('kt_routine_backup')), scope: localStorage.getItem('kt_routine_backup_scope') });
+      _coachTurnScope = 'coach:test-swap';
+      r.refused = executeCoachTool('swap_cadence_days', { dayA: 'Mon', dayB: 'Tue', week: getTotalWeeks() + 1 });
+      r.kept = bk();
+      r.done = executeCoachTool('swap_cadence_days', { dayA: 'Mon', dayB: 'Tue', week: currentWeek });
+      r.taken = bk();
+      _coachTurnScope = null;
+      return r;
+    });
+    assert(out.refused.ok === false && out.kept.ohp === out.o0 && out.kept.scope === 'routines', 'the refusal leaves the Routines edit\'s snapshot: ' + JSON.stringify([out.refused, out.kept]));
+    assert(out.done.ok === true && out.taken.ohp === out.o0 + 10 && out.taken.scope === 'coach:test-swap', 'a swap that lands takes its own: ' + JSON.stringify([out.done, out.taken]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
