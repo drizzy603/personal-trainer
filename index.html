@@ -20148,31 +20148,60 @@ function _syncReminders(){
   }
   if(toSched.length) LN.schedule({notifications:toSched}).catch(function(){});
 }
+// The round set to start on a Monday, as it would be built now. The watch's week ahead, the
+// widget and the reminders read its days from then on: they showed this round's last week
+// repeating (another day under a deload cadence, round 1's loads). Memoised on what the build
+// reads: the routine, the logs, the unit and this round's start.
+var _nrPreviewMemo=null;
+function _nextRoundPreview(){
+  var p=_nextRoundSet(), cr=p?getCustomRoutine():null; if(!cr) return null;
+  var key=p.startsOn+'|'+_logsVersion+'|'+_uW()+'|'+_roundStartISO()+'|'+(localStorage.getItem('kt_routine')||'');
+  if(!_nrPreviewMemo || _nrPreviewMemo.key!==key){
+    var nr=null; try{ nr=_nextRoundBuild(cr).routine; }catch(e){}
+    _nrPreviewMemo={key:key, startsOn:p.startsOn, routine:nr};
+  }
+  return _nrPreviewMemo.routine ? _nrPreviewMemo : null;
+}
+// The programme and week a coming day belongs to, and that week's cadence: the set next round
+// owns its days from its start Monday (its week 1), the current programme everything before.
+function _planWeekFor(iso){
+  var pv=_nextRoundPreview();
+  if(pv && iso>=pv.startsOn){
+    var cr=pv.routine, days=Math.round((new Date(iso+'T00:00:00')-new Date(pv.startsOn+'T00:00:00'))/86400000);
+    var wk=Math.min(cr.weeks.length, 1+Math.floor(days/7)), w=cr.weeks[wk-1];
+    var cad=(w && Array.isArray(w.weekPlan) && w.weekPlan.length===7) ? w.weekPlan
+      : ((Array.isArray(cr.weekPlan) && cr.weekPlan.length===7) ? cr.weekPlan : null);
+    return { cr:cr, wk:wk, plan:cad ? cad.map(_planEntry) : getWeekPlanForWeek(wk) };
+  }
+  var wk0=Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso)));
+  return { cr:getCustomRoutine(), wk:wk0, plan:getWeekPlanForWeek(wk0) };
+}
 // Exercise count of a slot in a GIVEN week. getSessionExercises reads the
 // current week, so next Monday's widget row used to show this week's count.
-function _weekLiftCount(wk, type){
+// cr0: the routine that week belongs to (the set next round's), else the stored one.
+function _weekLiftCount(wk, type, cr0){
   try{
-    var cr=getCustomRoutine(); var w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
+    var cr=cr0||getCustomRoutine(); var w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
     if(w){ var a=w[String(type).toLowerCase()]; return Array.isArray(a) ? a.length : 0; }   // a week without the slot has none (it used to borrow this week's count)
   }catch(e){}
   return getSessionExercises(type).length;
 }
 // 7-day plan summary — widget + reminders share this.
 function _nativeSummaryDays(n){
-  var out=[], total=getTotalWeeks();
+  var out=[];
   var sessions=getSessions(), runs=getRuns(), sports=getSportLogs();
   for(var i=0;i<(n||7);i++){
     var iso=addDays(todayISO(), i);
     if(iso < _weekAnchor()){ out.push({date:iso, type:'Rest', isRest:true, lifts:0, done:false}); continue; }
     var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
-    var wk=Math.min(total, Math.max(1, weekForDate(iso)));
-    var plan=getWeekPlanForWeek(wk)[dow];
+    var src=_planWeekFor(iso), wk=src.wk;
+    var plan=src.plan[dow];
     var done=false;
     if(plan.isLift)       done=sessions.some(function(s){return s.date===iso && s.type===plan.type;});
     else if(plan.isRun)   done=runs.some(function(r){return r.date===iso;});
     else if(plan.isSport) done=sports.some(function(l){return l.date===iso && l.type===plan.type;});
     out.push({date:iso, type:plan.type, label:_dayLabel(plan.type), short:_dayShort(plan.type), isRest:!!plan.isRest,
-      lifts: plan.isLift ? _weekLiftCount(wk, plan.type) : 0, done:done});
+      lifts: plan.isLift ? _weekLiftCount(wk, plan.type, src.cr) : 0, done:done});
   }
   return out;
 }
@@ -20417,16 +20446,15 @@ function _watchPerSet(ex, o){
 // exercises (loads resolved like today's), or the run/sport/rest it holds.
 // Before a programme's start Monday every day is a rest day.
 function _watchPlanForDate(iso){
-  var total=getTotalWeeks();
   if(iso < _weekAnchor()) return { week:1, date:iso, dayName:'Rest', slot:'', short:'Rest', type:'rest', exercises:[], hasPlan:true };
-  var wk=Math.min(total, Math.max(1, weekForDate(iso)));
+  var src=_planWeekFor(iso), wk=src.wk;   // a set next round's days come from its own week 1 on
   var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
-  var pl=getWeekPlanForWeek(wk)[dow]||{};
+  var pl=src.plan[dow]||{};
   if(!pl.isLift){
     var t=pl.isRun?'run':(pl.isSport?'sport':'rest');
     return { week:wk, date:iso, dayName:String(pl.isRest?'Rest':(pl.type||'Rest')), slot:'', short:String(pl.type||''), type:t, exercises:[], hasPlan:true };
   }
-  var cr=getCustomRoutine(), w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
+  var cr=src.cr, w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
   var arr=(w&&w[String(pl.type).toLowerCase()])||[];
   var weights=getWeights();
   var exs=arr.map(function(ex){

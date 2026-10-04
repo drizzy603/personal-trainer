@@ -8,6 +8,10 @@
 // - M04: a drained wrist session sets working weights by the runner's rule (_setWorkingWeights):
 //   a late session from days ago never tops a newer log, a newer lighter one sets it, and a merge
 //   speaks only for the lifts it changed (a working weight changed since the phone's finish stands).
+// - M08: with a next round set, its days (from its start Monday) reach the watch's week ahead, the
+//   widget summary and the reminders as round 2's own weeks (its cadence, its re-based loads, week
+//   1 then 2), not as round 1's final week repeating. The preview follows new logs and goes away
+//   when the round is cancelled; the days before the start stay the current programme's.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -192,6 +196,61 @@ run('M04: drained wrist sessions set working weights by the runner\u2019s rule',
     assert(out.stale.w === 185 && out.stale.filed === 2, 'a late wrist session from days ago does not top today\u2019s newer log: ' + JSON.stringify(out.stale));
     assert(out.lighter === 155, 'a newer, lighter wrist session sets the working weight (as a phone finish would): ' + out.lighter);
     assert(out.merge.merged && out.merge.w === 190 && out.merge.x === 40, 'a merge speaks only for the lifts it changed: ' + JSON.stringify(out.merge));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('M08: a set next round reaches the watch week, the widget and the reminders as its own weeks', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_notif_daily: '1' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest'];
+      cr.weeks.forEach(w => { delete w.weekPlan; });
+      cr.weeks[cr.weeks.length - 1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // the final week has its own cadence
+      setCustomRoutine(cr);
+      _setWeek(cr.weeks.length);   // parked on the final week, which began this Monday
+      const mon = _mostRecentMonday(), start = addDays(mon, 7), L = 'Bench Press';
+      const sess = (date, w) => ({ id: new Date(date + 'T10:00:00').getTime(), date, type: 'Push', label: 'Push', week: 10, prs: [],
+        exercises: [{ name: L, sets: 4, reps: [8, 8, 8, 8], weight: w, weightLog: [w, w, w, w] }] });
+      lsSet('kt_sessions', [sess(addDays(mon, -14), 185)]);
+      lsSet('kt_routine_next', { startsOn: start, at: todayISO() });
+      const bench = p => ((p && p.exercises) || []).filter(e => e.name === L).map(e => e.weight)[0];
+      const oracle = () => (_nextRoundBuild(getCustomRoutine()).routine.weeks[0].push || []).filter(e => e.name === L).map(e => e.weight)[0];
+      const r = { lastWk: cr.weeks.length, lastBench: (cr.weeks[cr.weeks.length - 1].push || []).filter(e => e.name === L).map(e => e.weight)[0] };
+      const m1 = _watchPlanForDate(start), w2 = _watchPlanForDate(addDays(start, 9)), before = _watchPlanForDate(addDays(start, -3));
+      r.mon = { week: m1.week, slot: m1.slot, bench: bench(m1), want: oracle() };
+      r.wk2 = { week: w2.week, slot: w2.slot };
+      r.before = { week: before.week, slot: before.slot || before.type };
+      const day = _nativeSummaryDays(14).find(d => d.date === start);
+      r.widget = { type: day.type, lifts: day.lifts, want: (_nextRoundBuild(getCustomRoutine()).routine.weeks[0].push || []).length };
+      const LN = Capacitor.Plugins.LocalNotifications; let sched = null;
+      LN.schedule = (p) => { sched = p; return Promise.resolve({}); };
+      _syncReminders();
+      const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const rem = ((sched && sched.notifications) || []).find(n => ymd(new Date(n.schedule.at)) === start);
+      r.reminder = rem ? rem.title : null; r.pushTitle = 'Today is ' + _dayLabel('Push').toLowerCase() + ' day';
+      _lastWatchPlan = ''; _pushWatchPlan();
+      const ctx = __mock.updateContext[__mock.updateContext.length - 1], week = JSON.parse((ctx && ctx.week) || '[]');
+      r.pushed = { n: week.length, after: week.filter(d => d.date >= start).every(d => d.week === 1),
+        beforeOk: week.filter(d => d.date < start).every(d => d.week === r.lastWk) };
+      // a heavier log this round re-bases the preview again; cancelling the round takes it away
+      lsSet('kt_sessions', [sess(todayISO(), 205)].concat(getSessions()));
+      r.relog = { bench: bench(_watchPlanForDate(start)), want: oracle() };
+      lsDel('kt_routine_next');
+      const c = _watchPlanForDate(start);
+      r.cancelled = { week: c.week, slot: c.slot };
+      return r;
+    });
+    assert(out.mon.week === 1 && out.mon.slot === 'Push' && out.mon.bench === out.mon.want && out.mon.want !== out.lastBench,
+      'the start Monday is round 2 week 1 with its re-based load, not the final week: ' + JSON.stringify(out));
+    assert(out.wk2.week === 2 && out.wk2.slot === 'Pull', 'nine days in is round 2 week 2 (its Wednesday): ' + JSON.stringify(out.wk2));
+    assert(out.before.week === out.lastWk, 'the days before the start stay the current programme’s final week: ' + JSON.stringify(out.before));
+    assert(out.widget.type === 'Push' && out.widget.lifts === out.widget.want, 'the widget summary shows round 2’s day on the start Monday: ' + JSON.stringify(out.widget));
+    assert(out.reminder === out.pushTitle, 'the start Monday’s reminder names round 2’s day: ' + out.reminder);
+    assert(out.pushed.n === 6 && out.pushed.after && out.pushed.beforeOk, 'the pushed week ahead: round 2 week 1 from the start, the final week before it: ' + JSON.stringify(out.pushed));
+    assert(out.relog.bench === out.relog.want && out.relog.bench > out.mon.bench, 'a heavier log this round re-bases the preview: ' + JSON.stringify(out.relog));
+    assert(out.cancelled.week === out.lastWk, 'a cancelled round leaves the final week in place: ' + JSON.stringify(out.cancelled));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
