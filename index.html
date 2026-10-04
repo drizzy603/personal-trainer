@@ -4984,6 +4984,9 @@ function renderHealthQuickLog(compact){
 // ── Tab & Week ────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   if(tab!=='progress' && (cmpOn || document.getElementById('cmpSheetOverlay'))) _cmpExit();
+  // The day sheet belongs to Progress: the widget's Start (trovo://start) opened the Log tab and
+  // the runner under it, with its Delete buttons mid-screen.
+  if(tab!=='progress' && document.getElementById('calDayOverlay')) closeCalDay();
   if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; todaySparkEx=null; }
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';

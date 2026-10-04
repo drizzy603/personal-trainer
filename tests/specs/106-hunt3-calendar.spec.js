@@ -21,6 +21,8 @@
 //   this round takes that week.
 // - L25: a date changed in the activity editor takes the day sheet and the card's month along (as
 //   the run editor does), and Undo of a run-editor date change brings them back with the run.
+// - L26: leaving Progress closes the day sheet, so the widget's Start (trovo://start) no longer
+//   opens the Log tab and the runner beneath it.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -385,6 +387,30 @@ run('L25: the activity editor\'s date change takes the day sheet along; Undo of 
     assert(out.sport.stored === NEW && out.sport.open && out.sport.sel === NEW && out.sport.month === NEW.slice(0, 7) && out.sport.block, 'the sheet and the card follow the activity: ' + JSON.stringify(out.sport));
     assert(out.run.stored === NEW && out.run.open && out.run.sel === NEW, 'the run editor already followed: ' + JSON.stringify(out.run));
     assert(out.runUndo.stored === D && out.runUndo.open && out.runUndo.sel === D && out.runUndo.month === D.slice(0, 7) && out.runUndo.block, 'Undo brings the sheet and the card back with the run: ' + JSON.stringify(out.runUndo));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L26: the widget\'s Start (trovo://start), or any other tab, closes an open day sheet', async () => {
+  const D = daysAgo(3);
+  const app = await boot({ native: true, seed: { kt_runs: JSON.stringify([{ id: 4401, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]) } });
+  try {
+    const out = await app.page.evaluate(async D => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const sheet = () => !!document.getElementById('calDayOverlay');
+      const openDay = async () => { switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30); document.querySelector('.cal-day[data-date="' + D + '"]').click(); await wait(40); };
+      const r = {};
+      await openDay(); r.opened = sheet();
+      switchTab('progress'); await wait(20); r.stays = sheet();   // Progress again: it stays
+      window._trovoOpen('trovo://start'); await wait(400);
+      r.link = { sheet: sheet(), tab: currentTab, sel: calSelectedDate, overlays: [...document.querySelectorAll('.kt-sheet-overlay')].map(o => o.id) };
+      await openDay();
+      switchTab('coach'); await wait(20); r.coach = { sheet: sheet(), sel: calSelectedDate };
+      return r;
+    }, D);
+    assert(out.opened && out.stays, 'the sheet opens and stays on Progress: ' + JSON.stringify(out));
+    assert(!out.link.sheet && out.link.tab === 'log' && out.link.sel === null && out.link.overlays.indexOf('calDayOverlay') < 0, 'Start closes the day sheet over the Log tab: ' + JSON.stringify(out.link));
+    assert(!out.coach.sheet && out.coach.sel === null, 'another tab closes it too: ' + JSON.stringify(out.coach));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
