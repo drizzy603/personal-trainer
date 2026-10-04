@@ -4326,6 +4326,7 @@ function importFromHealth(){
     runs.forEach(function(r){
       if(!r||!r.uuid||seen.has(r.uuid)) return;
       var sid=_hkSportId(r);
+      if(_hkBuried(r, sid)){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }   // deleted by the owner
       if(sid){
         // Rides, court sports, swims… land in the sport log as their type.
         if(!r.durationSec||r.durationSec<=0) return;
@@ -4402,7 +4403,7 @@ function resetHealthImport(){
     var existing=getRuns(); var removed=0;
     var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'&&!r.hkOrig){removed++;return false;}return true;});
     lsSet('kt_runs',kept);
-    lsDel('kt_hk_imported');
+    lsDel('kt_hk_imported'); lsDel('kt_hk_gone');
     localStorage.removeItem('kt_hk_last_sync');
     // The three toggles below are hidden until the next import — a hidden
     // switch must not stay armed (background delivery kept waking the app,
@@ -4435,7 +4436,7 @@ function checkRecentHealthRun(sinceOverride){
     var runs = (res&&res.runs)||[];
     var seen = new Set(lsGet('kt_hk_imported')||[]);
     var fresh = runs.filter(function(r){
-      if(!r || !r.uuid || seen.has(r.uuid)) return false;
+      if(!r || !r.uuid || seen.has(r.uuid) || _hkBuried(r, _hkSportId(r))) return false;
       // Sports only need a duration (indoor rides / court sports can lack
       // distance); runs still need distance to be loggable — and a run or an
       // activity the user already logged by hand must not be offered as new.
@@ -4623,6 +4624,41 @@ function _healthSportDupe(r, sid, ctx){
 function _hkLocalISO(r){
   var d = new Date(r.startDate);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Tombstones (kt_hk_gone) for the Health runs and activities the owner deleted: {k: 'run' or the
+// sport, s: start ms}, or {k, d: date, n: km or minutes} for a record from before start times
+// were kept. No UUIDs or readings, so they ride in both backups: the import ledger stays out of
+// the iCloud copy, and a restore from it brought every deleted workout back on the next import.
+// Reset import clears them with the ledger. Undo of the delete takes its tombstone back.
+BACKUP_KEYS.push('kt_hk_gone'); _BACKUP_ARRAY_KEYS.push('kt_hk_gone');
+function _hkTomb(x, store){
+  if(!x || (store==='run' ? !_isHealthRun(x) : !_isHealthSport(x))) return null;
+  var t={k:store==='run' ? 'run' : String(x.type||'')};
+  if(Number(x.startMs)>0) t.s=Number(x.startMs);
+  else if(store==='run'){ var o=x.hkOrig||_hkOrigOf(x); t.d=String(o.date||''); t.n=parseFloat(o.km)||0; }
+  else { t.d=String(x.hkOrig ? x.hkOrig.date : x.date||''); t.n=parseInt(x.hkOrig ? x.hkOrig.duration : x.duration, 10)||0; }
+  return t;
+}
+function _hkBury(recs, store, undo){
+  var tombs=(recs||[]).map(function(x){ return _hkTomb(x, store); }).filter(Boolean);
+  if(!tombs.length) return;
+  var g=lsGet('kt_hk_gone'), key=function(t){ return t.k+'|'+(t.s||'')+'|'+(t.d||'')+'|'+(t.n||''); };
+  g=Array.isArray(g) ? g : [];
+  if(undo){ var drop=tombs.map(key); g=g.filter(function(t){ return !t || drop.indexOf(key(t))<0; }); }
+  else g=g.concat(tombs).slice(-1000);
+  lsSet('kt_hk_gone', g);
+}
+function _hkBuried(r, sid){
+  var g=lsGet('kt_hk_gone'); if(!Array.isArray(g) || !g.length) return false;
+  var k=sid||'run', st=new Date(r.startDate).getTime()||0, iso=_hkLocalISO(r);
+  var km=parseFloat(r.distanceKm)||0, mins=Math.round((parseFloat(r.durationSec)||0)/60);
+  return g.some(function(t){
+    if(!t || t.k!==k) return false;
+    if(t.s>0) return st>0 && Math.abs(t.s-st)<=60000;
+    if(t.d!==iso) return false;
+    if(k==='run') return t.n>0 && km>0 && Math.abs(t.n-km)/Math.max(t.n, km)<=0.05;
+    return !(t.n>0 && mins>0 && Math.abs(t.n-mins)/Math.max(t.n, mins)>0.15);
+  });
 }
 // One Health workout is imported once. Call this only after the workout has
 // actually been written, or after a deliberate skip.
@@ -7850,13 +7886,14 @@ function deleteRun(id){
   getRuns().forEach(function(r){ (r && r.id===id ? gone : kept).push(r); });
   if(!gone.length) return null;
   if(!lsSet('kt_runs', kept)) return false;
+  _hkBury(gone, 'run');   // a deleted Health run stays deleted after a restore
   if(runLogConfirmed && runLogConfirmed.id===id) runLogConfirmed=null;
   invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
   showUndoToast('Run deleted', function(){
     if(getRuns().some(function(r){ return r && r.id===id; })) return;
-    if(lsSet('kt_runs', gone.concat(getRuns()))){ invalidateCoachCard(); render(); }
+    if(lsSet('kt_runs', gone.concat(getRuns()))){ _hkBury(gone, 'run', true); invalidateCoachCard(); render(); }
   });
   return true;
 }
@@ -12357,10 +12394,10 @@ function saveRun() {
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
 function deleteSportLog(id){
   var gone=getSportLogs().find(function(l){return l.id===id;}); if(!gone) return;
-  lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+  if(lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}))) _hkBury([gone], 'sport');   // as deleteRun
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
-  showUndoToast((gone.type||'Activity')+' deleted', function(){ var ls=getSportLogs(); ls.unshift(gone); lsSet('kt_sports',ls); render(); });
+  showUndoToast((gone.type||'Activity')+' deleted', function(){ var ls=getSportLogs(); ls.unshift(gone); if(lsSet('kt_sports',ls)) _hkBury([gone], 'sport', true); render(); });
 }
 function deleteSession(id){
   var gone=getSessions().find(function(s){return s.id===id;}); if(!gone) return;
@@ -17002,6 +17039,7 @@ function _executeCoachToolRaw(name,input){
         var dlBefore=dlRuns.length;
         if(!dlRuns.some(function(r){ return r.id===dlId; })) return {ok:false,error:'run id not found'};
         if(!lsSet('kt_runs',dlRuns.filter(function(r){return r.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
+        _hkBury(dlRuns.filter(function(r){ return r.id===dlId; }), 'run');
         invalidateCoachCard(); render();
         return {ok:true,message:'Run deleted'};
       }
@@ -17010,6 +17048,7 @@ function _executeCoachToolRaw(name,input){
         var dlBefore2=dlSports.length;
         if(!dlSports.some(function(x){ return x.id===dlId; })) return {ok:false,error:'sport log id not found'};
         if(!lsSet('kt_sports',dlSports.filter(function(s){return s.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
+        _hkBury(dlSports.filter(function(s){ return s.id===dlId; }), 'sport');
         invalidateCoachCard(); render();
         return {ok:true,message:'Sport session deleted'};
       }
@@ -20902,7 +20941,8 @@ function _hashStr(s){
 // The iCloud copy carries no Apple Health readings (App Review 5.1.3: health
 // data may not be stored in iCloud). Runs and sports imported from Health keep
 // date / distance / duration; heart rate and calories are dropped, and the
-// Health dedup ledger is left out. The on-device Files copy is untouched.
+// Health dedup ledger is left out (kt_hk_gone, the start times of deleted
+// workouts, stays). The on-device Files copy is untouched.
 function _sanitizeForICloud(payload){
   try{
     var o=JSON.parse(payload);

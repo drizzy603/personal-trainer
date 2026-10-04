@@ -12,6 +12,10 @@
 //   minute, or mostly overlapping, with time and distance agreeing) is one record: a batch keeps
 //   the richer copy and burns both UUIDs, auto-log and the card take it once, and a stored copy
 //   absorbs the other even while the import ledger exists.
+// - M29: deleting a Health run or activity leaves a tombstone (kt_hk_gone: kind + start time, or
+//   date + size for an old import; no UUIDs or readings) that rides in the iCloud copy, so a
+//   restore and an import no longer bring deleted workouts back; Undo takes it back, the coach's
+//   delete leaves one, Reset import clears them.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -230,6 +234,64 @@ run('M28: one run written to Health by two apps is one run (batch, auto-log, car
     assert(out.auto.runs === '8.02@152' && out.auto.rides === 1, 'auto-log logs each activity once: ' + JSON.stringify(out.auto));
     assert(out.card1 === 'watch-1' && out.card2 === null, 'the card offers the richer copy, then nothing: ' + JSON.stringify([out.card1, out.card2]));
     assert(out.again === null && out.cSeen && out.cRuns === '8.02@152', 'the other copy is a skipped duplicate: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M29: a Health run or ride the owner deleted stays deleted after a restore from the iCloud copy', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const iso = (daysAgo, h) => { const d = new Date(addDays(todayISO(), -daysAgo) + 'T00:00:00'); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+      window.__hk = [
+        { uuid: 'r-8', type: 'run', startDate: iso(6, 7), distanceKm: 8, durationSec: 2700, avgHr: 150 },
+        { uuid: 'r-5', type: 'run', startDate: iso(4, 7), distanceKm: 5, durationSec: 1650, avgHr: 148 },
+        { uuid: 'walk', type: 'run', startDate: iso(3, 12), distanceKm: 1.1, durationSec: 900, avgHr: 100 },
+        { uuid: 'junk-ride', type: 'ride', startDate: iso(2, 18), distanceKm: 2, durationSec: 600, avgHr: 95 },
+        { uuid: 'old', type: 'run', startDate: iso(5, 9), distanceKm: 3, durationSec: 1000 },
+      ];
+      const r = {};
+      const state = () => ({ runs: getRuns().map(x => x.distance).sort((a, b) => a - b).join(), sports: getSportLogs().length });
+      lsDel('kt_hk_imported'); localStorage.removeItem('kt_hk_last_sync');
+      importFromHealth(); await wait(300);
+      // the 3 km run as an import from before start times were kept
+      lsSet('kt_runs', getRuns().map(x => x.distance === 3 ? Object.assign({}, x, { startMs: undefined }) : x));
+      const idOf = km => getRuns().find(x => x.distance === km).id;
+      // a delete taken back with Undo leaves no tombstone
+      deleteRun(idOf(8)); await wait(20);
+      document.querySelector('#toast .kt-toast-undo').click(); await wait(20);
+      r.undo = { runs: state().runs, gone: (lsGet('kt_hk_gone') || []).length };
+      // the misread walk, the old 3 km and the junk ride are deleted
+      deleteRun(idOf(1.1)); deleteRun(idOf(3)); deleteSportLog(getSportLogs()[0].id); await wait(20);
+      r.tombs = (lsGet('kt_hk_gone') || []).map(t => Object.keys(t).sort().join('')).sort().join(' ');
+      // the iCloud copy carries the tombstones but not the ledger; restoring it on a new phone and importing brings nothing back
+      const icloud = JSON.parse(_sanitizeForICloud(JSON.stringify(buildBackupJSON())));
+      r.icloud = { ledger: 'kt_hk_imported' in icloud, gone: (icloud.kt_hk_gone || []).length };
+      delete icloud._manifest;
+      _applyImportedData(icloud); await wait(50);
+      r.restored = state();
+      importFromHealth(); await wait(300);
+      r.afterImport = Object.assign(state(), { toast: document.getElementById('toast').textContent });
+      // the coach's delete leaves a tombstone too; Reset import clears them with the ledger
+      executeCoachTool('delete_log', { store: 'run', id: idOf(5) });
+      r.coach = (lsGet('kt_hk_gone') || []).length;
+      lsSet('kt_hk_imported', []); localStorage.removeItem('kt_hk_last_sync');
+      importFromHealth(); await wait(300);
+      r.coachAfter = state().runs;
+      resetHealthImport(); document.querySelector('.kt-close-sheet button[id$="ok"]').click(); await wait(50);
+      r.reset = lsGet('kt_hk_gone');
+      return r;
+    });
+    assert(out.undo.runs === '1.1,3,5,8' && out.undo.gone === 0, 'Undo of a delete takes its tombstone back: ' + JSON.stringify(out.undo));
+    assert(out.tombs === 'dkn ks ks', 'tombstones hold only the kind and the start (or date and size): ' + out.tombs);
+    assert(out.icloud.ledger === false && out.icloud.gone === 3, 'the iCloud copy carries the tombstones, not the ledger: ' + JSON.stringify(out.icloud));
+    assert(out.restored.runs === '5,8' && out.restored.sports === 0, 'the restore holds what the owner kept: ' + JSON.stringify(out.restored));
+    assert(out.afterImport.runs === '5,8' && out.afterImport.sports === 0 && /Already up to date/.test(out.afterImport.toast),
+      'importing after the restore brings no deleted workout back: ' + JSON.stringify(out.afterImport));
+    assert(out.coach === 4 && out.coachAfter === '8', 'a run the coach deleted stays deleted: ' + JSON.stringify([out.coach, out.coachAfter]));
+    assert(out.reset === null, 'Reset import clears the tombstones: ' + JSON.stringify(out.reset));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
