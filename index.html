@@ -7295,20 +7295,34 @@ function _drawWrapCard(mk, st, P){
 }
 
 // ── Proactive coach: session auto-debrief ────────────────────────────────────
+// A logged exercise's load for a prompt, from its _exPairs: one load when every set shared it,
+// else each set's in order ("100/90/90 kg"); BW when there is none.
+function _exLoadText(ex, ps){
+  var loads=(ps||_exPairs(ex)).map(function(p){ return p[1]; });
+  if(!loads.length) return parseFloat(ex&&ex.weight)>0?fmtW(ex.weight):'BW';
+  var same=loads.every(function(v){ return Math.abs(v-loads[0])<0.05; });
+  return same ? (loads[0]>0?fmtW(loads[0]):'BW') : loads.map(function(v){ return v>0?wDisp(v):'BW'; }).join('/')+' '+_uW();
+}
 // Fired after a session saves; a short Haiku take lands as a card on Today.
 function _debriefPrompt(sess){
-  var fmtEx=function(ex){ var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps; return ex.name+' '+ex.sets+'×['+reps+'] @ '+fmtW(ex.weight)+(ex.rpe?' RPE '+ex.rpe:''); };
+  // Every set from _exPairs: a previous session in the legacy nested shape (an import, an old
+  // backup, the demo) read "[object Object],…×[undefined] @ 0 lb", and back-off sets read as
+  // more top sets.
+  var fmtEx=function(ex){
+    var ps=_exPairs(ex), rpe=ex.rpe!=null&&ex.rpe!=='' ? ex.rpe : (Array.isArray(ex.sets)&&ex.sets[0] ? ex.sets[0].rpe : null);
+    return ex.name+' '+ps.length+'×['+ps.map(function(p){ return p[0]; }).join(',')+'] @ '+_exLoadText(ex, ps)+(rpe?' RPE '+rpe:'');
+  };
   var lines=sess.exercises.map(fmtEx).join('; ');
   // Baseline: the previous same-type session, the main lift's e1RM move, today's readiness, the profile.
   var prev=getSessions().find(function(x){ return x.id!==sess.id && x.type===sess.type && (x.exercises||[]).length && x.date<=sess.date; });
-  var prevLine=prev?'\nPrevious '+sess.type+' ('+prev.date+'): '+prev.exercises.map(fmtEx).join('; '):'';
+  var prevLine=prev?'\nPrevious '+_dayLabel(sess.type)+' ('+prev.date+'): '+prev.exercises.map(fmtEx).join('; '):'';
   var main=sess.exercises.find(function(e){ return e.isMain; })||sess.exercises[0];
   var trend='';
   try{ var pts=(_e1rmSeries()[main.name]||[]); if(pts.length>=2){ var a=pts[pts.length-2].e1rm, b=pts[pts.length-1].e1rm; trend='\n'+main.name+' est. 1RM: '+fmtW(b)+' ('+(b>=a?'+':'\u2212')+wDisp(Math.abs(b-a))+' '+_uW()+' vs previous)'; } }catch(e){}
   var rd=lsGet('kt_readiness'); var rdLine=(rd&&rd.date===todayISO())?'\nReadiness today: '+rd.score+'/100':'';
   var pl=_profileLines(); var profLine=pl.length?'\nAthlete: '+pl.join('; '):'';
   return 'You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
-    'and one cue for next time about this just-finished '+sess.type+' session. Compare with the previous session when it says something. No greetings, no fluff. '+
+    'and one cue for next time about this just-finished '+_dayLabel(sess.type)+' session. Compare with the previous session when it says something. No greetings, no fluff. '+
     _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+'.\n'+
     'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'')+prevLine+trend+rdLine+profLine;
 }
@@ -17603,9 +17617,7 @@ function buildSystemPrompt(){
       // Every set from _exPairs (the legacy nested shape printed "[object Object]×(undefined)@BW"),
       // with per-set loads when they changed.
       var exStrs=(s.exercises||[]).map(function(ex){
-        var ps=_exPairs(ex), loads=ps.map(function(p){ return p[1]; });
-        var same=loads.every(function(v){ return Math.abs(v-loads[0])<0.05; });
-        var load=!ps.length ? (parseFloat(ex.weight)>0?fmtW(ex.weight):'BW') : same ? (loads[0]>0?fmtW(loads[0]):'BW') : loads.map(function(v){ return v>0?wDisp(v):'BW'; }).join('/')+' '+_uW();
+        var ps=_exPairs(ex), load=_exLoadText(ex, ps);
         var rpe=ex.rpe!=null ? ex.rpe : (Array.isArray(ex.sets) && ex.sets[0] ? ex.sets[0].rpe : null);
         return ex.name+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+load+' RPE'+fmtRpe(rpe);
       });

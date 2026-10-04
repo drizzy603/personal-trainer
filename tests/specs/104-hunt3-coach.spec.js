@@ -14,6 +14,9 @@
 //   undo refresh it (it kept quoting the old load until the next day); one fetch per plan.
 // - M53 the morning card sends a kg owner's per-set weightLog and legacy sets[] in kg (only the
 //   top weight was converted; the rest went out in lb, labelled kg).
+// - M54 the session debrief prompt reads every set from _exPairs: a previous session in the
+//   legacy nested shape read "[object Object],…×[undefined] @ 0 lb", back-offs read as top sets;
+//   the day goes by its name.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -226,4 +229,35 @@ run('M53: the morning card sends a kg owner\'s sessions in kg, set by set', asyn
     assert(out.row.sets.every(st => st.weight === 60 && st.reps === 8), 'the legacy sets are kg: ' + JSON.stringify(out.row));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+run('M54: the debrief prompt reads every set of either session shape, in the owner\'s unit', async () => {
+  for (const unit of ['lb', 'kg']) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_unit_w: unit } });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const kg = _uW() === 'kg';
+        setDayName('Push', 'Chest + Tris');
+        // yesterday's Push in the legacy nested shape (an import, an old backup, the demo), then
+        // today's in the runner's shape: a top set and two back-offs
+        const s = getSessions().slice();
+        s.push({ id: 900010, date: addDays(todayISO(), -1), type: 'Push', week: currentWeek, exercises: [
+          { name: 'Bench Press', sets: [8, 8, 8, 8].map(reps => ({ reps, weight: wStore(kg ? 72.5 : 160), rpe: 9 })) }] });
+        const sess = { id: 900011, date: todayISO(), type: 'Push', week: currentWeek, prs: [], exercises: [
+          { name: 'Bench Press', isMain: true, ss: false, sets: 3, reps: [5, 8, 8], weight: wStore(kg ? 80 : 175), weightLog: [wStore(kg ? 80 : 175), wStore(kg ? 70 : 155), wStore(kg ? 70 : 155)], rpe: 8, rpeLog: [8, 8, 9] }] };
+        s.push(sess); lsSet('kt_sessions', s);
+        let body = '';
+        window.fetch = async (url, opts) => { body = JSON.parse(opts.body).messages[0].content; return new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }), { status: 200 }); };
+        _requestDebrief(sess);
+        await new Promise(res => setTimeout(res, 50));
+        return { kg, yday: addDays(todayISO(), -1), session: (body.match(/Session: [^\n]*/) || [''])[0], prev: (body.match(/Previous [^\n]*/) || [''])[0], named: /just-finished Chest \+ Tris session/.test(body) };
+      });
+      const u = out.kg ? 'kg' : 'lb';
+      assert(out.session === 'Session: Bench Press 3×[5,8,8] @ ' + (out.kg ? '80/70/70' : '175/155/155') + ' ' + u + ' RPE 8', u + ': today\'s back-off sets keep their own loads: ' + out.session);
+      assert(out.prev.indexOf('Previous Chest + Tris (' + out.yday + '): Bench Press 4×[8,8,8,8] @ ' + (out.kg ? '72.5 kg' : '160 lb') + ' RPE 9') === 0, u + ': the legacy session reads as logged: ' + out.prev);
+      assert(!/object Object|undefined/.test(out.prev), u + ': nothing unreadable: ' + out.prev);
+      assert(out.named, u + ': the day goes by its name');
+      assert(app.errors.length === 0, u + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
