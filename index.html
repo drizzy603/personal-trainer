@@ -5178,11 +5178,11 @@ function render() {
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
   if(currentTab==='log' && (logSubTab==='workout' || logSubTab==='run') && hasCustomRoutine()){
-    // Today's day type changed since the card was built (swap modal, Settings
-    // cycle, Coach tool) — drop both cache layers so it regenerates.
+    // Today's day or its plan changed since the card was built (swap modal, Settings
+    // cycle, a Coach tool, Undo, a week change) — drop both cache layers so it regenerates.
     if(coachCard && coachCard.forDay){
       var _cardAct = getTodayActivity();
-      if(coachCard.forDay !== _cardAct.type+'/'+_cardAct.dayName){
+      if(coachCard.forDay !== _coachCardFor(_cardAct)){
         coachCard = null;
         invalidateCoachCard();
       }
@@ -5882,6 +5882,18 @@ function getLastSessionData(exName){
 // ── Coach card (Haiku, cached daily) ─────────────────────────────────────────
 function _todayKey(){ return todayISO(); }
 function _coachCacheKey(){ return 'kt_coach_card_' + _todayKey(); }
+// What a card was written for: today's day and its plan (on a lift day the week and the main
+// lift as prescribed: load, sets, reps, RPE; on a run day the week's run). Keyed on the day
+// alone, the card kept quoting the old load after a coach rewrite, an Undo or Restore, a week
+// change or a Routines undo, until the next day.
+function _coachCardFor(act){
+  var k=act.type+'/'+act.dayName;
+  if(act.type==='lift'){
+    var m=(act.exercises||[]).filter(function(e,i){ return e && (i===0 || e.isMain); });
+    k+='/'+currentWeek+'/'+(m.length?m.map(function(e){ return [e.name, e.weights?e.weights.join(','):e.weight, e.sets, e.reps, e.rpe].join('|'); }).join(';'):'empty');
+  } else if(act.type==='run') k+='/'+currentWeek+'/'+act.km+'/'+act.hr;
+  return k;
+}
 function loadCachedCoachCard(){
   try{
     var s = localStorage.getItem(_coachCacheKey());
@@ -5891,7 +5903,7 @@ function loadCachedCoachCard(){
     // activity changed since (swap modal, Settings cycle, Coach tool), serve
     // nothing so the card regenerates instead of describing the old day.
     var act = getTodayActivity();
-    if(!card || card.forDay !== act.type+'/'+act.dayName) return null;
+    if(!card || card.forDay !== _coachCardFor(act)) return null;
     return card;
   }catch(e){ return null; }
 }
@@ -5974,7 +5986,7 @@ function fallbackCoachCard(activity){
 // Async: try Haiku, fall back to local. Never throws.
 function fetchCoachCard(activity){
   return new Promise(function(resolve){
-    var _forDay = activity.type+'/'+activity.dayName;
+    var _forDay = _coachCardFor(activity);
     var key = getApiKey();
     if(!key){
       var fb = fallbackCoachCard(activity);
@@ -7349,7 +7361,7 @@ function renderCoachCard(activity){
     // the lifecycle block decides whether to fetch.
     card = fallbackCoachCard(activity);
     card.loadedAt = Date.now();
-    card.forDay = activity.type+'/'+activity.dayName;
+    card.forDay = _coachCardFor(activity);
   }
   var actions = (card.actions || []).slice(0,2).map(function(a){
     var cls = (a.primary ? 'primary' : 'neutral') + (/^(got it|ok|okay|thanks|noted|dismiss|later)\b/i.test(String(a.label||'').trim()) ? ' dismiss' : '');

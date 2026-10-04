@@ -141,3 +141,58 @@ run('M24: a programme built in the chat after "Start a new programme" starts on 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('M52: Today\'s coach card follows the plan: coach rewrite, Restore, week changes, a Routines undo', async () => {
+  for (const keyed of [true, false]) {
+    const seed = { kt_coach_msgs: '[]' };
+    if (keyed) seed.kt_apikey = 'sk-test';
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+        const r = {}, c = currentWeek - 1, wk = currentWeek;
+        // every day is Push, so today is a lift day whatever the weekday
+        const cr0 = getCustomRoutine(); cr0.weekPlan = ['Push', 'Push', 'Push', 'Push', 'Push', 'Push', 'Push']; cr0.weeks.forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr0);
+        let calls = 0;
+        window.fetch = async (url, opts) => {   // the card quotes the main lift it was sent
+          calls++;
+          const t = JSON.parse(JSON.parse(opts.body).messages[0].content.match(/Today: (.*)\n/)[1]);
+          return new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ message: t.mainLift.name + ' at ' + t.mainLift.weight + ' ' + t.mainLift.unit + ' today.', actions: [{ label: 'Got it', primary: false }, { label: 'Adjust', primary: true }] }) }] }), { status: 200 });
+        };
+        // the keyless card's progression / plateau lines depend on how old the demo logs are
+        window._progressionLifts = () => []; window._plateauLifts = () => [];
+        const card = async () => { switchTab('log'); logSubTab = 'workout'; render(); await wait(120); render(); await wait(60); const m = (coachCard && coachCard.message) || ''; const x = m.match(/(\d+(?:\.\d+)?) lb/); return x ? parseFloat(x[1]) : m; };
+        const main = () => getWkData().push[0].weight;
+        invalidateCoachCard(); coachCard = null; coachCardDismissed = false;
+        r.first = [main(), await card()];
+        // a cold boot with nothing changed reads the cached card; one cached for another plan is not served
+        const n0 = calls; coachCard = null; loadCoachCardForToday(); r.coldCached = [!!coachCard, calls === n0];
+        const w = getCustomRoutine().weeks[c];
+        executeCoachTool('update_routine_weeks', { weeks: [{ wk, bName: w.bName, bColor: w.bColor, push: w.push.map((e, i) => ({ name: e.name, sets: e.sets, reps: e.reps, weight: i === 0 ? e.weight + 30 : e.weight, isMain: !!e.isMain })) }] });
+        r.rewrite = [main(), await card()];
+        restoreRoutineBackup(); await wait(10);
+        document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+        r.restore = [main(), await card()];
+        r.staleCache = loadCachedCoachCard() === null || loadCachedCoachCard().message.indexOf(String(main())) >= 0;
+        executeCoachTool('set_current_week', { week: wk + 1 });
+        r.setWeek = [main(), await card()];
+        adjustWeek(-1);
+        r.stepper = [main(), await card()];
+        _commitRoutine(cr => _progCarryLoad(cr, 'push', cr.weeks[c].push[0].name, c, cr.weeks[c].push[0].weight + 10, { markOwner: true }), { scope: 'spec-104', undoLabel: 'Bench updated' });
+        r.commit = [main(), await card()];
+        document.querySelector('.kt-toast-undo').click();
+        r.undo = [main(), await card()];
+        r.calls = calls;
+        return r;
+      });
+      const tag = keyed ? 'with a key' : 'keyless';
+      ['first', 'rewrite', 'restore', 'setWeek', 'stepper', 'commit', 'undo'].forEach(k => {
+        assert(out[k][0] === out[k][1], tag + ': after ' + k + ' the card quotes today\'s load: ' + JSON.stringify(out));
+      });
+      assert(out.rewrite[0] !== out.first[0] && out.setWeek[0] !== out.stepper[0] && out.commit[0] !== out.undo[0], tag + ': the plan really changed: ' + JSON.stringify(out));
+      assert(out.staleCache, tag + ': a card cached for the replaced plan is not served');
+      if (keyed) assert(out.coldCached[0] && out.coldCached[1] && out.calls === 7, 'with a key: one fetch per plan, none on a cold boot that changed nothing: ' + JSON.stringify([out.coldCached, out.calls]));
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
