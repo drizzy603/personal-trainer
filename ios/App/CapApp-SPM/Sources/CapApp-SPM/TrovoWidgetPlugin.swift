@@ -53,6 +53,12 @@ public class TrovoWidgetPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             defaults.set(pending, forKey: "pendingWatchDone")
         }
+        // Which session each overlay date was (WatchSessionHub): kept only for the dates still pending.
+        if var who = defaults.dictionary(forKey: "pendingWatchDoneWho") as? [String: [String]], !who.isEmpty {
+            let left = Set(defaults.stringArray(forKey: "pendingWatchDone") ?? [])
+            who = who.filter { left.contains($0.key) }
+            defaults.set(who, forKey: "pendingWatchDoneWho")
+        }
         if #available(iOS 14.0, *) {
             WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
         }

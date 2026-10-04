@@ -159,6 +159,18 @@ public final class WatchSessionHub: NSObject, WCSessionDelegate {
                         done.append(day)
                         shared.set(done, forKey: "pendingWatchDone")
                     }
+                    // Which session it was (its slot; the day's name from wrist builds that send
+                    // none), so the widget marks only that day done, as the page does: a Pull
+                    // session said "Legs, done." on a Legs day until the app ran.
+                    let slot = (obj["slot"] as? String) ?? ""
+                    let who = slot.isEmpty ? ((obj["dayName"] as? String) ?? "") : slot
+                    if !who.isEmpty {
+                        var byDay = (shared.dictionary(forKey: "pendingWatchDoneWho") as? [String: [String]]) ?? [:]
+                        if !(byDay[day] ?? []).contains(who) {
+                            byDay[day, default: []].append(who)
+                            shared.set(byDay, forKey: "pendingWatchDoneWho")
+                        }
+                    }
                     if #available(iOS 14.0, *) {
                         WidgetCenter.shared.reloadTimelines(ofKind: "SuperoTodayWidget")
                     }

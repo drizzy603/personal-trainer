@@ -19,6 +19,10 @@
 // - L17: every widget summary day carries its own programme week, so from Monday 00:00 the widget
 //   shows the new week's number without the app running (it showed the summary's one week); the
 //   final week's number holds past the end, and a set next round's days count from its week 1.
+// - L18: the widget's done overlays now match what the page counts (the hub mirrors which slot a
+//   wrist session was, Health workouts are matched to the day's kind and sport). This pins the
+//   page side of that contract: a lift day is done only by its own slot, a run day by a run, a
+//   sport day by its own sport, and a sport day's type is the SPORTS id a Health ride maps to.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -315,6 +319,35 @@ run('L17: each widget summary day carries its own programme week', async () => {
     assert(ok(out.parked, w => w === out.total), 'past the final week the days keep its number: ' + JSON.stringify(out.parked));
     assert(ok(out.round, s => s === 'old' + out.total || s === 'new1' || s === 'new2') && out.round.indexOf('new1') >= 0,
       'a set next round counts its days from its week 1: ' + JSON.stringify(out.round));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('L18: a summary day is done only by what that day asks for (the rule the widget overlays mirror)', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const dow = (new Date().getDay() + 6) % 7, today = todayISO(), r = {};
+      const day = () => { const d = _nativeSummaryDays(1)[0]; return d.kind + ':' + d.type + ':' + d.done; };
+      const sess = type => ({ id: Date.now() + Math.random(), date: today, type, label: type, week: currentWeek, prs: [],
+        exercises: [{ name: 'Spec Lift', sets: 1, reps: [5], weight: 100, weightLog: [100] }] });
+      const sport = type => ({ id: Date.now() + Math.random(), date: today, type, duration: 40, data: {} });
+      // a lift day: another slot's session does not count, its own does
+      setWeekPlanDay(dow, 'Legs'); lsSet('kt_sessions', [sess('Pull')]);
+      r.liftOther = day(); lsSet('kt_sessions', [sess('Pull'), sess('Legs')]); r.liftOwn = day();
+      // a run day: a ride (filed as Cycling) does not count, a run does
+      setWeekPlanDay(dow, 'Run'); lsSet('kt_sessions', []); lsSet('kt_sports', [sport('Cycling')]);
+      r.runRide = day(); lsSet('kt_runs', [{ id: Date.now(), date: today, km: 5, time: '25:00' }]); r.runRun = day();
+      // a sport day: a run or another sport does not count, its own sport does
+      setWeekPlanDay(dow, 'Cycling'); lsSet('kt_sports', [sport('Yoga')]);
+      r.sportOther = day(); lsSet('kt_sports', [sport('Yoga'), sport('Cycling')]); r.sportOwn = day();
+      r.rideMapsTo = _hkSportId({ type: 'ride' });
+      return r;
+    });
+    assert(out.liftOther === 'lift:Legs:false' && out.liftOwn === 'lift:Legs:true', 'a lift day is done by its own slot only: ' + JSON.stringify(out));
+    assert(out.runRide === 'run:Run:false' && out.runRun === 'run:Run:true', 'a run day is done by a run, not a ride: ' + JSON.stringify(out));
+    assert(out.sportOther === 'sport:Cycling:false' && out.sportOwn === 'sport:Cycling:true' && out.rideMapsTo === 'Cycling',
+      'a sport day is done by its own sport; its type is the id a Health ride maps to: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

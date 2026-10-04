@@ -183,15 +183,19 @@ func loadSummary() -> WidgetSummary? {
 // day flips to "done" right after the watch workout ends, even if the app
 // hasn't been opened since.
 // Wrist-finished lift sessions land in standard defaults (invisible here)
-// until the phone app drains them — the plugin mirrors their DATES into the
-// App Group so lift days flip to done immediately.
+// until the phone app drains them — the hub mirrors their DATES (and which
+// session each was) into the App Group so lift days flip to done immediately.
 private func applyWatchDone(_ summary: WidgetSummary) -> WidgetSummary {
-    guard let done = UserDefaults(suiteName: "group.app.kt.trainer")?
-            .stringArray(forKey: "pendingWatchDone"), !done.isEmpty else { return summary }
+    let group = UserDefaults(suiteName: "group.app.kt.trainer")
+    guard let done = group?.stringArray(forKey: "pendingWatchDone"), !done.isEmpty else { return summary }
+    // Which session each date's finish was (its slot, or the day's name): only that day flips, as
+    // the page decides it. A date with none recorded (an older shell) flips the day's lift day.
+    let who = (group?.dictionary(forKey: "pendingWatchDoneWho") as? [String: [String]]) ?? [:]
     // Only a scheduled lift day flips — a wrist session on a Run or Rest day
     // used to render "Run, done." until the next day's summary.
     let days = summary.days.map { d -> SummaryDay in
-        guard !d.done, !d.isRest, d.lifts > 0, done.contains(d.date) else { return d }
+        guard !d.done, !d.isRest, d.isLiftDay, done.contains(d.date) else { return d }
+        if let w = who[d.date], !w.isEmpty, !w.contains(d.type), !w.contains(d.name) { return d }
         return d.markedDone()
     }
     return summary.with(days: days)
@@ -206,15 +210,26 @@ private func applyPendingWorkouts(_ summary: WidgetSummary) -> WidgetSummary {
     let dayFmt = DateFormatter()
     dayFmt.locale = Locale(identifier: "en_US_POSIX")
     dayFmt.dateFormat = "yyyy-MM-dd"
-    let pendingDays = Set(arr.compactMap { entry -> String? in
+    // Each workout's day, and the sport the app files it under (a ride is Cycling; nil: a run).
+    let pending: [(day: String, sport: String?)] = arr.compactMap { entry in
         guard let s = entry["startDate"] as? String, let d = iso.date(from: s) else { return nil }
-        return dayFmt.string(from: d)
-    })
-    guard !pendingDays.isEmpty else { return summary }
+        let t = (entry["type"] as? String) ?? "run"
+        return (dayFmt.string(from: d), t == "run" ? nil : (t == "ride" ? "Cycling" : t))
+    }
+    guard !pending.isEmpty else { return summary }
     let days = summary.days.map { d -> SummaryDay in
         // Only cardio days get auto-completed: never a rest day or a lift day (an empty one too).
-        guard !d.done, !d.isRest, !d.isLiftDay, pendingDays.contains(d.date) else { return d }
-        return d.markedDone()
+        guard !d.done, !d.isRest, !d.isLiftDay else { return d }
+        // And only by a workout the app counts for that day: a run on a Run day, the day's own
+        // sport on a sport day. Any workout flipped any cardio day ("Run, done." for a ride or
+        // Yoga) until the app ran. A summary without kinds (an older page) keeps the old rule.
+        let hit = pending.contains { p in
+            guard p.day == d.date else { return false }
+            if d.kind == "run" { return p.sport == nil }
+            if d.kind == "sport" { return p.sport == d.type }
+            return true
+        }
+        return hit ? d.markedDone() : d
     }
     return summary.with(days: days)
 }
