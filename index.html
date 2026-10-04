@@ -5532,7 +5532,12 @@ function _tomorrowLabel(){
   var _tomWeek=getWeekPlan();
   // On the Sunday BEFORE a programme starts, tomorrow is week 1's Monday, not
   // week 2's — do not look ahead a week that has not begun.
-  if(_dowIdx===6 && _programmeStarted()){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
+  // After the final week it repeats, or a next round starting tomorrow begins at its week 1
+  // (this programme's week 1): read as week 13, the routine-wide cadence named the wrong day.
+  if(_dowIdx===6 && _programmeStarted()){
+    var _nr=_nextRoundSet(), _tw=(_nr && _nr.startsOn<=addDays(todayISO(),1)) ? 1 : Math.min(getTotalWeeks(), currentWeek+1);
+    try{ var _nw=getWeekPlanForWeek(_tw); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
+  }
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
   return tomPlan.isUnknown ? 'Unset' : tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');

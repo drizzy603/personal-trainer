@@ -25,6 +25,9 @@
 //   a week late when tapped after it. It starts on the Monday it showed (now, if that has come).
 // - L20 A screen kept on across midnight never rolled the day: Monday showed last week's week and
 //   loads and pushed the watch last week's plan. A minute clock rolls it as a return would.
+// - L21 On the final week's Sunday "TOMORROW · …" read a week 13 that does not exist (the
+//   routine-wide cadence). It reads the week Monday holds: the final week again, or week 1 of a
+//   next round starting tomorrow.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -468,6 +471,38 @@ run('L20: a screen left on across midnight rolls the day, the week and the watch
     assert(out.ticks >= 1, 'a minute clock runs: ' + out.ticks);
     assert(out.after[0] === M && out.after[1] === 7 && out.after[2], 'after midnight Today is Monday of week 7: ' + JSON.stringify(out.after));
     assert(out.after[3][0] === M && out.after[3][1] === 7, 'and the watch is sent Monday of week 7: ' + JSON.stringify(out.after[3]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L21: the final week\'s Sunday names what Monday holds, not a week 13', async () => {
+  const app = await boot({ native: false });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const r = {}, mon = _mostRecentMonday();
+      const sunday = (round) => {
+        lsDel('kt_routine_next');
+        const cr = getCustomRoutine(); cr.cycle = 1;
+        // Week 12 has its own cadence (Push on Monday), week 1 another (Legs); the routine-wide one says Cycling.
+        cr.weeks[11].weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest'];
+        cr.weeks[0].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];
+        setCustomRoutine(cr);
+        __setNow(addDays(mon, 6) + 'T10:00:00'); _setWeek(12, mon);
+        if (round) setNextRound('monday');
+        switchTab('log'); switchLogSub('workout'); render();
+        const shown = (txt().match(/TOMORROW · [A-Z]+/) || [''])[0];
+        __setNow(addDays(mon, 7) + 'T08:00:00'); autoAdvanceWeek(); _todayActMemo = null;
+        const a = getTodayActivity();
+        return { shown, monday: [getCustomRoutine().cycle, currentWeek, a.dayName] };
+      };
+      r.repeat = sunday(false);
+      r.round = sunday(true);
+      return r;
+    }, LOGS);
+    assert(out.repeat.shown === 'TOMORROW · PUSH' && JSON.stringify(out.repeat.monday) === JSON.stringify([1, 12, 'Push']), 'week 12 repeats: tomorrow is its Monday: ' + JSON.stringify(out.repeat));
+    assert(out.round.shown === 'TOMORROW · LEGS' && JSON.stringify(out.round.monday) === JSON.stringify([2, 1, 'Legs']), 'round 2 starts tomorrow: its week 1 Monday: ' + JSON.stringify(out.round));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
