@@ -20015,6 +20015,11 @@ function _resumeDayAndRest(){
     if(runnerRestLeft <= 0) _restFinish(); else _paintRestClock();
   }
 }
+// A screen kept on across midnight (the runner's wake lock, a phone on a stand) never
+// leaves the foreground, so no return rolls the day: Monday showed last week's loads and
+// pushed the watch last week's plan. A minute clock rolls it as a return would.
+function _dayTick(){ if(document.visibilityState==='visible' && todayISO()!==_lastSeenDay) _resumeDayAndRest(); }
+setInterval(_dayTick, 60000);
 
 // ── Keyboard / assistive-tech access for clickable divs ──────────────────────
 // Rendered markup uses onclick divs in places (calendar days, settings rows).

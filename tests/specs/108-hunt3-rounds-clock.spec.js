@@ -23,6 +23,8 @@
 //   judged at the reps its best set was done for.
 // - L23 The next-round sheet painted before midnight (or left on screen overnight) set the round
 //   a week late when tapped after it. It starts on the Monday it showed (now, if that has come).
+// - L20 A screen kept on across midnight never rolled the day: Monday showed last week's week and
+//   loads and pushed the watch last week's plan. A minute clock rolls it as a return would.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -431,6 +433,41 @@ run('L23: the round starts on the Monday the sheet showed, tapped after midnight
     }
     const m = out.midweek;
     assert(m.shown === 'Start round 2 on ' + out.day && m.set && m.set.startsOn === out.next && m.cycle === 1 && m.week === 8 && /starts/.test(m.toast), 'mid-week: set for the Monday it showed: ' + JSON.stringify(m));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L20: a screen left on across midnight rolls the day, the week and the watch within a minute', async () => {
+  const app = await boot({ native: true });
+  try {
+    // The page's timers are recorded, so its minute clock can run without waiting a minute.
+    await app.page.addInitScript(() => { const si = window.setInterval; window.__ticks = []; window.setInterval = function (fn, ms) { window.__ticks.push({ fn, ms }); return si.apply(this, arguments); }; });
+    await withClock(app);
+    const M = await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, -1) + 'T23:58:00');
+      lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', addDays(mon, -7));
+      return mon;
+    });
+    await coldBoot(app);   // Sunday 23:58 of week 6, Today on screen
+    const out = await app.page.evaluate(async ({ LOGS, M }) => {
+      eval(LOGS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const watch = () => { const u = window.__mock.updateContext; const j = u.length ? JSON.parse(u[u.length - 1].json) : {}; return [j.date, j.week]; };
+      switchTab('log'); switchLogSub('workout'); await wait(1000);
+      const r = { before: [todayISO(), currentWeek, watch()] };
+      __setNow(M + 'T00:00:30');   // midnight passes with the screen on: no visibilitychange
+      const ticks = window.__ticks.filter(t => t.ms === 60000);
+      r.ticks = ticks.length;
+      ticks.forEach(t => t.fn());
+      await wait(1000);   // the watch push is debounced
+      r.after = [todayISO(), currentWeek, /MON · WK 07/.test(txt()), watch()];
+      return r;
+    }, { LOGS, M });
+    assert(out.before[1] === 6 && out.before[2][1] === 6, 'Sunday night: week 6 on the phone and the wrist: ' + JSON.stringify(out.before));
+    assert(out.ticks >= 1, 'a minute clock runs: ' + out.ticks);
+    assert(out.after[0] === M && out.after[1] === 7 && out.after[2], 'after midnight Today is Monday of week 7: ' + JSON.stringify(out.after));
+    assert(out.after[3][0] === M && out.after[3][1] === 7, 'and the watch is sent Monday of week 7: ' + JSON.stringify(out.after[3]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
