@@ -3415,12 +3415,15 @@ function restoreArchivedRoutine(id){
   if(!entry){showToast('Programme not found','err');return;}
   _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     // The restored programme is written before its entry leaves the archive, and a failure
-    // puts the archive back: the current one is never left archived nowhere.
+    // puts the archive back: the current one is never left archived nowhere. The current one
+    // goes in on top of every entry (six for a moment) and only the restored one leaves:
+    // archiving first trimmed a full history to five, which cost it its oldest programme.
     var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
-    if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+    var withCur=(cur && !(prevArr[0] && JSON.stringify(prevArr[0].routine)===JSON.stringify(cur))) ? [{id:Date.now(),archivedAt:todayISO(),routine:cur}].concat(prevArr) : prevArr;
+    if(!lsSet('kt_routine_archive', withCur)){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
     _routineReplaced(cur, 'history:'+id);
-    setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
+    setRoutineArchive(withCur.filter(function(e){return e.id!==id;}).slice(0,5));
     _startProgramme();
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();

@@ -20,6 +20,8 @@
 //   version (keyless owners included), and How It Works points there (M22).
 // - A restore (or Undo last restore) before a new programme has started keeps its start: the
 //   backup carries kt_week_monday, and week 1 on a Monday still ahead is kept (M23).
+// - Restoring from a full Programme History keeps the oldest entry (only the restored one leaves),
+//   and a failed write changes nothing (M27).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -395,6 +397,35 @@ run('a restore (or its undo) before a new programme starts keeps its start', asy
     assert(out.restored.anchor === out.start && !out.restored.started && out.restored.week === 1, 'a restore keeps the start: ' + JSON.stringify(out.restored));
     for (const k of ['past', 'far', 'week5']) assert(out[k].anchor === out.thisMon && out[k].started, k + ': re-anchored on this Monday: ' + JSON.stringify(out[k]));
     assert(out.other.week === 5 && out.undone.anchor === out.start && !out.undone.started && out.undone.week === 1, 'Undo last restore keeps the start: ' + JSON.stringify([out.other, out.undone]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('restoring from a full Programme History keeps every other programme', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ([FULL, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const full = eval(FULL), room = eval(ROOM);
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const base = getCustomRoutine(), arr = [];
+      for (let i = 5; i >= 1; i--) { const p = JSON.parse(JSON.stringify(base)); p.name = 'Programme ' + i; arr.push({ id: 1000 + i, archivedAt: todayISO(), routine: p }); }
+      lsSet('kt_routine_archive', arr);
+      const names = () => getRoutineArchive().map(e => e.routine.name);
+      const r = { current: getCustomRoutine().name };
+      // storage full: the programme cannot be written, then the history cannot; nothing changes
+      for (const k of ['kt_routine', 'kt_routine_archive']) {
+        full([k]); restoreArchivedRoutine(1003); await wait(20); confirm(); await wait(30); room();
+        r[k] = { names: names(), current: getCustomRoutine().name };
+      }
+      restoreArchivedRoutine(1003); await wait(20); confirm(); await wait(30);
+      r.after = { names: names(), current: getCustomRoutine().name };
+      return r;
+    }, [FULL, ROOM]);
+    const five = '["Programme 5","Programme 4","Programme 3","Programme 2","Programme 1"]';
+    for (const k of ['kt_routine', 'kt_routine_archive']) assert(JSON.stringify(out[k].names) === five && out[k].current === out.current, 'a failed write (' + k + ') changes nothing: ' + JSON.stringify(out[k]));
+    assert(out.after.current === 'Programme 3' && JSON.stringify(out.after.names) === JSON.stringify([out.current, 'Programme 5', 'Programme 4', 'Programme 2', 'Programme 1']),
+      'the restored programme leaves history, the current one joins it, and the oldest stays: ' + JSON.stringify(out.after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
