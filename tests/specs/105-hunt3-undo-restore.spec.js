@@ -22,6 +22,8 @@
 //   backup carries kt_week_monday, and week 1 on a Monday still ahead is kept (M23).
 // - Restoring from a full Programme History keeps the oldest entry (only the restored one leaves),
 //   and a failed write changes nothing (M27).
+// - PLAN CHANGES retires only once its Undo is done: Cancel, or an Undo that could not be saved,
+//   keeps the card and its Undo (L37).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -426,6 +428,39 @@ run('restoring from a full Programme History keeps every other programme', async
     for (const k of ['kt_routine', 'kt_routine_archive']) assert(JSON.stringify(out[k].names) === five && out[k].current === out.current, 'a failed write (' + k + ') changes nothing: ' + JSON.stringify(out[k]));
     assert(out.after.current === 'Programme 3' && JSON.stringify(out.after.names) === JSON.stringify([out.current, 'Programme 5', 'Programme 4', 'Programme 2', 'Programme 1']),
       'the restored programme leaves history, the current one joins it, and the oldest stays: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('PLAN CHANGES stays until its Undo is done: Cancel or a full phone keeps the card', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async ([MOCK, FULL, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const full = eval(FULL), room = eval(ROOM);
+      eval(MOCK)([{ content: [{ type: 'tool_use', id: 't1', name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 170 } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+      coachMessages.push({ role: 'user', content: 'bench 170' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      const show = async () => { switchTab('coach'); coachView = 'chat'; render(); await wait(30); };
+      const card = () => { const c = document.querySelector('.kt-ledger-card'); return c ? { undo: [...c.querySelectorAll('button')].some(b => /Undo/.test(b.textContent)) } : null; };
+      const tapUndo = async (ok) => { [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent)).click(); await wait(20);
+        const b = [...document.querySelectorAll('.kt-close-sheet button')].find(x => ok ? /Restore/.test(x.textContent) : /Cancel/i.test(x.textContent)); if (b) b.click(); await wait(30); };
+      const bench = () => getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Bench Press').weight;
+      const r = {};
+      await show(); r.before = card();
+      await tapUndo(false); await show();
+      r.cancel = { card: card(), bench: bench() };
+      full(['kt_routine']); await tapUndo(true); room(); await show();
+      r.fullPhone = { card: card(), bench: bench() };
+      await tapUndo(true); await show();
+      r.undone = { card: card(), bench: bench(), stored: JSON.parse(localStorage.getItem('kt_coach_msgs')).filter(m => m._tools).every(m => m._ledgerSeen) };
+      return r;
+    }, [MOCK, FULL, ROOM]);
+    assert(out.before && out.before.undo, 'the reply offers Undo: ' + JSON.stringify(out.before));
+    assert(out.cancel.card && out.cancel.card.undo && out.cancel.bench === 170, 'Cancel keeps the card and its Undo: ' + JSON.stringify(out.cancel));
+    assert(out.fullPhone.card && out.fullPhone.card.undo && out.fullPhone.bench === 170, 'an Undo that could not be saved keeps the card: ' + JSON.stringify(out.fullPhone));
+    assert(out.undone.card === null && out.undone.bench !== 170 && out.undone.stored, 'a done Undo retires the card: ' + JSON.stringify(out.undone));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -17340,7 +17340,8 @@ function _planChangeLedger(tools, idx){
   '</div>';
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
-function _ledgerUndo(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } restoreRoutineBackup(); }
+// The card retires once the restore is done: Cancel (or a write that failed) hid it for good.
+function _ledgerUndo(i){ restoreRoutineBackup(function(){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
 function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
@@ -17426,7 +17427,7 @@ function _swapNotedWeights(w){
   });
   return n ? {weights:weights, back:back} : null;
 }
-function restoreRoutineBackup(){
+function restoreRoutineBackup(onDone){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
   _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
@@ -17451,6 +17452,7 @@ function restoreRoutineBackup(){
     // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
     // week. Week 1 sent the owner back to the start and cleared the final-week state.
     if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
+    if(typeof onDone==='function') onDone();
     showToast('Previous programme restored'); render();
   }});
 }
