@@ -16,6 +16,9 @@
 //   tells an empty lift day (kind lift, 0 lifts: "NO LIFTS YET · BUILD IT") from a cardio day and
 //   never marks it done from a Health workout; the wrist gets the empty day as a lift plan with no
 //   exercises, which it now says to build on the iPhone (it said Health would pick it up).
+// - L17: every widget summary day carries its own programme week, so from Monday 00:00 the widget
+//   shows the new week's number without the app running (it showed the summary's one week); the
+//   final week's number holds past the end, and a set next round's days count from its week 1.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -281,6 +284,37 @@ run('L19: an empty lift day reaches the widget as a lift day and the wrist as a 
       'the empty Arms day is a lift day with 0 lifts (not a rest or cardio day); a built day keeps its count: ' + JSON.stringify(out));
     assert(out.watch.type === 'lift' && out.watch.slot === 'Arms' && out.watch.n === 0, 'the wrist gets the empty day as a lift plan with no exercises: ' + JSON.stringify(out.watch));
     assert(out.pre.kind === 'rest' && out.pre.isRest, 'a day before the programme starts is a rest day: ' + JSON.stringify(out.pre));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('L17: each widget summary day carries its own programme week', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const r = {}, total = getTotalWeeks();
+      // mid-programme: week 6 began this Monday
+      _setWeek(6);
+      const mon = _mostRecentMonday(), next = addDays(mon, 7);
+      const wk = days => days.map(d => (d.date < next ? 'a' : d.date < addDays(next, 7) ? 'b' : 'c') + d.week);
+      let sum = null; Capacitor.Plugins.TrovoWidget.updateSummary = (o) => { sum = JSON.parse(o.json); return Promise.resolve({}); };
+      _lastNativeSummary = null; _runNativeSync();
+      r.mid = { weeks: wk(_nativeSummaryDays(15)), top: sum && sum.week, sent: sum && sum.days.map(d => d.week) };
+      // parked on the final week: the days after its end keep the final week's number
+      _setWeek(total);
+      r.parked = _nativeSummaryDays(15).map(d => d.week);
+      // a next round set for next Monday: its days count from its week 1
+      lsSet('kt_routine_next', { startsOn: next, at: todayISO() });
+      r.round = _nativeSummaryDays(15).map(d => (d.date < next ? 'old' : 'new') + d.week);
+      return Object.assign(r, { total });
+    });
+    const ok = (arr, f) => arr.every(f);
+    assert(ok(out.mid.weeks, s => ({ a: 'a6', b: 'b7', c: 'c8' })[s[0]] === s), 'this week’s days are week 6, next week’s 7, the one after 8: ' + JSON.stringify(out.mid));
+    assert(out.mid.top === 6 && out.mid.sent.length === 7 && out.mid.sent.every(w => w === 6 || w === 7),
+      'the widget gets each day’s week; the summary’s own week stays the current week (older widgets read it): ' + JSON.stringify(out.mid));
+    assert(ok(out.parked, w => w === out.total), 'past the final week the days keep its number: ' + JSON.stringify(out.parked));
+    assert(ok(out.round, s => s === 'old' + out.total || s === 'new1' || s === 'new2') && out.round.indexOf('new1') >= 0,
+      'a set next round counts its days from its week 1: ' + JSON.stringify(out.round));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

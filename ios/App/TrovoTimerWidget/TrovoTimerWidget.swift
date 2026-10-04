@@ -106,6 +106,9 @@ struct SummaryDay: Decodable {
     // "lift" | "run" | "sport" | "rest" (older pages omit it). A lift day with no lifts is one
     // nobody has built yet, not a cardio day.
     var kind: String? = nil
+    // The programme week this day belongs to (older pages omit it: the summary's week, which
+    // went stale at Monday midnight until the app ran again).
+    var week: Int? = nil
 
     var name: String { label ?? type }
     var chip: String { short ?? String(type.prefix(5)) }
@@ -301,7 +304,7 @@ struct SuperoTodayView: View {
 
     private var subline: String {
         guard let d = day, let s = entry.summary else { return "SET UP YOUR PLAN" }
-        if d.done { return "NICE WORK · WK \(s.week)" }
+        if d.done { return "NICE WORK · WK \(d.week ?? s.week)" }
         if d.isRest { return "RECOVER WELL" }
         if d.lifts > 0 { return "\(d.lifts) LIFTS · ~\(d.lifts * 8) MIN" }
         // A lift day nobody has built yet: the tap opens the builder ("LOG IT WHEN DONE" before).
@@ -312,7 +315,7 @@ struct SuperoTodayView: View {
         let f = DateFormatter(); f.dateFormat = "EEE"
         let dow = f.string(from: entry.date).uppercased()
         guard let s = entry.summary else { return "FITNESS PROGRAMMER" }
-        return "\(dow) · WK \(s.week) / \(s.totalWeeks)"
+        return "\(dow) · WK \(day?.week ?? s.week) / \(s.totalWeeks)"
     }
 
     // Lock Screen circular: glyph + compressed day label.

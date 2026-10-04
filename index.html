@@ -20189,12 +20189,14 @@ function _weekLiftCount(wk, type, cr0){
 // 7-day plan summary — widget + reminders share this.
 // kind: what the day is ('lift' | 'run' | 'sport' | 'rest'), so the widget can tell an empty lift
 // day (kind 'lift', 0 lifts: "build it") from a cardio day, and which workouts mark which day.
+// week: the programme week the day belongs to. The widget showed the summary's one week on every
+// day, so from Monday 00:00 the new week's days read last week's number until the app ran.
 function _nativeSummaryDays(n){
   var out=[];
   var sessions=getSessions(), runs=getRuns(), sports=getSportLogs();
   for(var i=0;i<(n||7);i++){
     var iso=addDays(todayISO(), i);
-    if(iso < _weekAnchor()){ out.push({date:iso, type:'Rest', kind:'rest', isRest:true, lifts:0, done:false}); continue; }
+    if(iso < _weekAnchor()){ out.push({date:iso, type:'Rest', kind:'rest', week:1, isRest:true, lifts:0, done:false}); continue; }
     var dow=(new Date(iso+'T00:00:00').getDay()+6)%7;
     var src=_planWeekFor(iso), wk=src.wk;
     var plan=src.plan[dow];
@@ -20203,7 +20205,7 @@ function _nativeSummaryDays(n){
     else if(plan.isRun)   done=runs.some(function(r){return r.date===iso;});
     else if(plan.isSport) done=sports.some(function(l){return l.date===iso && l.type===plan.type;});
     out.push({date:iso, type:plan.type, label:_dayLabel(plan.type), short:_dayShort(plan.type), isRest:!!plan.isRest,
-      kind: plan.isLift ? 'lift' : (plan.isRun ? 'run' : (plan.isSport ? 'sport' : 'rest')),
+      kind: plan.isLift ? 'lift' : (plan.isRun ? 'run' : (plan.isSport ? 'sport' : 'rest')), week:wk,
       lifts: plan.isLift ? _weekLiftCount(wk, plan.type, src.cr) : 0, done:done});
   }
   return out;
