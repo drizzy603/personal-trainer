@@ -12,12 +12,13 @@ run('mid-workout exercise edit reaches the watch plan push', async () => {
       const ex = runnerSession.exercises[0];
       const oldName = ex.name;
       // One set logged under the old name, then the phone edit sheet swaps
-      // the lift and its scheme.
+      // the lift and its scheme (to a lift not already in the session: a swap
+      // onto another card's lift is refused, spec 107).
       runnerEngaged = true;
       runnerCompleteSet();
       runnerSkipRest();
       openRunnerExEdit(0);
-      _rExEditName = 'Incline Dumbbell Press';
+      _rExEditName = 'Machine Chest Press';
       _rExEditSets = 4; _rExEditReps = 12; _rExEditWeight = 45;
       saveRunnerExEdit();
       window.__mock.updateContext.length = 0;
@@ -30,10 +31,10 @@ run('mid-workout exercise edit reaches the watch plan push', async () => {
       closeDeckRunner();
       return {
         pushed: pushes.length >= 1,
-        swapped: first.name === 'Incline Dumbbell Press' && first.sets === 4 && first.reps === 12 && first.weight === 45,
+        swapped: first.name === 'Machine Chest Press' && first.sets === 4 && first.reps === 12 && first.weight === 45,
         oldGone: !(plan.exercises || []).some(e => e.name === oldName),
-        liveMoved: !!live && Array.isArray(live.reps['Incline Dumbbell Press'])
-          && live.reps['Incline Dumbbell Press'].length === 1 && !live.reps[oldName],
+        liveMoved: !!live && Array.isArray(live.reps['Machine Chest Press'])
+          && live.reps['Machine Chest Press'].length === 1 && !live.reps[oldName],
         type: plan.type, day: plan.dayName,
       };
     });

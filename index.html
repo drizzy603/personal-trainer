@@ -2137,7 +2137,7 @@ var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerRpe         = {};         // {exId: currentRpe} — stepper state
 var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
 var runnerEditSetIdx  = null;       // set index currently being edited (or null)
-var _runnerEditDraft  = null;       // {w, r} typed into an open ledger edit, carried across one repaint
+var _runnerEditDraft  = null;       // {ex, idx, w, r} typed into an open ledger edit, carried across one repaint
 var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
@@ -2154,6 +2154,7 @@ var _rExSSPicking     = false;      // the edit sheet is showing the partner lis
 var _ssReturnIdx      = null;
 var _rExEditSets      = 0;
 var _rExEditReps      = 0;
+var _rExEditRepsHint  = '';         // a target that is not a number ('Max'), shown as the empty field's hint
 var _rExEditWeight    = 0;
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
@@ -3826,11 +3827,12 @@ function _prTop(ex){
   ps.forEach(function(p){ if(p[0]>0 && Math.abs(p[1]-w)<0.01 && p[0]>r) r=p[0]; });
   return {w:w, r:r};
 }
-var _prLedgerMemo=null, _prLedgerV=-1;
+var _prLedgerMemo=null, _prLedgerV=-1, _prLedgerU='';
 // {chains:{'k:'+name:[entry oldest→newest]}, names:[first-seen order], latest:entry|null}
 // entry = {name, w (lb), r, date, id, type, label}. Treat as read-only.
+// Keyed on the weight unit too: in kg a record must read heavier (_prBeats).
 function _prLedger(){
-  if(_prLedgerMemo && _prLedgerV===_logsVersion) return _prLedgerMemo;
+  if(_prLedgerMemo && _prLedgerV===_logsVersion && _prLedgerU===_uW()) return _prLedgerMemo;
   var asc=getSessions().slice().sort(function(a,b){
     var ad=String((a&&a.date)||''), bd=String((b&&b.date)||'');
     if(ad!==bd) return ad<bd?-1:1;
@@ -3862,7 +3864,7 @@ function _prLedger(){
     if(first) latest=first;
   });
   _prLedgerMemo={chains:chains, names:names, latest:latest};
-  _prLedgerV=_logsVersion;
+  _prLedgerV=_logsVersion; _prLedgerU=_uW();
   return _prLedgerMemo;
 }
 function _prChain(name){ return _prLedger().chains['k:'+String(name==null?'':name)]||null; }
@@ -3908,7 +3910,10 @@ function _prGain(c, i){
 // Returns array of exercise names that set new PRs
 // A record beats the old one by more than storage rounding (kg loads are stored in
 // lb at 0.1, and older builds stepped at 0.01): the smallest real plate is 2.5 lb.
-function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2; }
+// In kg it must also read heavier, since loads show to 0.5 kg: a programme or coach
+// load of 135 lb and a typed 61 kg (134.5 lb) both read 61 kg, and logging the first
+// over the second said 'NEW RECORD · BEST WAS 61 KG'.
+function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2 && (_uW()!=='kg' || wDisp(w) > wDisp(best)); }
 // Only the newest log of a lift sets its working weight, and a backdated one can only raise
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
@@ -4843,7 +4848,9 @@ function _streakChip(){
 // written — backdated logs would create misleading Health entries.
 function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
-  if(dateISO !== todayISO()) return;
+  // A backdated log has no real time to write. The day the session began is its own: one that
+  // ran past midnight is filed on that day and still happened just now.
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)))) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
   var end = Date.now();
@@ -8197,6 +8204,7 @@ function openDeckRunner(overrideType, force){
     }
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
+  sessExs = _runnerFoldRepeats(sessExs);
   runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now()};
   _watchEndedPayload = null;   // a new session: the last one's 'ended' is done with
   runnerExIdx = 0;
@@ -8238,6 +8246,31 @@ function openDeckRunner(overrideType, force){
   });
   runnerOpen = true;
   paintRunner();
+}
+// One card per lift. The runner keys its state by name, so a day that lists a lift twice (a
+// top set and its back-off written as two rows, or a coach lift brought back beside its swap)
+// gave two cards one set log, and the session was saved with those sets twice. A repeat folds
+// into the first card as per-set targets: 1x3 at 225 then 3x8 at 185 is 4 sets, 3/8/8/8 at
+// 225/185/185/185, the shape a top-set/back-off row already has.
+function _runnerFoldRepeats(exs){
+  var out=[], at={};
+  var perSet=function(v, n){ var a=[]; for(var k=0;k<n;k++) a.push(Array.isArray(v) ? (v.length ? v[Math.min(k, v.length-1)] : '8-10') : v); return a; };
+  // A per-set load of 0 means the card's own load, as it does for the runner's steppers.
+  var loads=function(e, n){ var base=parseFloat(e.weight)||0; return perSet(Array.isArray(e.weights) && e.weights.length ? e.weights : base, n).map(function(x){ return parseFloat(x)>0 ? parseFloat(x) : base; }); };
+  var same=function(a){ return a.every(function(x){ return String(x)===String(a[0]); }); };
+  (exs||[]).forEach(function(ex){
+    if(!ex) return;
+    if(!at.hasOwnProperty(ex.name)){ at[ex.name]=out.length; out.push(ex); return; }
+    var a=out[at[ex.name]], na=parseInt(a.sets)||1, nb=parseInt(ex.sets)||1;
+    var reps=perSet(a.reps, na).concat(perSet(ex.reps, nb)), w=loads(a, na).concat(loads(ex, nb));
+    a.sets=na+nb;
+    a.reps=same(reps) ? reps[0] : reps;
+    if(same(w)){ delete a.weights; a.weight=w[0]; } else a.weights=w;
+    a.isMain=!!(a.isMain || ex.isMain);
+    // The card above the repeat was paired with it, not with whatever follows it.
+    var above=out[out.length-1]; if(above && above.ss) above.ss=false;
+  });
+  return out;
 }
 var _draftTO=null;
 function _saveRunnerDraft(){
@@ -8606,7 +8639,9 @@ function runnerCompleteSet(){
     runnerRestTotal = runnerRestLeft;
     runnerRestEndsAt = Date.now() + runnerRestLeft*1000;
     if(runnerRestTick) clearInterval(runnerRestTick);
-    _trovoTimerStart(ex, Math.min(done + 1, ex.sets));
+    // Unclamped: after +1 set the next one is past the plan ('SET 6', as the rest card says);
+    // clamped, the Lock Screen and the alert named set 4 of 4, done long before.
+    _trovoTimerStart(ex, done + 1);
     runnerRestTick = setInterval(function(){
       runnerRestLeft = Math.max(0, Math.round((runnerRestEndsAt - Date.now())/1000));
       if(runnerRestLeft <= 0){ _restFinish(); return; }
@@ -8696,6 +8731,12 @@ function _runnerReopen(name){
   var ti=Math.min(runnerCompleted[name]||0, ex.sets-1);
   var tr=Array.isArray(ex.reps)?ex.reps[Math.min(ti,ex.reps.length-1)]:ex.reps;
   runnerReps[name]=parseInt(tr)||0;
+  // Per-set loads too: logging a top set had already moved the stepper to the back-off load,
+  // so the redone top set was filed at it under a card that said the top set's load.
+  if(Array.isArray(ex.weights) && ex.weights.length){
+    var tw=parseFloat(ex.weights[Math.min(ti, ex.weights.length-1)]);
+    if(tw>0) runnerWeights[name]=tw;
+  }
   runnerEngaged=true;
   _saveRunnerDraft(); paintRunner();
 }
@@ -8763,11 +8804,13 @@ function _restFinish(){
   _ssJumpBack();
   paintRunner();
 }
-// Carry whatever is typed in an open ledger edit across the next repaint.
+// Carry whatever is typed in an open ledger edit across the next repaint. Keyed to the set it
+// was typed for: the rest's end can move the deck to a superset partner, and the draft landed in
+// that lift's set as soon as its EDIT was tapped.
 function _stashRunnerEdit(){
   if(runnerEditSetIdx==null) return;
   var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
-  if(wEl||rEl) _runnerEditDraft={w:wEl?wEl.value:null, r:rEl?rEl.value:null};
+  if(wEl||rEl) _runnerEditDraft={ex:runnerEditSetEx, idx:runnerEditSetIdx, w:wEl?wEl.value:null, r:rEl?rEl.value:null};
 }
 // After a superset pair's shared rest, land back on the first movement.
 function _ssJumpBack(){
@@ -8801,7 +8844,7 @@ function runnerAddRest(delta){
   // the original clock and the alert fired early or late.
   var ex = _runnerEx();
   if(ex){
-    var nextSet = Math.min((runnerCompleted[ex.name]||0) + 1, ex.sets);
+    var nextSet = (runnerCompleted[ex.name]||0) + 1;   // past the plan after +1 set, as when the rest began
     _trovoTimerStart(ex, nextSet); // schedules the rest-done alert too
   }
   _paintRestClock();
@@ -8822,6 +8865,13 @@ function _paintRestClock(){
     var total = runnerRestTotal > 0 ? runnerRestTotal : Math.max(runnerRestLeft, 1);
     bar.style.width = Math.max(0, Math.min(100, runnerRestLeft/total*100))+'%';
   }
+}
+// The day a workout belongs to is the day it began, as the wrist and the drain date it: one
+// that ran past midnight was filed on the next day, in the next programme week, and left its
+// own day reading as missed.
+function _runnerStartISO(){
+  var t=runnerSession ? Number(runnerSession.startedAt) : 0;
+  return t>0 ? _ymdLocal(new Date(t)) : todayISO();
 }
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){
@@ -8862,7 +8912,8 @@ function runnerFinishSession(){
     return;
   }
   var _dateEl = document.getElementById('runner-date');
-  var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
+  var _startISO = _runnerStartISO();
+  var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || _startISO);
   var sessions = getSessions();
   // Double-log guard: a watch-synced copy of this same session (same day, same
   // type) gets replaced by the richer phone log. Manual entries are never touched.
@@ -8870,12 +8921,17 @@ function runnerFinishSession(){
   // phone's record instead of being deleted with whatever only it held.
   var _myStart=runnerSession.startedAt||0;
   var _wristCopies = sessions.filter(function(x){
-    if(!(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch')) return false;
+    if(!(x.type===runnerSession.dayName && x.note==='From Apple Watch')) return false;
+    var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
+    // The wrist mirrored this start: the same session, whatever day either is filed on.
+    if(ws && _myStart && Math.abs(ws-_myStart)<1500) return true;
+    // Otherwise the same day: the one it is filed on, or the one it began (the drain files a
+    // wrist copy by its start, so the copy of a workout that ran past midnight is there).
+    if(x.date!==_sessionDate && x.date!==_startISO) return false;
     // Only a copy of THIS session: one filed after this runner began, from
     // a wrist session started within 6 h of it. An earlier wrist session
     // of the same slot today stays its own record.
-    var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
-    return !ws || !_myStart || ((x.id||0)>_myStart && Math.abs(ws-_myStart)<6*3600*1000) || Math.abs(ws-_myStart)<1500;
+    return !ws || !_myStart || ((x.id||0)>_myStart && Math.abs(ws-_myStart)<6*3600*1000);
   });
   sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
   var _owned=Object.keys(runnerSession.ownAt||{});
@@ -8902,7 +8958,6 @@ function runnerFinishSession(){
   }
   // Persist working weights so subsequent prescriptions update.
   _setWorkingWeights(exsOut, _sessionDate);   // a backdated finish used to lower today's working weights
-  var weights = getWeights();
   checkAndUpdatePRs(exsOut);
   invalidateCoachCard();
   // The wrist's own Health workout (live heart rate) is the richer record;
@@ -8924,8 +8979,11 @@ function runnerFinishSession(){
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
     if(navigator.vibrate) navigator.vibrate([60,40,60,40,140]);
+    // The record's own load: the working weight was another number after a backdated finish
+    // (or none at all), and a bodyweight lift records its added load.
+    var _prEx=_newRec.exercises.find(function(e){ return e && e.name===newPRs[0]; }), _prT=_prEx?_prTop(_prEx):null;
     showToast(newPRs.length===1
-      ? 'PR · '+newPRs[0]+(weights[newPRs[0]]?' '+fmtW(weights[newPRs[0]]):'')
+      ? 'PR · '+newPRs[0]+(_prT?' '+_prLoadTxt(newPRs[0], _prT.w):'')
       : newPRs.length+' PRs · '+newPRs.join(' · '), 'pr');
   } else {
     showToast('Session logged');
@@ -9078,7 +9136,15 @@ function openCompleteSheet(c){
   var rec=c&&c.rec; if(!rec) return;
   var label=rec.label||_dayLabel(rec.type)||'Session';
   var vol=Math.round(calcVolume(rec.exercises||[]));
-  var prev=getSessions().find(function(x){ return x.id!==rec.id && x.type===rec.type && (x.exercises||[]).length; });
+  // The same day logged before this one, the share card's rule: a backdated workout was
+  // compared with the newest one, logged after it ('-67%' with no earlier day at all).
+  var rd=String(rec.date||''), prev=null;
+  getSessions().forEach(function(x){
+    if(!x || x.id===rec.id || x.type!==rec.type || !(x.exercises||[]).length) return;
+    var xd=String(x.date||'');
+    if(!(xd<rd || (xd===rd && Number(x.id)<Number(rec.id)))) return;
+    if(!prev || xd>String(prev.date||'') || (xd===String(prev.date||'') && Number(x.id)>Number(prev.id))) prev=x;
+  });
   var prevVol=prev?Math.round(calcVolume(prev.exercises||[])):0;
   var pct=(prevVol>0)?Math.round((vol-prevVol)/prevVol*100):null;
   var ws=_weekStats();
@@ -9394,6 +9460,7 @@ function closeRunnerCueSheet(){
 function runnerStartEditSet(idx){
   var ex=_runnerEx(); if(!ex) return;
   if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
+  _runnerEditDraft=null;   // a new edit starts from the logged set
   runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
   var ed=document.querySelector('#runner-root .kt-done-scroll input');
   if(ed && ed.scrollIntoView) ed.scrollIntoView({block:'nearest'});
@@ -9437,7 +9504,7 @@ function _renderCompletedSets(ex){
     var w=(runnerWeightsLog[ex.name]||[])[i];
     var r=(runnerRepsLog[ex.name]||[])[i];
     if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
-      var _ed=_runnerEditDraft||{}; _runnerEditDraft=null;
+      var _ed=(_runnerEditDraft && _runnerEditDraft.ex===ex.name && _runnerEditDraft.idx===i) ? _runnerEditDraft : {}; _runnerEditDraft=null;
       rows+='<div class="kt-lr" style="gap:5px;" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
         '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+_esc(_ed.w!=null?_ed.w:(w!=null?wDisp(w):''))+'" placeholder="'+_uW()+'" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
@@ -9589,7 +9656,8 @@ var _unitsAt=null;   // set only while a past coach tool call is labelled in the
 function _uW(){ if(_unitsAt) return _unitsAt.w==='kg'?'kg':'lb'; return localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb'; }
 function _uD(){ if(_unitsAt) return _unitsAt.d==='mi'?'mi':'km'; return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
 // The morning coach card is text written in the old unit: it goes with the switch.
-function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
+// The records cache follows too: in kg a record must read heavier (_prBeats).
+function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); try{ _syncPRCache(); }catch(e){} invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
 function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); invalidateCoachCard(); coachCard=null; render(); }
 function _inUnitsOf(tc, fn){
   var u=tc&&tc.units;
@@ -9943,7 +10011,7 @@ function _renderRunnerDoneBody(ex, isLast){
   var dateField = isLast
     ? '<div style="margin-top:14px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
-        '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
+        '<input id="runner-date" type="date" value="'+(runnerSessionDate||_runnerStartISO())+'"'+
         ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
         ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
@@ -9993,7 +10061,13 @@ function openRunnerExEdit(idx){
   runnerExEditIdx=idx;
   _rExEditName   =ex.name;
   _rExEditSets   =ex.sets;
-  _rExEditReps   =runnerReps[ex.name]!=null?runnerReps[ex.name]:(Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
+  // Reps: the next set's number, the live stepper's or its target's. A target that is not a
+  // number ('Max', AMRAP) has none: the field stays empty with it as the hint (it seeded 0,
+  // which Save refused, so a swap or a load change on a 'Max' row could not be saved).
+  var _ti=Math.min(runnerCompleted[ex.name]||0, Math.max(0,(parseInt(ex.sets)||1)-1));
+  var _tr=Array.isArray(ex.reps)?ex.reps[Math.min(_ti,ex.reps.length-1)]:ex.reps;
+  _rExEditReps   =parseInt(runnerReps[ex.name])>0?parseInt(runnerReps[ex.name]):(parseInt(_tr)>0?parseInt(_tr):'');
+  _rExEditRepsHint=(_rExEditReps===''&&_tr!=null)?String(_tr):'';
   _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets};
   _rExEditApply  =false;   // "Also update my programme" is a per-edit choice, never left on from the last sheet
@@ -10026,12 +10100,12 @@ function closeRunnerExEdit(){
 }
 // Three steppers need ~440px and the sheet gives 350: each takes 140 and the
 // row wraps, so Weight drops under Sets and Reps instead of running off-screen.
-function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
+function _runnerExStepHTML(id,label,val,stepFn,setFn,step,ph){
   return '<div style="flex:1 1 140px;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
     '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;">'+label+'</div>'+
     '<div style="display:flex;align-items:center;gap:5px;">'+
       '<button onclick="event.stopPropagation();'+stepFn+'(-'+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">−</button>'+
-      '<input id="'+id+'" type="number" inputmode="decimal" value="'+val+'" style="width:58px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:17px;font-weight:800;padding:7px 3px;font-family:inherit;box-sizing:border-box;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation();'+setFn+'(this.value)" onchange="event.stopPropagation();'+setFn+'(this.value)"/>'+
+      '<input id="'+id+'" type="number" inputmode="decimal" value="'+val+'"'+(ph?' placeholder="'+_esc(ph)+'"':'')+' style="width:58px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:17px;font-weight:800;padding:7px 3px;font-family:inherit;box-sizing:border-box;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation();'+setFn+'(this.value)" onchange="event.stopPropagation();'+setFn+'(this.value)"/>'+
       '<button onclick="event.stopPropagation();'+stepFn+'('+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">+</button>'+
     '</div>'+
   '</div>';
@@ -10097,7 +10171,7 @@ function _buildRunnerExEditHTML(){
     '</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:14px 10px;justify-content:center;margin-bottom:24px;">'+
       _runnerExStepHTML('runner-ex-sets-input','Sets',_rExEditSets,'runnerExEditStepSets','runnerExEditSetSets',1)+
-      _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
+      _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1,_rExEditRepsHint)+
       _runnerExStepHTML('runner-ex-weight-input','Weight · '+_uW(),wDisp(_rExEditWeight),'runnerExEditStepWeight','runnerExEditSetWeight',(_uW()==='kg'?1.25:2.5))+
     '</div>'+
     (runnerExEditIdx!=null && runnerSession && runnerSession.exercises.length>1
@@ -10134,7 +10208,14 @@ function _closeRunnerExPicker(){
 }
 function runnerExPickExercise(name){
   if(_rExPickMode==='add'){ runnerExAddPick(name); return; }
+  // Swapping onto a lift another card holds merged the two: its sets were overwritten and the
+  // session saved the same sets twice (the add path below already refuses it).
+  if(_runnerNameTaken(name, runnerExEditIdx)){ showToast(name+' is already in today\u2019s session \u2014 use +1 set on its card','err'); return; }
   _rExEditName=name; _closeRunnerExPicker();
+}
+// Another card in the session (not the one at idx) already holds this name.
+function _runnerNameTaken(name, idx){
+  return !!runnerSession && runnerSession.exercises.some(function(e, i){ return i!==idx && e && e.name===name; });
 }
 function runnerExPickerSetCat(c){
   _rExPickCat=c||'All';
@@ -10185,7 +10266,10 @@ function runnerExRemove(){
   var doIt=function(){
     var idx=runnerExEditIdx, name=ex.name;
     runnerSession.exercises.splice(idx,1);
-    var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss && idx>=runnerSession.exercises.length) prev.ss=false;
+    // The card above was paired with the removed one; it must not pair with whatever moved up
+    // (no rest between two unrelated lifts, and a superset filed that was never made).
+    var prev=runnerSession.exercises[idx-1]; if(prev && prev.ss) prev.ss=false;
+    _ssReturnIdx=null;   // an index into the list just spliced
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,runnerWeights,runnerReps,_wristStamps].forEach(function(m){ if(m) delete m[name]; });
     if(_runnerPrBeat && _runnerPrBeat.ex===name) _runnerPrBeat=null;
     if(_rExEditApply) _runnerApplyToProgramme('remove', {name:name});
@@ -11371,27 +11455,38 @@ function runnerExEditStepSets(d){
 }
 function runnerExEditSetSets(v){ _rExEditSets=Math.max(1,parseInt(v)||1); }
 function runnerExEditStepReps(d){
-  _rExEditReps=Math.max(1,(parseInt(_rExEditReps)||1)+parseInt(d));
+  _rExEditReps=Math.max(1,(parseInt(_rExEditReps)||0)+parseInt(d));
   var el=document.getElementById('runner-ex-reps-input'); if(el) el.value=_rExEditReps;
 }
-function runnerExEditSetReps(v){ _rExEditReps=Math.max(1,parseInt(v)||1); }
+// A cleared field is no edit: the target stays as it was.
+function runnerExEditSetReps(v){ _rExEditReps=String(v).trim()===''&&_rExEditSeed ? _rExEditSeed.r : Math.max(1,parseInt(v)||1); }
 function runnerExEditStepWeight(d){
-  _rExEditWeight=Math.max(0,wStore(wDisp(_rExEditWeight||0)+parseFloat(d)));
+  var cur=parseFloat(_rExEditWeight)||0;
+  // kg steps from the exact load onto the 0.25 kg grid, stored like a typed value (as
+  // runnerStepWeight does): stepping from the display, rounded to 0.5 kg, made 80 kg + 3 steps 83.25.
+  if(_uW()==='kg') _rExEditWeight=wStore(Math.max(0, Math.round((cur/LB_PER_KG+parseFloat(d))*4)/4));
+  else _rExEditWeight=Math.max(0, Math.round((cur+parseFloat(d))*100)/100);
   var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=wDisp(_rExEditWeight);
 }
 function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,wStore(v)); }
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
-  if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1','err');return;}
+  // Reps are an edit only when the owner changed them: left alone, the target stays as written
+  // ('Max', a range, per-set reps) instead of taking the field's number.
+  var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
+  var _repsTouched=String(_rExEditReps)!==String(_seedR==null?'':_seedR);
+  if(parseInt(_rExEditSets)<1||(_repsTouched && !(parseInt(_rExEditReps)>=1))){showToast('Sets and reps must be at least 1','err');return;}
   var oldName=ex.name, newName=_rExEditName;
+  // The logs below move to the new name: onto another card's lift they replaced its sets.
+  if(newName!==oldName && _runnerNameTaken(newName, runnerExEditIdx)){ showToast(newName+' is already in today\u2019s session \u2014 use +1 set on its card','err'); return; }
   ex.name   =newName;
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
-  ex.reps   =parseInt(_rExEditReps)||ex.reps;
+  if(_repsTouched) ex.reps=parseInt(_rExEditReps);
   ex.weight =parseFloat(_rExEditWeight)||0;
   // The sheet edits scalars — stale per-set target arrays would silently
-  // reseed the pre-edit loads on every completed set.
-  delete ex.weights;
+  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them.
+  if(ex.weight!==_seedW) delete ex.weights;
   // A superset pairs with the card BELOW, so choosing a partner means moving it
   // there. Before this the only reachable partner was whichever exercise
   // happened to sit next in the list — the toggle could be turned on, but the
@@ -11438,11 +11533,9 @@ function saveRunnerExEdit(){
   }
   // Only touch the live steppers when the sheet value actually changed —
   // adding a 4th set used to snap a bumped 195 back to the prescribed 185.
-  var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
   if(oldName!==newName || ex.weight!==_seedW) runnerWeights[newName]=ex.weight;
   else if(runnerWeights[oldName]!=null) runnerWeights[newName]=runnerWeights[oldName];
-  var _newR=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
-  if(oldName!==newName || _newR!==parseInt(_seedR)) runnerReps[newName]=_newR;
+  if(_repsTouched) runnerReps[newName]=ex.reps;
   else if(runnerReps[oldName]!=null) runnerReps[newName]=runnerReps[oldName];
   if(oldName!==newName){
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,_wristStamps,_wristLen,
@@ -11456,7 +11549,7 @@ function saveRunnerExEdit(){
     }
   }
   if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight},
-    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_newR!==parseInt(_seedR), weight:ex.weight!==_seedW}});
+    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}});
   _bwLiftCache={};
   closeRunnerExEdit(); _saveRunnerDraft(); paintRunner();
 }
@@ -20343,7 +20436,7 @@ function scheduleRestNotification(ex, nextSet, seconds){
     LN.schedule({notifications:[{
       id: REST_NOTIF_ID,
       title: 'Rest done',
-      body: ex.name+' — set '+nextSet+' of '+ex.sets,
+      body: ex.name+' — set '+nextSet+(nextSet<=(parseInt(ex.sets)||0)?' of '+ex.sets:''),   // past the plan (+1 set) just 'set 6'
       schedule: { at: new Date(Date.now()+seconds*1000) },
       sound: 'default'
     }]}).catch(function(){});
