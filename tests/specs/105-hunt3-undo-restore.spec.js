@@ -26,6 +26,8 @@
 //   keeps the card and its Undo (L37).
 // - swap_cadence_days on a week the programme does not have is refused before the snapshot, so
 //   the earlier change keeps its undo point (L38).
+// - A restore's undo copy (kt_pre_restore) goes once its week is over: at launch, and before
+//   lsSet's retry when a save needs the room; a copy inside its week is never dropped (L01).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -485,6 +487,41 @@ run('a refused swap_cadence_days keeps the undo point of the earlier change', as
     });
     assert(out.refused.ok === false && out.kept.ohp === out.o0 && out.kept.scope === 'routines', 'the refusal leaves the Routines edit\'s snapshot: ' + JSON.stringify([out.refused, out.kept]));
     assert(out.done.ok === true && out.taken.ohp === out.o0 + 10 && out.taken.scope === 'coach:test-swap', 'a swap that lands takes its own: ' + JSON.stringify([out.done, out.taken]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a restore\'s undo copy goes after its week: at launch, and when a save needs the room', async () => {
+  const DAY = 86400000;
+  const snap = (age, pad) => JSON.stringify({ at: Date.now() - age, data: { kt_sessions: [], kt_week: 1, note: 'x'.repeat(pad || 0) } });
+  const app = await boot({ native: true, seed: { kt_pre_restore: snap(8 * DAY) } });
+  try {
+    const out = await app.page.evaluate(async ([QUOTA, ROOM, live, stale]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const quota = eval(QUOTA), room = eval(ROOM), r = {};
+      const has = () => localStorage.getItem('kt_pre_restore') !== null;
+      r.boot = has();
+      // inside its week it stays, and Settings offers it
+      localStorage.setItem('kt_pre_restore', live);
+      r.liveDrop = _dropStalePreRestore();
+      switchTab('settings'); await wait(30);
+      r.liveRow = has() && [...document.querySelectorAll('.settings-row')].some(x => /Undo last restore/.test(x.textContent));
+      // a save that fits only without the copy: a stale one goes, a live one stays (and the save fails)
+      const big =[{ date: todayISO(), weight: 180, id: 1, note: 'y'.repeat(8000) }];
+      for (const [k, v] of [['stale', stale], ['live', live]]) {
+        localStorage.setItem('kt_pre_restore', v);
+        quota(4000);
+        const ok = lsSet('kt_measurements', big);
+        room();
+        r[k] = { ok, copy: has() };
+        lsDel('kt_measurements');
+      }
+      return r;
+    }, [QUOTA, ROOM, snap(6 * DAY, 20000), snap(8 * DAY, 20000)]);
+    assert(out.boot === false, 'a copy past its week is gone at launch');
+    assert(out.liveDrop === false && out.liveRow, 'inside its week it stays and Settings offers it: ' + JSON.stringify(out));
+    assert(out.stale.ok === true && out.stale.copy === false, 'a save that needs the room drops a stale copy: ' + JSON.stringify(out.stale));
+    assert(out.live.ok === false && out.live.copy === true, 'a live copy is never dropped for a save: ' + JSON.stringify(out.live));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

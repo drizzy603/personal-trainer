@@ -3311,6 +3311,7 @@ function lsSet(k,v) {
     if(!_LS_SILENT_KEYS[k]){
       try{
         localStorage.removeItem('kt_cached_html'); localStorage.removeItem('kt_cached_build');
+        _dropStalePreRestore();   // and a restore's undo copy past its week
         localStorage.setItem(k,JSON.stringify(v)); return true;
       }catch(e2){}
     }
@@ -3975,6 +3976,18 @@ function _undoLastRestore(){
     confirmLabel:'Undo restore', confirmStyle:'var(--accent)',
     // The copy goes only once it is back: an undo that ran out of space used to delete it anyway.
     onConfirm:function(){ if(_applyImportedData(snap.data, {undo:true})===true){ try{ localStorage.removeItem('kt_pre_restore'); }catch(e){} render(); } }});
+}
+// The undo copy lives the week Settings offers it. It used to stay for good (a full copy of the
+// replaced data, about half of the storage) and saves failed near the quota while it sat there.
+// Run at boot and before lsSet's retry; the age is read off the front, not the whole copy parsed.
+function _dropStalePreRestore(){
+  try{
+    var raw=localStorage.getItem('kt_pre_restore'); if(!raw) return false;
+    var m=/^\{"at":(\d+)/.exec(raw.slice(0,32)), at=m?parseInt(m[1],10):0;
+    if(!m){ try{ at=parseInt((JSON.parse(raw)||{}).at,10)||0; }catch(e){} }
+    if(at && Date.now()-at<=7*86400000) return false;
+    localStorage.removeItem('kt_pre_restore'); return true;
+  }catch(e){ return false; }
 }
 // 38/56 — storage meter. localStorage is ~5 MB in WKWebView and the app used
 // to discover the ceiling only when a save failed.
@@ -19977,6 +19990,7 @@ function _sweepDemoWeights(force){
   }catch(e){}
 }
 _sweepDemoWeights(false);
+_dropStalePreRestore();
 _restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
