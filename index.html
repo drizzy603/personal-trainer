@@ -5612,7 +5612,12 @@ function _tomorrowLabel(){
   var _tomWeek=getWeekPlan();
   // On the Sunday BEFORE a programme starts, tomorrow is week 1's Monday, not
   // week 2's — do not look ahead a week that has not begun.
-  if(_dowIdx===6 && _programmeStarted()){ try{ var _nw=getWeekPlanForWeek(currentWeek+1); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){} }
+  // After the final week it repeats, or a next round starting tomorrow begins at its week 1
+  // (this programme's week 1): read as week 13, the routine-wide cadence named the wrong day.
+  if(_dowIdx===6 && _programmeStarted()){
+    var _nr=_nextRoundSet(), _tw=(_nr && _nr.startsOn<=addDays(todayISO(),1)) ? 1 : Math.min(getTotalWeeks(), currentWeek+1);
+    try{ var _nw=getWeekPlanForWeek(_tw); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
+  }
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
   return tomPlan.isUnknown ? 'Unset' : tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
@@ -5713,14 +5718,19 @@ function getNextSession() {
   var sports = getSportLogs();
   var skips = getSkips();
   var today = todayISO();
-  var weekPlan = getWeekPlan();
-  var start = addDays(getMondayISO(), -7);
+  var total = getTotalWeeks();
+  // From last Monday, but never from before this programme (or round) began, and each day
+  // from its own week's cadence: a plan started today offered the Monday of the week before
+  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL").
+  var planFor = function(d){ return getWeekPlanForWeek(Math.min(total, weekForDate(d))); };
+  var start = addDays(getMondayISO(), -7), from = _roundStartISO();
+  if (from > start) start = from;
   for (var i = 0; i < 14; i++) {
     var date = addDays(start, i);
     if (date > today) break;
     var dow = (new Date(date+'T00:00:00').getDay()+6)%7;
-    var plan = weekPlan[dow];
-    if (plan.isRest) continue;
+    var plan = planFor(date)[dow];
+    if (!plan || plan.isRest) continue;
     var skipped = skips.some(function(s){ return s.date === date && s.type === plan.type; });
     if (skipped) continue;
     var logged;
@@ -5730,10 +5740,9 @@ function getNextSession() {
     if (!logged) return plan.type;
   }
   // Everything up to today is done — return next scheduled lift.
-  var todayDow = (new Date(today+'T00:00:00').getDay()+6)%7;
   for (var j = 0; j < 7; j++) {
-    var plan = weekPlan[(todayDow+j)%7];
-    if (plan.isLift) return plan.type;
+    var d2 = addDays(today, j), plan2 = planFor(d2)[(new Date(d2+'T00:00:00').getDay()+6)%7];
+    if (plan2 && plan2.isLift) return plan2.type;
   }
   return 'Push';
 }
@@ -11100,7 +11109,7 @@ function _rtRemove(){
 function _carryCandidates(sess){
   if(!sess || !Array.isArray(sess.exercises) || LIFT_TYPES.indexOf(sess.type)<0) return [];
   var cr=getCustomRoutine(); if(!cr || !Array.isArray(cr.weeks) || !cr.weeks.length) return [];
-  if(String(sess.date||'').slice(0,10) < _roundStartISO()) return [];   // logged before this programme (a new round starts lower)
+  if(!_roundTest(cr)(sess.date, _cmpT(sess))) return [];   // logged before this programme or round (a new round starts lower)
   var slot=String(sess.type).toLowerCase();
   var wk=Math.min(cr.weeks.length, Math.max(1, weekForDate(sess.date)));
   // A deload session is judged against the working plan (its normal loads were always above
@@ -11157,9 +11166,32 @@ function _roundStartISO(){
   var ri=_roundInfo();
   return ri ? addDays(ri.since, -7*(ri.total-1)) : addDays(_weekAnchor(), -7*(currentWeek-1));
 }
+// Whether a log (its date, and when it started: _cmpT) belongs to this round. A round started
+// "Today" is anchored on this week's Monday, and a set round is swapped in when the app first
+// opens on its morning (after the watch drains), so a log done on the previous round's plan can
+// be dated inside week 1: it counts only if it began after the round did (cr.startedAt, stamped
+// at the swap). Week 1 of a first round has no stamp and starts on its Monday.
+function _roundTest(cr){
+  var from=_roundStartISO(), at=Number(cr&&cr.startedAt)||0, day=at>0?_ymdLocal(new Date(at)):'';
+  return function(date, t){
+    var d=String(date||'').slice(0,10);
+    if(d<from || (day && d<day)) return false;
+    return !(d===day && t>0 && t<at);
+  };
+}
+// A round set to follow the programme (on its last week or after it ended: afterEnd) starts
+// the Monday after the final week as the programme stands, never before the date it was set
+// for: weeks the coach adds, or a week stepped back, are trained first instead of skipped.
+// A round set mid-programme ends it early on purpose and keeps its date.
 function _nextRoundSet(){
   var p=lsGet('kt_routine_next');
-  return (p && typeof p==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(p.startsOn||''))) ? p : null;
+  if(!(p && typeof p==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(p.startsOn||'')))) return null;
+  var cr=p.afterEnd ? getCustomRoutine() : null, total=(cr && Array.isArray(cr.weeks)) ? cr.weeks.length : 0;
+  if(total){
+    var end=currentWeek>=total ? addDays(localStorage.getItem('kt_final_since')||_weekAnchor(), 7) : addDays(_weekAnchor(), 7*(total-currentWeek+1));
+    if(end>p.startsOn) return {startsOn:end, at:p.at, afterEnd:true};
+  }
+  return p;
 }
 // The Monday a following round starts: the one after the final week, else the
 // first Monday after today.
@@ -11174,7 +11206,7 @@ function _nrDay(iso){
   return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
 }
 function _nextRoundBuild(cr){
-  var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), from=_roundStartISO(), best={}, rows=[], seen={};
+  var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, bestReps={}, rows=[], seen={};
   nr.cycle=(parseInt(cr.cycle,10)||1)+1;
   // A new round is the programme's own version: no "edited by you" marks.
   W.forEach(function(w){
@@ -11182,10 +11214,10 @@ function _nextRoundBuild(cr){
     LIFT_KEYS.forEach(function(k){ if(Array.isArray(w[k])) w[k].forEach(function(r){ if(r) delete r.rec; }); });
   });
   getSessions().forEach(function(s){
-    if(!s || !Array.isArray(s.exercises) || String(s.date||'').slice(0,10)<from) return;
+    if(!s || !Array.isArray(s.exercises) || !inRound(s.date, _cmpT(s))) return;
     s.exercises.forEach(function(ex){
       if(!ex || !ex.name) return;
-      _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)) best[ex.name]=e; } });
+      _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)){ best[ex.name]=e; bestReps[ex.name]=p[0]; } } });
     });
   });
   for(var c=0;c<W.length;c++){
@@ -11193,9 +11225,13 @@ function _nextRoundBuild(cr){
     LIFT_KEYS.forEach(function(k){
       (Array.isArray(W[c][k])?W[c][k]:[]).forEach(function(r){
         if(!r || !r.name || seen[k+'|'+r.name]) return;
+        // Bodyweight and "your load" rows stay as they are; a lift first given a load in a
+        // later week is re-based from that week (it used to be skipped and left off the sheet).
+        var P=parseFloat(r.weight)||0; if(!(P>0)) return;
         seen[k+'|'+r.name]=1;
-        var P=parseFloat(r.weight)||0; if(!(P>0)) return;   // bodyweight and "your load" rows stay as they are
-        var it={slot:k, name:r.name, main:!!r.isMain, from:P, to:P, best:0, reps:_repsNum(r.reps)||1}, e=best[r.name];
+        // A target with no number (Max, AMRAP) is judged at the reps its best set was done for:
+        // read as 1 rep, it was re-based ~20% up and the sheet said "× 1".
+        var it={slot:k, name:r.name, main:!!r.isMain, from:P, to:P, best:0, reps:_repsNum(r.reps)||bestReps[r.name]||1}, e=best[r.name];
         if(e>0){
           var atR=e/(1+Math.min(it.reps,10)/30);
           it.best=atR;
@@ -11215,15 +11251,21 @@ function _applyNextRound(now){
   if(!now && todayISO()<p.startsOn) return null;
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
   var nb=_nextRoundBuild(cr);
+  nb.routine.startedAt=Date.now();   // logs from before this moment are the previous round's (_roundTest)
   // All or nothing: the round being replaced must reach Programme History, and a failed
   // routine write takes the archive entry back (each boot retries on the start morning).
   var prevArr=getRoutineArchive().slice();
   if(!archiveCurrentRoutine()) return null;
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
   lsDel('kt_routine_next');
-  var start=now ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
+  // First opened after its start week had gone (away, or the app never opened): the round starts
+  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
+  // of a round nobody saw, at loads already past the re-base.
+  var late=!now && p.startsOn<_mostRecentMonday();
+  var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
-  if(now){
+  lapsePending=null;   // a welcome-back offer still up was about the old round's weeks
+  if(now||late){
     // Days already gone in week 1 are not owed (as startProgrammeNow).
     var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
     for(var i=0;i<7;i++){ var d=addDays(start,i); if(d>=todayISO()) break; var e=p1[i]; if(e && !e.isRest && e.type) saveSkip(d, e.type); }
@@ -11239,9 +11281,11 @@ function _applyNextRound(now){
   invalidateCoachCard(); coachCard=null; _todayActMemo=null;
   return nb;
 }
-function setNextRound(when){
+// painted: the Monday the sheet showed. Tapped after midnight (or after a night on the
+// screen), recomputing it set the Monday after, a week late; a Monday that has come starts now.
+function setNextRound(when, painted){
   var cr=getCustomRoutine(); if(!cr) return false;
-  var prev=_nextRoundSet();
+  var prev=_nextRoundSet() && lsGet('kt_routine_next');   // as stored (the start may follow the programme)
   if(when==='today' && _nrCanToday()){
     if(!lsSet('kt_routine_next', {startsOn:todayISO(), at:todayISO()})) return false;
     var nb=_applyNextRound(true);
@@ -11251,15 +11295,18 @@ function setNextRound(when){
     render();
     return true;
   }
-  var mon=_nextRoundMonday();
-  if(!lsSet('kt_routine_next', {startsOn:mon, at:todayISO()})) return false;
+  var mon=/^\d{4}-\d{2}-\d{2}$/.test(String(painted||'')) ? painted : _nextRoundMonday(), set={startsOn:mon, at:todayISO()};
+  if(_roundInfo()) set.afterEnd=true;   // set on the last week or after the end: it follows the programme (_nextRoundSet)
+  if(!lsSet('kt_routine_next', set)) return false;
   closeNextRound();
+  var nb2=mon<=todayISO() ? _applyNextRound(false) : null;   // a failed swap stays set and is retried
+  if(nb2){ showToast('Round '+nb2.routine.cycle+' started — week 1 is on the card'); render(); return true; }
   showToast('Round '+((parseInt(cr.cycle,10)||1)+1)+' starts '+_nrDay(mon));
   invalidateCoachCard(); render();
   return true;
 }
 function cancelNextRound(){
-  var p=_nextRoundSet(); if(!p) return;
+  var p=_nextRoundSet() && lsGet('kt_routine_next'); if(!p) return;
   lsDel('kt_routine_next');
   closeNextRound();
   showUndoToast('Next round cancelled', function(){ lsSet('kt_routine_next', p); invalidateCoachCard(); render(); });
@@ -11302,7 +11349,7 @@ function _paintNextRound(){
   }).join('');
   var left=total-currentWeek;
   var ctx=ri ? (ri.ended ? 'This programme ended '+_nrDay(ri.endISO)+'. Week '+total+' repeats until the next round starts.' : 'This is the last week of the programme. It ends '+_nrDay(ri.endISO)+'.')
-             : (left>0 ? 'This programme has '+_plural(left,'week')+' left after this one. Starting the next round ends it early.' : '');
+             : (left>0 ? 'This programme has '+_plural(left,'week')+' left after this one. '+(p && p.afterEnd && _nrWhen==='monday' ? 'The next round starts after them.' : 'Starting the next round ends it early.') : '');
   if(_nrWhen==='monday') ctx+=(ctx?' ':'')+'The round is built on the morning it starts, so sessions before then still count.';
   var keep=!!(p && _nrWhen==='monday' && p.startsOn===mon);
   var go=_nrWhen==='today' ? 'Start round '+nxt+' today' : (keep ? 'Keep it for '+_nrDay(mon) : 'Start round '+nxt+' on '+_nrDay(mon));
@@ -11318,7 +11365,7 @@ function _paintNextRound(){
       '<button type="button" class="kt-rt-chip'+(_nrWhen==='monday'?' on':'')+'" aria-pressed="'+(_nrWhen==='monday')+'" onclick="_nrSetWhen(\'monday\')">'+_esc(_nrDay(mon))+'</button>'+
       (canToday?'<button type="button" class="kt-rt-chip'+(_nrWhen==='today'?' on':'')+'" aria-pressed="'+(_nrWhen==='today')+'" onclick="_nrSetWhen(\'today\')">Today</button>':'')+
     '</div>'+
-    '<button type="button" class="btn btn-primary btn-full" id="nrGo" style="padding:14px;font-size:15px;margin-top:14px;" onclick="'+(keep?'closeNextRound()':'setNextRound(_nrWhen)')+'">'+_esc(go)+'</button>'+
+    '<button type="button" class="btn btn-primary btn-full" id="nrGo" style="padding:14px;font-size:15px;margin-top:14px;" onclick="'+(keep?'closeNextRound()':'setNextRound(_nrWhen,\''+mon+'\')')+'">'+_esc(go)+'</button>'+
     (p?'<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="cancelNextRound()">Cancel the next round</button>':'')+
     '<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="closeNextRound();startNewProgramme();">Start something different</button>';
   _a11yPass();
@@ -11358,7 +11405,7 @@ function _nextRoundPrompt(){
   var out='', ri=_roundInfo(), p=_nextRoundSet(), cy=parseInt(cr.cycle,10)||1, total=cr.weeks.length;
   if(cy>1) out+=' — round '+cy+' of this programme (the app rebuilt it from round '+(cy-1)+' with every weighted lift re-based on the user\u2019s best)';
   if(ri) out+=ri.ended ? ' — THE PROGRAMME HAS ENDED ('+ri.endISO+'); its last week repeats until the next round starts' : ' — the LAST week of the programme (it ends '+ri.endISO+')';
-  if(p) out+='. The user has set the next round to start '+p.startsOn+': the app rebuilds this programme week for week with each weighted lift starting about 10% under their best this round; you can edit it once it starts';
+  if(p) out+='. The user has set the next round to start '+p.startsOn+(p.afterEnd?' (the Monday after the programme\u2019s last week: weeks added move it later)':'')+': the app rebuilds this programme week for week with each weighted lift starting about 10% under their best this round; you can edit it once it starts';
   else if(ri) out+='. Settings > Routines > "Your next '+total+' weeks" (or the Today card) starts the next round on the phone; offer it, or a new programme if they want something different';
   return out;
 }
@@ -14044,7 +14091,7 @@ function _e1rmSeries(){
           if(w2>0&&r2>0) best=Math.max(best,_epley(w2,r2));
         }
       }
-      if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10}); }
+      if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10, t:_cmpT(s)}); }
     });
   }
   _e1rmMemo=out; _e1rmMemoV=_logsVersion;
@@ -14053,8 +14100,13 @@ function _e1rmSeries(){
 // Lifts still being trained whose e1RM peak is 21+ days old.
 function _plateauLifts(){
   var res=[], series=_e1rmSeries(), now=Date.now();
+  // A new round starts every lift on purpose under the last round's peak: it is judged by its
+  // own round's logs (four of them first), or the re-base read as a stall every week.
+  var cr=getCustomRoutine(), inRound=(cr && (parseInt(cr.cycle,10)||1)>1) ? _roundTest(cr) : null;
   Object.keys(series).forEach(function(name){
-    var pts=series[name]; if(pts.length<4) return;
+    var pts=series[name];
+    if(inRound) pts=pts.filter(function(p){ return inRound(p.date, p.t); });
+    if(pts.length<4) return;
     var peak=0, peakDate=null;
     pts.forEach(function(p){ if(p.e1rm>=peak){ peak=p.e1rm; peakDate=p.date; } });
     var days=Math.floor((now-new Date(peakDate+'T00:00:00'))/86400000);
@@ -18361,9 +18413,11 @@ function renderCoach(){
   // dropped — the green-dotted eyebrow already signals presence.
   // Day-of-programme, not day-of-calendar: before the fix this was the raw
   // weekday, so a plan built on a Saturday opened on "WK 01 · DAY 6".
+  // Rounded: a week whose clocks change on a weekday (Friday in Israel and Egypt) has a
+  // 23-hour day, and flooring read its Saturday as DAY 5.
   var _dayAnchor = _weekAnchor();
   var dayIdx = Math.max(1, Math.min(7,
-    Math.floor((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
+    Math.round((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
   var _dayMeta = hasCustomRoutine() && !_programmeStarted()
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
@@ -20101,15 +20155,24 @@ currentWeek = getWeek();
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
 // weeks they never trained. kt_last_open is deliberately NOT exported:
-// restoring an old backup must not fake a lapse.
-var _lastOpen = lsGet('kt_last_open') || 0;
-var _weekBeforeAdvance = currentWeek;
-autoAdvanceWeek();
-var _awayDays = _lastOpen ? Math.floor((Date.now()-_lastOpen)/86400000) : 0;
-if(_awayDays >= 10 && currentWeek > _weekBeforeAdvance && hasCustomRoutine()){
-  lapsePending = {from:_weekBeforeAdvance, to:currentWeek, days:_awayDays};
+// restoring an old backup must not fake a lapse. It is the last visit, stamped
+// at launch and on every return and departure, and a return runs the same check:
+// stamped only at a cold boot, a resident app used daily read as "away" since its
+// last launch, and one resumed after weeks moved on with no offer.
+function _advanceWeekCheckLapse(){
+  var last=parseFloat(localStorage.getItem('kt_last_open'))||0, from=currentWeek;
+  autoAdvanceWeek();
+  var away=last>0 ? Math.floor((Date.now()-last)/86400000) : 0;
+  if(lapsePending && currentWeek!==from){
+    // A banner still up when the week moves again names the week the calendar is on now.
+    if(currentWeek>lapsePending.from) lapsePending.to=currentWeek; else lapsePending=null;
+  } else if(away>=10 && currentWeek>from && hasCustomRoutine()){
+    lapsePending={from:from, to:currentWeek, days:away};
+  }
+  _stampVisit();
 }
-lsSet('kt_last_open', Date.now());
+function _stampVisit(){ try{ localStorage.setItem('kt_last_open', String(Date.now())); }catch(e){} delete _lsCache.kt_last_open; }
+_advanceWeekCheckLapse();
 // kt_prs is a cache of the derived record heads; bring a stale one (pre-recompute
 // deletes, legacy nested sessions, old seeds) in line before the milestone baseline.
 try{ _syncPRCache(); }catch(e){}
@@ -20344,6 +20407,7 @@ document.addEventListener('visibilitychange', function(){
     var s=document.getElementById('screen');
     if(s && !s.firstElementChild) { window.location.reload(); return; }
     _resumeDayAndRest();
+    _stampVisit();   // after the welcome-back check has read the previous visit
     setTimeout(checkPendingShare, 600);
     setTimeout(drainPendingHealth, 700);
     setTimeout(drainWatchSessions, 750);
@@ -20352,7 +20416,7 @@ document.addEventListener('visibilitychange', function(){
     // so the day's training is on disk after the next app open at the latest.
     setTimeout(_autoBackupIfDue, 1500);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
-  }
+  } else _stampVisit();   // leaving: the last time the owner was here
 });
 // Day stamp for the rollover check — set at boot, bumped on resume.
 var _lastSeenDay = todayISO();
@@ -20387,7 +20451,7 @@ function _restoreCoachDraft(){
 function _resumeDayAndRest(){
   if(todayISO() !== _lastSeenDay){
     _lastSeenDay = todayISO();
-    autoAdvanceWeek();
+    _advanceWeekCheckLapse();
     // Yesterday's dismissals and banner choice are yesterday's.
     coachCardDismissed=false; coachCardAskOpen=false; todayBannerOverride=null;
     try{ invalidateCoachCard(); }catch(e){}
@@ -20398,6 +20462,11 @@ function _resumeDayAndRest(){
     if(runnerRestLeft <= 0) _restFinish(); else _paintRestClock();
   }
 }
+// A screen kept on across midnight (the runner's wake lock, a phone on a stand) never
+// leaves the foreground, so no return rolls the day: Monday showed last week's loads and
+// pushed the watch last week's plan. A minute clock rolls it as a return would.
+function _dayTick(){ if(document.visibilityState==='visible' && todayISO()!==_lastSeenDay) _resumeDayAndRest(); }
+setInterval(_dayTick, 60000);
 
 // ── Keyboard / assistive-tech access for clickable divs ──────────────────────
 // Rendered markup uses onclick divs in places (calendar days, settings rows).
