@@ -18,6 +18,9 @@
 //   delete leaves one, Reset import clears them.
 // - M35: a pinned sport tab's selects start on "—" (every pickup game was a Win), an empty tap
 //   files nothing, and the form starts over after a save so a second tap does not duplicate it.
+// - M39: on an activity tab, another activity's "Log +" card opens it (its own tab, or the + tab
+//   with it picked; Other for a type outside the catalogue) instead of doing nothing, and a
+//   coach-logged type with an apostrophe no longer breaks the card's handler.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -327,5 +330,39 @@ run('M35: a pinned sport tab saves only what was chosen, refuses an empty tap an
     assert(out.form === '|||| date:true', 'the form starts over after a save: ' + out.form);
     assert(out.after === 1, 'a second tap does not file the log again: ' + out.after);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M39: an activity card opens its activity from another activity tab; a type with an apostrophe is safe', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_log_tabs: JSON.stringify(['Cycling', 'Tennis', 'run']) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const d = addDays(todayISO(), -1);
+      lsSet('kt_sports', [
+        { id: 1785000000003, date: d, type: 'Yoga', duration: 30, data: {}, notes: '' },
+        { id: 1785000000002, date: d, type: 'Tennis', duration: 60, data: {}, notes: '' },
+        { id: 1785000000001, date: d, type: 'Cycling', duration: 50, data: {}, notes: '' },
+      ]);
+      executeCoachTool('log_sport', { type: "Women's Rugby", duration: 80, date: d });
+      const r = {};
+      const card = t => [...document.querySelectorAll('#screen .kt-actcard')].find(c => c.getAttribute('data-sport') === t);
+      const at = () => logSubTab + '/' + logSportType;
+      switchTab('log'); switchLogSub('Cycling'); await wait(50);
+      r.names = [...document.querySelectorAll('#screen .kt-actcard')].map(c => c.getAttribute('data-sport') + '=' + c.children[1].textContent).sort().join();
+      card('Cycling').click(); await wait(30); r.own = at();
+      card('Tennis').click(); await wait(30); r.pinned = at();
+      switchLogSub('Cycling'); await wait(30);
+      card('Yoga').click(); await wait(30); r.unpinned = at() + (sportTabPicked ? ' picked' : '');
+      switchLogSub('Cycling'); await wait(30);
+      card("Women's Rugby").click(); await wait(30); r.custom = at();
+      return r;
+    });
+    assert(out.names === "Cycling=Cycling,Tennis=Tennis,Women's Rugby=Women's Rugby,Yoga=Yoga", 'cards carry and show the type as text: ' + out.names);
+    assert(out.own === 'Cycling/Cycling', 'the tab\'s own card stays put: ' + out.own);
+    assert(out.pinned === 'Tennis/Tennis', 'a pinned activity\'s card opens its tab: ' + out.pinned);
+    assert(out.unpinned === 'sport/Yoga picked', 'another activity\'s card opens the + tab with it picked: ' + out.unpinned);
+    assert(out.custom === 'sport/Other', 'an activity outside the catalogue opens as Other: ' + out.custom);
+    assert(app.errors.length === 0, 'no page errors (the apostrophe used to throw): ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
