@@ -21,6 +21,8 @@
 //   calendar (it was read as UTC midnight: after 20:00 west of UTC today's session was
 //   "yesterday's", east of UTC the reverse) and name the day by its name, without the quotes
 //   and markup the chip's inline handler cannot carry.
+// - L36 THIS WEEK'S PLAN prints each set's load when a top set and back-offs differ ("3×3,8,8 @
+//   225 lb" hid 225/185/185), in the "[edited by the user; you had …]" mark too.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -319,4 +321,34 @@ run('L35: the coach chips read today and yesterday on the local calendar and nam
     assert(named.rendered[0] === named.odd && named.sent.length === 1 && named.sent[0] === named.odd, 'the chip renders and sends what it says: ' + JSON.stringify(named));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+run('L36: THIS WEEK\'S PLAN prints a top set and its back-offs, in the coach\'s original too', async () => {
+  for (const unit of ['lb', 'kg']) {
+    const app = await boot({ native: true, seed: { kt_unit_w: unit } });
+    try {
+      const out = await app.page.evaluate(() => {
+        const c = currentWeek - 1, wk = currentWeek, w = getCustomRoutine().weeks[c], kg = _uW() === 'kg';
+        const top = w.push[0].name, acc = w.push[1].name, acc1 = wDisp(w.push[1].weight);
+        const line = (n) => (buildSystemPrompt().match(new RegExp('\\n  ' + n + ': [^\\n]*')) || [''])[0].trim();
+        // the coach writes a top set with back-offs, and an accessory with the same load every set
+        const push = w.push.map((e, i) => i === 0 ? { name: top, sets: 3, reps: [3, 8, 8], weight: kg ? 100 : 225, weights: kg ? [100, 85, 85] : [225, 185, 185], rpe: 8, isMain: true }
+          : i === 1 ? { name: acc, sets: 3, reps: [10, 10, 10], weight: acc1, weights: [acc1, acc1, acc1], rpe: 8 }
+          : { name: e.name, sets: e.sets, reps: e.reps, weight: wDisp(e.weight) });
+        const ok = executeCoachTool('update_routine_weeks', { weeks: [{ wk, bName: w.bName, bColor: w.bColor, push }] }).ok;
+        const r = { kg, ok, acc1, split: line(top), uniform: line(acc) };
+        // the owner sets the top set for this week on (the back-offs keep their share): the mark
+        // quotes the coach's sets
+        _commitRoutine(cr => _progCarryLoad(cr, 'push', top, c, wStore(kg ? 95 : 205), { markOwner: true }), { scope: 'spec-104-l36' });
+        r.edited = line(top);
+        return r;
+      });
+      const u = out.kg ? 'kg' : 'lb';
+      assert(out.ok, u + ': the coach\'s week saved');
+      assert(out.split === 'Bench Press: 3×3,8,8 @ ' + (out.kg ? '100/85/85' : '225/185/185') + ' ' + u + ' RPE8 (main)', u + ': each set\'s load: ' + out.split);
+      assert(out.uniform.indexOf(' @ ' + out.acc1 + ' ' + u + ' RPE') > 0, u + ': one load when every set shares it: ' + out.uniform);
+      assert(out.edited.indexOf('Bench Press: 3×3,8,8 @ ' + (out.kg ? '95/' : '205/')) === 0 && out.edited.indexOf('[edited by the user; you had 3×3,8,8 @ ' + (out.kg ? '100/85/85' : '225/185/185') + ' ' + u + ']') > 0, u + ': the coach\'s original keeps its back-offs: ' + out.edited);
+      assert(app.errors.length === 0, u + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });

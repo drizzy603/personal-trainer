@@ -17586,14 +17586,21 @@ function buildSystemPrompt(){
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN (lifts marked "edited by the user" or "added by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
+    // A row's load: each set's when a top set and back-offs differ (the headline weight alone
+    // read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
+    var _rowLoad=function(r, none){
+      var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
+      if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
+      return parseFloat(r.weight)>0?fmtW(r.weight):none;
+    };
     LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
         wd[sess].forEach(function(ex){
-          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+(parseFloat(ex.rec.weight)>0?fmtW(ex.rec.weight):'their load')+']':'');
-          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+(parseFloat(ex.weight)>0?fmtW(ex.weight):'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
+          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':'');
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+_rowLoad(ex, 'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
         });
         // Where each main lift is heading, so advice matches the rest of the programme.
         try{
