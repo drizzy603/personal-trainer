@@ -10999,6 +10999,7 @@ function _applyNextRound(now){
   var prevArr=getRoutineArchive().slice();
   if(!archiveCurrentRoutine()) return null;
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
+  _routineReplaced(cr, 'round:'+nb.routine.cycle);
   lsDel('kt_routine_next');
   var start=now ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
@@ -17342,6 +17343,22 @@ function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.we
 // owner's later Routines edit, which kept the coach's change and threw away the owner's.
 function _setBackupScope(sc){ try{ if(sc) localStorage.setItem('kt_routine_backup_scope', String(sc)); else localStorage.removeItem('kt_routine_backup_scope'); }catch(e){} }
 function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routine_backup_scope')===String(sc) && hasRoutineBackup(); }catch(e){ return false; } }
+// A programme replaced as a whole (the next round): the one it replaced becomes Restore Previous
+// under its own scope, so no undo point taken before reaches across. An earlier coach reply's
+// Undo restored its stale snapshot of round 1 over round 2 (at week 1, under ROUND 2 · WEEK 1).
+function _routineReplaced(prev, scope){
+  _routineScope=null;   // a scope still open would take no snapshot of the new programme
+  if(prev && prev.weeks && prev.weeks.length && lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
+  else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of an older programme
+  _retireLedgers();
+}
+// A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
+// card retires (it read "WEEK 1" over the old round's changes).
+function _retireLedgers(){
+  var n=0;
+  coachMessages.forEach(function(m){ if(m && Array.isArray(m._tools) && m._tools.length && !m._ledgerSeen){ m._ledgerSeen=true; n++; } });
+  if(n) saveCoachHistory();
+}
 function restoreRoutineBackup(){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
@@ -17350,6 +17367,8 @@ function restoreRoutineBackup(){
     setCustomRoutine(b);
     if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
+    // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
+    if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
     if(currentWeek<1||currentWeek>total){ _setWeek(1); }
     showToast('Previous programme restored'); render();
@@ -17427,6 +17446,9 @@ function saveCoachHistory(){
       if(m._local) out._local=true;
       if(m._error) out._error=true;
       if(m._ledgerSeen) out._ledgerSeen=true;
+      // The reply's undo point: PLAN CHANGES offered Undo only until the app was relaunched.
+      // It stays checked against the snapshot (_backupScopeIs), and a new round retires it.
+      if(m._undo) out._undo=m._undo;
       if(Array.isArray(m.content)){
         // Storage projection: collapse multimodal/tool-use content to text +
         // a _hadImage flag. The rich in-memory version is preserved.
