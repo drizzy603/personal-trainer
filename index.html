@@ -13771,7 +13771,7 @@ function _e1rmSeries(){
           if(w2>0&&r2>0) best=Math.max(best,_epley(w2,r2));
         }
       }
-      if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10}); }
+      if(best>0){ (out[ex.name]=out[ex.name]||[]).push({date:s.date, e1rm:Math.round(best*10)/10, t:_cmpT(s)}); }
     });
   }
   _e1rmMemo=out; _e1rmMemoV=_logsVersion;
@@ -13780,8 +13780,13 @@ function _e1rmSeries(){
 // Lifts still being trained whose e1RM peak is 21+ days old.
 function _plateauLifts(){
   var res=[], series=_e1rmSeries(), now=Date.now();
+  // A new round starts every lift on purpose under the last round's peak: it is judged by its
+  // own round's logs (four of them first), or the re-base read as a stall every week.
+  var cr=getCustomRoutine(), inRound=(cr && (parseInt(cr.cycle,10)||1)>1) ? _roundTest(cr) : null;
   Object.keys(series).forEach(function(name){
-    var pts=series[name]; if(pts.length<4) return;
+    var pts=series[name];
+    if(inRound) pts=pts.filter(function(p){ return inRound(p.date, p.t); });
+    if(pts.length<4) return;
     var peak=0, peakDate=null;
     pts.forEach(function(p){ if(p.e1rm>=peak){ peak=p.e1rm; peakDate=p.date; } });
     var days=Math.floor((now-new Date(peakDate+'T00:00:00'))/86400000);

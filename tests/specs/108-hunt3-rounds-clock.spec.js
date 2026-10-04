@@ -4,6 +4,8 @@
 //   sessions dated inside week 1 were offered as Carry forward against the new, lower start (one
 //   tap undid the re-base) and counted in the following round's best. A round now records when
 //   it began (routine.startedAt) and only logs that began after it are its own.
+// - M07 From week 2 of a new round the plateau card judged the deliberate re-base by round 1's
+//   peak ("stalled 21 days", a further 10% deload every week). A round is judged by its own logs.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -112,6 +114,47 @@ run('M06: a start-morning wrist session drained before the swap is the old round
     assert(out.cycle === 2 && out.week === 1 && out.drained, 'the round starts on its Monday after the wrist session drains: ' + JSON.stringify(out));
     assert(out.bench1 === 162.5, 'the wrist session is in round 2\'s re-base (180 x 8 -> 162.5): ' + JSON.stringify(out));
     assert(out.carry === 0 && !out.offer, 'and is not offered as Carry forward against round 2: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M07: a new round is not a plateau; a stall inside the round still is', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, mon = _mostRecentMonday(), today = todayISO(), seeded = getSessions().slice();
+      const asRound = (week, startMon) => { _setWeek(week); const cr = getCustomRoutine(); cr.cycle = 2; cr.startedAt = at(startMon, '06:00'); setCustomRoutine(cr); };
+      const bench = (date, w) => addSession({ id: at(date, '18:00'), date, type: 'Push', startedAt: at(date, '17:00'), exercises: [X('Bench Press', [8, 8, 8, 8], w)] });
+      const benchPl = () => _plateauLifts().filter(x => x.name === 'Bench Press').map(x => [x.days, x.e1rm]);
+      // Week 2 of round 2: round 1 peaked at 172.5 x 8 three to six weeks ago, round 2 restarted at 155.
+      [-25, -32, -39, -46].forEach(d => bench(addDays(today, d), 172.5));
+      bench(addDays(mon, -7), 155); bench(addDays(mon, -5), 157.5);
+      asRound(2, addDays(mon, -7));
+      lsSet('kt_last_plateau_week', 0);
+      r.week2 = benchPl();
+      r.due = _plateauFixDue();
+      switchTab('log'); switchLogSub('workout'); await wait(30);
+      r.card = /PLATEAU/.test(txt()) || chips().some(c => /PLATEAU/.test(c));
+      const before = JSON.stringify(getCustomRoutine().weeks.map(w => (w.push.find(e => e.name === 'Bench Press') || {}).weight));
+      applyPlateauFixLocal();
+      r.untouched = JSON.stringify(getCustomRoutine().weeks.map(w => (w.push.find(e => e.name === 'Bench Press') || {}).weight)) === before;
+      r.prompt = /PLATEAUS[^\n]*Bench Press/.test(buildSystemPrompt());
+      // Week 5 of round 2: its own best (170 x 8) four weeks ago, three sessions under it since;
+      // round 1's 190 x 8 does not count.
+      lsSet('kt_sessions', seeded);
+      bench(addDays(today, -40), 190);
+      bench(addDays(mon, -28), 170); bench(addDays(mon, -21), 160); bench(addDays(mon, -14), 160); bench(addDays(mon, -7), 160);
+      asRound(5, addDays(mon, -28));
+      r.week5 = benchPl();
+      r.days5 = Math.floor((Date.now() - new Date(addDays(mon, -28) + 'T00:00:00')) / 86400000);
+      return r;
+    }, LOGS);
+    assert(out.week2.length === 0 && !out.due && !out.card, 'week 2 of round 2 is not a plateau of round 1\'s peak: ' + JSON.stringify(out));
+    assert(out.untouched, 'the keyless fix has nothing to deload');
+    assert(!out.prompt, 'the coach is not told Bench Press stalled');
+    assert(out.week5.length === 1 && out.week5[0][1] === 215.3 && out.week5[0][0] === out.days5, 'a stall inside the round is judged by the round\'s own best (170 x 8): ' + JSON.stringify(out.week5));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
