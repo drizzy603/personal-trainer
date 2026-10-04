@@ -11035,7 +11035,12 @@ function carryForward(slot, name, lb, c){
 }
 function _carryTap(btn, sessId){
   var d=btn&&btn.dataset; if(!d) return;
-  if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10)) && sessId) { var a=_carrySeen(); if(a.indexOf(sessId)<0){ a.unshift(sessId); lsSet('kt_carry_seen', a.slice(0,30)); } }
+  if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10)) && sessId){
+    // The session is done with once nothing is left to carry: marked on the first tap, the
+    // second lift above the plan was never offered again.
+    var ss=getSessions().filter(function(s){ return s && s.id===sessId; })[0];
+    if(!ss || !_carryCandidates(ss).length){ var a=_carrySeen(); if(a.indexOf(sessId)<0){ a.unshift(sessId); lsSet('kt_carry_seen', a.slice(0,30)); } }
+  }
   var row=btn.closest && btn.closest('.kt-carry-row'); if(row) row.remove();
 }
 // ── Next round ───────────────────────────────────────────────────────────────

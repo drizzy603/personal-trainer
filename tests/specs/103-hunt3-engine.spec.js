@@ -26,6 +26,8 @@
 // - M11: the launch plate sweep leaves a programme that reads as kg on the kg grid when the app is
 //   in lb (one launch in lb moved every load onto the lb grid for good); stray fractional loads go
 //   to the kg grid there, and an lb programme still sweeps onto 2.5 lb plates.
+// - L11: Today's carry card offers each lift logged above the plan in turn (carrying the first
+//   marked the session done and the second was never offered).
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -477,4 +479,37 @@ seq('M11: a launch in lb leaves a kg owner\'s programme on the kg plate grid', a
   assert(fixedKg.r.weeks[6].push[0].weight === kgGrid(151.3) && loads(fixedKg.r).split('|')[5] === loads(kgR).split('|')[5], 'a fractional load in a kg programme snaps to 1.25 kg: ' + fixedKg.r.weeks[6].push[0].weight);
   const demo = await launch(JSON.parse(SEED.kt_routine), 'lb');
   assert(demo.r.weeks.every(w => ['push', 'pull', 'legs'].every(k => (w[k] || []).every(e => !(e.weight > 0) || Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01))), 'an lb programme still sweeps onto 2.5 lb plates');
+});
+
+seq('L11: Today offers every lift logged above the plan, one after the other', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, w = getCustomRoutine().weeks[currentWeek - 1].push;
+      const plan = (n) => w.find(e => e.name === n).weight;
+      const b = plan('Bench Press') + 10, o = plan('Overhead Press') + 10;
+      // yesterday's Push (a wrist session never opens the COMPLETE sheet): both lifts a plate or more over
+      const sess = getSessions().slice();
+      sess.unshift({ id: 8800, date: addDays(todayISO(), -1), type: 'Push', week: currentWeek, prs: [], exercises: [
+        { name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: b, weightLog: [b, b, b, b] },
+        { name: 'Overhead Press', sets: 4, reps: [8, 8, 8, 8], weight: o, weightLog: [o, o, o, o] }] });
+      lsSet('kt_sessions', sess);
+      switchTab('log'); promoteTodayItem('carry'); await wait(20);
+      const card = () => { const el = [...document.querySelectorAll('.kt-resume-banner')].find(x => /MORE THAN THE PLAN/.test(x.textContent)); return el ? el.querySelector('.kt-resume-ttl').textContent : ''; };
+      const carry = async () => { [...document.querySelectorAll('.kt-resume-banner .kt-resume-cta')].find(x => x.dataset.n).click(); await wait(20); promoteTodayItem('carry'); await wait(20); };
+      r.first = card();
+      await carry();
+      r.second = card();
+      await carry();
+      r.after = card();
+      const now = getCustomRoutine().weeks[currentWeek - 1].push;
+      r.loads = [now.find(e => e.name === 'Bench Press').weight === b, now.find(e => e.name === 'Overhead Press').weight === o];
+      r.seen = _carrySeen().indexOf(8800) >= 0;
+      return r;
+    });
+    assert(/^Bench Press went/.test(out.first) && /^Overhead Press went/.test(out.second), 'Bench first, then Overhead Press: ' + JSON.stringify(out));
+    assert(!out.after && out.loads.every(Boolean) && out.seen, 'both carried, then the card goes: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
