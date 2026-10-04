@@ -6,6 +6,7 @@
 // - Short day names keep what tells days apart: Full Body A / B read Full A / Full B, Lower Body
 //   reads Lower (no trailing space), and two names that shorten alike get their last initial (L44).
 // - Progress > Strength opens the curve of a lift with an apostrophe (Farmer's Carry) (M40).
+// - The runner's exercise picker swaps in, adds and creates a name with a double quote (Box Jump 30") (M41).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -102,6 +103,35 @@ run('a lift with an apostrophe opens its Strength curve (M40)', async () => {
     assert(open.open === "Farmer's Carry" && open.curve, 'the row opens its curve: ' + JSON.stringify(open));
     await p.locator('#screen [onclick^="toggleStrengthChart"]').filter({ hasText: "Farmer's Carry" }).first().click();
     assert(await p.evaluate(() => strengthChartOpen) === null, 'a second tap closes it');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('the runner picker takes a name with a double quote (M41)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    await p.evaluate(() => {
+      saveCustomExercise({ name: 'Box Jump 30"', cat: 'Legs', muscles: 'Not specified', equip: 'Not specified', desc: '', tips: [], _custom: true });
+      switchTab('log'); openDeckRunner('Push'); openRunnerExEdit(1); _openRunnerExPicker();
+    });
+    // swap: Choose Exercise
+    await p.locator('#runner-ex-picker-q').fill('Box Jump');
+    await p.locator('#runner-ex-picker-list button', { hasText: 'Box Jump 30' }).first().click();
+    const swapped = await p.evaluate(() => _rExEditName);
+    // add: + Add exercise after
+    await p.evaluate(() => { closeRunnerExEdit(); openRunnerExEdit(0); _openRunnerExPicker('add'); });
+    await p.locator('#runner-ex-picker-q').fill('Box Jump');
+    await p.locator('#runner-ex-picker-list button', { hasText: 'Box Jump 30' }).first().click();
+    const added = await p.evaluate(() => runnerSession.exercises.map(e => e.name));
+    // create: a typed name that is not in the library yet
+    await p.evaluate(() => { closeRunnerExEdit(); openRunnerExEdit(0); _openRunnerExPicker('add'); });
+    await p.locator('#runner-ex-picker-q').fill(' Box Jump 24" ');
+    await p.locator('#runner-ex-picker-list button', { hasText: 'Create' }).first().click();
+    const created = await p.evaluate(() => ({ session: runnerSession.exercises.map(e => e.name), custom: getCustomExercises().map(e => e.name) }));
+    assert(swapped === 'Box Jump 30"', 'swap picks the quoted name: ' + JSON.stringify(swapped));
+    assert(added[1] === 'Box Jump 30"', 'add puts it after the card: ' + JSON.stringify(added));
+    assert(created.session[1] === 'Box Jump 24"' && created.custom.indexOf('Box Jump 24"') >= 0, 'Create files and adds the typed name, trimmed: ' + JSON.stringify(created));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

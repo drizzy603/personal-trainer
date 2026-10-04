@@ -11233,9 +11233,9 @@ function _buildExPickerItems(q){
   var sec=function(t){ return '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:6px 8px;">'+_esc(t)+'</div>'; };
   function item(e){
     var name=e.name, isCur=(_rExPickMode==='swap' && name===_rExEditName), here=!!inSession[name];
-    var escaped=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     var sub=[e.muscles&&e.muscles!=='Not specified'?e.muscles:'', e.equip&&e.equip!=='Not specified'?e.equip:''].filter(Boolean).join(' \u00b7 ');
-    return '<button onclick="event.stopPropagation();runnerExPickExercise(\''+escaped+'\')" style="'+
+    // The name rides in data-n, not inside the handler: a quote in it (Box Jump 30") cut the handler short.
+    return '<button data-n="'+_esc(name)+'" onclick="event.stopPropagation();runnerExPickExercise(this.dataset.n)" style="'+
       'width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;'+
       'background:'+(isCur?'color-mix(in srgb,var(--accent) 10%,transparent)':'transparent')+';'+
       'border:none;border-radius:10px;padding:10px 8px;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
@@ -11257,9 +11257,8 @@ function _buildExPickerItems(q){
   if(rest.length){ if(!qLow) html+=sec((_rExPickCat==='All'?'All':_rExPickCat)+' \u00b7 '+rest.length); html+=rest.map(item).join(''); }
   var exact=q&&all.some(function(e){ return e.name.toLowerCase()===qLow; });
   if(qLow && !exact){
-    var escapedQ=String(q).trim().replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     html+=(rest.length?'<div style="height:1px;background:var(--border);margin:8px 0;"></div>':'')+
-      '<button onclick="event.stopPropagation();runnerExCreateCustom(\''+escapedQ+'\')" style="width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--accent-ink);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+      '<button data-n="'+_esc(String(q).trim())+'" onclick="event.stopPropagation();runnerExCreateCustom(this.dataset.n)" style="width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--accent-ink);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
         '<span style="font-size:18px;line-height:1;">+</span><span>Create \u201c'+_esc(String(q).trim())+'\u201d</span></button>';
   }
   if(!html) html='<div style="text-align:center;padding:24px;color:var(--muted);font-size:14px;">Nothing in '+_esc(_rExPickCat)+'.</div>';
