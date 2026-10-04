@@ -23,6 +23,9 @@
 //   edit, with links that acted on a programme that was gone).
 // - M46: a day with every lift removed keeps its Restore and Reset (only Build was offered), and an
 //   emptied day that is not on the schedule stays on the sheet.
+// - M11: the launch plate sweep leaves a programme that reads as kg on the kg grid when the app is
+//   in lb (one launch in lb moved every load onto the lb grid for good); stray fractional loads go
+//   to the kg grid there, and an lb programme still sweeps onto 2.5 lb plates.
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -447,4 +450,31 @@ seq('M46: a day with every lift removed still offers Restore and Reset', async (
     assert(out.legsBack && out.armsBack, 'Restore and Reset bring the coach\'s days back: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+seq('M11: a launch in lb leaves a kg owner\'s programme on the kg plate grid', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  // the demo programme as a kg owner's coach wrote it (1.25 kg plates, stored in lb)
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const loads = (r) => r.weeks.map(w => ['push', 'pull', 'legs'].map(k => (w[k] || []).map(e => e.weight).join(',')).join(';')).join('|');
+  const launch = async (routine, unit) => {
+    const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(routine), kt_unit_w: unit } });
+    try {
+      const out = await app.page.evaluate(() => ({ r: getCustomRoutine() }));
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const inLb = await launch(kgR, 'lb');
+  assert(loads(inLb.r) === loads(kgR), 'nothing moved on a launch in lb');
+  const backInKg = await launch(inLb.r, 'kg');
+  assert(loads(backInKg.r) === loads(kgR), 'back in kg every load reads as the coach wrote it');
+  // a stray fractional load in a kg programme goes to the kg grid; an lb programme still sweeps to 2.5 lb
+  const kgF = JSON.parse(JSON.stringify(kgR)); kgF.weeks[6].push[0].weight = 151.3;
+  const fixedKg = await launch(kgF, 'lb');
+  assert(fixedKg.r.weeks[6].push[0].weight === kgGrid(151.3) && loads(fixedKg.r).split('|')[5] === loads(kgR).split('|')[5], 'a fractional load in a kg programme snaps to 1.25 kg: ' + fixedKg.r.weeks[6].push[0].weight);
+  const demo = await launch(JSON.parse(SEED.kt_routine), 'lb');
+  assert(demo.r.weeks.every(w => ['push', 'pull', 'legs'].every(k => (w[k] || []).every(e => !(e.weight > 0) || Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01))), 'an lb programme still sweeps onto 2.5 lb plates');
 });

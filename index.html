@@ -10118,12 +10118,13 @@ function _snapU(lb){
   return Math.max(2.5, Math.round(lb/2.5)*2.5);
 }
 function _plateLb(){ return _uW()==='kg' ? Math.round(1.25*LB_PER_KG*1000)/1000 : 2.5; }
-// On the plate grid of the unit on screen: a 2.5 lb multiple, or for a kg user
-// also a 1.25 kg multiple (stored in lb at 0.1).
-function _onPlateGrid(lb){
+// On the plate grid: a 2.5 lb multiple, or with kg (default: a kg user) also a
+// 1.25 kg multiple (stored in lb at 0.1).
+function _onPlateGrid(lb, kg){
   lb=parseFloat(lb); if(!(lb>0)) return true;
   if(Math.abs(Math.round(lb/2.5)*2.5-lb)<0.05) return true;
-  return _uW()==='kg' && Math.abs(Math.round(lb/LB_PER_KG/1.25)*1.25*LB_PER_KG-lb)<0.06;
+  if(kg===undefined) kg=(_uW()==='kg');
+  return !!kg && Math.abs(Math.round(lb/LB_PER_KG/1.25)*1.25*LB_PER_KG-lb)<0.06;
 }
 function _progRow(w, slot, name){
   var a=w&&w[slot]; if(!Array.isArray(a)) return null;
@@ -19945,20 +19946,21 @@ loadCoachHistory();
   try{
     var _mig=getCustomRoutine();
     if(!_mig || !Array.isArray(_mig.weeks)) return;
-    var moved=false;
+    var rows=[], kgOnly=0, off=0, moved=false;
     _mig.weeks.forEach(function(wkO){
       if(!wkO) return;
-      LIFT_KEYS.forEach(function(sk){
-        (wkO[sk]||[]).forEach(function(e){
-          var ew=parseFloat(e&&e.weight);
-          // Loads on either plate grid stay: a kg programme (80 kg = 176.4 lb) was
-          // snapped to 175 lb on every launch.
-          if(ew>0 && !_onPlateGrid(ew)){
-            var snapped=_snapU(ew);
-            if(snapped!==ew){ e.weight=snapped; moved=true; }
-          }
-        });
-      });
+      LIFT_KEYS.forEach(function(sk){ (wkO[sk]||[]).forEach(function(e){ if(e && parseFloat(e.weight)>0) rows.push(e); }); });
+    });
+    // Loads on either plate grid stay: a kg programme (80 kg = 176.4 lb) was snapped to
+    // 175 lb on every launch. A programme that reads as kg (more loads only on the kg grid
+    // than on neither) keeps its grid on a launch in lb too: one launch in lb moved a kg
+    // owner's every load onto the lb grid for good (106 kg read 106.5 back in kg).
+    rows.forEach(function(e){ var ew=parseFloat(e.weight); if(_onPlateGrid(ew, false)) return; if(_onPlateGrid(ew, true)) kgOnly++; else off++; });
+    var kg=(_uW()==='kg') || kgOnly>off;
+    rows.forEach(function(e){
+      var ew=parseFloat(e.weight); if(_onPlateGrid(ew, kg)) return;
+      var snapped=(kg && _uW()!=='kg') ? Math.round(Math.max(1.25, Math.round(ew/LB_PER_KG/1.25)*1.25)*LB_PER_KG*10)/10 : _snapU(ew);
+      if(snapped!==ew){ e.weight=snapped; moved=true; }
     });
     if(moved) setCustomRoutine(_mig);
   }catch(e){}
