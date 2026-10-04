@@ -41,7 +41,7 @@ run('emoji day names never reach the watch or the widget cut in half (H10)', asy
       // the lift days the next week holds, whichever weekday today is
       const lifts = _nativeSummaryDays().filter(d => d.lifts > 0 || LIFT_TYPES.indexOf(d.type) >= 0).map(d => d.type)
         .filter((t, i, a) => a.indexOf(t) === i);
-      const a = lifts[0], b = lifts[1] || (lifts[0] === 'Push' ? 'Pull' : 'Push');
+      const a = lifts[0] || 'Push', b = lifts[1] || (a === 'Push' ? 'Pull' : 'Push');
       const r = { a, b };
       // a name whose seventh unit is the first half of an emoji, and a 24-character one ending in an emoji
       setDayName(a, 'Push \u{1F4AA} day');
