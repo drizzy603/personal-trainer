@@ -8,10 +8,16 @@
 //   coach was told it and the plateau deload wrote 1,665 into the programme). It follows the lift's
 //   newest log left (or goes with the last one), comes back on Undo, and a load the coach wrote
 //   after the log stays.
-const { boot, assert, run, SEED } = require('../lib/harness');
+// - M38: a date typed into the day sheet's Date field (desktop) moves nothing while it is typed:
+//   it commits on Enter or when the field loses focus, focus lands back in the sheet, Escape drops
+//   it, a cleared field snaps back, and a picked date (iOS, a calendar) still moves at once.
+const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+// One browser at a time: each run starts when the one before it has finished.
+let queue = Promise.resolve();
+const run = (name, fn) => { queue = queue.then(() => new Promise(done => run1(name, () => fn().finally(done)))); };
 
 run('H04: shared-id twins get their own ids; the day sheet acts on the log shown; Undo brings back every twin', async () => {
   const X = 1791131648911, A = daysAgo(30), B = daysAgo(29);
@@ -150,6 +156,68 @@ run('H03: a deleted or moved log takes back the working weight it set; the coach
     assert(out.override === 190, 'a load written after the log stays: ' + out.override);
     assert(out.onlyLogged === 135 && out.onlyGone === false, 'the last log of a lift takes its working weight with it: ' + JSON.stringify([out.onlyLogged, out.onlyGone]));
     assert(out.movedBack === 180 && out.movedFront === 185, 'a move behind a later log hands it the working weight; moving back takes it back: ' + JSON.stringify([out.movedBack, out.movedFront]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M38: a typed date moves nothing until Enter or leaving the field; Escape drops it; a picked date moves at once', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}' } });
+  const page = app.page;
+  try {
+    const s = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const T = todayISO(), A = addDays(T, -5), B = addDays(T, -12);
+      lsSet('kt_sessions', [{ id: 9090, date: A, week: weekForDate(A), type: 'Push', label: 'Push', exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }], prs: [] }]);
+      window.__moves = [];
+      const orig = window.moveSession; window.moveSession = function (id, d, f) { window.__moves.push(d); return orig(id, d, f); };
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(A); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + A + '"]').click(); await wait(40);
+      // the field's parts follow the browser's locale (mm dd yyyy in en-US)
+      const order = new Intl.DateTimeFormat(navigator.language, { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(2026, 10, 22)).map(p => p.type).filter(t => t === 'year' || t === 'month' || t === 'day');
+      return { A, B, order };
+    });
+    const keys = d => s.order.map(t => t === 'year' ? d.slice(0, 4) : t === 'month' ? d.slice(5, 7) : d.slice(8, 10)).join('');
+    const field = () => page.locator('#cdBody .kt-cd-item').first().locator('input[type=date]');
+    const state = () => page.evaluate(() => {
+      const x = getSessions().find(y => y.id === 9090), f = document.querySelector('#cdBody .kt-cd-item input[type=date]'), a = document.activeElement;
+      return { stored: x && x.date, field: f ? f.value : null, sheet: calSelectedDate, open: !!document.getElementById('calDayOverlay'), focus: a ? (a.id || a.tagName) : '', toast: (document.getElementById('toast') || {}).textContent || '', moves: window.__moves.length };
+    });
+    const r = {};
+    // typing B over A, key by key: the log stays where it is and the field keeps focus
+    await field().focus();
+    r.typing = [];
+    for (const k of keys(s.B)) { await page.keyboard.press(k); await page.waitForTimeout(25); const st = await state(); r.typing.push(st.stored + '|' + st.focus); }
+    r.typed = await state();
+    await page.keyboard.press('Enter'); await page.waitForTimeout(60);
+    r.enter = await state();
+    // typed back to A, then Tab out of the field: the move happens as it loses focus
+    await field().focus();
+    for (const k of keys(s.A)) { await page.keyboard.press(k); await page.waitForTimeout(15); }
+    for (let i = 0; i < 6 && (await page.evaluate(() => (document.activeElement || {}).type === 'date')); i++) { await page.keyboard.press('Tab'); await page.waitForTimeout(40); }
+    r.tab = await state();
+    // a cleared field moves nothing and shows the log's date again (no 'Invalid date')
+    await field().focus();
+    await page.keyboard.press('Backspace'); await page.waitForTimeout(25);
+    r.cleared = await state();
+    await page.evaluate(() => document.querySelector('#cdBody .kt-cd-item input[type=date]').blur()); await page.waitForTimeout(40);
+    r.clearedBlur = await state();
+    // Escape after a typed date: the sheet closes and nothing moves
+    await field().focus();
+    for (const k of keys(s.B)) { await page.keyboard.press(k); await page.waitForTimeout(15); }
+    await page.keyboard.press('Escape'); await page.waitForTimeout(60);
+    r.escape = await state();
+    // a picked date (no keys: the iOS wheel, a calendar) moves at once
+    await page.evaluate(async A => { openCalDay(A); await new Promise(res => setTimeout(res, 40)); }, s.A);
+    await page.evaluate(B => { const f = document.querySelector('#cdBody .kt-cd-item input[type=date]'); f.value = B; f.dispatchEvent(new Event('change', { bubbles: true })); }, s.B);
+    await page.waitForTimeout(60);
+    r.picked = await state();
+    const { A, B } = s;
+    assert(r.typing.every(x => x === A + '|INPUT') && r.typed.field === B && r.typed.moves === 0, 'nothing moves while the date is typed: ' + JSON.stringify([r.typing, r.typed]));
+    assert(r.enter.stored === B && r.enter.sheet === B && r.enter.open && r.enter.moves === 1 && r.enter.focus === 'cdTitle', 'Enter moves it once, the sheet follows and focus lands on its title: ' + JSON.stringify(r.enter));
+    assert(r.tab.stored === A && r.tab.sheet === A && r.tab.moves === 2 && r.tab.focus === 'cdTitle', 'leaving the field moves it: ' + JSON.stringify(r.tab));
+    assert(r.cleared.field === '' && r.clearedBlur.stored === A && r.clearedBlur.field === A && r.clearedBlur.moves === 2 && !/Invalid date/.test(r.clearedBlur.toast), 'a cleared field moves nothing and snaps back: ' + JSON.stringify([r.cleared, r.clearedBlur]));
+    assert(r.escape.stored === A && !r.escape.open && r.escape.moves === 2, 'Escape drops a typed date: ' + JSON.stringify(r.escape));
+    assert(r.picked.stored === B && r.picked.sheet === B && r.picked.moves === 3, 'a picked date moves at once: ' + JSON.stringify(r.picked));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
