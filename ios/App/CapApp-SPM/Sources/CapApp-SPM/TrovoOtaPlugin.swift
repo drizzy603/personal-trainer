@@ -131,6 +131,10 @@ public class TrovoOtaPlugin: CAPPlugin, CAPBridgedPlugin {
             "bundleBuild": TrovoOta.bundleBuild,
             "liveBuild": d.string(forKey: TrovoOta.liveBuildKey) ?? "",
             "active": active,
+            // Whether the staged page is really on disk: a phone restored from a backup keeps
+            // liveBuild (defaults are backed up) but not the folder (excluded), and the page then
+            // stages it again instead of waiting for a launch that can never serve it.
+            "staged": FileManager.default.fileExists(atPath: TrovoOta.liveDir.appendingPathComponent("index.html").path),
         ])
     }
 

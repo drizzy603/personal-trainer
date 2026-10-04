@@ -23,6 +23,11 @@
 //   wrist session was, Health workouts are matched to the day's kind and sport). This pins the
 //   page side of that contract: a lift day is done only by its own slot, a run day by a run, a
 //   sport day by its own sport, and a sport day's type is the SPORTS id a Health ride maps to.
+// - L51: kt_ota_staged is squared with what the shell holds (TrovoOta.status) before each check.
+//   A restored phone (the note and the shell's key came back, the folder did not) stages the page
+//   again; a build the breaker threw out is remembered (kt_ota_rejected), never downloaded or
+//   staged again, and About says it could not start instead of "applies on next launch"; a newer
+//   build still stages; a staged folder that is there is left alone; a served page syncs the note.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -118,7 +123,7 @@ run('H06: a lift renamed or removed mid-workout is not brought back by the wrist
       'phone finished first: the wrist copy adds neither lift back (3 sets, not 8): ' + JSON.stringify(out.phoneFirst));
     assert(out.wristFirst.runnerKept, 'wrist finished first while holding the dropped lifts: the phone keeps its runner');
     assert(out.wristFirst.after.length === 1 && out.wristFirst.after[0] === 'Spec Swap Press [5,8,8]',
-      'wrist finished first: one record, with the phone’s corrections: ' + JSON.stringify(out.wristFirst));
+      'wrist finished first: one record, with the phone\u2019s corrections: ' + JSON.stringify(out.wristFirst));
     assert(out.later.recs.length === 1 && out.later.recs[0] === [out.later.B + ' [10]', 'Spec Swap Press [5,8,8]'].sort().join(' | '),
       'a set the wrist logged after it dropped the lift is kept: ' + JSON.stringify(out.later));
     assert(out.undoZero.recs.length === 1 && out.undoZero.recs[0] === out.undoZero.D + ' [10]',
@@ -256,9 +261,9 @@ run('M08: a set next round reaches the watch week, the widget and the reminders 
     assert(out.mon.week === 1 && out.mon.slot === 'Push' && out.mon.bench === out.mon.want && out.mon.want !== out.lastBench,
       'the start Monday is round 2 week 1 with its re-based load, not the final week: ' + JSON.stringify(out));
     assert(out.wk2.week === 2 && out.wk2.slot === 'Pull', 'nine days in is round 2 week 2 (its Wednesday): ' + JSON.stringify(out.wk2));
-    assert(out.before.week === out.lastWk, 'the days before the start stay the current programme’s final week: ' + JSON.stringify(out.before));
-    assert(out.widget.type === 'Push' && out.widget.lifts === out.widget.want, 'the widget summary shows round 2’s day on the start Monday: ' + JSON.stringify(out.widget));
-    assert(out.reminder === out.pushTitle, 'the start Monday’s reminder names round 2’s day: ' + out.reminder);
+    assert(out.before.week === out.lastWk, 'the days before the start stay the current programme\u2019s final week: ' + JSON.stringify(out.before));
+    assert(out.widget.type === 'Push' && out.widget.lifts === out.widget.want, 'the widget summary shows round 2\u2019s day on the start Monday: ' + JSON.stringify(out.widget));
+    assert(out.reminder === out.pushTitle, 'the start Monday\u2019s reminder names round 2\u2019s day: ' + out.reminder);
     assert(out.pushed.n === 6 && out.pushed.after && out.pushed.beforeOk, 'the pushed week ahead: round 2 week 1 from the start, the final week before it: ' + JSON.stringify(out.pushed));
     assert(out.relog.bench === out.relog.want && out.relog.bench > out.mon.bench, 'a heavier log this round re-bases the preview: ' + JSON.stringify(out.relog));
     assert(out.cancelled.week === out.lastWk, 'a cancelled round leaves the final week in place: ' + JSON.stringify(out.cancelled));
@@ -313,9 +318,9 @@ run('L17: each widget summary day carries its own programme week', async () => {
       return Object.assign(r, { total });
     });
     const ok = (arr, f) => arr.every(f);
-    assert(ok(out.mid.weeks, s => ({ a: 'a6', b: 'b7', c: 'c8' })[s[0]] === s), 'this week’s days are week 6, next week’s 7, the one after 8: ' + JSON.stringify(out.mid));
+    assert(ok(out.mid.weeks, s => ({ a: 'a6', b: 'b7', c: 'c8' })[s[0]] === s), 'this week\u2019s days are week 6, next week\u2019s 7, the one after 8: ' + JSON.stringify(out.mid));
     assert(out.mid.top === 6 && out.mid.sent.length === 7 && out.mid.sent.every(w => w === 6 || w === 7),
-      'the widget gets each day’s week; the summary’s own week stays the current week (older widgets read it): ' + JSON.stringify(out.mid));
+      'the widget gets each day\u2019s week; the summary\u2019s own week stays the current week (older widgets read it): ' + JSON.stringify(out.mid));
     assert(ok(out.parked, w => w === out.total), 'past the final week the days keep its number: ' + JSON.stringify(out.parked));
     assert(ok(out.round, s => s === 'old' + out.total || s === 'new1' || s === 'new2') && out.round.indexOf('new1') >= 0,
       'a set next round counts its days from its week 1: ' + JSON.stringify(out.round));
@@ -348,6 +353,61 @@ run('L18: a summary day is done only by what that day asks for (the rule the wid
     assert(out.runRide === 'run:Run:false' && out.runRun === 'run:Run:true', 'a run day is done by a run, not a ride: ' + JSON.stringify(out));
     assert(out.sportOther === 'sport:Cycling:false' && out.sportOwn === 'sport:Cycling:true' && out.rideMapsTo === 'Cycling',
       'a sport day is done by its own sport; its type is the id a Health ride maps to: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('L51: the staged-page note follows what the shell holds (restore, breaker, newer build, served page)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const p = APP_BUILD.split('-'), X = p[0] + '-' + (parseInt(p[1], 10) + 50), Y = p[0] + '-' + (parseInt(p[1], 10) + 51);
+      window.showToast = () => {};
+      let shell = {}, stages = [], pages = 0, published = X;
+      // the shell, stateful as TrovoOtaPlugin is: a stage writes liveBuild (and staged on shells that report it)
+      Capacitor.Plugins.TrovoOta = {
+        status: () => Promise.resolve(Object.assign({ bundleBuild: APP_BUILD }, shell)),
+        stage: (o) => { stages.push(o.build); shell.liveBuild = o.build; if ('staged' in shell) shell.staged = true; return Promise.resolve({ staged: true, build: o.build }); },
+        confirm: () => Promise.resolve(),
+      };
+      window.fetch = (u) => {
+        if (/build\.txt/.test(String(u))) return Promise.resolve({ ok: true, text: () => Promise.resolve(published + '\n') });
+        pages++;
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('<!doctype html><html><head><meta name="build" content="' + published + '"></head><body>' + 'x'.repeat(20000) + '</body></html>') });
+      };
+      const about = () => { switchTab('settings'); const row = [...document.querySelectorAll('.settings-row')].find(r => /App build/.test(r.textContent)); return row ? row.textContent.replace(/\s+/g, ' ') : ''; };
+      const reset = (s, note) => { shell = s; stages = []; pages = 0; published = X; localStorage.removeItem('kt_ota_rejected'); localStorage.setItem('kt_last_seen_build', X);
+        if (note) localStorage.setItem('kt_ota_staged', note); else localStorage.removeItem('kt_ota_staged'); };
+      const check = async () => { await _otaSyncStaged(); _checkLiveStamp(); await wait(60); };
+      const r = {};
+      // a restored phone on a shell that cannot say whether the folder is there; then on one that can
+      reset({ liveBuild: X, active: false }, X); await check();
+      r.restoredOld = { stages: stages.slice(), note: localStorage.getItem('kt_ota_staged') };
+      reset({ liveBuild: X, active: false, staged: false }, X); await check(); await check();
+      r.restoredNew = { stages: stages.slice(), note: localStorage.getItem('kt_ota_staged'), about: about() };
+      // staged this session, the folder is there: left alone
+      reset({ liveBuild: X, active: false, staged: true }, X); await check();
+      r.inStep = { stages: stages.slice(), pages, note: localStorage.getItem('kt_ota_staged') };
+      // the breaker threw X out: remembered, not downloaded or staged again, About says so
+      reset({ liveBuild: '', active: false, staged: false }, X); await check(); await check();
+      r.breaker = { stages: stages.slice(), pages, note: localStorage.getItem('kt_ota_staged'), rejected: localStorage.getItem('kt_ota_rejected'), about: about() };
+      // a newer build after that still stages
+      published = Y; localStorage.setItem('kt_last_seen_build', Y); await check();
+      r.newer = { stages: stages.slice(), note: localStorage.getItem('kt_ota_staged') };
+      // the served page: the note follows the shell
+      reset({ liveBuild: X, active: true, staged: true }, ''); await _otaSyncStaged();
+      r.served = localStorage.getItem('kt_ota_staged');
+      return Object.assign(r, { X, Y });
+    });
+    assert(JSON.stringify(out.restoredOld.stages) === JSON.stringify([out.X]) && out.restoredOld.note === out.X, 'a restored phone stages the page again (older shell): ' + JSON.stringify(out.restoredOld));
+    assert(JSON.stringify(out.restoredNew.stages) === JSON.stringify([out.X]) && out.restoredNew.note === out.X && /applies on next launch/.test(out.restoredNew.about),
+      'a restored phone stages it again once (a shell that reports the folder): ' + JSON.stringify(out.restoredNew));
+    assert(out.inStep.stages.length === 0 && out.inStep.pages === 0 && out.inStep.note === out.X, 'a staged page whose folder is there is left alone: ' + JSON.stringify(out.inStep));
+    assert(out.breaker.stages.length === 0 && out.breaker.pages === 0 && out.breaker.note === null && out.breaker.rejected === out.X && /couldn\u2019t start/.test(out.breaker.about) && !/applies on next launch/.test(out.breaker.about),
+      'a build the breaker threw out is not fetched or staged again, and About says so: ' + JSON.stringify(out.breaker));
+    assert(JSON.stringify(out.newer.stages) === JSON.stringify([out.Y]) && out.newer.note === out.Y, 'a newer build still stages: ' + JSON.stringify(out.newer));
+    assert(out.served === out.X, 'a served page syncs the note to it: ' + out.served);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
