@@ -10885,11 +10885,14 @@ function _rtOpenEdit(slot, name){
   _paintRoutines();
   var t=document.getElementById('rtEditTitle'); if(t){ try{ t.focus({preventScroll:true}); }catch(e){} }
 }
+// One step the way it was pressed, never past the bounds; a row already outside them (a
+// coach's RPE 4 deload, 12 sets) only moves back toward them ("Less RPE" raised RPE 4 to 5).
+function _rtStepTo(v, d, lo, hi){ return d<0 ? (v<=lo ? v : Math.max(lo, v+d)) : (v>=hi ? v : Math.min(hi, v+d)); }
 function _rtStep(field, d){
   var e=_rtEdit; if(!e) return;
-  if(field==='sets') e.sets=Math.max(1, Math.min(10, e.sets+d));
-  else if(field==='reps' && e.repsPlain) e.reps=Math.max(1, Math.min(50, e.reps+d));
-  else if(field==='rpe') e.rpe=Math.max(5, Math.min(10, e.rpe+d));
+  if(field==='sets') e.sets=_rtStepTo(e.sets, d, 1, 10);
+  else if(field==='reps' && e.repsPlain) e.reps=_rtStepTo(e.reps, d, 1, 50);
+  else if(field==='rpe') e.rpe=_rtStepTo(e.rpe, d, 5, 10);
   else if(field==='w') e.w=Math.max(0, Math.round((e.w+d*_plateStepDisp())*100)/100);
   _paintRoutines();
 }
@@ -10935,7 +10938,9 @@ function _rtEditHTML(cr, c){
   var flat=true, any=false, P=parseFloat(r.weight)||0;
   for(var j=c+1;j<cr.weeks.length;j++){ if(_isDeloadWk(cr.weeks[j])) continue; var x=_progRow(cr.weeks[j],key,e.name); if(!x) continue; any=true; if(Math.abs((parseFloat(x.weight)||0)-P)>0.05) flat=false; }
   flat=flat && any && P>0;
-  var wChanged=Math.abs(wStore(e.w||0)-P)>0.05, schemeChanged=(String(e.sets)!==String(r.sets) || (e.repsPlain && JSON.stringify(e.reps)!==JSON.stringify(r.reps)));
+  // changed from what the editor opened with (the shown kg is rounded: read off the stored lb,
+  // an untouched kg row offered THE COACH HELD THIS FLAT)
+  var wChanged=(e.w0===undefined) ? Math.abs(wStore(e.w||0)-P)>0.05 : Math.abs(e.w-e.w0)>0.001, schemeChanged=(String(e.sets)!==String(r.sets) || (e.repsPlain && JSON.stringify(e.reps)!==JSON.stringify(r.reps)));
   var stepper=function(lbl, field, val, unit){
     return '<div class="kt-rt-step"><span class="kt-rt-step-l">'+lbl+'</span>'+
       '<button type="button" class="kt-rt-sb" aria-label="Less '+lbl+'" onclick="_rtStep(\''+field+'\',-1)">−</button>'+

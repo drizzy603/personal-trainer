@@ -28,6 +28,9 @@
 //   to the kg grid there, and an lb programme still sweeps onto 2.5 lb plates.
 // - L11: Today's carry card offers each lift logged above the plan in turn (carrying the first
 //   marked the session done and the second was never offered).
+// - L42 + L43: the Routines editor reads "weight changed" from what it opened with (an untouched kg
+//   row offered THE COACH HELD THIS FLAT), and its steppers never move against the press on a row
+//   outside their range (RPE 4 "Less" gave 5, 12 sets "More" gave 10).
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -510,6 +513,35 @@ seq('L11: Today offers every lift logged above the plan, one after the other', a
     });
     assert(/^Bench Press went/.test(out.first) && /^Overhead Press went/.test(out.second), 'Bench first, then Overhead Press: ' + JSON.stringify(out));
     assert(!out.after && out.loads.every(Boolean) && out.seen, 'both carried, then the card goes: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('L42 + L43: the Routines editor: no flat-row chips on an untouched kg row; steppers never move the wrong way', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_w: 'kg' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const r = {}, c = currentWeek - 1;
+      // a coach deload-style row at RPE 4 and a 12-set row
+      const cr0 = getCustomRoutine(); cr0.weeks.forEach(w => { w.push.find(e => e.name === 'Cable Triceps Pushdown').rpe = 4; w.push.find(e => e.name === 'Incline Dumbbell Press').sets = 12; }); setCustomRoutine(cr0);
+      const sheet = () => document.getElementById('rtSheet').textContent;
+      const tap = (lbl) => [...document.querySelectorAll('.kt-rt-sb')].find(b => b.getAttribute('aria-label') === lbl).click();
+      openRoutines();
+      // Lateral Raise: held flat at 17.5 lb (8 kg shown)
+      _rtOpenEdit('Push', 'Lateral Raise');
+      r.untouched = /THE COACH HELD THIS FLAT/.test(sheet());
+      tap('More Weight');
+      r.touched = /THE COACH HELD THIS FLAT/.test(sheet());
+      _rtEdit = null; _paintRoutines();
+      _rtOpenEdit('Push', 'Cable Triceps Pushdown'); tap('Less RPE'); r.rpeDown = _rtEdit.rpe; tap('More RPE'); r.rpeUp = _rtEdit.rpe;
+      _rtEdit = null; _paintRoutines();
+      _rtOpenEdit('Push', 'Incline Dumbbell Press'); tap('More Sets'); r.setsUp = _rtEdit.sets; tap('Less Sets'); r.setsDown = _rtEdit.sets;
+      _rtEdit = null; closeRoutines();
+      return r;
+    });
+    assert(!out.untouched && out.touched, 'the flat-row chips show once the weight is changed, not before: ' + JSON.stringify(out));
+    assert(out.rpeDown === 4 && out.rpeUp === 5, 'RPE 4: Less keeps it, More moves it up: ' + JSON.stringify(out));
+    assert(out.setsUp === 12 && out.setsDown === 11, '12 sets: More keeps it, Less moves it down: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
