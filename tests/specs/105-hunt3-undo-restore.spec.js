@@ -9,6 +9,10 @@
 // - Restore Previous restores the version before the last change: each Routines visit is its own
 //   undo point, and a Restore Previous, a Programme History restore or the starter plan leaves no
 //   scope open (the next edit took no snapshot); a history restore retires the old reply's card (M17).
+// - Restore Previous (and the ledger Undo) on a full phone changes nothing and says nothing was
+//   restored: the previous programme used to be lost from every key under "restored" (M18).
+// - Undo after the coach extended the programme lands on the restored last week, still the final
+//   week, not week 1 (M19).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -90,6 +94,7 @@ const QUOTA = `(room) => { const orig = window.__origSet || Storage.prototype.se
   Storage.prototype.setItem = function (k, v) { const old = this.getItem(k); const next = used() - (old == null ? 0 : k.length + old.length) + k.length + String(v).length;
     if (next > limit) { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); }; }`;
 const ROOM = `() => { if (window.__origSet) Storage.prototype.setItem = window.__origSet; }`;
+const FULL = `(keys) => { const orig = window.__origSet || Storage.prototype.setItem; window.__origSet = orig; Storage.prototype.setItem = function (k, v) { if (keys.indexOf(k) >= 0) { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); }; }`;
 
 run('a restore or an undo that runs out of space keeps the undo copy of what was here', async () => {
   const app = await boot({ native: true });
@@ -227,6 +232,42 @@ run('Restore Previous restores the version before the last change', async () => 
     assert(out.history.name === 'Programme B' && out.history.bench === 0, 'after a history restore and an edit, Restore Previous brings back the restored programme before the edit: ' + JSON.stringify(out.history));
     assert(out.card === false, 'the old reply\'s card retires with the programme it changed');
     assert(out.starter.scope === null && out.starter.backup === 'Programme C', 'the starter plan leaves no scope open and keeps the programme it replaced: ' + JSON.stringify(out.starter));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Restore Previous on a full phone changes nothing; past the restored end it lands on the last week', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ([FULL, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const full = eval(FULL), room = eval(ROOM), r = {};
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', currentWeek - 1, 185, { markOwner: true }), { scope: 'routines' });
+      const curRaw = localStorage.getItem('kt_routine'), bakRaw = localStorage.getItem('kt_routine_backup');
+      // the programme cannot be written, then the backup cannot
+      for (const keys of [['kt_routine'], ['kt_routine_backup']]) {
+        full(keys);
+        restoreRoutineBackup(); await wait(20); confirm(); await wait(20);
+        room();
+        r[keys[0]] = { routine: localStorage.getItem('kt_routine') === curRaw, backup: localStorage.getItem('kt_routine_backup') === bakRaw, toast: toast() };
+      }
+      // M19: Undo after the coach added weeks 13-14 and moved to week 13
+      _setWeek(12);
+      _commitRoutine(cr => { const a = JSON.parse(JSON.stringify(cr.weeks[11])), b = JSON.parse(JSON.stringify(cr.weeks[11])); a.wk = 13; b.wk = 14; cr.weeks.push(a, b); return 2; }, { scope: 'coach:extend' });
+      _setWeek(13);
+      r.extended = { week: currentWeek, total: getTotalWeeks() };
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(20);
+      r.undone = { week: currentWeek, total: getTotalWeeks(), finalSince: localStorage.getItem('kt_final_since'), stored: lsGet('kt_week') };
+      return r;
+    }, [FULL, ROOM]);
+    for (const k of ['kt_routine', 'kt_routine_backup']) {
+      const x = out[k];
+      assert(x.routine && x.backup && /storage full/.test(x.toast) && !/restored/.test(x.toast), 'a failed write (' + k + ') leaves both versions where they were: ' + JSON.stringify(x));
+    }
+    assert(out.extended.week === 13 && out.extended.total === 14, 'the programme was extended: ' + JSON.stringify(out.extended));
+    assert(out.undone.week === 12 && out.undone.stored === 12 && out.undone.total === 12 && !!out.undone.finalSince, 'Undo lands on the restored last week, still the final week: ' + JSON.stringify(out.undone));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

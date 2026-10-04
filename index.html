@@ -17392,14 +17392,20 @@ function restoreRoutineBackup(){
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
   _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
-    setCustomRoutine(b);
-    if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
+    // The programme must land before the backup moves: a failed write used to overwrite the
+    // backup with the current programme anyway (the previous one was then in no key) and say
+    // "restored" over the storage-full error. lsSet has said so; nothing changed.
+    if(!setCustomRoutine(b)) return;
+    if(cur && !lsSet('kt_routine_backup',cur)){ setCustomRoutine(cur); return; }
+    if(!cur) lsDel('kt_routine_backup');
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
     _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
-    if(currentWeek<1||currentWeek>total){ _setWeek(1); }
+    // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
+    // week. Week 1 sent the owner back to the start and cleared the final-week state.
+    if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
     showToast('Previous programme restored'); render();
   }});
 }
