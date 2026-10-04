@@ -5638,14 +5638,19 @@ function getNextSession() {
   var sports = getSportLogs();
   var skips = getSkips();
   var today = todayISO();
-  var weekPlan = getWeekPlan();
-  var start = addDays(getMondayISO(), -7);
+  var total = getTotalWeeks();
+  // From last Monday, but never from before this programme (or round) began, and each day
+  // from its own week's cadence: a plan started today offered the Monday of the week before
+  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL").
+  var planFor = function(d){ return getWeekPlanForWeek(Math.min(total, weekForDate(d))); };
+  var start = addDays(getMondayISO(), -7), from = _roundStartISO();
+  if (from > start) start = from;
   for (var i = 0; i < 14; i++) {
     var date = addDays(start, i);
     if (date > today) break;
     var dow = (new Date(date+'T00:00:00').getDay()+6)%7;
-    var plan = weekPlan[dow];
-    if (plan.isRest) continue;
+    var plan = planFor(date)[dow];
+    if (!plan || plan.isRest) continue;
     var skipped = skips.some(function(s){ return s.date === date && s.type === plan.type; });
     if (skipped) continue;
     var logged;
@@ -5655,10 +5660,9 @@ function getNextSession() {
     if (!logged) return plan.type;
   }
   // Everything up to today is done — return next scheduled lift.
-  var todayDow = (new Date(today+'T00:00:00').getDay()+6)%7;
   for (var j = 0; j < 7; j++) {
-    var plan = weekPlan[(todayDow+j)%7];
-    if (plan.isLift) return plan.type;
+    var d2 = addDays(today, j), plan2 = planFor(d2)[(new Date(d2+'T00:00:00').getDay()+6)%7];
+    if (plan2 && plan2.isLift) return plan2.type;
   }
   return 'Push';
 }

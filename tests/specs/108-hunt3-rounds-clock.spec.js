@@ -28,6 +28,9 @@
 // - L21 On the final week's Sunday "TOMORROW · …" read a week 13 that does not exist (the
 //   routine-wide cadence). It reads the week Monday holds: the final week again, or week 1 of a
 //   next round starting tomorrow.
+// - L22 After "Start week 1 today" on a rest day, Today named a first session from the week
+//   before the programme ("Push, is Monday" beside "TOMORROW · PULL"). The walk starts no earlier
+//   than the programme and reads each day from its own week.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -503,6 +506,31 @@ run('L21: the final week\'s Sunday names what Monday holds, not a week 13', asyn
     }, LOGS);
     assert(out.repeat.shown === 'TOMORROW · PUSH' && JSON.stringify(out.repeat.monday) === JSON.stringify([1, 12, 'Push']), 'week 12 repeats: tomorrow is its Monday: ' + JSON.stringify(out.repeat));
     assert(out.round.shown === 'TOMORROW · LEGS' && JSON.stringify(out.round.monday) === JSON.stringify([2, 1, 'Legs']), 'round 2 starts tomorrow: its week 1 Monday: ' + JSON.stringify(out.round));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L22: "Start week 1 today" on a rest day names the first session of the programme, not of the week before', async () => {
+  const app = await boot({ native: false, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]' } });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, 1) + 'T10:00:00');   // Tuesday, a rest day in the starter's Push / Pull / Legs week
+      setCustomRoutine(buildStarterRoutine({ equip: 'full', days: 3, runs: 0, goal: 'muscle', exp: 0 })); _startProgramme();
+      const r = { plan: getWeekPlanForWeek(1).map(p => p.type).join(',') };
+      startProgrammeNow();
+      switchTab('log'); switchLogSub('workout'); render();
+      const t = txt();
+      r.next = getNextSession();
+      r.body = (t.match(/Your first session[^.]*\./) || [''])[0];
+      r.cta = (t.match(/FIRST SESSION ?Start [A-Za-z]+ today/) || [''])[0];
+      r.tomorrow = (t.match(/TOMORROW · [A-Z]+/) || [''])[0];
+      return r;
+    }, LOGS);
+    assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', 'the starter week this test assumes: ' + out.plan);
+    assert(out.next === 'Pull' && out.body === 'Your first session, Pull, is Wednesday.' && /Start Pull today/.test(out.cta) && /TOMORROW · PULL/.test(out.tomorrow), 'Monday was not owed: the first session is Wednesday\'s Pull: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
