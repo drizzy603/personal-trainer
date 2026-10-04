@@ -14885,7 +14885,7 @@ function _paintCalDay(){
 // rest of the keys. Once a key has gone into the field its changes wait for Enter or for the
 // field to lose focus (Escape drops the edit; the sheet closes); a picked date (iOS, a calendar)
 // still moves at once. The keydown is the tell: Chromium hands focus between the month, day and
-// year parts mid-typing, so document.activeElement cannot be. An empty, partial or unchanged
+// year parts mid-typing, so document.activeElement cannot be. An empty (cleared) or unchanged
 // value moves nothing, and the field shows the log's date again.
 function _cdDateGo(el, e){
   var t=e && e.type;
