@@ -10370,7 +10370,8 @@ function _progAdd(cr, slot, ex, c, after, o){
   return n;
 }
 // REMOVE: from week c on (o.onlyThisWeek: week c alone), deloads included. A coach
-// row is kept in week.recOut so Restore (or adding it back) brings it back exactly.
+// row is kept in week.recOut so Restore (or adding it back) brings it back exactly;
+// the coach's own removal (o.coach) is the programme's version and keeps nothing.
 // A superset opener left without its partner is unpaired; a removed main lift
 // hands the tag on.
 function _progRemove(cr, slot, name, c, o){
@@ -10381,7 +10382,7 @@ function _progRemove(cr, slot, name, c, o){
     var idx=-1; list.forEach(function(e,i){ if(e && e.name===name && idx<0) idx=i; });
     if(idx<0) continue;
     var r=list[idx];
-    if(r.rec!==null){
+    if(r.rec!==null && !o.coach){
       var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
       w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push({at:idx, row:keep});
     }
@@ -16721,16 +16722,21 @@ function _executeCoachToolRaw(name,input){
       var resE=_commitRoutine(function(cr){
         if(!cr.weeks[cE]){ whyE='the programme has no week '+fw; return false; }
         var row=null; (cr.weeks[cE][keyE]||[]).forEach(function(e){ if(!row && e && String(e.name).toLowerCase()===exN.toLowerCase()) row=e; });
-        var o={onlyThisWeek:!!input.only_this_week, every:!!input.every_week}, n=0;
+        var o={onlyThisWeek:!!input.only_this_week, every:!!input.every_week}, n=0, built=false;
         if(actE==='add'){
           if(row){ whyE=row.name+' is already on '+_dayLabel(slotE); return false; }
-          var a=_progAdd(cr, keyE, {name:exN, sets:parseInt(input.sets)||3, reps:parseInt(input.reps)||10, rpe:parseInt(input.rpe)||8, weight:(wLbE!=null?wLbE:_knownLoadLb(exN, cr, cE))}, cE, input.after||null, {firstIsMain:false, onlyThisWeek:o.onlyThisWeek, workScale:wLbE==null});
+          // A lift the owner removed comes back as the coach wrote it, then takes the numbers this
+          // call asks for below (they were ignored while the chat reported them); a new one is built
+          // from them. Either way it is the programme's version, not an owner's add.
+          var outN=null; ((cr.weeks[cE].recOut||{})[keyE]||[]).forEach(function(e){ if(!outN && e && e.row && String(e.row.name).toLowerCase()===exN.toLowerCase()) outN=e.row.name; });
+          var a=_progAdd(cr, keyE, {name:outN||exN, sets:parseInt(input.sets)||3, reps:parseInt(input.reps)||10, rpe:parseInt(input.rpe)||8, weight:(wLbE!=null?wLbE:_knownLoadLb(exN, cr, cE))}, cE, input.after||null, {firstIsMain:false, onlyThisWeek:o.onlyThisWeek, workScale:wLbE==null});
           if(a===-1){ whyE=exN+' is already on '+_dayLabel(slotE); return false; }
-          return a;
+          n+=a; built=!outN; row=_progRow(cr.weeks[cE], keyE, outN||exN);
         }
         if(!row){ whyE=exN+' is not on '+_dayLabel(slotE)+' in week '+fw; return false; }
         nmE=row.name;
-        if(actE==='remove') return _progRemove(cr, keyE, nmE, cE, {onlyThisWeek:o.onlyThisWeek});
+        // The coach's own removal is the programme's version: nothing is kept for Restore or Reset.
+        if(actE==='remove') return _progRemove(cr, keyE, nmE, cE, {onlyThisWeek:o.onlyThisWeek, coach:true});
         if(actE==='swap'){
           var to=String(input.rename_to||'').trim(); if(!to){ whyE='swap needs rename_to'; return false; }
           var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {workScale:!o.onlyThisWeek, onlyThisWeek:o.onlyThisWeek});
@@ -16738,10 +16744,12 @@ function _executeCoachToolRaw(name,input){
           n+=sw; nmE=to; row=_progRow(cr.weeks[cE], keyE, nmE); if(!row) return n;
         }
         var repsOld=JSON.parse(JSON.stringify(row.reps===undefined?null:row.reps));
-        if(input.sets!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'sets', parseInt(input.sets)||row.sets, o);
-        if(input.reps!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'reps', parseInt(input.reps)||row.reps, o);
-        if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
-        if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
+        if(!built){
+          if(input.sets!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'sets', parseInt(input.sets)||row.sets, o);
+          if(input.reps!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'reps', parseInt(input.reps)||row.reps, o);
+          if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
+          if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
+        }
         // The coach changed it at the user's request: this is now the programme's version
         // (in the weeks it changed: that week alone keeps the owner's marks on the rest).
         for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
