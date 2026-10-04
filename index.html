@@ -15593,6 +15593,15 @@ function _shareCardModel(s){
   function maxReps(ex){ var m=0; _exSetPairs(ex).forEach(function(p){ if(p[0]>m) m=p[0]; }); return m; }
   function num(d){ return Math.round(d*100)/100; }
   function repsTxt(d){ return (d>0?'+':'−')+Math.abs(d)+' rep'+(Math.abs(d)===1?'':'s'); }
+  // Loads compare as the card shows them: kg rounds to 0.5, so one 72.5 kg can be stored as 160
+  // and 159.8 lb. The top set is the most reps at the heaviest shown load, not the reps of a set
+  // that is heavier only in storage.
+  function topOf(list){
+    var t=null;
+    list.forEach(function(e){ var x=e && _prTop(e); if(x && (!t || x.w>t.w)) t={w:x.w, r:0}; });
+    if(t) list.forEach(function(e){ _exPairs(e).forEach(function(p){ if(p[0]>0 && wDisp(p[1])===wDisp(t.w) && p[0]>t.r) t.r=p[0]; }); });
+    return t;
+  }
   var sets=0, reps=0;
   exs.forEach(function(ex){ _exSetPairs(ex).forEach(function(p){ if(p[0]>0){ sets++; reps+=p[0]; } }); });
   var vol=calcVolume(exs), prevDay=null;
@@ -15606,8 +15615,9 @@ function _shareCardModel(s){
   var records=prs.map(function(n){
     var ch=_prChain(n)||[], i=-1;
     for(var k=ch.length-1;k>=0;k--){ if(ch[k] && ch[k].id===s.id){ i=k; break; } }
-    var ex=exs.find(function(e){ return e.name===n; }), top=ex?_prTop(ex):null;
-    var e=i>=0 ? ch[i] : top;
+    // This session's own top at the record's load (the ledger's entry for it, read on the shown grid).
+    var top=topOf(exs.filter(function(e){ return e.name===n; }));
+    var e=top || (i>=0 ? ch[i] : null);
     return {name:n, set:e ? _prSetTxt(n, e) : '', gain:i>=0 ? (_prGain(ch, i) || (i===0?'first record':'')) : ''};
   });
   var rows=exs.map(function(ex){
@@ -15617,19 +15627,19 @@ function _shareCardModel(s){
     var scheme='';
     if(ps.length){
       var ws=ps.map(function(p){ return p[1]; }), rs=ps.map(function(p){ return p[0]; });
-      var sameW=ws.every(function(w){ return Math.abs(w-ws[0])<0.05; }), sameR=rs.every(function(r){ return r===rs[0]; });
+      var sameW=ws.every(function(w){ return wDisp(w)===wDisp(ws[0]); }), sameR=rs.every(function(r){ return r===rs[0]; });
       if(sameW && sameR) scheme=ps.length+' × '+rs[0]+(load(ws[0])?' · '+load(ws[0]):'');
       else if(sameW) scheme=(load(ws[0])?load(ws[0])+' · ':'')+rs.join(', ')+' reps';
       else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):'BW')+'×'+p[0]; }).join('  ')+' '+U;
     }
-    var top=_prTop(ex), mr=maxReps(ex);
+    var top=topOf([ex]), mr=maxReps(ex);
     var topTxt=top ? _prSetTxt(ex.name, top) : (mr>0 ? mr+(mr===1?' rep':' reps') : '');
     var pe=null, pSess=null;
     all.forEach(function(o){ if(!o || !before(o)) return; (o.exercises||[]).forEach(function(e){ if(e && e.name===ex.name && later(o, pSess)){ pe=e; pSess=o; } }); });
     var delta='', up=false;
     if(!pe) delta='first time';
     else {
-      var pt=_prTop(pe);
+      var pt=topOf([pe]);
       if(top && pt){
         var dw=num(wDisp(top.w)-wDisp(pt.w));
         if(dw>0){ delta='+'+dw+' '+U; up=true; }
