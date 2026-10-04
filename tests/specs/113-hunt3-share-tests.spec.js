@@ -13,6 +13,8 @@
 //   replaced it since, else no block.
 // - L47: the card's duration rounds to whole minutes before it splits off the hours: the last
 //   30 s of every hour read "1 h 60 min" (and 59:30 read "60 min").
+// - L48: a 0-load set on a loaded lift reads 0 in the card's set list ("0×10  20×10  20×10 lb",
+//   as the day sheet has it); BW is for bodyweight lifts only.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -118,6 +120,23 @@ run('L47: the share card rounds the minutes before it splits off the hours', asy
       return [7180, 3570, 3610, 5369, 3840, 3569].map(dur);
     });
     assert(JSON.stringify(out) === JSON.stringify(['2 h 0 min', '1 h 0 min', '1 h 0 min', '1 h 29 min', '1 h 4 min', '59 min']), 'never "1 h 60 min" or "60 min": ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L48: a 0-load set reads BW only on a bodyweight lift', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(() => {
+      const X = (name, reps, wl) => ({ name, sets: reps.length, reps, weight: Math.max.apply(null, wl), weightLog: wl });
+      // a starter plan's accessory at 0 for the first set, then 20 typed in
+      const s = { id: Date.now(), date: todayISO(), type: 'Push', week: 1, prs: [],
+        exercises: [X('Cable Fly', [10, 10, 10], [0, 20, 20]), X('Pull Up', [8, 8, 8], [0, 25, 25])] };
+      const m = _shareCardModel(s);
+      return m.rows.map(r => r.scheme);
+    });
+    assert(out[0] === '0×10  20×10  20×10 lb', 'a loaded lift\'s empty set reads 0: ' + out[0]);
+    assert(out[1] === 'BW×8  +25×8  +25×8 lb', 'a bodyweight lift keeps BW and its added load: ' + out[1]);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

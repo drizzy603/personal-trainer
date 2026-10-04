@@ -15649,7 +15649,7 @@ function _shareCardModel(s){
       var sameW=ws.every(function(w){ return wDisp(w)===wDisp(ws[0]); }), sameR=rs.every(function(r){ return r===rs[0]; });
       if(sameW && sameR) scheme=ps.length+' × '+rs[0]+(load(ws[0])?' · '+load(ws[0]):'');
       else if(sameW) scheme=(load(ws[0])?load(ws[0])+' · ':'')+rs.join(', ')+' reps';
-      else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):'BW')+'×'+p[0]; }).join('  ')+' '+U;
+      else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):(bw?'BW':'0'))+'×'+p[0]; }).join('  ')+' '+U;   // 0 on a loaded lift is not bodyweight
     }
     var top=topOf([ex]), mr=maxReps(ex);
     var topTxt=top ? _prSetTxt(ex.name, top) : (mr>0 ? mr+(mr===1?' rep':' reps') : '');
