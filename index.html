@@ -16507,9 +16507,13 @@ function _executeCoachToolRaw(name,input){
           });
           if(OPTIONAL_LIFT_KEYS.indexOf(sk)>=0){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
           else weekObj[sk]=_grp;
+          // Only what the model sent is in the owner's unit: a day the call left out is the
+          // stored one, already lb (converting it again multiplied a kg owner's loads by 2.2
+          // on every rename or one-day tweak).
+          var _sent=w[sk]!==undefined;
           _grp.forEach(function(e,ei){
-            if(e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
-            if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
+            if(_sent && e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
+            if(_sent && e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
               var v=parseFloat(x); return v>0?_coachLoadIn(v):x;
             });
             // Supersets are pairs — normalize chains and a dangling last-ss.
