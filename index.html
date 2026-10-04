@@ -7805,9 +7805,11 @@ function _undoRunEdit(id, prev){
   var runs=getRuns(), idx=-1;
   for(var i=0;i<runs.length;i++){ if(runs[i] && runs[i].id===id){ idx=i; break; } }
   if(idx<0) return;
-  var out=runs.slice(); out[idx]=prev;
+  var cur=runs[idx], out=runs.slice(); out[idx]=prev;
   if(!lsSet('kt_runs', out)) return;
   if(runLogConfirmed && runLogConfirmed.id===id){ runLogConfirmed.km=prev.distance||prev.dist; runLogConfirmed.time=prev.time; }
+  // The day sheet followed the edit to the new date: it follows the run back (it closed).
+  if(cur.date!==prev.date && calSelectedDate===cur.date) _calNavToDate(prev.date);
   invalidateCoachCard(); render();
 }
 // null: nothing matched · false: storage full (nothing changed) · true: deleted, with Undo.
@@ -19420,6 +19422,9 @@ function saveSportLogEdit(id){
   });
   var out = logs.slice(); out[idx] = rec;
   if(!lsSet('kt_sports', out)) return;   // lsSet has toasted; the sheet stays open with what was typed
+  // The day sheet follows the activity to its new day, as the run editor does (it closed, and
+  // the card stayed on the old month).
+  if(rec.date!==orig.date && calSelectedDate===orig.date) _calNavToDate(rec.date);
   invalidateCoachCard();
   closeSportLogEditor();
   showToast(rec.type+' updated');

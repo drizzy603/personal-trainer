@@ -19,6 +19,8 @@
 // - L24: fixing an older log's date (day sheet, run editor) keeps its programme week (Wk 6 of the
 //   round it was logged in no longer becomes Wk 1, there and back); a move into another week of
 //   this round takes that week.
+// - L25: a date changed in the activity editor takes the day sheet and the card's month along (as
+//   the run editor does), and Undo of a run-editor date change brings them back with the run.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -346,6 +348,43 @@ run('L24: a date fix keeps an older log\'s programme week; a move into another w
     assert(out.earlierWeek === 6 && out.back === 6, 'before this round it keeps its own round\'s week, there and back: ' + JSON.stringify([out.earlierWeek, out.back]));
     assert(out.intoRoundWk1 === 1 && out.intoRoundWk2 === 2 && out.coach, 'moved into this round it takes that week: ' + JSON.stringify([out.intoRoundWk1, out.intoRoundWk2, out.coach]));
     assert(out.runSheet === 6 && out.runEditor === 6 && out.runEditorIn === 1, 'runs too, from the day sheet and the run editor: ' + JSON.stringify([out.runSheet, out.runEditor, out.runEditorIn]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L25: the activity editor\'s date change takes the day sheet along; Undo of a run-editor date change brings it back', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]', kt_prs: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const D = addDays(todayISO(), -40), NEW = addDays(D.slice(0, 8) + '01', -5);   // NEW: a day in the month before D's
+      const view = () => ({ open: !!document.getElementById('calDayOverlay'), sel: calSelectedDate, month: calYear + '-' + String(calMonth + 1).padStart(2, '0'), block: !!document.querySelector('.cal-day[data-date="' + calSelectedDate + '"]') });
+      const btn = label => [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === label);
+      const openDay = async d => { switchTab('progress'); progressTab = 'lifts'; _calNavToDate(d); calSelectedDate = null; render(); await wait(30); document.querySelector('.cal-day[data-date="' + d + '"]').click(); await wait(40); };
+      const r = { D, NEW };
+      // a lone Yoga moved to the month before in its editor
+      lsSet('kt_sports', [{ id: 5151, date: D, type: 'Yoga', duration: 30, data: {}, notes: '' }]);
+      await openDay(D);
+      btn('Edit').click(); await wait(40);
+      document.getElementById('sleDate').value = NEW;
+      [...document.querySelectorAll('#sportLogEditOverlay button')].find(b => /Save changes/.test(b.textContent)).click(); await wait(40);
+      r.sport = Object.assign({ stored: getSportLogs()[0].date }, view());
+      closeCalDay(); lsSet('kt_sports', []);
+      // a run moved in the run editor, then Undo
+      lsSet('kt_runs', [{ id: 6161, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      await openDay(D);
+      btn('Edit run').click(); await wait(40);
+      document.getElementById('re_date').value = NEW;
+      saveRunEdit(6161); await wait(40);
+      r.run = Object.assign({ stored: getRuns()[0].date }, view());
+      const u = document.querySelector('#toast .kt-toast-undo'); if (u) u.click(); await wait(40);
+      r.runUndo = Object.assign({ stored: getRuns()[0].date }, view());
+      return r;
+    });
+    const { D, NEW } = out;
+    assert(out.sport.stored === NEW && out.sport.open && out.sport.sel === NEW && out.sport.month === NEW.slice(0, 7) && out.sport.block, 'the sheet and the card follow the activity: ' + JSON.stringify(out.sport));
+    assert(out.run.stored === NEW && out.run.open && out.run.sel === NEW, 'the run editor already followed: ' + JSON.stringify(out.run));
+    assert(out.runUndo.stored === D && out.runUndo.open && out.runUndo.sel === D && out.runUndo.month === D.slice(0, 7) && out.runUndo.block, 'Undo brings the sheet and the card back with the run: ' + JSON.stringify(out.runUndo));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
