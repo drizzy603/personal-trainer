@@ -62,14 +62,22 @@ runInTurn('a cadence edit or a new programme applies from today on: the days alr
         friAhead: due(addDays(W, 4)), satAhead: due(addDays(W, 5)), lastFri: due(addDays(W, -3)), lastSat: due(addDays(W, -2)) };
       setWeekPlanDay(5, 'Rest'); setWeekPlanDay(4, 'Legs');
       r.reverted = calcStreakDays();
-      // The coach swaps Monday and Tuesday for the whole programme (written in place, then saved).
-      const res = executeCoachTool('swap_cadence_days', { dayA: 'Mon', dayB: 'Tue', scope: 'global' });
-      r.coach = { ok: res && res.ok, streak: calcStreakDays(), monAhead: _streakDueFn()(addDays(W, 7)), tueAhead: _streakDueFn()(addDays(W, 8)) };
       r.ledger = Object.keys(lsGet('kt_streak_days') || {}).length;
       r.inBackup = BACKUP_KEYS.indexOf('kt_streak_days') >= 0 && !!buildBackupJSON().kt_streak_days;
+      // Each writer below must write the lived days down itself: back to Mon/Wed/Fri, nothing written.
+      const base = localStorage.getItem('kt_routine');
+      const reset = () => { lsSet('kt_routine', JSON.parse(base)); lsSet('kt_streak_days', {}); return calcStreakDays(); };
+      // The coach swaps Monday and Tuesday for the whole programme (written in place, then saved).
+      r.coachSwap = { base: reset(), ok: executeCoachTool('swap_cadence_days', { dayA: 'Mon', dayB: 'Tue', scope: 'global' }).ok,
+        streak: calcStreakDays(), monAhead: _streakDueFn()(addDays(W, 7)), tueAhead: _streakDueFn()(addDays(W, 8)) };
+      // The coach rewrites the cadence a day later (update_routine_weeks with a weekPlan).
+      const w6 = getCustomRoutine().weeks[5];
+      r.coachPlan = { base: reset(), ok: executeCoachTool('update_routine_weeks', { weekPlan: ['Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest'],
+        weeks: [{ wk: 6, bName: w6.bName, bColor: w6.bColor || '#888888' }] }).ok, streak: calcStreakDays() };
       // A new programme (from next Monday) leaves the ten days as they were (it used to wipe them).
+      const b3 = reset();
       applyStarterRoutine({ goal: 'muscle', days: 4, runs: 0, equip: 'full', exp: 1 });
-      r.newProgramme = { started: _programmeStarted(), streak: calcStreakDays() };
+      r.newProgramme = { base: b3, started: _programmeStarted(), streak: calcStreakDays() };
       return r;
     }, [CLOCK, LOGS]);
     assert(out.before === 10, 'ten trained days behind a Wednesday evening: ' + JSON.stringify(out));
@@ -78,10 +86,11 @@ runInTurn('a cadence edit or a new programme applies from today on: the days alr
       'the new cadence holds from today on: ' + JSON.stringify(out.moved));
     assert(out.moved.lastFri === 1 && out.moved.lastSat === 0, 'last week reads as it was lived: ' + JSON.stringify(out.moved));
     assert(out.reverted === 10, 'reverting changes nothing either: ' + out.reverted);
-    assert(out.coach.ok && out.coach.streak === 10 && out.coach.monAhead === 0 && out.coach.tueAhead === 1,
-      'the coach swapping Monday and Tuesday keeps the streak and holds from today on: ' + JSON.stringify(out.coach));
     assert(out.ledger > 0 && out.inBackup, 'the lived days are written down and travel in backups: ' + JSON.stringify(out));
-    assert(!out.newProgramme.started && out.newProgramme.streak === 10, 'a new programme keeps the streak: ' + JSON.stringify(out.newProgramme));
+    assert(out.coachSwap.base === 10 && out.coachSwap.ok && out.coachSwap.streak === 10 && out.coachSwap.monAhead === 0 && out.coachSwap.tueAhead === 1,
+      'the coach swapping Monday and Tuesday keeps the streak and holds from today on: ' + JSON.stringify(out.coachSwap));
+    assert(out.coachPlan.base === 10 && out.coachPlan.ok && out.coachPlan.streak === 10, 'the coach moving every day keeps it: ' + JSON.stringify(out.coachPlan));
+    assert(out.newProgramme.base === 10 && !out.newProgramme.started && out.newProgramme.streak === 10, 'a new programme keeps the streak: ' + JSON.stringify(out.newProgramme));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
