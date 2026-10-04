@@ -13984,8 +13984,7 @@ function renderProgress() {
   });
   runs.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
-    var parts=(r.time||'').split(':').map(Number);
-    var secs=parts.length===2?parts[0]*60+(parts[1]||0):parts[0]*3600+parts[1]*60+(parts[2]||0);
+    var secs=_runSec(r);
     if(!(secs>0) || !(dist>0)) return;
     if(Math.abs(dist-5)/5<=0.1){            // ~5k (±10%, same window as the run review)
       var s5=Math.round(secs/dist*5);       // normalise a 4.6-5.4 km effort to 5 km
@@ -14016,10 +14015,9 @@ function renderProgress() {
   }
 
   // Run-mode stats — total distance, this-week km, avg pace.
-  function _runSec(r){
-    var t=(r.time||'').split(':').map(Number);
-    return t.length===2 ? t[0]*60+(t[1]||0) : t[0]*3600+(t[1]||0)*60+(t[2]||0);
-  }
+  // A legacy time ('25.50', '30') is read as the day sheet and the run editor read it: a
+  // time with no colon counted as hours, so one old run put the average at 155:30 /km.
+  function _runSec(r){ return _runSecsOf(_normRunTime(r.time)||r.time); }
   var totalKm=0, weekKm=0, totSec=0, totDist=0;
   runs.forEach(function(r){
     var d=parseFloat(r.distance||r.dist)||0;
@@ -14209,8 +14207,7 @@ function renderProgress() {
   var runData=[];
   runs.slice().reverse().slice(-10).forEach(function(run){
     var dist=parseFloat(run.distance||run.dist||0);
-    var parts=(run.time||'').split(':').map(Number);
-    var secs=parts.length===3?parts[0]*3600+parts[1]*60+(parts[2]||0):parts[0]*60+(parts[1]||0);
+    var secs=_runSec(run);
     if(secs&&dist) runData.push({date:run.date,val:Math.round(secs/dist)});
   });
 

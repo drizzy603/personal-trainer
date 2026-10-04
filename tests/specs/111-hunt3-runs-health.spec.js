@@ -5,6 +5,9 @@
 // - M37: once a run is logged today, Log › Run still offers "+ Log another run" (a second run or a
 //   backfill), and the Health cards hide only for the workout already in the log, not for any
 //   run or ride of the day.
+// - M47: Progress › Runs reads a legacy time with no colon ('24.30', '30') as minutes, as the day
+//   sheet and the run editor do: the all-time avg pace read it as hours (155:30 /km), and the
+//   bests and the pace chart skipped or misread it.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -131,6 +134,29 @@ run('M37: Log › Run offers another run once one is logged; the Health cards wa
     assert(out.twinCard === false, 'the card does not offer the run already typed in');
     assert(out.otherCard === true, 'the card offers a different Health run on a day with a run logged');
     assert(out.rideTwin === false && out.rideOther === true, 'the sport card: twin hidden, second ride offered: ' + JSON.stringify([out.rideTwin, out.rideOther]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M47: Progress › Runs reads a legacy time with no colon as minutes (avg pace, bests, pace chart)', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(() => {
+      const d2 = addDays(todayISO(), -2), d3 = addDays(todayISO(), -3);
+      lsSet('kt_runs', [
+        { id: 1785000000002, date: d2, distance: 5, time: '24.30', week: weekForDate(d2), note: '', hr: 0, type: 'easy' },   // 24:30, typed before the time field was checked
+        { id: 1785000000001, date: d3, distance: 5, time: '25:00', week: weekForDate(d3), note: '', hr: 0, type: 'easy' },
+      ]);
+      const seen = [], real = window._paceSeries;
+      window._paceSeries = arr => { seen.push((arr || []).map(x => x.val)); return real(arr); };
+      progressTab = 'runs'; switchTab('progress');
+      window._paceSeries = real;
+      const txt = document.getElementById('screen').textContent.replace(/\s+/g, ' ');
+      return { band: (document.querySelector('.kt-statband') || {}).textContent || '', txt, chart: seen[seen.length - 1] };
+    });
+    assert(/4:57\s*\/km\s*Avg pace/i.test(out.band), 'avg pace is (25:00 + 24:30) / 10 km = 4:57 /km: ' + out.band);
+    assert(/4:54 \/kmbest 5k pace/i.test(out.txt) && /4:54 \/kmfastest pace/i.test(out.txt), 'the legacy run is the best 5k and the fastest pace: ' + (out.txt.match(/Bests.{0,120}/) || [''])[0]);
+    assert(JSON.stringify(out.chart) === '[300,294]', 'the pace chart reads 24:30 as 294 s/km: ' + JSON.stringify(out.chart));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
