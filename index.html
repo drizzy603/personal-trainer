@@ -16754,15 +16754,19 @@ function _executeCoachToolRaw(name,input){
       if(!input.name) return {ok:false,error:'name required'};
       var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
       if(!key) key=String(input.name);
+      // The reply's undo point holds the working weight too: Undo restored the programme and
+      // left the undone load as the working weight (the prompt, keyless +5 and the deload read it).
+      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(weights,key)?weights[key]:null;
+      _snapshotRoutineForUndo(scW);
       weights[key]=newW;
-      lsSet('kt_weights',weights);
+      if(lsSet('kt_weights',weights)) _noteBackupWeight(scW, key, wasW, newW);
       // The cache alone never reaches Today when the programme prescribes an
       // explicit weight (the prescription wins in _todayLiftExercises) — so
       // also update the current week's prescription. Future weeks keep their
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:_coachScope()});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:scW});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
@@ -17387,16 +17391,49 @@ function _retireLedgers(){
   coachMessages.forEach(function(m){ if(m && Array.isArray(m._tools) && m._tools.length && !m._ledgerSeen){ m._ledgerSeen=true; n++; } });
   if(n) saveCoachHistory();
 }
+// A change that also moved a working weight (the coach's set_exercise_weight) notes it on its
+// snapshot as {name:[before, after]}, so Undo / Restore Previous puts the weight back with the
+// programme. A later snapshot is a fresh copy of the programme: a note never outlives its change.
+function _noteBackupWeight(sc, key, from, to){
+  if(!_backupScopeIs(sc)) return;
+  try{
+    var b=JSON.parse(localStorage.getItem('kt_routine_backup')), w=(b._w&&typeof b._w==='object')?b._w:{};
+    w[key]=[w[key]?w[key][0]:from, to];   // the first change in the scope keeps what was there before it
+    b._w=w;
+    localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
+  }catch(e){}
+}
+// The noted weights put back: each only while it still holds what the change wrote (a newer log
+// or edit keeps its own). `back` is the reverse note for the version set aside, so Restore
+// Previous again swaps them back.
+function _swapNotedWeights(w){
+  if(!w || typeof w!=='object') return null;
+  var weights=JSON.parse(JSON.stringify(getWeights())), back={}, n=0;
+  Object.keys(w).forEach(function(k){
+    var p=w[k]; if(!Array.isArray(p) || p.length<2) return;
+    var now=Object.prototype.hasOwnProperty.call(weights,k)?weights[k]:null;
+    if(!(now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])))) return;
+    if(p[0]==null) delete weights[k]; else weights[k]=p[0];
+    back[k]=[p[1], p[0]]; n++;
+  });
+  return n ? {weights:weights, back:back} : null;
+}
 function restoreRoutineBackup(){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
   _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
-    // The programme must land before the backup moves: a failed write used to overwrite the
-    // backup with the current programme anyway (the previous one was then in no key) and say
-    // "restored" over the storage-full error. lsSet has said so; nothing changed.
-    if(!setCustomRoutine(b)) return;
-    if(cur && !lsSet('kt_routine_backup',cur)){ setCustomRoutine(cur); return; }
+    // The working weights the change noted go back with the programme; the version set aside
+    // carries the reverse note.
+    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w); delete prog._w;
+    var w0=sw?JSON.parse(JSON.stringify(getWeights())):null, putW=function(){ if(sw) lsSet('kt_weights', w0); };
+    var aside=cur; if(cur && sw){ aside=JSON.parse(JSON.stringify(cur)); aside._w=sw.back; }
+    // The weights and the programme must land before the backup moves: a failed write used to
+    // overwrite the backup with the current programme anyway (the previous one was then in no
+    // key) and say "restored" over the storage-full error. lsSet has said so; nothing changed.
+    if(sw && !lsSet('kt_weights', sw.weights)) return;
+    if(!setCustomRoutine(prog)){ putW(); return; }
+    if(cur && !lsSet('kt_routine_backup',aside)){ setCustomRoutine(cur); putW(); return; }
     if(!cur) lsDel('kt_routine_backup');
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
     _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot

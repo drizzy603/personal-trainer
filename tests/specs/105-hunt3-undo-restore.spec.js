@@ -13,6 +13,9 @@
 //   restored: the previous programme used to be lost from every key under "restored" (M18).
 // - Undo after the coach extended the programme lands on the restored last week, still the final
 //   week, not week 1 (M19).
+// - Undo of the coach's set_exercise_weight puts the working weight back with the programme (the
+//   snapshot notes it), unless a newer log set its own; Restore Previous again swaps it back; a
+//   working-weight-only reply is an undo point too (M20).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -268,6 +271,58 @@ run('Restore Previous on a full phone changes nothing; past the restored end it 
     }
     assert(out.extended.week === 13 && out.extended.total === 14, 'the programme was extended: ' + JSON.stringify(out.extended));
     assert(out.undone.week === 12 && out.undone.stored === 12 && out.undone.total === 12 && !!out.undone.finalSince, 'Undo lands on the restored last week, still the final week: ' + JSON.stringify(out.undone));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Undo of the coach\'s set_exercise_weight puts the working weight back with the programme', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const c = currentWeek - 1, r = {};
+      const ww = n => getWeights()[n] === undefined ? null : getWeights()[n];
+      const st = () => ({ plan: getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight, working: ww('Bench Press'), zercher: ww('Zercher Squat'),
+        prescribed: _prescribedLb('Bench Press'), leak: '_w' in getCustomRoutine() });
+      const reply = async (tools) => {
+        eval(MOCK)([{ content: tools.map((input, i) => ({ type: 'tool_use', id: 't' + i, name: 'set_exercise_weight', input })), stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'change my loads' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+      };
+      const undo = async () => { const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent)); if (!b) return false; b.click(); await wait(20); confirm(); await wait(30); return true; };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      r.before = st();
+      // one reply moves Bench twice; Undo puts back what was there before the reply (no working weight)
+      await reply([{ name: 'Bench Press', weight: 185 }, { name: 'Bench Press', weight: 190 }]);
+      r.reply = st();
+      r.undone = await undo() && st();
+      // Restore Previous again brings the reply's version back, working weight and all
+      await restorePrev();
+      r.again = st();
+      await restorePrev();
+      r.back = st();
+      // a newer log after the reply keeps its own working weight
+      _setWorkingWeights([{ name: 'Bench Press', weight: 150 }], todayISO());
+      await reply([{ name: 'Bench Press', weight: 190 }]);
+      _setWorkingWeights([{ name: 'Bench Press', weight: 175 }], todayISO());
+      r.logged = await undo() && st();
+      // a lift the programme does not hold: the reply is still an undo point for its working weight
+      _setWorkingWeights([{ name: 'Zercher Squat', weight: 100 }], todayISO());
+      await reply([{ name: 'Zercher Squat', weight: 120 }]);
+      r.zReply = st();
+      r.zUndone = await undo() && st();
+      return r;
+    }, MOCK);
+    assert(out.before.working === null && out.before.plan === 160, 'seed: Bench plan 160, no working weight: ' + JSON.stringify(out.before));
+    assert(out.reply.plan === 190 && out.reply.working === 190, 'the reply moved the plan and the working weight: ' + JSON.stringify(out.reply));
+    assert(out.undone && out.undone.plan === 160 && out.undone.working === null && out.undone.prescribed === 160 && !out.undone.leak, 'Undo puts both back: ' + JSON.stringify(out.undone));
+    assert(out.again.plan === 190 && out.again.working === 190 && !out.again.leak, 'Restore Previous again swaps both back: ' + JSON.stringify(out.again));
+    assert(out.back.plan === 160 && out.back.working === null, 'and again: ' + JSON.stringify(out.back));
+    assert(out.logged && out.logged.plan === 160 && out.logged.working === 175, 'a newer log keeps its working weight: ' + JSON.stringify(out.logged));
+    assert(out.zReply.zercher === 120 && out.zUndone && out.zUndone.zercher === 100, 'a working-weight-only reply is undone too: ' + JSON.stringify([out.zReply, out.zUndone]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
