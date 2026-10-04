@@ -7023,9 +7023,11 @@ function _monthStats(mk){
   });
   var km=0;
   runs.forEach(function(r){ km+=parseFloat(r.distance||r.dist)||0; });
+  // km unrounded: the card and the poster round once, after dDisp. Rounding to 0.1 km first
+  // read a 3.14 mi month (5.05 km) as 3.2 mi.
   return { sessions:sessions.length, runs:runs.length, sports:sports.length,
     total:sessions.length+runs.length+sports.length,
-    volume:vol, prs:prs, topLift:topLift, km:Math.round(km*10)/10 };
+    volume:vol, prs:prs, topLift:topLift, km:km };
 }
 function _wrapMonthKey(){
   var now=new Date();

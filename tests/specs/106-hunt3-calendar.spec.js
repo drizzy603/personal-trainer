@@ -23,6 +23,8 @@
 //   the run editor does), and Undo of a run-editor date change brings them back with the run.
 // - L26: leaving Progress closes the day sheet, so the widget's Start (trovo://start) no longer
 //   opens the Log tab and the runner beneath it.
+// - L27: the month's distance on the Activity card and the poster is rounded once, in the owner's
+//   unit (5.05 km read 3.2 mi, not 3.1).
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -411,6 +413,35 @@ run('L26: the widget\'s Start (trovo://start), or any other tab, closes an open 
     assert(out.opened && out.stays, 'the sheet opens and stays on Progress: ' + JSON.stringify(out));
     assert(!out.link.sheet && out.link.tab === 'log' && out.link.sel === null && out.link.overlays.indexOf('calDayOverlay') < 0, 'Start closes the day sheet over the Log tab: ' + JSON.stringify(out.link));
     assert(!out.coach.sheet && out.coach.sel === null, 'another tab closes it too: ' + JSON.stringify(out.coach));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L27: the month\'s MI RUN on the Activity card and the poster is rounded once (5.05 km reads 3.1 mi)', async () => {
+  const D = daysAgo(3);
+  const app = await boot({ native: true, seed: { kt_unit_d: 'mi', kt_runs: JSON.stringify([{ id: 2701, date: D, distance: 5.05, time: '28:00', type: 'easy', note: '' }]) } });
+  try {
+    const out = await app.page.evaluate(async D => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const r = {};
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30);
+      r.foot = [...document.querySelectorAll('.kt-cal-foot .kt-cal-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).find(t => /MI RUN/.test(t));
+      openCalDay(D); await wait(40);
+      r.sheet = [...document.querySelectorAll('#cdBody .kt-cd-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).find(t => /dist/.test(t));
+      closeCalDay();
+      // the poster: what the canvas writes (its only decimal is the distance)
+      const drawn = [], ft = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (t) { drawn.push(String(t)); return ft.apply(this, arguments); };
+      window._shareFile = function () {};
+      try { shareMonthlyCard(D.slice(0, 7)); for (let i = 0; i < 40 && drawn.indexOf('MI RUN') < 0; i++) await wait(50); }
+      finally { CanvasRenderingContext2D.prototype.fillText = ft; }
+      r.poster = drawn.filter(t => /^\d+\.\d+$/.test(t));
+      r.posterLabel = drawn.indexOf('MI RUN') >= 0;
+      return r;
+    }, D);
+    assert(/^3\.1\s*MI RUN$/.test(out.foot || ''), 'the card reads 3.1 mi: ' + out.foot);
+    assert(/3\.14 mi/.test(out.sheet || ''), 'as the day sheet\'s 3.14 mi: ' + out.sheet);
+    assert(out.posterLabel && out.poster.join() === '3.1', 'the poster reads 3.1 mi: ' + JSON.stringify(out.poster));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
