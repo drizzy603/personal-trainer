@@ -14,6 +14,8 @@
 //   from kt_final_since): the streak no longer breaks on them, the Monday wrap says WEEK 12
 //   with week 12's plan, and no date is ever past the last week, so a wrist session drained on
 //   the round-swap morning is week 12, not "Week 13 of 12" (M01).
+// - The streak chip asks the streak's own question: an empty lift day (BUILD YOUR ARMS DAY) is
+//   not "TRAIN TODAY TO KEEP IT" (L33).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -344,6 +346,37 @@ run('a wrist session drained on the round-swap morning is week 12, never 13 (M01
     }, [CLOCK]);
     assert(out.away0.week === 12 && out.away0.today === 12, 'the swap morning\'s session is week 12: ' + JSON.stringify(out.away0));
     assert(out.away3.week === 12 && out.away3.today === 12, 'and after three weeks away, still 12 (it was 15): ' + JSON.stringify(out.away3));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('an empty lift day does not put the streak on the line (L33)', async () => {
+  // Thursday is Arms, which this programme never wrote: an empty day.
+  const r0 = JSON.parse(SEED.kt_routine);
+  r0.weekPlan = ['Push', 'Pull', 'Legs', 'Arms', 'Rest', 'Rest', 'Rest'];
+  r0.weeks.forEach(w => { delete w.weekPlan; delete w.arms; });
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(r0), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const chip = () => { const d = document.createElement('div'); d.innerHTML = _streakChip(); return d.textContent; };
+      const W = addDays(_mostRecentMonday(), 7);
+      currentWeek = 6; lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', W);
+      // Wednesday morning, Legs still to do: that one is on the line.
+      __setNow(addDays(W, 2) + 'T10:00:00');
+      lsSet('kt_sessions', logs([[W, 'Push'], [addDays(W, 1), 'Pull']]));
+      r.legsDay = chip();
+      // Thursday, the empty Arms day: nothing to do, nothing at risk; Friday the streak is whole.
+      lsSet('kt_sessions', logs([[W, 'Push'], [addDays(W, 1), 'Pull'], [addDays(W, 2), 'Legs']]));
+      __setNow(addDays(W, 3) + 'T10:00:00');
+      r.armsDay = { empty: _liftDayEmpty('Arms', 6), chip: chip() };
+      __setNow(addDays(W, 4) + 'T10:00:00');
+      r.friday = calcStreakDays();
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(/2-DAY STREAK · TRAIN TODAY TO KEEP IT/.test(out.legsDay), 'a training day is on the line: ' + out.legsDay);
+    assert(out.armsDay.empty && /3-DAY STREAK/.test(out.armsDay.chip) && !/KEEP IT/.test(out.armsDay.chip), 'the empty Arms day does not nag: ' + JSON.stringify(out.armsDay));
+    assert(out.friday === 3, 'skipping it left the streak whole: ' + out.friday);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

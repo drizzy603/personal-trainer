@@ -4848,9 +4848,10 @@ function _streakChip(){
   }
   var s = calcStreakDays();
   if(!(s >= 1)) return '';
-  // The chip is the one surface that can say the streak is on the line today.
-  var _ta = getTodayActivity();
-  var atRisk = s >= 2 && _ta.type !== 'rest' && !_loggedOn(todayISO());
+  // The chip is the one surface that can say the streak is on the line today: only
+  // when the streak's own rule says today is a training day (an empty lift day, a
+  // rest day or a day before the start cannot end it).
+  var atRisk = s >= 2 && _streakDueFn()(todayISO())===1 && !_loggedOn(todayISO());
   return '<span class="kt-streak-chip'+(atRisk?' risk':'')+'"><span class="lbl">'+s+'-DAY STREAK'+(atRisk?' \u00b7 TRAIN TODAY TO KEEP IT':'')+'</span></span>';
 }
 
