@@ -671,6 +671,7 @@ html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .kt-rconfirm-t{min-width:0;}
 .kt-rconfirm-acts{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;}
 .kt-rconfirm-undo{background:rgba(0,0,0,.18);color:var(--on-accent);border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-more{display:inline-flex;align-items:center;min-height:44px;background:none;border:none;padding:0;margin:0 0 12px;color:var(--accent-ink);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-goal-line input{background:transparent;border:none;border-bottom:1px solid color-mix(in srgb,var(--text) 22%,transparent);color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
@@ -3570,7 +3571,7 @@ function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // for
 function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
 function set5kGoal(secs) { if(secs>0) lsSet('kt_5k_goal',secs); else lsDel('kt_5k_goal'); }
 function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else localStorage.removeItem('kt_run_goal'); }
-function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
+function paceToSec(p){ return _paceStrToSec(p); }   // a stored "m:ss" (per km) only: '9:00/mi' read as 9:00 /km
 function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'); }
 
 // Bodyweight movements were invisible to every analytics surface: weight 0
@@ -4510,15 +4511,21 @@ function importFromHealth(){
     var existing = getRuns().slice();
     var sports = getSportLogs().slice();
     var _dctx = {skip:{}};
+    // This batch's new records with the workout each came from: a second copy of one of them
+    // (the Watch and Strava or Garmin both wrote it to Health) folds into it, burned with it.
+    var _batch = [];
     var added=0, rides=0, skippedNoDist=0;
     runs.forEach(function(r){
       if(!r||!r.uuid||seen.has(r.uuid)) return;
       var sid=_hkSportId(r);
+      if(_hkBuried(r, sid)){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }   // deleted by the owner
       if(sid){
         // Rides, court sports, swims… land in the sport log as their type.
         if(!r.durationSec||r.durationSec<=0) return;
+        if(_hkBatchTwin(_batch, r, sid)){ seen.add(r.uuid); _sportIds.push(r.uuid); return; }
         if(_healthSportDupe(r, sid, _dctx)){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }
-        sports.unshift(_healthSportRec(r, sid, rides));
+        var srec=_healthSportRec(r, sid, rides);
+        sports.unshift(srec); _batch.push({sid:sid, w:r, rec:srec});
         seen.add(r.uuid); _sportIds.push(r.uuid);
         rides++;
         return;
@@ -4530,9 +4537,10 @@ function importFromHealth(){
       var localISO = d.getFullYear()+'-'+
         String(d.getMonth()+1).padStart(2,'0')+'-'+
         String(d.getDate()).padStart(2,'0');
+      if(_hkBatchTwin(_batch, r, null)){ seen.add(r.uuid); _runIds.push(r.uuid); return; }
       // Already logged by hand → mark seen, never import the twin.
       if(_manualRunDupe(localISO, r.distanceKm, r.durationSec, _dctx, d.getTime())){ seen.add(r.uuid); _dupeIds.push(r.uuid); return; }
-      existing.unshift({
+      var rrec={
         id: Date.now()+added,
         startMs: d.getTime()||undefined,
         distance: Math.round(r.distanceKm*100)/100,
@@ -4542,7 +4550,8 @@ function importFromHealth(){
         note: 'From Apple Health',
         hr: r.avgHr||0,
         type: 'easy'
-      });
+      };
+      existing.unshift(rrec); _batch.push({sid:null, w:r, rec:rrec});
       seen.add(r.uuid); _runIds.push(r.uuid);
       added++;
     });
@@ -4586,7 +4595,7 @@ function resetHealthImport(){
     var existing=getRuns(); var removed=0;
     var kept=existing.filter(function(r){if(r&&r.note==='From Apple Health'&&!r.hkOrig){removed++;return false;}return true;});
     lsSet('kt_runs',kept);
-    lsDel('kt_hk_imported');
+    lsDel('kt_hk_imported'); lsDel('kt_hk_gone');
     localStorage.removeItem('kt_hk_last_sync');
     // The three toggles below are hidden until the next import — a hidden
     // switch must not stay armed (background delivery kept waking the app,
@@ -4619,12 +4628,23 @@ function checkRecentHealthRun(sinceOverride){
     var runs = (res&&res.runs)||[];
     var seen = new Set(lsGet('kt_hk_imported')||[]);
     var fresh = runs.filter(function(r){
-      if(!r || !r.uuid || seen.has(r.uuid)) return false;
+      if(!r || !r.uuid || seen.has(r.uuid) || _hkBuried(r, _hkSportId(r))) return false;
       // Sports only need a duration (indoor rides / court sports can lack
-      // distance); runs still need distance to be loggable — and a run the
-      // user already logged by hand must not be offered as new.
-      if(_hkSportId(r)) return r.durationSec > 0;
+      // distance); runs still need distance to be loggable — and a run or an
+      // activity the user already logged by hand must not be offered as new.
+      if(_hkSportId(r)) return r.durationSec > 0 && !_healthSportDupe(r, _hkSportId(r), null);
       return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime());
+    });
+    // One activity two apps wrote to Health is offered (or auto-logged) once, as its richer
+    // copy; the other folds into it when it is logged.
+    fresh = fresh.filter(function(r, i){
+      var sid=_hkSportId(r), st=new Date(r.startDate).getTime()||0, mine=_hkRichness(r);
+      return !fresh.some(function(o, j){
+        if(j===i || _hkSportId(o)!==sid) return false;
+        if(!_hkSameActivity(new Date(o.startDate).getTime()||0, o.durationSec, o.distanceKm, st, r.durationSec, r.distanceKm)) return false;
+        var theirs=_hkRichness(o);
+        return theirs>mine || (theirs===mine && j<i);
+      });
     });
     if(!fresh.length) return;
     if(localStorage.getItem('kt_autolog_runs')==='1'){
@@ -4673,14 +4693,49 @@ function drainPendingHealth(){
 // stamped on the first saved change or date move (the note alone was the marker before).
 function _isHealthRun(r){ return !!r && (r.note==='From Apple Health' || !!r.hkOrig); }
 function _hkOrigOf(r){ return {date:String(r.date||''), km:parseFloat(r.distance||r.dist)||0, time:String(r.time||'')}; }
-// While the import ledger exists no Health run ever matches (as before). Once it is gone
-// (Reset import keeps only edited runs; an iCloud backup carries no ledger at all), a Health
-// run stands in for its own workout (an edited one by hkOrig, what Health recorded), so the
-// next import brings no twin. importFromHealth works on a copy, so records it adds in the same
-// batch are never candidates, and its ctx.skip lets each existing record absorb one workout.
+// While the import ledger exists a Health run matches only a copy of its own workout (by start
+// time, _hkSameActivity). Once it is gone (Reset import keeps only edited runs; an iCloud backup
+// carries no ledger at all), a Health run stands in for its own workout (an edited one by hkOrig,
+// what Health recorded), so the next import brings no twin. importFromHealth works on a copy, so
+// records it adds in the same batch are never candidates (_hkBatchTwin folds a batch's own second
+// copies), and its ctx.skip lets each existing record absorb one workout by tolerance.
 function _hkHasLedger(){
   var led=lsGet('kt_hk_imported');
   return Array.isArray(led) ? led.length>0 : !!(led && typeof led==='object' && Object.keys(led).length);
+}
+// Two workouts of one kind are one activity when their time (within 15%, or a minute for the
+// minute-rounded sport logs) and distance (when both have one) agree and they start within a
+// minute of each other or overlap for most of the shorter one: a run the Watch and Strava or
+// Garmin both wrote to Health came in twice. (st in ms, sec in s, km)
+function _hkSameActivity(st1, sec1, km1, st2, sec2, km2){
+  if(!(st1>0) || !(st2>0)) return false;
+  if(sec1>0 && sec2>0 && Math.abs(sec1-sec2) > Math.max(60, 0.15*Math.max(sec1, sec2))) return false;
+  if(km1>0 && km2>0 && Math.abs(km1-km2)/Math.max(km1, km2) > 0.15) return false;
+  if(Math.abs(st1-st2) <= 60000) return true;
+  if(!(sec1>0) || !(sec2>0)) return false;
+  return Math.min(st1+sec1*1000, st2+sec2*1000)-Math.max(st1, st2) >= 500*Math.min(sec1, sec2);
+}
+// Of two copies of one workout, the one with heart rate (then calories, distance) is kept.
+function _hkRichness(w){ return w ? (w.avgHr>0?4:0)+(w.kcal>0?2:0)+(w.distanceKm>0?1:0) : 0; }
+// A workout that is a second copy of one this import batch already took: the batch keeps one
+// record, rebuilt from the richer copy (same id), and the caller burns both UUIDs with it.
+function _hkBatchTwin(batch, r, sid){
+  var st=new Date(r.startDate).getTime()||0, b=null;
+  batch.some(function(x){
+    if(x.sid!==sid || !_hkSameActivity(new Date(x.w.startDate).getTime()||0, x.w.durationSec, x.w.distanceKm, st, r.durationSec, r.distanceKm)) return false;
+    b=x; return true;
+  });
+  if(!b) return false;
+  if(_hkRichness(r) > _hkRichness(b.w)){
+    b.w=r;
+    if(sid){ var nx=_healthSportRec(r, sid, 0); Object.keys(nx).forEach(function(k){ if(k!=='id') b.rec[k]=nx[k]; }); }
+    else {
+      var iso=_hkLocalISO(r);
+      b.rec.startMs=st||undefined; b.rec.distance=Math.round(r.distanceKm*100)/100; b.rec.time=_secsToMMSS(r.durationSec);
+      b.rec.date=iso; b.rec.week=weekForDate(iso); b.rec.hr=r.avgHr||0;
+    }
+  }
+  return true;
 }
 function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
   km = parseFloat(km)||0;
@@ -4689,22 +4744,25 @@ function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
   var hasLedger=_hkHasLedger(), hit=null;
   getRuns().some(function(r){
     if(!r) return false;
-    if(ctx && ctx.skip && ctx.skip[r.id]) return false;
     var o=r;
     if(_isHealthRun(r)){
-      if(hasLedger) return false;
       // A Health record that knows when it started is that workout and no other. Tolerance
       // alone let a same-day evening run claim the morning run's record (Health lists a day
-      // newest first), which lost the evening run and imported the morning one twice.
+      // newest first), which lost the evening run and imported the morning one twice. Ledger
+      // or not, it also stands for a second copy of the same run (two apps wrote it to Health).
       if(Number(r.startMs)>0 && st>0){
-        if(Math.abs(Number(r.startMs)-st) > 60000) return false;
+        var hk=r.hkOrig||{km:r.distance||r.dist, time:r.time};
+        if(!_hkSameActivity(Number(r.startMs), _runSecsOf(hk.time), parseFloat(hk.km)||0, st, hkSec, km)) return false;
         hit=r; return true;
       }
+      if(hasLedger) return false;
+      if(ctx && ctx.skip && ctx.skip[r.id]) return false;
       if(r.hkOrig) o={date:r.hkOrig.date, distance:r.hkOrig.km, time:r.hkOrig.time};
-    } else if(st>0 && Number(r.id)>1e12 && Number(r.id)<st){
+    } else {
+      if(ctx && ctx.skip && ctx.skip[r.id]) return false;
       // Typed in before this workout even began (the id is the save time): it cannot be that
       // workout. A run logged by hand in the morning used to swallow a real afternoon Watch run.
-      return false;
+      if(st>0 && Number(r.id)>1e12 && Number(r.id)<st) return false;
     }
     if(String(o.date)!==String(dateISO)) return false;
     var rd=parseFloat(o.distance||o.dist)||0;
@@ -4722,22 +4780,32 @@ function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
 // iCloud restore brought them back, and a re-import used to add every one a second time.
 // An edited Health sport log keeps its identity: hkOrig {date, duration} is what Health
 // recorded, stamped on the first saved edit (the notes text alone was the marker).
+// An activity logged by hand absorbs its Health twin as a hand-typed run does, ledger or not:
+// same type and day, duration within 15%, saved after the workout began. Only Health logs were
+// candidates, so every ride or match the Watch also recorded was imported a second time.
 function _isHealthSport(l){ return !!l && (l.notes==='From Apple Health' || !!l.hkOrig); }
 function _healthSportDupe(r, sid, ctx){
-  if(_hkHasLedger()) return false;
+  var hasLedger=_hkHasLedger();
   var iso=_hkLocalISO(r), mins=Math.round((parseFloat(r.durationSec)||0)/60), hit=null;
   var st=new Date(r.startDate).getTime()||0;
   getSportLogs().some(function(l){
-    if(!l || !_isHealthSport(l) || l.type!==sid) return false;
-    if(ctx && ctx.skip && ctx.skip[l.id]) return false;
-    // Start time is identity when the record has one (as for runs).
-    if(Number(l.startMs)>0 && st>0){
-      if(Math.abs(Number(l.startMs)-st) > 60000) return false;
-      hit=l; return true;
+    if(!l || l.type!==sid) return false;
+    var od=l.date, ldur=l.duration;
+    if(_isHealthSport(l)){
+      // Start time is identity when the record has one (as for runs), ledger or not.
+      if(Number(l.startMs)>0 && st>0){
+        var lmin=parseInt(l.hkOrig ? l.hkOrig.duration : l.duration, 10)||0;
+        if(!_hkSameActivity(Number(l.startMs), lmin*60, 0, st, parseFloat(r.durationSec)||0, 0)) return false;
+        hit=l; return true;
+      }
+      if(hasLedger) return false;
+      if(ctx && ctx.skip && ctx.skip[l.id]) return false;
+      if(l.hkOrig){ od=l.hkOrig.date; ldur=l.hkOrig.duration; }
+    } else {
+      if(ctx && ctx.skip && ctx.skip[l.id]) return false;
+      if(st>0 && Number(l.id)>1e12 && Number(l.id)<st) return false;   // logged before this workout began (the id is the save time)
     }
-    var od=l.hkOrig ? l.hkOrig.date : l.date, ldur=l.hkOrig ? l.hkOrig.duration : l.duration;
     if(String(od)!==iso) return false;
-    if(ctx && ctx.skip && ctx.skip[l.id]) return false;
     var ld=parseInt(ldur,10)||0;
     if(mins>0 && ld>0 && Math.abs(ld-mins)/Math.max(ld,mins) > 0.15) return false;
     hit=l; return true;
@@ -4748,6 +4816,41 @@ function _healthSportDupe(r, sid, ctx){
 function _hkLocalISO(r){
   var d = new Date(r.startDate);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// Tombstones (kt_hk_gone) for the Health runs and activities the owner deleted: {k: 'run' or the
+// sport, s: start ms}, or {k, d: date, n: km or minutes} for a record from before start times
+// were kept. No UUIDs or readings, so they ride in both backups: the import ledger stays out of
+// the iCloud copy, and a restore from it brought every deleted workout back on the next import.
+// Reset import clears them with the ledger. Undo of the delete takes its tombstone back.
+BACKUP_KEYS.push('kt_hk_gone'); _BACKUP_ARRAY_KEYS.push('kt_hk_gone');
+function _hkTomb(x, store){
+  if(!x || (store==='run' ? !_isHealthRun(x) : !_isHealthSport(x))) return null;
+  var t={k:store==='run' ? 'run' : String(x.type||'')};
+  if(Number(x.startMs)>0) t.s=Number(x.startMs);
+  else if(store==='run'){ var o=x.hkOrig||_hkOrigOf(x); t.d=String(o.date||''); t.n=parseFloat(o.km)||0; }
+  else { t.d=String(x.hkOrig ? x.hkOrig.date : x.date||''); t.n=parseInt(x.hkOrig ? x.hkOrig.duration : x.duration, 10)||0; }
+  return t;
+}
+function _hkBury(recs, store, undo){
+  var tombs=(recs||[]).map(function(x){ return _hkTomb(x, store); }).filter(Boolean);
+  if(!tombs.length) return;
+  var g=lsGet('kt_hk_gone'), key=function(t){ return t.k+'|'+(t.s||'')+'|'+(t.d||'')+'|'+(t.n||''); };
+  g=Array.isArray(g) ? g : [];
+  if(undo){ var drop=tombs.map(key); g=g.filter(function(t){ return !t || drop.indexOf(key(t))<0; }); }
+  else g=g.concat(tombs).slice(-1000);
+  lsSet('kt_hk_gone', g);
+}
+function _hkBuried(r, sid){
+  var g=lsGet('kt_hk_gone'); if(!Array.isArray(g) || !g.length) return false;
+  var k=sid||'run', st=new Date(r.startDate).getTime()||0, iso=_hkLocalISO(r);
+  var km=parseFloat(r.distanceKm)||0, mins=Math.round((parseFloat(r.durationSec)||0)/60);
+  return g.some(function(t){
+    if(!t || t.k!==k) return false;
+    if(t.s>0) return st>0 && Math.abs(t.s-st)<=60000;
+    if(t.d!==iso) return false;
+    if(k==='run') return t.n>0 && km>0 && Math.abs(t.n-km)/Math.max(t.n, km)<=0.05;
+    return !(t.n>0 && mins>0 && Math.abs(t.n-mins)/Math.max(t.n, mins)>0.15);
+  });
 }
 // One Health workout is imported once. Call this only after the workout has
 // actually been written, or after a deliberate skip.
@@ -4826,7 +4929,7 @@ function _healthSportRec(r, sportId, idOffset){
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
   if(_hkAlreadyImported(r)) return null;
-  if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (restored)
+  if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (by hand, or restored)
   var logs0 = getSportLogs();
   var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
   var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
@@ -5089,17 +5192,20 @@ function toggleAutoLogRuns(){
   render();
 }
 function dismissPendingHealthRun(){ _hkPendingDismissed=true; _hkPendingRun=null; render(); }
-// Health card for tabs outside the run editorial (sport-primary second tab):
-// simpler gating — pending workout, not dismissed, nothing of its kind logged today.
+// The pending workout is already in the log: imported, or its twin typed in by hand. The cards
+// used to hide on anything of its kind logged today, so a second run or ride of the day (an
+// evening Watch run after a morning one) could not be logged from them.
+function _hkPendingLogged(r){
+  if(!r || _hkAlreadyImported(r)) return true;
+  var sid=_hkSportId(r);
+  if(sid) return _healthSportDupe(r, sid, null);
+  return _manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime());
+}
+// Health card for tabs outside the run editorial (sport tabs, the + tab, Today's banner):
+// pending workout, not dismissed, not already in the log.
 function _healthCardSlot(compact){
   if(!_hkPendingRun || _hkPendingDismissed) return '';
-  var t=todayISO();
-  var sid=_hkSportId(_hkPendingRun);
-  if(sid){
-    if(getSportLogs().some(function(s){ return s.date===t && s.type===sid; })) return '';
-  } else {
-    if(getRuns().some(function(r){ return r.date===t; })) return '';
-  }
+  if(_hkPendingLogged(_hkPendingRun)) return '';
   return renderHealthQuickLog(compact);
 }
 function renderHealthQuickLog(compact){
@@ -7692,7 +7798,11 @@ function _runFromSlot(slot){
 }
 // Returns the most relevant run to feature in the hero — today's if today is
 // a run day, otherwise the next run forward in the week, otherwise null.
+// No programme, no planned runs: the hard-coded fallback week told a new user
+// "Easy run today" (there is no silent fallback programme). Before week 1 begins
+// nothing is due either (Today says STARTS MON; this tab said "5 km today").
 function getRunFocus(){
+  if(!hasCustomRoutine() || !_programmeStarted()) return null;
   var todayDow = (new Date().getDay()+6)%7;
   var weekPlan = getWeekPlan();
   var wd = getWkData();
@@ -7706,7 +7816,8 @@ function getRunFocus(){
   return null;
 }
 function getThisWeekRuns(){
-  var todayDow = (new Date().getDay()+6)%7;
+  if(!hasCustomRoutine()) return [];
+  var todayDow = (new Date().getDay()+6)%7, started = _programmeStarted();
   var weekPlan = getWeekPlan();
   var wd = getWkData();
   var runs = (wd && wd.runs) || {};
@@ -7715,7 +7826,7 @@ function getThisWeekRuns(){
     if(!weekPlan[d].isRun) continue;
     var slot = _runFromSlot(runs[DOW_NAMES[d]]);
     out.push(Object.assign({
-      dow:d, abbrev:DOW_NAMES[d].toUpperCase(), full:_DOW_FULL[d], isToday:d===todayDow
+      dow:d, abbrev:DOW_NAMES[d].toUpperCase(), full:_DOW_FULL[d], isToday:started && d===todayDow   // week 1 is ahead: no day of it is today
     }, slot));
   }
   return out;
@@ -7750,7 +7861,7 @@ function renderRunTargetsList(){
       '</div>';
   }).join('');
   return '<div class="kt-marquee">'+
-    '<div class="kt-marquee-hd">THIS WEEK</div>'+
+    '<div class="kt-marquee-hd">'+(_programmeStarted() ? 'THIS WEEK' : 'WEEK 1')+'</div>'+
     rows+'</div>';
 }
 function scrollToRunForm(){
@@ -8029,13 +8140,14 @@ function deleteRun(id){
   getRuns().forEach(function(r){ (r && r.id===id ? gone : kept).push(r); });
   if(!gone.length) return null;
   if(!lsSet('kt_runs', kept)) return false;
+  _hkBury(gone, 'run');   // a deleted Health run stays deleted after a restore
   if(runLogConfirmed && runLogConfirmed.id===id) runLogConfirmed=null;
   invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
   showUndoToast('Run deleted', function(){
     if(getRuns().some(function(r){ return r && r.id===id; })) return;
-    if(lsSet('kt_runs', gone.concat(getRuns()))){ invalidateCoachCard(); render(); }
+    if(lsSet('kt_runs', gone.concat(getRuns()))){ _hkBury(gone, 'run', true); invalidateCoachCard(); render(); }
   });
   return true;
 }
@@ -8111,8 +8223,11 @@ function renderRunSavedStrip(){
     '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+c.id+')">EDIT</button>'+
     '<button type="button" class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button></div>'+
     '</div>'+
-    renderRunReview(c.km, c.time, c.id);
+    renderRunReview(c.km, c.time, c.id)+_runLogMoreBtn();
 }
+// The saved and logged strips held the slot for the rest of the day: a second run, a
+// backfilled one or an evening run after a morning one could not be logged from the tab.
+function _runLogMoreBtn(){ return '<button type="button" class="kt-rlog-more" onclick="openRunLog()">+ Log another run</button>'; }
 // Post-run review (screen C): the goal-pace delta renders as the screen's one
 // lime data chip (only when the goal was actually beaten), then a VS RECENT
 // ledger of comparable runs — same ±10% distance, oldest at the top so today
@@ -8171,7 +8286,8 @@ function renderRunReview(km, time, excludeId){
     var todayRight=best
       ? '<span class="kt-mono" style="font-size:11px;font-weight:800;color:var(--accent-ink);">'+_fmtRunSecs(secs)+' · BEST</span>'
       : '<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+_fmtRunSecs(secs)+' · +'+(secs-bestSecs)+'S VS BEST</span>';
-    var distLbl=d>=2.5 ? Math.round(d)+'Ks' : 'runs';
+    // In the owner's unit: a 10 mi run read 'VS RECENT 16KS' among mile figures.
+    var distLbl=d>=2.5 ? (_uD()==='mi' ? Math.round(dDisp(d))+' mi' : Math.round(d)+'Ks') : 'runs';
     out+='<div style="margin:14px 0 4px;">'+
       '<div class="kt-ledger-hd"><span class="l">VS RECENT '+distLbl.toUpperCase()+'</span></div>'+
       rows+
@@ -8187,11 +8303,18 @@ function renderRunReview(km, time, excludeId){
 // setter that lived in the bottom of the old Log Run card.
 function commitRunGoal(ev){
   var el = ev && ev.target;
-  var v = el ? String(el.value||'').trim() : '';
-  if(v && /^\d{1,2}:\d{2}$/.test(v)) setRunGoal(paceStore(v));
-  else if(!v) setRunGoal('');
+  setRunGoalTyped(el ? el.value : '');
   runLogGoalEdit = false;
   render();
+}
+// A pace goal typed in the unit on screen: "m:ss" or nothing. The Progress › Runs target and
+// the coach stored any text ('9:00/mi' read back as 9:00 per km; 'abc' reached the coach).
+function setRunGoalTyped(v){
+  v = String(v||'').trim();
+  if(!v){ setRunGoal(''); return true; }
+  if(!/^\d{1,2}:\d{2}$/.test(v)){ showToast('Pace reads like 5:30 (per '+_uD()+')','err'); return false; }
+  setRunGoal(paceStore(v));
+  return true;
 }
 function toggleRunGoalEdit(){
   runLogGoalEdit = !runLogGoalEdit;
@@ -8255,9 +8378,14 @@ function renderRunSegment(){
     else { line1 = 'Easy run'; line2 = focus.dayName.toLowerCase()+'.'; }
     var hrBit = focus.hr ? ' HR cap '+focus.hr+' bpm.' : '';
     body = 'Next run is '+focus.dayName+'.'+hrBit;
+  } else if(cr && !_programmeStarted()){
+    // As Today says it: nothing is due before week 1's Monday.
+    var _ps = _preStartInfo();
+    line1 = 'Week 1 starts'; line2 = _ps.days === 1 ? 'tomorrow.' : 'Monday.';
+    body = 'No run is due before then. Log one below if you go anyway.';
   } else {
     line1 = 'Run.'; line2 = 'This week.'; line2Class = '';
-    body = 'No runs scheduled this week. Tap below to log one anyway.';
+    body = cr ? 'No runs scheduled this week. Tap below to log one anyway.' : 'No programme yet — log any run below.';
   }
   var deloadBadge = (deload && focus)
     ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
@@ -8267,7 +8395,7 @@ function renderRunSegment(){
       '<span class="kt-line2'+(line2Class?' '+line2Class:'')+'">'+_esc(line2)+'</span>'+
     '</h1>'+
     deloadBadge+
-    '<div class="kt-hero-body">'+body+'</div>'+
+    '<div class="kt-hero-body">'+_esc(body)+'</div>'+   // plain text: it carries the coach's run note
     renderRunGoalLine()+
     '</div>';
 
@@ -8279,7 +8407,8 @@ function renderRunSegment(){
     _todayStoredRun = getRuns().find(function(r){ return r.date === todayISO(); }) || null;
   }
   var slot;
-  var _showHealthCard = !!(_hkPendingRun && !_hkPendingDismissed && !runLogConfirmed && !_todayStoredRun && !runLogOpen);
+  // The Health card waits only for a workout already in the log (any run today used to hide it).
+  var _showHealthCard = !!(_hkPendingRun && !_hkPendingDismissed && !runLogConfirmed && !runLogOpen && !_hkPendingLogged(_hkPendingRun));
   if(_showHealthCard){
     slot = renderHealthQuickLog();
   } else if(runLogConfirmed){
@@ -8290,7 +8419,7 @@ function renderRunSegment(){
       '<div class="kt-rconfirm-t">✓ Run logged · '+fmtD(parseFloat(_tsKm)||0)+' in '+_esc(_todayStoredRun.time)+'</div>'+
       '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+_todayStoredRun.id+')">EDIT</button></div>'+
       '</div>'+
-      renderRunReview(_tsKm, _todayStoredRun.time, _todayStoredRun.id);
+      renderRunReview(_tsKm, _todayStoredRun.time, _todayStoredRun.id)+_runLogMoreBtn();
   } else if(runLogOpen){
     slot = renderInlineRunLog();
   } else {
@@ -8319,7 +8448,7 @@ function renderRunSegment(){
   }
 
   var todayAct = getTodayActivity();
-  var coach = todayAct.type === 'run' ? renderCoachCard(todayAct) : '';
+  var coach = (cr && todayAct.type === 'run') ? renderCoachCard(todayAct) : '';   // no programme: no run is planned
   var targetsList = renderRunTargetsList();
   return meta + hero + slot + healthNudge + coach + targetsList;
 }
@@ -9078,6 +9207,9 @@ function runnerFinishSession(){
   var _startISO = _runnerStartISO();
   var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || _startISO);
   var sessions = getSessions();
+  // Never filed ahead (the log_run rule): a slipped date wheel made it the newest log of its
+  // lifts, so real sessions stopped setting their working weights until that day.
+  if(_sessionDate > todayISO()){ showToast('Pick today or an earlier date for this workout','err'); return; }
   // Double-log guard: a watch-synced copy of this same session (same day, same
   // type) gets replaced by the richer phone log. Manual entries are never touched.
   // A wrist copy of this same session (same day, same slot) folds into the
@@ -10177,7 +10309,7 @@ function _renderRunnerDoneBody(ex, isLast){
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
         '<input id="runner-date" type="date" value="'+(runnerSessionDate||_runnerStartISO())+'"'+
         ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
-        ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
+        ' max="'+todayISO()+'" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
       '</div>'
     : '';
@@ -12831,12 +12963,13 @@ function deleteSportLog(id){
   getSportLogs().forEach(function(l){ (l && l.id===id ? gone : kept).push(l); });
   if(!gone.length) return null;
   if(!lsSet('kt_sports', kept)) return false;
+  _hkBury(gone, 'sport');   // as deleteRun: a deleted Health activity stays deleted after a restore
   invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
   showUndoToast((gone.length>1 ? gone.length+' activities' : (gone[0].type||'Activity'))+' deleted', function(){
     if(getSportLogs().some(function(l){ return l && l.id===id; })) return;
-    if(lsSet('kt_sports', gone.concat(getSportLogs()))){ invalidateCoachCard(); render(); }
+    if(lsSet('kt_sports', gone.concat(getSportLogs()))){ _hkBury(gone, 'sport', true); invalidateCoachCard(); render(); }
   });
   return true;
 }
@@ -13052,6 +13185,7 @@ function _movedWeek(rec, newDate){
 }
 function moveSession(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   var sessions=getSessions(), rec=_logById(sessions, id, fromDate);
   if(!rec) return;
   var c=Object.assign({}, rec), loads=_newestLoads([rec]);
@@ -13064,6 +13198,7 @@ function moveSession(id,newDate,fromDate){
 }
 function moveRun(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   var runs=getRuns(), rec=_logById(runs, id, fromDate);
   if(!rec) return;
   // A copy: editing the cached records in place survived a failed save (storage full).
@@ -13078,6 +13213,7 @@ function moveRun(id,newDate,fromDate){
 }
 function moveSport(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
+  if(_cdMoveAhead(newDate)) return;
   // A copy, and a moved Health ride keeps its identity (hkOrig), as moveRun does: Reset
   // import or a restore used to bring it back a second time on its original day.
   var sports=getSportLogs(), rec=_logById(sports, id, fromDate);
@@ -13088,6 +13224,13 @@ function moveSport(id,newDate,fromDate){
   if(!lsSet('kt_sports', sports.map(function(sp){ return sp===rec?c:sp; }))){ _cdPainted=''; render(); return; }   // as moveRun
   invalidateCoachCard();
   _calNavToDate(newDate); render();
+}
+// The day sheet's date field binds only its picker to today (max): a typed date passed, and
+// a log moved ahead. Refused as a run logged ahead is; the repaint puts the stored date back.
+function _cdMoveAhead(d){
+  if(d<=todayISO()) return false;
+  showToast('Pick today or an earlier date','err'); _cdPainted=''; render();
+  return true;
 }
 function pickSport(id){
   if(id!=='CrossFit') cfDraftMoves=[];
@@ -13116,10 +13259,16 @@ function saveSportLog(){
     showToast('Add a duration or a detail first','err');
     return;
   }
+  if(date > todayISO()){ showToast('Pick today or an earlier date','err'); return; }   // as runs: never filed ahead
   var rec={id:Date.now(),date:date,type:logSportType,duration:dur,data:data,notes:notes};
   var logs=[rec].concat(getSportLogs());
   if(!lsSet('kt_sports',logs)) return;   // storage full: the form keeps what was typed
   invalidateCoachCard();
+  // The form starts over: render() keeps typed values, so a second tap filed the log again.
+  ['spDuration','spNotes','spAIDesc'].concat(getSportFields(sport.id).map(function(f){ return 'sp_'+f.id; })).forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  var _spd=document.getElementById('spDate'); if(_spd) _spd.value=todayISO();
   cfDraftMoves=[];
   sportLogConfirmed={id:rec.id,type:logSportType,label:sport.id+(dur?' · '+dur+' min':'')};
   checkMilestones({delayToast:600});
@@ -13199,13 +13348,15 @@ function _renderSportField(f){
     'letter-spacing:.05em;text-transform:uppercase;';
   var label=f.label+(f.unit?' ('+_spUnit(f.unit)+')':'');
   if(f.type==='select'){
-    return '<div><label style="'+lbl+'">'+label+'</label>'+
-      '<select id="sp_'+f.id+'" style="'+inp+'">'+
-      f.opts.map(function(o){return '<option>'+o+'</option>';}).join('')+'</select></div>';
+    // Starts on "—" (as the + tab's wells do): the first option was saved for every log, so
+    // every pickup game was a Win and an empty tap passed the "add a detail" guard.
+    return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
+      '<select id="sp_'+f.id+'" style="'+inp+'"><option value="" selected>—</option>'+
+      (f.opts||[]).map(function(o){return '<option>'+_esc(o)+'</option>';}).join('')+'</select></div>';
   }
-  return '<div><label style="'+lbl+'">'+label+'</label>'+
-    '<input type="'+f.type+'" id="sp_'+f.id+'" placeholder="'+(f.ph||'')+'"'+
-    (f.step?' step="'+f.step+'"':'')+' style="'+inp+'"/></div>';
+  return '<div><label style="'+lbl+'">'+_esc(label)+'</label>'+
+    '<input type="'+(f.type==='number'?'number':'text')+'" id="sp_'+f.id+'" placeholder="'+_esc(f.ph||'')+'"'+
+    (f.step?' step="'+_esc(f.step)+'"':'')+' style="'+inp+'"/></div>';
 }
 
 function _renderSportFields(sport){
@@ -13239,9 +13390,9 @@ function renderRecentSportLogs(){
       return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">'+
         sportChip(s,36,false,'kt-sport-chip-row')+
         '<div style="flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent;" onclick="openSportLogEditor('+log.id+')">'+
-          '<div style="font-size:14px;font-weight:700;">'+log.type+(log.duration?' · '+log.duration+' min':'')+'</div>'+
-          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+sum:'')+'</div>'+
-          (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+log.notes+'</div>':'')+
+          '<div style="font-size:14px;font-weight:700;">'+_esc(log.type)+(log.duration?' · '+_esc(log.duration)+' min':'')+'</div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">'+fmtDate(log.date)+(sum?' · '+_esc(sum):'')+'</div>'+
+          (log.notes?'<div style="font-size:12px;color:var(--lite);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(log.notes)+'</div>':'')+
         '</div>'+
         '<button onclick="deleteSportLog('+log.id+')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;flex-shrink:0;-webkit-tap-highlight-color:transparent;">✕</button>'+
       '</div>';
@@ -13256,27 +13407,30 @@ function renderActivityCards(){
   var map={};
   logs.forEach(function(log){if(!map[log.type])map[log.type]=[];map[log.type].push(log);});
   var types=Object.keys(map).sort(function(a,b){return new Date(map[b][0].date)-new Date(map[a][0].date);});
-  var now=new Date();
+  // Days between local midnights: counted from now, today's ride read 'Yesterday' every
+  // afternoon (and the 2-week count dropped its edge day).
+  var today0=new Date(todayISO()+'T00:00:00');
+  var daysBack=function(iso){ return Math.round((today0-new Date(iso+'T00:00:00'))/86400000); };
   var cards=types.map(function(type){
     var tl=map[type],s=sMap[type]||{icon:'+',color:'#888'},last=tl[0],count=tl.length;
-    var daysAgo=Math.round((now-new Date(last.date+'T00:00:00'))/86400000);
+    var daysAgo=daysBack(last.date);
     var when=daysAgo===0?'Today':daysAgo===1?'Yesterday':daysAgo+' days ago';
     var sum=buildSportSummary(last);
     var active=logSportType===type;
     // weekly frequency: sessions in last 14 days
-    var recent14=tl.filter(function(l){return Math.round((now-new Date(l.date+'T00:00:00'))/86400000)<=14;}).length;
+    var recent14=tl.filter(function(l){return daysBack(l.date)<=14;}).length;
     var freqStr=recent14>0?recent14+'× last 2 wks':'';
-    return '<div class="kt-actcard'+(active?' on':'')+'" onclick="pickSport(\''+type+'\')" style="flex-shrink:0;width:148px;cursor:pointer;'+
+    return '<div class="kt-actcard'+(active?' on':'')+'" data-sport="'+_esc(type)+'" onclick="openActivityCard(this)" style="flex-shrink:0;width:148px;cursor:pointer;'+
       'background:'+(active?s.color+'1a':'var(--card2)')+';border:2px solid '+(active?s.color:'var(--border)')+';'+
       'border-radius:20px;padding:16px 14px;transition:all .15s;-webkit-tap-highlight-color:transparent;">'+
       '<div style="margin-bottom:10px;">'+sportChip(s,40)+'</div>'+
-      '<div style="font-size:13px;font-weight:800;margin-bottom:3px;color:var(--text);">'+type+'</div>'+
+      '<div style="font-size:13px;font-weight:800;margin-bottom:3px;color:var(--text);">'+_esc(type)+'</div>'+
       '<div class="kt-actcard-when" style="font-size:11px;font-weight:700;color:'+s.color+';margin-bottom:6px;">'+when+'</div>'+
       '<div style="font-size:11px;color:var(--muted);line-height:1.7;">'+
         count+' session'+(count===1?'':'s')+
         (freqStr?'<br>'+freqStr:'')+
-        (last.duration&&last.duration>0?'<br>Last: '+last.duration+'min':'')+
-        (sum?'<br>'+sum:'')+
+        (last.duration&&last.duration>0?'<br>Last: '+_esc(last.duration)+'min':'')+
+        (sum?'<br>'+_esc(sum):'')+
       '</div>'+
       '<div class="kt-actcard-log" style="margin-top:10px;padding:6px 0;border-radius:10px;background:'+s.color+';text-align:center;'+
         'font-size:11px;font-weight:800;color:#000;">Log '+(active?'✓':'+')+'</div>'+
@@ -13287,6 +13441,16 @@ function renderActivityCards(){
       '-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:4px;">'+
       cards+
     '</div>';
+}
+// A card's "Log +" opens its activity: its own tab when it has one, else the + tab with it
+// picked (an activity outside the catalogue, as the coach can log, as Other). On an activity
+// tab the tap changed nothing, since the tab forces its own sport back, and a type with an
+// apostrophe broke the inline handler (the type now rides in data-sport).
+function openActivityCard(el){
+  var type=el && el.getAttribute('data-sport'); if(!type) return;
+  if(_isSportTab(type) && getLogTabs().indexOf(type)>=0){ if(logSubTab!==type) switchLogSub(type); return; }
+  if(logSubTab!=='sport') switchLogSub('sport');
+  pickSport(_isSportTab(type) ? type : 'Other');
 }
 
 // Editorial "+" tab — quick log path for one-off activities outside the
@@ -13424,7 +13588,7 @@ function renderSportEditorial(){
   if(!d.f) d.f = {};
   var sync = ' oninput="sportLogDraft.';
   function _wellField(f, span){
-    var lblTxt = f.label.toUpperCase()+(f.unit?' · '+_esc(String(_spUnit(f.unit)).toUpperCase()):'');
+    var lblTxt = _esc(String(f.label||'').toUpperCase())+(f.unit?' · '+_esc(String(_spUnit(f.unit)).toUpperCase()):'');
     var fSync = ' oninput="sportLogDraft.f[\''+f.id+'\']=this.value"';
     var val = d.f[f.id]!=null?String(d.f[f.id]):'';
     var spanStyle = span?' style="grid-column:1/-1;"':'';
@@ -13454,7 +13618,7 @@ function renderSportEditorial(){
           ' oninput="sportLogDraft.duration=this.value;this.style.width=((this.value.length||1)+0.6)+\'ch\'"/>'+
         '<span style="font-size:15px;font-weight:600;color:var(--muted);">min</span>'+
       '</div></div>'+
-    '<input class="kt-sport-date" type="date" value="'+_esc(d.date)+'"'+sync+'date=this.value"/>'+
+    '<input class="kt-sport-date" type="date" max="'+todayISO()+'" value="'+_esc(d.date)+'"'+sync+'date=this.value"/>'+
   '</div>';
   var sportFields = getSportFields(logSportType);
   var fieldRows = '', fi = 0;
@@ -13556,6 +13720,7 @@ function saveSportEditorial(){
   var date = (d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) ? d.date : todayISO();
   // Require at least duration so we don't write a blank log.
   if(!dur){ showToast('Enter a duration'); return; }
+  if(date > todayISO()){ showToast('Pick today or an earlier date','err'); return; }   // as runs: never filed ahead
   var data = {};
   getSportFields(logSportType).forEach(function(f){
     var v = (d.f && d.f[f.id]!=null) ? String(d.f[f.id]).trim() : '';
@@ -13696,7 +13861,7 @@ function renderSportSection(forcedSportId){
           '<div class="run-dot" style="background:'+sport.color+';"></div>'+
           '<div class="run-card-body">'+
             '<div class="run-card-day">'+FULL_DAY[s.dow]+' · '+sport.id+'</div>'+
-            '<div class="run-card-main">'+(s.data.note||'No specific plan — log whatever you do.')+'</div>'+
+            '<div class="run-card-main">'+_esc(s.data.note||'No specific plan — log whatever you do.')+'</div>'+
           '</div>'+
         '</div>';
       }).join('');
@@ -13730,7 +13895,7 @@ function renderSportSection(forcedSportId){
     aiBlock+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Date</label>'+
-        '<input type="date" id="spDate" value="'+todayISO()+'" style="'+inp+'"/></div>'+
+        '<input type="date" id="spDate" value="'+todayISO()+'" max="'+todayISO()+'" style="'+inp+'"/></div>'+
       '<div><label style="'+lbl+'">Duration (min)</label>'+
         '<input type="number" id="spDuration" placeholder="60" min="1" style="'+inp+'"/></div>'+
     '</div>'+
@@ -13810,6 +13975,7 @@ function saveBodyWeight(){
   var v=parseFloat(document.getElementById('bwVal')?document.getElementById('bwVal').value:0);
   var d=(document.getElementById('bwDate')||{}).value||todayISO();
   if(!v){showToast('Enter a weight');return;}
+  if(d>todayISO()){showToast('Pick today or an earlier date','err');return;}   // a weigh-in ahead read as the current body weight
   v=wStore(v);   // typed in the display unit, stored in lb
   var rec={id:Date.now(),date:d,weight:v};
   var bws=getBodyWeights().concat([rec]);
@@ -13849,6 +14015,7 @@ function saveBWGoal(){
 function getMeasurements(){return lsGet('kt_measurements')||[];}
 function saveMeasurement(){
   var d=(document.getElementById('msDate')||{}).value||todayISO();
+  if(d>todayISO()){showToast('Pick today or an earlier date','err');return;}   // as weigh-ins
   var fields=[['msWaist','waist'],['msChest','chest'],['msArms','arms'],['msHips','hips'],['msThighs','thighs']];
   var entry={date:d};var hasAny=false;
   fields.forEach(function(f){
@@ -13970,7 +14137,7 @@ function renderSportProgress(){
     var html='<div class="chart-card" style="margin-bottom:12px;">'+
       '<div class="chart-head"><div style="display:flex;align-items:center;gap:10px;">'+
         sportChip(s,32)+
-        '<div><div class="chart-lbl">'+type+'</div>'+
+        '<div><div class="chart-lbl">'+_esc(type)+'</div>'+
         '<div style="font-size:12px;color:var(--muted);">'+n+' session'+(n===1?'':'s')+'</div></div>'+
       '</div></div>';
 
@@ -14017,8 +14184,8 @@ function renderSportProgress(){
     } else if(type==='CrossFit'){
       var last=tl[0];
       html+='<div style="margin:10px 0 4px;">';
-      if(last.data&&last.data.wodName) html+='<div style="font-size:13px;color:var(--muted);">Last WOD: <span style="color:var(--text);font-weight:700;">'+last.data.wodName+'</span></div>';
-      if(last.data&&last.data.score) html+='<div style="font-size:13px;color:var(--muted);margin-top:4px;">Score: <span style="color:var(--text);font-weight:700;">'+last.data.score+'</span></div>';
+      if(last.data&&last.data.wodName) html+='<div style="font-size:13px;color:var(--muted);">Last WOD: <span style="color:var(--text);font-weight:700;">'+_esc(last.data.wodName)+'</span></div>';
+      if(last.data&&last.data.score) html+='<div style="font-size:13px;color:var(--muted);margin-top:4px;">Score: <span style="color:var(--text);font-weight:700;">'+_esc(last.data.score)+'</span></div>';
       html+='</div>';
     }
 
@@ -14578,8 +14745,7 @@ function renderProgress() {
   });
   runs.forEach(function(r){
     var dist=parseFloat(r.distance||r.dist||0);
-    var parts=(r.time||'').split(':').map(Number);
-    var secs=parts.length===2?parts[0]*60+(parts[1]||0):parts[0]*3600+parts[1]*60+(parts[2]||0);
+    var secs=_runSec(r);
     if(!(secs>0) || !(dist>0)) return;
     if(Math.abs(dist-5)/5<=0.1){            // ~5k (±10%, same window as the run review)
       var s5=Math.round(secs/dist*5);       // normalise a 4.6-5.4 km effort to 5 km
@@ -14610,10 +14776,9 @@ function renderProgress() {
   }
 
   // Run-mode stats — total distance, this-week km, avg pace.
-  function _runSec(r){
-    var t=(r.time||'').split(':').map(Number);
-    return t.length===2 ? t[0]*60+(t[1]||0) : t[0]*3600+(t[1]||0)*60+(t[2]||0);
-  }
+  // A legacy time ('25.50', '30') is read as the day sheet and the run editor read it: a
+  // time with no colon counted as hours, so one old run put the average at 155:30 /km.
+  function _runSec(r){ return _runSecsOf(_normRunTime(r.time)||r.time); }
   var totalKm=0, weekKm=0, totSec=0, totDist=0;
   runs.forEach(function(r){
     var d=parseFloat(r.distance||r.dist)||0;
@@ -14683,7 +14848,7 @@ function renderProgress() {
   var runPaceInput = '<div style="display:flex;align-items:center;gap:6px;margin-top:-4px;margin-bottom:14px;">'+
     '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
     '<input type="text" placeholder="6:00" value="'+_esc(runGoalPaceStr?fmtPaceStr(runGoalPaceStr,{bare:true}):'')+'" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;"'+
-      ' onchange="setRunGoal(paceStore(this.value));render();" />'+
+      ' onchange="setRunGoalTyped(this.value);render();" />'+
     '<span style="font-size:11px;color:var(--muted);">/'+_uD()+'</span>'+
     '</div>';
   var runGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Run goals</h2>'+
@@ -14806,8 +14971,7 @@ function renderProgress() {
   var runData=[];
   runs.slice().reverse().slice(-10).forEach(function(run){
     var dist=parseFloat(run.distance||run.dist||0);
-    var parts=(run.time||'').split(':').map(Number);
-    var secs=parts.length===3?parts[0]*3600+parts[1]*60+(parts[2]||0):parts[0]*60+(parts[1]||0);
+    var secs=_runSec(run);
     if(secs&&dist) runData.push({date:run.date,val:Math.round(secs/dist)});
   });
 
@@ -17475,6 +17639,7 @@ function _executeCoachToolRaw(name,input){
     }
     if(name==='set_run_goal'){
       if(!input.pace) return {ok:false,error:'pace required as "mm:ss"'};
+      if(!/^\d{1,2}:\d{2}$/.test(String(input.pace).trim())) return {ok:false,error:'pace must be "m:ss" per '+_uD()+' (e.g. "6:00"), got "'+input.pace+'". Nothing was saved.'};
       var _pg=paceStore(String(input.pace));
       setRunGoal(_pg);
       return {ok:true,message:'run pace goal = '+fmtPaceStr(_pg)};
@@ -17497,6 +17662,7 @@ function _executeCoachToolRaw(name,input){
       if(!(bwVal>0)) return {ok:false,error:'weight must be > 0'};
       var bwDate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(bwDate)) bwDate=todayISO();
+      if(bwDate>todayISO()) return {ok:false,error:'date '+bwDate+' is in the future; log body weight on or before today ('+todayISO()+'). Nothing was saved.'};
       var bws=getBodyWeights();
       bwVal=wStore(bwVal);
       bws.push({id:_freshId(bws),date:bwDate,weight:bwVal});
@@ -17540,6 +17706,9 @@ function _executeCoachToolRaw(name,input){
       if(!gexsIn.length) return {ok:false,error:'exercises array required'};
       var gdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(gdate)) gdate=todayISO();
+      // As log_run: a session filed ahead is the newest log of its lifts, so the working
+      // weights stopped following real sessions until that day.
+      if(gdate>todayISO()) return {ok:false,error:'date '+gdate+' is in the future; log sessions on or before today ('+todayISO()+'). Nothing was saved.'};
       var gclean=[];
       for(var gi=0; gi<gexsIn.length; gi++){
         var ge=gexsIn[gi]||{};
@@ -17585,6 +17754,7 @@ function _executeCoachToolRaw(name,input){
       if(!(sdur>0)) return {ok:false,error:'duration must be > 0 minutes'};
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
+      if(sdate>todayISO()) return {ok:false,error:'date '+sdate+' is in the future; log activities on or before today ('+todayISO()+'). Nothing was saved.'};
       var snotes=String(input.notes||'').trim();
       var _stw=(input.separate===true||input.separate==='true')?null:_coachSportTwin(sdate, stype, sdur);
       if(_stw) return {ok:false,duplicate:_stw.id,error:'Already saved: [id:'+_stw.id+'] '+_stw.date+' · '+_stw.type+(_stw.duration?' · '+_stw.duration+'min':'')+'. Nothing was saved. Tell the user it is already logged; only if they say it was a second, separate session that day, call log_sport again with separate:true.'};
@@ -17657,6 +17827,7 @@ function _executeCoachToolRaw(name,input){
         var dlBefore=dlRuns.length;
         if(!dlRuns.some(function(r){ return r.id===dlId; })) return {ok:false,error:'run id not found'};
         if(!lsSet('kt_runs',dlRuns.filter(function(r){return r.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
+        _hkBury(dlRuns.filter(function(r){ return r.id===dlId; }), 'run');
         invalidateCoachCard(); render();
         return {ok:true,message:'Run deleted'};
       }
@@ -17665,6 +17836,7 @@ function _executeCoachToolRaw(name,input){
         var dlBefore2=dlSports.length;
         if(!dlSports.some(function(x){ return x.id===dlId; })) return {ok:false,error:'sport log id not found'};
         if(!lsSet('kt_sports',dlSports.filter(function(s){return s.id!==dlId;}))) return {ok:false,error:_COACH_FULL_ERR};
+        _hkBury(dlSports.filter(function(s){ return s.id===dlId; }), 'sport');
         invalidateCoachCard(); render();
         return {ok:true,message:'Sport session deleted'};
       }
@@ -20148,7 +20320,7 @@ function openSportLogEditor(id){
     (fromHealth?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Imported from Apple Health — the watch data stays; add what it couldn\'t know.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'+
       '<div><label style="'+lbl+'">Duration (min)</label><input id="sleDuration" type="number" min="0" value="'+_esc(rec.duration||'')+'" style="'+inp+'"/></div>'+
-      '<div><label style="'+lbl+'">Date</label><input id="sleDate" type="date" value="'+_esc(rec.date||todayISO())+'" style="'+inp+'"/></div>'+
+      '<div><label style="'+lbl+'">Date</label><input id="sleDate" type="date" max="'+todayISO()+'" value="'+_esc(rec.date||todayISO())+'" style="'+inp+'"/></div>'+
     '</div>'+
     grid+
     '<div style="margin-bottom:14px;"><label style="'+lbl+'">Notes</label>'+
@@ -20177,7 +20349,10 @@ function saveSportLogEdit(id){
   var notes = ((document.getElementById('sleNotes')||{value:''}).value||'').trim();
   // Blank = clear (a wrong duration could never be removed, only replaced).
   if(durEl) rec.duration = parseInt(durEl.value)||0;
-  if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)) rec.date = date;
+  if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)){
+    if(date > todayISO() && date !== orig.date){ showToast('Pick today or an earlier date','err'); return; }   // the sheet stays open
+    rec.date = date;
+  }
   // The Health marker is not the user's text: an empty notes field keeps it, and the first
   // edit of an imported log stamps what Health recorded, so it stays Health (iCloud drops its
   // heart rate and calories; a re-import after a restore brings no twin).
@@ -21822,8 +21997,11 @@ function _runNativeSync(){
       ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')
       : currentTheme;
     var _acc=(!THEMES[_appliedT]||THEMES[_appliedT].paper)?THEMES.dark.accent:THEMES[_appliedT].accent;
+    // No programme, no week: the widget showed the hard-coded fallback week (Push, Run, Rest…).
+    // With no days it says "Open Fitness Programmer · SET UP YOUR PLAN", as the watch says No plan.
+    var _hasPlan=hasCustomRoutine();
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc,
+      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_hasPlan?_nativeSummaryDays():[], hasPlan:_hasPlan, accent:_acc,
       theme:_widgetThemeTokens() };
     var json=_nativeJSON(summary);
     if(json!==_lastNativeSummary){
@@ -21873,7 +22051,8 @@ function _hashStr(s){
 // The iCloud copy carries no Apple Health readings (App Review 5.1.3: health
 // data may not be stored in iCloud). Runs and sports imported from Health keep
 // date / distance / duration; heart rate and calories are dropped, and the
-// Health dedup ledger is left out. The on-device Files copy is untouched.
+// Health dedup ledger is left out (kt_hk_gone, the start times of deleted
+// workouts, stays). The on-device Files copy is untouched.
 function _sanitizeForICloud(payload){
   try{
     var o=JSON.parse(payload);
