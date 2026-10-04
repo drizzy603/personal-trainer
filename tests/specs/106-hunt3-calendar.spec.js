@@ -16,6 +16,9 @@
 //   own lift's working weight, as the coach's edit_session does. lb and kg.
 // - L03: a day-sheet move that cannot be saved (storage full) stays on its day: the run's and the
 //   activity's Date fields show the stored date again, and a workout no longer closes the sheet.
+// - L24: fixing an older log's date (day sheet, run editor) keeps its programme week (Wk 6 of the
+//   round it was logged in no longer becomes Wk 1, there and back); a move into another week of
+//   this round takes that week.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -302,6 +305,47 @@ run('L03: a day-sheet move that cannot be saved stays on its day, and the Date f
       assert(x.stored === D && x.field === D && x.open && x.sheet === D, k + ': a failed move stays on its day and the field shows the stored date: ' + JSON.stringify(x));
     });
     assert(out.toast.length > 0, 'the failed save says so: ' + out.toast);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L24: a date fix keeps an older log\'s programme week; a move into another week of this round takes that week', async () => {
+  // week 2 of a round that began last Monday; the logs are week 6 of the round before
+  const app = await boot({ native: true, seed: { kt_week: '2', kt_sessions: '[]', kt_runs: '[]', kt_prs: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const M = _mostRecentMonday(), O = addDays(M, -54);   // a Wednesday eight weeks back
+      lsSet('kt_sessions', [{ id: 6601, date: O, week: 6, type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }] }]);
+      lsSet('kt_runs', [{ id: 6602, date: O, week: 6, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(O); calSelectedDate = null; render(); await wait(30);
+      openCalDay(O); await wait(40);
+      const item = re => [...document.querySelectorAll('#cdBody .kt-cd-item')].find(x => re.test(x.textContent));
+      const pick = async (re, d) => { const f = item(re).querySelector('input[type=date]'); f.value = d; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40); };
+      const wk = () => getSessions()[0].week;
+      const ttl = () => (item(/Edit sets/).querySelector('.kt-cd-ttl') || {}).textContent;
+      const r = { roundStart: _roundStartISO() === addDays(M, -7) };
+      await pick(/Edit sets/, addDays(O, 1)); r.sameWeek = [wk(), ttl()];
+      await pick(/Edit sets/, addDays(O, -7)); r.earlierWeek = wk();
+      await pick(/Edit sets/, O); r.back = wk();
+      await pick(/Edit sets/, addDays(M, -5)); r.intoRoundWk1 = wk();
+      await pick(/Edit sets/, M); r.intoRoundWk2 = wk();
+      r.coach = (buildSystemPrompt().match(/\[id:6601\][^\n]*/) || [''])[0].indexOf('(Wk2)') > 0;
+      // runs: the day sheet's Date field and the run editor follow the same rule
+      openCalDay(O); await wait(40);
+      await pick(/Edit run/, addDays(O, 1)); r.runSheet = getRuns()[0].week;
+      closeCalDay();
+      openRunEditor(6602); document.getElementById('re_date').value = addDays(O, -7); saveRunEdit(6602); await wait(30);
+      r.runEditor = getRuns()[0].week;
+      openRunEditor(6602); document.getElementById('re_date').value = addDays(M, -5); saveRunEdit(6602); await wait(30);
+      r.runEditorIn = getRuns()[0].week;
+      return r;
+    });
+    assert(out.roundStart, 'this round began last Monday');
+    assert(out.sameWeek[0] === 6 && /Wk 6/.test(out.sameWeek[1]), 'a day later in the same week keeps Wk 6: ' + JSON.stringify(out.sameWeek));
+    assert(out.earlierWeek === 6 && out.back === 6, 'before this round it keeps its own round\'s week, there and back: ' + JSON.stringify([out.earlierWeek, out.back]));
+    assert(out.intoRoundWk1 === 1 && out.intoRoundWk2 === 2 && out.coach, 'moved into this round it takes that week: ' + JSON.stringify([out.intoRoundWk1, out.intoRoundWk2, out.coach]));
+    assert(out.runSheet === 6 && out.runEditor === 6 && out.runEditorIn === 1, 'runs too, from the day sheet and the run editor: ' + JSON.stringify([out.runSheet, out.runEditor, out.runEditorIn]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
