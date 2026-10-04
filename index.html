@@ -17453,7 +17453,8 @@ function _swapNotedWeights(w){
 function restoreRoutineBackup(onDone){
   var b=lsGet('kt_routine_backup');
   if(!b||!b.weeks){ showToast('No previous programme saved'); return; }
-  _ktConfirm({title:'Restore previous programme?',body:'Your current one will be discarded.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
+  // It swaps: the current one is what Restore Previous brings back next (it said "discarded").
+  _ktConfirm({title:'Restore previous programme?',body:hasCustomRoutine()?'Your current one is set aside: restoring again brings it back.':'',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
     // The working weights the change noted go back with the programme; the version set aside
     // carries the reverse note.

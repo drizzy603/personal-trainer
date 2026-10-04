@@ -360,7 +360,7 @@ run('Restore previous programme is a Settings row, keyless too, where How It Wor
       switchTab('settings'); await wait(30);
       const el = row();
       r.shown = !!el && el.closest('.settings-group').querySelector('.settings-group-hd').textContent;
-      if (el) { el.click(); await wait(20); confirm(); await wait(30); }
+      if (el) { el.click(); await wait(20); r.body = (document.querySelector('.kt-close-sheet .kt-close-sheet-sub') || {}).textContent || ''; confirm(); await wait(30); }
       r.restored = bench() === b0;
       r.how = (document.querySelector('.wf-view') || document.body).innerHTML.indexOf('Settings → Programme → Restore previous programme') >= 0 &&
         document.documentElement.innerHTML.indexOf('Settings → Data → Restore Previous') < 0;
@@ -369,6 +369,7 @@ run('Restore previous programme is a Settings row, keyless too, where How It Wor
     assert(!out.key, 'a keyless owner');
     assert(!out.noBackup, 'no row without a previous version');
     assert(out.shown === 'Programme' && out.restored, 'the row sits under Programme and restores the previous version: ' + JSON.stringify(out));
+    assert(/set aside/.test(out.body) && !/discarded/.test(out.body), 'the confirm says the current one is set aside (it swaps), not discarded: ' + out.body);
     assert(out.how, 'How It Works points at the row that exists');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
