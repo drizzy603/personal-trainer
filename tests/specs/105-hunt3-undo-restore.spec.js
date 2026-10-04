@@ -29,6 +29,8 @@
 // - A restore's undo copy (kt_pre_restore) goes once its week is over: at launch, and before
 //   lsSet's retry when a save needs the room; a copy inside its week is never dropped (L01).
 // - The restore confirm names the local day the backup was exported, not the UTC one (L50).
+// - A body-weight or measurement save that fails never reads as saved: no "logged · UNDO" strip,
+//   no "Measurements saved" over the storage-full error, and the fields keep what was typed (L02).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -546,6 +548,40 @@ run('the restore confirm names the backup\'s local export day', async () => {
       seen.push({ at, expect, ok: body.indexOf('Exported ' + expect + ' ') >= 0, body });
     }
     assert(seen.every(s => s.ok), 'the confirm says the local day it was exported: ' + JSON.stringify(seen));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a body-weight or measurement save that fails never reads as saved', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ([FULL, ROOM]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const full = eval(FULL), room = eval(ROOM), r = {};
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      const n = k => (JSON.parse(localStorage.getItem(k) || '[]') || []).length;
+      logSubTab = 'body'; switchTab('log'); await wait(30);
+      const bw0 = n('kt_bw'), ms0 = n('kt_measurements');
+      // storage full
+      document.getElementById('bwVal').value = '181.4';
+      full(['kt_bw']); saveBodyWeight(); room(); await wait(30);
+      r.bwFull = { saved: n('kt_bw') - bw0, strip: !!document.querySelector('.kt-rconfirm'), confirmed: !!bwLogConfirmed, toast: toast(), typed: document.getElementById('bwVal').value };
+      document.getElementById('msWaist').value = '32';
+      full(['kt_measurements']); saveMeasurement(); room(); await wait(30);
+      r.msFull = { saved: n('kt_measurements') - ms0, toast: toast(), typed: document.getElementById('msWaist').value };
+      // with room both save as before
+      document.getElementById('bwVal').value = '181.4';
+      saveBodyWeight(); await wait(30);
+      r.bw = { saved: n('kt_bw') - bw0, strip: !!document.querySelector('.kt-rconfirm') };
+      document.getElementById('msWaist').value = '32';
+      saveMeasurement(); await wait(30);
+      r.ms = { saved: n('kt_measurements') - ms0, toast: toast() };
+      return r;
+    }, [FULL, ROOM]);
+    assert(out.bwFull.saved === 0 && !out.bwFull.strip && !out.bwFull.confirmed && /storage full/.test(out.bwFull.toast) && out.bwFull.typed === '181.4', 'a failed body-weight save shows no "logged" strip: ' + JSON.stringify(out.bwFull));
+    assert(out.msFull.saved === 0 && /storage full/.test(out.msFull.toast) && out.msFull.typed === '32', 'a failed measurement save keeps the error: ' + JSON.stringify(out.msFull));
+    assert(out.bw.saved === 1 && out.bw.strip, 'a body-weight save with room logs: ' + JSON.stringify(out.bw));
+    assert(out.ms.saved === 1 && /Measurements saved/.test(out.ms.toast), 'a measurement save with room saves: ' + JSON.stringify(out.ms));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

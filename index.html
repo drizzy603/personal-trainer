@@ -13265,10 +13265,11 @@ function saveBodyWeight(){
   if(!v){showToast('Enter a weight');return;}
   v=wStore(v);   // typed in the display unit, stored in lb
   var rec={id:Date.now(),date:d,weight:v};
-  var bws=getBodyWeights();
-  bws.push(rec);
+  var bws=getBodyWeights().concat([rec]);
   bws.sort(function(a,b){return b.date<a.date?-1:b.date>a.date?1:0;});
-  lsSet('kt_bw',bws);
+  // A new array; on storage full nothing reads as logged and the field keeps what was typed
+  // (lsSet has said so; "✓ logged · UNDO" used to show over a save that never happened).
+  if(!lsSet('kt_bw',bws)) return;
   bwLogConfirmed={id:rec.id,weight:v,date:d};
   render();
 }
@@ -13308,7 +13309,8 @@ function saveMeasurement(){
     if(v>0){entry[f[1]]=v;hasAny=true;}
   });
   if(!hasAny){showToast('Enter at least one measurement');return;}
-  var ms=getMeasurements();ms.unshift(entry);lsSet('kt_measurements',ms);
+  // Storage full: lsSet's error stands ("Measurements saved" used to replace it) and the fields keep what was typed.
+  if(!lsSet('kt_measurements',[entry].concat(getMeasurements()))) return;
   showToast('Measurements saved');render();
 }
 function deleteMeasurement(idx){
