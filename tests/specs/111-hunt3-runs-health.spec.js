@@ -29,6 +29,9 @@
 // - M44: activity tabs (Recent, My Activities, the pinned form's custom fields, the + tab's wells,
 //   the coach's day note) and Progress › Sports show notes, opponents, WODs, types and custom
 //   field labels / options / placeholders as text: "<Mike>" vanished and coach markup ran.
+// - L29: a pace goal is "m:ss" in the unit on screen or nothing, from Progress › Runs, the Run
+//   tab's goal line and the coach's set_run_goal ('9:00/mi' was stored as typed and read as
+//   9:00 per km); paceToSec reads only a stored pace.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -524,6 +527,44 @@ run('M44: activity tabs show notes, opponents, WODs, types and custom fields as 
     assert(c.text.includes('<u>Big</u>') && c.text.includes('Spin <b>easy</b>'), 'custom options and the coach\'s day note read as typed');
     assert(p.text.includes('<I>MOOD</I> & FEEL') && p.ph === '<b>calm</b>', 'the + tab well label and placeholder read as typed: ' + p.ph);
     assert(g.text.includes('<b>Fran</b>') && g.text.includes('<b>Rugby</b>'), 'Progress › Sports shows the WOD and the type as typed');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L29: a pace goal is "m:ss" in the unit on screen or nothing (Progress › Runs, the Run tab, the coach)', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_d: 'mi', kt_run_goal: '9:00/mi' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      // a goal stored as typed by an older page is no pace at all (it read as 9:00 per km)
+      r.legacy = paceToSec(getRunGoal());
+      r.legacyChip = /GOAL /.test(renderRunReview(1.609344, '9:30'));
+      progressTab = 'runs'; switchTab('progress'); await wait(50);
+      const set = v => { const el = [...document.querySelectorAll('#screen input[type="text"]')].find(i => i.placeholder === '6:00'); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
+      localStorage.removeItem('kt_run_goal');
+      set('9:00/mi'); await wait(20);
+      r.typedUnit = { stored: localStorage.getItem('kt_run_goal'), toast: document.getElementById('toast').textContent };
+      set('abc'); await wait(20);
+      r.typedText = localStorage.getItem('kt_run_goal');
+      set('9:00'); await wait(20);
+      r.ok = { stored: localStorage.getItem('kt_run_goal'), sec: paceToSec(getRunGoal()) };
+      // a run of a mile in 9:30 is slower than the 9:00 /mi goal
+      r.chip = (/GOAL [^<]*/.exec(renderRunReview(1.609344, '9:30')) || [''])[0];
+      // the Run tab's goal line and the coach take the same rule
+      commitRunGoal({ target: { value: 'quick' } });
+      r.line = localStorage.getItem('kt_run_goal');
+      r.coach = [executeCoachTool('set_run_goal', { pace: 'fast' }).ok, localStorage.getItem('kt_run_goal'), executeCoachTool('set_run_goal', { pace: '8:30' }).ok];
+      progressTab = 'lifts';
+      return r;
+    });
+    assert(out.legacy === 0 && out.legacyChip === false, 'a stored "9:00/mi" is not read as 9:00 per km: ' + JSON.stringify([out.legacy, out.legacyChip]));
+    assert(out.typedUnit.stored === null && /5:30/.test(out.typedUnit.toast), 'typing "9:00/mi" is refused with a hint: ' + JSON.stringify(out.typedUnit));
+    assert(out.typedText === null, 'text that is no pace is never stored');
+    assert(out.ok.stored === '5:35.5' && Math.abs(out.ok.sec - 335.5) < 0.01, '9:00 per mile is stored per km: ' + JSON.stringify(out.ok));
+    assert(/9:00 → 9:30 · \+30 S\/MI/.test(out.chip), 'the review compares in miles: ' + out.chip);
+    assert(out.line === '5:35.5', 'the Run tab\'s goal line keeps the goal when the text is no pace: ' + out.line);
+    assert(out.coach[0] === false && out.coach[1] === '5:35.5' && out.coach[2] === true, 'the coach\'s set_run_goal takes only a pace: ' + JSON.stringify(out.coach));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

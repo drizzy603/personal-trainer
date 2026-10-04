@@ -3505,7 +3505,7 @@ function getRunGoal() { return localStorage.getItem('kt_run_goal')||''; } // for
 function get5kGoal() { return parseInt(localStorage.getItem('kt_5k_goal'))||0; } // total seconds
 function set5kGoal(secs) { if(secs>0) lsSet('kt_5k_goal',secs); else lsDel('kt_5k_goal'); }
 function setRunGoal(v) { if(v) localStorage.setItem('kt_run_goal',v); else localStorage.removeItem('kt_run_goal'); }
-function paceToSec(p){ var parts=(p||'').split(':').map(Number); return parts.length===2?parts[0]*60+(parts[1]||0):0; }
+function paceToSec(p){ return _paceStrToSec(p); }   // a stored "m:ss" (per km) only: '9:00/mi' read as 9:00 /km
 function secToPace(s){ var sec=Math.round(s); return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0'); }
 
 // Bodyweight movements were invisible to every analytics surface: weight 0
@@ -8048,11 +8048,18 @@ function renderRunReview(km, time, excludeId){
 // setter that lived in the bottom of the old Log Run card.
 function commitRunGoal(ev){
   var el = ev && ev.target;
-  var v = el ? String(el.value||'').trim() : '';
-  if(v && /^\d{1,2}:\d{2}$/.test(v)) setRunGoal(paceStore(v));
-  else if(!v) setRunGoal('');
+  setRunGoalTyped(el ? el.value : '');
   runLogGoalEdit = false;
   render();
+}
+// A pace goal typed in the unit on screen: "m:ss" or nothing. The Progress › Runs target and
+// the coach stored any text ('9:00/mi' read back as 9:00 per km; 'abc' reached the coach).
+function setRunGoalTyped(v){
+  v = String(v||'').trim();
+  if(!v){ setRunGoal(''); return true; }
+  if(!/^\d{1,2}:\d{2}$/.test(v)){ showToast('Pace reads like 5:30 (per '+_uD()+')','err'); return false; }
+  setRunGoal(paceStore(v));
+  return true;
 }
 function toggleRunGoalEdit(){
   runLogGoalEdit = !runLogGoalEdit;
@@ -14219,7 +14226,7 @@ function renderProgress() {
   var runPaceInput = '<div style="display:flex;align-items:center;gap:6px;margin-top:-4px;margin-bottom:14px;">'+
     '<span style="font-size:11px;color:var(--muted);font-weight:600;">Target:</span>'+
     '<input type="text" placeholder="6:00" value="'+_esc(runGoalPaceStr?fmtPaceStr(runGoalPaceStr,{bare:true}):'')+'" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;text-align:center;"'+
-      ' onchange="setRunGoal(paceStore(this.value));render();" />'+
+      ' onchange="setRunGoalTyped(this.value);render();" />'+
     '<span style="font-size:11px;color:var(--muted);">/'+_uD()+'</span>'+
     '</div>';
   var runGoals='<div class="chart-card"><h2 style="margin-bottom:14px;">Run goals</h2>'+
@@ -16899,6 +16906,7 @@ function _executeCoachToolRaw(name,input){
     }
     if(name==='set_run_goal'){
       if(!input.pace) return {ok:false,error:'pace required as "mm:ss"'};
+      if(!/^\d{1,2}:\d{2}$/.test(String(input.pace).trim())) return {ok:false,error:'pace must be "m:ss" per '+_uD()+' (e.g. "6:00"), got "'+input.pace+'". Nothing was saved.'};
       var _pg=paceStore(String(input.pace));
       setRunGoal(_pg);
       return {ok:true,message:'run pace goal = '+fmtPaceStr(_pg)};
