@@ -3416,9 +3416,10 @@ function restoreArchivedRoutine(id){
   _ktConfirm({title:'Restore this programme?',body:'Your current one will be archived.',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     // The restored programme is written before its entry leaves the archive, and a failure
     // puts the archive back: the current one is never left archived nowhere.
-    var prevArr=getRoutineArchive().slice();
+    var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
     if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
+    _routineReplaced(cur, 'history:'+id);
     setRoutineArchive(getRoutineArchive().filter(function(e){return e.id!==id;}));
     _startProgramme();
     closeRoutineArchiveModal();
@@ -5012,6 +5013,7 @@ function _startProgramme(){
   lsSet('kt_last_weekwrap', _mostRecentMonday());
   invalidateCoachCard();
   _todayActMemo = null;
+  _routineScope = null;   // the new programme's first edit takes its own undo snapshot (a scope left open took none)
 }
 function adjustWeek(delta) {
   var next = Math.min(getTotalWeeks(), Math.max(1, currentWeek + delta));
@@ -10642,6 +10644,7 @@ var _rtEdit=null, _rtAdd=null, _rtQuery='', _rtFocusSlot=null;
 function openRoutines(slot){
   if(!hasCustomRoutine()){ openProgrammeModal(); return; }
   _rtEdit=null; _rtAdd=null; _rtQuery=''; _rtFocusSlot=slot||null;
+  if(_routineScope==='routines') _routineScope=null;   // each visit is its own undo point (two visits were undone as one)
   var prev=document.getElementById('routinesOverlay'); if(prev) prev.remove();
   var overlay=document.createElement('div');
   overlay.id='routinesOverlay'; overlay.className='kt-sheet-overlay';
@@ -11605,9 +11608,10 @@ function applyStarterIntake(){
 }
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
-  var prevArr=getRoutineArchive().slice();
-  if(getCustomRoutine() && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
+  var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
+  if(cur && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
   if(!setCustomRoutine(r)){ lsSet('kt_routine_archive', prevArr); return; }
+  _routineReplaced(cur, 'starter:'+Date.now());
   _startProgramme();
   closeStarterIntake();
   logSubTab='workout'; switchTab('log');
@@ -17363,13 +17367,17 @@ function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.we
 // owner's later Routines edit, which kept the coach's change and threw away the owner's.
 function _setBackupScope(sc){ try{ if(sc) localStorage.setItem('kt_routine_backup_scope', String(sc)); else localStorage.removeItem('kt_routine_backup_scope'); }catch(e){} }
 function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routine_backup_scope')===String(sc) && hasRoutineBackup(); }catch(e){ return false; } }
-// A programme replaced as a whole (the next round): the one it replaced becomes Restore Previous
-// under its own scope, so no undo point taken before reaches across. An earlier coach reply's
-// Undo restored its stale snapshot of round 1 over round 2 (at week 1, under ROUND 2 · WEEK 1).
+// A programme replaced as a whole (the next round, a Programme History restore, the starter
+// plan): the one it replaced becomes Restore Previous under its own scope, so no undo point taken
+// before reaches across. An earlier coach reply's Undo restored its stale snapshot of round 1 over
+// round 2 (at week 1, under ROUND 2 · WEEK 1), and Restore Previous after a history restore and an
+// edit brought back the other programme.
 function _routineReplaced(prev, scope){
   _routineScope=null;   // a scope still open would take no snapshot of the new programme
-  if(prev && prev.weeks && prev.weeks.length && lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
-  else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of an older programme
+  if(prev && prev.weeks && prev.weeks.length){
+    if(lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
+    else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of the replaced programme
+  } else _setBackupScope('');
   _retireLedgers();
 }
 // A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
@@ -17387,6 +17395,7 @@ function restoreRoutineBackup(){
     setCustomRoutine(b);
     if(cur) lsSet('kt_routine_backup',cur); else lsDel('kt_routine_backup');
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
+    _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
