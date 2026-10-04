@@ -9,6 +9,10 @@
 // - M25 A set round first opened weeks after its start date (away, app closed) was anchored on
 //   the old date, so the week clock landed on week 3-4 of a round nobody saw, with no round intro.
 //   It now starts this week as "Today" does (days gone are not owed) and says ROUND 2 · WEEK 1.
+// - M26 The welcome-back check measured from the last cold boot: a resident app used every day
+//   offered "WELCOME BACK · 10 DAYS, Back to week 7" at the next relaunch, and one resumed after
+//   weeks moved on with no offer. The last visit is stamped at launch, return and departure, and
+//   a return runs the same check (a banner left up into another week names the week now).
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -47,6 +51,12 @@ const LOGS = `
   var addSession = (s) => { const a = getSessions(); a.unshift(Object.assign({ label: s.type, prs: [], week: currentWeek }, s)); lsSet('kt_sessions', a); return a[0]; };
   var txt = () => document.getElementById('screen').textContent.replace(/\\s+/g, ' ');
   var chips = () => [...document.querySelectorAll('#screen .kt-util-chip .lbl')].map(e => e.textContent);
+`;
+// Leaving a resident app and coming back to it (the page keeps running in between).
+const VIS = `
+  var setVis = (state) => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state }); document.dispatchEvent(new Event('visibilitychange')); };
+  var leave = () => setVis('hidden');
+  var back = () => setVis('visible');
 `;
 
 run('M06: the previous round\'s sessions inside week 1 are not this round\'s (carry, next best)', async () => {
@@ -195,6 +205,84 @@ run('M25: a set round first opened weeks after its start begins this week, with 
       assert(out.cycle === 2 && out.week === 1 && out.anchorOk, tag + ': round 2 starts at week 1 this week, not weeks in: ' + JSON.stringify(out));
       assert(out.intro && !out.lapse, tag + ': Today says ROUND 2 · WEEK 1: ' + JSON.stringify(out));
       assert(out.notOwed && out.skips === out.owed && (dow === 6 || out.owed > 0), tag + ': the days of week 1 already gone are not owed: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+run('M26: the welcome-back check measures from the last visit, at launch and on a return', async () => {
+  // A: back in the app every evening for ten days across a Monday (never relaunched), then
+  // relaunched the next Monday morning: not away, nothing to rewind.
+  let app = await boot({ native: true });
+  try {
+    await withClock(app);
+    const M = await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, -11) + 'T14:00:00');
+      lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', addDays(mon, -14)); localStorage.removeItem('kt_last_open');
+      return mon;
+    });
+    await coldBoot(app);   // launched on a Thursday in week 6
+    const daily = await app.page.evaluate(async ({ LOGS, VIS, M }) => {
+      eval(LOGS); eval(VIS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = { launch: currentWeek };
+      leave();
+      for (let i = 10; i >= 1; i--) {
+        __setNow(addDays(M, -i) + 'T18:00:00'); back(); await wait(20);
+        addSession({ id: Date.now(), date: todayISO(), type: 'Push', startedAt: Date.now() - 3600000, exercises: [X('Bench Press', [8, 8, 8, 8], 150)] });
+        __setNow(addDays(M, -i) + 'T19:00:00'); leave();
+        if (lapsePending) r.lapseOn = todayISO();
+      }
+      r.week = currentWeek;
+      return r;
+    }, { LOGS, VIS, M });
+    await app.page.evaluate((M) => __setNow(M + 'T07:30:00'), M);
+    await coldBoot(app);
+    const cold = await app.page.evaluate((LOGS) => {
+      eval(LOGS); switchTab('log'); switchLogSub('workout');
+      return { week: currentWeek, lapse: lapsePending, banner: /WELCOME BACK/.test(txt()) };
+    }, LOGS);
+    assert(daily.launch === 6 && daily.week === 7 && !daily.lapseOn, 'daily returns follow the calendar with no offer: ' + JSON.stringify(daily));
+    assert(cold.week === 8 && !cold.lapse && !cold.banner, 'the relaunch after daily use is not a welcome back: ' + JSON.stringify(cold));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+
+  // B: a resident app come back to after 22 days offers the rewind, and the banner left up into
+  // the next week names that week; C: the same absence over a relaunch still offers it.
+  for (const resident of [true, false]) {
+    app = await boot({ native: false });
+    try {
+      await withClock(app);
+      const M = await app.page.evaluate(() => {
+        const mon = _mostRecentMonday();
+        __setNow(addDays(mon, -23) + 'T10:00:00');
+        lsSet('kt_week', 6); localStorage.setItem('kt_week_monday', addDays(mon, -28)); localStorage.removeItem('kt_last_open');
+        return mon;
+      });
+      await coldBoot(app);   // launched on a Saturday in week 6
+      await app.page.evaluate(({ VIS, M, resident }) => { eval(VIS); leave(); __setNow(addDays(M, -1) + 'T12:00:00'); if (resident) back(); }, { VIS, M, resident });
+      if (!resident) await coldBoot(app);
+      const out = await app.page.evaluate(async ({ LOGS, VIS, M, resident }) => {
+        eval(LOGS); eval(VIS);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        await wait(30);
+        switchTab('log'); switchLogSub('workout');
+        const t = txt(), r = { week: currentWeek, lapse: Object.assign({}, lapsePending), banner: /WELCOME BACK · 22 DAYS/.test(t) && /Stay on 9/.test(t) && /Back to week 6/.test(t) };
+        leave(); __setNow(M + 'T09:00:00'); back(); await wait(30);
+        r.next = { week: currentWeek, lapse: Object.assign({}, lapsePending), stay: /Stay on 10/.test(txt()) };
+        if (resident) { lapseRewind(); r.rewound = currentWeek; }
+        else {   // a new round started with the banner up: nothing of the old round's to go back to
+          setNextRound('today');
+          r.round = { cycle: getCustomRoutine().cycle, week: currentWeek, lapse: lapsePending, banner: /WELCOME BACK/.test(txt()) };
+        }
+        return r;
+      }, { LOGS, VIS, M, resident });
+      const tag = resident ? 'resident' : 'relaunched';
+      assert(out.week === 9 && JSON.stringify(out.lapse) === JSON.stringify({ from: 6, to: 9, days: 22 }) && out.banner, tag + ': back after 22 days offers week 6 again: ' + JSON.stringify(out));
+      assert(out.next.week === 10 && out.next.lapse && out.next.lapse.from === 6 && out.next.lapse.to === 10 && out.next.stay, tag + ': the banner a week later names week 10: ' + JSON.stringify(out.next));
+      if (resident) assert(out.rewound === 6, tag + ': Back to week 6 rewinds: ' + out.rewound);
+      else assert(out.round.cycle === 2 && out.round.week === 1 && !out.round.lapse && !out.round.banner, tag + ': starting round 2 drops the offer: ' + JSON.stringify(out.round));
       assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }

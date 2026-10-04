@@ -11020,6 +11020,7 @@ function _applyNextRound(now){
   var late=!now && p.startsOn<_mostRecentMonday();
   var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
+  lapsePending=null;   // a welcome-back offer still up was about the old round's weeks
   if(now||late){
     // Days already gone in week 1 are not owed (as startProgrammeNow).
     var p1=[]; try{ p1=getWeekPlanForWeek(1)||[]; }catch(e){}
@@ -19720,15 +19721,24 @@ currentWeek = getWeek();
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
 // weeks they never trained. kt_last_open is deliberately NOT exported:
-// restoring an old backup must not fake a lapse.
-var _lastOpen = lsGet('kt_last_open') || 0;
-var _weekBeforeAdvance = currentWeek;
-autoAdvanceWeek();
-var _awayDays = _lastOpen ? Math.floor((Date.now()-_lastOpen)/86400000) : 0;
-if(_awayDays >= 10 && currentWeek > _weekBeforeAdvance && hasCustomRoutine()){
-  lapsePending = {from:_weekBeforeAdvance, to:currentWeek, days:_awayDays};
+// restoring an old backup must not fake a lapse. It is the last visit, stamped
+// at launch and on every return and departure, and a return runs the same check:
+// stamped only at a cold boot, a resident app used daily read as "away" since its
+// last launch, and one resumed after weeks moved on with no offer.
+function _advanceWeekCheckLapse(){
+  var last=parseFloat(localStorage.getItem('kt_last_open'))||0, from=currentWeek;
+  autoAdvanceWeek();
+  var away=last>0 ? Math.floor((Date.now()-last)/86400000) : 0;
+  if(lapsePending && currentWeek!==from){
+    // A banner still up when the week moves again names the week the calendar is on now.
+    if(currentWeek>lapsePending.from) lapsePending.to=currentWeek; else lapsePending=null;
+  } else if(away>=10 && currentWeek>from && hasCustomRoutine()){
+    lapsePending={from:from, to:currentWeek, days:away};
+  }
+  _stampVisit();
 }
-lsSet('kt_last_open', Date.now());
+function _stampVisit(){ try{ localStorage.setItem('kt_last_open', String(Date.now())); }catch(e){} delete _lsCache.kt_last_open; }
+_advanceWeekCheckLapse();
 // kt_prs is a cache of the derived record heads; bring a stale one (pre-recompute
 // deletes, legacy nested sessions, old seeds) in line before the milestone baseline.
 try{ _syncPRCache(); }catch(e){}
@@ -19931,6 +19941,7 @@ document.addEventListener('visibilitychange', function(){
     var s=document.getElementById('screen');
     if(s && !s.firstElementChild) { window.location.reload(); return; }
     _resumeDayAndRest();
+    _stampVisit();   // after the welcome-back check has read the previous visit
     setTimeout(checkPendingShare, 600);
     setTimeout(drainPendingHealth, 700);
     setTimeout(drainWatchSessions, 750);
@@ -19939,7 +19950,7 @@ document.addEventListener('visibilitychange', function(){
     // so the day's training is on disk after the next app open at the latest.
     setTimeout(_autoBackupIfDue, 1500);
     if(localStorage.getItem('kt_autolog_runs')==='1' || (currentTab==='log' && logSubTab!=='workout' && logSubTab!=='body')) setTimeout(checkRecentHealthRun, 900);
-  }
+  } else _stampVisit();   // leaving: the last time the owner was here
 });
 // Day stamp for the rollover check — set at boot, bumped on resume.
 var _lastSeenDay = todayISO();
@@ -19974,7 +19985,7 @@ function _restoreCoachDraft(){
 function _resumeDayAndRest(){
   if(todayISO() !== _lastSeenDay){
     _lastSeenDay = todayISO();
-    autoAdvanceWeek();
+    _advanceWeekCheckLapse();
     // Yesterday's dismissals and banner choice are yesterday's.
     coachCardDismissed=false; coachCardAskOpen=false; todayBannerOverride=null;
     try{ invalidateCoachCard(); }catch(e){}
