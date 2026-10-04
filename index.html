@@ -10976,7 +10976,7 @@ function _nrDay(iso){
   return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
 }
 function _nextRoundBuild(cr){
-  var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, rows=[], seen={};
+  var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, bestReps={}, rows=[], seen={};
   nr.cycle=(parseInt(cr.cycle,10)||1)+1;
   // A new round is the programme's own version: no "edited by you" marks.
   W.forEach(function(w){
@@ -10987,7 +10987,7 @@ function _nextRoundBuild(cr){
     if(!s || !Array.isArray(s.exercises) || !inRound(s.date, _cmpT(s))) return;
     s.exercises.forEach(function(ex){
       if(!ex || !ex.name) return;
-      _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)) best[ex.name]=e; } });
+      _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)){ best[ex.name]=e; bestReps[ex.name]=p[0]; } } });
     });
   });
   for(var c=0;c<W.length;c++){
@@ -10995,9 +10995,13 @@ function _nextRoundBuild(cr){
     LIFT_KEYS.forEach(function(k){
       (Array.isArray(W[c][k])?W[c][k]:[]).forEach(function(r){
         if(!r || !r.name || seen[k+'|'+r.name]) return;
+        // Bodyweight and "your load" rows stay as they are; a lift first given a load in a
+        // later week is re-based from that week (it used to be skipped and left off the sheet).
+        var P=parseFloat(r.weight)||0; if(!(P>0)) return;
         seen[k+'|'+r.name]=1;
-        var P=parseFloat(r.weight)||0; if(!(P>0)) return;   // bodyweight and "your load" rows stay as they are
-        var it={slot:k, name:r.name, main:!!r.isMain, from:P, to:P, best:0, reps:_repsNum(r.reps)||1}, e=best[r.name];
+        // A target with no number (Max, AMRAP) is judged at the reps its best set was done for:
+        // read as 1 rep, it was re-based ~20% up and the sheet said "× 1".
+        var it={slot:k, name:r.name, main:!!r.isMain, from:P, to:P, best:0, reps:_repsNum(r.reps)||bestReps[r.name]||1}, e=best[r.name];
         if(e>0){
           var atR=e/(1+Math.min(it.reps,10)/30);
           it.best=atR;

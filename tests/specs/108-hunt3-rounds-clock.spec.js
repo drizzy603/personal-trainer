@@ -349,3 +349,46 @@ run('L06: a round set to follow the programme moves when weeks are added or the 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('L07/L08: the next round re-bases a lift first loaded in a later week, and a Max row at the reps logged', async () => {
+  const app = await boot({ native: false });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, 2) + 'T10:00:00');
+      const cr = getCustomRoutine();
+      cr.weeks.forEach((w, i) => {
+        // "your load" in weeks 1-2, then the owner's 30 lb climbing from week 3; a weighted Max row
+        w.push.push({ name: 'Cable Fly', sets: 3, reps: 12, rpe: 8, weight: i < 2 ? 0 : 30 + 2.5 * Math.floor((i - 2) / 2) });
+        w.push.push({ name: 'Weighted Dip', sets: 3, reps: 'Max', rpe: 8, weight: 25 });
+      });
+      setCustomRoutine(cr); _setWeek(12, mon);
+      lsSet('kt_sessions', []);
+      const sess = (date, dip) => addSession({ id: at(date, '18:00'), date, type: 'Push', startedAt: at(date, '17:00'), exercises: [X('Cable Fly', [12, 12, 12], 40), X('Weighted Dip', dip[0], dip[1])] });
+      sess(addDays(mon, -14), [[12, 10, 9], 25]); sess(addDays(mon, -7), [[11, 10, 9], 25]);
+      const row = (nb, n) => { const x = nb.rows.find(y => y.name === n); return x ? { from: x.from, to: x.to, reps: x.reps } : null; };
+      const loads = (nb, n) => nb.routine.weeks.map(w => (w.push.find(e => e.name === n) || {}).weight);
+      const sheet = async (n) => { openNextRound(); await wait(20); const t = document.getElementById('nrSheet').textContent.replace(/\s+/g, ' '); closeNextRound(); return (t.match(new RegExp(n + '.{0,64}')) || [''])[0]; };
+      let nb = _nextRoundBuild(getCustomRoutine());
+      const r = { fly: row(nb, 'Cable Fly'), flyLoads: loads(nb, 'Cable Fly'), dip: row(nb, 'Weighted Dip'), dipLoads: loads(nb, 'Weighted Dip') };
+      r.sheetFly = await sheet('Cable Fly'); r.sheetDip = await sheet('Weighted Dip');
+      // Heavier dips later in the round: re-based from those, at their reps.
+      sess(addDays(mon, -3), [[8, 8, 7], 45]);
+      nb = _nextRoundBuild(getCustomRoutine());
+      r.dip2 = row(nb, 'Weighted Dip'); r.dip2Load = loads(nb, 'Weighted Dip')[0];
+      r.sheetDip2 = await sheet('Weighted Dip');
+      return r;
+    }, LOGS);
+    assert(out.fly && out.fly.from === 30 && out.fly.to === 35 && out.fly.reps === 12, 'a lift loaded from week 3 is re-based from there (40 x 12 -> 35): ' + JSON.stringify(out.fly));
+    assert(out.flyLoads[0] === 0 && out.flyLoads[1] === 0 && out.flyLoads[2] === 35 && out.flyLoads[3] >= 35, 'weeks 1-2 stay "your load", week 3 on climbs from 35: ' + JSON.stringify(out.flyLoads));
+    assert(/Cable Fly30 lb → 35 lb · you reached about 40 lb × 12/.test(out.sheetFly), 'and it is on the sheet: ' + out.sheetFly);
+    assert(out.dip && out.dip.to === 25 && out.dip.reps === 11 && out.dipLoads.every(w => w === 25), 'a Max row done for 11-12 reps at +25 is not re-based as a single (+20%): ' + JSON.stringify([out.dip, out.dipLoads]));
+    assert(/Weighted Dipstays at 25 lb · not past where it started yet/.test(out.sheetDip), 'the sheet says it stays: ' + out.sheetDip);
+    assert(out.dip2 && out.dip2.from === 25 && out.dip2.to === 40 && out.dip2.reps === 8 && out.dip2Load === 40, 'heavier dips (45 x 8) re-base it at 8 reps: ' + JSON.stringify(out.dip2));
+    assert(/Weighted Dip25 lb → 40 lb · you reached about 45 lb × 8/.test(out.sheetDip2), 'and the sheet names the reps logged: ' + out.sheetDip2);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
