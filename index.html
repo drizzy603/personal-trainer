@@ -5757,6 +5757,8 @@ function getUserFirstName(){
   }
   return '';
 }
+// The avatar's letter: the first character (a whole emoji, not half of one), ready for HTML.
+function _initialOf(s){ return _esc((_chars(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
 
 // ── Editorial Today helpers ──────────────────────────────────────────────────
 // Enriched exercise list for the editorial Today + Deck Runner: prescribed
@@ -6191,7 +6193,7 @@ function renderTodayEditorial(){
   // Avatar shows the user's initial when a name is set; otherwise the routine's
   // first character, falling back to a neutral glyph.
   var avatarSeed = firstName || '?';
-  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
+  var initial = _initialOf(avatarSeed);
   var totalWks = getTotalWeeks();
   var act = getTodayActivity();
 
@@ -7994,7 +7996,7 @@ function renderRunSegment(){
   var deload = isDeloadWeek();
   var focus = getRunFocus();
   var avatarSeed = firstName || '?';
-  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
+  var initial = _initialOf(avatarSeed);
 
   var meta = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">'+weekday+' · WK '+
@@ -11773,7 +11775,7 @@ function renderLog() {
   var wd = getWkData();
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var todayName = days[new Date().getDay()];
-  var _avL=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
+  var _avL=_initialOf(getUserFirstName());
 
   var header = '<div class="screen-hd">'+
     '<div>'+
@@ -11830,7 +11832,7 @@ function renderLog() {
     // (A6) "Build my programme" requires an API key; if none, route to Coach
     // setup with copy that matches the user's actual next step.
     var _firstName = getUserFirstName();
-    var _av = (String(_firstName)[0] || '?').toUpperCase();
+    var _av = _initialOf(_firstName);
     var _weekdayE = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
     var _hasKey = !!getApiKey();
     // With a key, the AI's custom intake stays the headline; without one the
@@ -12807,7 +12809,7 @@ function renderSportEditorial(){
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWksP = getTotalWeeks();
   var meta = '<div class="kt-meta-row">'+
@@ -13459,7 +13461,7 @@ function renderBodyEditorial(){
   var firstName = getUserFirstName();
   var cr = getCustomRoutine();
   var avSeed = firstName || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWks = getTotalWeeks();
   var meta = '<div class="kt-meta-row">'+
@@ -14292,7 +14294,7 @@ function renderProgress() {
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var progressHeader = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">PROGRESS · WEEK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWksP+
@@ -17841,7 +17843,7 @@ function renderCoach(){
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';
-  var avInitialC = (String(avSeedC)[0] || '?').toUpperCase();
+  var avInitialC = _initialOf(avSeedC);
   var totalWksC = getTotalWeeks();
   var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   // Editorial header: mono eyebrow + lime-gradient avatar.
@@ -18139,7 +18141,7 @@ function renderCoach(){
     '</button>'+
   '</div>';
 
-  var _avCh=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
+  var _avCh=_initialOf(getUserFirstName());
   // Sticky chat header — back / avatar + editorial title stay pinned at the
   // top of the scroll container so they're always reachable. The body::before
   // mask covers the safe-area zone above this strip.
@@ -18373,7 +18375,7 @@ function renderSettings() {
   var cr=getCustomRoutine();
   var firstName=getUserFirstName();
   var displayName=firstName || (cr && cr.name) || 'Set your name';
-  var userInitial=(firstName ? firstName[0] : (cr&&cr.name?cr.name[0]:'?')).toUpperCase();
+  var userInitial=_initialOf(firstName || (cr&&cr.name) || '?');
 
   var rawName = (localStorage.getItem('kt_user_name')||'').trim();
   var nameBody = settingsNameEdit

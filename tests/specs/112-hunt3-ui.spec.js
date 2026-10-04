@@ -14,6 +14,8 @@
 //   on 390/375-pt phones and on 320-pt layouts (M36).
 // - The coach's block name, week note and programme name read as text on every screen: a note like
 //   "Work up to <heavy single>" keeps its words and no markup renders (L52).
+// - A first name that starts with an emoji shows the whole emoji as the avatar on every tab, and the
+//   avatar letter is text (L53).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -227,6 +229,33 @@ run('coach-written block name, week note and programme name read as text (L52)',
     assert(out.leaks.length === 0, 'no coach-written markup renders: ' + out.leaks.join(', '));
     assert(out.header.indexOf('Work up to <heavy single> then') >= 0 && out.header.indexOf('Peak <i') >= 0, 'the week header keeps every word: ' + out.header);
     assert(out.modal.indexOf('Block <b data-leak="name">X</b> & Co') >= 0 && out.modal.indexOf('Peak <i data-leak="bname">A</i>') >= 0, 'the programme sheet shows the names as typed: ' + out.modal.slice(0, 160));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('an emoji first name is a whole avatar on every tab (L53)', async () => {
+  const app = await boot({ native: true, seed: { kt_user_name: '\u{1F98A}Fox', kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const avatars = () => Array.from(document.querySelectorAll('.kt-meta-ava,.screen-avatar,.profile-ava')).map(e => e.textContent);
+      const seen = {};
+      const visit = async (k, fn) => { fn(); await wait(20); seen[k] = avatars(); };
+      await visit('log', () => { switchTab('log'); switchLogSub('workout'); });
+      await visit('run', () => switchLogSub('run'));
+      await visit('body', () => switchLogSub('body'));
+      await visit('progress', () => switchTab('progress'));
+      await visit('coach', () => switchTab('coach'));
+      await visit('chat', () => openCoachChat());
+      await visit('settings', () => switchTab('settings'));
+      // a name that starts with markup: the letter is text
+      localStorage.setItem('kt_user_name', '<i>Bo'); render(); await wait(20);
+      const lt = { avatars: avatars(), injected: !!document.querySelector('.profile-ava i, .kt-meta-ava i, .screen-avatar i') };
+      return { seen, lt };
+    });
+    const all = Object.keys(out.seen).map(k => [k, out.seen[k]]);
+    assert(all.every(([, a]) => a.length >= 1 && a.every(t => t === '\u{1F98A}')), 'every avatar shows the whole fox: ' + JSON.stringify(out.seen));
+    assert(out.lt.avatars.every(t => t === '<') && !out.lt.injected, 'a name starting with markup shows its first character as text: ' + JSON.stringify(out.lt));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
