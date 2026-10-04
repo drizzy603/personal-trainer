@@ -19,6 +19,8 @@
 //   (a swap onto it) is not offered for a Restore that did nothing; Reset still has it.
 // - M16: an owner's swap onto a lift the coach brings in later keeps the coach's original it drops
 //   in those weeks, so Reset and Use coach's give it back (it was gone for good).
+// - M45: Undo on a Routines change repaints an open Routines sheet (it kept showing the undone
+//   edit, with links that acted on a programme that was gone).
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -372,6 +374,41 @@ seq('M16: a swap onto a lift the coach brings in later keeps the coach\'s origin
     assert(out.swapped === '0000000', 'Overhead Press swapped out from week 6 on: ' + out.swapped);
     assert(out.reset && out.useCoach, 'Reset and Use coach\'s give back the coach\'s weeks, Overhead Press in 9-12 too: ' + JSON.stringify(out));
     assert(!out.coachKept, 'the coach\'s swap keeps nothing for Restore');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M45: Undo on a Routines change repaints the open sheet', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const card = (s) => ((document.getElementById('rt-card-' + s) || {}).textContent || '').replace(/\s+/g, ' ');
+      const undo = async () => { document.querySelector('#toast .kt-toast-undo').click(); await wait(10); };
+      openRoutines();
+      _rtOpenEdit('Push', 'Bench Press'); _rtEdit.w = wDisp(185); _rtSave(); await wait(10);
+      r.saved = /EDITED/.test(card('Push')) && /185/.test(card('Push'));
+      await undo();
+      r.undone = { stored: getCustomRoutine().weeks[c].push[0].weight, edited: /EDITED|Use coach|185/.test(card('Push')), list: !!document.getElementById('rt-card-Push') };
+      // an editor opened before the Undo goes back to the day list
+      _rtOpenEdit('Push', 'Bench Press'); _rtEdit.w = wDisp(185); _rtSave(); await wait(10);
+      _rtOpenEdit('Push', 'Bench Press'); await undo();
+      r.undoneEditing = { stored: getCustomRoutine().weeks[c].push[0].weight, edited: /EDITED|Use coach|185/.test(card('Push')), list: !!document.getElementById('rt-card-Push') };
+      _rtAddPick('Push', 'Cable Fly'); await wait(10); await undo();
+      r.add = /Cable Fly|ADDED/.test(card('Push'));
+      _rtOpenEdit('Push', 'Lateral Raise'); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10);
+      r.removed = /coach lift removed/.test(card('Push'));
+      await undo();
+      r.remove = { back: /Lateral Raise/.test(card('Push')), line: /removed/.test(card('Push')) };
+      closeRoutines();
+      return r;
+    });
+    assert(out.saved, 'the edit shows on the sheet');
+    assert(out.undone.stored === 160 && !out.undone.edited && out.undone.list, 'after Undo the sheet shows the programme as it is again: ' + JSON.stringify(out.undone));
+    assert(out.undoneEditing.stored === 160 && !out.undoneEditing.edited && out.undoneEditing.list, 'an editor open at the Undo goes back to the days: ' + JSON.stringify(out.undoneEditing));
+    assert(!out.add, 'an undone add leaves no ghost row');
+    assert(out.removed && out.remove.back && !out.remove.line, 'an undone remove shows the lift again: ' + JSON.stringify(out.remove));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

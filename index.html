@@ -10492,7 +10492,12 @@ function _commitRoutine(mutate, o){
   if(document.getElementById('routinesOverlay')) _paintRoutines();   // an open Routines sheet shows the new programme
   if(o.undoLabel) showUndoToast(o.undoLabel, function(){
     try{ lsSet('kt_routine', JSON.parse(raw)); }catch(e){}
-    invalidateCoachCard(); render(); if(o.onUndo) o.onUndo();
+    invalidateCoachCard(); coachCard=null; render();
+    // An open Routines sheet kept showing the undone change (its rows and links acted on a
+    // programme that was gone); an editor opened since is on a row that changed under it.
+    if(document.getElementById('routinesOverlay')){ _rtEdit=null; _paintRoutines(); }
+    if(document.getElementById('buildDayOverlay')) _paintBuildDay();
+    if(o.onUndo) o.onUndo();
   });
   return res===undefined ? true : res;
 }
