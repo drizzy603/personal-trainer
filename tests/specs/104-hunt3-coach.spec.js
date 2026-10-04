@@ -2,13 +2,18 @@
 // - H01 update_routine_weeks converts only the lift days the call sent: a day it left out is
 //   the stored one, already lb (a kg owner's kept days were multiplied by 2.2 on every rename or
 //   one-day tweak; an lb owner's kept per-set loads were re-snapped to 2.5 lb).
-// - H13 the prompt's RECENT SESSIONS / LOGGED RUNS / LOGGED SPORT SESSIONS are the newest by date
-//   (the stores keep save order) and say how many of how many are listed and from which day; the
-//   "not in this list = not saved" rule holds only from that day; log_run / log_sport refuse a
-//   same-day twin (separate:true logs a real second one) and the pill says "Already logged".
+// - H13 the prompt's RECENT SESSIONS / LOGGED RUNS / LOGGED SPORT SESSIONS say how many of how
+//   many saved they list and from which day (a whole day at the cut); the "not in this list = not
+//   saved" rule holds only from that day; log_run / log_sport refuse a same-day twin
+//   (separate:true logs a real second one) and the pill says "Already logged".
 // - M24 a programme the coach builds in the chat after "Start a new programme" starts like the
 //   intake's: week 1 on the next Monday, the weekly cards re-armed (it kept the archive's anchor,
 //   started in the past, and Monday read week 2); a rewrite of an existing one does not re-anchor.
+// - M52 Today's coach card is keyed on today's plan (the week and the main lift's load, sets,
+//   reps, RPE), so a coach rewrite, Restore, set_current_week, the week stepper and a Routines
+//   undo refresh it (it kept quoting the old load until the next day); one fetch per plan.
+// - M53 the morning card sends a kg owner's per-set weightLog and legacy sets[] in kg (only the
+//   top weight was converted; the rest went out in lb, labelled kg).
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -54,8 +59,7 @@ run('H01: a coach week rewrite leaves the days it did not send exactly as stored
 });
 
 run('H13: the prompt says which logs it lists; the coach cannot log a saved run or activity twice', async () => {
-  // 10 runs saved oldest first (the order an import or a restore can leave), two on one day at
-  // the cut; 12 activities.
+  // 10 runs, two of them on the day of the cut; 12 activities.
   const runs = [], sports = [];
   [40, 30, 26, 22, 18, 14, 10, 6, 2].forEach((n, i) => runs.push({ id: 1780000000000 + i, date: iso(n), distance: 5 + i, time: (25 + i * 5) + ':00', type: 'easy', hr: 0, note: '' }));
   runs.push({ id: 1780000000100, date: iso(22), distance: 3, time: '15:00', type: 'easy', hr: 0, note: '' });
@@ -195,4 +199,31 @@ run('M52: Today\'s coach card follows the plan: coach rewrite, Restore, week cha
       assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('M53: the morning card sends a kg owner\'s sessions in kg, set by set', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_w: 'kg', kt_apikey: 'sk-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      // a runner-shaped session yesterday (top set 75 kg, back-offs 70) and a legacy-shaped one
+      // (nested sets[], an old backup or import) the day before
+      const s = getSessions().slice();
+      s.push({ id: 900001, date: addDays(todayISO(), -1), type: 'Push', week: currentWeek, exercises: [
+        { name: 'Bench Press', isMain: true, ss: false, sets: 3, reps: [5, 8, 8], weight: wStore(75), weightLog: [wStore(75), wStore(70), wStore(70)], rpe: 8, rpeLog: [8, 8, 8] }] });
+      s.push({ id: 900002, date: addDays(todayISO(), -2), type: 'Pull', week: currentWeek, exercises: [
+        { name: 'Barbell Row', sets: [{ reps: 8, weight: wStore(60), rpe: 8 }, { reps: 8, weight: wStore(60), rpe: 8 }] }] });
+      lsSet('kt_sessions', s);
+      invalidateCoachCard();
+      let body = null;
+      window.fetch = async (url, opts) => { body = JSON.parse(opts.body).messages[0].content; return new Response(JSON.stringify({ content: [{ type: 'text', text: '{"message":"ok","actions":[{"label":"a","primary":false},{"label":"b","primary":true}]}' }] }), { status: 200 }); };
+      await fetchCoachCard(getTodayActivity());
+      const recent = JSON.parse(body.match(/Last 5 sessions: (.*)\n/)[1]);
+      return { ids: recent.map(x => x.id), units: recent.map(x => x.unit), bench: recent[0].exercises[0], row: recent[1].exercises[0] };
+    });
+    assert(out.ids[0] === 900001 && out.ids[1] === 900002, 'the two newest sessions are sent: ' + JSON.stringify(out.ids));
+    assert(out.units.every(u => u === 'kg'), 'every session is labelled kg');
+    assert(out.bench.weight === 75 && JSON.stringify(out.bench.weightLog) === '[75,70,70]', 'the per-set loads are kg: ' + JSON.stringify(out.bench));
+    assert(out.row.sets.every(st => st.weight === 60 && st.reps === 8), 'the legacy sets are kg: ' + JSON.stringify(out.row));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });

@@ -5996,9 +5996,18 @@ function fetchCoachCard(activity){
     var cached = loadCachedCoachCard();
     if(cached){ resolve(cached); return; }
     var routine = lsGet('kt_routine') || {};
+    // Every load in the owner's unit: only the top weight was converted, so a kg owner's
+    // per-set weightLog and the legacy sets[] went out in lb, labelled kg.
+    var _dispW=function(v){ return parseFloat(v)>0?wDisp(v):v; };
     var recent = (lsGet('kt_sessions') || []).slice(0, 5).map(function(sess){
       var c={}; Object.keys(sess).forEach(function(k){ c[k]=sess[k]; });
-      c.exercises=(sess.exercises||[]).map(function(e){ var x={}; Object.keys(e).forEach(function(k){ x[k]=e[k]; }); if(parseFloat(x.weight)>0) x.weight=wDisp(x.weight); return x; });
+      c.exercises=(sess.exercises||[]).map(function(e){
+        var x={}; Object.keys(e).forEach(function(k){ x[k]=e[k]; });
+        x.weight=_dispW(x.weight);
+        if(Array.isArray(x.weightLog)) x.weightLog=x.weightLog.map(_dispW);
+        if(Array.isArray(x.sets)) x.sets=x.sets.map(function(st){ if(!st || typeof st!=='object') return st; var y={}; Object.keys(st).forEach(function(k){ y[k]=st[k]; }); y.weight=_dispW(y.weight); return y; });
+        return x;
+      });
       c.unit=_uW();
       return c;
     });
@@ -17498,10 +17507,10 @@ function saveCoachHistory(){
   }catch(e){}
 }
 
-// The prompt's log lists: the n newest by date (the stores keep save order, so a backdated
-// log or a Health history import sat on top), plus any more from the n-th one's day, so
-// "every one from <from> on" is exactly true. The list used to be called everything saved,
-// and the coach re-logged any older run or activity the user mentioned.
+// The prompt's log lists: the n newest (lsSet keeps the stores newest first; the sort only
+// guards older data), plus any more from the n-th one's day, so "every one from <from> on" is
+// exactly true. A partial list used to be called everything saved, and the coach re-logged any
+// older run or activity the user mentioned.
 function _promptLog(list, n){
   var all=(list||[]).filter(function(x){ return x && x.date; }).sort(_cmpByDateDesc), shown=all.slice(0,n);
   while(shown.length && shown.length<all.length && String(all[shown.length].date)===String(shown[shown.length-1].date)) shown.push(all[shown.length]);
