@@ -2154,6 +2154,7 @@ var _rExSSPicking     = false;      // the edit sheet is showing the partner lis
 var _ssReturnIdx      = null;
 var _rExEditSets      = 0;
 var _rExEditReps      = 0;
+var _rExEditRepsHint  = '';         // a target that is not a number ('Max'), shown as the empty field's hint
 var _rExEditWeight    = 0;
 var runnerSession     = null;       // {type, dayName, exercises} captured at open
 var runnerJustFinishedKey = null;   // YYYY-MM-DD-{type} so Today shows confirmation
@@ -9939,7 +9940,13 @@ function openRunnerExEdit(idx){
   runnerExEditIdx=idx;
   _rExEditName   =ex.name;
   _rExEditSets   =ex.sets;
-  _rExEditReps   =runnerReps[ex.name]!=null?runnerReps[ex.name]:(Array.isArray(ex.reps)?ex.reps[0]:ex.reps);
+  // Reps: the next set's number, the live stepper's or its target's. A target that is not a
+  // number ('Max', AMRAP) has none: the field stays empty with it as the hint (it seeded 0,
+  // which Save refused, so a swap or a load change on a 'Max' row could not be saved).
+  var _ti=Math.min(runnerCompleted[ex.name]||0, Math.max(0,(parseInt(ex.sets)||1)-1));
+  var _tr=Array.isArray(ex.reps)?ex.reps[Math.min(_ti,ex.reps.length-1)]:ex.reps;
+  _rExEditReps   =parseInt(runnerReps[ex.name])>0?parseInt(runnerReps[ex.name]):(parseInt(_tr)>0?parseInt(_tr):'');
+  _rExEditRepsHint=(_rExEditReps===''&&_tr!=null)?String(_tr):'';
   _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
   _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets};
   _rExEditApply  =false;   // "Also update my programme" is a per-edit choice, never left on from the last sheet
@@ -9972,12 +9979,12 @@ function closeRunnerExEdit(){
 }
 // Three steppers need ~440px and the sheet gives 350: each takes 140 and the
 // row wraps, so Weight drops under Sets and Reps instead of running off-screen.
-function _runnerExStepHTML(id,label,val,stepFn,setFn,step){
+function _runnerExStepHTML(id,label,val,stepFn,setFn,step,ph){
   return '<div style="flex:1 1 140px;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
     '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;">'+label+'</div>'+
     '<div style="display:flex;align-items:center;gap:5px;">'+
       '<button onclick="event.stopPropagation();'+stepFn+'(-'+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">−</button>'+
-      '<input id="'+id+'" type="number" inputmode="decimal" value="'+val+'" style="width:58px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:17px;font-weight:800;padding:7px 3px;font-family:inherit;box-sizing:border-box;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation();'+setFn+'(this.value)" onchange="event.stopPropagation();'+setFn+'(this.value)"/>'+
+      '<input id="'+id+'" type="number" inputmode="decimal" value="'+val+'"'+(ph?' placeholder="'+_esc(ph)+'"':'')+' style="width:58px;text-align:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:17px;font-weight:800;padding:7px 3px;font-family:inherit;box-sizing:border-box;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation();'+setFn+'(this.value)" onchange="event.stopPropagation();'+setFn+'(this.value)"/>'+
       '<button onclick="event.stopPropagation();'+stepFn+'('+step+')" style="width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;">+</button>'+
     '</div>'+
   '</div>';
@@ -10043,7 +10050,7 @@ function _buildRunnerExEditHTML(){
     '</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:14px 10px;justify-content:center;margin-bottom:24px;">'+
       _runnerExStepHTML('runner-ex-sets-input','Sets',_rExEditSets,'runnerExEditStepSets','runnerExEditSetSets',1)+
-      _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1)+
+      _runnerExStepHTML('runner-ex-reps-input','Reps',_rExEditReps,'runnerExEditStepReps','runnerExEditSetReps',1,_rExEditRepsHint)+
       _runnerExStepHTML('runner-ex-weight-input','Weight · '+_uW(),wDisp(_rExEditWeight),'runnerExEditStepWeight','runnerExEditSetWeight',(_uW()==='kg'?1.25:2.5))+
     '</div>'+
     (runnerExEditIdx!=null && runnerSession && runnerSession.exercises.length>1
@@ -11327,10 +11334,11 @@ function runnerExEditStepSets(d){
 }
 function runnerExEditSetSets(v){ _rExEditSets=Math.max(1,parseInt(v)||1); }
 function runnerExEditStepReps(d){
-  _rExEditReps=Math.max(1,(parseInt(_rExEditReps)||1)+parseInt(d));
+  _rExEditReps=Math.max(1,(parseInt(_rExEditReps)||0)+parseInt(d));
   var el=document.getElementById('runner-ex-reps-input'); if(el) el.value=_rExEditReps;
 }
-function runnerExEditSetReps(v){ _rExEditReps=Math.max(1,parseInt(v)||1); }
+// A cleared field is no edit: the target stays as it was.
+function runnerExEditSetReps(v){ _rExEditReps=String(v).trim()===''&&_rExEditSeed ? _rExEditSeed.r : Math.max(1,parseInt(v)||1); }
 function runnerExEditStepWeight(d){
   _rExEditWeight=Math.max(0,wStore(wDisp(_rExEditWeight||0)+parseFloat(d)));
   var el=document.getElementById('runner-ex-weight-input'); if(el) el.value=wDisp(_rExEditWeight);
@@ -11339,17 +11347,21 @@ function runnerExEditSetWeight(v){ _rExEditWeight=Math.max(0,wStore(v)); }
 function saveRunnerExEdit(){
   if(runnerExEditIdx===null) return;
   var ex=runnerSession&&runnerSession.exercises[runnerExEditIdx]; if(!ex) return;
-  if(parseInt(_rExEditSets)<1||parseInt(_rExEditReps)<1){showToast('Sets and reps must be at least 1','err');return;}
+  // Reps are an edit only when the owner changed them: left alone, the target stays as written
+  // ('Max', a range, per-set reps) instead of taking the field's number.
+  var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
+  var _repsTouched=String(_rExEditReps)!==String(_seedR==null?'':_seedR);
+  if(parseInt(_rExEditSets)<1||(_repsTouched && !(parseInt(_rExEditReps)>=1))){showToast('Sets and reps must be at least 1','err');return;}
   var oldName=ex.name, newName=_rExEditName;
   // The logs below move to the new name: onto another card's lift they replaced its sets.
   if(newName!==oldName && _runnerNameTaken(newName, runnerExEditIdx)){ showToast(newName+' is already in today\u2019s session \u2014 use +1 set on its card','err'); return; }
   ex.name   =newName;
   ex.sets   =parseInt(_rExEditSets)||ex.sets;
-  ex.reps   =parseInt(_rExEditReps)||ex.reps;
+  if(_repsTouched) ex.reps=parseInt(_rExEditReps);
   ex.weight =parseFloat(_rExEditWeight)||0;
   // The sheet edits scalars — stale per-set target arrays would silently
-  // reseed the pre-edit loads on every completed set.
-  delete ex.weights;
+  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them.
+  if(ex.weight!==_seedW) delete ex.weights;
   // A superset pairs with the card BELOW, so choosing a partner means moving it
   // there. Before this the only reachable partner was whichever exercise
   // happened to sit next in the list — the toggle could be turned on, but the
@@ -11396,11 +11408,9 @@ function saveRunnerExEdit(){
   }
   // Only touch the live steppers when the sheet value actually changed —
   // adding a 4th set used to snap a bumped 195 back to the prescribed 185.
-  var _seedW=_rExEditSeed?_rExEditSeed.w:null, _seedR=_rExEditSeed?_rExEditSeed.r:null;
   if(oldName!==newName || ex.weight!==_seedW) runnerWeights[newName]=ex.weight;
   else if(runnerWeights[oldName]!=null) runnerWeights[newName]=runnerWeights[oldName];
-  var _newR=Array.isArray(ex.reps)?parseInt(ex.reps[0]):parseInt(ex.reps)||0;
-  if(oldName!==newName || _newR!==parseInt(_seedR)) runnerReps[newName]=_newR;
+  if(_repsTouched) runnerReps[newName]=ex.reps;
   else if(runnerReps[oldName]!=null) runnerReps[newName]=runnerReps[oldName];
   if(oldName!==newName){
     [runnerCompleted,runnerWeightsLog,runnerRepsLog,runnerRpeLog,runnerRpe,_wristStamps,_wristLen,
@@ -11414,7 +11424,7 @@ function saveRunnerExEdit(){
     }
   }
   if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight},
-    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_newR!==parseInt(_seedR), weight:ex.weight!==_seedW}});
+    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}});
   _bwLiftCache={};
   closeRunnerExEdit(); _saveRunnerDraft(); paintRunner();
 }
