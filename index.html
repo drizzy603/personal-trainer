@@ -18260,10 +18260,6 @@ function _buildThemeRows(){
     }).join('')+
   '</div>';
 }
-// Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
-// drag zone (body content keeps normal scrolling); drag past 90px or flick
-// to dismiss. Animates the sheet element itself, which is created once per
-// open — remount-safe, unlike sheet rows.
 // Escape closes the top sheet wherever focus is: on <body> (a tap on a sheet's text moves
 // it there) or inside a sheet that has no keydown listener of its own. A sheet that does
 // handle Escape has already prevented the default, or removed the key's target by closing
@@ -18307,6 +18303,10 @@ if(window.MutationObserver) new MutationObserver(function(muts){
   if(ovs.length && !ovs[ovs.length-1].contains(t)) return;   // a sheet is still up, and the opener is not in it
   try{ t.focus({preventScroll:true}); }catch(err){}
 }).observe(document.body, {childList:true});
+// Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
+// drag zone (body content keeps normal scrolling); drag past 90px or flick
+// to dismiss. Animates the sheet element itself, which is created once per
+// open — remount-safe, unlike sheet rows.
 function _sheetDrag(overlay, closeFn){
   var sheet=overlay.querySelector('.kt-sheet');
   if(!sheet) return;
@@ -20216,8 +20216,17 @@ function _weekLiftCount(wk, type){
   return getSessionExercises(type).length;
 }
 // JSON the shell hands to Swift's JSONDecoder (watch plan, week, live mirror,
-// widget summary): half an emoji in any string fails the whole payload.
-function _nativeJSON(v){ return JSON.stringify(v, function(k, x){ return typeof x==='string'?_wellFormed(x):x; }); }
+// widget summary): half an emoji in any string fails the whole payload. The
+// live mirror keys its logs by lift name, so keys are mended too.
+function _nativeJSON(v){
+  return JSON.stringify(v, function(k, x){
+    if(typeof x==='string') return _wellFormed(x);
+    if(x && typeof x==='object' && !Array.isArray(x) && Object.keys(x).some(function(q){ return /[\ud800-\udfff]/.test(q); })){
+      var o={}; Object.keys(x).forEach(function(q){ o[_wellFormed(q)]=x[q]; }); return o;
+    }
+    return x;
+  });
+}
 // 7-day plan summary — widget + reminders share this.
 function _nativeSummaryDays(n){
   var out=[], total=getTotalWeeks();

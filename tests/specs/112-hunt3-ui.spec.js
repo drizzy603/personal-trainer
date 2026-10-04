@@ -64,6 +64,12 @@ run('emoji day names never reach the watch or the widget cut in half (H10)', asy
       push(); await wait(30);
       l = last();
       r.legacy = { plan: l.ctx.json || '', week: l.ctx.week || '', sum: l.sum };
+      // the live mirror keys its logs by lift name: a set logged on that lift
+      openDeckRunner(a); runnerSetWeight(50); runnerSetReps(5); runnerCompleteSet();
+      window.__mock.updateContext.length = 0; _lastWatchPlan = null; _pushWatchPlan(); await wait(30);
+      r.live = (window.__mock.updateContext.slice(-1)[0] || {}).live || '';
+      r.liveName = runnerSession.exercises[0].name;
+      closeDeckRunner();
       return r;
     });
     const anyLone = (o) => Object.keys(o).filter(k => LONE_ESC.test(o[k]) || LONE.test(o[k]));
@@ -77,6 +83,7 @@ run('emoji day names never reach the watch or the widget cut in half (H10)', asy
     assert(!dayB || dayB.label === 'Upper Body Strength Day\u{1F4AA}', 'the widget gets the whole name: ' + JSON.stringify(dayB));
     assert(out.legacyLabel === 'Legs Day', 'a name an older page cut in half is mended on read: ' + JSON.stringify(out.legacyLabel));
     assert(anyLone(out.legacy).length === 0, 'a stray half anywhere in a payload is dropped before the shell sees it: ' + anyLone(out.legacy));
+    assert(out.liveName === 'Goblet Squat \ud83d' && out.live && !LONE_ESC.test(out.live) && JSON.parse(out.live).reps['Goblet Squat '], 'the live mirror mends a lift name used as a key: ' + out.live.slice(0, 120));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
