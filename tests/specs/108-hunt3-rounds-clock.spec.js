@@ -13,6 +13,10 @@
 //   offered "WELCOME BACK · 10 DAYS, Back to week 7" at the next relaunch, and one resumed after
 //   weeks moved on with no offer. The last visit is stamped at launch, return and departure, and
 //   a return runs the same check (a banner left up into another week names the week now).
+// - L06 A round set on the programme's last week still fired on its date after the coach added
+//   weeks 13-16 (or the week was stepped back), so those weeks were never trained. A round set
+//   to follow the programme now starts the Monday after its final week as it stands (Today, the
+//   sheet and the coach say the new date); one set mid-programme still ends it early.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -286,4 +290,62 @@ run('M26: the welcome-back check measures from the last visit, at launch and on 
       assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('L06: a round set to follow the programme moves when weeks are added or the week steps back', async () => {
+  const app = await boot({ native: false });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const r = {}, mon = _mostRecentMonday();
+      const start = (week) => {
+        lsDel('kt_routine_next'); setCustomRoutine(Object.assign(getCustomRoutine(), { cycle: 1 }));
+        __setNow(addDays(mon, 2) + 'T10:00:00'); _setWeek(week, mon);
+      };
+      // Week 12 of 12: round 2 set for the Monday after it, then the coach adds weeks 13-16.
+      start(12);
+      setNextRound('monday');
+      r.stored = lsGet('kt_routine_next');
+      const w12 = getCustomRoutine().weeks[11];
+      r.tool = executeCoachTool('update_routine_weeks', { weeks: [13, 14, 15, 16].map(wk => Object.assign(JSON.parse(JSON.stringify(w12)), { wk })) }).ok;
+      r.moved = (_nextRoundSet() || {}).startsOn;
+      switchTab('log'); switchLogSub('workout'); render();
+      r.card = txt().indexOf('Round 2 starts ' + _nrDay(addDays(mon, 35))) >= 0;
+      r.prompt = buildSystemPrompt().indexOf('set the next round to start ' + addDays(mon, 35)) >= 0;
+      openNextRound();
+      r.sheet = /after them/.test(document.getElementById('nrSheet').textContent) && /Keep it for/.test(document.getElementById('nrGo').textContent);
+      closeNextRound();
+      // Cancel and Undo put back what was set, not the moved date.
+      cancelNextRound(); r.cancelled = _nextRoundSet() === null;
+      const undo = [...document.querySelectorAll('button')].find(b => /^Undo$/i.test(b.textContent.trim()));
+      if (undo) undo.click();
+      r.undone = JSON.stringify(lsGet('kt_routine_next')) === JSON.stringify(r.stored);
+      // Its old Monday: week 13, still set. The Monday after week 16: round 2.
+      __setNow(addDays(mon, 7) + 'T08:00:00'); autoAdvanceWeek();
+      r.mon1 = [getCustomRoutine().cycle, currentWeek, (_nextRoundSet() || {}).startsOn];
+      for (let k = 2; k <= 5; k++) { __setNow(addDays(mon, 7 * k) + 'T08:00:00'); autoAdvanceWeek(); }
+      r.after16 = [getCustomRoutine().cycle, currentWeek, getCustomRoutine().weeks.length, getRoutineArchive()[0] && getRoutineArchive()[0].routine ? getRoutineArchive()[0].routine.weeks.length : -1, _nextRoundSet()];
+      // Stepped back from week 12 to 11: week 12 is trained first.
+      setCustomRoutine(Object.assign(getCustomRoutine(), { weeks: getCustomRoutine().weeks.slice(0, 12) }));
+      start(12); setNextRound('monday'); adjustWeek(-1);
+      r.stepped = [currentWeek, (_nextRoundSet() || {}).startsOn];
+      // Set mid-programme (week 10): it ends the programme early on its date, as the sheet says.
+      start(10); setNextRound('monday');
+      r.early = [lsGet('kt_routine_next').afterEnd, (_nextRoundSet() || {}).startsOn];
+      __setNow(addDays(mon, 7) + 'T08:00:00'); autoAdvanceWeek();
+      r.earlyMon = [getCustomRoutine().cycle, currentWeek];
+      r.d = { 7: addDays(mon, 7), 14: addDays(mon, 14), 35: addDays(mon, 35) };
+      return r;
+    }, LOGS);
+    const D = (n) => out.d[n];
+    assert(out.stored.startsOn === D(7) && out.stored.afterEnd === true && out.tool, 'set on the last week, for the Monday after it: ' + JSON.stringify(out.stored));
+    assert(out.moved === D(35) && out.card && out.prompt && out.sheet, 'with weeks 13-16 added it starts after week 16, and Today, the coach and the sheet say so: ' + JSON.stringify(out));
+    assert(out.cancelled && out.undone, 'cancel and undo keep what was set: ' + JSON.stringify(out));
+    assert(JSON.stringify(out.mon1) === JSON.stringify([1, 13, D(35)]), 'its old Monday is week 13 of the same round: ' + JSON.stringify(out.mon1));
+    assert(out.after16[0] === 2 && out.after16[1] === 1 && out.after16[2] === 16 && out.after16[4] === null, 'the Monday after week 16 starts round 2: ' + JSON.stringify(out.after16));
+    assert(JSON.stringify(out.stepped) === JSON.stringify([11, D(14)]), 'stepped back to week 11, it starts after week 12: ' + JSON.stringify(out.stepped));
+    assert(!out.early[0] && out.early[1] === D(7) && JSON.stringify(out.earlyMon) === JSON.stringify([2, 1]), 'set mid-programme, it keeps its date: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });

@@ -10949,9 +10949,19 @@ function _roundTest(cr){
     return !(d===day && t>0 && t<at);
   };
 }
+// A round set to follow the programme (on its last week or after it ended: afterEnd) starts
+// the Monday after the final week as the programme stands, never before the date it was set
+// for: weeks the coach adds, or a week stepped back, are trained first instead of skipped.
+// A round set mid-programme ends it early on purpose and keeps its date.
 function _nextRoundSet(){
   var p=lsGet('kt_routine_next');
-  return (p && typeof p==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(p.startsOn||''))) ? p : null;
+  if(!(p && typeof p==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(p.startsOn||'')))) return null;
+  var cr=p.afterEnd ? getCustomRoutine() : null, total=(cr && Array.isArray(cr.weeks)) ? cr.weeks.length : 0;
+  if(total){
+    var end=currentWeek>=total ? addDays(localStorage.getItem('kt_final_since')||_weekAnchor(), 7) : addDays(_weekAnchor(), 7*(total-currentWeek+1));
+    if(end>p.startsOn) return {startsOn:end, at:p.at, afterEnd:true};
+  }
+  return p;
 }
 // The Monday a following round starts: the one after the final week, else the
 // first Monday after today.
@@ -11039,7 +11049,7 @@ function _applyNextRound(now){
 }
 function setNextRound(when){
   var cr=getCustomRoutine(); if(!cr) return false;
-  var prev=_nextRoundSet();
+  var prev=_nextRoundSet() && lsGet('kt_routine_next');   // as stored (the start may follow the programme)
   if(when==='today' && _nrCanToday()){
     if(!lsSet('kt_routine_next', {startsOn:todayISO(), at:todayISO()})) return false;
     var nb=_applyNextRound(true);
@@ -11049,15 +11059,16 @@ function setNextRound(when){
     render();
     return true;
   }
-  var mon=_nextRoundMonday();
-  if(!lsSet('kt_routine_next', {startsOn:mon, at:todayISO()})) return false;
+  var mon=_nextRoundMonday(), set={startsOn:mon, at:todayISO()};
+  if(_roundInfo()) set.afterEnd=true;   // set on the last week or after the end: it follows the programme (_nextRoundSet)
+  if(!lsSet('kt_routine_next', set)) return false;
   closeNextRound();
   showToast('Round '+((parseInt(cr.cycle,10)||1)+1)+' starts '+_nrDay(mon));
   invalidateCoachCard(); render();
   return true;
 }
 function cancelNextRound(){
-  var p=_nextRoundSet(); if(!p) return;
+  var p=_nextRoundSet() && lsGet('kt_routine_next'); if(!p) return;
   lsDel('kt_routine_next');
   closeNextRound();
   showUndoToast('Next round cancelled', function(){ lsSet('kt_routine_next', p); invalidateCoachCard(); render(); });
@@ -11100,7 +11111,7 @@ function _paintNextRound(){
   }).join('');
   var left=total-currentWeek;
   var ctx=ri ? (ri.ended ? 'This programme ended '+_nrDay(ri.endISO)+'. Week '+total+' repeats until the next round starts.' : 'This is the last week of the programme. It ends '+_nrDay(ri.endISO)+'.')
-             : (left>0 ? 'This programme has '+_plural(left,'week')+' left after this one. Starting the next round ends it early.' : '');
+             : (left>0 ? 'This programme has '+_plural(left,'week')+' left after this one. '+(p && p.afterEnd && _nrWhen==='monday' ? 'The next round starts after them.' : 'Starting the next round ends it early.') : '');
   if(_nrWhen==='monday') ctx+=(ctx?' ':'')+'The round is built on the morning it starts, so sessions before then still count.';
   var keep=!!(p && _nrWhen==='monday' && p.startsOn===mon);
   var go=_nrWhen==='today' ? 'Start round '+nxt+' today' : (keep ? 'Keep it for '+_nrDay(mon) : 'Start round '+nxt+' on '+_nrDay(mon));
@@ -11156,7 +11167,7 @@ function _nextRoundPrompt(){
   var out='', ri=_roundInfo(), p=_nextRoundSet(), cy=parseInt(cr.cycle,10)||1, total=cr.weeks.length;
   if(cy>1) out+=' — round '+cy+' of this programme (the app rebuilt it from round '+(cy-1)+' with every weighted lift re-based on the user\u2019s best)';
   if(ri) out+=ri.ended ? ' — THE PROGRAMME HAS ENDED ('+ri.endISO+'); its last week repeats until the next round starts' : ' — the LAST week of the programme (it ends '+ri.endISO+')';
-  if(p) out+='. The user has set the next round to start '+p.startsOn+': the app rebuilds this programme week for week with each weighted lift starting about 10% under their best this round; you can edit it once it starts';
+  if(p) out+='. The user has set the next round to start '+p.startsOn+(p.afterEnd?' (the Monday after the programme\u2019s last week: weeks added move it later)':'')+': the app rebuilds this programme week for week with each weighted lift starting about 10% under their best this round; you can edit it once it starts';
   else if(ri) out+='. Settings > Routines > "Your next '+total+' weeks" (or the Today card) starts the next round on the phone; offer it, or a new programme if they want something different';
   return out;
 }
