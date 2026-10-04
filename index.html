@@ -17354,10 +17354,22 @@ function _backupWeightFor(name){
   });
   return (found!=null && !isNaN(found))?found:null;
 }
+// What an update_routine_weeks call saved, whatever it reported: {weeks, plan}. A call that
+// failed part-way had saved the weeks before its error (and its cadence), and a cadence-only
+// call writes no week; the pill and PLAN CHANGES read "No weeks changed" or nothing for those.
+function _routineCallSaved(tc){
+  var r=(tc&&tc.result)||{}, i=(tc&&tc.input)||{};
+  var plan=Array.isArray(i.weekPlan)&&i.weekPlan.length===7;
+  // A failed call carries `written` only once validation passed; it saved if that wrote anything.
+  var saved=r.ok!==false || (Array.isArray(r.written) && (r.written.length>0 || plan));
+  if(!saved) return {weeks:[], plan:false};
+  var ws=Array.isArray(r.weeks)?r.weeks:Array.isArray(r.written)?r.written:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+  return {weeks:ws, plan:plan};
+}
 function _planChangeLedger(tools, idx){
   var rows=[];
   (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
-    if(!tc || !tc.result || tc.result.ok===false) return;
+    if(!tc || !tc.result || (tc.result.ok===false && !(tc.name==='update_routine_weeks' && Array.isArray(tc.result.written)))) return;
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
@@ -17365,8 +17377,9 @@ function _planChangeLedger(tools, idx){
     } else if(tc.name==='swap_cadence_days'){
       rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
     } else if(tc.name==='update_routine_weeks'){
-      var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+      var sv=_routineCallSaved(tc), ws=sv.weeks;
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
+      if(sv.plan) rows.push(['Weekly cadence', 'changed']);
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
@@ -17394,17 +17407,19 @@ function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLa
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
-    // Prefer what was actually written (result.weeks) over what was requested —
-    // past weeks get silently skipped and shouldn't appear in the pill.
-    var ws=(tc.result&&Array.isArray(tc.result.weeks))
-      ?tc.result.weeks
-      :(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
-    if(!ws.length) return 'No weeks changed';
-    if(ws.length===1) return 'Week '+ws[0]+' updated';
-    return 'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws)+' updated';
+    // Prefer what was actually saved over what was requested — past weeks get
+    // silently skipped and shouldn't appear in the pill, and a call that failed
+    // part-way says which weeks it saved and which it did not.
+    var sv=_routineCallSaved(tc), ws=sv.weeks;
+    var lbl=!ws.length?'':ws.length===1?'Week '+ws[0]:'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws);
+    if(sv.plan) lbl=lbl?lbl+' and the weekly cadence':'Weekly cadence';
+    if(!lbl) return 'No weeks changed';
+    var lost=(tc.result&&tc.result.ok===false&&Array.isArray(i.weeks))?i.weeks.map(function(w){ return parseInt(w&&w.wk); }).filter(function(x){ return x>0 && ws.indexOf(x)<0 && (tc.result.skipped||[]).indexOf(x)<0; }):[];
+    return lbl+' updated'+(lost.length?' · '+(lost.length===1?'week ':'weeks ')+lost.join(', ')+' not saved':'');
   }
+  if(n==='swap_cadence_days') return (i.dayA||'?')+' ⇄ '+(i.dayB||'?')+(i.scope==='global'?' · every week':parseInt(i.week)?' · week '+parseInt(i.week):' · this week');
   if(n==='set_current_week') return 'Week set to '+i.week;
-  if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
+  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+' logged'+(i.date?' · '+i.date:'');
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');

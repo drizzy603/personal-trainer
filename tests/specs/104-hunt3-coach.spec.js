@@ -26,6 +26,11 @@
 // - L39 a reply's text blocks from separate tool rounds are separate paragraphs ("On it.Bench is
 //   …" ran together and a %% block glued to the line before it printed raw); the text that
 //   carries on a reply cut off at max_tokens still joins it mid-word.
+// - L40 pills and PLAN CHANGES say what was saved: a day swap has a label (it read
+//   "swap_cadence_days"), a cadence change is named and gets its card and Undo ("No weeks
+//   changed"), a call that failed after saving a week says which weeks it saved and which it did
+//   not, with a card and Undo (a red "Weeks 6–15 updated" and no Undo), a call that saved
+//   nothing says so; a logged session goes by its day's name.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -380,6 +385,54 @@ run('L39: text from separate tool rounds is separate paragraphs; a cut-off reply
     assert(out.cut === 'Your squat has climbed for three weeks straight, so hold the load this week.', 'a reply cut off at max_tokens carries on mid-word: ' + JSON.stringify(out.cut));
     assert(out.blocks.indexOf('Logging that run now.\n\n%%type: Run analysis') === 0, 'the %% block starts its own line: ' + JSON.stringify(out.blocks));
     assert(out.eyebrows.indexOf('COACH · Run analysis') >= 0 && !out.raw, 'the structured answer renders, no raw markers: ' + JSON.stringify(out.eyebrows));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L40: pills and PLAN CHANGES say what was saved: a day swap, a cadence change, a part-saved call, a named day', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const mock = eval(MOCK), r = {}, c = currentWeek - 1, wk = currentWeek;
+      let n = 0;
+      const turn = async (ask, tools) => {
+        mock([{ content: tools.map(t => ({ type: 'tool_use', id: 'l40-' + (n++), name: t.name, input: t.input })), stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: ask });
+        await runCoachTurn('sys', 'claude-haiku-4-5', 512);
+        currentTab = 'coach'; coachView = 'chat'; render(); await wait(20);
+        const pills = [...document.querySelectorAll('#screen span')].map(s => s.textContent.trim()).filter(t => /^[✓✕] /.test(t));
+        const led = document.querySelector('.kt-ledger-card');
+        return { pill: pills[pills.length - 1], rows: led ? [...led.querySelectorAll('.kt-ledger-row')].map(x => x.textContent) : [], undo: !!(led && [...led.querySelectorAll('button')].some(b => b.textContent === 'Undo')) };
+      };
+      r.swap = await turn('do pull tomorrow and push today', [{ name: 'swap_cadence_days', input: { dayA: 'Wed', dayB: 'Thu' } }]);
+      // the coach changes the cadence and sends a past week's header with it
+      const w1 = getCustomRoutine().weeks[0];
+      r.cadence = await turn('train legs on Fridays', [{ name: 'update_routine_weeks', input: { weekPlan: ['Push', 'Run', 'Pull', 'Rest', 'Legs', 'Run', 'Rest'], weeks: [{ wk: 1, bName: w1.bName, bColor: w1.bColor }] } }]);
+      r.planSaved = getCustomRoutine().weekPlan.join(',') === 'Push,Run,Pull,Rest,Legs,Run,Rest';
+      // this week is saved, then a week past the end fails
+      const w = getCustomRoutine().weeks[c], before = w.push[0].sets + 'x' + w.push[0].reps, gap = getTotalWeeks() + 3;
+      r.gap = gap;
+      r.part = await turn('rewrite this week and a later one', [{ name: 'update_routine_weeks', input: { weeks: [{ wk, bName: w.bName, bColor: w.bColor, push: [{ name: w.push[0].name, sets: 5, reps: 5, weight: 185, isMain: true }] }, { wk: gap, bName: 'X', bColor: '#000000', push: [] }] } }]);
+      r.partSaved = getCustomRoutine().weeks[c].push.length === 1 && getCustomRoutine().weeks[c].push[0].sets === 5;
+      [...document.querySelectorAll('.kt-ledger-card button')].find(b => b.textContent === 'Undo').click(); await wait(10);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+      const back = getCustomRoutine().weeks[c].push[0];
+      r.undone = back.sets + 'x' + back.reps === before && getCustomRoutine().weeks[c].push.length > 1;
+      // a call that fails before saving anything
+      r.none = await turn('rewrite this week', [{ name: 'update_routine_weeks', input: { weeks: [{ wk, bName: '', bColor: '' }] } }]);
+      setDayName('Push', 'Chest + Tris');
+      r.logged = await turn('log my chest day', [{ name: 'log_session', input: { type: 'Push', date: addDays(todayISO(), -1), exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 165 }] } }]);
+      r.yday = addDays(todayISO(), -1); r.wk = wk;
+      return r;
+    }, MOCK);
+    assert(out.swap.pill === '✓ Wed ⇄ Thu · this week' && out.swap.rows.length === 1 && out.swap.undo, 'a day swap is named: ' + JSON.stringify(out.swap));
+    assert(out.planSaved && out.cadence.pill === '✓ Weekly cadence updated' && out.cadence.rows[0] === 'Weekly cadencechanged' && out.cadence.undo, 'a cadence change is named and can be undone: ' + JSON.stringify(out.cadence));
+    assert(out.partSaved && out.part.pill === '✕ Week ' + out.wk + ' updated · week ' + out.gap + ' not saved', 'a part-saved call says what it saved: ' + JSON.stringify(out.part));
+    assert(out.part.rows[0] === 'Week ' + out.wk + 'rewritten' && out.part.undo && out.undone, 'and its card undoes it: ' + JSON.stringify(out.part) + ' undone ' + out.undone);
+    assert(out.none.pill === '✕ No weeks changed' && !out.none.rows.length, 'a call that saved nothing says so, with no card: ' + JSON.stringify(out.none));
+    assert(out.logged.pill === '✓ Chest + Tris logged · ' + out.yday, 'a logged session goes by its day\'s name: ' + out.logged.pill);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
