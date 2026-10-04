@@ -12779,15 +12779,18 @@ function renderActivityCards(){
   var map={};
   logs.forEach(function(log){if(!map[log.type])map[log.type]=[];map[log.type].push(log);});
   var types=Object.keys(map).sort(function(a,b){return new Date(map[b][0].date)-new Date(map[a][0].date);});
-  var now=new Date();
+  // Days between local midnights: counted from now, today's ride read 'Yesterday' every
+  // afternoon (and the 2-week count dropped its edge day).
+  var today0=new Date(todayISO()+'T00:00:00');
+  var daysBack=function(iso){ return Math.round((today0-new Date(iso+'T00:00:00'))/86400000); };
   var cards=types.map(function(type){
     var tl=map[type],s=sMap[type]||{icon:'+',color:'#888'},last=tl[0],count=tl.length;
-    var daysAgo=Math.round((now-new Date(last.date+'T00:00:00'))/86400000);
+    var daysAgo=daysBack(last.date);
     var when=daysAgo===0?'Today':daysAgo===1?'Yesterday':daysAgo+' days ago';
     var sum=buildSportSummary(last);
     var active=logSportType===type;
     // weekly frequency: sessions in last 14 days
-    var recent14=tl.filter(function(l){return Math.round((now-new Date(l.date+'T00:00:00'))/86400000)<=14;}).length;
+    var recent14=tl.filter(function(l){return daysBack(l.date)<=14;}).length;
     var freqStr=recent14>0?recent14+'× last 2 wks':'';
     return '<div class="kt-actcard'+(active?' on':'')+'" data-sport="'+_esc(type)+'" onclick="openActivityCard(this)" style="flex-shrink:0;width:148px;cursor:pointer;'+
       'background:'+(active?s.color+'1a':'var(--card2)')+';border:2px solid '+(active?s.color:'var(--border)')+';'+

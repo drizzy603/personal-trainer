@@ -21,6 +21,8 @@
 // - M39: on an activity tab, another activity's "Log +" card opens it (its own tab, or the + tab
 //   with it picked; Other for a type outside the catalogue) instead of doing nothing, and a
 //   coach-logged type with an apostrophe no longer breaks the card's handler.
+// - M55: My Activities counts days between local midnights: today's ride read 'Yesterday' from
+//   noon on, and the 2-week count dropped its edge day.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -364,5 +366,38 @@ run('M39: an activity card opens its activity from another activity tab; a type 
     assert(out.unpinned === 'sport/Yoga picked', 'another activity\'s card opens the + tab with it picked: ' + out.unpinned);
     assert(out.custom === 'sport/Other', 'an activity outside the catalogue opens as Other: ' + out.custom);
     assert(app.errors.length === 0, 'no page errors (the apostrophe used to throw): ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M55: My Activities says Today for today\'s activity in the afternoon, and counts the 2-week edge day', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_log_tabs: JSON.stringify(['Cycling', 'run', 'body']) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const t = todayISO();
+      lsSet('kt_sports', [
+        { id: 1785000000004, date: t, type: 'Cycling', duration: 45, data: {}, notes: '' },
+        { id: 1785000000003, date: addDays(t, -1), type: 'Yoga', duration: 30, data: {}, notes: '' },
+        { id: 1785000000002, date: addDays(t, -14), type: 'Yoga', duration: 30, data: {}, notes: '' },
+      ]);
+      // The wall clock at a given local hour of today (the page reads Date when it renders).
+      const RealDate = Date;
+      const at = h => { const d = new RealDate(t + 'T00:00:00'); d.setHours(h, 30, 0, 0); return d.getTime(); };
+      const clock = ms => {
+        const off = ms - RealDate.now();
+        function FakeDate(...a) { if (!(this instanceof FakeDate)) return new RealDate(RealDate.now() + off).toString(); return a.length ? new RealDate(...a) : new RealDate(RealDate.now() + off); }
+        FakeDate.prototype = RealDate.prototype; FakeDate.now = () => RealDate.now() + off; FakeDate.parse = RealDate.parse; FakeDate.UTC = RealDate.UTC;
+        window.Date = FakeDate;
+      };
+      const read = () => [...document.querySelectorAll('#screen .kt-actcard')].map(c => c.getAttribute('data-sport') + ':' + c.querySelector('.kt-actcard-when').textContent + ':' + (/(\d+)× last 2 wks/.exec(c.textContent) || [0, 0])[1]).sort().join(' ');
+      const r = {};
+      switchTab('log'); switchLogSub('Cycling');
+      for (const h of [9, 15, 23]) { clock(at(h)); render(); await wait(20); r['h' + h] = read(); }
+      window.Date = RealDate; render();
+      return r;
+    });
+    const want = 'Cycling:Today:1 Yoga:Yesterday:2';
+    assert(out.h9 === want && out.h15 === want && out.h23 === want, 'the cards read the same at 09:30, 15:30 and 23:30: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
