@@ -18,6 +18,9 @@
 //   logged before it (the share card's rule), and read '—' when there is none.
 // - L13 kg: the runner Edit sheet's weight stepper steps from the exact load onto the 0.25 kg grid,
 //   like the runner's own stepper (it stepped from the 0.5 kg display: 80 kg + 3 steps stored 83.25).
+// - L14 a correction typed on a superset partner's set during the shared rest stays with that set:
+//   the first lift's EDIT shows its own numbers and ✓ keeps them; the partner's card still has it;
+//   a typed correction on a plain card still survives the rest's end.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -427,6 +430,69 @@ run('L13 kg: the Edit sheet weight stepper lands where the runner stepper does',
     assert(out.sheet === out.grid && out.runner === out.grid && out.saved === out.grid, 'three 1.25 kg steps from 80 kg store 83.75 kg, as the runner stepper does: ' + JSON.stringify(out));
     assert(out.roundTrip === out.grid, 'a step up and back lands on the same load: ' + JSON.stringify(out));
     assert(out.shown === out.gridShown, 'the field shows the load: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L14 a correction typed on a superset partner stays with that set', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press') e.ss = true; });
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      const field = () => [(document.getElementById('kt-edit-w') || {}).value, (document.getElementById('kt-edit-r') || {}).value];
+      const editRow = i => [...document.querySelectorAll('#runner-root .kt-lr-act')][i];
+      const tick = () => [...document.querySelectorAll('#runner-root button')].find(b => b.textContent.trim() === '\u2713');
+      const restEnds = async () => { runnerRestEndsAt = Date.now() - 1000; _restFinish(); await wait(20); };
+      const pairSet = async (wa, ra, wb, rb) => {
+        runnerEngaged = true; runnerSetWeight(wa); runnerSetReps(ra); runnerCompleteSet(); await wait(20);
+        runnerSetWeight(wb); runnerSetReps(rb); runnerCompleteSet(); await wait(20);
+      };
+      openDeckRunner('Push'); await wait(20);
+      const A = runnerSession.exercises[0].name, B = runnerSession.exercises[1].name;
+      await pairSet(185, 5, 95, 8);
+      r.pairRest = [_runnerEx().name, runnerResting];
+      // during the shared rest: EDIT on the partner's S1, a correction typed, then the rest ends
+      editRow(0).click(); await wait(20);
+      document.getElementById('kt-edit-w').value = '100'; document.getElementById('kt-edit-r').value = '9';
+      await restEnds();
+      r.back = _runnerEx().name;
+      // back on the first lift: its EDIT shows its own set, and the tick keeps it
+      runnerEngaged = false; paintRunner(); await wait(20);
+      editRow(0).click(); await wait(20);
+      r.firstField = field();
+      tick().click(); await wait(20);
+      r.first = [runnerWeightsLog[A][0], runnerRepsLog[A][0]];
+      r.partner = [runnerWeightsLog[B][0], runnerRepsLog[B][0]];
+      // second round: the partner's typed correction is still on its own card after the jump back
+      runnerGoTo(0); await pairSet(185, 5, 95, 8);
+      editRow(1).click(); await wait(20);
+      document.getElementById('kt-edit-w').value = '97.5'; document.getElementById('kt-edit-r').value = '7';
+      await restEnds();
+      r.back2 = _runnerEx().name;
+      runnerGoTo(1); await wait(20);
+      r.partnerField = field();
+      // a plain card: a typed correction survives the rest's end
+      const ii = runnerSession.exercises.findIndex((e, i) => i > 1 && !e.ss && !(runnerSession.exercises[i - 1] || {}).ss);
+      runnerGoTo(ii); runnerEngaged = true; runnerSetWeight(50); runnerSetReps(10); runnerCompleteSet(); await wait(20);
+      r.plainRest = runnerResting;
+      editRow(0).click(); await wait(20);
+      document.getElementById('kt-edit-w').value = '55'; document.getElementById('kt-edit-r').value = '11';
+      await restEnds();
+      r.plainField = field();
+      closeDeckRunner();
+      r.A = A; r.B = B;
+      return r;
+    });
+    assert(out.pairRest[0] === out.B && out.pairRest[1] === true && out.back === out.A && out.back2 === out.A, 'the pair rests on the partner and lands back on the first lift: ' + JSON.stringify([out.pairRest, out.back, out.back2]));
+    assert(JSON.stringify(out.firstField) === '["185","5"]' && JSON.stringify(out.first) === '[185,5]', 'the first lift\'s EDIT shows its own set and keeps it: ' + JSON.stringify([out.firstField, out.first]));
+    assert(JSON.stringify(out.partner) === '[95,8]', 'the partner\'s set is unchanged: ' + JSON.stringify(out.partner));
+    assert(JSON.stringify(out.partnerField) === '["97.5","7"]', 'the partner\'s card still has its typed correction: ' + JSON.stringify(out.partnerField));
+    assert(out.plainRest && JSON.stringify(out.plainField) === '["55","11"]', 'a typed correction on a plain card survives the rest: ' + JSON.stringify([out.plainRest, out.plainField]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

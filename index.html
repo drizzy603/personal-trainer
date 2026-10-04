@@ -2137,7 +2137,7 @@ var runnerWeightsLog  = {};         // {exId: [weight per completed set]}
 var runnerRpe         = {};         // {exId: currentRpe} — stepper state
 var runnerRpeLog      = {};         // {exId: [rpe per completed set]}
 var runnerEditSetIdx  = null;       // set index currently being edited (or null)
-var _runnerEditDraft  = null;       // {w, r} typed into an open ledger edit, carried across one repaint
+var _runnerEditDraft  = null;       // {ex, idx, w, r} typed into an open ledger edit, carried across one repaint
 var runnerEditSetEx   = null;       // exercise name for that edit
 var runnerExEditIdx   = null;       // exercise index open in the ex-edit sheet
 var runnerExPickerQ   = '';         // search query in exercise picker
@@ -8723,11 +8723,13 @@ function _restFinish(){
   _ssJumpBack();
   paintRunner();
 }
-// Carry whatever is typed in an open ledger edit across the next repaint.
+// Carry whatever is typed in an open ledger edit across the next repaint. Keyed to the set it
+// was typed for: the rest's end can move the deck to a superset partner, and the draft landed in
+// that lift's set as soon as its EDIT was tapped.
 function _stashRunnerEdit(){
   if(runnerEditSetIdx==null) return;
   var wEl=document.getElementById('kt-edit-w'), rEl=document.getElementById('kt-edit-r');
-  if(wEl||rEl) _runnerEditDraft={w:wEl?wEl.value:null, r:rEl?rEl.value:null};
+  if(wEl||rEl) _runnerEditDraft={ex:runnerEditSetEx, idx:runnerEditSetIdx, w:wEl?wEl.value:null, r:rEl?rEl.value:null};
 }
 // After a superset pair's shared rest, land back on the first movement.
 function _ssJumpBack(){
@@ -9375,6 +9377,7 @@ function closeRunnerCueSheet(){
 function runnerStartEditSet(idx){
   var ex=_runnerEx(); if(!ex) return;
   if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
+  _runnerEditDraft=null;   // a new edit starts from the logged set
   runnerEditSetIdx=idx; runnerEditSetEx=ex.name; paintRunner();
   var ed=document.querySelector('#runner-root .kt-done-scroll input');
   if(ed && ed.scrollIntoView) ed.scrollIntoView({block:'nearest'});
@@ -9418,7 +9421,7 @@ function _renderCompletedSets(ex){
     var w=(runnerWeightsLog[ex.name]||[])[i];
     var r=(runnerRepsLog[ex.name]||[])[i];
     if(runnerEditSetIdx===i&&runnerEditSetEx===ex.name){
-      var _ed=_runnerEditDraft||{}; _runnerEditDraft=null;
+      var _ed=(_runnerEditDraft && _runnerEditDraft.ex===ex.name && _runnerEditDraft.idx===i) ? _runnerEditDraft : {}; _runnerEditDraft=null;
       rows+='<div class="kt-lr" style="gap:5px;" onclick="event.stopPropagation()">'+
         '<span class="kt-lr-idx">S'+(i+1)+'</span>'+
         '<input id="kt-edit-w" type="number" inputmode="decimal" value="'+_esc(_ed.w!=null?_ed.w:(w!=null?wDisp(w):''))+'" placeholder="'+_uW()+'" step="'+(_uW()==='kg'?'1.25':'2.5')+'" min="0" style="width:48px;padding:4px 5px;border-radius:6px;border:none;font-size:14px;font-weight:700;font-family:inherit;text-align:center;background:'+inputBg+';color:inherit;" onclick="event.stopPropagation();this.select()" oninput="event.stopPropagation()" onchange="event.stopPropagation()"/>'+
