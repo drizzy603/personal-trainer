@@ -17,7 +17,9 @@
 //   snapshot notes it), unless a newer log set its own; Restore Previous again swaps it back; a
 //   working-weight-only reply is an undo point too (M20).
 // - Restore previous programme is a row in Settings › Programme whenever there is a previous
-//   version (keyless owners included), and How It Works points there (M22).
+//   version (keyless owners included), and How It Works points there (M22). After a new
+//   programme or a reset it holds the programme as it was, not a stale copy from before its last
+//   edit (M17/M22 follow-up).
 // - A restore (or Undo last restore) before a new programme has started keeps its start: the
 //   backup carries kt_week_monday, and week 1 on a Monday still ahead is kept (M23).
 // - Restoring from a full Programme History keeps the oldest entry (only the restored one leaves),
@@ -368,6 +370,37 @@ run('Restore previous programme is a Settings row, keyless too, where How It Wor
     assert(!out.noBackup, 'no row without a previous version');
     assert(out.shown === 'Programme' && out.restored, 'the row sits under Programme and restores the previous version: ' + JSON.stringify(out));
     assert(out.how, 'How It Works points at the row that exists');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('after a new programme or a reset, Restore Previous brings back the programme as it was', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      const bench = o => o.weeks[0].push.find(e => e.name === 'Bench Press').weight;
+      const r = {};
+      // an edit leaves a snapshot from before it
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', 0, bench(cr) + 30, { markOwner: true }), { scope: 'routines' });
+      const edited = localStorage.getItem('kt_routine');
+      startNewProgramme(); await wait(20); confirm(); await wait(30);
+      r.newProg = { routine: getCustomRoutine(), backup: localStorage.getItem('kt_routine_backup') === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
+      applyStarterRoutine({ goal: 'strength', days: 3, exp: 'intermediate', equip: 'full', focus: 'balanced' }); await wait(20);
+      r.starter = { name: getCustomRoutine().name, backup: localStorage.getItem('kt_routine_backup') === edited };
+      await restorePrev();
+      r.back = localStorage.getItem('kt_routine') === edited;
+      resetCustomRoutine(); await wait(20); confirm(); await wait(30);
+      r.reset = { routine: getCustomRoutine(), backup: localStorage.getItem('kt_routine_backup') === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
+      await restorePrev();
+      r.backAgain = localStorage.getItem('kt_routine') === edited;
+      return r;
+    });
+    assert(out.newProg.routine === null && out.newProg.backup && /^new:/.test(out.newProg.scope || ''), 'a new programme sets the old one aside as it was: ' + JSON.stringify(out.newProg));
+    assert(out.starter.backup && out.back, 'the starter plan keeps it, and Restore Previous brings it back: ' + JSON.stringify([out.starter, out.back]));
+    assert(out.reset.routine === null && out.reset.backup && /^reset:/.test(out.reset.scope || '') && out.backAgain, 'a reset sets it aside too: ' + JSON.stringify([out.reset, out.backAgain]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

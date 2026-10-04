@@ -3438,8 +3438,10 @@ function deleteArchivedRoutine(id){
 }
 function startNewProgramme(){
   _ktConfirm({title:'Start a new programme?',body:'Your current one will be archived and the Coach will build your new one.',confirmLabel:'Archive & start fresh',onConfirm:function(){
+    var cur=getCustomRoutine();
     if(!archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     clearCustomRoutine();
+    _routineReplaced(cur, 'new:'+Date.now());   // Restore Previous brings it back as it was, not a stale copy from before its last edit
     lsDel('kt_routine_next'); lsDel('kt_round_intro');
     _setWeek(1);
     _setIntakeMode(false);
@@ -17401,8 +17403,9 @@ function hasRoutineBackup(){ var b=lsGet('kt_routine_backup'); return !!(b&&b.we
 function _setBackupScope(sc){ try{ if(sc) localStorage.setItem('kt_routine_backup_scope', String(sc)); else localStorage.removeItem('kt_routine_backup_scope'); }catch(e){} }
 function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routine_backup_scope')===String(sc) && hasRoutineBackup(); }catch(e){ return false; } }
 // A programme replaced as a whole (the next round, a Programme History restore, the starter
-// plan): the one it replaced becomes Restore Previous under its own scope, so no undo point taken
-// before reaches across. An earlier coach reply's Undo restored its stale snapshot of round 1 over
+// plan, a new programme, a reset): the one it replaced becomes Restore Previous under its own
+// scope (when there was none, what was set aside before stays), so no undo point taken before
+// reaches across. An earlier coach reply's Undo restored its stale snapshot of round 1 over
 // round 2 (at week 1, under ROUND 2 · WEEK 1), and Restore Previous after a history restore and an
 // edit brought back the other programme.
 function _routineReplaced(prev, scope){
@@ -17484,7 +17487,9 @@ function restoreRoutineBackup(onDone){
 
 function resetCustomRoutine(){
   _ktConfirm({title:'Reset your programme?',body:'Your routine will be removed. Logged sessions are kept.',confirmLabel:'Reset',onConfirm:function(){
+    var cur=getCustomRoutine();
     clearCustomRoutine();
+    _routineReplaced(cur, 'reset:'+Date.now());   // it is archived nowhere: Restore Previous brings it back as it was
     _setWeek(1);
     _setIntakeMode(false); clearCoachHistory();
     render(); showToast('Programme reset. You can generate a new one anytime.');
