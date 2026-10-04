@@ -7,10 +7,10 @@
 //   (the reps of the set heavier only in storage) and split "72.5×5  72.5×6  72.5×6 kg"; now
 //   72.5 kg × 6, −2 reps and "72.5 kg · 5, 6, 6 reps", and a record reads the same top set.
 // - L46: a session is stamped with its week's block when it is filed (runner, wrist, the coach's
-//   log_session), so its card keeps it after a new programme (an old week-4 BASE session read
-//   WEEK 04 · BUILD). This round's sessions read the programme as it stands (and follow a log
-//   moved to another week); an unstamped older one reads it only while no programme or round has
-//   replaced it since, else no block.
+//   log_session: bName, and bWk for the week it was filed in), so its card keeps it after a new
+//   programme, even one started the same week (an old week-4 BASE session read WEEK 04 · BUILD).
+//   A log with no stamp, or moved to another week, reads the programme as it stands only if it
+//   belongs to it (this round, or no programme or round has replaced it since), else no block.
 // - L47: the card's duration rounds to whole minutes before it splits off the hours: the last
 //   30 s of every hour read "1 h 60 min" (and 59:30 read "60 min").
 // - L48: a 0-load set on a loaded lift reads 0 in the card's set list ("0×10  20×10  20×10 lb",
@@ -24,8 +24,6 @@
 //   calendar days across that night.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
-const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 // One browser at a time: each run starts when the one before it has finished.
 let queue = Promise.resolve();
 const run = (name, fn) => { queue = queue.then(() => new Promise(done => run1(name, () => fn().finally(done)))); };
@@ -33,14 +31,13 @@ const run = (name, fn) => { queue = queue.then(() => new Promise(done => run1(na
 run('M56: the day sheet title names the year only for a day outside this year', async () => {
   const app = await boot({ native: true });
   try {
-    // 400 days back is always in an earlier calendar year; Jan 1 is always in this one.
-    const old = daysAgo(400), jan1 = new Date().getFullYear() + '-01-01';
-    const out = await app.page.evaluate(({ old, jan1 }) => ({
-      today: _calDayName(todayISO(), true), jan1: _calDayName(jan1, true), old: _calDayName(old, true), oldShort: _calDayName(old),
-    }), { old, jan1 });
-    const y = old.slice(0, 4);
+    const out = await app.page.evaluate(() => {
+      // 400 days back is always in an earlier calendar year; Jan 1 is always in this one.
+      const old = addDays(todayISO(), -400), jan1 = todayISO().slice(0, 4) + '-01-01';
+      return { y: old.slice(0, 4), today: _calDayName(todayISO(), true), jan1: _calDayName(jan1, true), old: _calDayName(old, true), oldShort: _calDayName(old) };
+    });
     assert(!/\d{4}/.test(out.today) && !/\d{4}/.test(out.jan1), 'this year\'s days read without a year: ' + JSON.stringify(out));
-    assert(out.old.endsWith(', ' + y) && out.oldShort.endsWith(', ' + y), 'a day in another year names it: ' + JSON.stringify(out));
+    assert(out.old.endsWith(', ' + out.y) && out.oldShort.endsWith(', ' + out.y), 'a day in another year names it: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
@@ -80,7 +77,7 @@ run('L46: a shared card keeps the block its session was trained in', async () =>
     const out = await app.page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const r = {}, cr = getCustomRoutine();
-      r.live = String(cr.weeks[currentWeek - 1].bName);
+      r.live = String(cr.weeks[currentWeek - 1].bName); r.week = currentWeek;
       // every writer stamps the week's block: the coach's log, the wrist and the runner
       executeCoachTool('log_session', { type: 'Pull', date: todayISO(), exercises: [{ name: 'Barbell Row', sets: 3, reps: 8, weight: 135 }] });
       window.__mock.pending.push(JSON.stringify({ dayName: 'Legs', loggedAt: todayISO() + 'T07:00:00', exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 185 }] }));
@@ -90,17 +87,20 @@ run('L46: a shared card keeps the block its session was trained in', async () =>
       runnerSetReps(8); runnerCompleteSet(); runnerFinishSession(); await wait(30);
       const today = getSessions().filter(s => s.date === todayISO());
       const filed = [today.find(s => s.source === 'coach'), today.find(s => s.note === 'From Apple Watch'), today.find(s => s.type === 'Push' && s.note === '')];
-      r.stamps = filed.map(s => s && s.bName);
-      // a log from before the stamp, older than this round: the programme still answers for it
+      r.stamps = filed.map(s => s && [s.bName, s.bWk]);
+      const phases = () => filed.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+      // a log from before stamps, older than this round: the programme still answers for it
       const legacy = getSessions().find(s => !s.bName && s.week && s.date < _roundStartISO() && (s.exercises || []).length);
       r.legacy0 = _shareCardModel(legacy).phase === String(cr.weeks[legacy.week - 1].bName).toUpperCase();
-      // a new programme whose blocks are named otherwise (as the starter intake swaps it in)
+      // a new programme whose blocks are named otherwise, as the starter intake swaps it in
       const nr = JSON.parse(JSON.stringify(cr));
       nr.weeks.forEach((w, i) => { w.bName = 'NEW' + (i + 1); });
       archiveCurrentRoutine(); setCustomRoutine(nr); _startProgramme();
-      r.after = filed.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
-      r.legacy = _shareCardModel(legacy).phase;
-      // in the new programme's own weeks a card reads it as it stands, and follows a log to another week
+      r.after = phases(); r.legacy = _shareCardModel(legacy).phase;
+      // started this week instead (Start week 1 today, a Monday start): today's earlier logs keep theirs
+      _setWeek(1, _mostRecentMonday());
+      r.afterNow = phases();
+      // the new programme's own weeks read it as it stands, and a log moved to another week follows
       _setWeek(2, _mostRecentMonday());
       executeCoachTool('log_session', { type: 'Legs', date: todayISO(), exercises: [{ name: 'Leg Press', sets: 3, reps: 10, weight: 200 }] });
       const fresh = getSessions().find(s => s.source === 'coach' && s.type === 'Legs');
@@ -109,9 +109,11 @@ run('L46: a shared card keeps the block its session was trained in', async () =>
       r.moved = _shareCardModel(getSessions().find(x => x.id === fresh.id)).phase;
       return r;
     });
-    assert(out.stamps.every(b => b === out.live), 'the coach, the wrist and the runner stamp this week\'s block: ' + JSON.stringify(out));
+    const L = out.live.toUpperCase();
+    assert(out.stamps.every(b => b && b[0] === out.live && b[1] === out.week), 'the coach, the wrist and the runner stamp this week\'s block: ' + JSON.stringify(out));
     assert(out.legacy0, 'an old unstamped log reads the programme while it is still the one it was logged in');
-    assert(out.after.every(p => p === out.live.toUpperCase()) && out.legacy === '', 'after a new programme, a stamped card keeps its block and an unstamped one claims none: ' + JSON.stringify([out.after, out.legacy]));
+    assert(out.after.every(p => p === L) && out.legacy === '', 'after a new programme, a stamped card keeps its block and an unstamped one claims none: ' + JSON.stringify([out.after, out.legacy]));
+    assert(out.afterNow.every(p => p === L), 'a programme started the same week leaves the day\'s earlier cards on their block: ' + JSON.stringify(out.afterNow));
     assert(out.fresh[0] === 'NEW2' && out.fresh[1] === 'NEW2' && out.moved === 'NEW1', 'the current programme\'s weeks read live: ' + JSON.stringify([out.fresh, out.moved]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
@@ -181,7 +183,7 @@ run('L49: the first share card already draws latin-ext letters in the room\'s fa
       });
       assert(out.hero === 'Ściąganie', theme + ': the card names the day: ' + out.hero);
       // Heavyweight draws in Anton and Archivo, Lime in Inter: latin and latin-ext of each
-      assert(out.loaded.length === (theme === 'heavyweight' ? 4 : 2) && out.loaded.every(f => /:loaded$/.test(f)), theme +': both subsets of every face the card uses are loaded before it draws: ' + JSON.stringify(out.loaded));
+      assert(out.loaded.length === (theme === 'heavyweight' ? 4 : 2) && out.loaded.every(f => /:loaded$/.test(f)), theme + ': both subsets of every face the card uses are loaded before it draws: ' + JSON.stringify(out.loaded));
       assert(out.same, theme + ': the first card\'s hero is drawn as the second one is');
       assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
@@ -191,18 +193,23 @@ run('L49: the first share card already draws latin-ext letters in the room\'s fa
 run('L57: a calendar day or week back stays one across the night the clocks go back', async () => {
   const app = await boot({ native: true });
   try {
-    const cdp = await app.page.context().newCDPSession(app.page);
-    const out = {};
+    const browser = app.page.context().browser(), url = app.page.url(), out = {};
     // this year's last Sunday of October (London) and first Sunday of November (Los Angeles)
     for (const [tz, month, pick] of [['Europe/London', 9, 'last'], ['America/Los_Angeles', 10, 'first']]) {
-      await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
-      out[tz] = await app.page.evaluate(({ month, pick }) => {
-        const y = new Date().getFullYear(), suns = [];
-        for (let d = 1; d <= 31; d++) { const t = new Date(y, month, d); if (t.getMonth() === month && t.getDay() === 0) suns.push(t); }
-        const day = _ymdLocal(pick === 'last' ? suns[suns.length - 1] : suns[0]);
-        const back = n => { const t = new Date(day + 'T12:00:00'); t.setDate(t.getDate() - n); return _ymdLocal(t); };
-        return { zone: Intl.DateTimeFormat().resolvedOptions().timeZone, day, got: [addDays(day, -1), addDays(day, -7), addDays(day, 1)], want: [back(1), back(7), back(-1)] };
-      }, { month, pick });
+      const ctx = await browser.newContext({ timezoneId: tz });
+      try {
+        await ctx.route('**/*', (route) => (route.request().url().includes('127.0.0.1') ? route.continue() : route.abort()));
+        const page = await ctx.newPage();
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof addDays === 'function', { timeout: 10000 });
+        out[tz] = await page.evaluate(({ month, pick }) => {
+          const y = new Date().getFullYear(), suns = [];
+          for (let d = 1; d <= 31; d++) { const t = new Date(y, month, d); if (t.getMonth() === month && t.getDay() === 0) suns.push(t); }
+          const day = _ymdLocal(pick === 'last' ? suns[suns.length - 1] : suns[0]);
+          const back = n => { const t = new Date(day + 'T12:00:00'); t.setDate(t.getDate() - n); return _ymdLocal(t); };
+          return { zone: Intl.DateTimeFormat().resolvedOptions().timeZone, day, got: [addDays(day, -1), addDays(day, -7), addDays(day, 1)], want: [back(1), back(7), back(-1)] };
+        }, { month, pick });
+      } finally { await ctx.close(); }
     }
     for (const tz of Object.keys(out)) {
       const o = out[tz];

@@ -15584,22 +15584,22 @@ function _shareCardPalette(){
     display:hw?'Anton':'Inter', dispW:hw?'400':'900', body:hw?'Archivo':'Inter'
   };
 }
-// The block (phase) a session was trained in. One in this round reads the programme as it
-// stands (a log moved to another week follows it); an older one reads the block stamped when
-// it was filed. One from before the stamp reads the programme only while no programme or round
-// has replaced it since (Programme History's newest entry), else none: the current programme's
-// week 4 is not an old programme's week 4 (an old BASE session's card read BUILD).
+// The block (phase) a session was trained in: the one stamped when it was filed, while it is
+// still in the week it was filed in (bWk). One with no stamp (logged before stamps, or moved to
+// another week) reads the programme as it stands only if it belongs to it (this round, or no
+// programme or round has replaced it since: Programme History's newest entry), else none: the
+// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD).
 function _sessBlock(s){
   if(!s) return '';
-  var wk=parseInt(s.week,10)||0, cr=getCustomRoutine(), d=String(s.date||'').slice(0,10);
-  var w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
-  if(live && d>=_roundStartISO()) return live;
-  if(s.bName) return String(s.bName);
+  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10);
+  if(s.bName && Number(s.bWk)===wk) return String(s.bName);
+  var cr=getCustomRoutine(), w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
+  if(!live || d>=_roundStartISO()) return live;
   var arc=getRoutineArchive()[0];
   return (!arc || d>String(arc.archivedAt||'')) ? live : '';
 }
 // Every writer of a new session stamps it, so its card keeps its block after this programme.
-function _stampBlock(s){ var b=_sessBlock(s); if(b) s.bName=b; return s; }
+function _stampBlock(s){ var b=_sessBlock(s); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
 // Everything the card says, in the display units, from the stored session.
 function _shareCardModel(s){
   var U=_uW(), all=getSessions();
