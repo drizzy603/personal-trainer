@@ -2,7 +2,13 @@
 // - H01 update_routine_weeks converts only the lift days the call sent: a day it left out is
 //   the stored one, already lb (a kg owner's kept days were multiplied by 2.2 on every rename or
 //   one-day tweak; an lb owner's kept per-set loads were re-snapped to 2.5 lb).
+// - H13 the prompt's RECENT SESSIONS / LOGGED RUNS / LOGGED SPORT SESSIONS are the newest by date
+//   (the stores keep save order) and say how many of how many are listed and from which day; the
+//   "not in this list = not saved" rule holds only from that day; log_run / log_sport refuse a
+//   same-day twin (separate:true logs a real second one) and the pill says "Already logged".
 const { boot, assert, run } = require('../lib/harness');
+
+const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
 run('H01: a coach week rewrite leaves the days it did not send exactly as stored (kg and lb)', async () => {
   for (const unit of ['kg', 'lb']) {
@@ -41,4 +47,53 @@ run('H01: a coach week rewrite leaves the days it did not send exactly as stored
       assert(app.errors.length === 0, unit + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+run('H13: the prompt says which logs it lists; the coach cannot log a saved run or activity twice', async () => {
+  // 10 runs saved oldest first (the order an import or a restore can leave), two on one day at
+  // the cut; 12 activities.
+  const runs = [], sports = [];
+  [40, 30, 26, 22, 18, 14, 10, 6, 2].forEach((n, i) => runs.push({ id: 1780000000000 + i, date: iso(n), distance: 5 + i, time: (25 + i * 5) + ':00', type: 'easy', hr: 0, note: '' }));
+  runs.push({ id: 1780000000100, date: iso(22), distance: 3, time: '15:00', type: 'easy', hr: 0, note: '' });
+  for (let i = 0; i < 12; i++) sports.push({ id: 1789000000000 + i, date: iso(1 + i * 3), type: i % 2 ? 'Tennis' : 'Cycling', duration: 60, data: {}, notes: '' });
+  const app = await boot({ native: true, seed: { kt_runs: JSON.stringify(runs), kt_sports: JSON.stringify(sports) } });
+  try {
+    const out = await app.page.evaluate(({ runs, sports }) => {
+      const block = (p, head) => p.slice(p.indexOf(head), p.indexOf('\n\n', p.indexOf(head)));
+      const p = buildSystemPrompt();
+      const rb = block(p, 'LOGGED RUNS'), sb = block(p, 'LOGGED SPORT SESSIONS'), ss = block(p, 'RECENT SESSIONS');
+      const listed = (b, list) => list.filter(x => b.indexOf('[id:' + x.id + ']') >= 0).map(x => x.id);
+      const r = { rb, sb, ssHead: ss.split('\n')[0], runIds: listed(rb, runs), sportIds: listed(sb, sports), sessions: getSessions().length };
+      // the coach is asked to log the oldest run (not listed) and an activity already saved
+      const old = runs[0];
+      r.dupRun = executeCoachTool('log_run', { distance: old.distance, time: old.time, date: old.date });
+      r.dupRunPill = toolCallLabel({ name: 'log_run', input: { distance: old.distance, time: old.time }, result: r.dupRun });
+      r.dupSport = executeCoachTool('log_sport', { type: 'cycling', duration: 55, date: sports[0].date });
+      r.dupSportPill = toolCallLabel({ name: 'log_sport', input: { type: 'cycling', duration: 55 }, result: r.dupSport });
+      r.counts1 = [getRuns().length, getSportLogs().length];
+      // real second sessions still log: a different distance, a confirmed second run, another activity
+      r.other = executeCoachTool('log_run', { distance: 12, time: '60:00', date: old.date }).ok;
+      r.second = executeCoachTool('log_run', { distance: old.distance, time: old.time, date: old.date, separate: true }).ok;
+      r.swim = executeCoachTool('log_sport', { type: 'Swimming', duration: 60, date: sports[0].date }).ok;
+      r.counts2 = [getRuns().length, getSportLogs().length];
+      // everything fits: no cut, and the plain rule
+      lsSet('kt_runs', getRuns().slice(0, 3));
+      r.allHead = block(buildSystemPrompt(), 'LOGGED RUNS');
+      return r;
+    }, { runs, sports });
+    // runs: the 6 newest by date, plus the second run on the 6th one's day (iso(22))
+    const want = runs.filter(x => x.date >= iso(22)).map(x => x.id).sort();
+    assert(JSON.stringify(out.runIds.slice().sort()) === JSON.stringify(want), 'the newest runs by date are listed, ties included: ' + JSON.stringify(out.runIds));
+    assert(out.rb.indexOf('the 7 most recent of 10 saved: every one from ' + iso(22) + ' on is listed') >= 0, 'the run list says what it holds: ' + out.rb.split('\n')[0]);
+    assert(out.rb.indexOf('from ' + iso(22) + ' on is NOT in this list, it is NOT saved') >= 0 && out.rb.indexOf('A run from before ' + iso(22) + ' may already be saved') >= 0, 'the not-saved rule holds only from the cut: ' + out.rb.split('\n').slice(-1)[0]);
+    assert(out.sportIds.length === 10 && out.sb.indexOf('the 10 most recent of 12 saved: every one from ' + iso(28) + ' on') >= 0, 'the activity list says what it holds: ' + out.sb.split('\n')[0]);
+    assert(out.sessions <= 10 ? /RECENT SESSIONS \(all \d+ saved\)/.test(out.ssHead) : new RegExp('RECENT SESSIONS \\(the 1\\d most recent of ' + out.sessions + ' saved').test(out.ssHead), 'RECENT SESSIONS says what it holds: ' + out.ssHead);
+    assert(out.dupRun.ok === false && out.dupRun.duplicate === runs[0].id && /Already saved/.test(out.dupRun.error), 'an older saved run is refused as a duplicate: ' + JSON.stringify(out.dupRun));
+    assert(out.dupSport.ok === false && out.dupSport.duplicate === sports[0].id, 'a saved activity is refused as a duplicate: ' + JSON.stringify(out.dupSport));
+    assert(/^Already logged/.test(out.dupRunPill) && /already logged/.test(out.dupSportPill), 'the pills say it was already there: ' + out.dupRunPill + ' / ' + out.dupSportPill);
+    assert(out.counts1[0] === 10 && out.counts1[1] === 12, 'nothing was added: ' + out.counts1);
+    assert(out.other && out.second && out.swim && out.counts2[0] === 12 && out.counts2[1] === 13, 'real second sessions still log: ' + JSON.stringify(out.counts2));
+    assert(/LOGGED RUNS \(the ground truth: all 3 saved\)/.test(out.allHead) && /If a run the user mentions is NOT in this list, it is NOT saved/.test(out.allHead), 'a full list keeps the plain rule: ' + out.allHead);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });

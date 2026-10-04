@@ -140,7 +140,7 @@ run('review fixes: legacy times, exact pace, a later month, future dates, focus 
       saveInlineRun(); await wait(20);
       r.form.today = getRuns().length === 1 && getRuns()[0].date === T;
       const c1 = executeCoachTool('log_run', { distance: 5, time: '25:00', date: TM });
-      const c2 = executeCoachTool('log_run', { distance: 5, time: '25:00', date: T });
+      const c2 = executeCoachTool('log_run', { distance: 8, time: '40:00', date: T });   // another run: the form's 5 km is saved, and a twin is refused
       r.coach = { future: c1.ok === false && /future/.test(c1.error || ''), today: !!c2.ok, n: getRuns().length };
       // focus after an edit and a close
       lsSet('kt_runs', [{ id: 8301, date: T, distance: 5, time: '25:00', type: 'easy' }]);

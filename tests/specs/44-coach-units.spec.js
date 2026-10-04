@@ -29,7 +29,7 @@ run('kg/mi user: prompts, tool schemas and tool writes are all in kg and miles; 
       r.summary = { w: toolCallLabel({ name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 80 } }), pace: toolCallLabel({ name: 'set_run_goal', input: { pace: '8:00' } }), run: toolCallLabel({ name: 'log_run', input: { distance: 3.1, time: '25:00' } }) };
       setUnitW('lb'); setUnitD('km');
       r.lbSet = executeCoachTool('set_exercise_weight', { name: 'Row', weight: 101 }); r.lbStored = getWeights()['Row'];
-      r.lbRun = executeCoachTool('log_run', { distance_km: 5, time: '25:00' }); r.lbRunKm = getRuns()[0].distance;
+      r.lbRun = executeCoachTool('log_run', { distance_km: 10, time: '50:00' }); r.lbRunKm = getRuns()[0].distance;   // not the 3.1 mi run again (a twin is refused)
       r.lbPrompt = buildSystemPrompt();
       r.lbTools = JSON.stringify(_cachedCoachTools());
       return r;
@@ -57,7 +57,7 @@ run('kg/mi user: prompts, tool schemas and tool writes are all in kg and miles; 
     assert(/80 kg/.test(out.summary.w) && /8:00 \/mi/.test(out.summary.pace) && /3\.1 mi/.test(out.summary.run), 'tool pills read the model input in the user units: ' + JSON.stringify(out.summary));
     // lb / km unchanged
     assert(out.lbStored === 100 && /100 lb/.test(out.lbSet.message), 'lb user: 101 snaps to 100 lb: ' + out.lbStored);
-    assert(out.lbRunKm === 5 && /5 km/.test(out.lbRun.message), 'lb/km user: distance_km stored as is: ' + out.lbRunKm);
+    assert(out.lbRunKm === 10 && /10 km/.test(out.lbRun.message), 'lb/km user: distance_km stored as is: ' + out.lbRunKm);
     assert(/UNITS: the user works in lb and km/.test(out.lbPrompt) && /multiple of 2\.5 lb/.test(out.lbPrompt), 'lb prompt keeps the 2.5 lb plate rule');
     assert(/Weight in lb/.test(out.lbTools) && /Distance in kilometres — the user/.test(out.lbTools), 'lb/km tool schemas');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));

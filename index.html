@@ -9583,6 +9583,28 @@ function _coachRunKm(i){
   if(parseFloat(i.distance_mi)>0) return Math.round(parseFloat(i.distance_mi)*KM_PER_MI*100)/100;
   return 0;
 }
+// A log the coach is asked to save that is already there (the prompt lists only the newest, and
+// an older run the user mentioned was saved twice): the same day, distance within 5% and, when
+// both know it, time within 15% (the rule Health imports use against hand-typed runs).
+function _coachRunTwin(dateISO, km, time){
+  var sec=_runSecsOf(time);
+  return getRuns().find(function(r){
+    if(!r || String(r.date)!==String(dateISO)) return false;
+    var rd=parseFloat(r.distance||r.dist)||0;
+    if(!(rd>0) || Math.abs(rd-km)/Math.max(rd,km)>0.05) return false;
+    var rs=_runSecsOf(r.time);
+    return !(sec>0 && rs>0 && Math.abs(rs-sec)/Math.max(rs,sec)>0.15);
+  })||null;
+}
+// The same day and activity, duration within 15%.
+function _coachSportTwin(dateISO, type, mins){
+  var t=String(type||'').toLowerCase();
+  return getSportLogs().find(function(l){
+    if(!l || String(l.date)!==String(dateISO) || String(l.type||'').toLowerCase()!==t) return false;
+    var ld=parseInt(l.duration,10)||0;
+    return !(ld>0 && mins>0 && Math.abs(ld-mins)/Math.max(ld,mins)>0.15);
+  })||null;
+}
 // Programme run slot from the model: {mi} becomes {km} for storage.
 function _coachRunIn(r){
   if(!r||typeof r!=='object') return r;
@@ -16268,7 +16290,7 @@ var COACH_TOOLS=[
    description:'Log the user\'s body weight in {W}. Use the actual measurement date, not today, if they weighed in on a different day.',
    input_schema:{type:'object',properties:{weight:{type:'number'},date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'}},required:['weight']}},
   {name:'log_run',
-   description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day.',
+   description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day. A run that matches one already saved (same day, about the same distance) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        distance:{type:'number',description:'Distance in {DNAME} — the user\'s unit. Use this unless the source is explicitly in the other unit.'},
@@ -16278,11 +16300,12 @@ var COACH_TOOLS=[
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
        type:{type:'string',enum:['easy','tempo','long','intervals','race'],description:'Run type. Defaults to "easy".'},
        hr:{type:'number',description:'Average heart rate in bpm (optional).'},
-       note:{type:'string',description:'Short note (optional).'}
+       note:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_run refused a duplicate: true when the user confirms this is a second, separate run that day.'}
      },
      required:['time']}},
   {name:'log_session',
-   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list. Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
@@ -16302,13 +16325,14 @@ var COACH_TOOLS=[
    description:'Remember lasting facts about the athlete: goals, experience, equipment, injuries or exercises to avoid, likes, dislikes, other sports, notes. Call it when intake answers or chat reveal something that should shape future advice. Send only the fields that changed; each is a short plain-text summary that replaces the stored value.',
    input_schema:{type:'object',properties:{goals:{type:'string'},experience:{type:'string'},equipment:{type:'string'},injuries:{type:'string'},likes:{type:'string'},dislikes:{type:'string'},sports:{type:'string'},notes:{type:'string'}}}},
   {name:'log_sport',
-   description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day.',
+   description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day. One that matches a saved session (same day and activity, about the same duration) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',description:'Activity type, e.g. "Cycling", "Swimming", "Pickleball", "Tennis", "Basketball", "CrossFit", "Yoga", "Hiking", "Climbing", "Soccer", "Rowing", "Boxing", "Golf", "Other".'},
        duration:{type:'number',description:'Duration in minutes.'},
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
-       notes:{type:'string',description:'Short note (optional).'}
+       notes:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_sport refused a duplicate: true when the user confirms this is a second, separate session that day.'}
      },
      required:['type','duration']}},
   {name:'edit_session',
@@ -16802,6 +16826,8 @@ function _executeCoachToolRaw(name,input){
       var rtype=input.type||'easy';
       var rhr=parseInt(input.hr)||0;
       var rnote=String(input.note||'').trim();
+      var _rtw=(input.separate===true||input.separate==='true')?null:_coachRunTwin(rdate, rkm, rtime);
+      if(_rtw) return {ok:false,duplicate:_rtw.id,error:'Already saved: [id:'+_rtw.id+'] '+_rtw.date+' · '+fmtD(parseFloat(_rtw.distance||_rtw.dist)||0)+' · '+_rtw.time+'. Nothing was saved. Tell the user it is already logged; only if they say it was a second, separate run that day, call log_run again with separate:true.'};
       var rruns=[{id:_freshId(getRuns()),distance:Math.round(rkm*100)/100,time:rtime,
         date:rdate,week:weekForDate(rdate),note:rnote,hr:rhr,type:rtype}].concat(getRuns());
       if(!lsSet('kt_runs',rruns)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
@@ -16866,6 +16892,8 @@ function _executeCoachToolRaw(name,input){
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
       var snotes=String(input.notes||'').trim();
+      var _stw=(input.separate===true||input.separate==='true')?null:_coachSportTwin(sdate, stype, sdur);
+      if(_stw) return {ok:false,duplicate:_stw.id,error:'Already saved: [id:'+_stw.id+'] '+_stw.date+' · '+_stw.type+(_stw.duration?' · '+_stw.duration+'min':'')+'. Nothing was saved. Tell the user it is already logged; only if they say it was a second, separate session that day, call log_sport again with separate:true.'};
       var slogs=[{id:_freshId(getSportLogs()),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
       if(!lsSet('kt_sports',slogs)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       invalidateCoachCard();
@@ -17332,8 +17360,8 @@ function _toolCallLabel(tc){
   if(n==='set_5k_goal') return '5k goal '+i.time;
   if(n==='set_bw_goal') return 'BW goal '+fmtBW(wStore(i.weight));
   if(n==='log_bodyweight') return 'Logged '+fmtBW(wStore(i.weight));
-  if(n==='log_run') return 'Run logged · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
-  if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
+  if(n==='log_run') return (tc.result&&tc.result.duplicate?'Already logged':'Run logged')+' · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
+  if(n==='log_sport') return (i.type||'Sport')+(tc.result&&tc.result.duplicate?' already logged':' logged')+' · '+(i.duration||'?')+' min';
   if(n==='edit_session') return i.rename_to ? (String(i.exercise||'')+' \u2192 '+String(i.rename_to)) : (String(i.exercise||'Session')+' corrected');
   if(n==='delete_log') return (i.store||'entry')+' deleted';
   return n;
@@ -17451,10 +17479,21 @@ function saveCoachHistory(){
   }catch(e){}
 }
 
+// The prompt's log lists: the n newest by date (the stores keep save order, so a backdated
+// log or a Health history import sat on top), plus any more from the n-th one's day, so
+// "every one from <from> on" is exactly true. The list used to be called everything saved,
+// and the coach re-logged any older run or activity the user mentioned.
+function _promptLog(list, n){
+  var all=(list||[]).filter(function(x){ return x && x.date; }).sort(_cmpByDateDesc), shown=all.slice(0,n);
+  while(shown.length && shown.length<all.length && String(all[shown.length].date)===String(shown[shown.length-1].date)) shown.push(all[shown.length]);
+  var from=shown.length?String(shown[shown.length-1].date):'', more=all.length>shown.length;
+  return {shown:shown, from:from, more:more,
+    scope:more?('the '+shown.length+' most recent of '+all.length+' saved: every one from '+from+' on is listed; older ones are saved too but not listed'):('all '+all.length+' saved')};
+}
 function buildSystemPrompt(){
   var wd=getWkData();
-  var sessions=getSessions().slice(0,10);
-  var runs=getRuns().slice(0,6);
+  var _sl=_promptLog(getSessions(),10), sessions=_sl.shown;
+  var _rl=_promptLog(getRuns(),6), runs=_rl.shown;
   var prs=getPRs();
   var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
@@ -17530,7 +17569,7 @@ function buildSystemPrompt(){
   }
 
   if(sessions.length){
-    p+='RECENT SESSIONS:\n';
+    p+='RECENT SESSIONS ('+_sl.scope+'):\n';
     sessions.forEach(function(s){
       p+='[id:'+s.id+'] '+s.type+' '+s.date+' (Wk'+s.week+'): ';
       // Every set from _exPairs (the legacy nested shape printed "[object Object]×(undefined)@BW"),
@@ -17548,12 +17587,14 @@ function buildSystemPrompt(){
   }
 
   if(runs.length){
-    p+='LOGGED RUNS (these are the only runs actually saved in the app — this list is the ground truth):\n';
-    runs.slice(0,10).forEach(function(r){
+    p+='LOGGED RUNS (the ground truth: '+_rl.scope+'):\n';
+    runs.forEach(function(r){
       var dist=parseFloat(r.distance||r.dist||0);
       p+='  [id:'+r.id+'] '+r.date+' · '+fmtD(dist)+' · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
     });
-    p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
+    p+=_rl.more
+      ? 'If a run the user mentions from '+_rl.from+' on is NOT in this list, it is NOT saved — do not say it is logged; call log_run to save it. A run from before '+_rl.from+' may already be saved (it is just not listed): do not log it again unless the user says it is missing.\n\n'
+      : 'If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
   } else {
     p+='LOGGED RUNS: none yet. If the user mentions a run, it is not saved — call log_run to save it.\n\n';
   }
@@ -17585,16 +17626,18 @@ function buildSystemPrompt(){
     if(_fcLines.length) p+='TRENDS: '+_fcLines.join('; ')+'.\n\n';
   }catch(e){}
 
-  var sportLogs=getSportLogs().slice(0,10);
+  var _spl=_promptLog(getSportLogs(),10), sportLogs=_spl.shown;
   if(sportLogs.length){
-    p+='LOGGED SPORT SESSIONS (these are the only sport/activity sessions actually saved in the app — this is the ground truth):\n';
+    p+='LOGGED SPORT SESSIONS (the ground truth: '+_spl.scope+'):\n';
     sportLogs.forEach(function(sp){
       var sum=buildSportSummary(sp);
       p+='  [id:'+sp.id+'] '+sp.date+' · '+sp.type+(sp.duration?' · '+sp.duration+'min':'')+
         (sum?' · '+sum:'')+
         (sp.notes?' · '+sp.notes:'')+'\n';
     });
-    p+='If a sport session the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_sport immediately to save it.\n\n';
+    p+=_spl.more
+      ? 'If a sport session the user mentions from '+_spl.from+' on is NOT in this list, it is NOT saved — do not say it is logged; call log_sport to save it. One from before '+_spl.from+' may already be saved (it is just not listed): do not log it again unless the user says it is missing.\n\n'
+      : 'If a sport session the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_sport immediately to save it.\n\n';
   } else {
     p+='LOGGED SPORT SESSIONS: none yet. If the user mentions a sport/activity session, it is not saved — call log_sport to save it.\n\n';
   }
@@ -17619,7 +17662,7 @@ function buildSystemPrompt(){
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.). A stated week ("it\'s week 1") IS a request to set it: act, do not discuss.\n';
-  p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.\n';
+  p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.'+(_sl.more?' One from before '+_sl.from+' may already be saved (RECENT SESSIONS lists only the newest): log it only if the user says it is missing.':'')+'\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';

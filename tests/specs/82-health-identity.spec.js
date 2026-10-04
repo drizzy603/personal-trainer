@@ -66,7 +66,7 @@ run('Health identity by start time; moved rides; half-failed imports; manual run
 
       // E. failed run saves say so
       full('kt_runs');
-      const lr = executeCoachTool('log_run', { distance: 5, time: '25:00' });
+      const lr = executeCoachTool('log_run', { distance: 8, time: '40:00' });   // not D's 5 km again (a twin is refused before any save)
       switchTab('log'); switchLogSub('run'); openRunLog(); await wait(50);
       document.getElementById('kt-rlog-dist').value = '5'; document.getElementById('kt-rlog-time').value = '25:00'; saveInlineRun();
       ok();
