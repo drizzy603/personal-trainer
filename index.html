@@ -4266,6 +4266,7 @@ function _applyImportedData(data) {
   lapsePending = null;
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
+  _uniqueLogIds(true);       // and the coach's shared-id twins
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');
@@ -12281,20 +12282,36 @@ function saveRun() {
 
 // ── SPORTS ───────────────────────────────────────────────────────────────────
 function getSportLogs(){ return lsGet('kt_sports')||[]; }
+// As deleteRun: every record with that id goes (legacy duplicate-id twins) and Undo brings
+// them all back. Undo used to restore only the first, so a twin was lost for good.
 function deleteSportLog(id){
-  var gone=getSportLogs().find(function(l){return l.id===id;}); if(!gone) return;
-  lsSet('kt_sports',getSportLogs().filter(function(l){return l.id!==id;}));
+  var gone=[], kept=[];
+  getSportLogs().forEach(function(l){ (l && l.id===id ? gone : kept).push(l); });
+  if(!gone.length) return null;
+  if(!lsSet('kt_sports', kept)) return false;
+  invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
-  showUndoToast((gone.type||'Activity')+' deleted', function(){ var ls=getSportLogs(); ls.unshift(gone); lsSet('kt_sports',ls); render(); });
+  showUndoToast((gone.length>1 ? gone.length+' activities' : (gone[0].type||'Activity'))+' deleted', function(){
+    if(getSportLogs().some(function(l){ return l && l.id===id; })) return;
+    if(lsSet('kt_sports', gone.concat(getSportLogs()))){ invalidateCoachCard(); render(); }
+  });
+  return true;
 }
 function deleteSession(id){
-  var gone=getSessions().find(function(s){return s.id===id;}); if(!gone) return;
-  lsSet('kt_sessions',getSessions().filter(function(s){return s.id!==id;}));
+  var gone=[], kept=[];
+  getSessions().forEach(function(s){ (s && s.id===id ? gone : kept).push(s); });
+  if(!gone.length) return null;
+  if(!lsSet('kt_sessions', kept)) return false;
   recomputePRs();
+  invalidateCoachCard();
   if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   render();
-  showUndoToast('Session deleted', function(){ var ss=getSessions(); ss.unshift(gone); lsSet('kt_sessions',ss); recomputePRs(); render(); });
+  showUndoToast(gone.length>1 ? gone.length+' sessions deleted' : 'Session deleted', function(){
+    if(getSessions().some(function(s){ return s && s.id===id; })) return;
+    if(lsSet('kt_sessions', gone.concat(getSessions()))){ recomputePRs(); invalidateCoachCard(); render(); }
+  });
+  return true;
 }
 // Rebuild kt_prs from the full session log. checkAndUpdatePRs only ever
 // raises records, so a fat-fingered 1,850 lb set used to be a PERMANENT PR
@@ -12459,38 +12476,49 @@ function _calNavToDate(dateStr){
   calYear=parseInt(p[0]); calMonth=parseInt(p[1])-1;
   calSelectedDate=dateStr;
 }
-function moveSession(id,newDate){
+// The one log a move means: the record with that id on fromDate (the day sheet's field passes
+// its own date), else the first with the id. Moves used to take every record sharing the id,
+// so a legacy twin on another day was dragged along.
+function _logById(list, id, fromDate){
+  var first=null;
+  for(var i=0;i<list.length;i++){
+    var x=list[i]; if(!x || x.id!==id) continue;
+    if(fromDate==null || String(x.date||'').slice(0,10)===String(fromDate).slice(0,10)) return x;
+    if(!first) first=x;
+  }
+  return first;
+}
+function moveSession(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
-  var sessions=getSessions();
-  sessions.forEach(function(s){ if(s.id===id){ s.date=newDate; s.week=weekForDate(newDate); } });
-  lsSet('kt_sessions',sessions);
+  var sessions=getSessions(), rec=_logById(sessions, id, fromDate);
+  if(!rec) return;
+  var c=Object.assign({}, rec);
+  c.date=newDate; c.week=weekForDate(newDate);
+  lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }));
   _calNavToDate(newDate); render();
 }
-function moveRun(id,newDate){
+function moveRun(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
-  var runs=getRuns();
+  var runs=getRuns(), rec=_logById(runs, id, fromDate);
+  if(!rec) return;
   // A copy: editing the cached records in place survived a failed save (storage full).
-  runs=runs.map(function(r){
-    if(!r || r.id!==id) return r;
-    var c={}; Object.keys(r).forEach(function(k){ c[k]=r[k]; });
-    if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(r);
-    c.date=newDate; c.week=weekForDate(newDate); return c;
-  });
-  if(!lsSet('kt_runs',runs)){ render(); return; }   // lsSet has toasted; the date input snaps back
+  var c=Object.assign({}, rec);
+  if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(rec);
+  c.date=newDate; c.week=weekForDate(newDate);
+  if(!lsSet('kt_runs', runs.map(function(r){ return r===rec?c:r; }))){ render(); return; }   // lsSet has toasted; the date input snaps back
   invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
-function moveSport(id,newDate){
+function moveSport(id,newDate,fromDate){
   if(!newDate||!/^\d{4}-\d{2}-\d{2}$/.test(newDate)){showToast('Invalid date');return;}
   // A copy, and a moved Health ride keeps its identity (hkOrig), as moveRun does: Reset
   // import or a restore used to bring it back a second time on its original day.
-  var sports=getSportLogs().map(function(sp){
-    if(!sp || sp.id!==id) return sp;
-    var c={}; Object.keys(sp).forEach(function(k){ c[k]=sp[k]; });
-    if(c.date!==newDate && c.notes==='From Apple Health' && !c.hkOrig) c.hkOrig={date:String(sp.date||''), duration:parseInt(sp.duration)||0};
-    c.date=newDate; return c;
-  });
-  if(!lsSet('kt_sports',sports)){ render(); return; }
+  var sports=getSportLogs(), rec=_logById(sports, id, fromDate);
+  if(!rec) return;
+  var c=Object.assign({}, rec);
+  if(c.date!==newDate && c.notes==='From Apple Health' && !c.hkOrig) c.hkOrig={date:String(rec.date||''), duration:parseInt(rec.duration)||0};
+  c.date=newDate;
+  if(!lsSet('kt_sports', sports.map(function(sp){ return sp===rec?c:sp; }))){ render(); return; }
   invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
@@ -14815,7 +14843,7 @@ function _calDayHTML(d){
       '<div class="kt-cd-acts">'+
         '<button type="button" class="kt-cd-btn primary" onclick="shareSessionCard('+x.id+')">Share card</button>'+
         '<button type="button" class="kt-cd-btn" onclick="openSessionEditor('+x.id+')">Edit sets</button>'+
-        _cdDate(x.date, 'moveSession('+x.id+',this.value)')+
+        _cdDate(x.date, 'moveSession('+x.id+',this.value,this.defaultValue)')+
         '<button type="button" class="kt-cd-btn danger" onclick="deleteSession('+x.id+')">Delete</button>'+
       '</div></div>';
   });
@@ -14832,7 +14860,7 @@ function _calDayHTML(d){
       (r.note && r.note!=='From Apple Health'?'<div class="kt-cd-note">'+_esc(r.note)+'</div>':'')+
       '<div class="kt-cd-acts">'+
         '<button type="button" class="kt-cd-btn primary" id="cal-edit-'+r.id+'" aria-label="'+_esc('Edit run, '+ttl+(dist>0?', '+fmtD(dist):''))+'" onclick="openRunEditor('+r.id+')">Edit run</button>'+
-        _cdDate(r.date, 'moveRun('+r.id+',this.value)')+
+        _cdDate(r.date, 'moveRun('+r.id+',this.value,this.defaultValue)')+
         '<button type="button" class="kt-cd-btn danger" onclick="deleteRun('+r.id+')">Delete</button>'+
       '</div></div>';
   });
@@ -14845,7 +14873,7 @@ function _calDayHTML(d){
       (sp.notes && sp.notes!=='From Apple Health'?'<div class="kt-cd-note">'+_esc(sp.notes)+'</div>':'')+
       '<div class="kt-cd-acts">'+
         '<button type="button" class="kt-cd-btn primary" onclick="openSportLogEditor('+sp.id+')">Edit</button>'+
-        _cdDate(sp.date, 'moveSport('+sp.id+',this.value)')+
+        _cdDate(sp.date, 'moveSport('+sp.id+',this.value,this.defaultValue)')+
         '<button type="button" class="kt-cd-btn danger" onclick="deleteSportLog('+sp.id+')">Delete</button>'+
       '</div></div>';
   });
@@ -19854,7 +19882,39 @@ function _sweepDemoWeights(force){
     localStorage.setItem('kt_demo_w_swept','1');
   }catch(e){}
 }
+// Every log has its own id; the day sheet acts by id. Before 2026-09-30 the coach's log calls in
+// one reply shared a Date.now() id, so Delete took the twin too (even on another day) and Undo
+// brought back one, Edit sets and Share opened the other, and its Date field moved both. Once per
+// device at boot, and after every restore (an older backup carries them again), a repeated or
+// missing id gets the next free one beside it: ids double as save times (same-day order, the
+// wrist-copy test), so a twin stays where it was.
+function _uniqueLogIds(force){
+  try{
+    if(!force && localStorage.getItem('kt_ids_unique')) return;
+    var ok=true;
+    ['kt_sessions','kt_runs','kt_sports','kt_bw'].forEach(function(k){
+      var list=lsGet(k); if(!Array.isArray(list)) return;
+      var taken={}, fix=[];
+      list.forEach(function(x, i){
+        if(!x || typeof x!=='object') return;
+        if(typeof x.id==='number' && isFinite(x.id) && !taken[x.id]) taken[x.id]=1; else fix.push(i);
+      });
+      if(!fix.length) return;
+      var out=list.slice();
+      fix.forEach(function(i){
+        var n=Math.floor(Number(out[i].id));
+        if(!(n>0)) n=Date.parse(String(out[i].date||'').slice(0,10)+'T12:00:00')||Date.now();
+        while(taken[n]) n++;
+        taken[n]=1;
+        out[i]=Object.assign({}, out[i], {id:n});
+      });
+      if(!lsSet(k, out)) ok=false;
+    });
+    if(ok) localStorage.setItem('kt_ids_unique','1');
+  }catch(e){}
+}
 _sweepDemoWeights(false);
+_uniqueLogIds(false);
 _restoreRunnerDraft();
 var _next = getNextSession();
 logSession = SESS[_next] ? _next : 'Push';
