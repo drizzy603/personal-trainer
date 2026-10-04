@@ -9084,6 +9084,7 @@ function runnerFinishSession(){
     supersets:(_ssIdx.length?_ssIdx:undefined),
     phoneOwned:(_owned.length?_owned:undefined),
     phoneOwnedLen:(_owned.length?(runnerSession.ownLen||{}):undefined)};
+  _stampBlock(_newRec);
   _wristCopies.forEach(function(w){
     _mergeWristExercises(_newRec, w.exercises);
     (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });
@@ -16179,12 +16180,14 @@ function shareSessionCard(id){
   });
 }
 // A canvas only draws a face the page has loaded; Anton is on screen only in the
-// hero, so ask for every face the card uses before drawing.
+// hero, so ask for every face the card uses before drawing. load() fetches only the
+// subsets its sample text needs (a space by default), so the sample takes in latin-ext:
+// a day named Ściąganie drew Ś and ą in a fallback face on the first share.
 function _shareCardFonts(P){
-  var loads=[];
+  var loads=[], sample=' \u0104\u015a\u0141\u0150';
   try{
-    loads.push(document.fonts.load(P.dispW+' 100px "'+P.display+'"'));
-    ['800','700','500'].forEach(function(w){ loads.push(document.fonts.load(w+' 30px "'+P.body+'"')); });
+    loads.push(document.fonts.load(P.dispW+' 100px "'+P.display+'"', sample));
+    ['800','700','500'].forEach(function(w){ loads.push(document.fonts.load(w+' 30px "'+P.body+'"', sample)); });
   }catch(e){}
   return Promise.all(loads).catch(function(){});
 }
@@ -16200,6 +16203,22 @@ function _shareCardPalette(){
     display:hw?'Anton':'Inter', dispW:hw?'400':'900', body:hw?'Archivo':'Inter'
   };
 }
+// The block (phase) a session was trained in: the one stamped when it was filed, while it is
+// still in the week it was filed in (bWk). One with no stamp (logged before stamps, or moved to
+// another week) reads the programme as it stands only if it belongs to it (this round, or no
+// programme or round has replaced it since: Programme History's newest entry), else none: the
+// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD).
+function _sessBlock(s){
+  if(!s) return '';
+  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10);
+  if(s.bName && Number(s.bWk)===wk) return String(s.bName);
+  var cr=getCustomRoutine(), w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
+  if(!live || d>=_roundStartISO()) return live;
+  var arc=getRoutineArchive()[0];
+  return (!arc || d>String(arc.archivedAt||'')) ? live : '';
+}
+// Every writer of a new session stamps it, so its card keeps its block after this programme.
+function _stampBlock(s){ var b=_sessBlock(s); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
 // Everything the card says, in the display units, from the stored session.
 function _shareCardModel(s){
   var U=_uW(), all=getSessions();
@@ -16212,6 +16231,15 @@ function _shareCardModel(s){
   function maxReps(ex){ var m=0; _exSetPairs(ex).forEach(function(p){ if(p[0]>m) m=p[0]; }); return m; }
   function num(d){ return Math.round(d*100)/100; }
   function repsTxt(d){ return (d>0?'+':'−')+Math.abs(d)+' rep'+(Math.abs(d)===1?'':'s'); }
+  // Loads compare as the card shows them: kg rounds to 0.5, so one 72.5 kg can be stored as 160
+  // and 159.8 lb. The top set is the most reps at the heaviest shown load, not the reps of a set
+  // that is heavier only in storage.
+  function topOf(list){
+    var t=null;
+    list.forEach(function(e){ var x=e && _prTop(e); if(x && (!t || x.w>t.w)) t={w:x.w, r:0}; });
+    if(t) list.forEach(function(e){ _exPairs(e).forEach(function(p){ if(p[0]>0 && wDisp(p[1])===wDisp(t.w) && p[0]>t.r) t.r=p[0]; }); });
+    return t;
+  }
   var sets=0, reps=0;
   exs.forEach(function(ex){ _exSetPairs(ex).forEach(function(p){ if(p[0]>0){ sets++; reps+=p[0]; } }); });
   var vol=calcVolume(exs), prevDay=null;
@@ -16219,14 +16247,17 @@ function _shareCardModel(s){
   var pct=null;
   if(prevDay){ var pv=calcVolume(prevDay.exercises||[]); if(pv>0) pct=Math.round((vol-pv)/pv*100); }
   var dur=_cmpDurMs(s), rpe=_cmpAvgRpe(s);
-  var durTxt=dur ? (dur>=3600000 ? Math.floor(dur/3600000)+' h '+Math.round((dur%3600000)/60000)+' min' : Math.round(dur/60000)+' min') : '';
+  // Whole minutes first, then the hours: 1:59:40 read "1 h 60 min".
+  var durMin=dur ? Math.round(dur/60000) : 0;
+  var durTxt=durMin ? (durMin>=60 ? Math.floor(durMin/60)+' h '+(durMin%60)+' min' : durMin+' min') : '';
   var d=new Date(sd+'T00:00:00');
   var dateTxt=isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'}).toUpperCase();
   var records=prs.map(function(n){
     var ch=_prChain(n)||[], i=-1;
     for(var k=ch.length-1;k>=0;k--){ if(ch[k] && ch[k].id===s.id){ i=k; break; } }
-    var ex=exs.find(function(e){ return e.name===n; }), top=ex?_prTop(ex):null;
-    var e=i>=0 ? ch[i] : top;
+    // This session's own top at the record's load (the ledger's entry for it, read on the shown grid).
+    var top=topOf(exs.filter(function(e){ return e.name===n; }));
+    var e=top || (i>=0 ? ch[i] : null);
     return {name:n, set:e ? _prSetTxt(n, e) : '', gain:i>=0 ? (_prGain(ch, i) || (i===0?'first record':'')) : ''};
   });
   var rows=exs.map(function(ex){
@@ -16236,19 +16267,19 @@ function _shareCardModel(s){
     var scheme='';
     if(ps.length){
       var ws=ps.map(function(p){ return p[1]; }), rs=ps.map(function(p){ return p[0]; });
-      var sameW=ws.every(function(w){ return Math.abs(w-ws[0])<0.05; }), sameR=rs.every(function(r){ return r===rs[0]; });
+      var sameW=ws.every(function(w){ return wDisp(w)===wDisp(ws[0]); }), sameR=rs.every(function(r){ return r===rs[0]; });
       if(sameW && sameR) scheme=ps.length+' × '+rs[0]+(load(ws[0])?' · '+load(ws[0]):'');
       else if(sameW) scheme=(load(ws[0])?load(ws[0])+' · ':'')+rs.join(', ')+' reps';
-      else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):'BW')+'×'+p[0]; }).join('  ')+' '+U;
+      else scheme=ps.map(function(p){ return (p[1]>0?(bw?'+':'')+wDisp(p[1]):(bw?'BW':'0'))+'×'+p[0]; }).join('  ')+' '+U;   // 0 on a loaded lift is not bodyweight
     }
-    var top=_prTop(ex), mr=maxReps(ex);
+    var top=topOf([ex]), mr=maxReps(ex);
     var topTxt=top ? _prSetTxt(ex.name, top) : (mr>0 ? mr+(mr===1?' rep':' reps') : '');
     var pe=null, pSess=null;
     all.forEach(function(o){ if(!o || !before(o)) return; (o.exercises||[]).forEach(function(e){ if(e && e.name===ex.name && later(o, pSess)){ pe=e; pSess=o; } }); });
     var delta='', up=false;
     if(!pe) delta='first time';
     else {
-      var pt=_prTop(pe);
+      var pt=topOf([pe]);
       if(top && pt){
         var dw=num(wDisp(top.w)-wDisp(pt.w));
         if(dw>0){ delta='+'+dw+' '+U; up=true; }
@@ -16261,9 +16292,9 @@ function _shareCardModel(s){
     }
     return {name:ex.name, pr:prs.indexOf(ex.name)>=0, scheme:scheme, top:topTxt, delta:delta, up:up};
   });
-  var wk=parseInt(s.week,10)||0, cr=getCustomRoutine(), wkRow=cr && wk>0 ? cr.weeks[wk-1] : null;
+  var wk=parseInt(s.week,10)||0;
   return {
-    date:dateTxt, week:wk, phase:wkRow && wkRow.bName ? String(wkRow.bName).toUpperCase() : '', label:label, duration:durTxt, rpe:rpe,
+    date:dateTxt, week:wk, phase:_sessBlock(s).toUpperCase(), label:label, duration:durTxt, rpe:rpe,
     lifts:exs.length, sets:sets, reps:reps, volume:Math.round(wDisp(vol)), unit:U,
     vsLast:pct, records:records, rows:rows
   };
@@ -17511,6 +17542,7 @@ function _executeCoachToolRaw(name,input){
       var gsessions=[{id:_freshId(getSessions()), date:gdate, week:weekForDate(gdate), source:'coach',
         type:gtype, exercises:gclean,
         note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
+      _stampBlock(gsessions[0]);
       if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       checkAndUpdatePRs(gclean);
       _setWorkingWeights(gclean, gdate);
@@ -21655,6 +21687,7 @@ function drainWatchSessions(){
         _rec={ id:Date.now()+added, date:localISO, type:dayType, label:_dayLabel(dayType),
           week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:[],
           wristStartedAt:s.startedAt||undefined };
+        _stampBlock(_rec);
         if(_draftExs.length){
           // The phone's draft is the base (its corrections stand), the wrist copy folds in.
           _rec.exercises=_draftExs; _rec.note='';

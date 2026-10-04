@@ -25,9 +25,9 @@ run('milestones gild the done card and streak chip in place, today only', async 
       const eyebrow = t.indexOf('◆ 10 SESSIONS LOGGED') > -1;
       const context = t.indexOf('10 sessions since') > -1;
       const chipGold = html.indexOf('◆ ') > -1 && !!document.querySelector('.kt-streak-chip .kt-milestone-tick');
-      // Stamped yesterday → everything stands down.
-      const y = new Date(Date.now() - 86400000);
-      const yISO = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0');
+      // Stamped yesterday → everything stands down. (Calendar days, not 24 h: on the night the
+      // clocks go back, 24 h before 23:30 is still today.)
+      const yISO = addDays(todayISO(), -1);
       lsSet('kt_milestones', { 'sess-10': yISO, 'streak-7': yISO });
       render();
       const t2 = document.getElementById('screen').textContent;

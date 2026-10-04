@@ -22,6 +22,7 @@ run('calendar day sheet: opens a day, keeps in step, steps between days', async 
       document.querySelector('.cal-day[data-date="' + d + '"]').click(); await wait(40);
       r.open = !!document.getElementById('calDayOverlay') && calSelectedDate === d && !!document.querySelector('.cal-day.sel[data-date="' + d + '"]');
       r.title = txt('#cdTitle'); r.eyebrow = txt('#cdBody .screen-eyebrow');
+      r.dayYear = Number(d.slice(0, 4)); r.nowYear = new Date().getFullYear();
       r.items = document.querySelectorAll('#cdBody .kt-cd-item').length;
       const acts = [...document.querySelectorAll('#cdBody .kt-cd-item')].map(it => [...it.querySelectorAll('.kt-cd-acts button, .kt-cd-acts input')].map(b => b.tagName === 'INPUT' ? 'date' : b.textContent.trim()));
       r.acts = acts;
@@ -67,7 +68,9 @@ run('calendar day sheet: opens a day, keeps in step, steps between days', async 
       return r;
     });
     assert(out.noList, 'the Lifts tab ends at the calendar, with the hint');
-    assert(out.open && /^Tuesday, Jul 21$/.test(out.title) && /1 WORKOUT · 1 RUN · 1 ACTIVITY/.test(out.eyebrow) && out.items === 3, 'a tapped day opens its sheet: ' + JSON.stringify([out.title, out.eyebrow, out.items]));
+    // The seed's day is in 2026: from another year on, the title names its year (_calDayName).
+    const wantTitle = 'Tuesday, Jul 21' + (out.dayYear !== out.nowYear ? ', ' + out.dayYear : '');
+    assert(out.open && out.title === wantTitle && /1 WORKOUT · 1 RUN · 1 ACTIVITY/.test(out.eyebrow) && out.items === 3, 'a tapped day opens its sheet: ' + JSON.stringify([out.title, out.eyebrow, out.items]));
     assert(JSON.stringify(out.acts) === JSON.stringify([['Share card', 'Edit sets', 'date', 'Delete'], ['Edit run', 'date', 'Delete'], ['Edit', 'date', 'Delete']]), 'every log keeps its actions: ' + JSON.stringify(out.acts));
     assert(out.lifts && out.stable, 'the workout lists its lifts, and a render with nothing new keeps the sheet as it is: ' + JSON.stringify([out.lifts, out.stable]));
     assert(out.delRun.open && out.delRun.items === 2 && out.undo === 3, 'a delete keeps the sheet on its day and Undo puts it back: ' + JSON.stringify([out.delRun, out.undo]));
