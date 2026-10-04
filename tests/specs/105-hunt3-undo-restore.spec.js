@@ -16,6 +16,8 @@
 // - Undo of the coach's set_exercise_weight puts the working weight back with the programme (the
 //   snapshot notes it), unless a newer log set its own; Restore Previous again swaps it back; a
 //   working-weight-only reply is an undo point too (M20).
+// - Restore previous programme is a row in Settings › Programme whenever there is a previous
+//   version (keyless owners included), and How It Works points there (M22).
 const { boot, assert, run } = require('../lib/harness');
 
 const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
@@ -323,6 +325,36 @@ run('Undo of the coach\'s set_exercise_weight puts the working weight back with 
     assert(out.back.plan === 160 && out.back.working === null, 'and again: ' + JSON.stringify(out.back));
     assert(out.logged && out.logged.plan === 160 && out.logged.working === 175, 'a newer log keeps its working weight: ' + JSON.stringify(out.logged));
     assert(out.zReply.zercher === 120 && out.zUndone && out.zUndone.zercher === 100, 'a working-weight-only reply is undone too: ' + JSON.stringify([out.zReply, out.zUndone]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Restore previous programme is a Settings row, keyless too, where How It Works points', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const row = () => [...document.querySelectorAll('.settings-row')].find(x => /Restore previous programme/.test(x.textContent));
+      const bench = () => getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Bench Press').weight;
+      const r = { key: !!localStorage.getItem('kt_apikey') };
+      switchTab('settings'); await wait(30);
+      r.noBackup = !!row();
+      const b0 = bench();
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', currentWeek - 1, b0 + 20, { markOwner: true }), { scope: 'routines' });
+      switchTab('settings'); await wait(30);
+      const el = row();
+      r.shown = !!el && el.closest('.settings-group').querySelector('.settings-group-hd').textContent;
+      if (el) { el.click(); await wait(20); confirm(); await wait(30); }
+      r.restored = bench() === b0;
+      r.how = (document.querySelector('.wf-view') || document.body).innerHTML.indexOf('Settings → Programme → Restore previous programme') >= 0 &&
+        document.documentElement.innerHTML.indexOf('Settings → Data → Restore Previous') < 0;
+      return r;
+    });
+    assert(!out.key, 'a keyless owner');
+    assert(!out.noBackup, 'no row without a previous version');
+    assert(out.shown === 'Programme' && out.restored, 'the row sits under Programme and restores the previous version: ' + JSON.stringify(out));
+    assert(out.how, 'How It Works points at the row that exists');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

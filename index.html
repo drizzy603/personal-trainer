@@ -18571,6 +18571,21 @@ function renderSettings() {
           '<span class="settings-row-val">'+getRoutineArchive().length+' ARCHIVED</span>'+
           '<span class="settings-row-chev">›</span>'+
         '</div>':'')+
+        // Restore Previous was reachable only from an empty coach chat (never without a key),
+        // while How It Works and the runner pointed here.
+        (hasRoutineBackup()?
+        '<div class="settings-row" onclick="restoreRoutineBackup()">'+
+          '<div class="settings-row-ic">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+              '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'+
+            '</svg>'+
+          '</div>'+
+          '<div class="settings-row-body">'+
+            '<div class="settings-row-title">Restore previous programme</div>'+
+            '<div class="settings-row-sub">Swaps back the version before the last change</div>'+
+          '</div>'+
+          '<span class="settings-row-chev">›</span>'+
+        '</div>':'')+
         '<div class="settings-row" onclick="openExLib()">'+
           '<div class="settings-row-ic" style="background:#1a1a2e;">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
@@ -21195,7 +21210,7 @@ window._trovoOpen=_handleDeepLink;
           <div class="ed-row-body">
             <div class="ed-row-title">Undo any programme change</div>
             <div class="ed-row-sub">If a Coach edit isn't right, roll it back instantly — no questions asked.</div>
-            <div class="ed-row-sub mono" style="margin-top:5px;">Settings → Data → Restore Previous Programme</div>
+            <div class="ed-row-sub mono" style="margin-top:5px;">PLAN CHANGES → Undo · Settings → Programme → Restore previous programme</div>
           </div>
         </div>
         <div class="ed-row">
