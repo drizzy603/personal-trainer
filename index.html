@@ -16463,6 +16463,7 @@ function _executeCoachToolRaw(name,input){
       // A copy: day names used to be set on the cached programme even when nothing was
       // saved, so the app (and the watch) showed a rename the coach was told had failed.
       var cr=getCustomRoutine();
+      var _fresh=!(cr && Array.isArray(cr.weeks) && cr.weeks.length);
       cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[]};
       if(_inNames){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
@@ -16627,6 +16628,11 @@ function _executeCoachToolRaw(name,input){
       // overwrite Restore Previous with the current programme).
       if(written.length||planSupplied) _snapshotRoutineForUndo(_coachScope());
       if((written.length||planSupplied) && !setCustomRoutine(cr)) return {ok:false,error:'Could not save the programme: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
+      // A programme built from nothing in the chat (after "Start a new programme") starts as the
+      // intake's and the starter's do: week 1 on the next Monday, the weekly cards re-armed. It
+      // kept the archive's anchor (this Monday, last Monday on a weekend): it started in the
+      // past and Monday read week 2.
+      if(_fresh && written.length) _startProgramme();
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
         if(planSupplied){
@@ -16638,6 +16644,7 @@ function _executeCoachToolRaw(name,input){
       }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
+      if(_fresh) label+='; a new programme: week 1 starts '+(_programmeStarted()?'today':'Monday '+_weekAnchor());
       if(skipped.length){
         var sLo=Math.min.apply(null,skipped), sHi=Math.max.apply(null,skipped);
         var sRange=skipped.length===1?('week '+skipped[0]):('weeks '+sLo+'–'+sHi);

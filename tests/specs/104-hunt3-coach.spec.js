@@ -6,9 +6,13 @@
 //   (the stores keep save order) and say how many of how many are listed and from which day; the
 //   "not in this list = not saved" rule holds only from that day; log_run / log_sport refuse a
 //   same-day twin (separate:true logs a real second one) and the pill says "Already logged".
+// - M24 a programme the coach builds in the chat after "Start a new programme" starts like the
+//   intake's: week 1 on the next Monday, the weekly cards re-armed (it kept the archive's anchor,
+//   started in the past, and Monday read week 2); a rewrite of an existing one does not re-anchor.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const MOCK = `(replies) => { let n = 0; window.fetch = async () => new Response(JSON.stringify(replies[Math.min(n++, replies.length - 1)]), { status: 200, headers: { 'content-type': 'application/json' } }); }`;
 
 run('H01: a coach week rewrite leaves the days it did not send exactly as stored (kg and lb)', async () => {
   for (const unit of ['kg', 'lb']) {
@@ -94,6 +98,46 @@ run('H13: the prompt says which logs it lists; the coach cannot log a saved run 
     assert(out.counts1[0] === 10 && out.counts1[1] === 12, 'nothing was added: ' + out.counts1);
     assert(out.other && out.second && out.swim && out.counts2[0] === 12 && out.counts2[1] === 13, 'real second sessions still log: ' + JSON.stringify(out.counts2));
     assert(/LOGGED RUNS \(the ground truth: all 3 saved\)/.test(out.allHead) && /If a run the user mentions is NOT in this list, it is NOT saved/.test(out.allHead), 'a full list keeps the plain rule: ' + out.allHead);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M24: a programme built in the chat after "Start a new programme" starts on the next Monday', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const mock = eval(MOCK), r = {};
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      const weeks = cr.weeks.map(w => ({ wk: w.wk, bName: w.bName, bColor: w.bColor, push: w.push.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight })), pull: w.pull.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight })), legs: w.legs.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight })) }));
+      // control: rewriting the running programme keeps its anchor
+      localStorage.setItem('kt_week_monday', _mostRecentMonday());
+      executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: cr.weeks[c].bName, bColor: cr.weeks[c].bColor }] });
+      r.keptAnchor = localStorage.getItem('kt_week_monday') === _mostRecentMonday() && currentWeek === c + 1;
+      // Settings › Start a new programme › Archive & start fresh, then the coach builds one in the chat
+      startNewProgramme(); await wait(10);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+      r.archived = !hasCustomRoutine() && !intakeMode;
+      mock([{ content: [{ type: 'text', text: 'Building it now.' }, { type: 'tool_use', id: 't1', name: 'update_routine_weeks', input: { weekPlan: ['Push', 'Run', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest'], weeks } }], stop_reason: 'tool_use', usage: {} },
+            { content: [{ type: 'text', text: 'Your new programme is ready.' }], stop_reason: 'end_turn', usage: {} }]);
+      coachMessages = [{ role: 'user', content: 'Build me a new 12-week push/pull/legs programme' }];
+      await runCoachTurn('sys', 'claude-haiku-4-5', 512);
+      const tool = (coachMessages[coachMessages.length - 1]._tools || [])[0] || {};
+      r.built = { weeks: getTotalWeeks(), week: currentWeek, anchor: localStorage.getItem('kt_week_monday'), want: _nextMonday(todayISO()),
+        plateau: lsGet('kt_last_plateau_week'), prog: lsGet('kt_last_prog_week'), msg: tool.result && tool.result.message };
+      // the coming Monday: the week moves only if today is already a Monday (a week has passed)
+      const RealDate = Date, mon = _nextMonday(addDays(todayISO(), 1));
+      const shift = new RealDate(mon + 'T09:00:00').getTime() - RealDate.now();
+      window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + shift); } static now() { return RealDate.now() + shift; } };
+      try { autoAdvanceWeek(); r.monday = { week: currentWeek, want: r.built.anchor === mon ? 1 : 2 }; } finally { window.Date = RealDate; }
+      return r;
+    }, MOCK);
+    assert(out.keptAnchor, 'a rewrite of the running programme does not re-anchor it');
+    assert(out.archived, 'the old programme was archived');
+    assert(out.built.weeks === 12 && out.built.week === 1 && out.built.anchor === out.built.want, 'week 1 starts on the next Monday: ' + JSON.stringify(out.built));
+    assert(out.built.plateau === 1 && out.built.prog === 1, 'the weekly cards are re-armed for week 1: ' + JSON.stringify(out.built));
+    assert(/a new programme: week 1 starts (today|Monday \d{4}-\d{2}-\d{2})/.test(out.built.msg || ''), 'the coach is told when it starts: ' + out.built.msg);
+    assert(out.monday.week === out.monday.want, 'the coming Monday reads the right week: ' + JSON.stringify(out.monday));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
