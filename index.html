@@ -12538,7 +12538,8 @@ function moveSession(id,newDate,fromDate){
   if(!rec) return;
   var c=Object.assign({}, rec), loads=_newestLoads([rec]);
   c.date=newDate; c.week=weekForDate(newDate);
-  lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }));
+  // A failed save (lsSet has toasted) stays on its day: following the date closed the sheet.
+  if(!lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }))){ _cdPainted=''; render(); return; }
   _workingWeightsFollow(loads);   // moved behind a later log, or back in front of it
   invalidateCoachCard();
   _calNavToDate(newDate); render();
@@ -12551,7 +12552,9 @@ function moveRun(id,newDate,fromDate){
   var c=Object.assign({}, rec);
   if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(rec);
   c.date=newDate; c.week=weekForDate(newDate);
-  if(!lsSet('kt_runs', runs.map(function(r){ return r===rec?c:r; }))){ render(); return; }   // lsSet has toasted; the date input snaps back
+  // lsSet has toasted. The sheet's HTML is unchanged, so its guard kept the field showing the
+  // unsaved date: a forced repaint snaps it back.
+  if(!lsSet('kt_runs', runs.map(function(r){ return r===rec?c:r; }))){ _cdPainted=''; render(); return; }
   invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
@@ -12564,7 +12567,7 @@ function moveSport(id,newDate,fromDate){
   var c=Object.assign({}, rec);
   if(c.date!==newDate && c.notes==='From Apple Health' && !c.hkOrig) c.hkOrig={date:String(rec.date||''), duration:parseInt(rec.duration)||0};
   c.date=newDate;
-  if(!lsSet('kt_sports', sports.map(function(sp){ return sp===rec?c:sp; }))){ render(); return; }
+  if(!lsSet('kt_sports', sports.map(function(sp){ return sp===rec?c:sp; }))){ _cdPainted=''; render(); return; }   // as moveRun
   invalidateCoachCard();
   _calNavToDate(newDate); render();
 }

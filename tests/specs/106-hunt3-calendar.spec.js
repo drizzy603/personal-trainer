@@ -14,6 +14,8 @@
 // - M05: a reps-only fix in the history editor (Edit sets) no longer resets every lift in the
 //   session to its logged load (undoing a +5 written since); a load fix or a rename moves only its
 //   own lift's working weight, as the coach's edit_session does. lb and kg.
+// - L03: a day-sheet move that cannot be saved (storage full) stays on its day: the run's and the
+//   activity's Date fields show the stored date again, and a workout no longer closes the sheet.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -261,6 +263,45 @@ run('M05: a reps-only fix in Edit sets leaves every working weight alone; a load
     assert(out.kg['Bench Press'] === 190 && out.kg['Overhead Press'] === 95, 'in kg too: ' + JSON.stringify(out.kg));
     assert(out.load['Bench Press'] === 180 && out.load['Overhead Press'] === 100, 'a load fix moves that lift\'s working weight only: ' + JSON.stringify(out.load));
     assert(out.rename['Seated Overhead Press'] > 0 && !('Overhead Press' in out.rename) && out.rename['Bench Press'] === 180, 'a rename carries the working weight to the new name: ' + JSON.stringify(out.rename));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L03: a day-sheet move that cannot be saved stays on its day, and the Date field shows the stored date', async () => {
+  const D = daysAgo(20), N = daysAgo(25);
+  const app = await boot({ native: true, seed: {
+    kt_sessions: JSON.stringify([{ id: 7001, date: D, week: 3, type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }] }]),
+    kt_runs: JSON.stringify([{ id: 7002, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]),
+    kt_sports: JSON.stringify([{ id: 7003, date: D, type: 'Yoga', duration: 30, data: {}, notes: '' }]),
+    kt_prs: '{}',
+  } });
+  try {
+    const out = await app.page.evaluate(async ({ D, N }) => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + D + '"]').click(); await wait(40);
+      // storage is full for the logs from here on
+      const realSet = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === 'kt_runs' || k === 'kt_sessions' || k === 'kt_sports') { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; } return realSet.call(this, k, v); };
+      const field = re => { const it = [...document.querySelectorAll('#cdBody .kt-cd-item')].find(x => re.test(x.textContent)); return it && it.querySelector('input[type=date]'); };
+      const pick = async re => {
+        const f = field(re); f.value = N; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        const f2 = field(re); return { field: f2 ? f2.value : null, sheet: calSelectedDate, open: !!document.getElementById('calDayOverlay') };
+      };
+      const r = {};
+      try {
+        r.run = await pick(/Edit run/); r.run.stored = getRuns()[0].date;
+        r.sport = await pick(/Yoga/); r.sport.stored = getSportLogs()[0].date;
+        r.session = await pick(/Edit sets/); r.session.stored = getSessions()[0].date;
+        r.toast = (document.getElementById('toast') || {}).textContent || '';
+      } finally { Storage.prototype.setItem = realSet; }
+      return r;
+    }, { D, N });
+    ['run', 'sport', 'session'].forEach(k => {
+      const x = out[k];
+      assert(x.stored === D && x.field === D && x.open && x.sheet === D, k + ': a failed move stays on its day and the field shows the stored date: ' + JSON.stringify(x));
+    });
+    assert(out.toast.length > 0, 'the failed save says so: ' + out.toast);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
