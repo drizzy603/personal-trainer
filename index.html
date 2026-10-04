@@ -8032,7 +8032,8 @@ function renderRunReview(km, time, excludeId){
     var todayRight=best
       ? '<span class="kt-mono" style="font-size:11px;font-weight:800;color:var(--accent-ink);">'+_fmtRunSecs(secs)+' · BEST</span>'
       : '<span class="kt-mono" style="font-size:11px;color:var(--muted);">'+_fmtRunSecs(secs)+' · +'+(secs-bestSecs)+'S VS BEST</span>';
-    var distLbl=d>=2.5 ? Math.round(d)+'Ks' : 'runs';
+    // In the owner's unit: a 10 mi run read 'VS RECENT 16KS' among mile figures.
+    var distLbl=d>=2.5 ? (_uD()==='mi' ? Math.round(dDisp(d))+' mi' : Math.round(d)+'Ks') : 'runs';
     out+='<div style="margin:14px 0 4px;">'+
       '<div class="kt-ledger-hd"><span class="l">VS RECENT '+distLbl.toUpperCase()+'</span></div>'+
       rows+

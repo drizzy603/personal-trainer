@@ -32,6 +32,8 @@
 // - L29: a pace goal is "m:ss" in the unit on screen or nothing, from Progress › Runs, the Run
 //   tab's goal line and the coach's set_run_goal ('9:00/mi' was stored as typed and read as
 //   9:00 per km); paceToSec reads only a stored pace.
+// - L30: the run review's VS RECENT heading names the distance in miles for a mile owner
+//   (a 10 mi run read 'VS RECENT 16KS').
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -565,6 +567,28 @@ run('L29: a pace goal is "m:ss" in the unit on screen or nothing (Progress › R
     assert(/9:00 → 9:30 · \+30 S\/MI/.test(out.chip), 'the review compares in miles: ' + out.chip);
     assert(out.line === '5:35.5', 'the Run tab\'s goal line keeps the goal when the text is no pace: ' + out.line);
     assert(out.coach[0] === false && out.coach[1] === '5:35.5' && out.coach[2] === true, 'the coach\'s set_run_goal takes only a pace: ' + JSON.stringify(out.coach));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L30: the run review heading names the distance in the owner\'s unit', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(() => {
+      const d1 = addDays(todayISO(), -7), d2 = addDays(todayISO(), -14);
+      lsSet('kt_runs', [
+        { id: 1785000000001, date: d1, distance: 16.09, time: '1:30:00', week: weekForDate(d1), note: '', hr: 0, type: 'long' },
+        { id: 1785000000002, date: d2, distance: 16.2, time: '1:31:10', week: weekForDate(d2), note: '', hr: 0, type: 'long' },
+      ]);
+      const head = () => { const m = /kt-ledger-hd"><span class="l">([^<]*)</.exec(renderRunReview(16.09, '1:28:00')); return m && m[1]; };
+      const r = { km: head() };
+      localStorage.setItem('kt_unit_d', 'mi');
+      r.mi = head();
+      localStorage.setItem('kt_unit_d', 'km');
+      return r;
+    });
+    assert(out.km === 'VS RECENT 16KS', 'km owners read kilometres: ' + out.km);
+    assert(out.mi === 'VS RECENT 10 MI', 'mile owners read miles: ' + out.mi);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
