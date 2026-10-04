@@ -10653,6 +10653,31 @@ function _progUseCoach(cr, slot, name, c){
   }
   return n;
 }
+// The coach rows a week keeps for Restore: those whose lift is not on the day again
+// (a swap onto it put it back; that entry stays for Reset).
+function _progOut(w, slot){
+  var ro=(w && w.recOut && Array.isArray(w.recOut[slot])) ? w.recOut[slot] : [];
+  return ro.filter(function(e){ return e && e.row && !_progRow(w, slot, e.row.name); });
+}
+// RESTORE: the removed coach rows named in `names` come back from week c on, each week its
+// own where it was, with its main tag and superset. A week that never had one gets nothing
+// (adding them put a block's lift into every later week, as an ADDED row with no load).
+function _progRestoreOut(cr, slot, names, c){
+  var W=cr.weeks, n=0;
+  for(var j=c;j<W.length;j++){
+    var w=W[j], ro=w && w.recOut && w.recOut[slot]; if(!Array.isArray(ro)) continue;
+    if(!Array.isArray(w[slot])) w[slot]=[];
+    for(var q=ro.length-1;q>=0;q--){   // last removed first, so each lands where it was
+      var e=ro[q]; if(!e || !e.row || names.indexOf(e.row.name)<0 || _progRow(w, slot, e.row.name)) continue;
+      ro.splice(q,1);
+      var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
+      w[slot].splice(Math.min(w[slot].length, Math.max(0, parseInt(e.at,10)||0)), 0, back);
+      _progSettleMain(w[slot], back); _progRepair(w[slot], back, e); n++;
+    }
+    if(!ro.length){ delete w.recOut[slot]; if(!Object.keys(w.recOut).length) delete w.recOut; }
+  }
+  return n;
+}
 // A whole day back to the coach's version from week c on, removed rows included.
 function _progResetSlot(cr, slot, c){
   var W=cr.weeks, n=0;
@@ -10740,7 +10765,7 @@ function _rtDays(cr, c){
 }
 function _rtChanges(cr, c){
   var n=0, w=cr.weeks[c]; if(!w) return 0;
-  LIFT_KEYS.forEach(function(k){ ((w[k])||[]).forEach(function(r){ if(r && r.rec!==undefined) n++; }); if(w.recOut && w.recOut[k]) n+=w.recOut[k].length; });
+  LIFT_KEYS.forEach(function(k){ ((w[k])||[]).forEach(function(r){ if(r && r.rec!==undefined) n++; }); n+=_progOut(w, k).length; });
   return n;
 }
 function _paintRoutines(){
@@ -10777,8 +10802,8 @@ function _paintRoutines(){
             '<span class="kt-rt-go" aria-hidden="true">›</span>'+
           '</button>'+coach+'</div>';
       }).join('');
-      var ro=(cr.weeks[c].recOut&&cr.weeks[c].recOut[key])||[];
-      if(ro.length) body+='<div class="kt-rt-coach">'+_plural(ro.length,'coach lift')+' removed · <button type="button" class="kt-rt-link" onclick="_rtRestoreRemoved(\''+d.slot+'\')">Restore</button></div>';
+      var ro=(cr.weeks[c].recOut&&cr.weeks[c].recOut[key])||[], roIn=_progOut(cr.weeks[c], key);
+      if(roIn.length) body+='<div class="kt-rt-coach">'+_plural(roIn.length,'coach lift')+' removed · <button type="button" class="kt-rt-link" onclick="_rtRestoreRemoved(\''+d.slot+'\')">Restore</button></div>';
       if(_rtAdd===d.slot){
         var q=_rtQuery.trim().toLowerCase(), have={}; rows.forEach(function(r){ have[r.name]=1; });
         var hits=getAllExercises().filter(function(e){ return !have[e.name] && (!q || e.name.toLowerCase().indexOf(q)>=0 || String(e.muscles||'').toLowerCase().indexOf(q)>=0); }).slice(0,10);
@@ -10810,9 +10835,8 @@ function _rtUseCoach(slot, name){
 }
 function _rtRestoreRemoved(slot){
   _commitRoutine(function(cr){
-    var c=currentWeek-1, key=slot.toLowerCase(), ro=((cr.weeks[c].recOut||{})[key]||[]).slice(), n=0;
-    ro.forEach(function(e){ if(e && e.row){ var a=_progAdd(cr, key, {name:e.row.name, sets:e.row.sets, reps:e.row.reps, rpe:e.row.rpe, weight:0}, c, null, {firstIsMain:false}); if(a>0) n+=a; } });
-    return n;
+    var c=currentWeek-1, key=slot.toLowerCase();
+    return _progRestoreOut(cr, key, _progOut(cr.weeks[c], key).map(function(e){ return e.row.name; }), c);
   }, {undoLabel:'Coach lifts restored', scope:'routines'});
 }
 function _rtResetDay(slot){

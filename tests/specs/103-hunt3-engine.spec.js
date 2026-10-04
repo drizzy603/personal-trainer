@@ -14,6 +14,9 @@
 // - M14: removing the main lift hands its tag on as the owner's change, and Restore, Reset, adding
 //   it back and Use coach's (after Make main) give back one main, the coach's, first on the day; a
 //   removed superset partner comes back paired; rows come back where they were.
+// - M15 + L41: Restore brings back each week's own removed rows (it added a block's lift to every
+//   later week as an ADDED row with no load), and a removed lift back on the day under that name
+//   (a swap onto it) is not offered for a Restore that did nothing; Reset still has it.
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -290,6 +293,47 @@ seq('M14: Restore, Reset and Use coach\'s give back the coach\'s day: the main l
     assert(out.ssRestore === C && out.ssReset === C, 'Restore and Reset pair the superset again: ' + JSON.stringify([out.ssRestore, out.ssReset]));
     assert(out.two === C, 'two removals come back where they were: ' + out.two);
     assert(out.mmOhp === C && out.mmBench === C, 'Use coach\'s after Make main leaves one main lift, the coach\'s: ' + JSON.stringify([out.mmOhp, out.mmBench]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M15 + L41: Restore brings back only what each week had; a lift back on the day under that name is not offered', async () => {
+  // The coach: Lateral Raise in weeks 1-8, Cable Fly in its place from week 9.
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => { if (i >= 8) Object.assign(w.push.find(e => e.name === 'Lateral Raise'), { name: 'Cable Fly', weight: 40, sets: 3, reps: 12 }); });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const acc = () => getCustomRoutine().weeks.slice(c).map(w => w.push.filter(e => /Lateral|Fly/.test(e.name)).map(e => e.name + '@' + e.weight + (e.rec === null ? '+' : '')).join('/')).join(' ');
+      const line = () => { const l = [...document.querySelectorAll('#rt-card-Push .kt-rt-coach')].find(d => /removed/.test(d.textContent)); return l ? l.textContent : ''; };
+      const remove = async (n) => { _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); };
+      r.coach = acc();
+      openRoutines(); await remove('Lateral Raise');
+      r.removed = acc(); r.line = line();
+      _rtRestoreRemoved('Push'); await wait(10);
+      r.restored = acc(); r.lineAfter = line();
+      closeRoutines(); lsSet('kt_routine', JSON.parse(orig));
+      // L41: Overhead Press removed, then Incline Dumbbell Press changed to Overhead Press
+      const day = () => getCustomRoutine().weeks[c].push.map(e => e.name).join(' | ');
+      const coachDay = day();
+      openRoutines(); await remove('Overhead Press');
+      _rtOpenEdit('Push', 'Incline Dumbbell Press'); _rtEdit.swapTo = 'Overhead Press'; _rtSave(); await wait(10);
+      r.swapped = { line: line(), changes: _rtChanges(getCustomRoutine(), c), reset: !!document.querySelector('#rt-card-Push .kt-rt-reset') };
+      document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10);
+      r.reset = day() === coachDay;
+      closeRoutines();
+      return r;
+    });
+    const coach = 'Lateral Raise@17.5 Lateral Raise@17.5 Lateral Raise@17.5 Cable Fly@40 Cable Fly@40 Cable Fly@40 Cable Fly@40';
+    assert(out.coach === coach, 'the coach\'s block accessories: ' + out.coach);
+    assert(out.removed === '   Cable Fly@40 Cable Fly@40 Cable Fly@40 Cable Fly@40' && /1 coach lift removed/.test(out.line), 'removed from week 6 on: ' + JSON.stringify([out.removed, out.line]));
+    assert(out.restored === coach && !out.lineAfter, 'Restore puts it back in weeks 6-8 only, nothing added to the Cable Fly weeks: ' + JSON.stringify([out.restored, out.lineAfter]));
+    assert(!out.swapped.line && out.swapped.changes === 1 && out.swapped.reset, 'a removed lift back on the day by a swap is not offered for Restore: ' + JSON.stringify(out.swapped));
+    assert(out.reset, 'Reset still gives back the coach\'s day');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
