@@ -3487,13 +3487,19 @@ function weekForDate(dateStr){
   // Measured from the ANCHOR, not today's Monday: currentWeek is defined
   // relative to kt_week_monday, and before a programme starts that Monday is
   // ahead of today, so measuring from today's Monday read the first week as 2.
-  var monNow=new Date(_weekAnchor()+'T00:00:00');
+  // Parked on the final week the anchor follows the calendar while the week
+  // stays put (autoAdvanceWeek), so every earlier parked week read as the one
+  // before it (Wk 11, 10 …): those are measured from the Monday the final week
+  // began, as _roundInfo does.
+  var total=getTotalWeeks(), fin=currentWeek>=total ? localStorage.getItem('kt_final_since') : null;
+  var monNow=new Date((fin||_weekAnchor())+'T00:00:00');
   // Negative weeksAgo is a FUTURE week. The old Math.max(0, …) clamped every
   // future date to the current week, so the widget's 7-day strip and the
-  // 28-day reminders drew next week from this week's cadence. Callers that
-  // need an upper bound clamp to getTotalWeeks() themselves.
+  // 28-day reminders drew next week from this week's cadence. Never past the
+  // last week though: on the round-swap morning the watch drains under the old
+  // clock, and a session from that morning was filed as "Week 13 of 12".
   var weeksAgo=Math.round((monNow-mon)/(7*86400000));
-  return Math.max(1,currentWeek-weeksAgo);
+  return Math.min(total, Math.max(1,(fin?total:currentWeek)-weeksAgo));
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) lsSet('kt_bw_goal',v); else lsDel('kt_bw_goal'); }
@@ -7118,7 +7124,7 @@ function _weekWrapDue(){
   if(dow===1){
     var lm=new Date(thisMon+'T00:00:00'); lm.setDate(lm.getDate()-7); var lastMon=_ymdLocal(lm);
     if(stamped===lastMon || stamped===thisMon) return false;
-    var wk=Math.max(1,currentWeek-1);
+    var wk=weekForDate(lastMon);   // a week parked on the last one is the last one, not currentWeek-1
     if(_weekStats(lastMon, wk).count>=1){ _wwDueMon=lastMon; _wwDueWeek=wk; return true; }
   }
   return false;

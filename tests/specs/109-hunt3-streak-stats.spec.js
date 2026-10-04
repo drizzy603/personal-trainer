@@ -10,6 +10,10 @@
 //   that week's cadence: not a rolling 7 days against this week's ("DONE 7 of 6") (M50).
 // - The shared week-wrap image carries the week the card is for: a Monday's poster said next
 //   week's number over last week's stats (M51).
+// - Parked on the final week, every parked week is the final week (weekForDate measures them
+//   from kt_final_since): the streak no longer breaks on them, the Monday wrap says WEEK 12
+//   with week 12's plan, and no date is ever past the last week, so a wrist session drained on
+//   the round-swap morning is week 12, not "Week 13 of 12" (M01).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -276,3 +280,70 @@ run('a Monday\'s shared week wrap carries last week\'s number, as the card does 
 });
 // addDays for a YYYY-MM-DD string, here in Node (calendar math only, no time zone involved).
 function addDaysNode(iso, n) { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+
+// Weeks 1-11 train Tue/Thu/Sat/Sun; the final week has its own Mon/Wed/Fri.
+function parkedRoutine() {
+  const r = JSON.parse(SEED.kt_routine);
+  r.weekPlan = ['Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Push'];
+  r.weeks.forEach(w => { delete w.weekPlan; });
+  r.weeks[11].weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest'];
+  return r;
+}
+
+run('parked on the final week, every parked week is week 12: streak, Monday wrap, stamps (M01)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(parkedRoutine()), kt_week: '12' }) });
+  try {
+    const out = await app.page.evaluate(async ([CLOCK, LOGS, WRAP]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      // The final week began on W and repeated twice; the anchor follows the calendar meanwhile.
+      const W = addDays(_mostRecentMonday(), 7), rows = [];
+      __setNow(addDays(W, 20) + 'T20:00:00');
+      currentWeek = 12; lsSet('kt_week', 12); localStorage.setItem('kt_week_monday', addDays(W, 14)); localStorage.setItem('kt_final_since', W);
+      lsSet('kt_streak_days', {});
+      [0, 7, 14].forEach(b => { rows.push([addDays(W, b), 'Push'], [addDays(W, b + 2), 'Pull'], [addDays(W, b + 4), 'Legs']); });
+      lsSet('kt_sessions', logs(rows));
+      r.weeks = [weekForDate(addDays(W, -3)), weekForDate(W), weekForDate(addDays(W, 9)), weekForDate(addDays(W, 16)), weekForDate(addDays(W, 35))];
+      r.streak = calcStreakDays();
+      // The Monday after the first final week: its wrap is week 12's, at week 12's plan.
+      __setNow(addDays(W, 7) + 'T08:00:00');
+      localStorage.setItem('kt_week_monday', addDays(W, 7));
+      lsSet('kt_sessions', logs([[addDays(W, 2), 'Pull'], [addDays(W, 4), 'Legs']]));
+      lsSet('kt_last_weekwrap', addDays(W, -7)); lsSet('kt_last_review_week', 12);
+      r.wrap = await eval(WRAP)();
+      r.snap = _wwSnap && { weekNo: _wwSnap.weekNo, count: _wwSnap.count, planned: _wwSnap.planned };
+      return r;
+    }, [CLOCK, LOGS, WRAP]);
+    assert(JSON.stringify(out.weeks) === '[11,12,12,12,12]', 'the week before is 11, every parked week (and the future) is 12: ' + JSON.stringify(out.weeks));
+    assert(out.streak === 9, 'nine final-week days trained in a row: ' + out.streak);
+    // (Today leads with PROGRAMME DONE there, so the wrap card may sit behind its WRAPPED chip.)
+    assert(out.wrap.due && (!out.wrap.card || /WEEK 12 · WRAPPED/.test(out.wrap.card)) && /WEEK 12 · WRAPPED/.test(out.wrap.png), 'the Monday wrap is week 12\'s: ' + JSON.stringify(out.wrap));
+    assert(out.snap && out.snap.weekNo === 12 && out.snap.count === 2 && out.snap.planned === 3, 'at week 12\'s plan (2 of 3, not 2 of 4): ' + JSON.stringify(out.snap));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('a wrist session drained on the round-swap morning is week 12, never 13 (M01)', async () => {
+  const app = await boot({ native: true, seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(parkedRoutine()), kt_week: '12' }) });
+  try {
+    const out = await app.page.evaluate(async ([CLOCK]) => {
+      eval(CLOCK); const r = {};
+      const W = addDays(_mostRecentMonday(), 7), S = addDays(W, 7);
+      const wrist = (n) => JSON.stringify({ dayName: 'Push', slot: 'Push', startedAt: new Date(S + 'T0' + n + ':00:00').toISOString(), loggedAt: new Date(S + 'T0' + n + ':50:00').toISOString(),
+        exercises: [{ name: 'Bench Press', reps: [8, 8, 8], weight: 150, weightLog: [150, 150, 150] }] });
+      // Round 2 starts on S; the watch queue drains before the swap (the clock still on round 1).
+      for (const stale of [0, 3]) {
+        __setNow(S + 'T09:55:00');
+        currentWeek = 12; lsSet('kt_week', 12); localStorage.setItem('kt_week_monday', addDays(W, -7 * stale)); localStorage.setItem('kt_final_since', addDays(W, -7 * stale));
+        lsSet('kt_sessions', []);
+        window.__mock.pending = [wrist(stale ? 7 : 8)];
+        await drainWatchSessions();
+        const s = getSessions()[0];
+        r['away' + stale] = { date: s && s.date, week: s && s.week, today: weekForDate(S) };
+      }
+      return r;
+    }, [CLOCK]);
+    assert(out.away0.week === 12 && out.away0.today === 12, 'the swap morning\'s session is week 12: ' + JSON.stringify(out.away0));
+    assert(out.away3.week === 12 && out.away3.today === 12, 'and after three weeks away, still 12 (it was 15): ' + JSON.stringify(out.away3));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
