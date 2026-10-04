@@ -2249,6 +2249,12 @@ var SESS = {
 var LIFT_TYPES = ['Push','Pull','Legs','Legs2','Arms','Day6','Day7'];
 var LIFT_KEYS  = LIFT_TYPES.map(function(t){ return t.toLowerCase(); });   // the week arrays
 var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // present on a week only when they hold something
+// Text counted in characters, not UTF-16 units: an emoji is two units, and a
+// cut between them leaves half a character that Swift's JSONDecoder rejects,
+// taking the whole watch plan or widget summary with it. A half already cut
+// off by an older page is dropped.
+function _chars(s){ return String(s==null?'':s).match(/[\ud800-\udbff][\udc00-\udfff]|[^\ud800-\udfff]/g)||[]; }
+function _wellFormed(s){ s=String(s==null?'':s); return /[\ud800-\udfff]/.test(s)?_chars(s).join(''):s; }
 // ── Named slots ───────────────────────────────────────────────────────────────
 // A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
 // reads, how history groups, how the runner walks it. Its NAME is the user's:
@@ -2256,8 +2262,8 @@ var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // pr
 // value, so an older bundled page ignores dayNames and still renders the same
 // exercises under the stock label. _dayLabel() is the ONE read path.
 function _cleanDayLabel(s){
-  var t=String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim();
-  return t.slice(0,24);
+  var t=_wellFormed(String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,'')).replace(/\s+/g,' ').trim();
+  return _chars(t).slice(0,24).join('').trim();
 }
 function _dayNames(){ var cr=getCustomRoutine(); return (cr && cr.dayNames && typeof cr.dayNames==='object') ? cr.dayNames : {}; }
 function _dayLabel(t){
@@ -2266,12 +2272,24 @@ function _dayLabel(t){
   return (SESS[t] && SESS[t].label) || String(t);
 }
 function _sessLabel(t){ return _dayLabel(t); }
-// The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B".
-function _dayShort(t){
-  var l=_dayLabel(t); if(l.length<=7) return l;
+// The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B",
+// "Full Body A" -> "Full A", "Lower Body" -> "Lower". Seven characters at most
+// (an emoji is one), and two days never shorten to the same word.
+function _dayShortOf(l){
+  if(_chars(l).length<=7) return l;
   var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
-  if(parts.length>1) return parts.map(function(p){ return p.charAt(0).toUpperCase(); }).join('+');
-  return l.slice(0,6);
+  if(parts.length>1) return parts.map(function(p){ return (_chars(p)[0]||'').toUpperCase(); }).join('+');
+  var w=l.split(' '), first=_chars(w[0]), last=w.length>1?_chars(w[w.length-1]):[];
+  // A short last word ("A", "B", "2") is what tells two days apart: keep it.
+  if(last.length && last.length<=2) return first.slice(0,6-last.length).join('')+' '+last.join('');
+  return first.slice(0,6).join('');
+}
+function _dayShort(t){
+  var l=_wellFormed(_dayLabel(t)), s=_dayShortOf(l), w=l.split(' ');
+  if(s===l || w.length<2 || /[+\/&]/.test(l)) return s;
+  // "Upper Power" and "Upper Volume" both read "Upper": add the last word's initial.
+  var clash=LIFT_TYPES.some(function(k){ return k!==t && _dayShortOf(_dayLabel(k))===s; });
+  return clash ? _chars(w[0]).slice(0,5).join('')+' '+(_chars(w[w.length-1])[0]||'').toUpperCase() : s;
 }
 // Reverse lookup: a slot id, the name the user gave one (any case), or a stock
 // label -> the slot. `extra` lets a coach call that names AND uses a day in the
@@ -3435,7 +3453,7 @@ function openRoutineArchiveModal(){
     '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div style="font-size:17px;font-weight:800;">Programme History</div>'+
-        '<button class="ex-modal-close" onclick="closeRoutineArchiveModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeRoutineArchiveModal()" aria-label="Close">✕</button>'+
       '</div>'+
       '<p style="font-size:13px;color:var(--muted);margin:-10px 0 16px;line-height:1.5;">Previous programmes. Restoring one will archive your current first.</p>'+
       rows+
@@ -5933,6 +5951,8 @@ function getUserFirstName(){
   }
   return '';
 }
+// The avatar's letter: the first character (a whole emoji, not half of one), ready for HTML.
+function _initialOf(s){ return _esc((_chars(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
 
 // ── Editorial Today helpers ──────────────────────────────────────────────────
 // Enriched exercise list for the editorial Today + Deck Runner: prescribed
@@ -6388,7 +6408,7 @@ function renderTodayEditorial(){
   // Avatar shows the user's initial when a name is set; otherwise the routine's
   // first character, falling back to a neutral glyph.
   var avatarSeed = firstName || '?';
-  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
+  var initial = _initialOf(avatarSeed);
   var totalWks = getTotalWeeks();
   var act = getTodayActivity();
 
@@ -8205,7 +8225,7 @@ function renderRunSegment(){
   var deload = isDeloadWeek();
   var focus = getRunFocus();
   var avatarSeed = firstName || '?';
-  var initial = (String(avatarSeed)[0] || '?').toUpperCase();
+  var initial = _initialOf(avatarSeed);
 
   var meta = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">'+weekday+' · WK '+
@@ -11721,9 +11741,9 @@ function _buildExPickerItems(q){
   var sec=function(t){ return '<div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;padding:6px 8px;">'+_esc(t)+'</div>'; };
   function item(e){
     var name=e.name, isCur=(_rExPickMode==='swap' && name===_rExEditName), here=!!inSession[name];
-    var escaped=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     var sub=[e.muscles&&e.muscles!=='Not specified'?e.muscles:'', e.equip&&e.equip!=='Not specified'?e.equip:''].filter(Boolean).join(' \u00b7 ');
-    return '<button onclick="event.stopPropagation();runnerExPickExercise(\''+escaped+'\')" style="'+
+    // The name rides in data-n, not inside the handler: a quote in it (Box Jump 30") cut the handler short.
+    return '<button data-n="'+_esc(name)+'" onclick="event.stopPropagation();runnerExPickExercise(this.dataset.n)" style="'+
       'width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;'+
       'background:'+(isCur?'color-mix(in srgb,var(--accent) 10%,transparent)':'transparent')+';'+
       'border:none;border-radius:10px;padding:10px 8px;color:var(--text);cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
@@ -11745,9 +11765,8 @@ function _buildExPickerItems(q){
   if(rest.length){ if(!qLow) html+=sec((_rExPickCat==='All'?'All':_rExPickCat)+' \u00b7 '+rest.length); html+=rest.map(item).join(''); }
   var exact=q&&all.some(function(e){ return e.name.toLowerCase()===qLow; });
   if(qLow && !exact){
-    var escapedQ=String(q).trim().replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     html+=(rest.length?'<div style="height:1px;background:var(--border);margin:8px 0;"></div>':'')+
-      '<button onclick="event.stopPropagation();runnerExCreateCustom(\''+escapedQ+'\')" style="width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--accent-ink);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
+      '<button data-n="'+_esc(String(q).trim())+'" onclick="event.stopPropagation();runnerExCreateCustom(this.dataset.n)" style="width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--accent-ink);font-size:14px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;text-align:left;">'+
         '<span style="font-size:18px;line-height:1;">+</span><span>Create \u201c'+_esc(String(q).trim())+'\u201d</span></button>';
   }
   if(!html) html='<div style="text-align:center;padding:24px;color:var(--muted);font-size:14px;">Nothing in '+_esc(_rExPickCat)+'.</div>';
@@ -11909,7 +11928,7 @@ function openSwapModal(sourceDow){
     '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div style="font-size:17px;font-weight:800;">Move '+sourceLabel+' to…</div>'+
-        '<button class="ex-modal-close" onclick="closeSwapModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeSwapModal()" aria-label="Close">✕</button>'+
       '</div>'+
       '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px;">'+
         'Swaps the activity on '+dayFullNames[sourceDow]+' with the day you pick. Only changes this week\'s cadence.'+
@@ -11948,8 +11967,8 @@ function renderWeekHeader() {
   return '<div class="hero-card">'+
     '<div class="hero-label">Current week</div>'+
     '<div><span class="hero-num">'+wkStr+'</span><span class="hero-of">/ '+totalWks+'</span></div>'+
-    '<div class="hero-block">● '+(bName||'Block')+'</div>'+
-    (summary ? '<div class="hero-focus">'+summary+'</div>' : '')+
+    '<div class="hero-block">● '+_esc(bName||'Block')+'</div>'+
+    (summary ? '<div class="hero-focus">'+_esc(summary)+'</div>' : '')+
     '<div class="hero-bar"><div class="hero-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="hero-meta"><span>Programme progress</span><span style="color:var(--text);font-weight:600">'+pct+'%</span></div>'+
     '<div class="week-stepper">'+
@@ -12277,7 +12296,7 @@ function renderLog() {
   var wd = getWkData();
   var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var todayName = days[new Date().getDay()];
-  var _avL=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
+  var _avL=_initialOf(getUserFirstName());
 
   var header = '<div class="screen-hd">'+
     '<div>'+
@@ -12295,12 +12314,14 @@ function renderLog() {
   if(logSubTab!=='workout' && logSubTab!=='sport' && _tabs.indexOf(logSubTab)<0 &&
      (logSubTab==='run' || logSubTab==='body' || _isSportTab(logSubTab))) _tabs = _tabs.concat([logSubTab]);
 
+  // aria-current: the active sub-tab is announced as the current one, like the tab bar's.
+  var _subCur = function(id){ return logSubTab===id ? ' aria-current="page"' : ''; };
   var subBar = '<div class="log-subtabs">'+
-    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
+    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'"'+_subCur('workout')+' onclick="switchLogSub(\'workout\')">Workout</button>'+
     _tabs.map(function(id){
-      return '<button class="log-subtab '+(logSubTab===id?'active':'')+'" onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
+      return '<button class="log-subtab '+(logSubTab===id?'active':'')+'"'+_subCur(id)+' onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
     }).join('')+
-    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
+    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'"'+_subCur('sport')+' onclick="switchLogSub(\'sport\')" aria-label="Log an activity" style="font-size:15px;font-weight:800;">+</button>'+
     '</div>';
 
   // Pinned sport tab — same rich per-sport view primary-sport plans get.
@@ -12334,7 +12355,7 @@ function renderLog() {
     // (A6) "Build my programme" requires an API key; if none, route to Coach
     // setup with copy that matches the user's actual next step.
     var _firstName = getUserFirstName();
-    var _av = (String(_firstName)[0] || '?').toUpperCase();
+    var _av = _initialOf(_firstName);
     var _weekdayE = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date().getDay()];
     var _hasKey = !!getApiKey();
     // With a key, the AI's custom intake stays the headline; without one the
@@ -12600,8 +12621,8 @@ function openProgrammeModal(){
     }).join('');
     return '<div style="margin-bottom:16px;">'+
       '<div style="display:flex;align-items:center;gap:8px;padding:10px 16px 0;">'+
-        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+bl.bColor+';flex-shrink:0;"></span>'+
-        '<span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--lite);">'+bl.bName+'</span>'+
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+_esc(bl.bColor)+';flex-shrink:0;"></span>'+
+        '<span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--lite);">'+_esc(bl.bName)+'</span>'+
       '</div>'+
       '<div style="margin-top:8px;background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;">'+wkRows+'</div>'+
     '</div>';
@@ -12614,14 +12635,15 @@ function openProgrammeModal(){
       '<div class="ex-modal-head">'+
         '<div>'+
           '<div style="font-size:17px;font-weight:800;letter-spacing:-.3px;">Programme</div>'+
-          '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+progName+'</div>'+
+          '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+_esc(progName)+'</div>'+
         '</div>'+
-        '<button class="ex-modal-close" onclick="closeProgrammeModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeProgrammeModal()" aria-label="Close">✕</button>'+
       '</div>'+
       emptyHTML+blocksHTML+
     '</div>';
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeProgrammeModal();});
   document.body.appendChild(overlay);
+  _a11yPass();   // the week rows are reached by Tab
 }
 function closeProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
@@ -12873,8 +12895,8 @@ function openSessionEditor(id){
       pair.map(function(p,si){
         return '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center;margin-bottom:6px;">'+
           '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SET '+(si+1)+'</span>'+
-          '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" style="'+inp+'"/>'+
-          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+(p[1]!==''&&p[1]!=null?wDisp(p[1]):'')+'" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" aria-label="'+_esc(ex.name)+', set '+(si+1)+' reps" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+(p[1]!==''&&p[1]!=null?wDisp(p[1]):'')+'" aria-label="'+_esc(ex.name)+', set '+(si+1)+' '+_uW()+'" style="'+inp+'"/>'+
         '</div>';
       }).join('')+
     '</div>';
@@ -13363,7 +13385,7 @@ function renderSportEditorial(){
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWksP = getTotalWeeks();
   var meta = '<div class="kt-meta-row">'+
@@ -14017,7 +14039,7 @@ function renderBodyEditorial(){
   var firstName = getUserFirstName();
   var cr = getCustomRoutine();
   var avSeed = firstName || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var weekday = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   var totalWks = getTotalWeeks();
   var meta = '<div class="kt-meta-row">'+
@@ -14108,7 +14130,7 @@ function renderBodySection(){
       '<span style="font-size:13px;color:var(--muted);font-weight:500;">'+fmtDate(e.date)+'</span>'+
       '<div style="display:flex;align-items:center;gap:12px;">'+
         '<span style="font-size:14px;font-weight:700;">'+fmtBW(e.weight)+'</span>'+
-        '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteBodyWeight('+i+')" aria-label="Delete '+fmtBW(e.weight)+' on '+fmtDate(e.date)+'" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div></div>';
   });
 
@@ -14176,7 +14198,7 @@ function renderBodySection(){
     msItems+='<div style="padding:9px 0;border-bottom:1px solid var(--border);">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
         '<span style="font-size:11px;color:var(--muted);font-weight:600;">'+fmtDate(e.date)+'</span>'+
-        '<button onclick="deleteMeasurement('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteMeasurement('+i+')" aria-label="Delete the measurements of '+fmtDate(e.date)+'" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div>'+
       '<div style="font-size:13px;font-weight:600;color:var(--lite);margin-top:3px;line-height:1.6;">'+parts.join(' · ')+'</div>'+
     '</div>';
@@ -14185,14 +14207,16 @@ function renderBodySection(){
   return chart+
     renderBwSavedStrip()+
     '<div class="card"><h2>Body Weight</h2>'+
-      '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
-        '<div class="field" style="margin:0;flex:1"><label>Weight ('+_uW()+')</label><input type="number" id="bwVal" placeholder="'+(_uW()==='kg'?'84':'185')+'" step="0.1" min="0" inputmode="decimal"/></div>'+
-        '<div class="field" style="margin:0;flex:1"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
-        '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;">Log</button>'+
+      // Fields shrink (min-width:0) and Log drops to its own line before anything leaves the
+      // card: Larger Text zooms the page and 320-pt layouts are narrower than the inputs' own width.
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
+        '<div class="field" style="margin:0;flex:1 1 64px;min-width:0"><label>Weight ('+_uW()+')</label><input type="number" id="bwVal" placeholder="'+(_uW()==='kg'?'84':'185')+'" step="0.1" min="0" inputmode="decimal"/></div>'+
+        '<div class="field" style="margin:0;flex:2 1 128px;min-width:0"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
+        '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;margin-left:auto;">Log</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">'+
         '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL '+_uW()+'</div>'+
-        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDispBW(bwGoal):'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
+        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDispBW(bwGoal):'')+'" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+
@@ -14418,7 +14442,7 @@ function renderStrengthTrends(extraHTML){
         '</div>'
       : '';
     return '<div style="border-bottom:1px solid var(--border);">'+
-      '<div onclick="toggleStrengthChart(\''+_esc(n)+'\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
+      '<div onclick="toggleStrengthChart(this.dataset.n)" data-n="'+_esc(n)+'" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;">'+
         '<div style="min-width:0;flex:1;"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:'+(open?'var(--accent)':'var(--text)')+';">'+_esc(n)+'</div>'+flag+'</div>'+
         (open?'':_sparklineSVG(pts.slice(-10).map(function(p){ return p.e1rm; }),'var(--accent)'))+
         '<div style="text-align:right;flex-shrink:0;width:74px;"><div style="font-size:15px;font-weight:800;">'+Math.round(wDisp(cur))+'<span style="font-size:10px;color:var(--muted);"> '+_uW()+'</span></div>'+
@@ -14862,11 +14886,11 @@ function renderProgress() {
   var firstNameP = getUserFirstName();
   var crP = getCustomRoutine();
   var avSeed = firstNameP || '?';
-  var avInitial = (String(avSeed)[0] || '?').toUpperCase();
+  var avInitial = _initialOf(avSeed);
   var progressHeader = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">PROGRESS · WEEK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWksP+
-      (wd2 && wd2.bName ? ' · '+wd2.bName.toUpperCase() : '')+
+      (wd2 && wd2.bName ? ' · '+_esc(String(wd2.bName).toUpperCase()) : '')+
     '</div>'+
     '<div class="kt-meta-ava">'+avInitial+'</div>'+
     '</div>';
@@ -14963,7 +14987,7 @@ function renderProgress() {
 
   // Block-progression rows fold into the Strength card when it exists;
   // standalone card only as a fallback (no e1RM data yet).
-  var blockLabel = (wd2b?wd2b.bName+' block':'Current block');
+  var blockLabel = (wd2b?_esc(wd2b.bName)+' block':'Current block');
   var blockInner = liftRows
     ? '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">'+
         '<div class="chart-lbl" style="margin-bottom:10px;">'+blockLabel+' · main lifts</div>'+liftRows+'</div>'
@@ -15156,9 +15180,9 @@ function renderProgress() {
       '<div style="font-size:11px;color:var(--muted);margin-top:1px;">Adjust if you paused or jumped ahead</div>'+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">'+
-      '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
+      '<button onclick="adjustWeek(-1)" aria-label="Previous week" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
       '<span style="font-size:18px;font-weight:800;min-width:22px;text-align:center;">'+currentWeek+'</span>'+
-      '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
+      '<button onclick="adjustWeek(1)" aria-label="Next week" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
     '</div>'+
   '</div>';
 
@@ -18641,14 +18665,14 @@ function renderCoach(){
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';
-  var avInitialC = (String(avSeedC)[0] || '?').toUpperCase();
+  var avInitialC = _initialOf(avSeedC);
   var totalWksC = getTotalWeeks();
   var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
   // Editorial header: mono eyebrow + lime-gradient avatar.
   var header = '<div class="kt-meta-row">'+
     '<div class="kt-meta-label">COACH · WK '+
       String(currentWeek).padStart(2,'0')+' / '+totalWksC+
-      (wd3 && wd3.bName ? ' · '+wd3.bName.toUpperCase() : '')+
+      (wd3 && wd3.bName ? ' · '+_esc(String(wd3.bName).toUpperCase()) : '')+
     '</div>'+
     '<div class="kt-meta-ava">'+avInitialC+'</div>'+
     '</div>';
@@ -18824,10 +18848,10 @@ function renderCoach(){
     :'')+
     '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">'+
     CHIPS.map(function(c){
-      return '<button onclick="sendCoachChip(\''+c.replace(/'/g,"&#39;")+'\')" '+
+      return '<button data-msg="'+_esc(c)+'" onclick="sendCoachChip(this.dataset.msg)" '+
         'style="background:transparent;border:1px solid var(--border);border-radius:999px;'+
         'padding:8px 14px;font-size:13px;font-weight:500;color:var(--lite);cursor:pointer;font-family:inherit;'+
-        'white-space:nowrap;-webkit-tap-highlight-color:transparent;">'+c+'</button>';
+        'white-space:nowrap;-webkit-tap-highlight-color:transparent;">'+_esc(c)+'</button>';
     }).join('')+
     '</div>';
   }else{
@@ -18941,7 +18965,7 @@ function renderCoach(){
     '</button>'+
   '</div>';
 
-  var _avCh=(String(getUserFirstName()||'?')[0]||'?').toUpperCase();
+  var _avCh=_initialOf(getUserFirstName());
   // Sticky chat header — back / avatar + editorial title stay pinned at the
   // top of the scroll container so they're always reachable. The body::before
   // mask covers the safe-area zone above this strip.
@@ -19057,21 +19081,53 @@ function _buildThemeRows(){
     }).join('')+
   '</div>';
 }
+// Escape closes the top sheet wherever focus is: on <body> (a tap on a sheet's text moves
+// it there) or inside a sheet that has no keydown listener of its own. A sheet that does
+// handle Escape has already prevented the default, or removed the key's target by closing
+// or repainting itself.
+var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg';
+document.addEventListener('keydown', function(e){
+  if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
+  if(e.target && e.target.nodeType===1 && !e.target.isConnected) return;
+  var ovs=document.querySelectorAll(_SHEETS_SEL);
+  if(!ovs.length) return;
+  var top=ovs[ovs.length-1];
+  e.preventDefault();
+  top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
+});
+// When a sheet closes (Escape, its ✕, the backdrop) focus goes back to what was focused
+// when it opened; a keyboard or VoiceOver user used to land on <body>. Sheets that place
+// focus themselves on close are left alone, and a text field is never refocused (that would
+// raise the iOS keyboard).
+var _sheetFocus=null;   // the last element focused outside every sheet
+document.addEventListener('focusin', function(e){
+  var t=e.target;
+  if(t && t.nodeType===1 && t!==document.body && !(t.closest && t.closest(_SHEETS_SEL))) _sheetFocus=t;
+});
+if(window.MutationObserver) new MutationObserver(function(muts){
+  var closed=null;
+  muts.forEach(function(m){
+    Array.prototype.forEach.call(m.addedNodes, function(n){
+      if(n.nodeType!==1 || !n.matches || !n.matches(_SHEETS_SEL)) return;
+      var a=document.activeElement;
+      n._ktOpener=(a && a!==document.body && !n.contains(a)) ? a : _sheetFocus;
+      n._ktOpenerId=(n._ktOpener && n._ktOpener.id) || '';
+    });
+    Array.prototype.forEach.call(m.removedNodes, function(n){ if(n.nodeType===1 && n.matches && n.matches(_SHEETS_SEL)) closed=n; });
+  });
+  if(!closed) return;
+  var a=document.activeElement; if(a && a!==document.body) return;
+  var t=closed._ktOpener;
+  if(!(t && t.isConnected)) t=closed._ktOpenerId ? document.getElementById(closed._ktOpenerId) : null;
+  if(!t || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
+  var ovs=document.querySelectorAll(_SHEETS_SEL);
+  if(ovs.length && !ovs[ovs.length-1].contains(t)) return;   // a sheet is still up, and the opener is not in it
+  try{ t.focus({preventScroll:true}); }catch(err){}
+}).observe(document.body, {childList:true});
 // Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
 // drag zone (body content keeps normal scrolling); drag past 90px or flick
 // to dismiss. Animates the sheet element itself, which is created once per
 // open — remount-safe, unlike sheet rows.
-// Escape closes the top sheet even when focus has left it: a tap on a sheet's text
-// moves focus to <body>, and the sheet's own keydown listener never heard the key.
-document.addEventListener('keydown', function(e){
-  if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
-  var ovs=document.querySelectorAll('.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg');
-  if(!ovs.length) return;
-  var top=ovs[ovs.length-1];
-  if(top.contains(e.target)) return;   // its own listener has it
-  e.preventDefault();
-  top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
-});
 function _sheetDrag(overlay, closeFn){
   var sheet=overlay.querySelector('.kt-sheet');
   if(!sheet) return;
@@ -19175,7 +19231,7 @@ function renderSettings() {
   var cr=getCustomRoutine();
   var firstName=getUserFirstName();
   var displayName=firstName || (cr && cr.name) || 'Set your name';
-  var userInitial=(firstName ? firstName[0] : (cr&&cr.name?cr.name[0]:'?')).toUpperCase();
+  var userInitial=_initialOf(firstName || (cr&&cr.name) || '?');
 
   var rawName = (localStorage.getItem('kt_user_name')||'').trim();
   var nameBody = settingsNameEdit
@@ -19188,7 +19244,7 @@ function renderSettings() {
       '</div>'
     : '<div style="flex:1;min-width:0;">'+
         '<div class="profile-name">'+_esc(displayName)+'</div>'+
-        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+wd4.bName+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
+        '<div class="profile-meta">'+(wd4?'Week '+currentWeek+' · '+_esc(wd4.bName)+' · '+Math.round(currentWeek/totalWks*100)+'% through':'Week '+currentWeek)+(firstName?'':' · tap to set name')+'</div>'+
       '</div>';
   var header='<div class="screen-hd"><div><div class="screen-eyebrow">Account</div><div class="screen-title">Settings</div></div></div>'+
     '<div class="profile-row"'+(settingsNameEdit?'':' onclick="openUserNameEdit()" style="cursor:pointer;-webkit-tap-highlight-color:transparent;"')+'>'+
@@ -19828,9 +19884,9 @@ function _buildSportFieldsSheet(){
         '<div style="font-size:14px;font-weight:700;">'+_esc(f.label)+'</div>'+
         '<div style="font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(meta)+'</div>'+
       '</div>'+
-      '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↑</button>'+
-      '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↓</button>'+
-      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:var(--red);">✕</button>'+
+      '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn" aria-label="Move '+_esc(f.label)+' up">↑</button>'+
+      '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn" aria-label="Move '+_esc(f.label)+' down">↓</button>'+
+      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:var(--red);" aria-label="Remove '+_esc(f.label)+'">✕</button>'+
     '</div>';
   }).join('');
   var addForm = fields.length>=SPORT_FIELD_MAX
@@ -19951,7 +20007,7 @@ function _renderCFMovesBlock(){
         'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'"/>'+
       '<input type="number" inputmode="decimal" placeholder="'+_uW()+'" value="'+_esc(m.weight||'')+'" '+
         'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'"/>'+
-      '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:var(--muted);'+
+      '<button onclick="cfDraftMoves.splice('+i+',1);render()" aria-label="Remove '+_esc(m.name)+'" style="background:none;border:none;color:var(--muted);'+
         'font-size:15px;cursor:pointer;padding:12px 8px;margin:-8px -4px;flex-shrink:0;'+
         'font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>';
@@ -19970,7 +20026,7 @@ function _buildCFPickerList(){
   var all=getAllCFMovements();
   var hits=all.filter(function(m){ return !q || m.toLowerCase().indexOf(q)>-1; });
   var html=hits.slice(0,60).map(function(m){
-    return '<button onclick="addCFMove(\''+_esc(m).replace(/'/g,'&#39;')+'\')" style="display:block;width:100%;text-align:left;'+
+    return '<button data-n="'+_esc(m)+'" onclick="addCFMove(this.dataset.n)" style="display:block;width:100%;text-align:left;'+
       'padding:12px 4px;min-height:44px;box-sizing:border-box;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);'+
       'font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_esc(m)+'</button>';
   }).join('');
@@ -20160,9 +20216,11 @@ function openExLib(prefill){
   if(existing)existing.remove();
   var overlay=document.createElement('div');
   overlay.id='exlibOverlay';
+  overlay.className='kt-sheet-overlay';   // a sheet like the others: Escape closes it
   overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
   overlay.innerHTML=_buildExLibHTML();
   document.body.appendChild(overlay);
+  _a11yPass();
   var searchEl=document.getElementById('exlibSearch');
   if(searchEl)searchEl.addEventListener('input',function(){_libSearch=this.value;_updateExLibList();});
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeExLib();});
@@ -20188,7 +20246,15 @@ function toggleLibEx(name){
 }
 function _updateExLibList(){
   var el=document.getElementById('exlibList');
-  if(el)el.innerHTML=_renderExLibList();
+  if(!el) return;
+  // The rows are reached by Tab like every other control, and the row that was opened or
+  // closed with the keyboard keeps focus when the list repaints.
+  var a=document.activeElement, n=(a && a!==el && el.contains(a)) ? a.getAttribute('data-n') : null, tag=a && a.tagName;
+  el.innerHTML=_renderExLibList(); _a11yPass();
+  if(n!=null){
+    var back=Array.prototype.filter.call(el.querySelectorAll('[data-n]'), function(x){ return x.getAttribute('data-n')===n && x.tagName===tag; })[0];
+    if(back){ try{ back.focus({preventScroll:true}); }catch(e){} }
+  }
 }
 // Per-exercise session history, newest first: date · session type · sets ×
 // first-set reps · weight · RPE. Handles both the flat runner shape and the
@@ -20244,7 +20310,7 @@ function _renderExLibList(){
     } else {
       right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
     }
-    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
+    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" aria-expanded="'+expanded+'" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
     html+='<div style="display:flex;align-items:center;gap:10px;">';
     html+='<div style="flex:1;min-width:0;">';
     html+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.name)+'</span>'+
@@ -20252,7 +20318,7 @@ function _renderExLibList(){
     html+='<div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.equip)+' · '+_esc(ex.muscles.toLowerCase())+'</div>';
     html+='</div>';
     html+=right;
-    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
     html+='</div>';
     if(expanded) html+=_exDetailHTML(ex, hist, isCustom);
     html+='</div>';
@@ -20359,7 +20425,7 @@ function _buildExLibHTML(){
         '<div style="font-size:20px;font-weight:800;letter-spacing:-.4px;">Exercise Library</div>'+
       '</div>'+
       '<button id="exlibAddBtn" onclick="toggleLibAdd()" style="border:none;background:transparent;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;padding:6px 10px;border-radius:10px;">+ Add</button>'+
-      '<button class="ex-modal-close" onclick="closeExLib()">✕</button>'+
+      '<button class="ex-modal-close" onclick="closeExLib()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div style="padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;">'+
       '<input id="exlibSearch" type="text" placeholder="Search exercises or muscles…" autocomplete="off" value="'+_esc(_libSearch)+'" '+
@@ -21068,6 +21134,18 @@ function _weekLiftCount(wk, type, cr0){
   }catch(e){}
   return getSessionExercises(type).length;
 }
+// JSON the shell hands to Swift's JSONDecoder (watch plan, week, live mirror,
+// widget summary): half an emoji in any string fails the whole payload. The
+// live mirror keys its logs by lift name, so keys are mended too.
+function _nativeJSON(v){
+  return JSON.stringify(v, function(k, x){
+    if(typeof x==='string') return _wellFormed(x);
+    if(x && typeof x==='object' && !Array.isArray(x) && Object.keys(x).some(function(q){ return /[\ud800-\udfff]/.test(q); })){
+      var o={}; Object.keys(x).forEach(function(q){ o[_wellFormed(q)]=x[q]; }); return o;
+    }
+    return x;
+  });
+}
 // 7-day plan summary — widget + reminders share this.
 // kind: what the day is ('lift' | 'run' | 'sport' | 'rest'), so the widget can tell an empty lift
 // day (kind 'lift', 0 lifts: "build it") from a cardio day, and which workouts mark which day.
@@ -21386,9 +21464,9 @@ function _pushWatchPlan(){
       short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan?(act.type==='lift'?_dayShort(act.dayName):(act.dayName||'')):'')),
       type:liveRun?'lift':(hasPlan?String(act.type||'rest'):'none'), exercises:exs, hasPlan:hasPlan, theme:_watchThemeTokens(),
       unit:_uW() };   // display unit for the wrist (weights stay lb); older watches ignore it
-    var json=JSON.stringify(plan);
+    var json=_nativeJSON(plan);
     var live=_buildWatchLive();
-    var liveJson=live?JSON.stringify(live):'';
+    var liveJson=live?_nativeJSON(live):'';
     // The next six days, so the wrist and its face change day at midnight
     // without the phone app running (watch build 53+; older ones ignore it).
     // '[]', never '': an empty week is dropped by the shell, and the wrist then kept an
@@ -21396,7 +21474,7 @@ function _pushWatchPlan(){
     // programme has no week either (it would be a made-up default cadence).
     var weekJson='[]';
     if(hasCustomRoutine()){
-      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++){ var _wp=_watchPlanForDate(addDays(todayISO(), _wi)); _wp.unit=_uW(); _wk.push(_wp); } weekJson=JSON.stringify(_wk); }catch(e){ weekJson='[]'; }
+      try{ var _wk=[]; for(var _wi=1;_wi<=6;_wi++){ var _wp=_watchPlanForDate(addDays(todayISO(), _wi)); _wp.unit=_uW(); _wk.push(_wp); } weekJson=_nativeJSON(_wk); }catch(e){ weekJson='[]'; }
     }
     if(json+'|'+liveJson+'|'+weekJson===_lastWatchPlan) return;
     _lastWatchPlan=json+'|'+liveJson+'|'+weekJson;
@@ -21747,7 +21825,7 @@ function _runNativeSync(){
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
       streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc,
       theme:_widgetThemeTokens() };
-    var json=JSON.stringify(summary);
+    var json=_nativeJSON(summary);
     if(json!==_lastNativeSummary){
       _lastNativeSummary=json;
       var TW=_plug('TrovoWidget');
