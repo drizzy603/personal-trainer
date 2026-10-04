@@ -28,6 +28,8 @@
 //   again; a build the breaker threw out is remembered (kt_ota_rejected), never downloaded or
 //   staged again, and About says it could not start instead of "applies on next launch"; a newer
 //   build still stages; a staged folder that is there is left alone; a served page syncs the note.
+// L04 (WatchSessionHub's pending-queue lock) and L05 (WorkoutManager.discard for a discarded
+// session) are native only; the page already sent what they need (spec 68 pins `discarded`).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
