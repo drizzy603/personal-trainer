@@ -4429,9 +4429,9 @@ function checkRecentHealthRun(sinceOverride){
     var fresh = runs.filter(function(r){
       if(!r || !r.uuid || seen.has(r.uuid)) return false;
       // Sports only need a duration (indoor rides / court sports can lack
-      // distance); runs still need distance to be loggable — and a run the
-      // user already logged by hand must not be offered as new.
-      if(_hkSportId(r)) return r.durationSec > 0;
+      // distance); runs still need distance to be loggable — and a run or an
+      // activity the user already logged by hand must not be offered as new.
+      if(_hkSportId(r)) return r.durationSec > 0 && !_healthSportDupe(r, _hkSportId(r), null);
       return r.distanceKm > 0 && !_manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime());
     });
     if(!fresh.length) return;
@@ -4530,22 +4530,30 @@ function _manualRunDupe(dateISO, km, durationSec, ctx, startMs){
 // iCloud restore brought them back, and a re-import used to add every one a second time.
 // An edited Health sport log keeps its identity: hkOrig {date, duration} is what Health
 // recorded, stamped on the first saved edit (the notes text alone was the marker).
+// An activity logged by hand absorbs its Health twin as a hand-typed run does, ledger or not:
+// same type and day, duration within 15%, saved after the workout began. Only Health logs were
+// candidates, so every ride or match the Watch also recorded was imported a second time.
 function _isHealthSport(l){ return !!l && (l.notes==='From Apple Health' || !!l.hkOrig); }
 function _healthSportDupe(r, sid, ctx){
-  if(_hkHasLedger()) return false;
+  var hasLedger=_hkHasLedger();
   var iso=_hkLocalISO(r), mins=Math.round((parseFloat(r.durationSec)||0)/60), hit=null;
   var st=new Date(r.startDate).getTime()||0;
   getSportLogs().some(function(l){
-    if(!l || !_isHealthSport(l) || l.type!==sid) return false;
+    if(!l || l.type!==sid) return false;
     if(ctx && ctx.skip && ctx.skip[l.id]) return false;
-    // Start time is identity when the record has one (as for runs).
-    if(Number(l.startMs)>0 && st>0){
-      if(Math.abs(Number(l.startMs)-st) > 60000) return false;
-      hit=l; return true;
+    var od=l.date, ldur=l.duration;
+    if(_isHealthSport(l)){
+      if(hasLedger) return false;
+      // Start time is identity when the record has one (as for runs).
+      if(Number(l.startMs)>0 && st>0){
+        if(Math.abs(Number(l.startMs)-st) > 60000) return false;
+        hit=l; return true;
+      }
+      if(l.hkOrig){ od=l.hkOrig.date; ldur=l.hkOrig.duration; }
+    } else if(st>0 && Number(l.id)>1e12 && Number(l.id)<st){
+      return false;   // logged before this workout began (the id is the save time): not this one
     }
-    var od=l.hkOrig ? l.hkOrig.date : l.date, ldur=l.hkOrig ? l.hkOrig.duration : l.duration;
     if(String(od)!==iso) return false;
-    if(ctx && ctx.skip && ctx.skip[l.id]) return false;
     var ld=parseInt(ldur,10)||0;
     if(mins>0 && ld>0 && Math.abs(ld-mins)/Math.max(ld,mins) > 0.15) return false;
     hit=l; return true;
@@ -4634,7 +4642,7 @@ function _healthSportRec(r, sportId, idOffset){
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId){
   if(_hkAlreadyImported(r)) return null;
-  if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (restored)
+  if(_healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (by hand, or restored)
   var logs0 = getSportLogs();
   var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
   var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
