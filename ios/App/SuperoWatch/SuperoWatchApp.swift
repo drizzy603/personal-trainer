@@ -83,7 +83,7 @@ private struct UnfinishedRow: View {
                 .font(.system(size: 10, weight: .heavy, design: .monospaced))
                 .foregroundColor(.orange)
             Spacer()
-            Button { runner.reset(); WorkoutManager.shared.end() } label: {
+            Button { runner.reset(); WorkoutManager.shared.discard() } label: {
                 Text("Discard").font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
@@ -509,6 +509,18 @@ final class WorkoutManager: NSObject, ObservableObject, HKWorkoutSessionDelegate
         b.endCollection(withEnd: Date()) { _, _ in
             b.finishWorkout { _, _ in }
         }
+        DispatchQueue.main.async { self.active = false; self.heartRate = 0 }
+    }
+
+    // A session thrown away (Discard on the phone or here): its Health workout goes too. end()
+    // saved it, with its energy and ring credit, for sets nobody kept.
+    func discard() {
+        idleTimer?.invalidate(); idleTimer = nil
+        guard let s = session, let b = builder else { return }
+        session = nil
+        builder = nil
+        s.end()
+        b.discardWorkout()
         DispatchQueue.main.async { self.active = false; self.heartRate = 0 }
     }
 
@@ -1001,10 +1013,12 @@ struct RootView: View {
                 // phone finish or discard after the wrist's own Finish used to
                 // drop it back to the plan at 0 sets.
                 if runner.synced && !runner.hasSets { WorkoutManager.shared.end(); return }
+                // Thrown away on the phone: the wrist drops its sets and its Health workout.
+                if live.discarded == true { runner.reset(); WorkoutManager.shared.discard(); return }
                 // Sets the phone never received (out of range) go to it as a
                 // wrist session, which the phone merges, rather than vanish;
                 // finish() leaves the Synced screen up, reset() would clear it.
-                if live.discarded != true && runner.hasSetsBeyond(live) { runner.finish(plan: plan) } else { runner.reset() }
+                if runner.hasSetsBeyond(live) { runner.finish(plan: plan) } else { runner.reset() }
                 WorkoutManager.shared.end(); return
             }
             guard live.isFresh, !runner.synced else { return }
