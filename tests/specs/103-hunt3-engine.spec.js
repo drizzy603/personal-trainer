@@ -2,6 +2,9 @@
 // - H02: a working weight swapped or added in a deload week (the new lift's known load, the coach's
 //   load) is read against the working week: the deload takes its share and the working weeks start
 //   at it (it scaled every later week by working/deload, ~1.45x). A typed weight stays the week's own.
+// - H09: "Week N only" holds for a swap in Routines, and the coach's only_this_week holds for swap,
+//   add and remove (they rewrote every later week while the toast and the coach said "that week only");
+//   a change for that week alone keeps the owner's marks on the later weeks.
 const { boot, assert, run } = require('../lib/harness');
 
 // Week 6 (the demo's current week) as a deload at 70% of week 5, plus a few lifts the owner has
@@ -73,6 +76,55 @@ run('H02: a swap or add in a deload week keeps the deload\'s share and starts th
     assert(eq(out.coachW, workAt(55)), 'the coach\'s swap with a weight starts the working weeks at it: ' + JSON.stringify(out.coachW));
     assert(out.coachAdd && out.coachAdd[C] < 40 && out.coachAdd[C + 1] === 40, 'the coach\'s add: ' + JSON.stringify(out.coachAdd));
     assert(eq(out.runner, workAt(50)), 'the runner\'s rename onto the programme: ' + JSON.stringify(out.runner));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('H09: "week N only" holds for a Routines swap and for the coach\'s swap, add and remove', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const reset = () => lsSet('kt_routine', JSON.parse(orig));
+      const has = (name) => getCustomRoutine().weeks.map(w => (w.push || []).some(e => e.name === name) ? 1 : 0).join('');
+      // Routines: Overhead Press > Week 6 only > Change exercise > Arnold Press > Save
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtSet('scope', 'only'); _rtEdit.swapTo = 'Arnold Press'; _paintRoutines();
+      r.cells = document.querySelectorAll('#rtSheet .kt-rt-cell').length;
+      _rtSave(); await wait(20);
+      r.toast = (document.getElementById('toast') || {}).textContent || '';
+      r.rt = { arnold: has('Arnold Press'), ohp: has('Overhead Press') };
+      r.rtRec = ((getCustomRoutine().weeks[c].push.find(e => e.name === 'Arnold Press') || {}).rec || {}).name;
+      _rtUseCoach('Push', 'Arnold Press'); await wait(20);
+      r.rtBack = has('Overhead Press');
+      closeRoutines(); reset();
+      // the coach, that week only
+      const sw = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'swap', rename_to: 'Arnold Press', only_this_week: true });
+      r.swap = { ok: sw.ok, msg: sw.message, arnold: has('Arnold Press'), ohp: has('Overhead Press') };
+      reset();
+      const ad = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Cable Fly', action: 'add', sets: 3, reps: 12, weight: 40, only_this_week: true });
+      r.add = { ok: ad.ok, msg: ad.message, fly: has('Cable Fly'), w: (getCustomRoutine().weeks[c].push.find(e => e.name === 'Cable Fly') || {}).weight };
+      reset();
+      const rm = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Lateral Raise', action: 'remove', only_this_week: true });
+      r.rem = { ok: rm.ok, msg: rm.message, lr: has('Lateral Raise') };
+      reset();
+      // a change for that week alone keeps the owner's marks on the later weeks
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', c, 185, { markOwner: true }));
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'change', sets: 5, only_this_week: true });
+      const cr = getCustomRoutine(), b6 = cr.weeks[c].push.find(e => e.name === 'Bench Press'), b7 = cr.weeks[c + 1].push.find(e => e.name === 'Bench Press');
+      r.change = { rec6: b6.rec !== undefined, rec7: !!(b7.rec && b7.rec.weight === 162.5), sets: [b6.sets, b7.sets] };
+      return r;
+    });
+    const only6 = '000001000000', but6 = '111110111111';
+    assert(out.cells === 1, 'the preview shows the one week: ' + out.cells);
+    assert(/updated for week 6/.test(out.toast), 'the toast says week 6: ' + out.toast);
+    assert(out.rt.arnold === only6 && out.rt.ohp === but6 && out.rtRec === 'Overhead Press', 'Routines: the swap is week 6 alone, marked with the coach\'s lift: ' + JSON.stringify([out.rt, out.rtRec]));
+    assert(out.rtBack === '111111111111', 'Use coach\'s puts Overhead Press back in week 6: ' + out.rtBack);
+    assert(out.swap.ok && /that week only/.test(out.swap.msg) && out.swap.arnold === only6 && out.swap.ohp === but6, 'the coach\'s swap, that week only: ' + JSON.stringify(out.swap));
+    assert(out.add.ok && /that week only/.test(out.add.msg) && out.add.fly === only6 && out.add.w === 40, 'the coach\'s add, that week only: ' + JSON.stringify(out.add));
+    assert(out.rem.ok && /that week only/.test(out.rem.msg) && out.rem.lr === but6, 'the coach\'s remove, that week only: ' + JSON.stringify(out.rem));
+    assert(!out.change.rec6 && out.change.rec7 && out.change.sets[0] === 5 && out.change.sets[1] === 4, 'a change for week 6 alone keeps week 7\'s owner mark: ' + JSON.stringify(out.change));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

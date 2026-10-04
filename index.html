@@ -10315,16 +10315,17 @@ function _medianOf(w, slot, field){
   var v=((w&&w[slot])||[]).filter(function(r){ return r && !r.isMain; }).map(function(r){ return parseFloat(r[field])||0; }).filter(function(x){ return x>0; });
   return v.length?Math.round(_median(v)):0;
 }
-// ADD: into every week from c on, after `after` (else at the end). Working weeks
-// take the typed scheme; deload weeks take their own accessory scheme. A row
-// the owner removed from that week comes back as the coach wrote it. Loads
-// borrow the day's curve; the first row on an empty day becomes the main lift.
+// ADD: into every week from c on (o.onlyThisWeek: week c alone), after `after`
+// (else at the end). Working weeks take the typed scheme; deload weeks take their
+// own accessory scheme. A row the owner removed from that week comes back as the
+// coach wrote it. Loads borrow the day's curve; the first row on an empty day
+// becomes the main lift.
 function _progAdd(cr, slot, ex, c, after, o){
   o=o||{};
-  var W=cr.weeks, n=0, N=ex.weight>0?_snapU(ex.weight):0;
+  var W=cr.weeks, n=0, N=ex.weight>0?_snapU(ex.weight):0, end=o.onlyThisWeek?c+1:W.length;
   if(_progRow(W[c],slot,ex.name)) return -1;
   var wasEmpty=!((W[c]&&W[c][slot])||[]).length;
-  for(var j=c;j<W.length;j++){
+  for(var j=c;j<end;j++){
     var w=W[j]; if(!w) continue;
     if(!Array.isArray(w[slot])) w[slot]=[];
     var list=w[slot];
@@ -10355,25 +10356,27 @@ function _progAdd(cr, slot, ex, c, after, o){
     var shape=_progBorrowShape(cr, slot, c, ex.name, !!r0.isMain, b) || _progBorrowShape(cr, slot, c, ex.name, !r0.isMain, b);
     if(shape){
       var lastR=(b!==c)?0.6:1;
-      for(var k=c;k<W.length;k++){
+      for(var k=c;k<end;k++){
         if(k===b) lastR=1; else if(shape[k]!=null) lastR=shape[k];
         var rk=_progRow(W[k],slot,ex.name); if(rk && (k===c || rk.rec===null)) rk.weight=_snapU(N*lastR);
       }
     } else {
       // No curve on the day: the working weeks climb from N, a deload takes 60% (as in _progClimb).
       var b0=Math.max(b,c);
-      for(var k2=c;k2<=b0;k2++){ var rd=_progRow(W[k2],slot,ex.name); if(rd && (k2===c || rd.rec===null)) rd.weight=(k2===b)?N:_snapU(N*0.6); }
-      _progClimb(cr, slot, ex.name, b0, N, {climb:o.climb, Pc0:0});
+      for(var k2=c;k2<=b0 && k2<end;k2++){ var rd=_progRow(W[k2],slot,ex.name); if(rd && (k2===c || rd.rec===null)) rd.weight=(k2===b)?N:_snapU(N*0.6); }
+      if(!o.onlyThisWeek) _progClimb(cr, slot, ex.name, b0, N, {climb:o.climb, Pc0:0});
     }
   }
   return n;
 }
-// REMOVE: from week c on, deloads included. A coach row is kept in week.recOut
-// so Restore (or adding it back) brings it back exactly. A superset opener left
-// without its partner is unpaired; a removed main lift hands the tag on.
-function _progRemove(cr, slot, name, c){
-  var W=cr.weeks, n=0;
-  for(var j=c;j<W.length;j++){
+// REMOVE: from week c on (o.onlyThisWeek: week c alone), deloads included. A coach
+// row is kept in week.recOut so Restore (or adding it back) brings it back exactly.
+// A superset opener left without its partner is unpaired; a removed main lift
+// hands the tag on.
+function _progRemove(cr, slot, name, c, o){
+  o=o||{};
+  var W=cr.weeks, n=0, end=o.onlyThisWeek?c+1:W.length;
+  for(var j=c;j<end;j++){
     var w=W[j], list=w&&w[slot]; if(!Array.isArray(list)) continue;
     var idx=-1; list.forEach(function(e,i){ if(e && e.name===name && idx<0) idx=i; });
     if(idx<0) continue;
@@ -10391,9 +10394,10 @@ function _progRemove(cr, slot, name, c){
   }
   return n;
 }
-// SWAP A for B from week c on. In weeks where B is already on the day (a coach
-// rotation) A is dropped instead of doubling B. Loads keep A's shape at B's
-// level: N (lb) typed, else B's known load, else A's own curve if B has none.
+// SWAP A for B from week c on (o.onlyThisWeek: week c alone). In weeks where B is
+// already on the day (a coach rotation) A is dropped instead of doubling B. Loads
+// keep A's shape at B's level: N (lb) typed, else B's known load, else A's own
+// curve if B has none.
 function _progSwap(cr, slot, from, to, c, N, o){
   o=o||{};
   var W=cr.weeks;
@@ -10411,8 +10415,8 @@ function _progSwap(cr, slot, from, to, c, N, o){
     var sh=(Pc>0 && Pb>0) ? null : (_progBorrowShape(cr, slot, c, from, false, b) || _progBorrowShape(cr, slot, c, from, true, b));
     N=N*((Pc>0 && Pb>0) ? Pc/Pb : ((sh && sh[c]!=null) ? sh[c] : 0.6));
   }
-  var n=0;
-  for(var j=c;j<W.length;j++){
+  var n=0, end=o.onlyThisWeek?c+1:W.length;
+  for(var j=c;j<end;j++){
     var w=W[j], r=_progRow(w,slot,from); if(!r) continue;
     if(j>c && _progRow(w,slot,to)){ var list=w[slot]; list.splice(list.indexOf(r),1); n++; continue; }
     if(o.markOwner) _markRec(r);
@@ -10423,7 +10427,7 @@ function _progSwap(cr, slot, from, to, c, N, o){
     else if(!(N>0)){ r.weight=0; delete r.weights; }
     n++;
   }
-  if(N>0 && !(Pc>0)) _progClimb(cr, slot, to, c, _snapU(Nw), {markOwner:o.markOwner, Pc0:0});
+  if(N>0 && !(Pc>0) && !o.onlyThisWeek) _progClimb(cr, slot, to, c, _snapU(Nw), {markOwner:o.markOwner, Pc0:0});
   return n;
 }
 // The one way to write the programme: a fresh copy of what is stored (never the
@@ -10808,7 +10812,7 @@ function _rtApply(cr, e){
     // An untouched weight is the new lift's own known load (the old lift's load put Dips at
     // +60 lb and a Lateral Raise at 70 lb), or "your load" when it has none: _progSwap reads it
     // when N is 0, as a working weight (a typed one is the week's own).
-    var sw=_progSwap(cr, slot, name, e.swapTo, c, wTouched ? wLb : 0, {markOwner:true});
+    var sw=_progSwap(cr, slot, name, e.swapTo, c, wTouched ? wLb : 0, {markOwner:true, onlyThisWeek:only});
     if(sw===-1) return -1;
     n+=sw; name=e.swapTo; st=_progRow(cr.weeks[c], slot, name); if(!st) return n;
   }
@@ -16720,16 +16724,16 @@ function _executeCoachToolRaw(name,input){
         var o={onlyThisWeek:!!input.only_this_week, every:!!input.every_week}, n=0;
         if(actE==='add'){
           if(row){ whyE=row.name+' is already on '+_dayLabel(slotE); return false; }
-          var a=_progAdd(cr, keyE, {name:exN, sets:parseInt(input.sets)||3, reps:parseInt(input.reps)||10, rpe:parseInt(input.rpe)||8, weight:(wLbE!=null?wLbE:_knownLoadLb(exN, cr, cE))}, cE, input.after||null, {firstIsMain:false});
+          var a=_progAdd(cr, keyE, {name:exN, sets:parseInt(input.sets)||3, reps:parseInt(input.reps)||10, rpe:parseInt(input.rpe)||8, weight:(wLbE!=null?wLbE:_knownLoadLb(exN, cr, cE))}, cE, input.after||null, {firstIsMain:false, onlyThisWeek:o.onlyThisWeek, workScale:wLbE==null});
           if(a===-1){ whyE=exN+' is already on '+_dayLabel(slotE); return false; }
           return a;
         }
         if(!row){ whyE=exN+' is not on '+_dayLabel(slotE)+' in week '+fw; return false; }
         nmE=row.name;
-        if(actE==='remove') return _progRemove(cr, keyE, nmE, cE);
+        if(actE==='remove') return _progRemove(cr, keyE, nmE, cE, {onlyThisWeek:o.onlyThisWeek});
         if(actE==='swap'){
           var to=String(input.rename_to||'').trim(); if(!to){ whyE='swap needs rename_to'; return false; }
-          var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {workScale:!o.onlyThisWeek});
+          var sw=_progSwap(cr, keyE, nmE, to, cE, wLbE>0?wLbE:0, {workScale:!o.onlyThisWeek, onlyThisWeek:o.onlyThisWeek});
           if(sw===-1){ whyE=to+' is already on '+_dayLabel(slotE); return false; }
           n+=sw; nmE=to; row=_progRow(cr.weeks[cE], keyE, nmE); if(!row) return n;
         }
@@ -16738,8 +16742,9 @@ function _executeCoachToolRaw(name,input){
         if(input.reps!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'reps', parseInt(input.reps)||row.reps, o);
         if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
         if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
-        // The coach changed it at the user's request: this is now the programme's version.
-        for(var j=cE;j<cr.weeks.length;j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
+        // The coach changed it at the user's request: this is now the programme's version
+        // (in the weeks it changed: that week alone keeps the owner's marks on the rest).
+        for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
         return n;
       }, {scope:_coachScope()});
       if(!resE) return {ok:false,error:(whyE||'nothing to change')+'. Nothing was changed.'};
