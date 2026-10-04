@@ -12442,9 +12442,13 @@ function saveSessionEdit(){
   var s=sessions.find(function(x){ return x.id===_sessEditId; });
   if(!s){ closeSessionEditor(); return; }
   _sessEditRenamed=[];
+  // The lifts whose load was corrected (or that were renamed): only their working weights
+  // follow, as with the coach's edit_session. A reps fix on one lift used to reset every
+  // lift in the session to its logged load, undoing a +5 written since.
+  var loadFixed=[];
   s.exercises=(s.exercises||[]).map(function(ex,ei){
     var pair=_exSetPairs(ex);
-    var reps=[], wts=[];
+    var reps=[], wts=[], typedLoad=false;
     pair.forEach(function(p,si){
       var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
       var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
@@ -12452,12 +12456,14 @@ function saveSessionEdit(){
       // Typed in the display unit. An untouched field keeps the stored load exactly: in kg
       // the prefilled value is rounded, and writing it back moved every set (and records).
       var _typed=parseFloat(wEl&&wEl.value), _shown=(p[1]!==''&&p[1]!=null)?wDisp(p[1]):NaN;
-      wts.push((wEl && _typed===_shown) ? (parseFloat(p[1])||0) : Math.max(0, wStore(_typed||0)));
+      if(wEl && _typed===_shown) wts.push(parseFloat(p[1])||0);
+      else { wts.push(Math.max(0, wStore(_typed||0))); typedLoad=true; }
     });
     var top=wts.length?Math.max.apply(null,wts):0;
     var nEl=document.getElementById('se_'+ei+'_name');
     var newName=nEl && String(nEl.value||'').trim() ? String(nEl.value).trim() : ex.name;
     if(newName!==ex.name) _sessEditRenamed.push({from:ex.name, to:newName});
+    if(typedLoad || newName!==ex.name) loadFixed.push(newName);
     // Normalize to the flat runner shape on save (legacy nested included).
     return {name:newName, isMain:!!ex.isMain, sets:reps.length, reps:reps,
       weight:top, weightLog:wts,
@@ -12467,7 +12473,7 @@ function saveSessionEdit(){
   // A failed save keeps the sheet open to retry after freeing space; the
   // old path closed it, toasted 'Updated' and moved the records anyway.
   if(!lsSet('kt_sessions', sessions)) return;
-  _afterSessionEdit(s, sessions, _sessEditRenamed);
+  _afterSessionEdit(s, sessions, _sessEditRenamed, loadFixed);
   closeSessionEditor();
   showToast(_sessEditRenamed.length
     ? 'Updated \u00b7 now logged as '+_sessEditRenamed[0].to

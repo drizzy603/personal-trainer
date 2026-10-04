@@ -11,6 +11,9 @@
 // - M38: a date typed into the day sheet's Date field (desktop) moves nothing while it is typed:
 //   it commits on Enter or when the field loses focus, focus lands back in the sheet, Escape drops
 //   it, a cleared field snaps back, and a picked date (iOS, a calendar) still moves at once.
+// - M05: a reps-only fix in the history editor (Edit sets) no longer resets every lift in the
+//   session to its logged load (undoing a +5 written since); a load fix or a rename moves only its
+//   own lift's working weight, as the coach's edit_session does. lb and kg.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -218,6 +221,46 @@ run('M38: a typed date moves nothing until Enter or leaving the field; Escape dr
     assert(r.cleared.field === '' && r.clearedBlur.stored === A && r.clearedBlur.field === A && r.clearedBlur.moves === 2 && !/Invalid date/.test(r.clearedBlur.toast), 'a cleared field moves nothing and snaps back: ' + JSON.stringify([r.cleared, r.clearedBlur]));
     assert(r.escape.stored === A && !r.escape.open && r.escape.moves === 2, 'Escape drops a typed date: ' + JSON.stringify(r.escape));
     assert(r.picked.stored === B && r.picked.sheet === B && r.picked.moves === 3, 'a picked date moves at once: ' + JSON.stringify(r.picked));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M05: a reps-only fix in Edit sets leaves every working weight alone; a load fix or a rename still moves its own', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const T = todayISO();
+      lsSet('kt_sessions', [{ id: 5550001, date: T, week: weekForDate(T), type: 'Push', label: 'Push', prs: [], exercises: [
+        { name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 185, weightLog: [185, 185, 185], isMain: true },
+        { name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 95, weightLog: [95, 95, 95] }] }]);
+      recomputePRs();
+      // the coach (or keyless +5) raised Bench after the workout
+      lsSet('kt_weights', { 'Bench Press': 190, 'Overhead Press': 95 });
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const edit = async (fn) => { openSessionEditor(5550001); await wait(30); fn(id => document.getElementById(id)); saveSessionEdit(); await wait(30); };
+      const r = {};
+      await edit(el => { el('se_1_2_r').value = '7'; });   // a reps typo on OHP
+      r.reps = { w: W(), line: benchLine(), ohpReps: getSessions()[0].exercises[1].reps.join() };
+      // kg: the prefilled loads are rounded, and an untouched one is still untouched
+      setUnitW('kg'); await wait(20);
+      await edit(el => { el('se_0_1_r').value = '4'; });
+      r.kg = W();
+      setUnitW('lb'); await wait(20);
+      // a load fix on Bench moves Bench's working weight (this is its newest log), and only Bench's
+      lsSet('kt_weights', Object.assign(getWeights(), { 'Overhead Press': 100 }));
+      await edit(el => { ['0', '1', '2'].forEach(i => { el('se_0_' + i + '_w').value = '180'; }); });
+      r.load = W();
+      // a rename carries the lift's working weight to the new name
+      await edit(el => { el('se_1_name').value = 'Seated Overhead Press'; });
+      r.rename = W();
+      return r;
+    });
+    assert(out.reps.w['Bench Press'] === 190 && out.reps.w['Overhead Press'] === 95 && out.reps.line === '  Bench Press: 190' && out.reps.ohpReps === '8,8,7', 'a reps-only fix keeps the +5 written since: ' + JSON.stringify(out.reps));
+    assert(out.kg['Bench Press'] === 190 && out.kg['Overhead Press'] === 95, 'in kg too: ' + JSON.stringify(out.kg));
+    assert(out.load['Bench Press'] === 180 && out.load['Overhead Press'] === 100, 'a load fix moves that lift\'s working weight only: ' + JSON.stringify(out.load));
+    assert(out.rename['Seated Overhead Press'] > 0 && !('Overhead Press' in out.rename) && out.rename['Bench Press'] === 180, 'a rename carries the working weight to the new name: ' + JSON.stringify(out.rename));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
