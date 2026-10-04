@@ -18013,9 +18013,11 @@ function renderCoach(){
   // dropped — the green-dotted eyebrow already signals presence.
   // Day-of-programme, not day-of-calendar: before the fix this was the raw
   // weekday, so a plan built on a Saturday opened on "WK 01 · DAY 6".
+  // Rounded: a week whose clocks change on a weekday (Friday in Israel and Egypt) has a
+  // 23-hour day, and flooring read its Saturday as DAY 5.
   var _dayAnchor = _weekAnchor();
   var dayIdx = Math.max(1, Math.min(7,
-    Math.floor((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
+    Math.round((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
   var _dayMeta = hasCustomRoutine() && !_programmeStarted()
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;

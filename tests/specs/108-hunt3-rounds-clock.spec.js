@@ -31,6 +31,8 @@
 // - L22 After "Start week 1 today" on a rest day, Today named a first session from the week
 //   before the programme ("Push, is Monday" beside "TOMORROW · PULL"). The walk starts no earlier
 //   than the programme and reads each day from its own week.
+// - L56 The coach header's "DAY n" lost a day on the Saturday and Sunday of a week whose clocks
+//   change on a Friday (Israel, Egypt): a 23-hour day was floored. It is rounded.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -531,6 +533,34 @@ run('L22: "Start week 1 today" on a rest day names the first session of the prog
     }, LOGS);
     assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', 'the starter week this test assumes: ' + out.plan);
     assert(out.next === 'Pull' && out.body === 'Your first session, Pull, is Wednesday.' && /Start Pull today/.test(out.cta) && /TOMORROW · PULL/.test(out.tomorrow), 'Monday was not owed: the first session is Wednesday\'s Pull: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L56: the coach header counts the days of a week whose clocks change on a Friday', async () => {
+  const app = await boot({ native: false, seed: { kt_apikey: 'sk-ant-test' } });
+  try {
+    // Israel moves its clocks on a Friday, so the 23-hour day falls inside the programme week.
+    const cdp = await app.page.context().newCDPSession(app.page);
+    await cdp.send('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Jerusalem' });
+    await withClock(app);
+    const out = await app.page.evaluate(async () => {
+      // The next spring-forward day, found from the clock itself (no year written down).
+      let d = todayISO(), shift = null;
+      for (let i = 0; i < 400 && !shift; i++) { const n = addDays(d, 1); if (new Date(n + 'T00:00:00') - new Date(d + 'T00:00:00') < 86400000) shift = d; d = n; }
+      const dow = (s) => (new Date(s + 'T00:00:00').getDay() + 6) % 7;
+      const mon = addDays(shift, -dow(shift)), r = { shift, shiftDow: dow(shift), days: [] };
+      for (let k = dow(shift) + 1; k <= 6; k++) {
+        const day = addDays(mon, k);
+        __setNow(day + 'T10:00:00'); _setWeek(3, mon);
+        switchTab('coach'); openCoachChat(); render();
+        const m = document.querySelector('.coach-head-meta');
+        r.days.push([day, k + 1, m && m.textContent]);
+      }
+      return r;
+    });
+    assert(out.shiftDow === 4, 'the clocks change on a Friday in this zone: ' + JSON.stringify(out));
+    assert(out.days.length === 2 && out.days.every(([, n, meta]) => meta === 'WK 03 · DAY ' + n), 'that Saturday is DAY 6 and that Sunday DAY 7: ' + JSON.stringify(out.days));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
