@@ -4806,7 +4806,9 @@ function _streakChip(){
 // written — backdated logs would create misleading Health entries.
 function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
-  if(dateISO !== todayISO()) return;
+  // A backdated log has no real time to write. The day the session began is its own: one that
+  // ran past midnight is filed on that day and still happened just now.
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)))) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
   var end = Date.now();
@@ -8770,6 +8772,13 @@ function _paintRestClock(){
     bar.style.width = Math.max(0, Math.min(100, runnerRestLeft/total*100))+'%';
   }
 }
+// The day a workout belongs to is the day it began, as the wrist and the drain date it: one
+// that ran past midnight was filed on the next day, in the next programme week, and left its
+// own day reading as missed.
+function _runnerStartISO(){
+  var t=runnerSession ? Number(runnerSession.startedAt) : 0;
+  return t>0 ? _ymdLocal(new Date(t)) : todayISO();
+}
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){
   if(!runnerSession){ closeDeckRunner(); return; }
@@ -8809,7 +8818,8 @@ function runnerFinishSession(){
     return;
   }
   var _dateEl = document.getElementById('runner-date');
-  var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || todayISO());
+  var _startISO = _runnerStartISO();
+  var _sessionDate = (_dateEl && _dateEl.value) ? _dateEl.value : (runnerSessionDate || _startISO);
   var sessions = getSessions();
   // Double-log guard: a watch-synced copy of this same session (same day, same
   // type) gets replaced by the richer phone log. Manual entries are never touched.
@@ -8817,12 +8827,17 @@ function runnerFinishSession(){
   // phone's record instead of being deleted with whatever only it held.
   var _myStart=runnerSession.startedAt||0;
   var _wristCopies = sessions.filter(function(x){
-    if(!(x.date===_sessionDate && x.type===runnerSession.dayName && x.note==='From Apple Watch')) return false;
+    if(!(x.type===runnerSession.dayName && x.note==='From Apple Watch')) return false;
+    var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
+    // The wrist mirrored this start: the same session, whatever day either is filed on.
+    if(ws && _myStart && Math.abs(ws-_myStart)<1500) return true;
+    // Otherwise the same day: the one it is filed on, or the one it began (the drain files a
+    // wrist copy by its start, so the copy of a workout that ran past midnight is there).
+    if(x.date!==_sessionDate && x.date!==_startISO) return false;
     // Only a copy of THIS session: one filed after this runner began, from
     // a wrist session started within 6 h of it. An earlier wrist session
     // of the same slot today stays its own record.
-    var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
-    return !ws || !_myStart || ((x.id||0)>_myStart && Math.abs(ws-_myStart)<6*3600*1000) || Math.abs(ws-_myStart)<1500;
+    return !ws || !_myStart || ((x.id||0)>_myStart && Math.abs(ws-_myStart)<6*3600*1000);
   });
   sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
   var _owned=Object.keys(runnerSession.ownAt||{});
@@ -9868,7 +9883,7 @@ function _renderRunnerDoneBody(ex, isLast){
   var dateField = isLast
     ? '<div style="margin-top:14px;text-align:left;">'+
         '<label style="display:block;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px;">Log date</label>'+
-        '<input id="runner-date" type="date" value="'+(runnerSessionDate||todayISO())+'"'+
+        '<input id="runner-date" type="date" value="'+(runnerSessionDate||_runnerStartISO())+'"'+
         ' onclick="event.stopPropagation()" onchange="event.stopPropagation();runnerSessionDate=this.value||null"'+
         ' style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;'+
         'padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;box-sizing:border-box;">'+
