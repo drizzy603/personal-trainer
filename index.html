@@ -7551,7 +7551,10 @@ function _runFromSlot(slot){
 }
 // Returns the most relevant run to feature in the hero — today's if today is
 // a run day, otherwise the next run forward in the week, otherwise null.
+// No programme, no planned runs: the hard-coded fallback week told a new user
+// "Easy run today" (there is no silent fallback programme).
 function getRunFocus(){
+  if(!hasCustomRoutine()) return null;
   var todayDow = (new Date().getDay()+6)%7;
   var weekPlan = getWeekPlan();
   var wd = getWkData();
@@ -7565,6 +7568,7 @@ function getRunFocus(){
   return null;
 }
 function getThisWeekRuns(){
+  if(!hasCustomRoutine()) return [];
   var todayDow = (new Date().getDay()+6)%7;
   var weekPlan = getWeekPlan();
   var wd = getWkData();
@@ -8126,7 +8130,7 @@ function renderRunSegment(){
     body = 'Next run is '+focus.dayName+'.'+hrBit;
   } else {
     line1 = 'Run.'; line2 = 'This week.'; line2Class = '';
-    body = 'No runs scheduled this week. Tap below to log one anyway.';
+    body = cr ? 'No runs scheduled this week. Tap below to log one anyway.' : 'No programme yet — log any run below.';
   }
   var deloadBadge = (deload && focus)
     ? '<div class="kt-hero-deload">◆ DELOAD WEEK · 60% LOADS</div>'
@@ -8189,7 +8193,7 @@ function renderRunSegment(){
   }
 
   var todayAct = getTodayActivity();
-  var coach = todayAct.type === 'run' ? renderCoachCard(todayAct) : '';
+  var coach = (cr && todayAct.type === 'run') ? renderCoachCard(todayAct) : '';   // no programme: no run is planned
   var targetsList = renderRunTargetsList();
   return meta + hero + slot + healthNudge + coach + targetsList;
 }
@@ -20944,8 +20948,11 @@ function _runNativeSync(){
       ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')
       : currentTheme;
     var _acc=(!THEMES[_appliedT]||THEMES[_appliedT].paper)?THEMES.dark.accent:THEMES[_appliedT].accent;
+    // No programme, no week: the widget showed the hard-coded fallback week (Push, Run, Rest…).
+    // With no days it says "Open Fitness Programmer · SET UP YOUR PLAN", as the watch says No plan.
+    var _hasPlan=hasCustomRoutine();
     var summary={ week:currentWeek, totalWeeks:getTotalWeeks(),
-      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_nativeSummaryDays(), accent:_acc,
+      streak:calcStreak(_trainingDays()), streakDays:calcStreakDays(), days:_hasPlan?_nativeSummaryDays():[], hasPlan:_hasPlan, accent:_acc,
       theme:_widgetThemeTokens() };
     var json=JSON.stringify(summary);
     if(json!==_lastNativeSummary){

@@ -34,7 +34,10 @@
 //   9:00 per km); paceToSec reads only a stored pace.
 // - L30: the run review's VS RECENT heading names the distance in miles for a mile owner
 //   (a 10 mi run read 'VS RECENT 16KS').
-const { boot, assert, run } = require('../lib/harness');
+// - L31: with no programme, Log › Run plans no run (no "Easy run today", no coach run card, no
+//   THIS WEEK list) and the widget summary carries no days and hasPlan:false, so the widget
+//   asks to set up a plan instead of showing the hard-coded fallback week.
+const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
 const HK_MOCK = `
@@ -589,6 +592,44 @@ run('L30: the run review heading names the distance in the owner\'s unit', async
     });
     assert(out.km === 'VS RECENT 16KS', 'km owners read kilometres: ' + out.km);
     assert(out.mi === 'VS RECENT 10 MI', 'mile owners read miles: ' + out.mi);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L31: with no programme, Log › Run plans no run and the widget shows no week', async () => {
+  const app = await boot({ native: true, seed: { kt_routine: 'null', kt_runs: '[]', kt_log_tabs: 'null' } });
+  try {
+    const out = await app.page.evaluate(async (seedRoutine) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const widget = () => {
+        const sent = []; const real = Capacitor.Plugins.TrovoWidget.updateSummary;
+        Capacitor.Plugins.TrovoWidget.updateSummary = a => { sent.push(JSON.parse(a.json)); return Promise.resolve({}); };
+        _lastNativeSummary = null; _runNativeSync();
+        Capacitor.Plugins.TrovoWidget.updateSummary = real;
+        return sent[0] ? { days: sent[0].days.length, hasPlan: sent[0].hasPlan } : null;
+      };
+      switchTab('log'); switchLogSub('run'); await wait(50);
+      const scr = document.getElementById('screen');
+      // on a day the fallback week calls a run day, no coach run card either
+      const realAct = window.getTodayActivity;
+      window.getTodayActivity = () => ({ type: 'run', dayName: 'Run', weekday: 'Tuesday', km: 0, hr: 150, note: '' });
+      render(); await wait(20);
+      const coach = !!scr.querySelector('.kt-coach-card');
+      window.getTodayActivity = realAct; render(); await wait(20);
+      r.none = { focus: getRunFocus(), runs: getThisWeekRuns().length, coach: coach,
+        list: /THIS WEEK/.test(scr.textContent), hero: (scr.querySelector('.kt-hero') || {}).textContent || '', widget: widget() };
+      // with a programme the plan comes back
+      setCustomRoutine(JSON.parse(seedRoutine)); render(); await wait(30);
+      r.plan = { widget: widget() };
+      return r;
+    }, SEED.kt_routine).catch(e => ({ err: String(e) }));
+    assert(!out.err, out.err);
+    assert(out.none.focus === null && out.none.runs === 0, 'no planned run without a programme: ' + JSON.stringify(out.none));
+    assert(!out.none.coach && !out.none.list, 'no coach run card and no THIS WEEK list: ' + JSON.stringify(out.none));
+    assert(/No programme yet/.test(out.none.hero) && !/today/i.test(out.none.hero), 'the hero says there is no programme: ' + out.none.hero);
+    assert(out.none.widget && out.none.widget.days === 0 && out.none.widget.hasPlan === false, 'the widget gets no week: ' + JSON.stringify(out.none.widget));
+    assert(out.plan.widget && out.plan.widget.days === 7 && out.plan.widget.hasPlan === true, 'with a programme the widget gets the week: ' + JSON.stringify(out.plan.widget));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
