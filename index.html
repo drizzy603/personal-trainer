@@ -3308,7 +3308,7 @@ function lsDel(k) { if(k==='kt_sessions'||k==='kt_bw') _logsVersion++; _todayAct
 // silent catch meant the user would see "Session logged" even when nothing
 // was saved. We now route real save failures to a toast so the user knows
 // to export and prune. The cached-HTML key never warns (it's allowed to fail).
-var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1};
+var _LS_SILENT_KEYS = {kt_cached_html:1, kt_cached_build:1, kt_runner_draft:1, kt_last_seen_build:1, kt_streak_days:1};
 // Set by every lsSet (and the chat writer); cleared after a successful
 // auto-backup. Stops the whole history being stringified + hashed after
 // every render and every runner keystroke.
@@ -3388,8 +3388,9 @@ function defaultWeights() {
 }
 
 function getCustomRoutine(){ var r=lsGet('kt_routine'); return r&&r.weeks&&r.weeks.length?r:null; }
-function setCustomRoutine(r){ return lsSet('kt_routine',r); }
-function clearCustomRoutine(){ lsDel('kt_routine'); }
+// The days already lived keep the schedule they were lived under (see _freezeStreakDays).
+function setCustomRoutine(r){ _freezeStreakIfSchedChanges(r); return lsSet('kt_routine',r); }
+function clearCustomRoutine(){ _freezeStreakIfSchedChanges(null); lsDel('kt_routine'); }
 function getRoutineArchive(){ return lsGet('kt_routine_archive')||[]; }
 function setRoutineArchive(a){ lsSet('kt_routine_archive',a); }
 // true when the current programme is safely in Programme History. A failed write used to be
@@ -3527,13 +3528,19 @@ function weekForDate(dateStr){
   // Measured from the ANCHOR, not today's Monday: currentWeek is defined
   // relative to kt_week_monday, and before a programme starts that Monday is
   // ahead of today, so measuring from today's Monday read the first week as 2.
-  var monNow=new Date(_weekAnchor()+'T00:00:00');
+  // Parked on the final week the anchor follows the calendar while the week
+  // stays put (autoAdvanceWeek), so every earlier parked week read as the one
+  // before it (Wk 11, 10 …): those are measured from the Monday the final week
+  // began, as _roundInfo does.
+  var total=getTotalWeeks(), fin=currentWeek>=total ? localStorage.getItem('kt_final_since') : null;
+  var monNow=new Date((fin||_weekAnchor())+'T00:00:00');
   // Negative weeksAgo is a FUTURE week. The old Math.max(0, …) clamped every
   // future date to the current week, so the widget's 7-day strip and the
-  // 28-day reminders drew next week from this week's cadence. Callers that
-  // need an upper bound clamp to getTotalWeeks() themselves.
+  // 28-day reminders drew next week from this week's cadence. Never past the
+  // last week though: on the round-swap morning the watch drains under the old
+  // clock, and a session from that morning was filed as "Week 13 of 12".
   var weeksAgo=Math.round((monNow-mon)/(7*86400000));
-  return Math.max(1,currentWeek-weeksAgo);
+  return Math.min(total, Math.max(1,(fin?total:currentWeek)-weeksAgo));
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) lsSet('kt_bw_goal',v); else lsDel('kt_bw_goal'); }
@@ -3620,27 +3627,6 @@ function calcVolume(exercises) {
   return Math.round(vol);
 }
 
-// Day streak — consecutive calendar days going back from today with at least
-// one logged activity (session, run, or sport). If today has nothing logged
-// yet we don't punish the user — start counting from yesterday so the streak
-// only breaks once a full day has passed without any log.
-function calcDayStreak(){
-  var dates = {};
-  getSessions().forEach(function(s){ if(s.date) dates[s.date]=true; });
-  getRuns().forEach(function(r){ if(r.date) dates[r.date]=true; });
-  getSportLogs().forEach(function(sp){ if(sp.date) dates[sp.date]=true; });
-  if(!Object.keys(dates).length) return 0;
-  var streak = 0;
-  var today = new Date(); today.setHours(0,0,0,0);
-  for(var i=0; i<400; i++){
-    var d = new Date(today); d.setDate(d.getDate()-i);
-    var iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    if(dates[iso]) streak++;
-    else if(i === 0) continue; // grace day for "today"
-    else break;
-  }
-  return streak;
-}
 function setProgressTab(t){ progressTab = t; if(cmpOn && !cmpPicks.length) cmpKind=_cmpKindFor(t); render(); }
 
 // Pool of editorial Progress-hero variants. Each returns a {greeting, line1,
@@ -3797,27 +3783,94 @@ function _trainingDays(){
 // Training-day streak (board H-08 "6 days"): consecutive SCHEDULED training
 // days with something logged, counting back from today. Rest days are
 // skipped, never broken on. Today only counts once it is logged; an unlogged
-// today does not end the streak until the day is over.
+// today does not end the streak until the day is over. With no programme every
+// day is a training day (calendar days).
 function calcTrainingDayStreak(){
-  if(!hasCustomRoutine()) return 0;
-  var streak=0, d=new Date(todayISO()+'T00:00:00');
+  var due=_streakDueFn(), streak=0, d=new Date(todayISO()+'T00:00:00');
   for(var i=0;i<400;i++){
-    var iso=_ymdLocal(d), dow=(d.getDay()+6)%7;
-    var wk=Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso)));
-    var plan=(getWeekPlanForWeek(wk)||[])[dow]||{};
-    // An empty lift day neither keeps nor breaks the streak (there was nothing to do).
-    if(!plan.isRest && !(plan.isLift && _liftDayEmpty(plan.type, wk))){
+    var iso=_ymdLocal(d), v=due(iso);
+    if(v){
       if(_loggedOn(iso)) streak++;
-      else if(i>0) break;          // a missed training day ends it; today gets the benefit of the doubt
+      else if(v===1 && i>0) break;   // a missed training day ends it; today gets the benefit of the doubt
     }
     d.setDate(d.getDate()-1);
   }
   return streak;
 }
+// What a day asked of the streak: 1 a training day (a log counts, a miss ends it), 0 nothing
+// (a rest day, an empty lift day), 2 nothing due but a log still counts. A day whose schedule
+// has since been rewritten (a cadence edit, a new programme or round, a restore, a week
+// change) reads as it was lived: _freezeStreakDays wrote it down first, in kt_streak_days.
+// Otherwise the programme answers for its own weeks, and before a round's week 1 the same
+// programme's earlier weeks do; the days between building a programme and its first Monday
+// are 2 ("Nothing is due before then"); anything earlier had no plan, so every day counts.
+// Judged by week 1, a rest before the start, round 2's first Monday and a new programme each
+// wiped the streak.
+function _streakDueFn(){
+  var lived=lsGet('kt_streak_days')||{}, cr=getCustomRoutine();
+  if(!cr) return function(iso){ return lived[iso]!=null ? +lived[iso] : 1; };
+  var total=cr.weeks.length, cyc=parseInt(cr.cycle,10)||1, start=_mondayKeyOf(_roundStartISO());
+  return function(iso){
+    if(lived[iso]!=null) return +lived[iso];
+    var wk;
+    if(iso<start){
+      var k=Math.round((new Date(start+'T00:00:00')-new Date(_mondayKeyOf(iso)+'T00:00:00'))/(7*86400000));
+      if(cyc>1 && k<=(cyc-1)*total) wk=total-((k-1)%total);
+      else return (cyc===1 && iso>=addDays(start,-6)) ? 2 : 1;
+    } else wk=Math.min(total, Math.max(1, weekForDate(iso)));
+    var plan=(getWeekPlanForWeek(wk)||[])[(new Date(iso+'T00:00:00').getDay()+6)%7]||{};
+    return (plan.isRest || (plan.isLift && _liftDayEmpty(plan.type, wk))) ? 0 : 1;
+  };
+}
+// Called before anything rewrites the schedule under days already lived: every day the
+// streak walks now (yesterday back to the day that ends it, and today once it is logged
+// and counted) is written down as it reads, so the change applies from today on and never
+// reaches back. Moving Friday's Legs to Saturday turned every past Friday into a rest day
+// and every past Saturday into a missed Legs day (8 days -> 2). A day keeps the first
+// answer it was given.
+function _freezeStreakDays(){
+  try{
+    var due=_streakDueFn(), lived=lsGet('kt_streak_days'), add=0, today=todayISO(), d=new Date(today+'T00:00:00');
+    if(!lived || typeof lived!=='object' || Array.isArray(lived)) lived={};
+    for(var i=0;i<400;i++){
+      var iso=_ymdLocal(d), logged=_loggedOn(iso), v=due(iso);
+      if(i>0 || (logged && v)){
+        if(lived[iso]==null){ lived[iso]=v; add++; }
+        if(v===1 && !logged) break;
+      }
+      d.setDate(d.getDate()-1);
+    }
+    if(!add) return;
+    var cut=addDays(today,-400);
+    Object.keys(lived).forEach(function(k){ if(k<cut) delete lived[k]; });
+    lsSet('kt_streak_days', lived);
+  }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
+}
+// What a routine schedules, as far as the streak can tell: the cadences, which lift
+// days are empty, and how many weeks there are.
+function _schedSig(cr){
+  if(!cr || !Array.isArray(cr.weeks)) return '';
+  return JSON.stringify([cr.weekPlan||null, cr.weeks.map(function(w){
+    return w ? [w.weekPlan||null, LIFT_KEYS.map(function(k){ return Array.isArray(w[k]) && w[k].length ? 1 : 0; }).join('')] : 0;
+  })]);
+}
+// Before a routine write (r; null clears it) that changes what is scheduled, freeze the
+// streak's days under the routine on disk: some writers change the cached copy in place
+// before saving it, so the cache may already hold the new schedule.
+function _freezeStreakIfSchedChanges(r){
+  try{
+    var raw=localStorage.getItem('kt_routine'), old=raw?JSON.parse(raw):null;
+    if(old ? _schedSig(old)===_schedSig(r) : !r) return;
+    var had=('kt_routine' in _lsCache), keep=_lsCache['kt_routine'];
+    _lsCache['kt_routine']=old;
+    try{ _freezeStreakDays(); }
+    finally{ if(had) _lsCache['kt_routine']=keep; else delete _lsCache['kt_routine']; }
+  }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
+}
 // THE streak: consecutive scheduled training days with something logged
 // (rest days skipped, not broken on); calendar days when there is no plan.
 // Today counts once logged and never ends the streak before the day is over.
-function calcStreakDays(){ return hasCustomRoutine() ? calcTrainingDayStreak() : calcDayStreak(); }
+function calcStreakDays(){ return calcTrainingDayStreak(); }
 function calcStreak(sessions) {
   // Weeks are keyed by their Monday's local date (same grammar as the
   // volume buckets). The old year+week-number key split the week spanning
@@ -4026,7 +4079,7 @@ function checkAndUpdatePRs(exercises) {
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
 var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero','kt_week_monday'];
 // One list for export AND import so the two can never drift apart.
-var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro'];
+var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro','kt_streak_days'];
 function buildBackupJSON() {
   var data = {};
   BACKUP_KEYS.forEach(function(k){
@@ -4284,7 +4337,7 @@ function importData() {
 // (e.g. kt_sessions as a string throws in .filter on the next paint, and
 // since it persisted, the app stayed broken across reloads).
 var _BACKUP_ARRAY_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_bw','kt_measurements','kt_custom_ex','kt_skips','kt_coach_msgs','kt_hk_imported','kt_routine_archive','kt_log_tabs'];
-var _BACKUP_OBJECT_KEYS = ['kt_weights','kt_prs','kt_routine','kt_routine_backup','kt_milestones','kt_sport_fields','kt_ex_notes'];
+var _BACKUP_OBJECT_KEYS = ['kt_weights','kt_prs','kt_routine','kt_routine_backup','kt_milestones','kt_sport_fields','kt_ex_notes','kt_streak_days'];
 function _backupValueOk(k, v){
   if(_BACKUP_ARRAY_KEYS.indexOf(k) !== -1) return Array.isArray(v);
   if(_BACKUP_OBJECT_KEYS.indexOf(k) !== -1) return v && typeof v === 'object' && !Array.isArray(v);
@@ -4916,9 +4969,10 @@ function _streakChip(){
   }
   var s = calcStreakDays();
   if(!(s >= 1)) return '';
-  // The chip is the one surface that can say the streak is on the line today.
-  var _ta = getTodayActivity();
-  var atRisk = s >= 2 && _ta.type !== 'rest' && !_loggedOn(todayISO());
+  // The chip is the one surface that can say the streak is on the line today: only
+  // when the streak's own rule says today is a training day (an empty lift day, a
+  // rest day or a day before the start cannot end it).
+  var atRisk = s >= 2 && _streakDueFn()(todayISO())===1 && !_loggedOn(todayISO());
   return '<span class="kt-streak-chip'+(atRisk?' risk':'')+'"><span class="lbl">'+s+'-DAY STREAK'+(atRisk?' \u00b7 TRAIN TODAY TO KEEP IT':'')+'</span></span>';
 }
 
@@ -5095,6 +5149,7 @@ function getTotalWeeks(){ var cr=getCustomRoutine(); return cr&&cr.weeks?cr.week
 // anchor (frozen while the previous plan sat on its last week) made
 // autoAdvanceWeek leap a freshly restored/built plan forward by weeks.
 function _setWeek(n, mondayISO){
+  _freezeStreakDays();   // a new week or start date lays the days already lived onto other weeks' schedules
   var prevMon=localStorage.getItem('kt_week_monday');
   if(!lsSet('kt_week',n)) return false;
   try{ localStorage.setItem('kt_week_monday', mondayISO || _mostRecentMonday()); }
@@ -5629,23 +5684,26 @@ function addDays(iso, n) {
 // because the caller uses this to set a default lift sub-tab.
 // The most recent planned LIFT day of this calendar week (Monday → yesterday)
 // that was neither logged nor skipped — the make-up a rest day should offer.
+// A lift done (or skipped) on another day this week covers it: Push and Pull
+// trained on each other's days were both offered again. A day logged as
+// planned keeps its own log; any other log of the slot this week covers the
+// earliest day still open.
 function _missedThisWeek(){
   if(!hasCustomRoutine()) return null;
   if(!_programmeStarted()) return null;
-  var today=todayISO(), mon=_mostRecentMonday();
-  var sessions=getSessions(), skips=getSkips();
-  var found=null;
+  var today=todayISO(), mon=_mostRecentMonday(), plan=getWeekPlan();
+  var have={}, onDay={}, open=[], found=null;
+  var count=function(x){ if(x && x.type && x.date>=mon && x.date<=today){ have[x.type]=(have[x.type]||0)+1; onDay[x.date+'|'+x.type]=1; } };
+  getSessions().forEach(count); getSkips().forEach(count);
   for(var i=0;i<7;i++){
     var date=addDays(mon,i);
     if(date>=today) break;
-    var dow=(new Date(date+'T00:00:00').getDay()+6)%7;
-    var plan=getWeekPlan()[dow];
-    if(!plan || !plan.isLift) continue;
-    if(skips.some(function(k){ return k.date===date && k.type===plan.type; })) continue;
-    if(sessions.some(function(x){ return x.date===date && x.type===plan.type; })) continue;
-    if(!_todayLiftExercises(plan.type).length) continue;
-    found={date:date, type:plan.type, dow:dow};
+    var p=plan[i];
+    if(!p || !p.isLift || !_todayLiftExercises(p.type).length) continue;
+    if(onDay[date+'|'+p.type]) have[p.type]--;
+    else open.push({date:date, type:p.type, dow:i});
   }
+  open.forEach(function(o){ if(have[o.type]>0) have[o.type]--; else found=o; });
   return found;
 }
 function skipMissed(date, type){
@@ -6728,7 +6786,7 @@ function renderTodayEditorial(){
   var reviewBanner='';
   if(_weekReviewDue()){
     reviewBanner='<div class="kt-resume-banner">'+
-      '<div><div class="kt-resume-eyebrow">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div><div class="kt-resume-eyebrow">WEEK '+_lastWeekReview().wk+' WRAPPED</div>'+
       '<div class="kt-resume-ttl">'+(getApiKey()?'Your coach can review last week and tune what\'s next.':'Last week in numbers \u2014 done, volume, records, what\'s earned.')+'</div></div>'+
       '<div class="kt-resume-actions">'+
         '<button class="kt-resume-discard" onclick="dismissWeeklyReview()">Skip</button>'+
@@ -7054,11 +7112,7 @@ function applyPlateauFixLocal(){
 // Keyless week review: the same facts the coach would be sent, as a sheet.
 function openLocalWeekReview(){
   lsSet('kt_last_review_week', currentWeek);
-  var cutoff=addDays(todayISO(),-7);
-  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
-  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
-  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
-  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var lw=_lastWeekReview(), sessions=lw.sessions, runs=lw.runs, sports=lw.sports, planned=lw.planned;
   var doneN=sessions.length+runs.length+sports.length;
   var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
   var _prBook=getPRs(), prs=[];
@@ -7075,7 +7129,7 @@ function openLocalWeekReview(){
   var overlay=document.createElement('div'); overlay.id='weekReviewOverlay'; overlay.className='kt-sheet-overlay';
   overlay.innerHTML='<div class="kt-sheet">'+
     '<div class="kt-sheet-head" style="align-items:flex-start;">'+
-      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WEEK '+(currentWeek-1)+' WRAPPED</div>'+
+      '<div><div class="screen-eyebrow" style="color:var(--accent-ink);margin-bottom:6px;">WEEK '+lw.wk+' WRAPPED</div>'+
       '<div class="kt-sheet-title" style="font-size:20px;line-height:1.2;">'+_esc(verdict)+'</div></div>'+
       '<button class="kt-sheet-x" onclick="closeLocalWeekReview()" aria-label="Close">\u2715</button>'+
     '</div>'+
@@ -7230,7 +7284,7 @@ function _weekWrapDue(){
   if(dow===1){
     var lm=new Date(thisMon+'T00:00:00'); lm.setDate(lm.getDate()-7); var lastMon=_ymdLocal(lm);
     if(stamped===lastMon || stamped===thisMon) return false;
-    var wk=Math.max(1,currentWeek-1);
+    var wk=weekForDate(lastMon);   // a week parked on the last one is the last one, not currentWeek-1
     if(_weekStats(lastMon, wk).count>=1){ _wwDueMon=lastMon; _wwDueWeek=wk; return true; }
   }
   return false;
@@ -7260,7 +7314,7 @@ function _drawWeekCard(st, accent){
   function ls(v){ try{ x.letterSpacing=v; }catch(e){} }
   x.fillStyle=BG; x.fillRect(0,0,W,H);
   x.fillStyle=MUTED; x.font='700 28px "JetBrains Mono", ui-monospace, monospace'; ls('3px');
-  x.fillText('FITNESS PROGRAMMER · WEEK '+currentWeek+' · WRAPPED', M, 136);
+  x.fillText('FITNESS PROGRAMMER · WEEK '+(st.weekNo||currentWeek)+' · WRAPPED', M, 136);   // the week the card was for (a Monday wrap is last week's)
   var nums=['Zero','One','Two','Three','Four','Five','Six','Seven'];
   var line1=(st.planned>0 && st.count===st.planned && st.count<=7)
     ? nums[st.count]+' for '+nums[st.count].toLowerCase()+'.'
@@ -14384,17 +14438,23 @@ function renderStrengthTrends(extraHTML){
 function _weekReviewDue(){
   if(!hasCustomRoutine() || currentWeek<=1) return false;
   if(String(lsGet('kt_last_review_week'))===String(currentWeek)) return false;
-  var cutoff=addDays(todayISO(),-7);
-  return getSessions().some(function(s){ return s.date>=cutoff; }) ||
-         getRuns().some(function(r){ return r.date>=cutoff; }) ||
-         getSportLogs().some(function(l){ return l.date>=cutoff; });
+  var lw=_lastWeekReview();
+  return !!(lw.sessions.length || lw.runs.length || lw.sports.length);
+}
+// The week a review is about: last calendar week, Monday to Sunday, and the programme week it
+// was, with that week's planned days (an empty lift day is none). A rolling 7 days counted
+// this Monday's ride as last week's ("7 of 6 planned") and, later in the week, this week's
+// sessions as last week's, all against this week's cadence.
+function _lastWeekReview(){
+  var mon=addDays(_mostRecentMonday(),-7), end=addDays(mon,6);
+  var inWk=function(x){ var d=String((x&&x.date)||'').slice(0,10); return d>=mon && d<=end; };
+  var wk=Math.min(getTotalWeeks(), Math.max(1, weekForDate(mon))), planned=0;
+  getWeekPlanForWeek(wk).forEach(function(p){ if(!p.isRest && !(p.isLift && _liftDayEmpty(p.type, wk))) planned++; });
+  return {mon:mon, wk:wk, planned:planned,
+    sessions:getSessions().filter(inWk), runs:getRuns().filter(inWk), sports:getSportLogs().filter(inWk)};
 }
 function _buildWeekReviewMsg(){
-  var cutoff=addDays(todayISO(),-7);
-  var sessions=getSessions().filter(function(s){ return s.date>=cutoff; });
-  var runs=getRuns().filter(function(r){ return r.date>=cutoff; });
-  var sports=getSportLogs().filter(function(l){ return l.date>=cutoff; });
-  var planned=getWeekPlan().filter(function(p){ return !p.isRest; }).length;
+  var lw=_lastWeekReview(), sessions=lw.sessions, runs=lw.runs, sports=lw.sports, planned=lw.planned;
   var vol=0; sessions.forEach(function(s){ vol+=calcVolume(s.exercises||[]); });
   var _prBook=getPRs();
   var prs=[]; sessions.forEach(function(s){ (s.prs||[]).forEach(function(p){
@@ -14403,7 +14463,7 @@ function _buildWeekReviewMsg(){
     if(typeof p==='string') prs.push(p+(_prBook[p]?' '+fmtW(_prBook[p]):''));
     else if(p&&p.ex) prs.push(p.ex+' '+(p.weight?fmtW(p.weight):'')+(p.reps?'×'+p.reps:''));
   }); });
-  var lines=['Review my last 7 days and adjust next week if needed.',
+  var lines=['Review my last week (week '+lw.wk+', Monday to Sunday) and adjust what comes next if needed.',
     'Done: '+sessions.length+' lifts'+(sessions.length?' ('+sessions.map(function(s){ return s.type; }).join(', ')+')':'')+
     (runs.length?', '+runs.length+' run'+(runs.length>1?'s':''):'')+
     (sports.length?', '+sports.length+' sport session'+(sports.length>1?'s':''):'')+
@@ -14634,7 +14694,9 @@ function renderProgress() {
     runs.forEach(function(r){ if(r.date) trained[r.date]=1; });
     getSportLogs().forEach(function(l){ if(l.date) trained[l.date]=1; });
     var plan=getWeekPlan();
-    var planned=plan.filter(function(p){return !p.isRest;}).length;
+    // An empty lift day asks for nothing (as Today's count): planned with it, the row never met.
+    var off=function(p){ return !p || p.isRest || (p.isLift && _liftDayEmpty(p.type)); };
+    var planned=plan.filter(function(p){return !off(p);}).length;
     var m=new Date(mon+'T00:00:00');
     var done=0, dots='';
     for(var i=0;i<7;i++){
@@ -14642,7 +14704,7 @@ function renderProgress() {
       var iso=_ymdLocal(d);
       var isDone=!!trained[iso]; if(isDone) done++;
       var isToday=iso===todayS;
-      var isRest=plan[i]&&plan[i].isRest;
+      var isRest=off(plan[i]);
       dots+='<span style="width:8px;height:8px;border-radius:50%;box-sizing:border-box;flex-shrink:0;'+
         'background:'+(isDone?'var(--accent)':'transparent')+';'+
         (isDone?'':'border:1.5px solid '+(isToday?'var(--lite)':(isRest?'var(--border)':'var(--muted)'))+';')+
@@ -14662,11 +14724,12 @@ function renderProgress() {
   // default text color so the screen keeps one emphasis.
   var weekVol=0;
   sessions.forEach(function(s){ if(_inThisCalWeek(s)) weekVol+=calcVolume(s.exercises||[]); });
+  var dayStreak=calcStreakDays();   // THE streak, as the hero and the Today chip read it
 
   var liftStats = '<div class="kt-statband">'+
     '<div><div class="kt-statband-val">'+sessions.length+'</div><div class="kt-statband-lbl">Sessions</div></div>'+
     '<div><div class="kt-statband-val">'+(weekVol>0?Math.round(wDisp(weekVol)).toLocaleString():'—')+'</div><div class=\"kt-statband-lbl\">'+_uW()+' · this week</div></div>'+
-    '<div><div class="kt-statband-val">'+calcTrainingDayStreak()+'<span class="u">'+(calcTrainingDayStreak()===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
+    '<div><div class="kt-statband-val">'+dayStreak+'<span class="u">'+(dayStreak===1?'day':'days')+'</span></div><div class="kt-statband-lbl">Streak</div></div>'+
     '</div>'+_weekDotsRow();
 
   var runStats = '<div class="kt-statband">'+
