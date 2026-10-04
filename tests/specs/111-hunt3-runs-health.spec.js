@@ -2,6 +2,9 @@
 // - H12: an activity logged by hand (a ride, a match) absorbs its Apple Health twin, ledger or
 //   not: Import from Health, auto-log and the quick-log card no longer add it a second time,
 //   while a workout that began after the hand log was saved still comes in.
+// - M37: once a run is logged today, Log › Run still offers "+ Log another run" (a second run or a
+//   backfill), and the Health cards hide only for the workout already in the log, not for any
+//   run or ride of the day.
 const { boot, assert, run } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -71,6 +74,63 @@ run('H12: a hand-logged activity absorbs its Apple Health twin (import, auto-log
     assert(out.card === null, 'the card does not offer a workout already logged by hand: ' + out.card);
     assert(out.direct === null && out.directSeen && out.cNo === 2, 'logging a twin is a skipped duplicate, marked seen: ' + JSON.stringify(out));
     assert(out.short === false, 'a 30-minute hand log is not a 88-minute workout');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M37: Log › Run offers another run once one is logged; the Health cards wait only for their own workout', async () => {
+  const app = await boot({ native: true, seed: { kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const scr = () => document.getElementById('screen');
+      const more = () => [...scr().querySelectorAll('button')].find(b => /Log another run/.test(b.textContent));
+      const fill = (dist, time, date) => {
+        const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+        set('kt-rlog-dist', dist); set('kt-rlog-time', time); if (date) set('kt-rlog-date', date);
+        document.querySelector('.kt-rlog-save').click();
+      };
+      switchTab('log'); switchLogSub('run'); await wait(50);
+      scr().querySelector('.kt-cta').click(); await wait(50);
+      fill('5', '28:00');
+      r.saved = { strip: !!scr().querySelector('.kt-rconfirm'), more: !!more() };
+      // a second run (backfilled to yesterday) from the strip
+      more().click(); await wait(50);
+      r.formOpen = !!document.getElementById('kt-rlog-dist');
+      const y = addDays(todayISO(), -1);
+      fill('8', '45:00', y);
+      r.runs = getRuns().map(x => x.date + ' ' + x.distance).sort().join();
+      r.expect = [y + ' 8', todayISO() + ' 5'].sort().join();
+      // later (the stored-run strip): still a way to log another
+      switchTab('progress'); switchTab('log'); switchLogSub('run'); await wait(50);
+      r.later = { strip: (scr().querySelector('.kt-rconfirm-t') || {}).textContent || '', more: !!more() };
+      // Health: the run already typed in today is not offered again, a different run is
+      const mid = new Date(todayISO() + 'T00:00:00').getTime();
+      const st = mid + Math.min(30 * 60e3, (Date.now() - mid) / 2);   // today, before the hand log was saved
+      const iso = new Date(st).toISOString();
+      _hkPendingDismissed = false;
+      _hkPendingRun = { uuid: 'twin-1', type: 'run', startDate: iso, distanceKm: 5.02, durationSec: 28 * 60 + 10, avgHr: 150 };
+      render(); await wait(30);
+      r.twinCard = !!scr().querySelector('[onclick*="logPendingHealthRun"]');
+      _hkPendingRun = { uuid: 'other-1', type: 'run', startDate: iso, distanceKm: 10, durationSec: 55 * 60, avgHr: 150 };
+      render(); await wait(30);
+      r.otherCard = !!scr().querySelector('[onclick*="logPendingHealthRun"]');
+      // the + tab and Today's banner: a second ride of the day is offered, the twin of a logged one is not
+      lsSet('kt_sports', [{ id: Date.now(), date: todayISO(), type: 'Cycling', duration: 60, data: {}, notes: '' }]);
+      _hkPendingRun = { uuid: 'ride-twin', type: 'ride', startDate: iso, distanceKm: 20, durationSec: 61 * 60 };
+      r.rideTwin = _healthCardSlot() !== '';
+      _hkPendingRun = { uuid: 'ride-2', type: 'ride', startDate: iso, distanceKm: 8, durationSec: 25 * 60 };
+      r.rideOther = _healthCardSlot() !== '';
+      _hkPendingRun = null; render();
+      return r;
+    });
+    assert(out.saved.strip && out.saved.more, 'the saved strip offers another run: ' + JSON.stringify(out.saved));
+    assert(out.formOpen && out.runs === out.expect, 'a second run can be logged and backfilled: ' + out.runs + ' vs ' + out.expect);
+    assert(/Run logged/.test(out.later.strip) && out.later.more, 'the logged strip offers another run: ' + JSON.stringify(out.later));
+    assert(out.twinCard === false, 'the card does not offer the run already typed in');
+    assert(out.otherCard === true, 'the card offers a different Health run on a day with a run logged');
+    assert(out.rideTwin === false && out.rideOther === true, 'the sport card: twin hidden, second ride offered: ' + JSON.stringify([out.rideTwin, out.rideOther]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

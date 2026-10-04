@@ -671,6 +671,7 @@ html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
 .kt-rconfirm-t{min-width:0;}
 .kt-rconfirm-acts{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;}
 .kt-rconfirm-undo{background:rgba(0,0,0,.18);color:var(--on-accent);border:none;border-radius:999px;padding:6px 10px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-rlog-more{display:inline-flex;align-items:center;min-height:44px;background:none;border:none;padding:0;margin:0 0 12px;color:var(--accent-ink);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 
 .kt-goal-line{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;font-weight:600;margin-top:10px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .kt-goal-line input{background:transparent;border:none;border-bottom:1px solid color-mix(in srgb,var(--text) 22%,transparent);color:var(--accent);font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.05em;padding:1px 4px;width:64px;outline:none;}
@@ -4902,17 +4903,20 @@ function toggleAutoLogRuns(){
   render();
 }
 function dismissPendingHealthRun(){ _hkPendingDismissed=true; _hkPendingRun=null; render(); }
-// Health card for tabs outside the run editorial (sport-primary second tab):
-// simpler gating — pending workout, not dismissed, nothing of its kind logged today.
+// The pending workout is already in the log: imported, or its twin typed in by hand. The cards
+// used to hide on anything of its kind logged today, so a second run or ride of the day (an
+// evening Watch run after a morning one) could not be logged from them.
+function _hkPendingLogged(r){
+  if(!r || _hkAlreadyImported(r)) return true;
+  var sid=_hkSportId(r);
+  if(sid) return _healthSportDupe(r, sid, null);
+  return _manualRunDupe(_hkLocalISO(r), r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime());
+}
+// Health card for tabs outside the run editorial (sport tabs, the + tab, Today's banner):
+// pending workout, not dismissed, not already in the log.
 function _healthCardSlot(compact){
   if(!_hkPendingRun || _hkPendingDismissed) return '';
-  var t=todayISO();
-  var sid=_hkSportId(_hkPendingRun);
-  if(sid){
-    if(getSportLogs().some(function(s){ return s.date===t && s.type===sid; })) return '';
-  } else {
-    if(getRuns().some(function(r){ return r.date===t; })) return '';
-  }
+  if(_hkPendingLogged(_hkPendingRun)) return '';
   return renderHealthQuickLog(compact);
 }
 function renderHealthQuickLog(compact){
@@ -7870,8 +7874,11 @@ function renderRunSavedStrip(){
     '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+c.id+')">EDIT</button>'+
     '<button type="button" class="kt-rconfirm-undo" onclick="undoLastRun()">UNDO</button></div>'+
     '</div>'+
-    renderRunReview(c.km, c.time, c.id);
+    renderRunReview(c.km, c.time, c.id)+_runLogMoreBtn();
 }
+// The saved and logged strips held the slot for the rest of the day: a second run, a
+// backfilled one or an evening run after a morning one could not be logged from the tab.
+function _runLogMoreBtn(){ return '<button type="button" class="kt-rlog-more" onclick="openRunLog()">+ Log another run</button>'; }
 // Post-run review (screen C): the goal-pace delta renders as the screen's one
 // lime data chip (only when the goal was actually beaten), then a VS RECENT
 // ledger of comparable runs — same ±10% distance, oldest at the top so today
@@ -8038,7 +8045,8 @@ function renderRunSegment(){
     _todayStoredRun = getRuns().find(function(r){ return r.date === todayISO(); }) || null;
   }
   var slot;
-  var _showHealthCard = !!(_hkPendingRun && !_hkPendingDismissed && !runLogConfirmed && !_todayStoredRun && !runLogOpen);
+  // The Health card waits only for a workout already in the log (any run today used to hide it).
+  var _showHealthCard = !!(_hkPendingRun && !_hkPendingDismissed && !runLogConfirmed && !runLogOpen && !_hkPendingLogged(_hkPendingRun));
   if(_showHealthCard){
     slot = renderHealthQuickLog();
   } else if(runLogConfirmed){
@@ -8049,7 +8057,7 @@ function renderRunSegment(){
       '<div class="kt-rconfirm-t">✓ Run logged · '+fmtD(parseFloat(_tsKm)||0)+' in '+_esc(_todayStoredRun.time)+'</div>'+
       '<div class="kt-rconfirm-acts"><button type="button" id="rc-edit" class="kt-rconfirm-undo" aria-label="Edit this run" onclick="openRunEditor('+_todayStoredRun.id+')">EDIT</button></div>'+
       '</div>'+
-      renderRunReview(_tsKm, _todayStoredRun.time, _todayStoredRun.id);
+      renderRunReview(_tsKm, _todayStoredRun.time, _todayStoredRun.id)+_runLogMoreBtn();
   } else if(runLogOpen){
     slot = renderInlineRunLog();
   } else {
