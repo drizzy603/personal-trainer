@@ -25,6 +25,8 @@
 //   opens the Log tab and the runner beneath it.
 // - L27: the month's distance on the Activity card and the poster is rounded once, in the owner's
 //   unit (5.05 km read 3.2 mi, not 3.1).
+// - L28: leaving COMPARE (Done, or another tab) clears the day it filtered by, so no selection
+//   ring is left on the card with no sheet open.
 const { boot, assert, run: run1, SEED } = require('../lib/harness');
 
 const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -442,6 +444,40 @@ run('L27: the month\'s MI RUN on the Activity card and the poster is rounded onc
     assert(/^3\.1\s*MI RUN$/.test(out.foot || ''), 'the card reads 3.1 mi: ' + out.foot);
     assert(/3\.14 mi/.test(out.sheet || ''), 'as the day sheet\'s 3.14 mi: ' + out.sheet);
     assert(out.posterLabel && out.poster.join() === '3.1', 'the poster reads 3.1 mi: ' + JSON.stringify(out.poster));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('L28: leaving COMPARE (Done, or another tab) clears the day it filtered by; no ring is left on the card', async () => {
+  const D = daysAgo(3);
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async D => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      lsSet('kt_sessions', [{ id: 2801, date: D, week: weekForDate(D), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }] }].concat(getSessions()));
+      const ring = () => [...document.querySelectorAll('.cal-day.sel')].map(c => c.getAttribute('data-date'));
+      const day = () => document.querySelector('.cal-day[data-date="' + D + '"]');
+      const cmp = () => document.getElementById('cmp-btn');
+      const r = {};
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30);
+      cmp().click(); await wait(30);
+      day().click(); await wait(30);
+      r.inCmp = { cmpOn, ring: ring() };
+      cmp().click(); await wait(30);   // Done
+      r.done = { cmpOn, sel: calSelectedDate, ring: ring(), sheet: !!document.getElementById('calDayOverlay') };
+      cmp().click(); await wait(30);
+      day().click(); await wait(30);
+      switchTab('log'); await wait(20); switchTab('progress'); await wait(30);
+      r.tabs = { cmpOn, sel: calSelectedDate, ring: ring() };
+      // outside COMPARE the day still opens its sheet, ringed
+      day().click(); await wait(40);
+      r.sheet = { open: !!document.getElementById('calDayOverlay'), ring: ring() };
+      return r;
+    }, D);
+    assert(out.inCmp.cmpOn && out.inCmp.ring.join() === D, 'COMPARE filters by the tapped day: ' + JSON.stringify(out.inCmp));
+    assert(!out.done.cmpOn && out.done.sel === null && out.done.ring.length === 0 && !out.done.sheet, 'Done leaves no ring: ' + JSON.stringify(out.done));
+    assert(!out.tabs.cmpOn && out.tabs.sel === null && out.tabs.ring.length === 0, 'nor does leaving Progress: ' + JSON.stringify(out.tabs));
+    assert(out.sheet.open && out.sheet.ring.join() === D, 'a day still opens its sheet: ' + JSON.stringify(out.sheet));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

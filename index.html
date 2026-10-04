@@ -15127,6 +15127,9 @@ function cmpToggle(){
 }
 function _cmpExit(){
   cmpOn=false; cmpPicks=[];
+  // The day COMPARE filtered by goes with it: its ring stayed on the card after Done, with no
+  // sheet open, even across tabs. (An open day sheet keeps its day.)
+  if(!document.getElementById('calDayOverlay')) calSelectedDate=null;
   _cmpClearTimer();
   closeCompareSheet(true);
 }
