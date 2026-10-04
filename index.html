@@ -20401,6 +20401,18 @@ function _timerThemeTokens(){
     accent:T.accent, onAccent:T['on-accent'], earned:T.earned||T.accent, earnedInk:T['earned-ink']||T.accent,
     satAccent:T['sat-accent']||T.accent };
 }
+// Per-set targets of a top-set/back-off row ([3,8,8] reps at [225,185,185]): the wrist opens
+// set i at repsList[i] x weights[i], as the runner does (older watch builds read the first
+// set's numbers). Sent only when the sets differ, and every entry a finite number: one null
+// and the wrist rejects the whole plan.
+function _watchPerSet(ex, o){
+  var differs=function(a){ return a.length>1 && a.some(function(x){ return String(x)!==String(a[0]); }); };
+  if(Array.isArray(ex.reps) && differs(ex.reps)) o.repsList=ex.reps.map(function(r){
+    return parseInt(r)||(typeof r==='string'?parseInt(String(r).split('-')[0])||8:8); });
+  if(Array.isArray(ex.weights) && differs(ex.weights)) o.weights=ex.weights.map(function(w){
+    return Math.min(Math.max(parseFloat(w)||0, 0), 5000); });
+  return o;
+}
 // One day's plan in the watch's shape, for a date after today: that week's
 // exercises (loads resolved like today's), or the run/sport/rest it holds.
 // Before a programme's start Monday every day is a rest day.
@@ -20421,8 +20433,8 @@ function _watchPlanForDate(iso){
     var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
     var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
     var presc=parseFloat(ex.weight); if(!(presc>0)){ var bn=parseFloat(weights[ex.name]); if(bn>0) presc=bn; }
-    return { name:String(ex.name), sets:parseInt(ex.sets)||3, reps:reps, weight:Math.min(presc||0, 5000),
-      rest:_defaultRestFor(ex), rpe:parseInt(ex.rpe)||0 };
+    return _watchPerSet(ex, { name:String(ex.name), sets:parseInt(ex.sets)||3, reps:reps, weight:Math.min(presc||0, 5000),
+      rest:_defaultRestFor(ex), rpe:parseInt(ex.rpe)||0 });
   });
   return { week:wk, date:iso, dayName:String(_dayLabel(pl.type)||pl.type), slot:String(pl.type), short:String(_dayShort(pl.type)),
     type:'lift', exercises:exs, hasPlan:true };
@@ -20448,9 +20460,9 @@ function _pushWatchPlan(){
       var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
       var w=(liveRun && runnerWeights[ex.name]!=null)?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
-      return { name:String(ex.name), sets:parseInt(ex.sets)||3,
+      return _watchPerSet(ex, { name:String(ex.name), sets:parseInt(ex.sets)||3,
         reps:reps, weight:w, rest:_defaultRestFor(ex),
-        rpe:parseInt(ex.rpe)||0 };
+        rpe:parseInt(ex.rpe)||0 });
     });
     var hasPlan=!!(hasCustomRoutine()||liveRun);
     var plan={ week:currentWeek, date:todayISO(),

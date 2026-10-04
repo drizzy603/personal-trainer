@@ -145,7 +145,23 @@ struct WatchExercise: Codable, Identifiable, Hashable {
     let weight: Double
     let rest: Int?              // seconds — phone resolves per-exercise/default
     let rpe: Int?               // target RPE from the programme (0/nil = none)
+    // A top-set/back-off row's per-set targets ([3,8,8] at [225,185,185]); older pages send only
+    // the first set's numbers above, and every set was prescribed and logged as the top set.
+    var repsList: [Int]? = nil
+    var weights: [Double]? = nil
     var id: String { name }
+    var perSetWeights: Bool { !(weights ?? []).isEmpty }
+    // Set i's target (0-based), the last entry repeating, as the phone's runner prescribes it.
+    func targetReps(_ i: Int) -> Int {
+        guard let l = repsList, !l.isEmpty else { return reps }
+        let r = l[min(max(0, i), l.count - 1)]
+        return r > 0 ? r : reps
+    }
+    func targetWeight(_ i: Int) -> Double {
+        guard let l = weights, !l.isEmpty else { return weight }
+        let w = l[min(max(0, i), l.count - 1)]
+        return w > 0 ? w : weight
+    }
 }
 
 struct WatchPlan: Codable, Equatable {
@@ -638,7 +654,7 @@ final class Runner: ObservableObject {
         restoring = false
     }
 
-    func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.weight }
+    func weight(for ex: WatchExercise) -> Double { weights[ex.name] ?? ex.targetWeight(done(ex)) }
     func done(_ ex: WatchExercise) -> Int { repsDone[ex.name]?.count ?? 0 }
     func isComplete(_ ex: WatchExercise) -> Bool { done(ex) >= ex.sets }
 
@@ -676,9 +692,13 @@ final class Runner: ObservableObject {
         var rl = alignedRpe(ex.name, count: arr.count - 1, target: ex.rpe)   // sets merged from the phone
         rl.append(effort)
         rpeLog[ex.name] = rl
+        // A top-set/back-off row: the push carries this set's load (the phone fills the arrived
+        // set with it), then the next set opens at its own target, as on the phone.
+        if ex.perSetWeights { weights[ex.name] = wl[wl.count - 1] }
         repsDone[ex.name] = arr
         WKInterfaceDevice.current().play(.success)
         pushLive()
+        if ex.perSetWeights && arr.count < ex.sets { weights[ex.name] = nil }
         if arr.count < ex.sets { startRest(seconds: ex.rest ?? 90) }
     }
 
@@ -1112,16 +1132,18 @@ struct ExerciseView: View {
     }
 
     private func seed(_ ex: WatchExercise) {
+        // The next set's own target: a back-off set after the top set opens at its reps.
+        let target = ex.targetReps(runner.done(ex))
         if let prev = seeded, prev != ex {
             // Swapped or edited on the phone while this screen was open:
             // adopt the new targets and say so — silently changing the
             // lift under the user's wrist would be worse than a banner.
-            reps = ex.reps
+            reps = target
             rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
-            changedOnPhone = prev.name != ex.name || prev.sets != ex.sets || prev.reps != ex.reps
+            changedOnPhone = prev.name != ex.name || prev.sets != ex.sets || prev.reps != ex.reps || prev.repsList != ex.repsList
             if changedOnPhone { WKInterfaceDevice.current().play(.notification) }
         } else if seeded == nil {
-            if reps == 0 { reps = ex.reps }
+            if reps == 0 { reps = target }
             rpe = runner.rpes[ex.name] ?? { let t = ex.rpe ?? 7; return (5...10).contains(t) ? t : 7 }()
         }
         seeded = ex
@@ -1190,6 +1212,8 @@ struct ExerciseView: View {
             .navigationTitle(ex.name)
             .onAppear { seed(ex) }
             .onChange(of: ex) { newEx in seed(newEx) }
+            // A set logged here or mirrored from the phone: the next one opens at its own reps.
+            .onChange(of: runner.done(ex)) { n in if ex.repsList != nil { reps = ex.targetReps(n) } }
             .sheet(isPresented: $editingWeight) {
                 VStack(spacing: 12) {
                     Text("WEIGHT · " + unitLabel.uppercased())

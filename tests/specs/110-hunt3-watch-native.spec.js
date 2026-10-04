@@ -3,6 +3,8 @@
 //   as an empty log with its `own` stamp (the wrist drops the mirrored sets), and a wrist copy that
 //   still holds them (out of range) never files them again, whoever finishes first. Sets the wrist
 //   logs after it dropped the lift are still its own; an exercise undone to zero stays at zero.
+// - M30: a top-set/back-off row reaches the wrist with its per-set targets (repsList, weights) in
+//   today's plan, the week ahead and a live run; uniform rows send neither, and no entry is null.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
@@ -103,6 +105,46 @@ run('H06: a lift renamed or removed mid-workout is not brought back by the wrist
       'a set the wrist logged after it dropped the lift is kept: ' + JSON.stringify(out.later));
     assert(out.undoZero.recs.length === 1 && out.undoZero.recs[0] === out.undoZero.D + ' [10]',
       'an exercise undone to zero is not re-added by the wrist copy: ' + JSON.stringify(out.undoZero));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+run('M30: per-set targets reach the wrist (today, the week ahead, a live run)', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Push', 'Push', 'Push', 'Push', 'Push', 'Push'];
+      (cr.weeks || []).forEach(w => {
+        delete w.weekPlan;
+        if (!w.push || w.push.length < 3) return;
+        Object.assign(w.push[0], { sets: 3, reps: [3, 8, 8], weights: [225, 185, 185], weight: 225 });
+        Object.assign(w.push[1], { sets: 3, reps: [8, 8, 'Max'], weights: [100, 100, 100], weight: 100 });
+        Object.assign(w.push[2], { sets: 3, reps: [10, 10, 10] }); delete w.push[2].weights;
+      });
+      setCustomRoutine(cr); await wait(50);
+      const last = () => __mock.updateContext[__mock.updateContext.length - 1];
+      const pick = e => e && { repsList: e.repsList, weights: e.weights, reps: e.reps, weight: e.weight };
+      _lastWatchPlan = ''; _pushWatchPlan(); await wait(20);
+      const ctx = last(), plan = JSON.parse(ctx.json), week = JSON.parse(ctx.week || '[]');
+      const ahead = week.find(d => d.type === 'lift' && d.exercises.length >= 3);
+      openDeckRunner('Push', true); await wait(20);
+      _lastWatchPlan = ''; _pushWatchPlan(); await wait(20);
+      const ctx2 = last(), live = JSON.parse(ctx2.json);
+      closeDeckRunner();
+      return { type: plan.type, today: plan.exercises.slice(0, 3).map(pick), ahead: ahead && ahead.exercises.slice(0, 3).map(pick),
+        live: live.exercises.slice(0, 3).map(pick), nulls: /null/.test(ctx.json + ctx.week + ctx2.json) };
+    });
+    assert(out.type === 'lift' && out.ahead, 'today and a day ahead are lift days: ' + JSON.stringify(out));
+    for (const k of ['today', 'ahead', 'live']) {
+      const [top, max, flat] = out[k];
+      assert(JSON.stringify(top.repsList) === '[3,8,8]' && JSON.stringify(top.weights) === '[225,185,185]' && top.reps === 3 && top.weight === 225,
+        k + ': the top-set/back-off row carries its per-set targets (and the first set for older watches): ' + JSON.stringify(top));
+      assert(JSON.stringify(max.repsList) === '[8,8,8]' && max.weights === undefined, k + ': a Max entry is a number; a flat load list is not sent: ' + JSON.stringify(max));
+      assert(flat.repsList === undefined && flat.weights === undefined, k + ': a uniform row sends no lists: ' + JSON.stringify(flat));
+    }
+    assert(!out.nulls, 'no null anywhere in the plan, the week or the live plan (the wrist would reject it)');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
