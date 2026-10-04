@@ -8877,7 +8877,6 @@ function runnerFinishSession(){
   }
   // Persist working weights so subsequent prescriptions update.
   _setWorkingWeights(exsOut, _sessionDate);   // a backdated finish used to lower today's working weights
-  var weights = getWeights();
   checkAndUpdatePRs(exsOut);
   invalidateCoachCard();
   // The wrist's own Health workout (live heart rate) is the richer record;
@@ -8899,8 +8898,11 @@ function runnerFinishSession(){
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
     if(navigator.vibrate) navigator.vibrate([60,40,60,40,140]);
+    // The record's own load: the working weight was another number after a backdated finish
+    // (or none at all), and a bodyweight lift records its added load.
+    var _prEx=_newRec.exercises.find(function(e){ return e && e.name===newPRs[0]; }), _prT=_prEx?_prTop(_prEx):null;
     showToast(newPRs.length===1
-      ? 'PR · '+newPRs[0]+(weights[newPRs[0]]?' '+fmtW(weights[newPRs[0]]):'')
+      ? 'PR · '+newPRs[0]+(_prT?' '+_prLoadTxt(newPRs[0], _prT.w):'')
       : newPRs.length+' PRs · '+newPRs.join(' · '), 'pr');
   } else {
     showToast('Session logged');

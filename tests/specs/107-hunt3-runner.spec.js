@@ -21,6 +21,8 @@
 // - L14 a correction typed on a superset partner's set during the shared rest stays with that set:
 //   the first lift's EDIT shows its own numbers and ✓ keeps them; the partner's card still has it;
 //   a typed correction on a plain card still survives the rest's end.
+// - L15 the PR toast at finish names the record's load (it showed the working weight, which a
+//   backdated finish leaves alone, or nothing without one); a bodyweight lift shows its added load.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -495,4 +497,47 @@ run('L14 a correction typed on a superset partner stays with that set', async ()
     assert(out.plainRest && JSON.stringify(out.plainField) === '["55","11"]', 'a typed correction on a plain card survives the rest: ' + JSON.stringify([out.plainRest, out.plainField]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+const prToast = async (weights, lift) => {
+  const app = await boot({ native: true, seed: { kt_weights: weights } });
+  try {
+    const out = await app.page.evaluate(async (lift) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const benchDates = getSessions().filter(s => (s.exercises || []).some(e => e.name === 'Bench Press')).map(s => s.date).sort();
+      const date = addDays(benchDates[0], -3);   // before every Bench log: the working weight stays
+      r.workingBefore = getWeights()['Bench Press'] || null;
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      runnerSession.exercises = [Object.assign({}, lift)];
+      runnerWeights = {}; runnerReps = {}; runnerWeights[lift.name] = lift.weight; runnerReps[lift.name] = lift.reps;
+      runnerSessionDate = date;
+      runnerExIdx = 0; runnerEngaged = true;
+      for (let i = 0; i < lift.sets; i++) { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+      const df = document.getElementById('runner-date'); if (df) df.value = date;
+      const seen = []; const ot = window.showToast; window.showToast = function (m, k) { seen.push(m); return ot.apply(this, arguments); };
+      runnerFinishSession(); await wait(250);
+      window.showToast = ot;
+      closeCompleteSheet();
+      r.toast = seen.find(t => /^PR/.test(t)) || seen.join(' | ');
+      r.record = getPRs()[lift.name];
+      r.workingAfter = getWeights()['Bench Press'] || null;
+      return r;
+    }, lift);
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('L15 the PR toast at finish names the record\'s load', async () => {
+  const bench = { name: 'Bench Press', sets: 2, reps: 5, weight: 180, rpe: 8 };
+  const a = await prToast('{"Bench Press":160}', bench);
+  assert(a.workingBefore === 160 && a.workingAfter === 160 && a.record === 180, 'a backdated record leaves the working weight: ' + JSON.stringify(a));
+  assert(a.toast === 'PR · Bench Press 180 lb', 'the toast names the record\'s load, not the working weight: ' + JSON.stringify(a));
+  const b = await prToast('{}', bench);
+  assert(b.toast === 'PR · Bench Press 180 lb', 'with no working weight the toast still names the load: ' + JSON.stringify(b));
+  const c = await prToast('{}', { name: 'Pull Up', sets: 2, reps: 6, weight: 25, rpe: 8 });
+  assert(c.toast === 'PR · Pull Up +25 lb', 'a bodyweight lift names its added load: ' + JSON.stringify(c));
+  assert(!a.errors.length && !b.errors.length && !c.errors.length, 'no page errors: ' + a.errors.concat(b.errors, c.errors).join('|'));
 });
