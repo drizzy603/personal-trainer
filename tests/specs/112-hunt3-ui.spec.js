@@ -19,6 +19,9 @@
 // - Escape closes the top sheet with focus inside it too (sheets without a listener of their own,
 //   the Exercise library, confirms), a sheet that handles Escape itself closes alone, and focus
 //   returns to what opened the sheet (L54).
+// - Keyboard and VoiceOver reach outside #screen: Exercise library and week-ladder rows take Tab (a
+//   library row keeps focus when Enter opens it), set inputs in Edit sets are named, glyph buttons
+//   say what they do, and the active Log sub-tab is the current one (L55).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -298,6 +301,59 @@ run('Escape closes the top sheet with focus inside it, and focus goes back to th
     assert(!r.libInside.lib && r.libInside.focus === '__opener' && !r.libBody.lib, 'the Exercise library closes on Escape: ' + JSON.stringify([r.libInside, r.libBody]));
     assert(!r.confirm.confirm && r.confirm.profile && !r.profile.profile && r.profile.focus === '__opener', 'Escape closes the top sheet only: ' + JSON.stringify([r.confirm, r.profile]));
     assert(!r.prReal.pr && r.prReal.lib && !r.prSynthetic.pr && r.prSynthetic.lib && !r.libLast.lib, 'a sheet that handles Escape closes alone: ' + JSON.stringify([r.prReal, r.prSynthetic, r.libLast]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('library and week-ladder rows take Tab, set inputs and glyph buttons are named, the sub-tab is current (L55)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    // a clickable element a keyboard cannot reach: not a control, no tabindex or no role
+    const UNREACH = `(root) => Array.from(root.querySelectorAll('[onclick]')).filter(e => !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(e.tagName) && !/^\\s*event\\.stopPropagation\\(\\)\\s*;?\\s*$/.test(e.getAttribute('onclick') || '') && (!e.hasAttribute('tabindex') || !e.hasAttribute('role'))).length`;
+    const GLYPHS = `(root) => Array.from(root.querySelectorAll('button')).filter(b => !b.getAttribute('aria-label') && !b.getAttribute('title') && /^[\\u2715\\u00d7\\u2191\\u2193+\\u2212]$/.test((b.textContent || '').trim())).map(b => (b.getAttribute('onclick') || '').slice(0, 30))`;
+    // Exercise library from its Settings row, with the keyboard
+    await p.evaluate(() => switchTab('settings'));
+    await p.locator('.settings-row[onclick="openExLib()"]').first().click();
+    const lib = await p.evaluate(([U, G]) => { const ov = document.getElementById('exlibOverlay'); return { unreach: eval(U)(ov), glyphs: eval(G)(ov) }; }, [UNREACH, GLYPHS]);
+    await p.locator('#exlibSearch').focus();
+    let row = null;
+    for (let i = 0; i < 40 && !row; i++) {
+      await p.keyboard.press('Tab');
+      row = await p.evaluate(() => { const a = document.activeElement; return a && a.closest('#exlibList') && a.tagName === 'DIV' ? a.getAttribute('data-n') : null; });
+    }
+    await p.keyboard.press('Enter');
+    const opened = await p.evaluate(() => { const a = document.activeElement; return { name: _libExpanded, focus: a && a.getAttribute('data-n'), expanded: a && a.getAttribute('aria-expanded') }; });
+    await p.evaluate(() => closeExLib());
+    // the week ladder
+    const ladder = await p.evaluate(([U, G]) => { openProgrammeModal(); const ov = document.getElementById('prog-modal'); const r = { unreach: eval(U)(ov), glyphs: eval(G)(ov), rows: ov.querySelectorAll('.wk-row[tabindex]').length }; closeProgrammeModal(); return r; }, [UNREACH, GLYPHS]);
+    // Edit sets, Log sub-tabs, Body and Progress glyph buttons, the sport fields editor
+    const rest = await p.evaluate(([U, G]) => {
+      const r = {};
+      const s = getSessions()[0];
+      openSessionEditor(s.id);
+      r.inputs = Array.from(document.querySelectorAll('#sessEditOverlay input[id^="se_0_0_"]')).map(i => i.getAttribute('aria-label'));
+      r.first = s.exercises[0].name;
+      closeSessionEditor();
+      switchTab('log'); switchLogSub('body');
+      r.subtabs = Array.from(document.querySelectorAll('.log-subtab')).map(b => ({ t: b.textContent, active: b.classList.contains('active'), current: b.getAttribute('aria-current'), label: b.getAttribute('aria-label') }));
+      r.body = eval(G)(document.getElementById('screen'));
+      switchTab('progress');
+      r.progress = eval(G)(document.getElementById('screen'));
+      openSportFieldsEditor('CrossFit');
+      r.fields = eval(G)(document.getElementById('sportFieldsOverlay'));
+      closeSportFieldsEditor();
+      ['openSwapModal(2)', 'openRoutineArchiveModal()'].forEach(o => { eval(o); const ov = document.querySelector('.ex-modal-bg'); r[o] = eval(G)(ov); ov.remove(); });
+      return r;
+    }, [UNREACH, GLYPHS]);
+    assert(lib.unreach === 0 && lib.glyphs.length === 0, 'every library row takes Tab and its ✕ is named: ' + JSON.stringify(lib));
+    assert(row && opened.name === row && opened.focus === row && opened.expanded === 'true', 'Tab reaches a library row and Enter opens it with focus kept: ' + JSON.stringify([row, opened]));
+    assert(ladder.unreach === 0 && ladder.rows > 0 && ladder.glyphs.length === 0, 'the week ladder rows take Tab: ' + JSON.stringify(ladder));
+    assert(rest.inputs.length === 2 && rest.inputs.every(l => l && l.indexOf(rest.first + ', set 1') === 0), 'set inputs say which lift and set: ' + JSON.stringify(rest.inputs));
+    const act = rest.subtabs.filter(t => t.active);
+    assert(act.length === 1 && act[0].current === 'page' && rest.subtabs.filter(t => t.current).length === 1, 'the active sub-tab, and only it, is current: ' + JSON.stringify(rest.subtabs));
+    assert(rest.subtabs.some(t => t.t === '+' && t.label), 'the + sub-tab is named: ' + JSON.stringify(rest.subtabs));
+    assert(!rest.body.length && !rest.progress.length && !rest.fields.length && !rest['openSwapModal(2)'].length && !rest['openRoutineArchiveModal()'].length, 'glyph buttons are named: ' + JSON.stringify(rest));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -3417,7 +3417,7 @@ function openRoutineArchiveModal(){
     '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div style="font-size:17px;font-weight:800;">Programme History</div>'+
-        '<button class="ex-modal-close" onclick="closeRoutineArchiveModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeRoutineArchiveModal()" aria-label="Close">✕</button>'+
       '</div>'+
       '<p style="font-size:13px;color:var(--muted);margin:-10px 0 16px;line-height:1.5;">Previous programmes. Restoring one will archive your current first.</p>'+
       rows+
@@ -11408,7 +11408,7 @@ function openSwapModal(sourceDow){
     '<div class="ex-modal-sheet">'+
       '<div class="ex-modal-head">'+
         '<div style="font-size:17px;font-weight:800;">Move '+sourceLabel+' to…</div>'+
-        '<button class="ex-modal-close" onclick="closeSwapModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeSwapModal()" aria-label="Close">✕</button>'+
       '</div>'+
       '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px;">'+
         'Swaps the activity on '+dayFullNames[sourceDow]+' with the day you pick. Only changes this week\'s cadence.'+
@@ -11793,12 +11793,14 @@ function renderLog() {
   if(logSubTab!=='workout' && logSubTab!=='sport' && _tabs.indexOf(logSubTab)<0 &&
      (logSubTab==='run' || logSubTab==='body' || _isSportTab(logSubTab))) _tabs = _tabs.concat([logSubTab]);
 
+  // aria-current: the active sub-tab is announced as the current one, like the tab bar's.
+  var _subCur = function(id){ return logSubTab===id ? ' aria-current="page"' : ''; };
   var subBar = '<div class="log-subtabs">'+
-    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'" onclick="switchLogSub(\'workout\')">Workout</button>'+
+    '<button class="log-subtab '+(logSubTab==='workout'?'active':'')+'"'+_subCur('workout')+' onclick="switchLogSub(\'workout\')">Workout</button>'+
     _tabs.map(function(id){
-      return '<button class="log-subtab '+(logSubTab===id?'active':'')+'" onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
+      return '<button class="log-subtab '+(logSubTab===id?'active':'')+'"'+_subCur(id)+' onclick="switchLogSub(\''+_esc(id)+'\')">'+_esc(_logTabLabel(id))+'</button>';
     }).join('')+
-    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'" onclick="switchLogSub(\'sport\')" style="font-size:15px;font-weight:800;">+</button>'+
+    '<button class="log-subtab '+(logSubTab==='sport'?'active':'')+'"'+_subCur('sport')+' onclick="switchLogSub(\'sport\')" aria-label="Log an activity" style="font-size:15px;font-weight:800;">+</button>'+
     '</div>';
 
   // Pinned sport tab — same rich per-sport view primary-sport plans get.
@@ -12114,12 +12116,13 @@ function openProgrammeModal(){
           '<div style="font-size:17px;font-weight:800;letter-spacing:-.3px;">Programme</div>'+
           '<div style="font-size:12px;color:var(--lite);margin-top:2px;">'+_esc(progName)+'</div>'+
         '</div>'+
-        '<button class="ex-modal-close" onclick="closeProgrammeModal()">✕</button>'+
+        '<button class="ex-modal-close" onclick="closeProgrammeModal()" aria-label="Close">✕</button>'+
       '</div>'+
       emptyHTML+blocksHTML+
     '</div>';
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeProgrammeModal();});
   document.body.appendChild(overlay);
+  _a11yPass();   // the week rows are reached by Tab
 }
 function closeProgrammeModal(){
   var el=document.getElementById('prog-modal'); if(el) el.remove();
@@ -12353,8 +12356,8 @@ function openSessionEditor(id){
       pair.map(function(p,si){
         return '<div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center;margin-bottom:6px;">'+
           '<span class="kt-mono" style="font-size:10px;font-weight:700;color:var(--muted);">SET '+(si+1)+'</span>'+
-          '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" style="'+inp+'"/>'+
-          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+(p[1]!==''&&p[1]!=null?wDisp(p[1]):'')+'" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_r" type="number" inputmode="numeric" min="0" value="'+p[0]+'" aria-label="'+_esc(ex.name)+', set '+(si+1)+' reps" style="'+inp+'"/>'+
+          '<input id="se_'+ei+'_'+si+'_w" type="number" inputmode="decimal" step="0.5" min="0" value="'+(p[1]!==''&&p[1]!=null?wDisp(p[1]):'')+'" aria-label="'+_esc(ex.name)+', set '+(si+1)+' '+_uW()+'" style="'+inp+'"/>'+
         '</div>';
       }).join('')+
     '</div>';
@@ -13552,7 +13555,7 @@ function renderBodySection(){
       '<span style="font-size:13px;color:var(--muted);font-weight:500;">'+fmtDate(e.date)+'</span>'+
       '<div style="display:flex;align-items:center;gap:12px;">'+
         '<span style="font-size:14px;font-weight:700;">'+fmtBW(e.weight)+'</span>'+
-        '<button onclick="deleteBodyWeight('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteBodyWeight('+i+')" aria-label="Delete '+fmtBW(e.weight)+' on '+fmtDate(e.date)+'" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div></div>';
   });
 
@@ -13620,7 +13623,7 @@ function renderBodySection(){
     msItems+='<div style="padding:9px 0;border-bottom:1px solid var(--border);">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;">'+
         '<span style="font-size:11px;color:var(--muted);font-weight:600;">'+fmtDate(e.date)+'</span>'+
-        '<button onclick="deleteMeasurement('+i+')" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
+        '<button onclick="deleteMeasurement('+i+')" aria-label="Delete the measurements of '+fmtDate(e.date)+'" style="background:none;border:none;color:var(--muted);font-size:16px;padding:10px 8px;margin:-10px -6px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent;">×</button>'+
       '</div>'+
       '<div style="font-size:13px;font-weight:600;color:var(--lite);margin-top:3px;line-height:1.6;">'+parts.join(' · ')+'</div>'+
     '</div>';
@@ -14588,9 +14591,9 @@ function renderProgress() {
       '<div style="font-size:11px;color:var(--muted);margin-top:1px;">Adjust if you paused or jumped ahead</div>'+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">'+
-      '<button onclick="adjustWeek(-1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
+      '<button onclick="adjustWeek(-1)" aria-label="Previous week" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">−</button>'+
       '<span style="font-size:18px;font-weight:800;min-width:22px;text-align:center;">'+currentWeek+'</span>'+
-      '<button onclick="adjustWeek(1)" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
+      '<button onclick="adjustWeek(1)" aria-label="Next week" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:15px;font-weight:700;width:32px;height:32px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">+</button>'+
     '</div>'+
   '</div>';
 
@@ -19044,9 +19047,9 @@ function _buildSportFieldsSheet(){
         '<div style="font-size:14px;font-weight:700;">'+_esc(f.label)+'</div>'+
         '<div style="font-size:11px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(meta)+'</div>'+
       '</div>'+
-      '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↑</button>'+
-      '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn">↓</button>'+
-      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:var(--red);">✕</button>'+
+      '<button onclick="_sfMove('+i+',-1)" '+(i===0?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn" aria-label="Move '+_esc(f.label)+' up">↑</button>'+
+      '<button onclick="_sfMove('+i+',1)" '+(i===fields.length-1?'disabled style="opacity:.25;"':'')+' class="kt-sf-btn" aria-label="Move '+_esc(f.label)+' down">↓</button>'+
+      '<button onclick="_sfRemove('+i+')" class="kt-sf-btn" style="color:var(--red);" aria-label="Remove '+_esc(f.label)+'">✕</button>'+
     '</div>';
   }).join('');
   var addForm = fields.length>=SPORT_FIELD_MAX
@@ -19167,7 +19170,7 @@ function _renderCFMovesBlock(){
         'oninput="cfDraftMoves['+i+'].reps=this.value" style="'+inpStyle+'"/>'+
       '<input type="number" inputmode="decimal" placeholder="'+_uW()+'" value="'+_esc(m.weight||'')+'" '+
         'oninput="cfDraftMoves['+i+'].weight=this.value" style="'+inpStyle+'"/>'+
-      '<button onclick="cfDraftMoves.splice('+i+',1);render()" style="background:none;border:none;color:var(--muted);'+
+      '<button onclick="cfDraftMoves.splice('+i+',1);render()" aria-label="Remove '+_esc(m.name)+'" style="background:none;border:none;color:var(--muted);'+
         'font-size:15px;cursor:pointer;padding:12px 8px;margin:-8px -4px;flex-shrink:0;'+
         'font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>'+
     '</div>';
@@ -19377,6 +19380,7 @@ function openExLib(prefill){
   overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:#0009;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;';
   overlay.innerHTML=_buildExLibHTML();
   document.body.appendChild(overlay);
+  _a11yPass();
   var searchEl=document.getElementById('exlibSearch');
   if(searchEl)searchEl.addEventListener('input',function(){_libSearch=this.value;_updateExLibList();});
   overlay.addEventListener('click',function(e){if(e.target===overlay)closeExLib();});
@@ -19402,7 +19406,15 @@ function toggleLibEx(name){
 }
 function _updateExLibList(){
   var el=document.getElementById('exlibList');
-  if(el)el.innerHTML=_renderExLibList();
+  if(!el) return;
+  // The rows are reached by Tab like every other control, and the row that was opened or
+  // closed with the keyboard keeps focus when the list repaints.
+  var a=document.activeElement, n=(a && a!==el && el.contains(a)) ? a.getAttribute('data-n') : null, tag=a && a.tagName;
+  el.innerHTML=_renderExLibList(); _a11yPass();
+  if(n!=null){
+    var back=Array.prototype.filter.call(el.querySelectorAll('[data-n]'), function(x){ return x.getAttribute('data-n')===n && x.tagName===tag; })[0];
+    if(back){ try{ back.focus({preventScroll:true}); }catch(e){} }
+  }
 }
 // Per-exercise session history, newest first: date · session type · sets ×
 // first-set reps · weight · RPE. Handles both the flat runner shape and the
@@ -19458,7 +19470,7 @@ function _renderExLibList(){
     } else {
       right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
     }
-    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
+    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" aria-expanded="'+expanded+'" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
     html+='<div style="display:flex;align-items:center;gap:10px;">';
     html+='<div style="flex:1;min-width:0;">';
     html+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.name)+'</span>'+
@@ -19466,7 +19478,7 @@ function _renderExLibList(){
     html+='<div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.equip)+' · '+_esc(ex.muscles.toLowerCase())+'</div>';
     html+='</div>';
     html+=right;
-    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
     html+='</div>';
     if(expanded) html+=_exDetailHTML(ex, hist, isCustom);
     html+='</div>';
@@ -19573,7 +19585,7 @@ function _buildExLibHTML(){
         '<div style="font-size:20px;font-weight:800;letter-spacing:-.4px;">Exercise Library</div>'+
       '</div>'+
       '<button id="exlibAddBtn" onclick="toggleLibAdd()" style="border:none;background:transparent;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;padding:6px 10px;border-radius:10px;">+ Add</button>'+
-      '<button class="ex-modal-close" onclick="closeExLib()">✕</button>'+
+      '<button class="ex-modal-close" onclick="closeExLib()" aria-label="Close">✕</button>'+
     '</div>'+
     '<div style="padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;">'+
       '<input id="exlibSearch" type="text" placeholder="Search exercises or muscles…" autocomplete="off" value="'+_esc(_libSearch)+'" '+
