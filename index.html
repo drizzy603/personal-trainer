@@ -13627,14 +13627,16 @@ function renderBodySection(){
   return chart+
     renderBwSavedStrip()+
     '<div class="card"><h2>Body Weight</h2>'+
-      '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
-        '<div class="field" style="margin:0;flex:1"><label>Weight ('+_uW()+')</label><input type="number" id="bwVal" placeholder="'+(_uW()==='kg'?'84':'185')+'" step="0.1" min="0" inputmode="decimal"/></div>'+
-        '<div class="field" style="margin:0;flex:1"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
-        '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;">Log</button>'+
+      // Fields shrink (min-width:0) and Log drops to its own line before anything leaves the
+      // card: Larger Text zooms the page and 320-pt layouts are narrower than the inputs' own width.
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px;">'+
+        '<div class="field" style="margin:0;flex:1 1 64px;min-width:0"><label>Weight ('+_uW()+')</label><input type="number" id="bwVal" placeholder="'+(_uW()==='kg'?'84':'185')+'" step="0.1" min="0" inputmode="decimal"/></div>'+
+        '<div class="field" style="margin:0;flex:2 1 128px;min-width:0"><label>Date</label><input type="date" id="bwDate" value="'+todayISO()+'"/></div>'+
+        '<button class="btn btn-green" onclick="saveBodyWeight()" style="padding:10px 16px;flex-shrink:0;margin-left:auto;">Log</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">'+
         '<div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;">GOAL '+_uW()+'</div>'+
-        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDispBW(bwGoal):'')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
+        '<input type="number" id="bwGoalInput" placeholder="e.g. '+(_uW()==='kg'?'80':'175')+'" step="0.1" min="0" inputmode="decimal" value="'+(bwGoal?wDispBW(bwGoal):'')+'" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px 12px;color:var(--text);font-size:16px;font-weight:600;"/>'+
         '<button class="btn btn-ghost" onclick="saveBWGoal()" style="padding:8px 14px;flex-shrink:0;">Set</button>'+
       '</div>'+
       goalSection+

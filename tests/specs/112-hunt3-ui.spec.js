@@ -10,6 +10,8 @@
 // - A custom CrossFit movement with an apostrophe (Devil's Press) can be picked again on the next WOD (M42).
 // - Coach starter chips send their text whatever it holds (yesterday's, a quote, markup) and show it as
 //   text (M43).
+// - Log > Body keeps Log and the goal's Set on screen and tappable at Larger Text (zoom up to 1.25)
+//   on 390/375-pt phones and on 320-pt layouts (M36).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A lone UTF-16 half, raw or as the \udXXX escape JSON.stringify writes for it.
@@ -168,6 +170,33 @@ run('list buttons survive an apostrophe: CrossFit movements and coach chips (M42
     const sent = await p.evaluate(() => window.__sent);
     assert(JSON.stringify(shown) === JSON.stringify(CH), 'chips show their text as text: ' + JSON.stringify(shown));
     assert(JSON.stringify(sent) === JSON.stringify(CH), 'each chip sends its own text: ' + JSON.stringify(sent));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Log > Body keeps Log and Set on screen at Larger Text and on 320-pt layouts (M36)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const out = [];
+    for (const [w, h, z] of [[390, 844, 1], [390, 844, 1.25], [375, 667, 1.12], [375, 667, 1.25], [320, 568, 1], [320, 568, 1.25]]) {
+      await p.setViewportSize({ width: w, height: h });
+      out.push(await p.evaluate((z) => {
+        document.documentElement.style.zoom = z === 1 ? '' : String(z);
+        switchTab('log'); switchLogSub('body');
+        const sc = document.getElementById('screen');
+        const btn = (t) => Array.from(sc.querySelectorAll('button')).find(x => x.textContent.trim() === t);
+        const tappable = (el) => {
+          el.scrollIntoView({ block: 'center' }); sc.scrollLeft = 0;   // the screen never scrolls sideways on a phone
+          const q = el.getBoundingClientRect(), at = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+          return !!at && (at === el || el.contains(at));
+        };
+        const res = { size: innerWidth + '@' + z, log: tappable(btn('Log')), set: tappable(btn('Set')), overflow: sc.scrollWidth - sc.clientWidth };
+        document.documentElement.style.zoom = '';
+        return res;
+      }, z));
+    }
+    assert(out.every(o => o.log && o.set && o.overflow <= 1), 'Log and Set are tappable and nothing overflows sideways: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
