@@ -25,6 +25,11 @@ public final class WatchSessionHub: NSObject, WCSessionDelegate {
     // arrives through the guaranteed pending queue.
     private(set) var lastLive: String?
     private var started = false
+    // The pending queue is read, changed and written back from two queues: the page's clear
+    // (Capacitor's bridge queue) and an arriving session (main). Both hold this lock, so a session
+    // appended between the clear's read and its write is no longer overwritten (the watch had
+    // already said "Synced to iPhone").
+    private let pendingLock = NSLock()
 
     // Set by TrovoWatchPlugin while the web layer is loaded.
     var onSessionArrived: (() -> Void)?
@@ -79,6 +84,7 @@ public final class WatchSessionHub: NSObject, WCSessionDelegate {
     // watch had already shown "Synced to iPhone", so the workout was gone.
     // Pages before 20260923-1 pass nothing: clear all, as before.
     func clearPending(_ drained: [String]?) {
+        pendingLock.lock(); defer { pendingLock.unlock() }
         if let drained = drained {
             var arr = pendingSessions()
             let n = arr.count
@@ -124,9 +130,11 @@ public final class WatchSessionHub: NSObject, WCSessionDelegate {
             // layer's boot pull otherwise resurrected a "live" wrist banner
             // for a workout that ended hours ago.
             self.lastLive = nil
+            self.pendingLock.lock()
             var arr = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
             arr.append(json)
             UserDefaults.standard.set(arr, forKey: Self.pendingKey)
+            self.pendingLock.unlock()
             // The Home Screen widget said "Start →" all day after a wrist
             // finish: pending sessions live in standard defaults where the
             // widget extension can't see them. Mirror just the DATE into the
