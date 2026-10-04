@@ -19956,17 +19956,18 @@ loadCoachHistory();
   try{
     var _mig=getCustomRoutine();
     if(!_mig || !Array.isArray(_mig.weeks)) return;
-    var rows=[], kgOnly=0, off=0, moved=false;
+    var rows=[], lbGrid=0, kgOnly=0, off=0, moved=false;
     _mig.weeks.forEach(function(wkO){
       if(!wkO) return;
       LIFT_KEYS.forEach(function(sk){ (wkO[sk]||[]).forEach(function(e){ if(e && parseFloat(e.weight)>0) rows.push(e); }); });
     });
     // Loads on either plate grid stay: a kg programme (80 kg = 176.4 lb) was snapped to
-    // 175 lb on every launch. A programme that reads as kg (more loads only on the kg grid
-    // than on neither) keeps its grid on a launch in lb too: one launch in lb moved a kg
-    // owner's every load onto the lb grid for good (106 kg read 106.5 back in kg).
-    rows.forEach(function(e){ var ew=parseFloat(e.weight); if(_onPlateGrid(ew, false)) return; if(_onPlateGrid(ew, true)) kgOnly++; else off++; });
-    var kg=(_uW()==='kg') || kgOnly>off;
+    // 175 lb on every launch. A programme that reads as kg (more of its loads only on the kg
+    // grid than on the lb grid, or on neither) keeps its grid on a launch in lb too: one
+    // launch in lb moved a kg owner's every load onto the lb grid for good (106 kg read
+    // 106.5 back in kg).
+    rows.forEach(function(e){ var ew=parseFloat(e.weight); if(_onPlateGrid(ew, false)) lbGrid++; else if(_onPlateGrid(ew, true)) kgOnly++; else off++; });
+    var kg=(_uW()==='kg') || (kgOnly>lbGrid && kgOnly>off);
     rows.forEach(function(e){
       var ew=parseFloat(e.weight); if(_onPlateGrid(ew, kg)) return;
       var snapped=(kg && _uW()!=='kg') ? Math.round(Math.max(1.25, Math.round(ew/LB_PER_KG/1.25)*1.25)*LB_PER_KG*10)/10 : _snapU(ew);

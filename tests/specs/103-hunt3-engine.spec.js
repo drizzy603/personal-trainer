@@ -482,6 +482,10 @@ seq('M11: a launch in lb leaves a kg owner\'s programme on the kg plate grid', a
   assert(fixedKg.r.weeks[6].push[0].weight === kgGrid(151.3) && loads(fixedKg.r).split('|')[5] === loads(kgR).split('|')[5], 'a fractional load in a kg programme snaps to 1.25 kg: ' + fixedKg.r.weeks[6].push[0].weight);
   const demo = await launch(JSON.parse(SEED.kt_routine), 'lb');
   assert(demo.r.weeks.every(w => ['push', 'pull', 'legs'].every(k => (w[k] || []).every(e => !(e.weight > 0) || Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01))), 'an lb programme still sweeps onto 2.5 lb plates');
+  // a stray load that happens to sit on the kg grid (102 lb = 46.25 kg) in an lb programme
+  const stray = JSON.parse(JSON.stringify(demo.r)); stray.weeks[6].push[1].weight = 102;
+  const strayOut = await launch(stray, 'lb');
+  assert(strayOut.r.weeks[6].push[1].weight === 102.5, 'a stray in an lb programme still snaps to 2.5 lb: ' + strayOut.r.weeks[6].push[1].weight);
 });
 
 seq('L11: Today offers every lift logged above the plan, one after the other', async () => {
