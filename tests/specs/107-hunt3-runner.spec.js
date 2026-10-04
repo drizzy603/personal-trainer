@@ -4,6 +4,8 @@
 //   saved once.
 // - M02 a workout that runs past midnight is filed on the day it began (Log date, week, after a cold
 //   launch too), its wrist copy folds into it, and Save lifts to Health still writes it.
+// - M31 undoing the top set of a top-set/back-off scheme puts the weight stepper back on the top
+//   set's load (it stayed on the back-off load and the redone set was filed at it).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -142,6 +144,38 @@ run('M02 a workout that runs past midnight is filed on the day it began', async 
     assert(rec.date === out.startISO && rec.week === out.week && rec.note === '' && JSON.stringify(rec.A) === '[5,8,8,6]',
       'filed on that day and week with the wrist\'s extra set: ' + JSON.stringify([rec, out.startISO, out.week]));
     assert(out.hk === 1, 'Save lifts to Health still writes it: ' + out.hk);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('M31 undoing a top set puts the stepper back on its load', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press') { e.sets = 3; e.reps = [3, 8, 8]; e.weights = [225, 185, 185]; e.weight = 225; } });
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const st = () => [runnerWeights['Bench Press'], runnerReps['Bench Press']];
+      runnerEngaged = true; runnerCompleteSet(); await wait(20);
+      r.afterTop = st();
+      runnerUndoSet('Bench Press', 0); await wait(20);
+      r.afterUndo = st();
+      r.inputs = [...document.querySelectorAll('#runner-root .kt-eng-row input')].map(i => i.value);
+      r.target = (document.querySelector('#runner-root .kt-eng-target') || {}).textContent;
+      runnerCompleteSet(); await wait(20);
+      r.relogged = [runnerWeightsLog['Bench Press'].slice(), runnerRepsLog['Bench Press'].slice()];
+      r.next = st();
+      closeDeckRunner();
+      return r;
+    });
+    assert(JSON.stringify(out.afterTop) === '[185,8]', 'logging the top set moves on to the back-off: ' + JSON.stringify(out.afterTop));
+    assert(JSON.stringify(out.afterUndo) === '[225,3]' && out.inputs[0] === '225' && out.inputs[1] === '3' && /225/.test(out.target),
+      'Undo puts the steppers back on the top set: ' + JSON.stringify([out.afterUndo, out.inputs, out.target]));
+    assert(JSON.stringify(out.relogged) === '[[225],[3]]' && JSON.stringify(out.next) === '[185,8]', 'the redone top set is filed at its load: ' + JSON.stringify([out.relogged, out.next]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

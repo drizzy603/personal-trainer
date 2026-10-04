@@ -8645,6 +8645,12 @@ function _runnerReopen(name){
   var ti=Math.min(runnerCompleted[name]||0, ex.sets-1);
   var tr=Array.isArray(ex.reps)?ex.reps[Math.min(ti,ex.reps.length-1)]:ex.reps;
   runnerReps[name]=parseInt(tr)||0;
+  // Per-set loads too: logging a top set had already moved the stepper to the back-off load,
+  // so the redone top set was filed at it under a card that said the top set's load.
+  if(Array.isArray(ex.weights) && ex.weights.length){
+    var tw=parseFloat(ex.weights[Math.min(ti, ex.weights.length-1)]);
+    if(tw>0) runnerWeights[name]=tw;
+  }
   runnerEngaged=true;
   _saveRunnerDraft(); paintRunner();
 }
