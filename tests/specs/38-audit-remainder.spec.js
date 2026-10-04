@@ -11,7 +11,7 @@ run('log_run rejects unparseable times; blank sport logs are refused', async () 
       const bad = executeCoachTool('log_run', { distance_km: 5, time: 'fast' });
       const good = executeCoachTool('log_run', { distance_km: 5, time: '25:00' });
       // Human phrasing is normalised, not refused.
-      const mins = executeCoachTool('log_run', { distance_km: 5, time: '25 min' });
+      const mins = executeCoachTool('log_run', { distance_km: 3, time: '25 min' });   // another run: the same 5 km again is refused as a twin
       const minsTime = getRuns()[0].time;
       const runsAfter = getRuns().length;
       switchTab('log'); switchLogSub('sport');

@@ -5178,11 +5178,11 @@ function render() {
   // screen this session. Cached results return instantly; misses kick off
   // an async Haiku call that re-renders when it lands.
   if(currentTab==='log' && (logSubTab==='workout' || logSubTab==='run') && hasCustomRoutine()){
-    // Today's day type changed since the card was built (swap modal, Settings
-    // cycle, Coach tool) — drop both cache layers so it regenerates.
+    // Today's day or its plan changed since the card was built (swap modal, Settings
+    // cycle, a Coach tool, Undo, a week change) — drop both cache layers so it regenerates.
     if(coachCard && coachCard.forDay){
       var _cardAct = getTodayActivity();
-      if(coachCard.forDay !== _cardAct.type+'/'+_cardAct.dayName){
+      if(coachCard.forDay !== _coachCardFor(_cardAct)){
         coachCard = null;
         invalidateCoachCard();
       }
@@ -5882,6 +5882,18 @@ function getLastSessionData(exName){
 // ── Coach card (Haiku, cached daily) ─────────────────────────────────────────
 function _todayKey(){ return todayISO(); }
 function _coachCacheKey(){ return 'kt_coach_card_' + _todayKey(); }
+// What a card was written for: today's day and its plan (on a lift day the week and the main
+// lift as prescribed: load, sets, reps, RPE; on a run day the week's run). Keyed on the day
+// alone, the card kept quoting the old load after a coach rewrite, an Undo or Restore, a week
+// change or a Routines undo, until the next day.
+function _coachCardFor(act){
+  var k=act.type+'/'+act.dayName;
+  if(act.type==='lift'){
+    var m=(act.exercises||[]).filter(function(e,i){ return e && (i===0 || e.isMain); });
+    k+='/'+currentWeek+'/'+(m.length?m.map(function(e){ return [e.name, e.weights?e.weights.join(','):e.weight, e.sets, e.reps, e.rpe].join('|'); }).join(';'):'empty');
+  } else if(act.type==='run') k+='/'+currentWeek+'/'+act.km+'/'+act.hr;
+  return k;
+}
 function loadCachedCoachCard(){
   try{
     var s = localStorage.getItem(_coachCacheKey());
@@ -5891,7 +5903,7 @@ function loadCachedCoachCard(){
     // activity changed since (swap modal, Settings cycle, Coach tool), serve
     // nothing so the card regenerates instead of describing the old day.
     var act = getTodayActivity();
-    if(!card || card.forDay !== act.type+'/'+act.dayName) return null;
+    if(!card || card.forDay !== _coachCardFor(act)) return null;
     return card;
   }catch(e){ return null; }
 }
@@ -5974,7 +5986,7 @@ function fallbackCoachCard(activity){
 // Async: try Haiku, fall back to local. Never throws.
 function fetchCoachCard(activity){
   return new Promise(function(resolve){
-    var _forDay = activity.type+'/'+activity.dayName;
+    var _forDay = _coachCardFor(activity);
     var key = getApiKey();
     if(!key){
       var fb = fallbackCoachCard(activity);
@@ -5984,9 +5996,18 @@ function fetchCoachCard(activity){
     var cached = loadCachedCoachCard();
     if(cached){ resolve(cached); return; }
     var routine = lsGet('kt_routine') || {};
+    // Every load in the owner's unit: only the top weight was converted, so a kg owner's
+    // per-set weightLog and the legacy sets[] went out in lb, labelled kg.
+    var _dispW=function(v){ return parseFloat(v)>0?wDisp(v):v; };
     var recent = (lsGet('kt_sessions') || []).slice(0, 5).map(function(sess){
       var c={}; Object.keys(sess).forEach(function(k){ c[k]=sess[k]; });
-      c.exercises=(sess.exercises||[]).map(function(e){ var x={}; Object.keys(e).forEach(function(k){ x[k]=e[k]; }); if(parseFloat(x.weight)>0) x.weight=wDisp(x.weight); return x; });
+      c.exercises=(sess.exercises||[]).map(function(e){
+        var x={}; Object.keys(e).forEach(function(k){ x[k]=e[k]; });
+        x.weight=_dispW(x.weight);
+        if(Array.isArray(x.weightLog)) x.weightLog=x.weightLog.map(_dispW);
+        if(Array.isArray(x.sets)) x.sets=x.sets.map(function(st){ if(!st || typeof st!=='object') return st; var y={}; Object.keys(st).forEach(function(k){ y[k]=st[k]; }); y.weight=_dispW(y.weight); return y; });
+        return x;
+      });
       c.unit=_uW();
       return c;
     });
@@ -7274,20 +7295,34 @@ function _drawWrapCard(mk, st, P){
 }
 
 // ── Proactive coach: session auto-debrief ────────────────────────────────────
+// A logged exercise's load for a prompt, from its _exPairs: one load when every set shared it,
+// else each set's in order ("100/90/90 kg"); BW when there is none.
+function _exLoadText(ex, ps){
+  var loads=(ps||_exPairs(ex)).map(function(p){ return p[1]; });
+  if(!loads.length) return parseFloat(ex&&ex.weight)>0?fmtW(ex.weight):'BW';
+  var same=loads.every(function(v){ return Math.abs(v-loads[0])<0.05; });
+  return same ? (loads[0]>0?fmtW(loads[0]):'BW') : loads.map(function(v){ return v>0?wDisp(v):'BW'; }).join('/')+' '+_uW();
+}
 // Fired after a session saves; a short Haiku take lands as a card on Today.
 function _debriefPrompt(sess){
-  var fmtEx=function(ex){ var reps=Array.isArray(ex.reps)?ex.reps.join(','):ex.reps; return ex.name+' '+ex.sets+'×['+reps+'] @ '+fmtW(ex.weight)+(ex.rpe?' RPE '+ex.rpe:''); };
+  // Every set from _exPairs: a previous session in the legacy nested shape (an import, an old
+  // backup, the demo) read "[object Object],…×[undefined] @ 0 lb", and back-off sets read as
+  // more top sets.
+  var fmtEx=function(ex){
+    var ps=_exPairs(ex), rpe=ex.rpe!=null&&ex.rpe!=='' ? ex.rpe : (Array.isArray(ex.sets)&&ex.sets[0] ? ex.sets[0].rpe : null);
+    return ex.name+' '+ps.length+'×['+ps.map(function(p){ return p[0]; }).join(',')+'] @ '+_exLoadText(ex, ps)+(rpe?' RPE '+rpe:'');
+  };
   var lines=sess.exercises.map(fmtEx).join('; ');
   // Baseline: the previous same-type session, the main lift's e1RM move, today's readiness, the profile.
   var prev=getSessions().find(function(x){ return x.id!==sess.id && x.type===sess.type && (x.exercises||[]).length && x.date<=sess.date; });
-  var prevLine=prev?'\nPrevious '+sess.type+' ('+prev.date+'): '+prev.exercises.map(fmtEx).join('; '):'';
+  var prevLine=prev?'\nPrevious '+_dayLabel(sess.type)+' ('+prev.date+'): '+prev.exercises.map(fmtEx).join('; '):'';
   var main=sess.exercises.find(function(e){ return e.isMain; })||sess.exercises[0];
   var trend='';
   try{ var pts=(_e1rmSeries()[main.name]||[]); if(pts.length>=2){ var a=pts[pts.length-2].e1rm, b=pts[pts.length-1].e1rm; trend='\n'+main.name+' est. 1RM: '+fmtW(b)+' ('+(b>=a?'+':'\u2212')+wDisp(Math.abs(b-a))+' '+_uW()+' vs previous)'; } }catch(e){}
   var rd=lsGet('kt_readiness'); var rdLine=(rd&&rd.date===todayISO())?'\nReadiness today: '+rd.score+'/100':'';
   var pl=_profileLines(); var profLine=pl.length?'\nAthlete: '+pl.join('; '):'';
   return 'You are a terse, sharp strength coach. In AT MOST 2 short sentences, give one specific observation '+
-    'and one cue for next time about this just-finished '+sess.type+' session. Compare with the previous session when it says something. No greetings, no fluff. '+
+    'and one cue for next time about this just-finished '+_dayLabel(sess.type)+' session. Compare with the previous session when it says something. No greetings, no fluff. '+
     _coachUnitsNote()+'Any weight you suggest must be a multiple of '+_plateStepDisp()+' '+_uW()+'.\n'+
     'Session: '+lines+(sess.prs&&sess.prs.length?'\nNew PRs: '+sess.prs.join(', '):'')+prevLine+trend+rdLine+profLine;
 }
@@ -7349,7 +7384,7 @@ function renderCoachCard(activity){
     // the lifecycle block decides whether to fetch.
     card = fallbackCoachCard(activity);
     card.loadedAt = Date.now();
-    card.forDay = activity.type+'/'+activity.dayName;
+    card.forDay = _coachCardFor(activity);
   }
   var actions = (card.actions || []).slice(0,2).map(function(a){
     var cls = (a.primary ? 'primary' : 'neutral') + (/^(got it|ok|okay|thanks|noted|dismiss|later)\b/i.test(String(a.label||'').trim()) ? ' dismiss' : '');
@@ -9582,6 +9617,28 @@ function _coachRunKm(i){
   if(parseFloat(i.distance_km)>0) return Math.round(parseFloat(i.distance_km)*100)/100;
   if(parseFloat(i.distance_mi)>0) return Math.round(parseFloat(i.distance_mi)*KM_PER_MI*100)/100;
   return 0;
+}
+// A log the coach is asked to save that is already there (the prompt lists only the newest, and
+// an older run the user mentioned was saved twice): the same day, distance within 5% and, when
+// both know it, time within 15% (the rule Health imports use against hand-typed runs).
+function _coachRunTwin(dateISO, km, time){
+  var sec=_runSecsOf(time);
+  return getRuns().find(function(r){
+    if(!r || String(r.date)!==String(dateISO)) return false;
+    var rd=parseFloat(r.distance||r.dist)||0;
+    if(!(rd>0) || Math.abs(rd-km)/Math.max(rd,km)>0.05) return false;
+    var rs=_runSecsOf(r.time);
+    return !(sec>0 && rs>0 && Math.abs(rs-sec)/Math.max(rs,sec)>0.15);
+  })||null;
+}
+// The same day and activity, duration within 15%.
+function _coachSportTwin(dateISO, type, mins){
+  var t=String(type||'').toLowerCase();
+  return getSportLogs().find(function(l){
+    if(!l || String(l.date)!==String(dateISO) || String(l.type||'').toLowerCase()!==t) return false;
+    var ld=parseInt(l.duration,10)||0;
+    return !(ld>0 && mins>0 && Math.abs(ld-mins)/Math.max(ld,mins)>0.15);
+  })||null;
 }
 // Programme run slot from the model: {mi} becomes {km} for storage.
 function _coachRunIn(r){
@@ -15950,10 +16007,13 @@ function getCoachChips(){
   var sessions=getSessions();
   var chips=[];
   if(sessions.length){
-    var last=sessions[0];
-    var daysSince=Math.floor((Date.now()-new Date(last.date))/86400000);
-    if(daysSince===0)chips.push('How did my '+last.type+' session look?');
-    else if(daysSince===1)chips.push('Recovery tips after yesterday\'s '+last.type+'?');
+    var last=sessions[0], ld=String(last.date||'').slice(0,10);
+    // Local calendar days: new Date('YYYY-MM-DD') is UTC midnight, so after 20:00 west of UTC
+    // today's session read as yesterday's (east of UTC, the reverse). The day goes by its own
+    // name, without the characters the chip's inline onclick and label cannot carry.
+    var day=_dayLabel(last.type).replace(/&/g,'+').replace(/["'<>\\`]/g,'').replace(/\s+/g,' ').trim()||String(last.type);
+    if(ld===todayISO())chips.push('How did my '+day+' session look?');
+    else if(ld===addDays(todayISO(),-1))chips.push('Recovery tips after yesterday\'s '+day+'?');
   }
   var wd=getWkData();
   if(wd)chips.push('What should I focus on this week?');
@@ -16268,7 +16328,7 @@ var COACH_TOOLS=[
    description:'Log the user\'s body weight in {W}. Use the actual measurement date, not today, if they weighed in on a different day.',
    input_schema:{type:'object',properties:{weight:{type:'number'},date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'}},required:['weight']}},
   {name:'log_run',
-   description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day.',
+   description:'Save a run to the user\'s run log (kt_runs). Use this whenever the user shares run data — via a screenshot, Apple Health image, or typed stats — and asks you to log it. Prefer the actual run date over today when the user clearly ran on a different day. A run that matches one already saved (same day, about the same distance) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        distance:{type:'number',description:'Distance in {DNAME} — the user\'s unit. Use this unless the source is explicitly in the other unit.'},
@@ -16278,11 +16338,12 @@ var COACH_TOOLS=[
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
        type:{type:'string',enum:['easy','tempo','long','intervals','race'],description:'Run type. Defaults to "easy".'},
        hr:{type:'number',description:'Average heart rate in bpm (optional).'},
-       note:{type:'string',description:'Short note (optional).'}
+       note:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_run refused a duplicate: true when the user confirms this is a second, separate run that day.'}
      },
      required:['time']}},
   {name:'log_session',
-   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list. Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
@@ -16302,13 +16363,14 @@ var COACH_TOOLS=[
    description:'Remember lasting facts about the athlete: goals, experience, equipment, injuries or exercises to avoid, likes, dislikes, other sports, notes. Call it when intake answers or chat reveal something that should shape future advice. Send only the fields that changed; each is a short plain-text summary that replaces the stored value.',
    input_schema:{type:'object',properties:{goals:{type:'string'},experience:{type:'string'},equipment:{type:'string'},injuries:{type:'string'},likes:{type:'string'},dislikes:{type:'string'},sports:{type:'string'},notes:{type:'string'}}}},
   {name:'log_sport',
-   description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day.',
+   description:'Log a sport or activity session (anything that is not a gym lift or run — cycling, swimming, pickleball, yoga, etc.). Use the actual activity date, not today, if they did it on a different day. One that matches a saved session (same day and activity, about the same duration) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',description:'Activity type, e.g. "Cycling", "Swimming", "Pickleball", "Tennis", "Basketball", "CrossFit", "Yoga", "Hiking", "Climbing", "Soccer", "Rowing", "Boxing", "Golf", "Other".'},
        duration:{type:'number',description:'Duration in minutes.'},
        date:{type:'string',description:'Date as YYYY-MM-DD. Defaults to today if omitted.'},
-       notes:{type:'string',description:'Short note (optional).'}
+       notes:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_sport refused a duplicate: true when the user confirms this is a second, separate session that day.'}
      },
      required:['type','duration']}},
   {name:'edit_session',
@@ -16381,6 +16443,22 @@ var _coachTurnScope=null, _coachSoloN=0;
 // Inside a reply every change shares the reply's scope; a call outside one is its own.
 function _coachScope(){ return _coachTurnScope || ('coach:solo:'+(++_coachSoloN)); }
 
+// The name a coach-set working weight is saved under: the programme's spelling (this week's
+// first), else a saved working weight's, else the library's. Today reads working weights by
+// exact name, so "face pull" was saved beside "Face Pull" and its "your load" row never showed
+// it. Case variants already saved fold into that key (the weights object is edited in place).
+// null when nothing knows the name.
+function _weightKeyFor(name, weights){
+  var low=String(name||'').trim().toLowerCase(), key=null;
+  if(!low) return null;
+  var cr=getCustomRoutine(), wks=(cr&&Array.isArray(cr.weeks))?cr.weeks:[];
+  [wks[currentWeek-1]].concat(wks).forEach(function(w){ LIFT_KEYS.forEach(function(k){ ((w&&w[k])||[]).forEach(function(e){ if(!key && e && String(e.name||'').toLowerCase()===low) key=String(e.name); }); }); });
+  if(!key) key=Object.keys(weights).find(function(k){ return k.toLowerCase()===low; })||null;
+  if(!key){ var le=getAllExercises().find(function(e){ return e && String(e.name).toLowerCase()===low; }); if(le) key=le.name; }
+  if(key) Object.keys(weights).forEach(function(k){ if(k!==key && k.toLowerCase()===low) delete weights[k]; });
+  return key;
+}
+
 // Every coach tool: if any save failed while it ran (or a raw write threw on quota), the
 // coach is told so instead of "logged" / "updated" (body weight, goals, profile, week,
 // cadence, deletes and set_exercise_weight used to report success with nothing saved).
@@ -16439,6 +16517,7 @@ function _executeCoachToolRaw(name,input){
       // A copy: day names used to be set on the cached programme even when nothing was
       // saved, so the app (and the watch) showed a rename the coach was told had failed.
       var cr=getCustomRoutine();
+      var _fresh=!(cr && Array.isArray(cr.weeks) && cr.weeks.length);
       cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[]};
       if(_inNames){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
@@ -16507,9 +16586,13 @@ function _executeCoachToolRaw(name,input){
           });
           if(OPTIONAL_LIFT_KEYS.indexOf(sk)>=0){ if(_grp.length) weekObj[sk]=_grp; else delete weekObj[sk]; }
           else weekObj[sk]=_grp;
+          // Only what the model sent is in the owner's unit: a day the call left out is the
+          // stored one, already lb (converting it again multiplied a kg owner's loads by 2.2
+          // on every rename or one-day tweak).
+          var _sent=w[sk]!==undefined;
           _grp.forEach(function(e,ei){
-            if(e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
-            if(e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
+            if(_sent && e && parseFloat(e.weight)>0) e.weight=_coachLoadIn(e.weight);
+            if(_sent && e && Array.isArray(e.weights)) e.weights=e.weights.map(function(x){
               var v=parseFloat(x); return v>0?_coachLoadIn(v):x;
             });
             // Supersets are pairs — normalize chains and a dangling last-ss.
@@ -16599,6 +16682,11 @@ function _executeCoachToolRaw(name,input){
       // overwrite Restore Previous with the current programme).
       if(written.length||planSupplied) _snapshotRoutineForUndo(_coachScope());
       if((written.length||planSupplied) && !setCustomRoutine(cr)) return {ok:false,error:'Could not save the programme: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
+      // A programme built from nothing in the chat (after "Start a new programme") starts as the
+      // intake's and the starter's do: week 1 on the next Monday, the weekly cards re-armed. It
+      // kept the archive's anchor (this Monday, last Monday on a weekend): it started in the
+      // past and Monday read week 2.
+      if(_fresh && written.length) _startProgramme();
       if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
       if(!written.length){
         if(planSupplied){
@@ -16610,6 +16698,7 @@ function _executeCoachToolRaw(name,input){
       }
       var lo=Math.min.apply(null,written), hi=Math.max.apply(null,written);
       var label=written.length===1?('Week '+written[0]+' updated'):('Weeks '+lo+'–'+hi+' updated ('+written.length+')');
+      if(_fresh) label+='; a new programme: week 1 starts '+(_programmeStarted()?'today':'Monday '+_weekAnchor());
       if(skipped.length){
         var sLo=Math.min.apply(null,skipped), sHi=Math.max.apply(null,skipped);
         var sRange=skipped.length===1?('week '+skipped[0]):('weeks '+sLo+'–'+sHi);
@@ -16727,7 +16816,7 @@ function _executeCoachToolRaw(name,input){
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
       newW=_coachLoadIn(newW);
       if(!input.name) return {ok:false,error:'name required'};
-      var key=Object.keys(weights).find(function(k){return k.toLowerCase()===String(input.name).toLowerCase();});
+      var key=_weightKeyFor(input.name, weights);
       if(!key) key=String(input.name);
       weights[key]=newW;
       lsSet('kt_weights',weights);
@@ -16798,6 +16887,8 @@ function _executeCoachToolRaw(name,input){
       var rtype=input.type||'easy';
       var rhr=parseInt(input.hr)||0;
       var rnote=String(input.note||'').trim();
+      var _rtw=(input.separate===true||input.separate==='true')?null:_coachRunTwin(rdate, rkm, rtime);
+      if(_rtw) return {ok:false,duplicate:_rtw.id,error:'Already saved: [id:'+_rtw.id+'] '+_rtw.date+' · '+fmtD(parseFloat(_rtw.distance||_rtw.dist)||0)+' · '+_rtw.time+'. Nothing was saved. Tell the user it is already logged; only if they say it was a second, separate run that day, call log_run again with separate:true.'};
       var rruns=[{id:_freshId(getRuns()),distance:Math.round(rkm*100)/100,time:rtime,
         date:rdate,week:weekForDate(rdate),note:rnote,hr:rhr,type:rtype}].concat(getRuns());
       if(!lsSet('kt_runs',rruns)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
@@ -16862,6 +16953,8 @@ function _executeCoachToolRaw(name,input){
       var sdate=String(input.date||'').trim();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(sdate)) sdate=todayISO();
       var snotes=String(input.notes||'').trim();
+      var _stw=(input.separate===true||input.separate==='true')?null:_coachSportTwin(sdate, stype, sdur);
+      if(_stw) return {ok:false,duplicate:_stw.id,error:'Already saved: [id:'+_stw.id+'] '+_stw.date+' · '+_stw.type+(_stw.duration?' · '+_stw.duration+'min':'')+'. Nothing was saved. Tell the user it is already logged; only if they say it was a second, separate session that day, call log_sport again with separate:true.'};
       var slogs=[{id:_freshId(getSportLogs()),date:sdate,type:stype,duration:sdur,data:{},notes:snotes}].concat(getSportLogs());
       if(!lsSet('kt_sports',slogs)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       invalidateCoachCard();
@@ -17036,6 +17129,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   }
   var MAX_TURNS=15;
   var _cutShort=false;
+  var _carryOn=false;   // the next text continues a reply cut off at max_tokens
   var totalText='';
   var allToolCalls=[];
   _coachTurnScope='coach:'+Date.now();   // this reply's changes share one undo point
@@ -17150,8 +17244,15 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     }
     stopReason=(data&&data.stop_reason)||'';
 
-    // Accumulate text across all turns for final display
-    finishedBlocks.forEach(function(b){ if(b.type==='text') totalText+=b.text; });
+    // Accumulate text across all turns for final display. Each text block is its own paragraph
+    // ("On it." + "Bench is 170 lb" read "On it.Bench is 170 lb", and a %% block glued to the
+    // line before it printed raw), except the text that carries on a cut-off reply.
+    var _cont=_carryOn; _carryOn=false;
+    finishedBlocks.forEach(function(b){
+      if(b.type!=='text' || !b.text) return;
+      totalText+=(totalText && !_cont ? '\n\n' : '')+b.text;
+      _cont=false;
+    });
 
     // Record tool calls for pill UI
     var toolUses=finishedBlocks.filter(function(b){return b.type==='tool_use';});
@@ -17167,6 +17268,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // the turn through the tool_result continuation anyway.
     if(stopReason==='max_tokens' && !toolUses.length && _mtContinues<2){
       _mtContinues++;
+      _carryOn=true;
       apiMsgs.push({role:'user',content:'You were cut off (max_tokens). Continue exactly where you left off'+(intakeMode?' — finish the remaining weeks with a single update_routine_weeks call':'')+'.'});
       render(); scrollChatBottom();
       continue;
@@ -17268,10 +17370,22 @@ function _backupWeightFor(name){
   });
   return (found!=null && !isNaN(found))?found:null;
 }
+// What an update_routine_weeks call saved, whatever it reported: {weeks, plan}. A call that
+// failed part-way had saved the weeks before its error (and its cadence), and a cadence-only
+// call writes no week; the pill and PLAN CHANGES read "No weeks changed" or nothing for those.
+function _routineCallSaved(tc){
+  var r=(tc&&tc.result)||{}, i=(tc&&tc.input)||{};
+  var plan=Array.isArray(i.weekPlan)&&i.weekPlan.length===7;
+  // A failed call carries `written` only once validation passed; it saved if that wrote anything.
+  var saved=r.ok!==false || (Array.isArray(r.written) && (r.written.length>0 || plan));
+  if(!saved) return {weeks:[], plan:false};
+  var ws=Array.isArray(r.weeks)?r.weeks:Array.isArray(r.written)?r.written:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+  return {weeks:ws, plan:plan};
+}
 function _planChangeLedger(tools, idx){
   var rows=[];
   (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
-    if(!tc || !tc.result || tc.result.ok===false) return;
+    if(!tc || !tc.result || (tc.result.ok===false && !(tc.name==='update_routine_weeks' && Array.isArray(tc.result.written)))) return;
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
@@ -17279,8 +17393,9 @@ function _planChangeLedger(tools, idx){
     } else if(tc.name==='swap_cadence_days'){
       rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
     } else if(tc.name==='update_routine_weeks'){
-      var ws=(tc.result&&Array.isArray(tc.result.weeks))?tc.result.weeks:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
+      var sv=_routineCallSaved(tc), ws=sv.weeks;
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
+      if(sv.plan) rows.push(['Weekly cadence', 'changed']);
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
@@ -17308,17 +17423,19 @@ function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLa
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
-    // Prefer what was actually written (result.weeks) over what was requested —
-    // past weeks get silently skipped and shouldn't appear in the pill.
-    var ws=(tc.result&&Array.isArray(tc.result.weeks))
-      ?tc.result.weeks
-      :(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
-    if(!ws.length) return 'No weeks changed';
-    if(ws.length===1) return 'Week '+ws[0]+' updated';
-    return 'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws)+' updated';
+    // Prefer what was actually saved over what was requested — past weeks get
+    // silently skipped and shouldn't appear in the pill, and a call that failed
+    // part-way says which weeks it saved and which it did not.
+    var sv=_routineCallSaved(tc), ws=sv.weeks;
+    var lbl=!ws.length?'':ws.length===1?'Week '+ws[0]:'Weeks '+Math.min.apply(null,ws)+'–'+Math.max.apply(null,ws);
+    if(sv.plan) lbl=lbl?lbl+' and the weekly cadence':'Weekly cadence';
+    if(!lbl) return 'No weeks changed';
+    var lost=(tc.result&&tc.result.ok===false&&Array.isArray(i.weeks))?i.weeks.map(function(w){ return parseInt(w&&w.wk); }).filter(function(x){ return x>0 && ws.indexOf(x)<0 && (tc.result.skipped||[]).indexOf(x)<0; }):[];
+    return lbl+' updated'+(lost.length?' · '+(lost.length===1?'week ':'weeks ')+lost.join(', ')+' not saved':'');
   }
+  if(n==='swap_cadence_days') return (i.dayA||'?')+' ⇄ '+(i.dayB||'?')+(i.scope==='global'?' · every week':parseInt(i.week)?' · week '+parseInt(i.week):' · this week');
   if(n==='set_current_week') return 'Week set to '+i.week;
-  if(n==='log_session') return (i.type||'Session')+' logged'+(i.date?' · '+i.date:'');
+  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+' logged'+(i.date?' · '+i.date:'');
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
@@ -17328,8 +17445,8 @@ function _toolCallLabel(tc){
   if(n==='set_5k_goal') return '5k goal '+i.time;
   if(n==='set_bw_goal') return 'BW goal '+fmtBW(wStore(i.weight));
   if(n==='log_bodyweight') return 'Logged '+fmtBW(wStore(i.weight));
-  if(n==='log_run') return 'Run logged · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
-  if(n==='log_sport') return (i.type||'Sport')+' logged · '+(i.duration||'?')+' min';
+  if(n==='log_run') return (tc.result&&tc.result.duplicate?'Already logged':'Run logged')+' · '+(_coachRunKm(i)>0?fmtD(_coachRunKm(i)):'?')+' '+( i.time||'');
+  if(n==='log_sport') return (i.type||'Sport')+(tc.result&&tc.result.duplicate?' already logged':' logged')+' · '+(i.duration||'?')+' min';
   if(n==='edit_session') return i.rename_to ? (String(i.exercise||'')+' \u2192 '+String(i.rename_to)) : (String(i.exercise||'Session')+' corrected');
   if(n==='delete_log') return (i.store||'entry')+' deleted';
   return n;
@@ -17447,10 +17564,21 @@ function saveCoachHistory(){
   }catch(e){}
 }
 
+// The prompt's log lists: the n newest (lsSet keeps the stores newest first; the sort only
+// guards older data), plus any more from the n-th one's day, so "every one from <from> on" is
+// exactly true. A partial list used to be called everything saved, and the coach re-logged any
+// older run or activity the user mentioned.
+function _promptLog(list, n){
+  var all=(list||[]).filter(function(x){ return x && x.date; }).sort(_cmpByDateDesc), shown=all.slice(0,n);
+  while(shown.length && shown.length<all.length && String(all[shown.length].date)===String(shown[shown.length-1].date)) shown.push(all[shown.length]);
+  var from=shown.length?String(shown[shown.length-1].date):'', more=all.length>shown.length;
+  return {shown:shown, from:from, more:more,
+    scope:more?('the '+shown.length+' most recent of '+all.length+' saved: every one from '+from+' on is listed; older ones are saved too but not listed'):('all '+all.length+' saved')};
+}
 function buildSystemPrompt(){
   var wd=getWkData();
-  var sessions=getSessions().slice(0,10);
-  var runs=getRuns().slice(0,6);
+  var _sl=_promptLog(getSessions(),10), sessions=_sl.shown;
+  var _rl=_promptLog(getRuns(),6), runs=_rl.shown;
   var prs=getPRs();
   var bws=getBodyWeights().slice(0,4);
   var cr=getCustomRoutine();
@@ -17498,14 +17626,21 @@ function buildSystemPrompt(){
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN (lifts marked "edited by the user" or "added by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
+    // A row's load: each set's when a top set and back-offs differ (the headline weight alone
+    // read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
+    var _rowLoad=function(r, none){
+      var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
+      if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
+      return parseFloat(r.weight)>0?fmtW(r.weight):none;
+    };
     LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
         wd[sess].forEach(function(ex){
-          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+(parseFloat(ex.rec.weight)>0?fmtW(ex.rec.weight):'their load')+']':'');
-          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+(parseFloat(ex.weight)>0?fmtW(ex.weight):'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
+          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':'');
+          p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+_rowLoad(ex, 'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
         });
         // Where each main lift is heading, so advice matches the rest of the programme.
         try{
@@ -17526,15 +17661,13 @@ function buildSystemPrompt(){
   }
 
   if(sessions.length){
-    p+='RECENT SESSIONS:\n';
+    p+='RECENT SESSIONS ('+_sl.scope+'):\n';
     sessions.forEach(function(s){
       p+='[id:'+s.id+'] '+s.type+' '+s.date+' (Wk'+s.week+'): ';
       // Every set from _exPairs (the legacy nested shape printed "[object Object]×(undefined)@BW"),
       // with per-set loads when they changed.
       var exStrs=(s.exercises||[]).map(function(ex){
-        var ps=_exPairs(ex), loads=ps.map(function(p){ return p[1]; });
-        var same=loads.every(function(v){ return Math.abs(v-loads[0])<0.05; });
-        var load=!ps.length ? (parseFloat(ex.weight)>0?fmtW(ex.weight):'BW') : same ? (loads[0]>0?fmtW(loads[0]):'BW') : loads.map(function(v){ return v>0?wDisp(v):'BW'; }).join('/')+' '+_uW();
+        var ps=_exPairs(ex), load=_exLoadText(ex, ps);
         var rpe=ex.rpe!=null ? ex.rpe : (Array.isArray(ex.sets) && ex.sets[0] ? ex.sets[0].rpe : null);
         return ex.name+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+load+' RPE'+fmtRpe(rpe);
       });
@@ -17544,12 +17677,14 @@ function buildSystemPrompt(){
   }
 
   if(runs.length){
-    p+='LOGGED RUNS (these are the only runs actually saved in the app — this list is the ground truth):\n';
-    runs.slice(0,10).forEach(function(r){
+    p+='LOGGED RUNS (the ground truth: '+_rl.scope+'):\n';
+    runs.forEach(function(r){
       var dist=parseFloat(r.distance||r.dist||0);
       p+='  [id:'+r.id+'] '+r.date+' · '+fmtD(dist)+' · '+r.time+(r.hr?' · '+r.hr+'bpm':'')+(r.note?' · '+r.note:'')+'\n';
     });
-    p+='If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
+    p+=_rl.more
+      ? 'If a run the user mentions from '+_rl.from+' on is NOT in this list, it is NOT saved — do not say it is logged; call log_run to save it. A run from before '+_rl.from+' may already be saved (it is just not listed): do not log it again unless the user says it is missing.\n\n'
+      : 'If a run the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_run immediately to save it.\n\n';
   } else {
     p+='LOGGED RUNS: none yet. If the user mentions a run, it is not saved — call log_run to save it.\n\n';
   }
@@ -17581,16 +17716,18 @@ function buildSystemPrompt(){
     if(_fcLines.length) p+='TRENDS: '+_fcLines.join('; ')+'.\n\n';
   }catch(e){}
 
-  var sportLogs=getSportLogs().slice(0,10);
+  var _spl=_promptLog(getSportLogs(),10), sportLogs=_spl.shown;
   if(sportLogs.length){
-    p+='LOGGED SPORT SESSIONS (these are the only sport/activity sessions actually saved in the app — this is the ground truth):\n';
+    p+='LOGGED SPORT SESSIONS (the ground truth: '+_spl.scope+'):\n';
     sportLogs.forEach(function(sp){
       var sum=buildSportSummary(sp);
       p+='  [id:'+sp.id+'] '+sp.date+' · '+sp.type+(sp.duration?' · '+sp.duration+'min':'')+
         (sum?' · '+sum:'')+
         (sp.notes?' · '+sp.notes:'')+'\n';
     });
-    p+='If a sport session the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_sport immediately to save it.\n\n';
+    p+=_spl.more
+      ? 'If a sport session the user mentions from '+_spl.from+' on is NOT in this list, it is NOT saved — do not say it is logged; call log_sport to save it. One from before '+_spl.from+' may already be saved (it is just not listed): do not log it again unless the user says it is missing.\n\n'
+      : 'If a sport session the user mentions is NOT in this list, it is NOT saved — do not say it is logged. Call log_sport immediately to save it.\n\n';
   } else {
     p+='LOGGED SPORT SESSIONS: none yet. If the user mentions a sport/activity session, it is not saved — call log_sport to save it.\n\n';
   }
@@ -17615,7 +17752,7 @@ function buildSystemPrompt(){
   p+='\nAPP CONTROL — you update the app via tool calls (not by writing JSON in your reply). Tool calls apply immediately and the user sees each one as a small pill under your message. Use them whenever the user asks to change a value or a programme.\n';
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.). A stated week ("it\'s week 1") IS a request to set it: act, do not discuss.\n';
-  p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.\n';
+  p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.'+(_sl.more?' One from before '+_sl.from+' may already be saved (RECENT SESSIONS lists only the newest): log it only if the user says it is missing.':'')+'\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
