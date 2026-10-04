@@ -10600,7 +10600,8 @@ function _bdAskCoach(){
 
 // ── Resets: back to what the coach wrote ─────────────────────────────────────
 // A row the owner changed goes back to its rec (renames too); a row the owner
-// added goes away. Weeks before c are never touched.
+// added goes away. Weeks before c are never touched. -1 when the coach's lift is
+// on the day already as another changed row (that one is the owner's to change first).
 function _progUseCoach(cr, slot, name, c){
   var W=cr.weeks, n=0;
   for(var j=c;j<W.length;j++){
@@ -10608,7 +10609,14 @@ function _progUseCoach(cr, slot, name, c){
     for(var i=0;i<list.length;i++){
       var r=list[i]; if(!r || r.name!==name || r.rec===undefined) continue;
       if(r.rec===null){ list.splice(i,1); i--; }
-      else { var back=JSON.parse(JSON.stringify(r.rec)); delete back.rec; list[i]=back; }
+      else {
+        var back=JSON.parse(JSON.stringify(r.rec)); delete back.rec;
+        // The owner's own add of the coach's lift (after a swap) gives way to it: the day held it
+        // twice, and the runner logged both cards as one lift and saved its sets twice.
+        var dup=-1; list.forEach(function(x, d){ if(dup<0 && x && x!==r && x.name===back.name) dup=d; });
+        if(dup>=0){ if(list[dup].rec!==null) return -1; list.splice(dup,1); i=list.indexOf(r); }
+        list[i]=back;
+      }
       n++;
     }
   }
@@ -10759,7 +10767,9 @@ function _paintRoutines(){
   _a11yPass();
 }
 function _rtUseCoach(slot, name){
-  _commitRoutine(function(cr){ return _progUseCoach(cr, slot.toLowerCase(), name, currentWeek-1); }, {undoLabel:name+' back to the coach\u2019s version', scope:'routines'});
+  var cr0=getCustomRoutine(), r=(cr0&&cr0.weeks)?_progRow(cr0.weeks[currentWeek-1], slot.toLowerCase(), name):null;
+  var res=_commitRoutine(function(cr){ return _progUseCoach(cr, slot.toLowerCase(), name, currentWeek-1); }, {undoLabel:name+' back to the coach\u2019s version', scope:'routines'});
+  if(res===-1) showToast(((r&&r.rec&&r.rec.name)||name)+' is already on '+_dayLabel(slot)+' \u2014 change that one first','err');
 }
 function _rtRestoreRemoved(slot){
   _commitRoutine(function(cr){

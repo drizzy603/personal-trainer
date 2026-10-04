@@ -9,6 +9,8 @@
 //   load the call asked for (it came back as before while the chat reported the new numbers), and
 //   the coach's own adds and removes are the programme's version: not "[added by the user]", not
 //   undone by Reset, not kept out of a later rebuild.
+// - M13: Use coach's on a swapped lift whose original the owner added back keeps one copy (the day
+//   held it twice and the runner logged both cards as one lift); a row renamed to it is refused.
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -196,6 +198,45 @@ seq('M12 + L09: the coach\'s add brings a removed lift back at its numbers; the 
     assert(!out.fpOut.length && out.changes === 0 && !out.promptAdded, 'the coach\'s removal is not kept for Restore and counts as no change by the owner: ' + JSON.stringify([out.fpOut, out.changes, out.promptAdded]));
     assert(out.afterReset.fly === '3x12@40' && out.afterReset.fp === '-', 'Reset keeps the coach\'s add and remove: ' + JSON.stringify(out.afterReset));
     assert(out.rebuild.ok && !(out.rebuild.kept || []).length && /^3x15@35/.test(out.rebuild.fp), 'a later rebuild puts Face Pull back: ' + JSON.stringify(out.rebuild));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M13: Use coach\'s never puts the same lift on a day twice', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const coachDay = getCustomRoutine().weeks[c].push.map(e => e.name).join('|');
+      const count = (n) => getCustomRoutine().weeks.slice(c).map(w => (w.push || []).filter(e => e.name === n).length).join('');
+      // swap Overhead Press for Arnold Press, add Overhead Press back, then Use coach's on Arnold
+      openRoutines();
+      _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10);
+      _rtAddPick('Push', 'Overhead Press'); await wait(10);
+      _rtUseCoach('Push', 'Arnold Press'); await wait(10);
+      r.ohp = count('Overhead Press'); r.arnold = count('Arnold Press');
+      r.day = getCustomRoutine().weeks[c].push.map(e => e.name + (e.rec !== undefined ? '*' : '')).join('|');
+      closeRoutines();
+      openDeckRunner('Push'); await wait(20);
+      r.cards = runnerSession.exercises.filter(e => e.name === 'Overhead Press').length;
+      closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+      lsSet('kt_routine', JSON.parse(orig));
+      // the coach's lift on the day as another changed row: refused, nothing written
+      openRoutines();
+      _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10);
+      _rtOpenEdit('Push', 'Lateral Raise'); _rtEdit.swapTo = 'Overhead Press'; _rtSave(); await wait(10);
+      const s0 = localStorage.getItem('kt_routine');
+      _rtUseCoach('Push', 'Arnold Press'); await wait(10);
+      r.refused = { same: localStorage.getItem('kt_routine') === s0, toast: (document.getElementById('toast') || {}).textContent };
+      closeRoutines();
+      return { r, coachDay };
+    });
+    const { r, coachDay } = out;
+    assert(r.ohp === '1111111' && r.arnold === '0000000' && r.day === coachDay, 'one Overhead Press a week, the coach\'s day back: ' + JSON.stringify(r));
+    assert(r.cards === 1, 'the runner shows one Overhead Press card: ' + r.cards);
+    assert(r.refused.same && /Overhead Press is already on Push/.test(r.refused.toast), 'a row renamed to the coach\'s lift is changed first: ' + JSON.stringify(r.refused));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
