@@ -17,6 +17,8 @@
 // - M15 + L41: Restore brings back each week's own removed rows (it added a block's lift to every
 //   later week as an ADDED row with no load), and a removed lift back on the day under that name
 //   (a swap onto it) is not offered for a Restore that did nothing; Reset still has it.
+// - M16: an owner's swap onto a lift the coach brings in later keeps the coach's original it drops
+//   in those weeks, so Reset and Use coach's give it back (it was gone for good).
 const { boot, assert, run } = require('../lib/harness');
 
 // One browser at a time: each suite boots its own.
@@ -334,6 +336,42 @@ seq('M15 + L41: Restore brings back only what each week had; a lift back on the 
     assert(out.restored === coach && !out.lineAfter, 'Restore puts it back in weeks 6-8 only, nothing added to the Cable Fly weeks: ' + JSON.stringify([out.restored, out.lineAfter]));
     assert(!out.swapped.line && out.swapped.changes === 1 && out.swapped.reset, 'a removed lift back on the day by a swap is not offered for Restore: ' + JSON.stringify(out.swapped));
     assert(out.reset, 'Reset still gives back the coach\'s day');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+seq('M16: a swap onto a lift the coach brings in later keeps the coach\'s original for Reset and Use coach\'s', async () => {
+  // The coach: Overhead Press every week, Arnold Press beside it from week 9.
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => { if (i >= 8) { const at = w.push.findIndex(e => e.name === 'Overhead Press'); w.push.splice(at + 1, 0, { name: 'Arnold Press', sets: 3, reps: 10, weight: 45 }); } });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const has = (n) => getCustomRoutine().weeks.slice(c).map(w => w.push.some(e => e.name === n) ? 1 : 0).join('');
+      const days = () => JSON.stringify(getCustomRoutine().weeks.slice(c).map(w => w.push));
+      const coach = days();
+      const swap = async () => { openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10); };
+      await swap();
+      r.swapped = has('Overhead Press');
+      document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10);
+      r.reset = days() === coach;
+      closeRoutines(); lsSet('kt_routine', JSON.parse(orig));
+      await swap();
+      _rtUseCoach('Push', 'Arnold Press'); await wait(10);
+      r.useCoach = days() === coach;
+      closeRoutines(); lsSet('kt_routine', JSON.parse(orig));
+      // the coach's own swap is the programme's version: nothing is kept
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'swap', rename_to: 'Arnold Press' });
+      r.coachKept = getCustomRoutine().weeks.some(w => !!(w.recOut && w.recOut.push));
+      return r;
+    });
+    assert(out.swapped === '0000000', 'Overhead Press swapped out from week 6 on: ' + out.swapped);
+    assert(out.reset && out.useCoach, 'Reset and Use coach\'s give back the coach\'s weeks, Overhead Press in 9-12 too: ' + JSON.stringify(out));
+    assert(!out.coachKept, 'the coach\'s swap keeps nothing for Restore');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

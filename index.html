@@ -10409,25 +10409,31 @@ function _progRemove(cr, slot, name, c, o){
     var w=W[j], list=w&&w[slot]; if(!Array.isArray(list)) continue;
     var idx=-1; list.forEach(function(e,i){ if(e && e.name===name && idx<0) idx=i; });
     if(idx<0) continue;
-    var r=list[idx], p=idx>0?list[idx-1]:null, unpair=!!(p && p.ss);
-    if(r.rec!==null && !o.coach){
-      var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
-      var ent={at:idx, row:keep}; if(unpair) ent.ss=p.name;
-      w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push(ent);
-    }
-    if(unpair) p.ss=false;
-    list.splice(idx,1);
-    if(r.isMain && list.length && !list.some(function(e){ return e.isMain; })){
-      var nx=list.filter(function(e){ return parseFloat(e.weight)>0; })[0]||list[0];
-      if(!o.coach) _markRec(nx);
-      nx.isMain=true; _progUnmark(nx);
-    }
-    n++;
+    _progDrop(w, slot, idx, o); n++;
   }
   return n;
 }
+// One row out of one week, for REMOVE and for a swap onto a lift the week already has
+// (o.swap: that lift, so Use coach's on it brings the row back; o.mainTo: who takes a
+// main tag).
+function _progDrop(w, slot, idx, o){
+  var list=w[slot], r=list[idx], p=idx>0?list[idx-1]:null, unpair=!!(p && p.ss);
+  if(r.rec!==null && !o.coach){
+    var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
+    var ent={at:idx, row:keep}; if(unpair) ent.ss=p.name; if(o.swap) ent.swap=o.swap;
+    w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push(ent);
+  }
+  if(unpair) p.ss=false;
+  list.splice(idx,1);
+  if(r.isMain && list.length && !list.some(function(e){ return e.isMain; })){
+    var nx=(o.mainTo && _progRow(w, slot, o.mainTo)) || list.filter(function(e){ return parseFloat(e.weight)>0; })[0] || list[0];
+    if(!o.coach) _markRec(nx);
+    nx.isMain=true; _progUnmark(nx);
+  }
+}
 // SWAP A for B from week c on (o.onlyThisWeek: week c alone). In weeks where B is
-// already on the day (a coach rotation) A is dropped instead of doubling B. Loads
+// already on the day (a coach rotation) A is dropped instead of doubling B, and an
+// owner's swap keeps it for Use coach's and Reset (it was gone for good). Loads
 // keep A's shape at B's level: N (lb) typed, else B's known load, else A's own
 // curve if B has none.
 function _progSwap(cr, slot, from, to, c, N, o){
@@ -10450,7 +10456,7 @@ function _progSwap(cr, slot, from, to, c, N, o){
   var n=0, end=o.onlyThisWeek?c+1:W.length;
   for(var j=c;j<end;j++){
     var w=W[j], r=_progRow(w,slot,from); if(!r) continue;
-    if(j>c && _progRow(w,slot,to)){ var list=w[slot]; list.splice(list.indexOf(r),1); n++; continue; }
+    if(j>c && _progRow(w,slot,to)){ _progDrop(w, slot, w[slot].indexOf(r), {coach:!o.markOwner, swap:to, mainTo:to}); n++; continue; }
     if(o.markOwner) _markRec(r);
     var P=parseFloat(r.weight)||0;
     r.name=to;
@@ -10631,8 +10637,10 @@ function _bdAskCoach(){
 
 // ── Resets: back to what the coach wrote ─────────────────────────────────────
 // A row the owner changed goes back to its rec (renames too); a row the owner
-// added goes away. Weeks before c are never touched. -1 when the coach's lift is
-// on the day already as another changed row (that one is the owner's to change first).
+// added goes away; where their swap onto it dropped a coach row (the week had the
+// lift already) that row comes back. Weeks before c are never touched. -1 when the
+// coach's lift is on the day already as another changed row (that one is the
+// owner's to change first).
 function _progUseCoach(cr, slot, name, c){
   var W=cr.weeks, n=0;
   for(var j=c;j<W.length;j++){
@@ -10651,7 +10659,7 @@ function _progUseCoach(cr, slot, name, c){
       n++;
     }
   }
-  return n;
+  return n+_progRestoreOut(cr, slot, function(e){ return e.swap===name; }, c);
 }
 // The coach rows a week keeps for Restore: those whose lift is not on the day again
 // (a swap onto it put it back; that entry stays for Reset).
@@ -10659,16 +10667,16 @@ function _progOut(w, slot){
   var ro=(w && w.recOut && Array.isArray(w.recOut[slot])) ? w.recOut[slot] : [];
   return ro.filter(function(e){ return e && e.row && !_progRow(w, slot, e.row.name); });
 }
-// RESTORE: the removed coach rows named in `names` come back from week c on, each week its
-// own where it was, with its main tag and superset. A week that never had one gets nothing
+// RESTORE: the removed coach rows `want` picks come back from week c on, each week its own
+// where it was, with its main tag and superset. A week that never had one gets nothing
 // (adding them put a block's lift into every later week, as an ADDED row with no load).
-function _progRestoreOut(cr, slot, names, c){
+function _progRestoreOut(cr, slot, want, c){
   var W=cr.weeks, n=0;
   for(var j=c;j<W.length;j++){
     var w=W[j], ro=w && w.recOut && w.recOut[slot]; if(!Array.isArray(ro)) continue;
     if(!Array.isArray(w[slot])) w[slot]=[];
     for(var q=ro.length-1;q>=0;q--){   // last removed first, so each lands where it was
-      var e=ro[q]; if(!e || !e.row || names.indexOf(e.row.name)<0 || _progRow(w, slot, e.row.name)) continue;
+      var e=ro[q]; if(!e || !e.row || !want(e) || _progRow(w, slot, e.row.name)) continue;
       ro.splice(q,1);
       var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
       w[slot].splice(Math.min(w[slot].length, Math.max(0, parseInt(e.at,10)||0)), 0, back);
@@ -10835,8 +10843,8 @@ function _rtUseCoach(slot, name){
 }
 function _rtRestoreRemoved(slot){
   _commitRoutine(function(cr){
-    var c=currentWeek-1, key=slot.toLowerCase();
-    return _progRestoreOut(cr, key, _progOut(cr.weeks[c], key).map(function(e){ return e.row.name; }), c);
+    var c=currentWeek-1, key=slot.toLowerCase(), names=_progOut(cr.weeks[c], key).map(function(e){ return e.row.name; });
+    return _progRestoreOut(cr, key, function(e){ return names.indexOf(e.row.name)>=0; }, c);
   }, {undoLabel:'Coach lifts restored', scope:'routines'});
 }
 function _rtResetDay(slot){
