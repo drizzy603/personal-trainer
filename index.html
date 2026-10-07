@@ -12266,6 +12266,7 @@ function applyStarterIntake(){
 }
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
+  r.inUseFrom=todayISO();   // nothing logged before today was trained on it (_sessBlock)
   var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
   if(cur && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
   if(!setCustomRoutine(r)){ lsSet('kt_routine_archive', prevArr); return; }
@@ -16406,16 +16407,21 @@ function _shareCardPalette(){
 // still in the week it was filed in (bWk). One with no stamp (logged before stamps, or moved to
 // another week) reads the programme as it stands only if it belongs to it (this round, or no
 // programme or round has replaced it since: Programme History's newest entry), else none: the
-// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD).
+// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD). A
+// programme put in after the log's date (routine.inUseFrom) is not the one it was trained in:
+// Regenerate archives nowhere, so old cards read the next programme's blocks and logs filed late
+// (the coach's, a stale wrist session) were stamped with its week 1.
 function _sessBlock(s){
   if(!s) return '';
   var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10);
   if(s.bName && Number(s.bWk)===wk) return String(s.bName);
-  var cr=getCustomRoutine(), w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
-  if(!live || d>=_roundStartISO()) return live;
+  var cr=getCustomRoutine(), live=_weekBlock(cr, wk);
+  if(!live || String(cr.inUseFrom||'')>d) return '';
+  if(d>=_roundStartISO()) return live;
   var arc=getRoutineArchive()[0];
   return (!arc || d>String(arc.archivedAt||'')) ? live : '';
 }
+function _weekBlock(r, wk){ var w=r && Array.isArray(r.weeks) && wk>0 ? r.weeks[wk-1] : null; return w && w.bName ? String(w.bName) : ''; }
 // Every writer of a new session stamps it, so its card keeps its block after this programme.
 function _stampBlock(s){ var b=_sessBlock(s); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
 // Everything the card says, in the display units, from the stored session.
@@ -17306,7 +17312,7 @@ function _executeCoachToolRaw(name,input){
       // saved, so the app (and the watch) showed a rename the coach was told had failed.
       var cr=getCustomRoutine();
       var _fresh=!(cr && Array.isArray(cr.weeks) && cr.weeks.length);
-      cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[]};
+      cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[],inUseFrom:todayISO()};   // built from nothing: in use from today (_sessBlock)
       if(_inNames){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
         LIFT_TYPES.forEach(function(sl){

@@ -26,6 +26,11 @@
 //   COMPLETE sheet's PR row, RECORD HISTORY, the exercise PR row and the ledger read the record
 //   the share card does (72.5 kg × 6 on 160 × 5 and 159.8 × 6, 6; they said × 5 while the card
 //   said × 6). A lift logged twice in one session is one top on the same rule; lb is unchanged.
+// - R56 (L46 follow-up): the Coach tab's Regenerate archives nowhere, so old cards read the next
+//   programme's blocks (WEEK 04 · BUILD on a BASE week) and logs filed late (the coach's, a stale
+//   wrist session) were stamped with its week 1 for good. A programme built from nothing (the
+//   starter, the coach's first write) is in use from the day it was put in (routine.inUseFrom):
+//   it names no older log's block, and a log filed late from before it is not stamped.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
@@ -168,6 +173,54 @@ run('L46: a shared card keeps the block its session was trained in', async () =>
     assert(out.after.every(p => p === L) && out.legacy === '', 'after a new programme, a stamped card keeps its block and an unstamped one claims none: ' + JSON.stringify([out.after, out.legacy]));
     assert(out.afterNow.every(p => p === L), 'a programme started the same week leaves the day\'s earlier cards on their block: ' + JSON.stringify(out.afterNow));
     assert(out.fresh[0] === 'NEW2' && out.fresh[1] === 'NEW2' && out.moved === 'NEW1', 'the current programme\'s weeks read live: ' + JSON.stringify([out.fresh, out.moved]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R56: Regenerate (a reset, archived nowhere) no longer hands old cards and late logs the next programme's blocks.
+run('R56: after Regenerate, old cards and logs filed late name no block of the programme built next', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const ok = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const cr0 = getCustomRoutine(), r = {};
+      // the seed's logs from before stamps, in weeks 2, 4 and 6: BASE, BASE, BUILD
+      const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
+      const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+      r.before = phases();
+      // Regenerate, then the coach's first write builds a programme whose blocks are named otherwise
+      resetCustomRoutine(); ok(); await wait(20);
+      const weeks = cr0.weeks.map((w, i) => Object.assign(JSON.parse(JSON.stringify(w)), { wk: i + 1, bName: 'NEW' + (i + 1) }));
+      r.res = executeCoachTool('update_routine_weeks', { weeks, weekPlan: cr0.weekPlan });
+      r.inUse = getCustomRoutine().inUseFrom === todayISO();
+      r.coach = phases();
+      // filed late from before it was put in: the coach's log of three weeks back, a stale wrist session
+      executeCoachTool('log_session', { type: 'Pull', date: addDays(todayISO(), -21), exercises: [{ name: 'Barbell Row', sets: 3, reps: 8, weight: 135 }] });
+      window.__mock.pending.push(JSON.stringify({ dayName: 'Legs', loggedAt: addDays(todayISO(), -10) + 'T07:00:00', exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 185 }] }));
+      await drainWatchSessions(); await wait(30);
+      const late = [getSessions().find(s => s.source === 'coach' && s.date === addDays(todayISO(), -21)), getSessions().find(s => s.note === 'From Apple Watch' && s.date === addDays(todayISO(), -10))];
+      r.late = late.map(s => s ? [s.bName || '', _shareCardModel(s).phase] : null);
+      // today's log is this programme's own: stamped with its week's block
+      executeCoachTool('log_session', { type: 'Push', date: todayISO(), exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 135 }] });
+      const t = getSessions().find(s => s.source === 'coach' && s.date === todayISO());
+      r.today = [t.bName, _shareCardModel(t).phase, 'NEW' + t.week];
+      // Regenerate again, then the starter: its week 4 is BUILD where the seed's was BASE
+      resetCustomRoutine(); ok(); await wait(20);
+      applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 }); await wait(20);
+      r.starterWk4 = getCustomRoutine().weeks[3].bName;
+      r.starter = phases();
+      r.todayKept = _shareCardModel(getSessions().find(s => s.id === t.id)).phase;
+      return r;
+    });
+    assert(JSON.stringify(out.before) === '["BASE","BASE","BUILD"]', 'the old logs read their blocks: ' + JSON.stringify(out.before));
+    assert(out.res && out.res.ok, 'the coach\'s first write saved the programme: ' + JSON.stringify(out.res && out.res.error));
+    assert(out.coach.every(p => p === ''), 'old cards name none of the new programme\'s blocks (read NEW2/NEW4/NEW6): ' + JSON.stringify(out.coach));
+    assert(out.late.every(x => x && x[0] === '' && x[1] === ''), 'logs filed late from before it are not stamped with its week 1: ' + JSON.stringify(out.late));
+    assert(out.inUse, 'a programme built from nothing is in use from the day it was put in (routine.inUseFrom)');
+    assert(out.today[0] === out.today[2] && out.today[1] === out.today[2], 'today\'s log is stamped with the programme\'s block: ' + JSON.stringify(out.today));
+    assert(out.starterWk4 === 'BUILD' && out.starter.every(p => p === ''), 'after the starter the week-4 BASE card does not read BUILD: ' + JSON.stringify(out.starter));
+    assert(out.todayKept === out.today[2], 'a stamped card keeps its block after the next Regenerate: ' + out.todayKept);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
