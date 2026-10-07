@@ -10048,6 +10048,17 @@ function _coachSportTwin(dateISO, type, mins){
     return !(ld>0 && mins>0 && Math.abs(ld-mins)/Math.max(ld,mins)>0.15);
   })||null;
 }
+// The same day and day slot, sharing a lift (by name, any case). Sets and loads are not compared:
+// the same session told with other numbers is a fix (edit_session), and a real second session
+// that day goes through with separate:true.
+function _coachSessionTwin(dateISO, type, exs){
+  var key=function(n){ return String(n||'').replace(/\s+/g,' ').trim().toLowerCase(); };
+  var names=(exs||[]).map(function(e){ return key(e&&e.name); }).filter(Boolean);
+  return getSessions().find(function(s){
+    return !!(s && String(s.date||'').slice(0,10)===String(dateISO) && s.type===type && Array.isArray(s.exercises)
+      && s.exercises.some(function(e){ return e && names.indexOf(key(e.name))>=0; }));
+  })||null;
+}
 // Programme run slot from the model: {mi} becomes {km} for storage.
 function _coachRunIn(r){
   if(!r||typeof r!=='object') return r;
@@ -17124,7 +17135,7 @@ var COACH_TOOLS=[
      },
      required:['time']}},
   {name:'log_session',
-   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given. A session that matches one already saved (same day and session type, sharing an exercise) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
@@ -17137,7 +17148,8 @@ var COACH_TOOLS=[
          rpe:{type:'number',description:'RPE if the user gave one (optional).'},
          isMain:{type:'boolean',description:'True on the primary compound.'}
        },required:['name','sets','reps']}},
-       note:{type:'string',description:'Short note (optional).'}
+       note:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_session refused a duplicate: true when the user confirms this is a second, separate session that day.'}
      },
      required:['type','exercises']}},
   {name:'save_profile',
@@ -17732,6 +17744,13 @@ function _executeCoachToolRaw(name,input){
           weight:wStore(parseFloat(ge.weight)||0),
           rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
       }
+      // As log_run and log_sport: RECENT SESSIONS lists only the newest, and an older session the
+      // user mentioned was saved a second time (its volume counted twice). The coach is shown
+      // what is saved, in the owner's unit.
+      var _gtw=(input.separate===true||input.separate==='true')?null:_coachSessionTwin(gdate, gtype, gclean);
+      if(_gtw) return {ok:false,duplicate:_gtw.id,error:'Already saved: [id:'+_gtw.id+'] '+_gtw.type+' '+String(_gtw.date).slice(0,10)+': '+_gtw.exercises.map(function(ex){
+        var ps=_exPairs(ex||{}); return String((ex&&ex.name)||'')+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+_exLoadText(ex||{}, ps);
+      }).join(' | ')+'. Nothing was saved. Tell the user it is already logged (to correct a number in it, use edit_session with that id); only if they say it was a second, separate session that day, call log_session again with separate:true.'};
       // Judged first, committed only once the session is on disk (as the runner does): a
       // failed save used to leave the records raised with no session behind them, and the
       // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
@@ -18250,7 +18269,7 @@ function _toolCallLabel(tc){
   }
   if(n==='swap_cadence_days') return (i.dayA||'?')+' ⇄ '+(i.dayB||'?')+(i.scope==='global'?' · every week':parseInt(i.week)?' · week '+parseInt(i.week):' · this week');
   if(n==='set_current_week') return 'Week set to '+i.week;
-  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+' logged'+(i.date?' · '+i.date:'');
+  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+(tc.result&&tc.result.duplicate?' already logged':' logged')+(i.date?' · '+i.date:'');
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');

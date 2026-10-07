@@ -40,6 +40,9 @@
 //   (an ok answer that wrote no week) reads as the cadence-only change it was.
 // - R11 (L35) the chip names the day exactly as the owner wrote it: apostrophes and quotes were
 //   stripped and & became +, though the chip carries any text (data-msg, escaped, no inline JS).
+// - R12 (H13) log_session refuses a session already saved (same day and day slot, sharing a lift),
+//   shows the coach what is saved and takes separate:true, as log_run and log_sport do: an older,
+//   unlisted session the user mentioned was saved twice and its volume counted twice.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -580,4 +583,43 @@ run('R11: the coach chip names the day exactly as the owner wrote it, and nothin
     });
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// R12: H13 refused a saved run or activity in code, but a lift session only by the prompt's words.
+run('R12: the coach cannot log a saved lift session twice; a real second session still logs', async () => {
+  for (const unit of ['lb', 'kg']) {
+    const app = await boot({ native: true, seed: { kt_unit_w: unit, kt_coach_msgs: '[]' } });
+    try {
+      const out = await app.page.evaluate(() => {
+        const r = {}, n = () => getSessions().length, n0 = n();
+        // the oldest saved session: RECENT SESSIONS lists only the newest
+        const old = getSessions().slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id)[0];
+        r.listed = buildSystemPrompt().indexOf('[id:' + old.id + ']') >= 0;
+        const told = old.exercises.map(e => { const ps = _exPairs(e); return { name: e.name, sets: ps.length, reps: ps.map(x => x[0]), weight: wDisp(Math.max.apply(null, ps.map(x => x[1]))) }; });
+        const e0 = old.exercises[0], ps0 = _exPairs(e0);
+        r.want = { id: old.id, pill: _dayLabel(old.type) + ' already logged · ' + old.date, saved: e0.name + ' ' + ps0.length + '×(' + ps0.map(x => x[0]).join('/') + ')@' + _exLoadText(e0, ps0) };
+        r.dup = executeCoachTool('log_session', { type: old.type, date: old.date, exercises: told });
+        r.pill = toolCallLabel({ name: 'log_session', input: { type: old.type, date: old.date }, result: r.dup });
+        // the same session told with other numbers (one lift, any case, another load) is a fix
+        r.fix = executeCoachTool('log_session', { type: old.type, date: old.date, exercises: [{ name: told[0].name.toUpperCase(), sets: 2, reps: 5, weight: told[0].weight + 10 }] });
+        r.added0 = n() - n0;
+        // real second sessions still log: confirmed, other lifts that day, another day slot
+        r.second = executeCoachTool('log_session', { type: old.type, date: old.date, exercises: told, separate: true }).ok;
+        r.extra = executeCoachTool('log_session', { type: old.type, date: old.date, exercises: [{ name: 'Zercher Carry', sets: 2, reps: 20, weight: 0 }] }).ok;
+        r.otherSlot = executeCoachTool('log_session', { type: LIFT_TYPES.find(t => t !== old.type), date: old.date, exercises: [told[0]] }).ok;
+        r.added1 = n() - n0;
+        r.schema = !!(_cachedCoachTools().find(t => t.name === 'log_session') || { input_schema: { properties: {} } }).input_schema.properties.separate;
+        return r;
+      });
+      assert(!out.listed, unit + ': the oldest session is not in the prompt\'s list');
+      assert(out.dup.ok === false && out.dup.duplicate === out.want.id && out.dup.error.indexOf('Already saved: [id:' + out.want.id + ']') === 0, unit + ': a saved session is refused as a duplicate: ' + JSON.stringify(out.dup));
+      assert(out.dup.error.indexOf(out.want.saved) > 0 && out.want.saved.indexOf(' ' + unit) > 0, unit + ': the coach is shown what is saved, in the owner\'s unit: ' + out.want.saved + ' / ' + out.dup.error);
+      assert(/edit_session/.test(out.dup.error) && /separate:true/.test(out.dup.error), unit + ': and told how to fix it or log a real second one: ' + out.dup.error);
+      assert(out.pill === out.want.pill, unit + ': the pill says it was already there: ' + out.pill);
+      assert(out.fix.ok === false && out.fix.duplicate === out.want.id && out.added0 === 0, unit + ': the same session with other numbers is refused too, nothing saved: ' + JSON.stringify([out.fix, out.added0]));
+      assert(out.second && out.extra && out.otherSlot && out.added1 === 3, unit + ': real second sessions still log: ' + JSON.stringify(out));
+      assert(out.schema, unit + ': the tool offers separate');
+      assert(app.errors.length === 0, unit + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
