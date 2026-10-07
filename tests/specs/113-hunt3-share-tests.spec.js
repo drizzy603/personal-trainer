@@ -30,7 +30,13 @@
 //   programme's blocks (WEEK 04 · BUILD on a BASE week) and logs filed late (the coach's, a stale
 //   wrist session) were stamped with its week 1 for good. A programme built from nothing (the
 //   starter, the coach's first write) is in use from the day it was put in (routine.inUseFrom):
-//   it names no older log's block, and a log filed late from before it is not stamped.
+//   it names no older log's block, and a stamp needs the current programme to be the only one the
+//   log can have been trained in.
+// - R57 (L46 follow-up): an unstamped old log reads the block every programme that may have been
+//   the one on its date gives its week (the current one, each Programme History entry replaced on
+//   or after it, less one put in later), so round 2, a Programme History restore and Restore
+//   Previous of its own programme keep BASE/BUILD (they read no block), and after Start new it
+//   reads Programme History's copy. A log filed after such a replacement still reads none.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
@@ -223,6 +229,66 @@ run('R56: after Regenerate, old cards and logs filed late name no block of the p
     assert(out.todayKept === out.today[2], 'a stamped card keeps its block after the next Regenerate: ' + out.todayKept);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// R57: an old card keeps its block when the programme that replaces it names that week alike.
+run('R57: old cards keep their block after round 2, a Programme History restore or Restore Previous of their own programme', async () => {
+  const out = {};
+  for (const path of ['round', 'history', 'previous', 'startNew']) {
+    const app = await boot({ native: true });
+    try {
+      out[path] = await app.page.evaluate(async (path) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const ok = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const cr0 = getCustomRoutine(), r = {};
+        const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
+        const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+        const starter = () => applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 });
+        if (path === 'round') {
+          // the next round, started now (as "Today" does on any weekday but Sunday)
+          lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() }); _applyNextRound(true);
+        } else if (path === 'history') {
+          startNewProgramme(); ok(); await wait(20); starter(); await wait(20);
+          const e = getRoutineArchive().find(x => x.routine && x.routine.name === cr0.name);
+          restoreArchivedRoutine(e.id); ok();
+        } else if (path === 'previous') {
+          startNewProgramme(); ok(); await wait(20); starter(); await wait(20);
+          restoreRoutineBackup(); ok();
+        } else {
+          startNewProgramme(); ok(); await wait(20);
+          const weeks = cr0.weeks.map((w, i) => Object.assign(JSON.parse(JSON.stringify(w)), { wk: i + 1, bName: 'NEW' + (i + 1) }));
+          executeCoachTool('update_routine_weeks', { weeks, weekPlan: cr0.weekPlan });
+        }
+        await wait(20);
+        const cr = getCustomRoutine();
+        r.state = [cr.name === cr0.name, parseInt(cr.cycle, 10) || 1, getRoutineArchive().map(e => e.routine && e.routine.name)];
+        r.after = phases();
+        if (path === 'history') {
+          // the starter archived by a page from before inUseFrom: it may have been the one in July, and
+          // its week 4 is BUILD where the logs' own is BASE, so that card names no block
+          const a = getRoutineArchive(); delete a[0].routine.inUseFrom; lsSet('kt_routine_archive', a);
+          r.unknown = phases();
+        }
+        // a stale wrist session from before the change, drained after it: counted on the new clock
+        window.__mock.pending.push(JSON.stringify({ dayName: 'Legs', loggedAt: addDays(todayISO(), -10) + 'T07:00:00', exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 185 }] }));
+        await drainWatchSessions(); await wait(30);
+        const w = getSessions().find(s => s.note === 'From Apple Watch' && s.date === addDays(todayISO(), -10));
+        r.late = w ? [w.bName || '', _shareCardModel(w).phase] : null;
+        return r;
+      }, path);
+      out[path].errors = app.errors.join('|');
+    } finally { await app.close(); }
+  }
+  assert(out.round.state[0] && out.round.state[1] === 2, 'round 2 of the same programme is on: ' + JSON.stringify(out.round.state));
+  assert(out.history.state[0] && JSON.stringify(out.history.state[2]) === '["Your starter block"]', 'the programme the logs were trained in is restored from history: ' + JSON.stringify(out.history.state));
+  assert(out.previous.state[0], 'Restore Previous brings back the logs\' own programme: ' + JSON.stringify(out.previous.state));
+  assert(!out.startNew.state[0], 'Start new put in another programme: ' + JSON.stringify(out.startNew.state));
+  for (const p of Object.keys(out)) {
+    assert(JSON.stringify(out[p].after) === '["BASE","BASE","BUILD"]', p + ': the old cards keep the blocks they were trained in (read none): ' + JSON.stringify(out[p].after));
+    assert(out[p].late && out[p].late[0] === '' && out[p].late[1] === '', p + ': a log filed after the change from before it names no block: ' + JSON.stringify(out[p].late));
+    assert(out[p].errors === '', p + ': no page errors: ' + out[p].errors);
+  }
+  assert(JSON.stringify(out.history.unknown) === '["BASE","","BUILD"]', 'programmes that may have been the one disagree on week 4: no block there, never BUILD: ' + JSON.stringify(out.history.unknown));
 });
 
 run('L47: the share card rounds the minutes before it splits off the hours', async () => {

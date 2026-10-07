@@ -16405,25 +16405,35 @@ function _shareCardPalette(){
 }
 // The block (phase) a session was trained in: the one stamped when it was filed, while it is
 // still in the week it was filed in (bWk). One with no stamp (logged before stamps, or moved to
-// another week) reads the programme as it stands only if it belongs to it (this round, or no
-// programme or round has replaced it since: Programme History's newest entry), else none: the
-// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD). A
-// programme put in after the log's date (routine.inUseFrom) is not the one it was trained in:
-// Regenerate archives nowhere, so old cards read the next programme's blocks and logs filed late
-// (the coach's, a stale wrist session) were stamped with its week 1.
-function _sessBlock(s){
+// another week) reads this round's block, else the block that week has in every programme that
+// may have been the one on its date: the current one and each Programme History entry replaced
+// on or after it, leaving out one put in after it (routine.inUseFrom). They disagree, or none
+// is left: no block. The current programme's week 4 is not an old programme's week 4 (an old BASE
+// card read BUILD, also after Regenerate, which archives nowhere), and the next round or the
+// programme restored as it was name it alike (they read no block). A log filed after such a
+// replacement (the coach's, a stale wrist session) has its week counted on a later programme's
+// clock: no block. strict, for a stamp: only while the current programme is the one it can have
+// been trained in.
+function _sessBlock(s, strict){
   if(!s) return '';
-  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10);
+  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10), filed=Number(s.id)||0;
   if(s.bName && Number(s.bWk)===wk) return String(s.bName);
-  var cr=getCustomRoutine(), live=_weekBlock(cr, wk);
-  if(!live || String(cr.inUseFrom||'')>d) return '';
-  if(d>=_roundStartISO()) return live;
-  var arc=getRoutineArchive()[0];
-  return (!arc || d>String(arc.archivedAt||'')) ? live : '';
+  var cr=getCustomRoutine(), live=_weekBlock(cr, wk), curIn=!!cr && !(String(cr.inUseFrom||'')>d);
+  if(curIn && d>=_roundStartISO()) return live;
+  var may=curIn ? [live] : [], late=false;
+  getRoutineArchive().forEach(function(e){
+    var r=e && e.routine;
+    if(!r || !(String(e.archivedAt||'')>=d)) return;
+    if(filed>Number(e.id)) late=true;
+    else if(!(String(r.inUseFrom||'')>d)) may.push(_weekBlock(r, wk));
+  });
+  if(late || (strict && !(curIn && may.length===1))) return '';
+  return may.length && may.every(function(b){ return b===may[0]; }) ? may[0] : '';
 }
 function _weekBlock(r, wk){ var w=r && Array.isArray(r.weeks) && wk>0 ? r.weeks[wk-1] : null; return w && w.bName ? String(w.bName) : ''; }
-// Every writer of a new session stamps it, so its card keeps its block after this programme.
-function _stampBlock(s){ var b=_sessBlock(s); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
+// Every writer of a new session stamps it, so its card keeps its block after this programme. A log
+// filed late (the coach's, a stale wrist session) from before this programme was put in is not.
+function _stampBlock(s){ var b=_sessBlock(s, true); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
 // Everything the card says, in the display units, from the stored session.
 function _shareCardModel(s){
   var U=_uW(), all=getSessions();
