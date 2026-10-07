@@ -440,6 +440,43 @@ run("a library row's control is its header: the open detail, PR history and Dele
   } finally { await app.close(); }
 });
 
+// R53: L54 left the runner's Edit sheet out of the sheets Escape closes, so mid-workout
+// Escape did nothing there and closing it never gave focus back to the card.
+run("Escape closes the runner's Edit sheet and focus goes back to the card's Edit (R53)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(30); };
+    const state = () => p.evaluate(() => {
+      const a = document.activeElement;
+      return { open: !!document.getElementById('runner-ex-edit-modal'), runner: !!document.getElementById('runner-root'),
+        onEdit: !!(a && /openRunnerExEdit/.test(a.getAttribute('onclick') || '')) };
+    });
+    await p.evaluate(() => { switchTab('log'); openDeckRunner('Push'); });
+    const edit = p.locator('#runner-root button[onclick*="openRunnerExEdit"]').first();
+    const r = {};
+    // opened from the card with the keyboard, focus on the sheet's ✕
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    r.opened = await state();
+    await p.evaluate(() => document.querySelector('#runner-ex-edit-modal button[onclick^="closeRunnerExEdit"]').focus());
+    await esc(); r.inside = await state();
+    // focus on <body>
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    await p.evaluate(() => document.activeElement && document.activeElement.blur());
+    await esc(); r.body = await state();
+    // in the exercise picker's search field
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    await p.evaluate(() => { _openRunnerExPicker(); document.getElementById('runner-ex-picker-q').focus(); });
+    await esc(); r.picker = await state();
+    await p.evaluate(() => closeDeckRunner());
+    assert(r.opened.open, 'Enter on the card opens the Edit sheet: ' + JSON.stringify(r.opened));
+    assert(!r.inside.open && r.inside.runner && r.inside.onEdit, 'Escape with focus inside closes it and focus returns to Edit: ' + JSON.stringify(r.inside));
+    assert(!r.body.open && r.body.runner, 'Escape with focus on the page closes it, the runner stays: ' + JSON.stringify(r.body));
+    assert(!r.picker.open && r.picker.runner && r.picker.onEdit, 'Escape in the picker closes the sheet: ' + JSON.stringify(r.picker));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('library and week-ladder rows take Tab, set inputs and glyph buttons are named, the sub-tab is current (L55)', async () => {
   const app = await boot({ native: true });
   try {

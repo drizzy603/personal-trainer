@@ -19328,8 +19328,9 @@ function _buildThemeRows(){
 // Escape closes the top sheet wherever focus is: on <body> (a tap on a sheet's text moves
 // it there) or inside a sheet that has no keydown listener of its own. A sheet that does
 // handle Escape has already prevented the default, or removed the key's target by closing
-// or repainting itself.
-var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg';
+// or repainting itself. The runner's Edit sheet is a bottom sheet with a shell of its own
+// (its backdrop closes it on a click like the others).
+var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg, #runner-ex-edit-modal';
 document.addEventListener('keydown', function(e){
   if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
   if(e.target && e.target.nodeType===1 && !e.target.isConnected) return;
