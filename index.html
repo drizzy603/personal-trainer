@@ -18311,19 +18311,25 @@ function _routineReplaced(prev, scope){
 // The week clock of a programme set aside whole: its week, the Monday that week began and the
 // Monday its final week began, kept on the snapshot as _clock (bookkeeping like _w, never part of
 // the programme). Restore Previous brought the programme back on week 1: round 1 lost its final
-// week, a Programme History restore's programme came back not started until next Monday.
+// week, a Programme History restore's programme came back not started until next Monday. The
+// week's +5 and plateau offers go with it (prog, plateau): a swap stamps them for its week 1.
 function _weekClockNow(){
   var g=function(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } };
-  return {week:currentWeek, monday:g('kt_week_monday'), finalSince:g('kt_final_since')};
+  return {week:currentWeek, monday:g('kt_week_monday'), finalSince:g('kt_final_since'), prog:lsGet('kt_last_prog_week'), plateau:lsGet('kt_last_plateau_week')};
 }
 // A kept clock put back: its week from this Monday (a start still ahead stays ahead, a week
 // spent on another programme is not counted), and on the final week the Monday that week began,
-// so a programme that had ended still reads as ended.
+// so a programme that had ended still reads as ended. An offer already taken or put off that week
+// stays answered (back on week 6 under the swap's week-1 stamps, both cards were offered again).
 function _weekClockPut(c, total){
   var re=/^\d{4}-\d{2}-\d{2}$/, wk=Math.min(total, Math.max(1, parseInt(c.week,10)||1)), mon=_mostRecentMonday();
   var ahead=re.test(String(c.monday||'')) && c.monday>mon;
   if(!_setWeek(wk, ahead ? c.monday : null)) return;
   if(wk>=total && !ahead && re.test(String(c.finalSince||'')) && c.finalSince<=mon){ try{ localStorage.setItem('kt_final_since', c.finalSince); }catch(e){} }
+  [['prog','kt_last_prog_week'], ['plateau','kt_last_plateau_week']].forEach(function(p){
+    if(!(p[0] in c)) return;
+    if(c[p[0]]!=null) lsSet(p[1], c[p[0]]); else lsDel(p[1]);
+  });
 }
 // A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
 // card retires (it read "WEEK 1" over the old round's changes).

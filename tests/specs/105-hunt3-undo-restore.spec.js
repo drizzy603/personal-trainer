@@ -748,6 +748,43 @@ run('Restore Previous after a history restore, the starter plan, a new programme
   } finally { await app.close(); }
 });
 
+// R16 follow-up: a swap stamps the +5 and plateau offers for its week 1, so back on week 6 an offer
+// already put off (or taken) that week was offered again (with a key, a second +5 from the coach).
+// The week's offers go aside with the clock and come back with it.
+run('Restore Previous after a swap keeps the week\'s +5 and plateau offers as they were answered', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      // both main lifts went clean last week, and Bench has stalled
+      const ex = (name, w) => ({ name, isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w, rpe: 7, rpeLog: [7, 7, 7, 7] });
+      lsSet('kt_sessions', [{ id: 8800001, date: addDays(_mostRecentMonday(), -5), type: 'Push', exercises: [ex('Bench Press', 160), ex('Overhead Press', 100)] }].concat(getSessions()));
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 30 }];
+      const st = () => ({ week: currentWeek, prog: _progressionDue(), plateau: _plateauFixDue() });
+      const B = JSON.parse(JSON.stringify(getCustomRoutine())); B.name = 'Programme B';
+      lsSet('kt_routine_archive', [{ id: 42, archivedAt: todayISO(), routine: B }]);
+      const r = { seed: st() };
+      // offers nobody answered yet are still offered after the round trip
+      restoreArchivedRoutine(42); await wait(20); confirm(); await wait(30);
+      r.onB = st();
+      await restorePrev(); r.untouched = st();
+      // put off this week: the starter plan, then back
+      dismissProgression(); dismissPlateauFix(); r.dismissed = st();
+      applyStarterRoutine({ goal: 'strength', days: 3, exp: 'intermediate', equip: 'full', focus: 'balanced' }); await wait(20);
+      await restorePrev(); r.answered = st();
+      return r;
+    });
+    assert(out.seed.week === 6 && out.seed.prog && out.seed.plateau, 'seed: week 6, both offers due: ' + JSON.stringify(out.seed));
+    assert(out.onB.week === 1 && !out.onB.prog && !out.onB.plateau, 'the swapped-in programme starts on week 1 with no offer: ' + JSON.stringify(out.onB));
+    assert(out.untouched.week === 6 && out.untouched.prog && out.untouched.plateau, 'back on week 6, unanswered offers stay offered: ' + JSON.stringify(out.untouched));
+    assert(!out.dismissed.prog && !out.dismissed.plateau, 'both put off: ' + JSON.stringify(out.dismissed));
+    assert(out.answered.week === 6 && !out.answered.prog && !out.answered.plateau, 'back on week 6, offers put off that week stay put off: ' + JSON.stringify(out.answered));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 // R17: the keyless +5 and the plateau deload wrote the working weight with no note on their undo
 // point, so Restore previous programme put the plan back and left the new load as the working
 // weight (the coach prompt listed it, and the next +5 said "Already progressed this week"). Each
