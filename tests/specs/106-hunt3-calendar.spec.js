@@ -481,3 +481,353 @@ run('L28: leaving COMPARE (Done, or another tab) clears the day it filtered by; 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R20 (hunt 4): a workout logged at the load the plateau deload, the keyless +5 or the coach wrote,
+// then deleted, put the older log's load back as the working weight (the coach was told 160 while
+// the programme said 145). A log now carries what it set (wSet): one that met the working weight
+// gives nothing back, a typo goes back to what it replaced (the coach's load included), and a log
+// from before the stamp follows only when the programme did not prescribe its load.
+run('R20: deleting a workout logged at the deload\'s, +5\'s or coach\'s load keeps that load; a typo still goes', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), d10 = addDays(T, -10), d3 = addDays(T, -3), cr0 = JSON.stringify(getCustomRoutine());
+      const mk = (id, date, w) => ({ id, date, week: weekForDate(date), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: w, weightLog: [w, w, w], isMain: true }] });
+      const W = () => getWeights()['Bench Press'];
+      const row = () => { const x = (getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press'); return x && x.weight; };
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsSet('kt_sessions', [mk(101, d10, 160)]); recomputePRs(); lsSet('kt_weights', { 'Bench Press': 160 }); };
+      const todays = () => getSessions().find(s => s.date === T);
+      const delOnSheet = async () => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const r = {};
+      // today's Push through the runner, at what it prescribes, then deleted from the day sheet
+      for (const k of ['deload', 'plus5', 'coach']) {
+        reset();
+        if (k === 'deload') _writeLoadLocal('Bench Press', 145);   // what applyPlateauFixLocal writes
+        if (k === 'plus5') _writeLoadLocal('Bench Press', 165);    // what applyProgressionLocal writes
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        const presc = runnerWeights['Bench Press'];
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); closeCompleteSheet(); await wait(20);
+        const logged = { w: W(), stamp: JSON.stringify((todays() || {}).wSet) };
+        await delOnSheet();
+        r[k] = { presc, row: row(), logged, w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press'), gone: !todays() };
+      }
+      // a typo logged over the coach's 145 goes back to 145, not to the older log's 160
+      reset();
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 1450 }] });
+      r.typoLogged = W();
+      await delOnSheet();
+      r.typoGone = W();
+      // logs from before the stamp: at the programme's load it stays, a typo follows the older log
+      reset(); _writeLoadLocal('Bench Press', 145);
+      lsSet('kt_sessions', [mk(102, T, 145)].concat(getSessions()));
+      deleteSession(102); await wait(10);
+      r.legacyAtPlan = W();
+      reset();
+      lsSet('kt_sessions', [mk(103, T, 1850)].concat(getSessions())); lsSet('kt_weights', { 'Bench Press': 1850 });
+      deleteSession(103); await wait(10);
+      r.legacyTypo = W();
+      // a move behind an older log and back, then a delete
+      reset();
+      executeCoachTool('log_session', { type: 'Push', date: d3, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 170 }] });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 175 }] });
+      const mv = todays().id;
+      moveSession(mv, addDays(T, -5)); await wait(10); r.movedBehind = W();
+      moveSession(mv, T); await wait(10); r.movedFront = W();
+      deleteSession(mv); await wait(10); r.movedDeleted = W();
+      // a log that met the coach's 145, corrected to 150, then deleted: the coach's 145 again
+      reset();
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 145 }] });
+      executeCoachTool('edit_session', { id: todays().id, exercise: 'Bench Press', weight: 150 });
+      r.edited = W();
+      deleteSession(todays().id); await wait(10);
+      r.editedGone = W();
+      return r;
+    });
+    [['deload', 145], ['plus5', 165], ['coach', 145]].forEach(([k, L]) => {
+      const x = out[k];
+      assert(x.presc === L && x.logged.w === L && x.gone, k + ': the runner prescribed and logged ' + L + ': ' + JSON.stringify(x));
+      assert(x.w === L && x.row === L && x.line === '  Bench Press: ' + L && x.prescribed === L, k + ': deleting that workout keeps ' + L + ' (the coach is told it, the +5 reads it): ' + JSON.stringify(x));
+    });
+    assert(out.typoLogged === 1450 && out.typoGone === 145, 'a typo over the coach\'s load goes back to that load: ' + JSON.stringify([out.typoLogged, out.typoGone]));
+    assert(out.legacyAtPlan === 145 && out.legacyTypo === 160, 'logs from before the stamp: the plan\'s load stays, a typo follows: ' + JSON.stringify([out.legacyAtPlan, out.legacyTypo]));
+    assert(out.movedBehind === 170 && out.movedFront === 175 && out.movedDeleted === 170, 'a move behind and back, then a delete: ' + JSON.stringify([out.movedBehind, out.movedFront, out.movedDeleted]));
+    assert(out.edited === 150 && out.editedGone === 145, 'a corrected log gives back what it replaced: ' + JSON.stringify([out.edited, out.editedGone]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R21 (hunt 4): in Edit sets, a back-off set's load fix (the top set unchanged) still reset the
+// lift's working weight to the logged top, undoing a +5 written since, and a rename wrote the
+// logged top under the new name; the coach's edit_session did the same with a rename or a load
+// restated as it was. Only a changed top set moves it now; a rename takes the old name's along.
+run('R21: a back-off set\'s fix or a rename in Edit sets keeps the +5 written since; a top-set fix still moves it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), O = addDays(T, -7);
+      const seed = () => {
+        lsSet('kt_sessions', [{ id: 5550101, date: T, week: weekForDate(T), type: 'Push', label: 'Push', prs: [], exercises: [
+          { name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 185, weightLog: [185, 185, 180], isMain: true },
+          { name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 95, weightLog: [95, 95, 95] }] }]);
+        recomputePRs();
+        lsSet('kt_weights', { 'Bench Press': 190, 'Overhead Press': 100 });   // the +5 (or the coach) since
+      };
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const edit = async fn => { openSessionEditor(5550101); await wait(30); fn(id => document.getElementById(id)); saveSessionEdit(); await wait(30); };
+      const r = {};
+      seed(); await edit(el => { el('se_0_2_w').value = '175'; });
+      r.backoff = { w: W(), line: benchLine(), log: getSessions()[0].exercises[0].weightLog.join() };
+      seed(); await edit(el => { el('se_1_name').value = 'Seated Overhead Press'; });
+      r.rename = W();
+      seed(); executeCoachTool('edit_session', { id: 5550101, exercise: 'Overhead Press', rename_to: 'Seated Overhead Press' });
+      r.coachRename = W();
+      seed(); executeCoachTool('edit_session', { id: 5550101, exercise: 'Bench Press', reps: [5, 5, 4], weight: 185 });
+      r.coachRestated = W();
+      // the old name still has an older log: it keeps its working weight, the new name starts at this log's top
+      seed();
+      lsSet('kt_sessions', getSessions().concat([{ id: 5550100, date: O, week: weekForDate(O), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 90, weightLog: [90, 90, 90] }] }]));
+      await edit(el => { el('se_1_name').value = 'Seated Overhead Press'; });
+      r.renameKept = W();
+      // a fix of the top set moves the working weight (this is the lift's newest log)
+      seed(); await edit(el => { el('se_0_0_w').value = '180'; el('se_0_1_w').value = '180'; });
+      r.topFix = W();
+      return r;
+    });
+    assert(out.backoff.w['Bench Press'] === 190 && out.backoff.line === '  Bench Press: 190' && out.backoff.log === '185,185,175', 'a back-off set\'s fix keeps the +5: ' + JSON.stringify(out.backoff));
+    assert(out.rename['Seated Overhead Press'] === 100 && !('Overhead Press' in out.rename) && out.rename['Bench Press'] === 190, 'a rename takes the old name\'s working weight along: ' + JSON.stringify(out.rename));
+    assert(out.coachRename['Seated Overhead Press'] === 100 && !('Overhead Press' in out.coachRename), 'the coach\'s rename too: ' + JSON.stringify(out.coachRename));
+    assert(out.coachRestated['Bench Press'] === 190, 'a load restated as it was keeps the +5: ' + JSON.stringify(out.coachRestated));
+    assert(out.renameKept['Overhead Press'] === 100 && out.renameKept['Seated Overhead Press'] === 95, 'with the old name still logged, the new one starts at this log\'s top: ' + JSON.stringify(out.renameKept));
+    assert(out.topFix['Bench Press'] === 180 && out.topFix['Overhead Press'] === 100, 'a top-set fix still moves its own working weight: ' + JSON.stringify(out.topFix));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R26 (hunt 4): a lift whose older logs are imports in the nested shape ({sets:[{reps, weight}]},
+// no weight of their own) lost its working weight when its newest log was deleted: the follow
+// read weight alone, saw no log left, and the coach stopped being told the lift.
+run('R26: deleting the newest log follows the lift\'s older nested-shape logs; the working weight stays', async () => {
+  const nested = (id, date, w) => ({ id, date, week: 3, type: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: w }, { reps: 8, weight: w }, { reps: 8, weight: w }] }] });
+  const app = await boot({ native: true, seed: { kt_sessions: JSON.stringify([nested(2601, daysAgo(7), 160), nested(2602, daysAgo(14), 155)]), kt_prs: '{}', kt_weights: JSON.stringify({ 'Bench Press': 160 }) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO();
+      const W = () => getWeights()['Bench Press'];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const r = { nested: getSessions().every(s => Array.isArray(s.exercises[0].sets)) };
+      // a typo from before the stamp, deleted from the day sheet
+      lsSet('kt_sessions', [{ id: 2603, date: T, week: weekForDate(T), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 1650, weightLog: [1650, 1650, 1650], isMain: true }] }].concat(getSessions()));
+      lsSet('kt_weights', { 'Bench Press': 1650 });
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+      [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+      closeCalDay(); await wait(10);
+      r.legacy = { w: W(), line: benchLine() };
+      // a correct log today (it set 165 over the nested 160), deleted by the coach
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 165 }] });
+      const s = getSessions().find(x => x.date === T);
+      r.logged = [W(), JSON.stringify(s.wSet)];
+      executeCoachTool('delete_log', { store: 'session', id: s.id });
+      r.coachDel = { w: W(), line: benchLine() };
+      return r;
+    });
+    assert(out.nested, 'the imports are still nested after boot');
+    assert(out.legacy.w === 160 && out.legacy.line === '  Bench Press: 160', 'the typo goes back to the newest nested log: ' + JSON.stringify(out.legacy));
+    assert(out.logged[0] === 165 && out.logged[1] === '{"Bench Press":[null,165]}', 'the new log set 165 over the nested log\'s load: ' + JSON.stringify(out.logged));
+    assert(out.coachDel.w === 160 && out.coachDel.line === '  Bench Press: 160', 'deleted, it gives the nested log\'s 160 back: ' + JSON.stringify(out.coachDel));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R22 (hunt 4): a photo shared into the app (Photos > Share > Fitness Programmer) opened the Coach
+// chat under an open day sheet, its Delete buttons over the chat; L26 closed the sheet only in
+// switchTab, and the share intake set the tab by hand (the tab bar kept Progress lit too).
+run('R22: a shared photo closes the day sheet (and COMPARE) and opens the Coach chat with its tab lit', async () => {
+  const D = daysAgo(3);
+  const app = await boot({ native: true, seed: { kt_runs: JSON.stringify([{ id: 2201, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]) } });
+  try {
+    const out = await app.page.evaluate(async D => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const st = () => ({ sheet: !!document.getElementById('calDayOverlay'), tab: currentTab, view: coachView, sel: calSelectedDate, cmpOn,
+        lit: [...document.querySelectorAll('.tab.active')].map(t => t.getAttribute('data-tab')).join(), img: !!pendingImage });
+      const openDay = async () => { switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30); document.querySelector('.cal-day[data-date="' + D + '"]').click(); await wait(40); };
+      // back in the foreground with a photo waiting: the shell's share hand-off
+      const share = async () => {
+        Capacitor.Plugins.TrovoShare.getPendingShare = () => { Capacitor.Plugins.TrovoShare.getPendingShare = () => Promise.resolve({}); return Promise.resolve({ imageBase64: 'iVBORw0KGgo=' }); };
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange'));
+        await wait(900);
+      };
+      const r = {};
+      await openDay(); r.opened = st();
+      await share(); r.shared = st();
+      pendingImage = null;
+      switchTab('progress'); render(); await wait(30);
+      document.getElementById('cmp-btn').click(); await wait(30);
+      r.cmp = st();
+      await share(); r.cmpShared = st();
+      return r;
+    }, D);
+    assert(out.opened.sheet && out.opened.lit === 'progress', 'the day sheet is open on Progress: ' + JSON.stringify(out.opened));
+    assert(!out.shared.sheet && out.shared.sel === null && out.shared.tab === 'coach' && out.shared.view === 'chat' && out.shared.lit === 'coach' && out.shared.img, 'the photo lands in the Coach chat with the sheet closed and the Coach tab lit: ' + JSON.stringify(out.shared));
+    assert(out.cmp.cmpOn && !out.cmpShared.cmpOn && out.cmpShared.tab === 'coach' && out.cmpShared.lit === 'coach', 'COMPARE is left as before: ' + JSON.stringify([out.cmp, out.cmpShared]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R23 (hunt 4): after a date typed into the day sheet (desktop, M38), the first press elsewhere in
+// the sheet committed the move inside its mousedown: the repaint took the pressed button away and
+// the click did nothing (✕ left the sheet open on the new day, another log's Delete or Edit sets
+// did nothing, ‹ went nowhere). The move now lands at that press's click, before the button's own
+// handler, however long the press is held.
+run('R23: after a typed date, ✕, another log\'s Delete or Edit sets and ‹ still do what they say; the move lands too', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]', kt_sports: '[]' } });
+  const page = app.page;
+  try {
+    const s = await page.evaluate(() => {
+      const T = todayISO();
+      // the field's parts follow the browser's locale (mm dd yyyy in en-US)
+      const order = new Intl.DateTimeFormat(navigator.language, { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(p => p.type).filter(t => t === 'year' || t === 'month' || t === 'day');
+      return { A: addDays(T, -5), B: addDays(T, -12), C: addDays(T, -8), order };
+    });
+    const keys = d => s.order.map(t => t === 'year' ? d.slice(0, 4) : t === 'month' ? d.slice(5, 7) : d.slice(8, 10)).join('');
+    // Push and Pull on A, Legs on B, a run on C (the logged day before A): the sheet opens on A
+    const open = () => page.evaluate(async ({ A, B, C }) => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      if (document.getElementById('calDayOverlay')) closeCalDay();
+      const ex = (n, w) => [{ name: n, sets: 3, reps: [5, 5, 5], weight: w, weightLog: [w, w, w], isMain: true }];
+      lsSet('kt_sessions', [
+        { id: 9090, date: A, week: weekForDate(A), type: 'Push', label: 'Push', exercises: ex('Bench Press', 180), prs: [] },
+        { id: 9091, date: A, week: weekForDate(A), type: 'Pull', label: 'Pull', exercises: ex('Barbell Row', 150), prs: [] },
+        { id: 8080, date: B, week: weekForDate(B), type: 'Legs', label: 'Legs', exercises: ex('Squat', 225), prs: [] }]);
+      lsSet('kt_runs', [{ id: 7070, date: C, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      _sessEditId = null;
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(A); calSelectedDate = null; render(); await wait(30);
+      openCalDay(A); await wait(40);
+    }, s);
+    const typeB = async () => {
+      await page.locator('#cdBody .kt-cd-item').filter({ hasText: 'Push' }).locator('input[type=date]').focus();
+      for (const k of keys(s.B)) { await page.keyboard.press(k); await page.waitForTimeout(15); }
+    };
+    // a real mouse press: down, held, up (the field loses focus at the down)
+    const press = async (loc, hold) => {
+      const b = await loc.boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down(); await page.waitForTimeout(hold || 0); await page.mouse.up();
+      await page.waitForTimeout(80);
+    };
+    const state = () => page.evaluate(() => ({
+      logs: getSessions().map(x => x.id + '@' + x.date).sort().join(' '), sheet: calSelectedDate, open: !!document.getElementById('calDayOverlay'),
+      ring: [...document.querySelectorAll('.cal-day.sel')].map(e => e.getAttribute('data-date')).join(), editing: _sessEditId,
+    }));
+    const pull = () => page.locator('#cdBody .kt-cd-item').filter({ hasText: 'Pull' });
+    const r = {};
+    await open(); await typeB(); r.typed = await state();
+    await press(page.locator('#cdBody .kt-sheet-x')); r.close = await state();
+    await open(); await typeB(); await press(page.locator('#cdBody .kt-sheet-x'), 200); r.held = await state();
+    await open(); await typeB(); await press(pull().locator('button.danger')); r.del = await state();
+    await open(); await typeB(); await press(page.locator('#cdBody .kt-cd-nav button').first()); r.prev = await state();
+    await open(); await typeB(); await press(pull().locator('button', { hasText: 'Edit sets' })); r.edit = await state();
+    const { A, B, C } = s, moved = ['8080@' + B, '9090@' + B, '9091@' + A].sort().join(' ');
+    assert(r.typed.logs === ['8080@' + B, '9090@' + A, '9091@' + A].sort().join(' ') && r.typed.sheet === A, 'nothing moves while the date is typed: ' + JSON.stringify(r.typed));
+    assert(r.close.logs === moved && !r.close.open && r.close.sheet === null && r.close.ring === '', '✕ closes the sheet, the move lands and no ring is left: ' + JSON.stringify(r.close));
+    assert(r.held.logs === moved && !r.held.open && r.held.ring === '', 'a press held on ✕ closes it too: ' + JSON.stringify(r.held));
+    assert(r.del.logs === ['8080@' + B, '9090@' + B].join(' ') && r.del.open, 'another log\'s Delete deletes it, and the move lands: ' + JSON.stringify(r.del));
+    assert(r.prev.logs === moved && r.prev.open && r.prev.sheet === C, '‹ goes to the day it names, and the move lands: ' + JSON.stringify(r.prev));
+    assert(r.edit.logs === moved && r.edit.editing === 9091, 'another log\'s Edit sets opens its editor, and the move lands: ' + JSON.stringify(r.edit));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R24 (hunt 4): a log from the previous round's last week (Wk 12), nudged a day into this round
+// (Wk 1, right) and moved back again, stayed Wk 1 (the sheet, the coach's (WkN), the share card):
+// before this round a log keeps its stamp, and the first move had overwritten it. The move in now
+// keeps the stamp it had (wk0) and the move back out restores it; a wk0 left from an earlier round
+// is never given back.
+run('R24: a log nudged from the previous round into this one and back is its own week again (sheet, runs, run editor)', async () => {
+  // week 2 of a round that began last Monday; S is the Sunday before it, the previous round's Wk 12
+  const app = await boot({ native: true, seed: { kt_week: '2', kt_sessions: '[]', kt_runs: '[]', kt_prs: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const M = _mostRecentMonday(), R = addDays(M, -7), S = addDays(R, -1);
+      lsSet('kt_sessions', [{ id: 7701, date: S, week: 12, type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }] }]);
+      lsSet('kt_runs', [{ id: 7702, date: S, week: 12, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(S); calSelectedDate = null; render(); await wait(30);
+      openCalDay(S); await wait(40);
+      const item = re => [...document.querySelectorAll('#cdBody .kt-cd-item')].find(x => re.test(x.textContent));
+      const pick = async (re, d) => { const f = item(re).querySelector('input[type=date]'); f.value = d; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40); };
+      const ses = () => getSessions()[0].week, run = () => getRuns()[0].week;
+      const r = { roundStart: _roundStartISO() === R };
+      await pick(/Edit sets/, R); r.into = ses();
+      await pick(/Edit sets/, M); r.intoWk2 = ses();
+      await pick(/Edit sets/, S); r.back = ses(); r.clean = !('wk0' in getSessions()[0]);
+      r.title = (item(/Edit sets/).querySelector('.kt-cd-ttl') || {}).textContent;
+      r.coach = (buildSystemPrompt().match(/\[id:7701\][^\n]*/) || [''])[0].indexOf('(Wk12)') > 0;
+      openCalDay(S); await wait(40);
+      await pick(/Edit run/, R); r.runInto = run();
+      await pick(/Edit run/, S); r.runBack = run();
+      closeCalDay();
+      openRunEditor(7702); document.getElementById('re_date').value = R; saveRunEdit(7702); await wait(30); r.edInto = run();
+      openRunEditor(7702); document.getElementById('re_date').value = addDays(S, -3); saveRunEdit(7702); await wait(30); r.edBack = run();
+      // in this round as Wk 1 (wk0 12), then a new round starts this Monday: a day's fix before it keeps Wk 1
+      openCalDay(S); await wait(40);
+      await pick(/Edit sets/, R); r.wk0 = getSessions()[0].wk0;
+      _setWeek(1, M); render(); await wait(30);
+      await pick(/Edit sets/, addDays(R, 1)); r.stale = [ses(), _roundStartISO() === M];
+      return r;
+    });
+    assert(out.roundStart, 'this round began last Monday');
+    assert(out.into === 1 && out.intoWk2 === 2, 'moved into this round it takes that week: ' + JSON.stringify([out.into, out.intoWk2]));
+    assert(out.back === 12 && out.clean && /Wk 12/.test(out.title) && out.coach, 'moved back before this round it is Wk 12 again (sheet, coach): ' + JSON.stringify([out.back, out.clean, out.title, out.coach]));
+    assert(out.runInto === 1 && out.runBack === 12 && out.edInto === 1 && out.edBack === 12, 'runs too, from the day sheet and the run editor: ' + JSON.stringify([out.runInto, out.runBack, out.edInto, out.edBack]));
+    assert(out.wk0 === 12 && out.stale[0] === 1 && out.stale[1], 'a stamp kept from an earlier round is never given back: ' + JSON.stringify([out.wk0, out.stale]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R25 (hunt 4): the Sunday recap on Progress still rounded the week's distance twice (to 0.1 km,
+// then in the owner's unit): a mi owner's 5.05 km week read 3.2 mi beside the Activity card's 3.1
+// (L27 fixed only the card). It is rounded once, after dDisp; a week that rounds to 0 has no pill.
+run('R25: the Sunday recap reads a 5.05 km week as 3.1 mi, as the Activity card beside it', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_d: 'mi', kt_sessions: '[]', kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const T = todayISO(), r = {};
+      // a Sunday whatever today is (the recap shows only then): its week is today and the six days before
+      const sunday = fn => { const g = Date.prototype.getDay; Date.prototype.getDay = function () { return 0; }; try { return fn(); } finally { Date.prototype.getDay = g; } };
+      const screen = () => {
+        const recap = [...document.querySelectorAll('#screen .chart-card')].find(e => /this week, wrapped/.test(e.textContent));
+        const foot = [...document.querySelectorAll('.kt-cal-foot .kt-cal-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).find(t => /RUN/.test(t));
+        return { recap: recap ? recap.textContent.replace(/\s+/g, ' ').trim() : null, foot };
+      };
+      lsSet('kt_runs', [{ id: 2501, date: T, distance: 5.05, time: '28:00', type: 'easy', note: '' }]);
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null;
+      r.mi = sunday(() => { render(); return screen(); });
+      lsSet('kt_unit_d', 'km');
+      r.km = sunday(() => { render(); return screen(); });
+      lsSet('kt_runs', [{ id: 2502, date: T, distance: 0.04, time: '0:20', type: 'easy', note: '' }]);
+      r.tiny = sunday(() => { render(); return screen(); });
+      return r;
+    });
+    assert(/3\.1\s*mi run/i.test(out.mi.recap || '') && /^3\.1\s*MI RUN$/.test(out.mi.foot || ''), 'the recap reads 3.1 mi, as the card: ' + JSON.stringify(out.mi));
+    assert(/5\.1\s*km run/i.test(out.km.recap || '') && /^5\.1\s*KM RUN$/.test(out.km.foot || ''), 'km owners read 5.1 km in both: ' + JSON.stringify(out.km));
+    assert(out.tiny.recap && !/run/i.test(out.tiny.recap), 'a week that rounds to 0 shows no distance pill: ' + JSON.stringify(out.tiny));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

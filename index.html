@@ -4175,47 +4175,103 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // Only the newest log of a lift sets its working weight, and a backdated one can only raise
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
-function _setWorkingWeights(exs, date){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), wrote=[];
+// rec, the log just saved, is stamped with what it set (_wwStamp).
+function _setWorkingWeights(exs, date, rec){
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), set={}, wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
     if(back && (parseFloat(w[e.name])||0)>v) return;
+    var p=parseFloat(w[e.name]);
+    if(!(Math.abs((p||0)-v)<0.01)) set[e.name]=[p>0?p:null, v];
     w[e.name]=v; wrote.push(e.name);   // at the same load too: the load is the log's now
   });
   var ok=lsSet('kt_weights', w);
+  if(ok && rec) _wwStamp(rec, set);
   if(ok) _dropNotedWeights(wrote);   // a log newer than the undo point keeps the load it set
   return ok;
 }
+// A log's stamp: rec.wSet = {lift: [kept, set]} for each lift whose working weight it wrote (set),
+// with kept = the working weight it replaced when no log had set that one (the coach, +5, a
+// deload, Settings), else null. A log that met the working weight already sets nothing, so a
+// delete or a move gives back only what the log itself set (_workingWeightsFollow): a workout
+// logged at the deload's 145 and deleted put the older log's 160 back. A lift the log sets again
+// (the wrist adding sets, an edit) keeps what it replaced the first time. ch = {lift: [was, now]}.
+function _wwStamp(rec, ch){
+  var st=rec.wSet ? Object.assign({}, rec.wSet) : {}, ss=getSessions(), any=!rec.wSet;
+  Object.keys(ch||{}).forEach(function(n){
+    var was=ch[n][0], now=ch[n][1], old=st[n];
+    if(old && was!=null && Math.abs((parseFloat(old[1])||0)-was)<0.01){ st[n]=[old[0], now]; any=true; return; }
+    var nl=_newestLoad(n, ss.filter(function(x){ return x!==rec; }));
+    st[n]=[(was==null || (nl!=null && Math.abs(nl-was)<0.01)) ? null : was, now]; any=true;
+  });
+  if(!any) return;
+  rec.wSet=st;
+  if(ss.indexOf(rec)>=0) lsSet('kt_sessions', ss);
+}
 // A delete or a date move takes back the working weight a log set: deleting a 1,850 lb typo kept
 // 1,850 as Bench's working weight, which the coach was told and the plateau deload wrote into the
-// programme. Read _newestLoads before the change (for each of the log's lifts, its newest logged
-// load; sessions are newest first); once the change is saved, _workingWeightsFollow moves a working
-// weight that held that load to the lift's new newest log (none left: it goes), as an edit already
-// does. A load the coach, +5 or a deload wrote since differs from the log: it is the owner's plan
-// and stays. It returns what it replaced, for Undo (_workingWeightsPut).
-function _newestLoad(n, ss){
-  var v=null;
-  (ss||getSessions()).some(function(s){ return ((s&&s.exercises)||[]).some(function(e){ if(e && e.name===n && parseFloat(e.weight)>0){ v=parseFloat(e.weight); return true; } return false; }); });
-  return v;
+// programme. Read _newestLoads before the change (for each of the log's lifts, its newest log;
+// sessions are newest first); once the change is saved, _workingWeightsFollow moves a working
+// weight that log set to the lift's new newest log (none left: it goes), as an edit already does,
+// or back to the load the log replaced (its stamp: the coach's, +5, a deload). A load written
+// since differs from the log, and a log that met the working weight set nothing: both stay. A log
+// from before the stamp set it unless the programme prescribed that load (_planHolds). Moved to
+// the front, a log takes the working weight over and its stamp says so (moved). It returns what
+// it replaced, for Undo (_workingWeightsPut).
+// A logged lift's load in either stored shape: its weight (the top set), or for an import from
+// before the runner, which keeps its sets nested ({sets:[{reps, weight}]}), its heaviest set.
+// Read as weight alone, a lift whose older logs were all nested lost its working weight when
+// its newest log was deleted.
+function _exLoad(e){
+  var v=parseFloat(e && e.weight); if(v>0) return v;
+  return e ? _exSetPairs(e).reduce(function(m, p){ return p[1]>m ? p[1] : m; }, 0) : 0;
 }
+function _newestLog(n, ss){
+  var hit=null;
+  (ss||getSessions()).some(function(s){ return ((s&&s.exercises)||[]).some(function(e){ var v=(e && e.name===n) ? _exLoad(e) : 0; if(v>0){ hit={v:v, s:s}; return true; } return false; }); });
+  return hit;
+}
+function _newestLoad(n, ss){ var x=_newestLog(n, ss); return x ? x.v : null; }
 function _newestLoads(recs){
   var out={}, ss=getSessions();
   (recs||[]).forEach(function(r){ ((r&&r.exercises)||[]).forEach(function(e){
-    if(e && e.name && parseFloat(e.weight)>0 && !Object.prototype.hasOwnProperty.call(out, e.name)) out[e.name]=_newestLoad(e.name, ss);
+    if(e && e.name && _exLoad(e)>0 && !Object.prototype.hasOwnProperty.call(out, e.name)) out[e.name]=_newestLog(e.name, ss);
   }); });
   return out;
 }
-function _workingWeightsFollow(before){
-  var w=getWeights(), ss=getSessions(), prev={}, any=false;
+function _workingWeightsFollow(before, moved){
+  var w=getWeights(), ss=getSessions(), prev={}, any=false, took=false;
   Object.keys(before||{}).forEach(function(n){
-    var b=before[n], a=_newestLoad(n, ss);
-    if(b==null || a===b || Math.abs((parseFloat(w[n])||0)-b)>0.01) return;
+    var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
+    if(b==null || a===b || Math.abs(cur-b)>0.01) return;
+    var st=x.s && x.s.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved);
+    if(st ? !(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01) : _planHolds(n, cur, x.s && x.s.week)) return;
+    var to=(mine && mine[0]!=null && !front) ? mine[0] : a;
     prev[n]=w[n]; any=true;
-    if(a!=null) w[n]=a; else delete w[n];
+    if(to!=null) w[n]=to; else delete w[n];
+    if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[null, to]; took=true; }
   });
   if(!any) return null;
-  return lsSet('kt_weights', w) ? prev : null;
+  if(!lsSet('kt_weights', w)) return null;
+  if(took) lsSet('kt_sessions', ss);
+  return prev;
+}
+// A log from before the stamp met the plan: the programme prescribed this load for the lift in
+// the log's week or this one (a deload week reads its working week), so the programme, the coach,
+// +5 or a deload wrote it, not the log. A typo is far from any of them.
+function _planHolds(n, v, wk){
+  var cr=getCustomRoutine(), W=cr && cr.weeks, hit=false;
+  if(!Array.isArray(W) || !W.length) return false;
+  [parseInt(wk,10), currentWeek].forEach(function(k){
+    if(!(k>0)) return;
+    var c=Math.min(W.length, k)-1;
+    LIFT_KEYS.forEach(function(s){
+      var cc=_isDeloadWk(W[c]) ? _progWorkWk(W, c, s, n) : c, r=cc>=0 ? _progRow(W[cc], s, n) : null;
+      if(r && Math.abs((parseFloat(r.weight)||0)-v)<0.06) hit=true;
+    });
+  });
+  return hit;
 }
 function _workingWeightsPut(prev){
   if(!prev) return;
@@ -8370,7 +8426,7 @@ function saveRunEdit(id){
   var next={}; Object.keys(rec).forEach(function(k){ next[k]=rec[k]; });
   if(ch.dist){ next.distance=newKm; delete next.dist; }
   if(ch.time) next.time=newTime;
-  if(ch.date){ next.date=newDate; next.week=_movedWeek(rec, newDate); }
+  if(ch.date){ next.date=newDate; next.week=_movedWeek(rec, newDate, next); }
   if(ch.hr) next.hr=newHr;
   if(ch.type) next.type=newType;
   if(ch.feel) next.feel=newFeel;
@@ -9062,9 +9118,10 @@ async function checkPendingShare(){
     var r = await TS.getPendingShare();
     if(!r || !r.imageBase64) return;
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
-    if(cmpOn || document.getElementById('cmpSheetOverlay')) _cmpExit();   // the sheet would sit over the chat
+    // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
+    // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
+    switchTab('coach');
     coachView = 'chat';
-    currentTab = 'coach';
     render();
     if(r.comment){
       setTimeout(function(){
@@ -9501,6 +9558,7 @@ function runnerFinishSession(){
   _wristCopies.forEach(function(w){
     _mergeWristExercises(_newRec, w.exercises);
     (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });
+    if(w.wSet) _newRec.wSet=Object.assign({}, w.wSet, _newRec.wSet||{});   // the working weights the copy set are this workout's
   });
   // PRs are judged on the MERGED record (a wrist set can be the best), and
   // committed only after the save below succeeds.
@@ -9514,7 +9572,7 @@ function runnerFinishSession(){
     return;
   }
   // Persist working weights so subsequent prescriptions update.
-  _setWorkingWeights(exsOut, _sessionDate);   // a backdated finish used to lower today's working weights
+  _setWorkingWeights(exsOut, _sessionDate, _newRec);   // a backdated finish used to lower today's working weights
   checkAndUpdatePRs(exsOut);
   invalidateCoachCard();
   // The wrist's own Health workout (live heart rate) is the richer record;
@@ -13469,13 +13527,14 @@ function saveSessionEdit(){
   var s=sessions.find(function(x){ return x.id===_sessEditId; });
   if(!s){ closeSessionEditor(); return; }
   _sessEditRenamed=[];
-  // The lifts whose load was corrected (or that were renamed): only their working weights
-  // follow, as with the coach's edit_session. A reps fix on one lift used to reset every
-  // lift in the session to its logged load, undoing a +5 written since.
+  // The lifts whose top set was corrected: only their working weights follow, as with the
+  // coach's edit_session. A reps fix on one lift used to reset every lift in the session to
+  // its logged load, undoing a +5 written since, and so did a back-off set's fix or a rename
+  // (a rename takes the old name's working weight along: _afterSessionEdit).
   var loadFixed=[];
   s.exercises=(s.exercises||[]).map(function(ex,ei){
     var pair=_exSetPairs(ex);
-    var reps=[], wts=[], typedLoad=false;
+    var reps=[], wts=[];
     pair.forEach(function(p,si){
       var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
       var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
@@ -13484,13 +13543,14 @@ function saveSessionEdit(){
       // the prefilled value is rounded, and writing it back moved every set (and records).
       var _typed=parseFloat(wEl&&wEl.value), _shown=(p[1]!==''&&p[1]!=null)?wDisp(p[1]):NaN;
       if(wEl && _typed===_shown) wts.push(parseFloat(p[1])||0);
-      else { wts.push(Math.max(0, wStore(_typed||0))); typedLoad=true; }
+      else wts.push(Math.max(0, wStore(_typed||0)));
     });
     var top=wts.length?Math.max.apply(null,wts):0;
+    var top0=pair.reduce(function(m,p){ return Math.max(m, parseFloat(p[1])||0); }, 0);
     var nEl=document.getElementById('se_'+ei+'_name');
     var newName=nEl && String(nEl.value||'').trim() ? String(nEl.value).trim() : ex.name;
     if(newName!==ex.name) _sessEditRenamed.push({from:ex.name, to:newName});
-    if(typedLoad || newName!==ex.name) loadFixed.push(newName);
+    if(Math.abs(top-top0)>0.01) loadFixed.push(newName);
     // Normalize to the flat runner shape on save (legacy nested included).
     return {name:newName, isMain:!!ex.isMain, sets:reps.length, reps:reps,
       weight:top, weightLog:wts,
@@ -13513,32 +13573,46 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // The working-weight cache follows the corrected truth — but only when the
   // edited session is the NEWEST one for that lift. Fixing a typo in a
   // weeks-old session must not regress today's prescription.
-  var wts2=getWeights(), wtsTouched=false;
+  var wts2=getWeights(), wtsTouched=false, wch={};
+  var newerOf=function(n){ return sessions.some(function(o){
+    return o!==s && String(o.date||'')>String(s.date||'') &&
+      (o.exercises||[]).some(function(e2){ return e2 && e2.name===n; });
+  }); };
   s.exercises.forEach(function(ex){
     if(only && only.indexOf(ex.name)<0) return;
     var w=parseFloat(ex.weight); if(!(w>0)) return;
-    var newer=sessions.some(function(o){
-      return o!==s && String(o.date||'')>String(s.date||'') &&
-        (o.exercises||[]).some(function(e2){ return e2.name===ex.name; });
-    });
-    if(!newer){ wts2[ex.name]=w; wtsTouched=true; }
+    if(!newerOf(ex.name)){
+      var p=parseFloat(wts2[ex.name]);
+      if(!(Math.abs((p||0)-w)<0.01)) wch[ex.name]=[p>0?p:null, w];
+      wts2[ex.name]=w; wtsTouched=true;
+    }
   });
   // A rename carries the per-name records with it: the exercise note, the
-  // session's own PR list, and the working-weight entry when no other session
-  // still uses the old name. recomputePRs below rebuilds kt_prs from the
-  // corrected sessions, so records follow without extra work.
+  // session's own PR list, and the working-weight entry (with the log's stamp)
+  // when no other session still uses the old name; else the new name starts at
+  // this log's top, as a fresh log of it would. recomputePRs below rebuilds
+  // kt_prs from the corrected sessions, so records follow without extra work.
   if(renamed && renamed.length){
     var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
     renamed.forEach(function(rn){
       if(notes[rn.from] && !notes[rn.to]){ notes[rn.to]=notes[rn.from]; delete notes[rn.from]; notesTouched=true; }
       if(Array.isArray(s.prs)) s.prs=s.prs.map(function(p){ return p===rn.from?rn.to:p; });
       var stillUsed=sessions.some(function(o){ return o!==s && (o.exercises||[]).some(function(e2){ return e2 && e2.name===rn.from; }); });
-      if(!stillUsed && wts2[rn.from]!=null){ if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from]; delete wts2[rn.from]; wtsTouched=true; }
+      if(!stillUsed && wts2[rn.from]!=null){
+        if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from];
+        delete wts2[rn.from]; wtsTouched=true;
+        if(s.wSet && s.wSet[rn.from] && !s.wSet[rn.to]){ s.wSet=Object.assign({}, s.wSet); s.wSet[rn.to]=s.wSet[rn.from]; delete s.wSet[rn.from]; }
+      } else if(wts2[rn.to]==null && !newerOf(rn.to)){
+        var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
+        var rw=parseFloat(rx && rx.weight);
+        if(rw>0){ wts2[rn.to]=rw; wch[rn.to]=[null, rw]; wtsTouched=true; }
+      }
     });
     if(notesTouched) lsSet('kt_ex_notes', notes);
     lsSet('kt_sessions', sessions);
   }
   if(wtsTouched) lsSet('kt_weights', wts2);
+  if(s.wSet) _wwStamp(s, wch);   // a stamped log now sets what it was corrected to
   recomputePRs();
   invalidateCoachCard();
 }
@@ -13563,11 +13637,18 @@ function _logById(list, id, fromDate){
 // anchor and reads every day before its week 1 as week 1, so nudging an older workout by a day
 // turned Wk 6 (of the round it was logged in) into Wk 1, and moving it back kept Wk 1. In its own
 // Monday-week, or anywhere before this round began, a log keeps its stamp; moved into another
-// week of this round, it takes that week.
-function _movedWeek(rec, newDate){
-  var w=parseInt(rec && rec.week,10), old=String((rec && rec.date)||'').slice(0,10);
+// week of this round, it takes that week. The copy being written (into) keeps the stamp a log
+// had before it was moved into this round (wk0): moved back out, it is that week again (Wk 12
+// nudged a day into week 1 and back stayed Wk 1). Only a log in this round gives wk0 back.
+function _movedWeek(rec, newDate, into){
+  var w=parseInt(rec && rec.week,10), old=String((rec && rec.date)||'').slice(0,10), from=_roundStartISO();
   if(!(w>0) || !/^\d{4}-\d{2}-\d{2}$/.test(old)) return weekForDate(newDate);
-  if(newDate<_roundStartISO()) return rec.week;
+  if(newDate<from){
+    var w0=parseInt(rec.wk0,10);
+    if(into) delete into.wk0;
+    return (old>=from && w0>0) ? w0 : rec.week;
+  }
+  if(into && old<from) into.wk0=rec.week;
   var mon=function(d){ var x=new Date(d+'T12:00:00'); x.setDate(x.getDate()-(x.getDay()+6)%7); return _ymdLocal(x); };
   return mon(newDate)===mon(old) ? rec.week : weekForDate(newDate);
 }
@@ -13577,10 +13658,10 @@ function moveSession(id,newDate,fromDate){
   var sessions=getSessions(), rec=_logById(sessions, id, fromDate);
   if(!rec) return;
   var c=Object.assign({}, rec), loads=_newestLoads([rec]);
-  c.date=newDate; c.week=_movedWeek(rec, newDate);
+  c.date=newDate; c.week=_movedWeek(rec, newDate, c);
   // A failed save (lsSet has toasted) stays on its day: following the date closed the sheet.
   if(!lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }))){ _cdPainted=''; render(); return; }
-  _workingWeightsFollow(loads);   // moved behind a later log, or back in front of it
+  _workingWeightsFollow(loads, c);   // moved behind a later log, or back in front of it
   invalidateCoachCard();
   _calNavToDate(newDate); render();
 }
@@ -13592,7 +13673,7 @@ function moveRun(id,newDate,fromDate){
   // A copy: editing the cached records in place survived a failed save (storage full).
   var c=Object.assign({}, rec);
   if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(rec);
-  c.date=newDate; c.week=_movedWeek(rec, newDate);
+  c.date=newDate; c.week=_movedWeek(rec, newDate, c);
   // lsSet has toasted. The sheet's HTML is unchanged, so its guard kept the field showing the
   // unsaved date: a forced repaint snaps it back.
   if(!lsSet('kt_runs', runs.map(function(r){ return r===rec?c:r; }))){ _cdPainted=''; render(); return; }
@@ -14833,7 +14914,9 @@ function renderWeekRecap(sessions,runs){
   if(!wkS.length&&!wkR.length&&!wkSp.length) return '';
   var vol=0; wkS.forEach(function(s){vol+=calcVolume(s.exercises||[]);});
   var km=0; wkR.forEach(function(r){km+=parseFloat(r.distance||r.dist)||0;});
-  km=Math.round(km*10)/10;
+  // Rounded once, after dDisp, as the Activity card (_monthStats): rounding to 0.1 km first
+  // read a 5.05 km week (3.14 mi) as 3.2 mi beside the card's 3.1.
+  var dShow=Math.round(dDisp(km)*10)/10;
   var prCount=0; wkS.forEach(function(s){prCount+=(s.prs||[]).length;});
   var ps='background:color-mix(in srgb,var(--text) 7%,transparent);border:1px solid var(--border);border-radius:10px;padding:8px 12px;text-align:center;flex:1;min-width:0;';
   function pill(v,l,color){
@@ -14845,7 +14928,7 @@ function renderWeekRecap(sessions,runs){
   var actCount=wkS.length+wkSp.length;
   if(actCount) pills+=pill(actCount,'session'+(actCount>1?'s':''));
   if(vol>0) pills+=pill(Math.round(wDisp(vol)).toLocaleString(), _uW()+' volume');
-  if(km>0) pills+=pill(Math.round(dDisp(km)*10)/10, _uD()+' run');
+  if(dShow>0) pills+=pill(dShow, _uD()+' run');
   if(prCount) pills+=pill(prCount,'PR'+(prCount>1?'s':''),true);
   var bwLine='';
   var wkBws=getBodyWeights().filter(function(b){return b.date>=mon&&b.date<=today;});
@@ -15959,13 +16042,13 @@ function _paintCalDay(){
 function _cdDateGo(el, e){
   var t=e && e.type;
   if(t==='keydown'){
-    if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+    if(e.key==='Enter'){ e.preventDefault(); _cdPress=0; el.blur(); }
     else if(e.key==='Escape' || e.key==='Esc'){ el._cdPend=0; el.value=el.defaultValue; }
     else el._cdTyped=1;
     return false;
   }
   if(t==='change' && el._cdTyped){ el._cdPend=1; return false; }
-  if(t==='blur'){ el._cdTyped=0; if(!el._cdPend) return false; }
+  if(t==='blur'){ el._cdTyped=0; if(!el._cdPend) return false; if(_cdPress){ _cdHeld=el; return false; } }
   el._cdPend=0;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(el.value||'')){ el.value=el.defaultValue; return false; }
   if(el.value===el.defaultValue) return false;
@@ -15976,6 +16059,23 @@ function _cdDateGo(el, e){
   }, 0);
   return true;
 }
+// A press elsewhere in the sheet (✕, ‹ ›, another log's Delete or Edit sets) takes focus from a
+// typed date at its mousedown: the move committed there repainted the sheet under the press, the
+// pressed button was gone before its click, and the click did nothing. While a press is down the
+// move waits: it lands at that press's click, before the button's own handler (capture), so the
+// button still does what it says; with no click, when the press ends. Keys commit at once.
+var _cdPress=0, _cdHeld=null;
+function _cdFlush(){
+  var el=_cdHeld; _cdHeld=null;
+  if(!el || !el._cdPend || typeof el.onblur!=='function') return;
+  el.onblur.call(el, {type:'flush'});   // the field's own handler: _cdDateGo, then its move
+  // a sheet closed by then (no click) leaves no selection ring behind the follow
+  if(!document.getElementById('calDayOverlay') && calSelectedDate){ calSelectedDate=null; _calMarkSel(); }
+}
+document.addEventListener('pointerdown', function(){ _cdPress=1; }, true);
+['pointerup','pointercancel'].forEach(function(n){ document.addEventListener(n, function(){ _cdPress=0; if(_cdHeld) setTimeout(_cdFlush, 0); }, true); });
+document.addEventListener('click', function(){ if(_cdHeld) _cdFlush(); }, true);
+window.addEventListener('blur', function(){ _cdPress=0; if(_cdHeld) _cdFlush(); });
 function _cdDate(v, on){
   return '<label class="kt-cd-date">Date<input type="date" value="'+_esc(String(v||''))+'" max="'+todayISO()+'"'+
     ' onkeydown="_cdDateGo(this,event)" onchange="if(_cdDateGo(this,event))'+on+'" onblur="if(_cdDateGo(this,event))'+on+'"/></label>';
@@ -18170,10 +18270,11 @@ function _executeCoachToolRaw(name,input){
       var gsessions=[{id:_freshId(getSessions()), date:gdate, week:weekForDate(gdate), source:'coach',
         type:gtype, exercises:gclean,
         note:String(input.note||'').trim(), prs:gPRs}].concat(getSessions());
-      _stampBlock(gsessions[0]);
+      var grec=gsessions[0];   // the save date-sorts the list: a backdated log leaves [0]
+      _stampBlock(grec);
       if(!lsSet('kt_sessions',gsessions)) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
       checkAndUpdatePRs(gclean);
-      _setWorkingWeights(gclean, gdate);
+      _setWorkingWeights(gclean, gdate, grec);
       invalidateCoachCard();
       checkMilestones({quiet:false, delayToast:600});
       render();
@@ -18244,10 +18345,12 @@ function _executeCoachToolRaw(name,input){
         rpeLog:esRpe};
       es.exercises=esExs;
       if(!lsSet('kt_sessions', esAll)) return {ok:false,error:'Could not save: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
-      // The working weight follows only when the LOAD was corrected (or the
-      // lift renamed); a reps fix, or the session's other lifts, must not
-      // regress a weight the user bumped since.
-      _afterSessionEdit(es, esAll, esRenamed, (input.weight!=null || esRenamed.length) ? [esName] : []);
+      // The working weight follows only when the top set's LOAD was corrected; a
+      // reps fix, the session's other lifts, a load restated as it was, or a rename
+      // (it takes the old name's working weight along) must not regress a weight
+      // the user bumped since.
+      var esTop0=esPairs.reduce(function(m,p){ return Math.max(m, parseFloat(p[1])||0); }, 0);
+      _afterSessionEdit(es, esAll, esRenamed, (input.weight!=null && Math.abs(esTop-esTop0)>0.01) ? [esName] : []);
       render();
       return {ok:true,
         message:(esRenamed.length?('Renamed '+esRenamed[0].from+' \u2192 '+esRenamed[0].to):('Corrected '+esName))+' in the '+es.date+' session',
@@ -22449,7 +22552,7 @@ function drainWatchSessions(){
       // The runner's rule: only the newest log of a lift sets it, a backdated one only raises
       // it. Raise-only here let a late Friday session top today's lighter log, and a newer,
       // lighter wrist session never set it.
-      _setWorkingWeights(_wwExs, _rec.date);
+      _setWorkingWeights(_wwExs, _rec.date, _rec);
       checkAndUpdatePRs(_rec.exercises);
       if(_draftHere){
         localStorage.removeItem('kt_runner_draft');
