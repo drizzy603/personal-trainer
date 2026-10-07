@@ -689,3 +689,67 @@ run('R22: a shared photo closes the day sheet (and COMPARE) and opens the Coach 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R23 (hunt 4): after a date typed into the day sheet (desktop, M38), the first press elsewhere in
+// the sheet committed the move inside its mousedown: the repaint took the pressed button away and
+// the click did nothing (✕ left the sheet open on the new day, another log's Delete or Edit sets
+// did nothing, ‹ went nowhere). The move now lands at that press's click, before the button's own
+// handler, however long the press is held.
+run('R23: after a typed date, ✕, another log\'s Delete or Edit sets and ‹ still do what they say; the move lands too', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]', kt_sports: '[]' } });
+  const page = app.page;
+  try {
+    const s = await page.evaluate(() => {
+      const T = todayISO();
+      // the field's parts follow the browser's locale (mm dd yyyy in en-US)
+      const order = new Intl.DateTimeFormat(navigator.language, { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(p => p.type).filter(t => t === 'year' || t === 'month' || t === 'day');
+      return { A: addDays(T, -5), B: addDays(T, -12), C: addDays(T, -8), order };
+    });
+    const keys = d => s.order.map(t => t === 'year' ? d.slice(0, 4) : t === 'month' ? d.slice(5, 7) : d.slice(8, 10)).join('');
+    // Push and Pull on A, Legs on B, a run on C (the logged day before A): the sheet opens on A
+    const open = () => page.evaluate(async ({ A, B, C }) => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      if (document.getElementById('calDayOverlay')) closeCalDay();
+      const ex = (n, w) => [{ name: n, sets: 3, reps: [5, 5, 5], weight: w, weightLog: [w, w, w], isMain: true }];
+      lsSet('kt_sessions', [
+        { id: 9090, date: A, week: weekForDate(A), type: 'Push', label: 'Push', exercises: ex('Bench Press', 180), prs: [] },
+        { id: 9091, date: A, week: weekForDate(A), type: 'Pull', label: 'Pull', exercises: ex('Barbell Row', 150), prs: [] },
+        { id: 8080, date: B, week: weekForDate(B), type: 'Legs', label: 'Legs', exercises: ex('Squat', 225), prs: [] }]);
+      lsSet('kt_runs', [{ id: 7070, date: C, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      _sessEditId = null;
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(A); calSelectedDate = null; render(); await wait(30);
+      openCalDay(A); await wait(40);
+    }, s);
+    const typeB = async () => {
+      await page.locator('#cdBody .kt-cd-item').filter({ hasText: 'Push' }).locator('input[type=date]').focus();
+      for (const k of keys(s.B)) { await page.keyboard.press(k); await page.waitForTimeout(15); }
+    };
+    // a real mouse press: down, held, up (the field loses focus at the down)
+    const press = async (loc, hold) => {
+      const b = await loc.boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down(); await page.waitForTimeout(hold || 0); await page.mouse.up();
+      await page.waitForTimeout(80);
+    };
+    const state = () => page.evaluate(() => ({
+      logs: getSessions().map(x => x.id + '@' + x.date).sort().join(' '), sheet: calSelectedDate, open: !!document.getElementById('calDayOverlay'),
+      ring: [...document.querySelectorAll('.cal-day.sel')].map(e => e.getAttribute('data-date')).join(), editing: _sessEditId,
+    }));
+    const pull = () => page.locator('#cdBody .kt-cd-item').filter({ hasText: 'Pull' });
+    const r = {};
+    await open(); await typeB(); r.typed = await state();
+    await press(page.locator('#cdBody .kt-sheet-x')); r.close = await state();
+    await open(); await typeB(); await press(page.locator('#cdBody .kt-sheet-x'), 200); r.held = await state();
+    await open(); await typeB(); await press(pull().locator('button.danger')); r.del = await state();
+    await open(); await typeB(); await press(page.locator('#cdBody .kt-cd-nav button').first()); r.prev = await state();
+    await open(); await typeB(); await press(pull().locator('button', { hasText: 'Edit sets' })); r.edit = await state();
+    const { A, B, C } = s, moved = ['8080@' + B, '9090@' + B, '9091@' + A].sort().join(' ');
+    assert(r.typed.logs === ['8080@' + B, '9090@' + A, '9091@' + A].sort().join(' ') && r.typed.sheet === A, 'nothing moves while the date is typed: ' + JSON.stringify(r.typed));
+    assert(r.close.logs === moved && !r.close.open && r.close.sheet === null && r.close.ring === '', '✕ closes the sheet, the move lands and no ring is left: ' + JSON.stringify(r.close));
+    assert(r.held.logs === moved && !r.held.open && r.held.ring === '', 'a press held on ✕ closes it too: ' + JSON.stringify(r.held));
+    assert(r.del.logs === ['8080@' + B, '9090@' + B].join(' ') && r.del.open, 'another log\'s Delete deletes it, and the move lands: ' + JSON.stringify(r.del));
+    assert(r.prev.logs === moved && r.prev.open && r.prev.sheet === C, '‹ goes to the day it names, and the move lands: ' + JSON.stringify(r.prev));
+    assert(r.edit.logs === moved && r.edit.editing === 9091, 'another log\'s Edit sets opens its editor, and the move lands: ' + JSON.stringify(r.edit));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

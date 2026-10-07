@@ -15646,13 +15646,13 @@ function _paintCalDay(){
 function _cdDateGo(el, e){
   var t=e && e.type;
   if(t==='keydown'){
-    if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+    if(e.key==='Enter'){ e.preventDefault(); _cdPress=0; el.blur(); }
     else if(e.key==='Escape' || e.key==='Esc'){ el._cdPend=0; el.value=el.defaultValue; }
     else el._cdTyped=1;
     return false;
   }
   if(t==='change' && el._cdTyped){ el._cdPend=1; return false; }
-  if(t==='blur'){ el._cdTyped=0; if(!el._cdPend) return false; }
+  if(t==='blur'){ el._cdTyped=0; if(!el._cdPend) return false; if(_cdPress){ _cdHeld=el; return false; } }
   el._cdPend=0;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(el.value||'')){ el.value=el.defaultValue; return false; }
   if(el.value===el.defaultValue) return false;
@@ -15663,6 +15663,23 @@ function _cdDateGo(el, e){
   }, 0);
   return true;
 }
+// A press elsewhere in the sheet (✕, ‹ ›, another log's Delete or Edit sets) takes focus from a
+// typed date at its mousedown: the move committed there repainted the sheet under the press, the
+// pressed button was gone before its click, and the click did nothing. While a press is down the
+// move waits: it lands at that press's click, before the button's own handler (capture), so the
+// button still does what it says; with no click, when the press ends. Keys commit at once.
+var _cdPress=0, _cdHeld=null;
+function _cdFlush(){
+  var el=_cdHeld; _cdHeld=null;
+  if(!el || !el._cdPend || typeof el.onblur!=='function') return;
+  el.onblur.call(el, {type:'flush'});   // the field's own handler: _cdDateGo, then its move
+  // a sheet closed by then (no click) leaves no selection ring behind the follow
+  if(!document.getElementById('calDayOverlay') && calSelectedDate){ calSelectedDate=null; _calMarkSel(); }
+}
+document.addEventListener('pointerdown', function(){ _cdPress=1; }, true);
+['pointerup','pointercancel'].forEach(function(n){ document.addEventListener(n, function(){ _cdPress=0; if(_cdHeld) setTimeout(_cdFlush, 0); }, true); });
+document.addEventListener('click', function(){ if(_cdHeld) _cdFlush(); }, true);
+window.addEventListener('blur', function(){ _cdPress=0; if(_cdHeld) _cdFlush(); });
 function _cdDate(v, on){
   return '<label class="kt-cd-date">Date<input type="date" value="'+_esc(String(v||''))+'" max="'+todayISO()+'"'+
     ' onkeydown="_cdDateGo(this,event)" onchange="if(_cdDateGo(this,event))'+on+'" onblur="if(_cdDateGo(this,event))'+on+'"/></label>';
