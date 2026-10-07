@@ -481,3 +481,89 @@ run('L28: leaving COMPARE (Done, or another tab) clears the day it filtered by; 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R20 (hunt 4): a workout logged at the load the plateau deload, the keyless +5 or the coach wrote,
+// then deleted, put the older log's load back as the working weight (the coach was told 160 while
+// the programme said 145). A log now carries what it set (wSet): one that met the working weight
+// gives nothing back, a typo goes back to what it replaced (the coach's load included), and a log
+// from before the stamp follows only when the programme did not prescribe its load.
+run('R20: deleting a workout logged at the deload\'s, +5\'s or coach\'s load keeps that load; a typo still goes', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), d10 = addDays(T, -10), d3 = addDays(T, -3), cr0 = JSON.stringify(getCustomRoutine());
+      const mk = (id, date, w) => ({ id, date, week: weekForDate(date), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: w, weightLog: [w, w, w], isMain: true }] });
+      const W = () => getWeights()['Bench Press'];
+      const row = () => { const x = (getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press'); return x && x.weight; };
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsSet('kt_sessions', [mk(101, d10, 160)]); recomputePRs(); lsSet('kt_weights', { 'Bench Press': 160 }); };
+      const todays = () => getSessions().find(s => s.date === T);
+      const delOnSheet = async () => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const r = {};
+      // today's Push through the runner, at what it prescribes, then deleted from the day sheet
+      for (const k of ['deload', 'plus5', 'coach']) {
+        reset();
+        if (k === 'deload') _writeLoadLocal('Bench Press', 145);   // what applyPlateauFixLocal writes
+        if (k === 'plus5') _writeLoadLocal('Bench Press', 165);    // what applyProgressionLocal writes
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        const presc = runnerWeights['Bench Press'];
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); closeCompleteSheet(); await wait(20);
+        const logged = { w: W(), stamp: JSON.stringify((todays() || {}).wSet) };
+        await delOnSheet();
+        r[k] = { presc, row: row(), logged, w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press'), gone: !todays() };
+      }
+      // a typo logged over the coach's 145 goes back to 145, not to the older log's 160
+      reset();
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 1450 }] });
+      r.typoLogged = W();
+      await delOnSheet();
+      r.typoGone = W();
+      // logs from before the stamp: at the programme's load it stays, a typo follows the older log
+      reset(); _writeLoadLocal('Bench Press', 145);
+      lsSet('kt_sessions', [mk(102, T, 145)].concat(getSessions()));
+      deleteSession(102); await wait(10);
+      r.legacyAtPlan = W();
+      reset();
+      lsSet('kt_sessions', [mk(103, T, 1850)].concat(getSessions())); lsSet('kt_weights', { 'Bench Press': 1850 });
+      deleteSession(103); await wait(10);
+      r.legacyTypo = W();
+      // a move behind an older log and back, then a delete
+      reset();
+      executeCoachTool('log_session', { type: 'Push', date: d3, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 170 }] });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 175 }] });
+      const mv = todays().id;
+      moveSession(mv, addDays(T, -5)); await wait(10); r.movedBehind = W();
+      moveSession(mv, T); await wait(10); r.movedFront = W();
+      deleteSession(mv); await wait(10); r.movedDeleted = W();
+      // a log that met the coach's 145, corrected to 150, then deleted: the coach's 145 again
+      reset();
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 145 }] });
+      executeCoachTool('edit_session', { id: todays().id, exercise: 'Bench Press', weight: 150 });
+      r.edited = W();
+      deleteSession(todays().id); await wait(10);
+      r.editedGone = W();
+      return r;
+    });
+    [['deload', 145], ['plus5', 165], ['coach', 145]].forEach(([k, L]) => {
+      const x = out[k];
+      assert(x.presc === L && x.logged.w === L && x.gone, k + ': the runner prescribed and logged ' + L + ': ' + JSON.stringify(x));
+      assert(x.w === L && x.row === L && x.line === '  Bench Press: ' + L && x.prescribed === L, k + ': deleting that workout keeps ' + L + ' (the coach is told it, the +5 reads it): ' + JSON.stringify(x));
+    });
+    assert(out.typoLogged === 1450 && out.typoGone === 145, 'a typo over the coach\'s load goes back to that load: ' + JSON.stringify([out.typoLogged, out.typoGone]));
+    assert(out.legacyAtPlan === 145 && out.legacyTypo === 160, 'logs from before the stamp: the plan\'s load stays, a typo follows: ' + JSON.stringify([out.legacyAtPlan, out.legacyTypo]));
+    assert(out.movedBehind === 170 && out.movedFront === 175 && out.movedDeleted === 170, 'a move behind and back, then a delete: ' + JSON.stringify([out.movedBehind, out.movedFront, out.movedDeleted]));
+    assert(out.edited === 150 && out.editedGone === 145, 'a corrected log gives back what it replaced: ' + JSON.stringify([out.edited, out.editedGone]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
