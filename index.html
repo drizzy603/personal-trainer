@@ -8166,7 +8166,7 @@ function saveRunEdit(id){
   var next={}; Object.keys(rec).forEach(function(k){ next[k]=rec[k]; });
   if(ch.dist){ next.distance=newKm; delete next.dist; }
   if(ch.time) next.time=newTime;
-  if(ch.date){ next.date=newDate; next.week=_movedWeek(rec, newDate); }
+  if(ch.date){ next.date=newDate; next.week=_movedWeek(rec, newDate, next); }
   if(ch.hr) next.hr=newHr;
   if(ch.type) next.type=newType;
   if(ch.feel) next.feel=newFeel;
@@ -13250,11 +13250,18 @@ function _logById(list, id, fromDate){
 // anchor and reads every day before its week 1 as week 1, so nudging an older workout by a day
 // turned Wk 6 (of the round it was logged in) into Wk 1, and moving it back kept Wk 1. In its own
 // Monday-week, or anywhere before this round began, a log keeps its stamp; moved into another
-// week of this round, it takes that week.
-function _movedWeek(rec, newDate){
-  var w=parseInt(rec && rec.week,10), old=String((rec && rec.date)||'').slice(0,10);
+// week of this round, it takes that week. The copy being written (into) keeps the stamp a log
+// had before it was moved into this round (wk0): moved back out, it is that week again (Wk 12
+// nudged a day into week 1 and back stayed Wk 1). Only a log in this round gives wk0 back.
+function _movedWeek(rec, newDate, into){
+  var w=parseInt(rec && rec.week,10), old=String((rec && rec.date)||'').slice(0,10), from=_roundStartISO();
   if(!(w>0) || !/^\d{4}-\d{2}-\d{2}$/.test(old)) return weekForDate(newDate);
-  if(newDate<_roundStartISO()) return rec.week;
+  if(newDate<from){
+    var w0=parseInt(rec.wk0,10);
+    if(into) delete into.wk0;
+    return (old>=from && w0>0) ? w0 : rec.week;
+  }
+  if(into && old<from) into.wk0=rec.week;
   var mon=function(d){ var x=new Date(d+'T12:00:00'); x.setDate(x.getDate()-(x.getDay()+6)%7); return _ymdLocal(x); };
   return mon(newDate)===mon(old) ? rec.week : weekForDate(newDate);
 }
@@ -13264,7 +13271,7 @@ function moveSession(id,newDate,fromDate){
   var sessions=getSessions(), rec=_logById(sessions, id, fromDate);
   if(!rec) return;
   var c=Object.assign({}, rec), loads=_newestLoads([rec]);
-  c.date=newDate; c.week=_movedWeek(rec, newDate);
+  c.date=newDate; c.week=_movedWeek(rec, newDate, c);
   // A failed save (lsSet has toasted) stays on its day: following the date closed the sheet.
   if(!lsSet('kt_sessions', sessions.map(function(s){ return s===rec?c:s; }))){ _cdPainted=''; render(); return; }
   _workingWeightsFollow(loads, c);   // moved behind a later log, or back in front of it
@@ -13279,7 +13286,7 @@ function moveRun(id,newDate,fromDate){
   // A copy: editing the cached records in place survived a failed save (storage full).
   var c=Object.assign({}, rec);
   if(c.date!==newDate && c.note==='From Apple Health' && !c.hkOrig) c.hkOrig=_hkOrigOf(rec);
-  c.date=newDate; c.week=_movedWeek(rec, newDate);
+  c.date=newDate; c.week=_movedWeek(rec, newDate, c);
   // lsSet has toasted. The sheet's HTML is unchanged, so its guard kept the field showing the
   // unsaved date: a forced repaint snaps it back.
   if(!lsSet('kt_runs', runs.map(function(r){ return r===rec?c:r; }))){ _cdPainted=''; render(); return; }

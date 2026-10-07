@@ -753,3 +753,50 @@ run('R23: after a typed date, ✕, another log\'s Delete or Edit sets and ‹ st
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R24 (hunt 4): a log from the previous round's last week (Wk 12), nudged a day into this round
+// (Wk 1, right) and moved back again, stayed Wk 1 (the sheet, the coach's (WkN), the share card):
+// before this round a log keeps its stamp, and the first move had overwritten it. The move in now
+// keeps the stamp it had (wk0) and the move back out restores it; a wk0 left from an earlier round
+// is never given back.
+run('R24: a log nudged from the previous round into this one and back is its own week again (sheet, runs, run editor)', async () => {
+  // week 2 of a round that began last Monday; S is the Sunday before it, the previous round's Wk 12
+  const app = await boot({ native: true, seed: { kt_week: '2', kt_sessions: '[]', kt_runs: '[]', kt_prs: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const M = _mostRecentMonday(), R = addDays(M, -7), S = addDays(R, -1);
+      lsSet('kt_sessions', [{ id: 7701, date: S, week: 12, type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 180, weightLog: [180, 180, 180], isMain: true }] }]);
+      lsSet('kt_runs', [{ id: 7702, date: S, week: 12, distance: 5, time: '25:00', type: 'easy', note: '' }]);
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(S); calSelectedDate = null; render(); await wait(30);
+      openCalDay(S); await wait(40);
+      const item = re => [...document.querySelectorAll('#cdBody .kt-cd-item')].find(x => re.test(x.textContent));
+      const pick = async (re, d) => { const f = item(re).querySelector('input[type=date]'); f.value = d; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40); };
+      const ses = () => getSessions()[0].week, run = () => getRuns()[0].week;
+      const r = { roundStart: _roundStartISO() === R };
+      await pick(/Edit sets/, R); r.into = ses();
+      await pick(/Edit sets/, M); r.intoWk2 = ses();
+      await pick(/Edit sets/, S); r.back = ses(); r.clean = !('wk0' in getSessions()[0]);
+      r.title = (item(/Edit sets/).querySelector('.kt-cd-ttl') || {}).textContent;
+      r.coach = (buildSystemPrompt().match(/\[id:7701\][^\n]*/) || [''])[0].indexOf('(Wk12)') > 0;
+      openCalDay(S); await wait(40);
+      await pick(/Edit run/, R); r.runInto = run();
+      await pick(/Edit run/, S); r.runBack = run();
+      closeCalDay();
+      openRunEditor(7702); document.getElementById('re_date').value = R; saveRunEdit(7702); await wait(30); r.edInto = run();
+      openRunEditor(7702); document.getElementById('re_date').value = addDays(S, -3); saveRunEdit(7702); await wait(30); r.edBack = run();
+      // in this round as Wk 1 (wk0 12), then a new round starts this Monday: a day's fix before it keeps Wk 1
+      openCalDay(S); await wait(40);
+      await pick(/Edit sets/, R); r.wk0 = getSessions()[0].wk0;
+      _setWeek(1, M); render(); await wait(30);
+      await pick(/Edit sets/, addDays(R, 1)); r.stale = [ses(), _roundStartISO() === M];
+      return r;
+    });
+    assert(out.roundStart, 'this round began last Monday');
+    assert(out.into === 1 && out.intoWk2 === 2, 'moved into this round it takes that week: ' + JSON.stringify([out.into, out.intoWk2]));
+    assert(out.back === 12 && out.clean && /Wk 12/.test(out.title) && out.coach, 'moved back before this round it is Wk 12 again (sheet, coach): ' + JSON.stringify([out.back, out.clean, out.title, out.coach]));
+    assert(out.runInto === 1 && out.runBack === 12 && out.edInto === 1 && out.edBack === 12, 'runs too, from the day sheet and the run editor: ' + JSON.stringify([out.runInto, out.runBack, out.edInto, out.edBack]));
+    assert(out.wk0 === 12 && out.stale[0] === 1 && out.stale[1], 'a stamp kept from an earlier round is never given back: ' + JSON.stringify([out.wk0, out.stale]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
