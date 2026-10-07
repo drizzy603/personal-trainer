@@ -33,6 +33,11 @@
 //   than the programme and reads each day from its own week.
 // - L56 The coach header's "DAY n" lost a day on the Saturday and Sunday of a week whose clocks
 //   change on a Friday (Israel, Egypt): a 23-hour day was floored. It is rounded.
+// Hunt 4 (regressions of the above):
+// - R35 (R59) The minute clock (L20) swapped a round due on Monday in at midnight while a Sunday-night
+//   workout was still on screen: round 2 was re-based without it and it was filed as round 2's
+//   week 1. A due round waits for a workout under way (the runner, a draft that can be resumed,
+//   LIVE ON WATCH) and is built with it once it is saved; discarded, it starts without it.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -561,6 +566,143 @@ run('L56: the coach header counts the days of a week whose clocks change on a Fr
     });
     assert(out.shiftDow === 4, 'the clocks change on a Friday in this zone: ' + JSON.stringify(out));
     assert(out.days.length === 2 && out.days.every(([, n, meta]) => meta === 'WK 03 · DAY ' + n), 'that Saturday is DAY 6 and that Sunday DAY 7: ' + JSON.stringify(out.days));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// Round 1's final week (12 of 12) with round 2 set for Monday; two squat days at 230 x 6 behind it.
+// The spec's clock sits on Sunday 23:20 (sessionStorage __mon is the Monday week 12 began).
+async function finalWeekSunday(app) {
+  await app.page.addInitScript(() => { const si = window.setInterval; window.__ticks = []; window.setInterval = function (fn, ms) { window.__ticks.push({ fn, ms }); return si.apply(this, arguments); }; });
+  await withClock(app);
+  await app.page.evaluate((LOGS) => {
+    eval(LOGS);
+    const mon = _mostRecentMonday();
+    sessionStorage.setItem('__mon', mon);
+    __setNow(addDays(mon, 6) + 'T23:20:00');
+    localStorage.setItem('kt_week_monday', mon); localStorage.setItem('kt_final_since', mon);
+    lsSet('kt_routine_next', { startsOn: addDays(mon, 7), at: addDays(mon, 3), afterEnd: true });
+    lsSet('kt_sessions', []);
+    [[-7, 11], [2, 12]].forEach(([d, week]) => addSession({ id: at(addDays(mon, d), '18:00'), date: addDays(mon, d), type: 'Legs', week, startedAt: at(addDays(mon, d), '17:00'), exercises: [X('Back Squat', [6, 6, 6, 6], 230)] }));
+  }, LOGS);
+  await coldBoot(app);
+}
+// What the round and the workout came to (the 260 x 5 squats are the workout under way).
+const ROUND_STATE = `
+  var roundState = () => {
+    const mon = sessionStorage.getItem('__mon'), cr = getCustomRoutine();
+    const s = getSessions().find(x => x.exercises.some(e => e.name === 'Back Squat' && e.weight === 260));
+    return { cycle: cr.cycle || 1, week: currentWeek, anchored: localStorage.getItem('kt_week_monday') === addDays(mon, 7),
+      sq1: (cr.weeks[0].legs.find(e => e.name === 'Back Squat') || {}).weight,
+      saved: s ? { sunday: s.date === addDays(mon, 6), week: s.week, bName: s.bName || '' } : null };
+  };
+`;
+
+run('R35: a round due at midnight waits for the workout under way and is built with it', async () => {
+  // tick: the screen stays on (the minute clock); return: locked during a rest, unlocked at 00:02;
+  // killed: the app closed with the draft on disk and launched at 00:10 (Resume on Today).
+  for (const native of [false, true]) for (const mode of ['tick', 'return', 'killed']) {
+    const app = await boot({ native, seed: { kt_week: '12' } });
+    const tag = (native ? 'native' : 'web') + ', ' + mode;
+    try {
+      await finalWeekSunday(app);
+      const bName = await app.page.evaluate(() => getCustomRoutine().weeks[11].bName);
+      const during = await app.page.evaluate(async ({ LOGS, VIS, ROUND_STATE, mode }) => {
+        eval(LOGS); eval(VIS); eval(ROUND_STATE);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const next = addDays(sessionStorage.getItem('__mon'), 7);
+        switchTab('log'); switchLogSub('workout'); await wait(30);
+        openDeckRunner('Legs'); await wait(20);
+        runnerEngaged = true; runnerSetWeight(260);
+        [5, 5, 5].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+        _flushRunnerDraft();
+        if (mode === 'tick') { __setNow(next + 'T00:00:40'); window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); }
+        if (mode === 'return') { leave(); __setNow(next + 'T00:02:00'); back(); }
+        if (mode === 'killed') __setNow(next + 'T00:10:00');
+        await wait(800);
+        return Object.assign(roundState(), { open: runnerOpen });
+      }, { LOGS, VIS, ROUND_STATE, mode });
+      if (mode === 'killed') await coldBoot(app);
+      const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE, mode }) => {
+        eval(LOGS); eval(ROUND_STATE);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const next = addDays(sessionStorage.getItem('__mon'), 7), r = {};
+        if (mode === 'killed') {
+          await wait(800);
+          switchTab('log'); switchLogSub('workout'); await wait(30);
+          r.boot = Object.assign(roundState(), { banner: /WORKOUT IN PROGRESS/.test(txt()) });
+          resumeRunnerDraft(); await wait(20);
+          window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); await wait(300);   // a minute on: still waiting
+          r.resumed = Object.assign(roundState(), { open: runnerOpen });
+        }
+        __setNow(next + 'T00:25:00');
+        runnerFinishSession(); await wait(900);
+        r.after = roundState();
+        return r;
+      }, { LOGS, ROUND_STATE, mode });
+      if (mode === 'killed') {
+        assert(out.boot.cycle === 1 && out.boot.week === 12 && out.boot.banner, tag + ': launched after midnight with the workout waiting, round 1 stays: ' + JSON.stringify(out.boot));
+        assert(out.resumed.cycle === 1 && out.resumed.open, tag + ': and stays while it is resumed: ' + JSON.stringify(out.resumed));
+      } else {
+        assert(during.cycle === 1 && during.week === 12 && during.open, tag + ': past midnight with the runner open, round 1 stays: ' + JSON.stringify(during));
+      }
+      const a = out.after;
+      assert(a.saved && a.saved.sunday && a.saved.week === 12 && a.saved.bName === bName, tag + ': the workout is filed on Sunday as week 12 (' + bName + '): ' + JSON.stringify(a.saved));
+      // 260 x 5 is an e1RM of 303.3, about 252.8 at 6 reps: 10% under it is 227.5 (230 x 6 alone gives 212.5).
+      assert(a.cycle === 2 && a.week === 1 && a.anchored && a.sq1 === 227.5, tag + ': round 2 starts once it is saved, built with it: ' + JSON.stringify(a));
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+run('R35: a workout discarded after midnight lets the round start; one LIVE ON WATCH holds it until its copy drains', async () => {
+  let app = await boot({ native: false, seed: { kt_week: '12' } });
+  try {
+    await finalWeekSunday(app);
+    const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
+      eval(LOGS); eval(ROUND_STATE);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const next = addDays(sessionStorage.getItem('__mon'), 7);
+      switchTab('log'); switchLogSub('workout'); await wait(30);
+      openDeckRunner('Legs'); await wait(20);
+      runnerEngaged = true; runnerSetWeight(260); runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
+      __setNow(next + 'T00:00:40'); window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); await wait(100);
+      const r = { held: roundState() };
+      discardDeckRunner(); await wait(300);
+      r.after = roundState();
+      return r;
+    }, { LOGS, ROUND_STATE });
+    assert(out.held.cycle === 1, 'held while the runner is open: ' + JSON.stringify(out.held));
+    assert(out.after.cycle === 2 && out.after.week === 1 && out.after.anchored && out.after.sq1 === 212.5 && !out.after.saved, 'discarded: round 2 starts at once, without it: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+
+  // The phone left on a stand, the workout on the wrist from 23:20 to 00:20.
+  app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await finalWeekSunday(app);
+    const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
+      eval(LOGS); eval(ROUND_STATE);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
+      const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), start = at(sun, '23:20');
+      const live = (reps, ended) => _onWatchLive(JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, ended }));
+      switchTab('log'); switchLogSub('workout'); await wait(30);
+      __setNow(sun + 'T23:50:00'); live([5, 5]);
+      __setNow(next + 'T00:00:40'); tick(); await wait(300);
+      const r = { held: roundState() };
+      __setNow(next + 'T00:20:00');
+      window.__mock.pending = [JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: new Date(start).toISOString(), loggedAt: new Date().toISOString(),
+        exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 260, weightLog: [260, 260, 260] }] })];
+      live([5, 5, 5], true); await wait(3500);
+      r.drained = roundState();
+      __setNow(next + 'T00:21:00'); tick(); await wait(900);
+      r.after = roundState();
+      return r;
+    }, { LOGS, ROUND_STATE });
+    assert(out.held.cycle === 1 && out.held.week === 12, 'LIVE ON WATCH at midnight: round 1 stays: ' + JSON.stringify(out.held));
+    assert(out.drained.cycle === 1 && out.drained.saved && out.drained.saved.sunday && out.drained.saved.week === 12, 'the wrist\'s copy drains as Sunday\'s week 12: ' + JSON.stringify(out.drained));
+    assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 227.5, 'the next minute round 2 starts, built with it: ' + JSON.stringify(out.after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

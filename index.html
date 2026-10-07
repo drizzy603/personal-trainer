@@ -5332,9 +5332,12 @@ function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 // drained a second after launch was left out of round 2's loads and filed as its week 1. With
 // a watch bridge the swap runs once the drain has settled (at most 6 s), then the week clock
 // catches up (the start may have been weeks ago).
-var _nrDrainWait=null;
+var _nrDrainWait=null, _nrHeld=false;
 function _applyNextRoundAfterDrain(){
   var p=_nextRoundSet(); if(!p || todayISO()<p.startsOn) return;
+  // Never under a workout under way (_roundWaitsForWorkout): its sets are not saved yet.
+  if(_roundWaitsForWorkout()){ _nrHeld=true; return; }
+  _nrHeld=false;
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions){ _applyNextRound(false); return; }
   if(_nrDrainWait) return;
@@ -8457,6 +8460,18 @@ function renderRunSegment(){
 // A workout is under way while the runner is open or a restored draft waits to resume
 // (runnerSession outlives a finished or closed session, so it alone does not say so).
 function _runnerInProgress(){ return !!(runnerSession && (runnerOpen || runnerResumePending)); }
+// A set round waits for a workout under way: the runner open, LIVE ON WATCH (a wrist set in the
+// last half hour), or a draft that can still be resumed (read from storage: the boot checks
+// before it restores one). Swapped in at midnight under the runner's wake lock, the round was
+// re-based without the final week's last workout and that workout was filed as its week 1. The
+// minute clock and a return roll the day once, so a held round starts when the workout is saved
+// or discarded here, else at the next minute (a workout the wrist finished drains first).
+function _roundWaitsForWorkout(){
+  if(runnerOpen && runnerSession) return true;
+  if(_watchLive && Date.now()-(_watchLive.at||0)<30*60*1000) return true;
+  try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000); }catch(e){ return false; }
+}
+function _roundAfterWorkout(){ if(!_nrHeld || _roundWaitsForWorkout()) return; _nrHeld=false; autoAdvanceWeek(); render(); }
 function _runnerLoggedSets(){ var n=0; Object.keys(runnerCompleted||{}).forEach(function(k){ n+=(parseInt(runnerCompleted[k],10)||0); }); return n; }
 function openDeckRunner(overrideType, force){
   // Never over a workout under way: START, the widget's trovo://start and the make-up and
@@ -8497,7 +8512,7 @@ function openDeckRunner(overrideType, force){
     sessType = act.dayName; sessExs = act.exercises.slice(); dayName = act.dayName;
   }
   sessExs = _runnerFoldRepeats(sessExs);
-  runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now()};
+  runnerSession = {type:sessType, dayName:dayName, weekday:act.weekday, exercises:sessExs, startedAt:Date.now(), week:weekForDate(todayISO())};
   _watchEndedPayload = null;   // a new session: the last one's 'ended' is done with
   runnerExIdx = 0;
   runnerEngaged = false;
@@ -8667,7 +8682,7 @@ function discardRunnerDraft(){
     '<div class="kt-close-sheet-ttl">Discard workout?</div>'+
     '<div class="kt-close-sheet-sub">Your in-progress sets will be lost.</div>'+
     '<button class="kt-close-sheet-btn" style="background:var(--card2);color:var(--text);" onclick="document.getElementById(\'kt-discard-draft-sheet\').remove()">Keep it</button>'+
-    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();_watchSendDiscard();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();render();})()">Discard &amp; start fresh</button>'+
+    '<button class="kt-close-sheet-btn" style="background:var(--red);color:var(--on-accent);" onclick="(function(){var s=document.getElementById(\'kt-discard-draft-sheet\');if(s)s.remove();_watchSendDiscard();runnerResumePending=false;runnerSession=null;runnerCompleted={};runnerWeights={};runnerReps={};runnerRepsLog={};runnerWeightsLog={};runnerRpe={};runnerRpeLog={};runnerEditSetIdx=null;runnerEditSetEx=null;_clearRunnerDraft();_roundAfterWorkout();render();})()">Discard &amp; start fresh</button>'+
   '</div>';
   document.body.appendChild(el);
 }
@@ -9230,8 +9245,11 @@ function runnerFinishSession(){
   });
   sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
   var _owned=Object.keys(runnerSession.ownAt||{});
+  // Filed on the day it began, before a round started since (a draft resumed after "Start round 2
+  // today"): the clock now reads that day as week 1, so it keeps the week it began in.
+  var _wk=(_sessionDate===_startISO && runnerSession.week>0 && _sessionDate<_roundStartISO()) ? runnerSession.week : weekForDate(_sessionDate);
   var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName, label:_dayLabel(runnerSession.dayName),
-    week:weekForDate(_sessionDate), exercises:exsOut, note:'', prs:[],
+    week:_wk, exercises:exsOut, note:'', prs:[],
     startedAt:runnerSession.startedAt||undefined,
     supersets:(_ssIdx.length?_ssIdx:undefined),
     phoneOwned:(_owned.length?_owned:undefined),
@@ -9291,6 +9309,7 @@ function runnerFinishSession(){
   setTimeout(_autoBackupIfDue, 2500);
   var _cmp={rec:_newRec, planned:runnerSession.exercises.length, startedAt:runnerSession.startedAt||Date.now(), dayName:runnerSession.dayName};
   closeDeckRunner();
+  _roundAfterWorkout();   // a round held for this workout is built with it
   render();
   // COMPLETE — the session's numbers, records and one coach line, before the
   // Today screen quietly absorbs them.
@@ -21091,7 +21110,7 @@ function _resumeDayAndRest(){
 // A screen kept on across midnight (the runner's wake lock, a phone on a stand) never
 // leaves the foreground, so no return rolls the day: Monday showed last week's loads and
 // pushed the watch last week's plan. A minute clock rolls it as a return would.
-function _dayTick(){ if(document.visibilityState==='visible' && todayISO()!==_lastSeenDay) _resumeDayAndRest(); }
+function _dayTick(){ if(document.visibilityState!=='visible') return; if(todayISO()!==_lastSeenDay) _resumeDayAndRest(); else _roundAfterWorkout(); }
 setInterval(_dayTick, 60000);
 
 // ── Keyboard / assistive-tech access for clickable divs ──────────────────────
@@ -21451,7 +21470,7 @@ function _watchSendDiscard(){
   if(!runnerOpen){ try{ _pushWatchPlan(); }catch(e){} }
   _scheduleNativeSync();
 }
-function discardDeckRunner(){ closeDeckRunner(); _watchSendDiscard(); }
+function discardDeckRunner(){ closeDeckRunner(); _watchSendDiscard(); _roundAfterWorkout(); }
 // Fold a wrist session's exercises into a logged record. An exercise only the
 // wrist has is added; one both have keeps the longer set log, unless the phone
 // corrected that exercise during the session (undo/edit, or removed/renamed it:
