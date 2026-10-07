@@ -800,3 +800,34 @@ run('R24: a log nudged from the previous round into this one and back is its own
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R25 (hunt 4): the Sunday recap on Progress still rounded the week's distance twice (to 0.1 km,
+// then in the owner's unit): a mi owner's 5.05 km week read 3.2 mi beside the Activity card's 3.1
+// (L27 fixed only the card). It is rounded once, after dDisp; a week that rounds to 0 has no pill.
+run('R25: the Sunday recap reads a 5.05 km week as 3.1 mi, as the Activity card beside it', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_d: 'mi', kt_sessions: '[]', kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const T = todayISO(), r = {};
+      // a Sunday whatever today is (the recap shows only then): its week is today and the six days before
+      const sunday = fn => { const g = Date.prototype.getDay; Date.prototype.getDay = function () { return 0; }; try { return fn(); } finally { Date.prototype.getDay = g; } };
+      const screen = () => {
+        const recap = [...document.querySelectorAll('#screen .chart-card')].find(e => /this week, wrapped/.test(e.textContent));
+        const foot = [...document.querySelectorAll('.kt-cal-foot .kt-cal-stat')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).find(t => /RUN/.test(t));
+        return { recap: recap ? recap.textContent.replace(/\s+/g, ' ').trim() : null, foot };
+      };
+      lsSet('kt_runs', [{ id: 2501, date: T, distance: 5.05, time: '28:00', type: 'easy', note: '' }]);
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null;
+      r.mi = sunday(() => { render(); return screen(); });
+      lsSet('kt_unit_d', 'km');
+      r.km = sunday(() => { render(); return screen(); });
+      lsSet('kt_runs', [{ id: 2502, date: T, distance: 0.04, time: '0:20', type: 'easy', note: '' }]);
+      r.tiny = sunday(() => { render(); return screen(); });
+      return r;
+    });
+    assert(/3\.1\s*mi run/i.test(out.mi.recap || '') && /^3\.1\s*MI RUN$/.test(out.mi.foot || ''), 'the recap reads 3.1 mi, as the card: ' + JSON.stringify(out.mi));
+    assert(/5\.1\s*km run/i.test(out.km.recap || '') && /^5\.1\s*KM RUN$/.test(out.km.foot || ''), 'km owners read 5.1 km in both: ' + JSON.stringify(out.km));
+    assert(out.tiny.recap && !/run/i.test(out.tiny.recap), 'a week that rounds to 0 shows no distance pill: ' + JSON.stringify(out.tiny));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
