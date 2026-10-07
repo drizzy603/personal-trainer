@@ -244,6 +244,8 @@ run('R57: old cards keep their block after round 2, a Programme History restore 
         const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
         const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
         const starter = () => applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 });
+        // the stale wrist session below was trained ten days ago, in this programme's week and block
+        const lateD = addDays(todayISO(), -10); r.lateWant = [weekForDate(lateD), _weekBlock(cr0, weekForDate(lateD))];
         if (path === 'round') {
           // the next round, started now (as "Today" does on any weekday but Sunday)
           lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() }); _applyNextRound(true);
@@ -273,7 +275,7 @@ run('R57: old cards keep their block after round 2, a Programme History restore 
         window.__mock.pending.push(JSON.stringify({ dayName: 'Legs', loggedAt: addDays(todayISO(), -10) + 'T07:00:00', exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 185 }] }));
         await drainWatchSessions(); await wait(30);
         const w = getSessions().find(s => s.note === 'From Apple Watch' && s.date === addDays(todayISO(), -10));
-        r.late = w ? [w.bName || '', _shareCardModel(w).phase] : null;
+        r.late = w ? [w.bName || '', _shareCardModel(w).phase, Number(w.week)] : null;
         return r;
       }, path);
       out[path].errors = app.errors.join('|');
@@ -285,7 +287,14 @@ run('R57: old cards keep their block after round 2, a Programme History restore 
   assert(!out.startNew.state[0], 'Start new put in another programme: ' + JSON.stringify(out.startNew.state));
   for (const p of Object.keys(out)) {
     assert(JSON.stringify(out[p].after) === '["BASE","BASE","BUILD"]', p + ': the old cards keep the blocks they were trained in (read none): ' + JSON.stringify(out[p].after));
-    assert(out[p].late && out[p].late[0] === '' && out[p].late[1] === '', p + ': a log filed after the change from before it names no block: ' + JSON.stringify(out[p].late));
+    if (p === 'previous') {
+      // Restore Previous puts the logs' own programme back on its own clock (hunt 4, undo-restore R16),
+      // so the stale wrist session is filed in the week it was trained and reads that week's block.
+      const [wk, b] = out[p].lateWant;
+      assert(b !== '' && out[p].late && out[p].late[2] === wk && out[p].late[0] === b && out[p].late[1] === b, p + ': a log from before the change, filed after Restore Previous, reads its own week\'s block: ' + JSON.stringify(out[p]));
+    } else {
+      assert(out[p].late && out[p].late[0] === '' && out[p].late[1] === '', p + ': a log filed after the change from before it names no block: ' + JSON.stringify(out[p].late));
+    }
     assert(out[p].errors === '', p + ': no page errors: ' + out[p].errors);
   }
   assert(JSON.stringify(out.history.unknown) === '["BASE","","BUILD"]', 'programmes that may have been the one disagree on week 4: no block there, never BUILD: ' + JSON.stringify(out.history.unknown));
