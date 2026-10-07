@@ -4034,15 +4034,15 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
 function _setWorkingWeights(exs, date){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), set=[];
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
     if(back && (parseFloat(w[e.name])||0)>v) return;
-    w[e.name]=v; set.push(e.name);
+    w[e.name]=v; wrote.push(e.name);   // at the same load too: the load is the log's now
   });
   var ok=lsSet('kt_weights', w);
-  if(ok) _dropNotedWeights(set);   // a log newer than the undo point keeps the load it set
+  if(ok) _dropNotedWeights(wrote);   // a log newer than the undo point keeps the load it set
   return ok;
 }
 // A delete or a date move takes back the working weight a log set: deleting a 1,850 lb typo kept
