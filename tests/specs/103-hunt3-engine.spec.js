@@ -633,3 +633,44 @@ seq('R04: a known load in a deload week is the lift\'s working weight; the deloa
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R05 (regression from L09): the owner swaps a lift away, the coach adds it back (the programme's
+// version, unmarked), then Reset: the swapped row went back to the coach's original beside the
+// coach's add, so every week held the lift twice (the runner showed 7 sets, the watch both rows).
+seq('R05: Reset keeps one copy of a lift the coach added back after the owner swapped it away', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const day = () => getCustomRoutine().weeks[c].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const count = (n) => getCustomRoutine().weeks.slice(c).map(w => (w.push || []).filter(e => e.name === n).length).join('');
+      const swap = async (from, to) => { openRoutines(); _rtOpenEdit('Push', from); _rtEdit.swapTo = to; _rtSave(); await wait(10); closeRoutines(); };
+      const resetPush = async () => {
+        openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5);
+        document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      };
+      await swap('Overhead Press', 'Arnold Press');
+      r.add = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'add', sets: 3, reps: 10, weight: 95 }).ok;
+      await resetPush();
+      r.day = day(); r.ohp = count('Overhead Press'); r.arnold = count('Arnold Press');
+      r.prompt = (buildSystemPrompt().match(/\nPUSH[^\n]*\n((?: {2}[^\n]*\n)+)/) || ['', ''])[1];
+      openDeckRunner('Push'); await wait(20);
+      r.cards = runnerSession.exercises.filter(e => e.name === 'Overhead Press').map(e => e.sets);
+      closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+      // the main lift: swapped away, added back by the coach, then Reset: one Bench, first and main
+      lsSet('kt_routine', JSON.parse(orig));
+      await swap('Bench Press', 'Barbell Bench Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'add', sets: 5, reps: 5, weight: 165 });
+      await resetPush();
+      r.mainDay = day(); r.bench = count('Bench Press');
+      return r;
+    });
+    assert(out.add && out.ohp === '1111111' && out.arnold === '0000000', 'one Overhead Press a week after Reset: ' + JSON.stringify(out));
+    assert(out.day === 'Bench Press 4x8@160! | Overhead Press 3x10@95 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s newer row, where the coach first had it: ' + out.day);
+    assert((out.prompt.match(/Overhead Press:/g) || []).length === 1 && JSON.stringify(out.cards) === '[3]', 'the coach and the runner see it once, at its 3 sets: ' + JSON.stringify([out.prompt, out.cards]));
+    assert(out.bench === '1111111' && /^Bench Press 5x5@165! \| Overhead Press [^!]*$/.test(out.mainDay), 'a main lift comes back once, first and main, at the coach\'s numbers: ' + out.mainDay);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

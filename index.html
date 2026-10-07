@@ -11198,12 +11198,21 @@ function _progResetSlot(cr, slot, c){
   for(var j=c;j<W.length;j++){
     var w=W[j]; if(!w) continue;
     var list=Array.isArray(w[slot])?w[slot]:[];
-    var out=[];
+    var out=[], swapped=[];
     list.forEach(function(r){
       if(!r) return;
       if(r.rec===null){ n++; return; }
-      if(r.rec){ var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec; out.push(b); n++; return; }
+      if(r.rec){ var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec; out.push(b); if(b.name!==r.name) swapped.push(b); n++; return; }
       out.push(r);
+    });
+    // A lift the owner swapped away that is on the day again (the coach added it back: the
+    // programme's version) stays once: the coach's newer row, at the original's place with its
+    // main tag and superset. The day held it twice (the runner doubled its sets).
+    swapped.forEach(function(b){
+      var x=out.filter(function(e){ return e!==b && e.name===b.name; })[0]; if(!x || out.indexOf(b)<0) return;
+      var keep={}; Object.keys(x).forEach(function(k){ if(k!=='isMain' && k!=='ss') keep[k]=x[k]; });
+      if(b.isMain) keep.isMain=true; if(b.ss) keep.ss=true;
+      out[out.indexOf(b)]=keep; out.splice(out.indexOf(x),1);
     });
     var ro=(w.recOut&&Array.isArray(w.recOut[slot]))?w.recOut[slot]:[];
     // Last removed first, so each row lands where it was (in order of place, two removed one
