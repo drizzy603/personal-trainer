@@ -18282,10 +18282,28 @@ function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routin
 function _routineReplaced(prev, scope){
   _routineScope=null;   // a scope still open would take no snapshot of the new programme
   if(prev && prev.weeks && prev.weeks.length){
-    if(lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
+    var keep=JSON.parse(JSON.stringify(prev)); keep._clock=_weekClockNow();   // the week it was on goes aside with it
+    if(lsSet('kt_routine_backup', keep)) _setBackupScope(scope);
     else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of the replaced programme
   } else _setBackupScope('');
   _retireLedgers();
+}
+// The week clock of a programme set aside whole: its week, the Monday that week began and the
+// Monday its final week began, kept on the snapshot as _clock (bookkeeping like _w, never part of
+// the programme). Restore Previous brought the programme back on week 1: round 1 lost its final
+// week, a Programme History restore's programme came back not started until next Monday.
+function _weekClockNow(){
+  var g=function(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } };
+  return {week:currentWeek, monday:g('kt_week_monday'), finalSince:g('kt_final_since')};
+}
+// A kept clock put back: its week from this Monday (a start still ahead stays ahead, a week
+// spent on another programme is not counted), and on the final week the Monday that week began,
+// so a programme that had ended still reads as ended.
+function _weekClockPut(c, total){
+  var re=/^\d{4}-\d{2}-\d{2}$/, wk=Math.min(total, Math.max(1, parseInt(c.week,10)||1)), mon=_mostRecentMonday();
+  var ahead=re.test(String(c.monday||'')) && c.monday>mon;
+  if(!_setWeek(wk, ahead ? c.monday : null)) return;
+  if(wk>=total && !ahead && re.test(String(c.finalSince||'')) && c.finalSince<=mon){ try{ localStorage.setItem('kt_final_since', c.finalSince); }catch(e){} }
 }
 // A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
 // card retires (it read "WEEK 1" over the old round's changes).
@@ -18328,10 +18346,13 @@ function restoreRoutineBackup(onDone){
   _ktConfirm({title:'Restore previous programme?',body:hasCustomRoutine()?'Your current one is set aside: restoring again brings it back.':'',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
     // The working weights the change noted go back with the programme; the version set aside
-    // carries the reverse note.
-    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w); delete prog._w;
+    // carries the reverse note. A programme set aside whole comes back on its own week (_clock),
+    // and the one set aside now keeps its week the same way.
+    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w), clk=(prog._clock && typeof prog._clock==='object')?prog._clock:null;
+    delete prog._w; delete prog._clock;
     var w0=sw?JSON.parse(JSON.stringify(getWeights())):null, putW=function(){ if(sw) lsSet('kt_weights', w0); };
-    var aside=cur; if(cur && sw){ aside=JSON.parse(JSON.stringify(cur)); aside._w=sw.back; }
+    var aside=cur; if(cur && (sw || clk)){ aside=JSON.parse(JSON.stringify(cur)); if(sw) aside._w=sw.back; if(clk) aside._clock=_weekClockNow(); }
+    if(clk) _freezeStreakDays();   // the days already lived keep the programme and week they were lived on
     // The weights and the programme must land before the backup moves: a failed write used to
     // overwrite the backup with the current programme anyway (the previous one was then in no
     // key) and say "restored" over the storage-full error. lsSet has said so; nothing changed.
@@ -18344,9 +18365,10 @@ function restoreRoutineBackup(onDone){
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
+    if(clk){ _weekClockPut(clk, total); lapsePending=null; invalidateCoachCard(); }   // set aside whole: back on its own week
     // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
     // week. Week 1 sent the owner back to the start and cleared the final-week state.
-    if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
+    else if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
     if(typeof onDone==='function') onDone();
     showToast('Previous programme restored'); render();
   }});
