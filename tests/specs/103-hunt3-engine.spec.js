@@ -792,3 +792,50 @@ seq('R07: a lift added back has a load in the weeks that never had it, the coach
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R06 (incomplete M16): a coach rewrite of a week re-recorded a lift the owner had removed without
+// its markers: Use coach's on the lift the owner swapped onto left the coach's original out of that
+// week. The same rewrite left a superset opener paired with the next lift when the owner had
+// removed its partner. The coach: Overhead Press every week, Arnold Press beside it from week 9,
+// Incline Dumbbell Press supersetted with Cable Triceps Pushdown.
+seq('R06: a coach rewrite keeps the swap and superset marks of the lifts the owner removed', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => {
+    w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true;
+    if (i >= 8) { const at = w.push.findIndex(e => e.name === 'Overhead Press'); w.push.splice(at + 1, 0, { name: 'Arnold Press', sets: 3, reps: 10, weight: 45 }); }
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const has = (n) => getCustomRoutine().weeks.slice(c).map(w => w.push.some(e => e.name === n) ? 1 : 0).join('');
+      // ~ = superset opener
+      const day9 = () => getCustomRoutine().weeks[8].push.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+      // the coach rewrites week 9 as it wrote it
+      const rewrite9 = () => executeCoachTool('update_routine_weeks', { weeks: [{ wk: 9, bName: 'PEAK', bColor: '#0a43f5', push: [
+        { name: 'Bench Press', sets: 4, reps: 8, weight: 167.5, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 8, weight: 105 }, { name: 'Arnold Press', sets: 3, reps: 10, weight: 45 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 65, ss: true }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 60 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }] }] });
+      // the owner swaps Overhead Press for Arnold Press from week 6 (weeks 9-12 drop it)
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10); closeRoutines();
+      r.rewrite = rewrite9().ok;
+      openRoutines(); _rtUseCoach('Push', 'Arnold Press'); await wait(10); closeRoutines();
+      r.useCoach = { ohp: has('Overhead Press'), day9: day9() };
+      // the owner removes the superset's second half, then the coach rewrites week 9 with both
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Cable Triceps Pushdown'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      rewrite9();
+      r.unpaired = day9();
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.restored = day9();
+      return r;
+    });
+    const coach9 = 'Bench Press | Overhead Press | Arnold Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(out.rewrite && out.useCoach.ohp === '1111111' && out.useCoach.day9 === coach9, 'Use coach\'s brings Overhead Press back in every week, the rewritten one too: ' + JSON.stringify(out.useCoach));
+    assert(out.unpaired === 'Bench Press | Overhead Press | Arnold Press | Incline Dumbbell Press | Lateral Raise', 'the opener whose partner stays removed pairs with nothing: ' + out.unpaired);
+    assert(out.restored === coach9, 'Restore pairs it again: ' + out.restored);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

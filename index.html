@@ -17495,7 +17495,17 @@ function _executeCoachToolRaw(name,input){
           ro.forEach(function(e){
             if(!e || !e.row) return;
             var _hit=false;
-            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ _hit=true; var gone=neu.splice(i,1)[0]; delete gone.rec; if(gone.isMain) _lostMain=true; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
+            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){
+              _hit=true; var gone=neu.splice(i,1)[0]; delete gone.rec; if(gone.isMain) _lostMain=true;
+              // Its markers go with it (Use coach's on the lift a swap dropped it for brought it back
+              // everywhere but this week), and an opener left before it is unpaired and named, as the
+              // owner's removal does (it paired with the next lift).
+              var _ent={at:i, row:gone}, _pv=i>0?neu[i-1]:null;
+              if(_pv && _pv.ss){ _pv.ss=false; _ent.ss=_pv.name; } else if(e.ss) _ent.ss=e.ss;
+              if(e.swap) _ent.swap=e.swap;
+              if(gone.ss) _ent.ssTo=neu[i]?neu[i].name:'';
+              weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(_ent);
+              if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
             // not re-sent: it stays removed, and stays restorable
             if(!_hit){ weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(JSON.parse(JSON.stringify(e))); }
           });
