@@ -9249,9 +9249,10 @@ function runnerFinishSession(){
     var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
     // The wrist mirrored this start: the same session, whatever day either is filed on.
     if(ws && _myStart && Math.abs(ws-_myStart)<1500) return true;
-    // Otherwise the same day: the one it is filed on, or the one it began (the drain files a
-    // wrist copy by its start, so the copy of a workout that ran past midnight is there).
-    if(x.date!==_sessionDate && x.date!==_startISO) return false;
+    // Otherwise the day it is filed on (a workout that ran past midnight is filed on the day it
+    // began, where the drain files its wrist copy). Only that day: a workout backdated to
+    // yesterday took in today's own wrist session of the same day.
+    if(x.date!==_sessionDate) return false;
     // Only a copy of THIS session: one filed after this runner began, from
     // a wrist session started within 6 h of it. An earlier wrist session
     // of the same slot today stays its own record.

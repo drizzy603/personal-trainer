@@ -42,6 +42,8 @@
 // - R31 Save lifts to Health writes a workout filed on the day before only while it is live (a set
 //   within the hour): a draft left in the evening and finished after midnight is not written, and
 //   the window ends with the last set (Log all and sets from the wrist count), not at Finish.
+// - R32 a phone workout backdated to another day folds in only a wrist copy filed on that day (or
+//   one that mirrored its start): today's own wrist session of the same day stays its own record.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -892,6 +894,53 @@ run('R31 a workout resumed after midnight is not written to Health; a live one e
     assert(one(out.wrist, Y + ' 23:30 -> ' + T + ' 00:52'), 'sets mirrored in from the wrist count: ' + JSON.stringify(out.wrist));
     assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 08:55'), 'a same-day draft resumed at noon ends at its last set: ' + JSON.stringify(out.sameDay));
     assert(out.backdated.filed === Y && out.backdated.hk.length === 0, 'a backdated log is not written: ' + JSON.stringify(out.backdated));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R32: M02's start-day match let a phone workout backdated to yesterday take in today's own wrist
+// session of the same day (deleted, its sets moved into yesterday's record).
+run('R32 a backdated phone workout leaves today\'s own wrist session alone', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1);
+      // the runner opens at 18:00 and logs three sets; a wrist Push begun at `wsAt` (or mirroring
+      // this start) drains during it, filed on the day it began; Finish at 18:30 on `pick`
+      const finish = async (pick, wsAt) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        __setNow(today + 'T18:00:00');
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        window.__A = runnerSession.exercises[runnerExIdx].name;
+        runnerEngaged = true;
+        [0, 1, 2].forEach(() => { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; });
+        __setNow(today + 'T18:20:00');
+        const ws = wsAt ? new Date(wsAt).getTime() : runnerSession.startedAt, wd = _ymdLocal(new Date(ws));
+        const ss = getSessions();
+        ss.unshift({ id: Date.now(), date: wd, type: 'Push', label: _dayLabel('Push'), week: weekForDate(wd), note: 'From Apple Watch', prs: [],
+          wristStartedAt: new Date(ws).toISOString(), exercises: [{ name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 100, weightLog: [100, 100, 100], rpe: 7 }] });
+        lsSet('kt_sessions', ss);
+        __setNow(today + 'T18:30:00');
+        if (pick) runnerSessionDate = pick;
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        return getSessions().filter(s => s.type === 'Push').map(s => s.date + ' ' + (s.note || 'phone') + ' ' + s.exercises.map(e => e.name).join('+'));
+      };
+      const r = { today, yday };
+      r.backdated = await finish(yday, today + 'T16:00:00');
+      r.sameDay = await finish(null, today + 'T16:00:00');
+      r.mirrored = await finish(yday, null);
+      r.A = window.__A;
+      return r;
+    }, CLOCK);
+    const Y = out.yday, T = out.today, A = out.A;
+    assert(JSON.stringify(out.backdated) === JSON.stringify([T + ' From Apple Watch Overhead Press', Y + ' phone ' + A]),
+      'backdated to yesterday: today\'s wrist session stays its own record: ' + JSON.stringify(out.backdated));
+    assert(JSON.stringify(out.sameDay) === JSON.stringify([T + ' phone ' + A + '+Overhead Press']), 'filed today, the wrist copy of this workout still folds in: ' + JSON.stringify(out.sameDay));
+    assert(JSON.stringify(out.mirrored) === JSON.stringify([Y + ' phone ' + A + '+Overhead Press']), 'a wrist copy that mirrored this start folds in on any day: ' + JSON.stringify(out.mirrored));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
