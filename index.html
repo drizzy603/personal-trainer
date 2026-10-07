@@ -5258,6 +5258,9 @@ function switchTab(tab) {
   // the runner under it, with its Delete buttons mid-screen.
   if(tab!=='progress' && document.getElementById('calDayOverlay')) closeCalDay();
   if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; todaySparkEx=null; }
+  // Each Settings visit is its own undo point for the schedule editor, as each Routines visit is
+  // (openRoutines): Restore previous programme undid two visits' schedule changes as one.
+  if(tab==='settings' && currentTab!=='settings' && _routineScope==='cadence') _routineScope=null;
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
