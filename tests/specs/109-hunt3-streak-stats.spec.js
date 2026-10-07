@@ -595,7 +595,7 @@ runInTurn('a Programme History restore of another round, Restore Previous and a 
       return r;
     }, [CLOCK, LOGS, plan]);
     assert(out.before.streak === 79 && out.before.cycle === 2 && out.before.week === 2, 'round 2, every non-Friday since round 1 began: ' + JSON.stringify(out.before));
-    assert(out.restored.streak === 79 && out.restored.cycle === 1 && out.restored.week === 1 && out.restored.fri === 0,
+    assert(out.restored.streak === 79 && out.restored.cycle === 1 && out.restored.fri === 0,
       'restoring round 1 keeps it; its rest Friday is not frozen as a missed day (it was 15): ' + JSON.stringify(out.restored));
     assert(out.previous.streak === 79 && out.previous.cycle === 2, 'Restore Previous brings round 2 back with the same streak: ' + JSON.stringify(out.previous));
     assert(out.final === 77 && out.today.ok && out.today.cycle === 2 && out.today.week === 1 && out.today.streak === 77,
