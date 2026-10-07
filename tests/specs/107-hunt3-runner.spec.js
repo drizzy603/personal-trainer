@@ -44,6 +44,9 @@
 //   the window ends with the last set (Log all and sets from the wrist count), not at Finish.
 // - R32 a phone workout backdated to another day folds in only a wrist copy filed on that day (or
 //   one that mirrored its start): today's own wrist session of the same day stays its own record.
+// - R33 after +1 set a shell before build 57 (its bundled stamp, from TrovoOta.status, older than
+//   20261003-1, or no live-page plugin) is sent the set past the plan as the last one ('SET 6 OF
+//   6', never 'SET 6 OF 4'); build 57+ still gets the set alone. L16's case runs on build 58.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -571,6 +574,9 @@ run('L16 after +1 set the Live Activity and the alert name the next set past the
       const r = {};
       window.__tt = []; window.__ln = [];
       Capacitor.Plugins.TrovoTimer = { startTimer: a => { window.__tt.push(a); return Promise.resolve({}); }, endTimer: () => Promise.resolve({}) };
+      // a shell whose Live Activity knows a set past the plan: build 58 (R33 covers the older ones)
+      Capacitor.Plugins.TrovoOta = { status: () => Promise.resolve({ bundleBuild: '20261005-1' }) };
+      _shellBuild = null; _shellBuildRead(); await wait(10);
       Capacitor.Plugins.LocalNotifications.checkPermissions = () => Promise.resolve({ display: 'granted' });
       Capacitor.Plugins.LocalNotifications.schedule = a => { window.__ln.push(a); return Promise.resolve({}); };
       const last = () => { const a = window.__tt[window.__tt.length - 1], n = window.__ln[window.__ln.length - 1]; return { set: a && a.nextSet, of: a && a.totalSets, alert: n && n.notifications[0].body }; };
@@ -943,4 +949,50 @@ run('R32 a backdated phone workout leaves today\'s own wrist session alone', asy
     assert(JSON.stringify(out.mirrored) === JSON.stringify([Y + ' phone ' + A + '+Overhead Press']), 'a wrist copy that mirrored this start folds in on any day: ' + JSON.stringify(out.mirrored));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// R33: L16 sent the set past the plan to every shell, and the rest Live Activity before build 57
+// prints 'SET n OF m' whatever n is: after +1 set the Lock Screen read 'REST · SET 6 OF 4'.
+run('R33 after +1 set a shell before build 57 is sent the set as the last one', async () => {
+  const res = {};
+  // the shell's bundled stamp as TrovoOta.status reports it at launch: build 56, build 57, none (before build 41)
+  for (const shell of ['20260930-8', '20261003-1', '']) {
+    const app = await boot({ native: true });
+    try {
+      if (shell) {
+        await app.page.addInitScript(b => { window.Capacitor.Plugins.TrovoOta = { status: () => Promise.resolve({ bundleBuild: b }) }; }, shell);
+        await app.page.reload({ waitUntil: 'load' });
+        await app.page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });
+      }
+      res[shell || 'none'] = await app.page.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        window.__tt = [];
+        Capacitor.Plugins.TrovoTimer = { startTimer: a => { window.__tt.push(a); return Promise.resolve({}); }, endTimer: () => Promise.resolve({}) };
+        const last = () => { const a = window.__tt[window.__tt.length - 1]; return a ? a.nextSet + ' of ' + a.totalSets : ''; };
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        const ex = runnerSession.exercises[0], r = { n: ex.sets };
+        runnerEngaged = true; runnerCompleteSet(); await wait(20);
+        r.inPlan = last();
+        runnerSkipRest(); runnerEngaged = true;
+        for (let i = 1; i < ex.sets; i++) { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        runnerExtraSet(); window.__tt.length = 0;
+        runnerCompleteSet(); await wait(20);
+        r.extra = last();
+        window.__tt.length = 0; runnerAddRest(30); await wait(20);
+        r.plus30 = last();
+        closeDeckRunner();
+        return r;
+      });
+      res[shell || 'none'].errors = app.errors.slice();
+    } finally { await app.close(); }
+  }
+  const n = res.none.n;
+  Object.keys(res).forEach(k => assert(res[k].inPlan === '2 of ' + n, 'an in-plan rest is unchanged on every shell: ' + JSON.stringify(res)));
+  assert(res['20260930-8'].extra === (n + 2) + ' of ' + (n + 2) && res['20260930-8'].plus30 === res['20260930-8'].extra,
+    'build 56: the set past the plan is sent as the last one (SET 6 OF 6), +30s too: ' + JSON.stringify(res['20260930-8']));
+  assert(res.none.extra === (n + 2) + ' of ' + (n + 2), 'a shell with no live-page plugin is as old: ' + JSON.stringify(res.none));
+  assert(res['20261003-1'].extra === (n + 2) + ' of ' + n && res['20261003-1'].plus30 === res['20261003-1'].extra,
+    'build 57 gets the set past the plan (its view says SET 6): ' + JSON.stringify(res['20261003-1']));
+  Object.keys(res).forEach(k => assert(!res[k].errors.length, 'no page errors: ' + JSON.stringify(res)));
 });

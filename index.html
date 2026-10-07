@@ -8852,6 +8852,17 @@ function _restDetail(nx){
   var load=w>0 ? fmtW(w) : (_isBodyweightLift(nx.name) ? 'Bodyweight' : '');
   return load ? load+(r>0?' \u00d7 '+r:'') : (r>0 ? r+' reps' : '');
 }
+// The shell's bundled page stamp (TrovoOta.status, build 41+), read once at launch: its native
+// views are that old. The rest Live Activity before build 57 (bundled 20261003-1) prints
+// 'SET n OF m' whatever n is.
+var _shellBuild=null;
+function _shellBuildRead(){
+  if(_shellBuild!==null) return _shellBuild;
+  _shellBuild='';
+  try{ var OTA=_plug('TrovoOta'); if(OTA && OTA.status) Promise.resolve(OTA.status()).then(function(s){ _shellBuild=String((s&&s.bundleBuild)||''); }).catch(function(){}); }catch(e){}
+  return _shellBuild;
+}
+try{ _shellBuildRead(); }catch(e){}
 function _trovoTimerStart(ex, nextSet){
   // Backgrounded-phone alert when the rest is over (Live Activity shows the
   // countdown; the notification does the buzz). Cancelled on skip/return.
@@ -8864,9 +8875,13 @@ function _trovoTimerStart(ex, nextSet){
   if(!TT) return;
   var detail='';
   try{ detail=_restDetail(nx); }catch(e){ detail=''; }
+  // Past the plan (+1 set) build 57's view says 'SET 6'; the views before it read 'SET 6 OF 4'
+  // from the same numbers, so they are sent the set as the last one ('SET 6 OF 6').
+  var nxOf=parseInt(nx.sets)||ex.sets, _sb=_shellBuildRead();
+  if(nxSet>nxOf && !(_sb && !buildNewer('20261003-1', _sb))) nxOf=nxSet;
   // total = the rest granted so far (it grows with +30s), so the Lock Screen bar drains like
   // the in-app one; theme = the room, so the Live Activity wears it (shells before build 57 ignore both).
-  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail,
+  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: nxOf, detail: detail,
     total: Math.max(runnerRestLeft, runnerRestTotal||0), theme: _timerThemeTokens()}).catch(function(){});
 }
 function _trovoTimerEnd(){
