@@ -13131,13 +13131,14 @@ function saveSessionEdit(){
   var s=sessions.find(function(x){ return x.id===_sessEditId; });
   if(!s){ closeSessionEditor(); return; }
   _sessEditRenamed=[];
-  // The lifts whose load was corrected (or that were renamed): only their working weights
-  // follow, as with the coach's edit_session. A reps fix on one lift used to reset every
-  // lift in the session to its logged load, undoing a +5 written since.
+  // The lifts whose top set was corrected: only their working weights follow, as with the
+  // coach's edit_session. A reps fix on one lift used to reset every lift in the session to
+  // its logged load, undoing a +5 written since, and so did a back-off set's fix or a rename
+  // (a rename takes the old name's working weight along: _afterSessionEdit).
   var loadFixed=[];
   s.exercises=(s.exercises||[]).map(function(ex,ei){
     var pair=_exSetPairs(ex);
-    var reps=[], wts=[], typedLoad=false;
+    var reps=[], wts=[];
     pair.forEach(function(p,si){
       var rEl=document.getElementById('se_'+ei+'_'+si+'_r');
       var wEl=document.getElementById('se_'+ei+'_'+si+'_w');
@@ -13146,13 +13147,14 @@ function saveSessionEdit(){
       // the prefilled value is rounded, and writing it back moved every set (and records).
       var _typed=parseFloat(wEl&&wEl.value), _shown=(p[1]!==''&&p[1]!=null)?wDisp(p[1]):NaN;
       if(wEl && _typed===_shown) wts.push(parseFloat(p[1])||0);
-      else { wts.push(Math.max(0, wStore(_typed||0))); typedLoad=true; }
+      else wts.push(Math.max(0, wStore(_typed||0)));
     });
     var top=wts.length?Math.max.apply(null,wts):0;
+    var top0=pair.reduce(function(m,p){ return Math.max(m, parseFloat(p[1])||0); }, 0);
     var nEl=document.getElementById('se_'+ei+'_name');
     var newName=nEl && String(nEl.value||'').trim() ? String(nEl.value).trim() : ex.name;
     if(newName!==ex.name) _sessEditRenamed.push({from:ex.name, to:newName});
-    if(typedLoad || newName!==ex.name) loadFixed.push(newName);
+    if(Math.abs(top-top0)>0.01) loadFixed.push(newName);
     // Normalize to the flat runner shape on save (legacy nested included).
     return {name:newName, isMain:!!ex.isMain, sets:reps.length, reps:reps,
       weight:top, weightLog:wts,
@@ -13176,31 +13178,39 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // edited session is the NEWEST one for that lift. Fixing a typo in a
   // weeks-old session must not regress today's prescription.
   var wts2=getWeights(), wtsTouched=false, wch={};
+  var newerOf=function(n){ return sessions.some(function(o){
+    return o!==s && String(o.date||'')>String(s.date||'') &&
+      (o.exercises||[]).some(function(e2){ return e2 && e2.name===n; });
+  }); };
   s.exercises.forEach(function(ex){
     if(only && only.indexOf(ex.name)<0) return;
     var w=parseFloat(ex.weight); if(!(w>0)) return;
-    var newer=sessions.some(function(o){
-      return o!==s && String(o.date||'')>String(s.date||'') &&
-        (o.exercises||[]).some(function(e2){ return e2.name===ex.name; });
-    });
-    if(!newer){
+    if(!newerOf(ex.name)){
       var p=parseFloat(wts2[ex.name]);
       if(!(Math.abs((p||0)-w)<0.01)) wch[ex.name]=[p>0?p:null, w];
       wts2[ex.name]=w; wtsTouched=true;
     }
   });
   // A rename carries the per-name records with it: the exercise note, the
-  // session's own PR list, and the working-weight entry when no other session
-  // still uses the old name. recomputePRs below rebuilds kt_prs from the
-  // corrected sessions, so records follow without extra work.
+  // session's own PR list, and the working-weight entry (with the log's stamp)
+  // when no other session still uses the old name; else the new name starts at
+  // this log's top, as a fresh log of it would. recomputePRs below rebuilds
+  // kt_prs from the corrected sessions, so records follow without extra work.
   if(renamed && renamed.length){
     var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
     renamed.forEach(function(rn){
       if(notes[rn.from] && !notes[rn.to]){ notes[rn.to]=notes[rn.from]; delete notes[rn.from]; notesTouched=true; }
       if(Array.isArray(s.prs)) s.prs=s.prs.map(function(p){ return p===rn.from?rn.to:p; });
       var stillUsed=sessions.some(function(o){ return o!==s && (o.exercises||[]).some(function(e2){ return e2 && e2.name===rn.from; }); });
-      if(!stillUsed && wts2[rn.from]!=null){ if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from]; delete wts2[rn.from]; wtsTouched=true; }
-      if(s.wSet && s.wSet[rn.from] && !s.wSet[rn.to]){ s.wSet=Object.assign({}, s.wSet); s.wSet[rn.to]=s.wSet[rn.from]; delete s.wSet[rn.from]; }
+      if(!stillUsed && wts2[rn.from]!=null){
+        if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from];
+        delete wts2[rn.from]; wtsTouched=true;
+        if(s.wSet && s.wSet[rn.from] && !s.wSet[rn.to]){ s.wSet=Object.assign({}, s.wSet); s.wSet[rn.to]=s.wSet[rn.from]; delete s.wSet[rn.from]; }
+      } else if(wts2[rn.to]==null && !newerOf(rn.to)){
+        var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
+        var rw=parseFloat(rx && rx.weight);
+        if(rw>0){ wts2[rn.to]=rw; wch[rn.to]=[null, rw]; wtsTouched=true; }
+      }
     });
     if(notesTouched) lsSet('kt_ex_notes', notes);
     lsSet('kt_sessions', sessions);
@@ -17866,10 +17876,12 @@ function _executeCoachToolRaw(name,input){
         rpeLog:esRpe};
       es.exercises=esExs;
       if(!lsSet('kt_sessions', esAll)) return {ok:false,error:'Could not save: the phone\u2019s storage is full. Nothing was changed. Tell the user to export their data from Settings and free space; do not retry.'};
-      // The working weight follows only when the LOAD was corrected (or the
-      // lift renamed); a reps fix, or the session's other lifts, must not
-      // regress a weight the user bumped since.
-      _afterSessionEdit(es, esAll, esRenamed, (input.weight!=null || esRenamed.length) ? [esName] : []);
+      // The working weight follows only when the top set's LOAD was corrected; a
+      // reps fix, the session's other lifts, a load restated as it was, or a rename
+      // (it takes the old name's working weight along) must not regress a weight
+      // the user bumped since.
+      var esTop0=esPairs.reduce(function(m,p){ return Math.max(m, parseFloat(p[1])||0); }, 0);
+      _afterSessionEdit(es, esAll, esRenamed, (input.weight!=null && Math.abs(esTop-esTop0)>0.01) ? [esName] : []);
       render();
       return {ok:true,
         message:(esRenamed.length?('Renamed '+esRenamed[0].from+' \u2192 '+esRenamed[0].to):('Corrected '+esName))+' in the '+es.date+' session',

@@ -567,3 +567,52 @@ run('R20: deleting a workout logged at the deload\'s, +5\'s or coach\'s load kee
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R21 (hunt 4): in Edit sets, a back-off set's load fix (the top set unchanged) still reset the
+// lift's working weight to the logged top, undoing a +5 written since, and a rename wrote the
+// logged top under the new name; the coach's edit_session did the same with a rename or a load
+// restated as it was. Only a changed top set moves it now; a rename takes the old name's along.
+run('R21: a back-off set\'s fix or a rename in Edit sets keeps the +5 written since; a top-set fix still moves it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), O = addDays(T, -7);
+      const seed = () => {
+        lsSet('kt_sessions', [{ id: 5550101, date: T, week: weekForDate(T), type: 'Push', label: 'Push', prs: [], exercises: [
+          { name: 'Bench Press', sets: 3, reps: [5, 5, 5], weight: 185, weightLog: [185, 185, 180], isMain: true },
+          { name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 95, weightLog: [95, 95, 95] }] }]);
+        recomputePRs();
+        lsSet('kt_weights', { 'Bench Press': 190, 'Overhead Press': 100 });   // the +5 (or the coach) since
+      };
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const edit = async fn => { openSessionEditor(5550101); await wait(30); fn(id => document.getElementById(id)); saveSessionEdit(); await wait(30); };
+      const r = {};
+      seed(); await edit(el => { el('se_0_2_w').value = '175'; });
+      r.backoff = { w: W(), line: benchLine(), log: getSessions()[0].exercises[0].weightLog.join() };
+      seed(); await edit(el => { el('se_1_name').value = 'Seated Overhead Press'; });
+      r.rename = W();
+      seed(); executeCoachTool('edit_session', { id: 5550101, exercise: 'Overhead Press', rename_to: 'Seated Overhead Press' });
+      r.coachRename = W();
+      seed(); executeCoachTool('edit_session', { id: 5550101, exercise: 'Bench Press', reps: [5, 5, 4], weight: 185 });
+      r.coachRestated = W();
+      // the old name still has an older log: it keeps its working weight, the new name starts at this log's top
+      seed();
+      lsSet('kt_sessions', getSessions().concat([{ id: 5550100, date: O, week: weekForDate(O), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Overhead Press', sets: 3, reps: [8, 8, 8], weight: 90, weightLog: [90, 90, 90] }] }]));
+      await edit(el => { el('se_1_name').value = 'Seated Overhead Press'; });
+      r.renameKept = W();
+      // a fix of the top set moves the working weight (this is the lift's newest log)
+      seed(); await edit(el => { el('se_0_0_w').value = '180'; el('se_0_1_w').value = '180'; });
+      r.topFix = W();
+      return r;
+    });
+    assert(out.backoff.w['Bench Press'] === 190 && out.backoff.line === '  Bench Press: 190' && out.backoff.log === '185,185,175', 'a back-off set\'s fix keeps the +5: ' + JSON.stringify(out.backoff));
+    assert(out.rename['Seated Overhead Press'] === 100 && !('Overhead Press' in out.rename) && out.rename['Bench Press'] === 190, 'a rename takes the old name\'s working weight along: ' + JSON.stringify(out.rename));
+    assert(out.coachRename['Seated Overhead Press'] === 100 && !('Overhead Press' in out.coachRename), 'the coach\'s rename too: ' + JSON.stringify(out.coachRename));
+    assert(out.coachRestated['Bench Press'] === 190, 'a load restated as it was keeps the +5: ' + JSON.stringify(out.coachRestated));
+    assert(out.renameKept['Overhead Press'] === 100 && out.renameKept['Seated Overhead Press'] === 95, 'with the old name still logged, the new one starts at this log\'s top: ' + JSON.stringify(out.renameKept));
+    assert(out.topFix['Bench Press'] === 180 && out.topFix['Overhead Press'] === 100, 'a top-set fix still moves its own working weight: ' + JSON.stringify(out.topFix));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
