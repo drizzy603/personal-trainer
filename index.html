@@ -2308,7 +2308,7 @@ function _dayShortOf(l, rivals){
   var out=[], T=toks(l), f=T[0]||'', last=T.length>1?T[T.length-1]:'';
   var tag=function(w){ return /^(\d{1,3}|[A-Za-z]\d{0,2}|\d{1,2}[A-Za-z]|[IVX]{2,4})$/.test(w||''); };
   var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
-  if(parts.length>1) out.push(parts.map(function(p){ return (_graphemes(p)[0]||'').toUpperCase(); }).join('+'));
+  if(parts.length>1) out.push(cut(parts.map(function(p){ return (_graphemes(p)[0]||'').toUpperCase(); }).join('+'),7).replace(/\+$/,''));
   // "Day 1", "Week A": a number or a letter after the first word names the day
   else if(tag(T[1])) out.push(fit(f,T[1],len(T[1])));
   // A short last word ("A", "B", "2") is what tells two days apart: keep it.
