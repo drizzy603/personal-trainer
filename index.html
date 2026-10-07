@@ -11818,9 +11818,37 @@ function _carryButtons(cands, sessId){
   }).join('');
 }
 
-// Write a session edit into the programme through the engine: this week and
-// every later week of the same day, keeping the climb. Only what the owner
-// changed in the sheet is written (a mid-session stepper bump is not an edit).
+// A lift the day lists twice (a top set and its back-off as two rows) is one card in the runner
+// and on the watch (_runnerFoldRepeats). Before an edit made on that card goes into the programme,
+// its rows in a week are merged the same way into one row with per-set targets, so the edit
+// reaches every set of the lift: it reached the first row alone (+1 set gave five top sets, and a
+// swap or a removal left the back-off row to come back next time). The coach's version merges the
+// same way, so Use coach's and Reset still give the coach's numbers. False when the rows cannot be
+// one row: one carries a load and another is 'your load', or they are different coach lifts.
+function _progMergeLift(w, slot, name){
+  var list=w&&w[slot]; if(!Array.isArray(list)) return true;
+  var at=[]; list.forEach(function(r,i){ if(r && r.name===name) at.push(i); });
+  if(at.length<2) return true;
+  var rows=at.map(function(i){ return list[i]; }), head=rows[0];
+  var loaded=rows.filter(function(r){ return parseFloat(r.weight)>0; }).length;
+  if(loaded && loaded<rows.length) return false;
+  var bare=function(r){ var x=JSON.parse(JSON.stringify(r)); delete x.rec; return x; };
+  var coach=rows.filter(function(r){ return r.rec!==null; }).map(function(r){ return bare(r.rec||r); });
+  if(coach.some(function(x){ return x.name!==coach[0].name; })) return false;
+  // A row paired with a repeat below it loses the pair, as the runner's card does.
+  var pair=true;
+  at.slice(1).forEach(function(i){ var p=list[i-1]; if(p===head) pair=false; else if(p && p.ss && rows.indexOf(p)<0) p.ss=false; });
+  var m=_runnerFoldRepeats(rows.map(bare))[0];
+  if(head.ss && pair) m.ss=true; else delete m.ss;
+  if(rows.some(function(r){ return r.rec!==undefined; })){
+    m.rec=coach.length ? _runnerFoldRepeats(coach)[0] : null;
+    if(m.rec){ if(coach[0].ss && pair) m.rec.ss=true; else delete m.rec.ss; }
+    _progUnmark(m);
+  }
+  list[at[0]]=m;
+  for(var k=at.length-1;k>=1;k--) list.splice(at[k],1);
+  return true;
+}
 // Write a session edit into the programme through the engine: this week and
 // every later week of the same day, keeping the climb. Only what the owner
 // changed in the sheet is written (a mid-session stepper bump is not an edit).
@@ -11828,13 +11856,20 @@ function _runnerApplyToProgramme(op, p){
   if(!runnerSession) return false;
   var slot=String(runnerSession.type||'').toLowerCase();
   if(LIFT_KEYS.indexOf(slot)<0) return false;
-  var c=currentWeek-1, o={markOwner:true};
+  var c=currentWeek-1, o={markOwner:true}, split=false;
   var res=_commitRoutine(function(cr){
     if(!cr.weeks[c]) return false;
     var n=0;
+    var t=p.touched||{sets:true,reps:true,weight:true}, card=(op==='rename')?p.oldName:p.name;
+    // The card stood for every row of a lift the day lists twice: merged first, the edit (or the
+    // removal, which Restore then brings back whole) reaches all of them.
+    var many=(cr.weeks[c][slot]||[]).filter(function(r){ return r && r.name===card; }).length>1;
+    if(many && (op==='remove' || (op==='rename' && (p.ex.name!==card || t.sets || t.reps || t.weight)))){
+      for(var j=c;j<cr.weeks.length;j++) if(!_progMergeLift(cr.weeks[j], slot, card)){ split=true; return false; }
+    }
     if(op==='rename'){
-      var st=_progRow(cr.weeks[c], slot, p.oldName); if(!st) return false;
-      var name=p.oldName, t=p.touched||{sets:true,reps:true,weight:true};
+      var name=p.oldName;
+      var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
       if(p.ex.name!==p.oldName){
         var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, t.weight?p.ex.weight:0, o);
         if(sw===-1) return -1;
@@ -11856,6 +11891,7 @@ function _runnerApplyToProgramme(op, p){
     }
     return n;
   }, {noRender:true, scope:'runner:'+(runnerSession.startedAt||'')});
+  if(split){ showToast((op==='rename'?p.oldName:p.name)+' is on this day twice \u2014 the programme was not changed','err'); return false; }
   if(res===-1){ showToast('That lift is already on this day \u2014 the programme was not changed','err'); return false; }
   if(res) showToast('Programme updated from this week on \u00b7 keeps the climb');
   return !!res;

@@ -33,6 +33,10 @@
 // - R28 a swap in the Edit sheet drops the old lift's per-set loads (it keeps the per-set reps): the
 //   new lift's stepper stays where it is set after each set and after Undo, the wrist gets no old
 //   loads, and the sets are filed (and the record set) at the new lift's load.
+// - R29 'Also update my programme' on a card folded from two rows reaches every row: the lift
+//   becomes one row with the card's per-set targets from this week on (+1 set is one more
+//   back-off set, a swap takes every set, a removal takes every row and Restore brings it back
+//   whole, Use coach's gives the coach's sets back); rows that cannot be one are left alone.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -700,4 +704,77 @@ run('R28 a swap drops the old lift’s per-set loads', async () => {
       'filed and recorded at the machine’s load: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// R29: the H05 card stood for both rows, but 'Also update my programme' wrote to the first row only.
+const r29 = async (edit, mixed) => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async ({ edit, mixed }) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const toasts = []; const ot = window.showToast; window.showToast = function (m) { toasts.push(m); return ot.apply(this, arguments); };
+      // every week's Push lists Bench twice: a top set, then back-off sets below Overhead Press's pair
+      const rows = [
+        { name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 },
+        { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 },
+        { name: 'Bench Press', sets: 3, reps: 8, weight: mixed ? 0 : 185, rpe: 7 },
+        { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }
+      ];
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      cr.weeks.forEach(w => { w.push = JSON.parse(JSON.stringify(rows)); });
+      setCustomRoutine(cr);
+      if (edit.machine) lsSet('kt_weights', Object.assign({}, getWeights(), { 'Machine Chest Press': edit.machine }));
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.isMain ? ' main' : '') + (e.ss ? ' ss' : '');
+      const day = j => (getCustomRoutine().weeks[j].push || []).map(fmt);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const r = { c, dl: getCustomRoutine().weeks.map(w => _isDeloadWk(w)), card: fmt(runnerSession.exercises[0]) };
+      // Edit on the folded card, 'Also update my programme' on
+      openRunnerExEdit(0); await wait(20);
+      if (edit.sets) _rExEditSets = edit.sets;
+      if (edit.name) _rExEditName = edit.name;
+      _rExEditApply = true;
+      if (edit.remove) runnerExRemove(); else saveRunnerExEdit();
+      await wait(20);
+      r.session = fmt(runnerSession.exercises[0]);
+      r.weeks = getCustomRoutine().weeks.map((w, j) => day(j));
+      r.toasts = toasts.filter(t => /rogramme/.test(t));
+      closeDeckRunner(); await wait(20);
+      if (edit.next) { openDeckRunner('Push', true); await wait(20); r.next = fmt(runnerSession.exercises[0]); closeDeckRunner(); await wait(20); }
+      if (edit.remove) { _rtRestoreRemoved('Push'); await wait(20); r.restored = day(c); }
+      if (edit.useCoach) { _rtUseCoach('Push', 'Bench Press'); await wait(20); r.coach = day(c); }
+      window.showToast = ot;
+      return r;
+    }, { edit, mixed: !!mixed });
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('R29 an edit on a folded card with Also update my programme reaches every row of the lift', async () => {
+  const two = ['Bench Press 1x3@225 main', 'Overhead Press 3x8@100 ss', 'Bench Press 3x8@185', 'Lateral Raise 3x15@20'];
+  const early = o => o.weeks.slice(0, o.c).every(d => JSON.stringify(d) === JSON.stringify(two));
+  // +1 set: one more back-off set (it made the top-set row 5x3@225, next to the back-off row)
+  const a = await r29({ sets: 5, next: true, useCoach: true });
+  assert(a.c > 0 && a.card === 'Bench Press 4x[3,8,8,8]@[225,185,185,185] main', 'the day folds into one card: ' + JSON.stringify([a.c, a.card]));
+  const five = 'Bench Press 5x[3,8,8,8]@[225,185,185,185] main', rest = ['Overhead Press 3x8@100', 'Lateral Raise 3x15@20'];
+  assert(a.weeks.slice(a.c).every((d, i) => JSON.stringify(d) === JSON.stringify([a.dl[a.c + i] ? 'Bench Press 4x[3,8,8,8]@[225,185,185,185] main' : five].concat(rest))),
+    'from this week on the lift is one row with the extra back-off set (a deload keeps its sets): ' + JSON.stringify(a.weeks.slice(a.c)));
+  assert(early(a), 'earlier weeks are untouched: ' + JSON.stringify(a.weeks.slice(0, a.c)));
+  assert(a.next === five && JSON.stringify(a.toasts) === JSON.stringify(['Programme updated from this week on · keeps the climb']), 'the next session has the five sets: ' + JSON.stringify([a.next, a.toasts]));
+  assert(JSON.stringify(a.coach) === JSON.stringify(['Bench Press 4x[3,8,8,8]@[225,185,185,185] main'].concat(rest)), 'Use coach’s gives the coach’s sets back: ' + JSON.stringify(a.coach));
+  // a swap: every row of it (the back-off row stayed Bench Press and came back next time)
+  const b = await r29({ name: 'Machine Chest Press', machine: 100 });
+  assert(b.weeks.slice(b.c).every(d => JSON.stringify(d) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[100,82.5,82.5,82.5] main'].concat(rest))) && early(b),
+    'the machine takes every set, at its own level: ' + JSON.stringify(b.weeks.slice(b.c)));
+  // a removal: every row of it, and Restore brings the whole lift back
+  const d = await r29({ remove: true });
+  assert(d.weeks.slice(d.c).every(x => !x.some(t => /^Bench/.test(t))) && early(d), 'the lift leaves the day from this week on: ' + JSON.stringify(d.weeks.slice(d.c)));
+  assert(JSON.stringify(d.restored) === JSON.stringify(['Bench Press 4x[3,8,8,8]@[225,185,185,185] main'].concat(rest)), 'Restore brings back every set of it: ' + JSON.stringify(d.restored));
+  // rows that cannot be one (a load and 'your load'): the programme is left alone and says so
+  const e = await r29({ sets: 5 }, true);
+  assert(e.weeks.every(x => JSON.stringify(x) === JSON.stringify(two.map(t => t.replace('3x8@185', '3x8@0')))) && /^Bench Press 5x/.test(e.session)
+    && JSON.stringify(e.toasts) === JSON.stringify(['Bench Press is on this day twice — the programme was not changed']),
+    'a lift that cannot be one row is not half-written: ' + JSON.stringify([e.weeks[e.c], e.session, e.toasts]));
+  assert(![a, b, d, e].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e].map(o => o.errors.join('|')).join('|'));
 });
