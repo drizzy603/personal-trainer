@@ -9953,7 +9953,77 @@ function _uW(){ if(_unitsAt) return _unitsAt.w==='kg'?'kg':'lb'; return localSto
 function _uD(){ if(_unitsAt) return _unitsAt.d==='mi'?'mi':'km'; return localStorage.getItem('kt_unit_d')==='mi'?'mi':'km'; }
 // The morning coach card is text written in the old unit: it goes with the switch.
 // The records cache follows too: in kg a record must read heavier (_prBeats).
-function setUnitW(u){ localStorage.setItem('kt_unit_w', u==='kg'?'kg':'lb'); try{ _syncPRCache(); }catch(e){} invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render(); }
+// The programme follows onto the new unit's plates (_unitsRegrid).
+function setUnitW(u){
+  var from=localStorage.getItem('kt_unit_w')==='kg'?'kg':'lb', to=u==='kg'?'kg':'lb';
+  localStorage.setItem('kt_unit_w', to);
+  if(from!==to){ try{ _unitsRegrid(to); }catch(e){} }
+  try{ _syncPRCache(); }catch(e){} invalidateCoachCard(); coachCard=null; _scheduleNativeSync(); render();
+}
+// A switch to lb made in Settings moves the programme's loads onto lb plates: a kg owner's
+// stayed on the kg grid for good (72.5 kg read 159.8 lb, 27.5 kg dumbbells 60.6 lb), as the
+// launch sweep keeps a programme that reads as kg on its grid (one launch in lb is no decision).
+// What moved is kept on the device (kt_unit_regrid), so the switch back to kg gives every load
+// not changed since its exact kg value (a round trip read 106.5 for 106 kg).
+function _unitsRegrid(to){
+  if(!hasCustomRoutine()) return;
+  // a device-only note, read and written quietly (a failed write is no lost training data)
+  var mem=null; try{ mem=JSON.parse(localStorage.getItem('kt_unit_regrid')||'null'); }catch(e){}
+  var rows=(mem && Array.isArray(mem.rows)) ? mem.rows : [];
+  try{ localStorage.removeItem('kt_unit_regrid'); }catch(e){}
+  if(to==='lb'){
+    var lbP=function(v){ return (v>0 && !_onPlateGrid(v, false)) ? Math.max(2.5, Math.round(v/2.5)*2.5) : v; }, moved=[];
+    var n=_commitRoutine(function(cr){
+      moved=[];
+      _unitHolders(cr, function(h, m){
+        var P=parseFloat(h.weight)||0, hit=false;
+        if(lbP(P)!==P){ m.w=[P, lbP(P)]; h.weight=m.w[1]; hit=true; }
+        if(Array.isArray(h.weights)){
+          var nw=h.weights.map(function(x){ var v=parseFloat(x)||0; return lbP(v)!==v ? lbP(v) : x; });
+          if(JSON.stringify(nw)!==JSON.stringify(h.weights)){ m.ws=[h.weights, nw]; h.weights=nw; hit=true; }
+        }
+        if(hit) moved.push(m);
+      });
+      return moved.length;
+    }, {scope:'units', noRender:true, undoLabel:'Programme loads moved onto lb plates'});
+    if(n>0){ try{ localStorage.setItem('kt_unit_regrid', JSON.stringify({rows:moved})); }catch(e){} }
+    return;
+  }
+  if(!rows.length) return;
+  _commitRoutine(function(cr){
+    var n=0, at={}, done=[];
+    var key=function(m, p){ return m.j+'|'+m.k+'|'+(p||m.p)+'|'+m.n; };
+    _unitHolders(cr, function(h, m){ if(!at[key(m)]) at[key(m)]=h; });
+    var put=function(h, m){
+      if(!h || done.indexOf(h)>=0) return;
+      var hit=false;
+      if(m.w && Math.abs((parseFloat(h.weight)||0)-m.w[1])<0.01){ h.weight=m.w[0]; hit=true; }
+      if(m.ws && JSON.stringify(h.weights)===JSON.stringify(m.ws[1])){ h.weights=m.ws[0]; hit=true; }
+      if(hit){ done.push(h); n++; }
+    };
+    // The rows first; then the coach's kept originals and removed rows, where they are or back
+    // on the day as the row (Use coach's, Restore or Reset in lb).
+    rows.forEach(function(m){ if(m && m.p==='row') put(at[key(m)], m); });
+    rows.forEach(function(m){ if(m && m.p!=='row') put(at[key(m)] || at[key(m, 'row')], m); });
+    return n;
+  }, {scope:'units', noRender:true});
+}
+// Every load a programme holds, with where it is: each row, the coach's original kept on an
+// edited row (rec: "Use coach's" and Reset write it back), and the rows the owner removed
+// (recOut: Restore brings them back).
+function _unitHolders(cr, fn){
+  (cr.weeks||[]).forEach(function(w, j){
+    if(!w) return;
+    LIFT_KEYS.forEach(function(k){
+      (Array.isArray(w[k]) ? w[k] : []).forEach(function(e){
+        if(!e) return;
+        fn(e, {j:j, k:k, p:'row', n:e.name});
+        if(e.rec) fn(e.rec, {j:j, k:k, p:'rec', n:e.name});
+      });
+      ((w.recOut && Array.isArray(w.recOut[k])) ? w.recOut[k] : []).forEach(function(x){ if(x && x.row) fn(x.row, {j:j, k:k, p:'out', n:x.row.name}); });
+    });
+  });
+}
 function setUnitD(u){ localStorage.setItem('kt_unit_d', u==='mi'?'mi':'km'); invalidateCoachCard(); coachCard=null; render(); }
 function _inUnitsOf(tc, fn){
   var u=tc&&tc.units;
