@@ -792,3 +792,36 @@ run('Restore previous programme after the keyless +5 or deload puts the working 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R14: a reply's Undo is kept across a relaunch (M21), and a day rename took no snapshot, so the
+// card's Undo restored the snapshot from before the reply and dropped the rename made since. A
+// rename is its own undo point: the reply's Undo retires, and Restore previous programme takes back
+// only the rename.
+run('a day rename after a coach reply is its own undo point: the reply\'s Undo no longer drops it', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async ([MOCK, OHP_REPLY]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const ohp = () => getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Overhead Press').weight;
+      const card = async () => { switchTab('coach'); coachView = 'chat'; render(); await wait(30); const c = document.querySelector('.kt-ledger-card'); return c ? [...c.querySelectorAll('button')].some(b => /Undo/.test(b.textContent)) : null; };
+      eval(MOCK)(OHP_REPLY);
+      coachMessages.push({ role: 'user', content: 'Make my overhead press heavier' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      loadCoachHistory(); _routineScope = null;   // a relaunch: the reply still offers Undo
+      const r = { relaunch: await card(), ohp: ohp() };
+      setDayName('Push', 'Chest Day');   // Settings › Weekly schedule › NAME THIS DAY
+      r.renamed = { label: _dayLabel('Push'), undo: await card() };
+      setDayName('Push', 'Chest Day');   // the same name again changes nothing and keeps the undo point
+      r.backupName = ((lsGet('kt_routine_backup') || {}).dayNames || {}).Push || null;
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.restored = { label: _dayLabel('Push'), ohp: ohp() };
+      return r;
+    }, [MOCK, OHP_REPLY]);
+    assert(out.relaunch === true && out.ohp === 110, 'the reply changed OHP and offers Undo after a relaunch: ' + JSON.stringify(out));
+    assert(out.renamed.label === 'Chest Day' && out.renamed.undo === false, 'after the rename the reply\'s Undo is gone (it would drop the rename): ' + JSON.stringify(out.renamed));
+    assert(out.backupName === null, 'the undo point is the programme just before the rename: ' + out.backupName);
+    assert(out.restored.label === 'Push' && out.restored.ohp === 110, 'Restore previous programme takes back the rename only: ' + JSON.stringify(out.restored));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

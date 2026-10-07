@@ -2333,14 +2333,18 @@ function _isStockName(slot, clean){
 }
 function setDayName(slot, name){
   if(LIFT_TYPES.indexOf(slot)<0) return;
-  var cr=getCustomRoutine(); if(!cr) return;
-  var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{};
+  if(!getCustomRoutine()) return;
   var clean=_cleanDayLabel(name);
   var why=_dayNameCollision(slot, clean);
   if(why){ showToast('Can\u2019t call it that \u2014 '+why,'err'); render(); return; }
-  if(!_isStockName(slot, clean)) names[slot]=clean; else delete names[slot];
-  if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
-  setCustomRoutine(cr);
+  // Through the programme's one write door, as its own undo point: a coach reply's Undo (kept
+  // across a relaunch) restored its snapshot from before the reply and dropped a rename made since.
+  _commitRoutine(function(cr){
+    var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{}, was=JSON.stringify(cr.dayNames||null);
+    if(!_isStockName(slot, clean)) names[slot]=clean; else delete names[slot];
+    if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
+    return JSON.stringify(cr.dayNames||null)!==was ? 1 : 0;   // the name it already has changes nothing
+  }, {noRender:true, scope:'name:'+Date.now()});
   if(typeof _scheduleNativeSync==='function') _scheduleNativeSync();   // the wrist and widget show the name
   render();
 }
