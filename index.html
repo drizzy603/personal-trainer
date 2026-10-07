@@ -4629,8 +4629,8 @@ function checkRecentHealthRun(sinceOverride){
     // Sports only need a duration (indoor rides / court sports can lack distance); runs still
     // need distance to be loggable. A workout already in the log (imported, deleted, or the one a
     // hand log stands for) is not offered, and one activity two apps wrote to Health is offered
-    // (or auto-logged) once, as its richer copy. Each workout used to be weighed alone, so one
-    // hand log hid every workout of its kind that day.
+    // (or auto-logged) once, as its richer copy, the other burned with it (_hkCopiesOf). Each
+    // workout used to be weighed alone, so one hand log hid every workout of its kind that day.
     var fresh = runs.filter(function(r){
       var p = r && r.uuid && plan[r.uuid];
       return !!(p && p.keep && p.g.st==='new' && p.g.m.some(function(x){ return x.st>=since; }));
@@ -4938,9 +4938,17 @@ function _hkFreshId(list){
   return id;
 }
 function _hkMarkSeen(uuid){
-  if(!uuid) return;
-  var seen = lsGet('kt_hk_imported')||[];
-  if(seen.indexOf(uuid)===-1){ seen.push(uuid); lsSet('kt_hk_imported', seen); }
+  var add=[].concat(uuid||[]).filter(Boolean);
+  if(!add.length) return;
+  var seen = lsGet('kt_hk_imported')||[], n=seen.length;
+  add.forEach(function(u){ if(seen.indexOf(u)===-1) seen.push(u); });
+  if(seen.length>n) lsSet('kt_hk_imported', seen);
+}
+// The other copies of a workout's activity (two apps wrote it to Health) not yet in the ledger:
+// burned with the record its richer copy makes, or with the skip. Only the copy logged was burned,
+// so the other came back on its own once the record was deleted.
+function _hkCopiesOf(r, p){
+  return p ? p.g.m.filter(function(x){ return !x.seen && x.w.uuid!==r.uuid; }).map(function(x){ return x.w.uuid; }) : [];
 }
 // A workout the ledger already holds (a batch import took it while its card was up): the tap
 // used to write a second copy, since a manual-dupe check skips Health runs.
@@ -4964,8 +4972,8 @@ function _logHealthRun(r, ctx){
   // re-offered. Everything else is marked only after the run reaches disk —
   // marking first meant a quota failure lost the workout with nothing left to
   // re-offer it.
-  var p = _hkSportId(r) ? null : _hkPlanOf(r, ctx);
-  if(p ? p.g.st!=='new' : _manualRunDupe(localISO, r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime())){ _hkMarkSeen(r.uuid); return null; }
+  var p = _hkSportId(r) ? null : _hkPlanOf(r, ctx), burn = [r.uuid].concat(_hkCopiesOf(r, p));
+  if(p ? p.g.st!=='new' : _manualRunDupe(localISO, r.distanceKm, r.durationSec, null, new Date(r.startDate).getTime())){ _hkMarkSeen(burn); return null; }
   var rec = {
     id: _hkFreshId(getRuns()),
     startMs: new Date(r.startDate).getTime()||undefined,
@@ -4982,7 +4990,7 @@ function _logHealthRun(r, ctx){
   // so an in-place push left a phantom run in the session after "storage full".
   var runs = [rec].concat(getRuns());
   if(!lsSet('kt_runs', runs)) return false;   // storage full; lsSet has toasted
-  _hkMarkSeen(r.uuid);
+  _hkMarkSeen(burn);
   invalidateCoachCard();
   return rec;
 }
@@ -5014,14 +5022,14 @@ function _healthSportRec(r, sportId, idOffset){
 // Shared by the one-tap card and auto-log: writes the workout + dedup marker.
 function _logHealthSport(r, sportId, ctx){
   if(_hkAlreadyImported(r)) return null;
-  var p = _hkSportId(r)===sportId ? _hkPlanOf(r, ctx) : null;
-  if(p ? p.g.st!=='new' : _healthSportDupe(r, sportId)){ _hkMarkSeen(r.uuid); return null; }   // already in the log (by hand, or restored)
+  var p = _hkSportId(r)===sportId ? _hkPlanOf(r, ctx) : null, burn = [r.uuid].concat(_hkCopiesOf(r, p));
+  if(p ? p.g.st!=='new' : _healthSportDupe(r, sportId)){ _hkMarkSeen(burn); return null; }   // already in the log (by hand, or restored)
   var logs0 = getSportLogs();
   var rec = _healthSportRec(r, sportId, _hkFreshId(logs0)-Date.now());
   var logs = [rec].concat(logs0);                 // new array; see _logHealthRun
   _hkTouchCursor();
   if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
-  _hkMarkSeen(r.uuid);
+  _hkMarkSeen(burn);
   invalidateCoachCard();
   return rec;
 }
