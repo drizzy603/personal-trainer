@@ -30,7 +30,83 @@
 //   build still stages; a staged folder that is there is left alone; a served page syncs the note.
 // L04 (WatchSessionHub's pending-queue lock) and L05 (WorkoutManager.discard for a discarded
 // session) are native only; the page already sent what they need (spec 68 pins `discarded`).
+//
+// Hunt 4 (2026-10-06), regressions of the above:
+// - R41: a lift removed (or renamed away) and brought back into the session, a case-only rename,
+//   and an undo followed by more sets: the wrist mirrors every set logged here after the
+//   correction, so its copy (out of range, or a restored draft) never files those sets again.
+// - R42: since M08 the wrist trains a set round's own days from its start Monday. A session it
+//   logged there (watch build 53+: per-set RPE) is the new round's week 1 with its block, drained
+//   before the swap or after it; it counts for the new round (carry forward, its best) and stays
+//   out of the old round's best, so the round built is the one the wrist was shown. A session from
+//   an older watch (no per-set RPE: it kept the last plan sent) is still the old round's (spec 108),
+//   and so is one logged before a round set on its own Monday is tapped in (a sheet painted the
+//   night before): the wrist had only the old round's parked week.
+// - R43: a late wrist copy that adds sets to a lift the phone filed moves its working weight only
+//   while that is still what the phone's finish left: a +5, a deload or the coach's weight set since
+//   stands; a backdated session's heavier set may still raise it.
+// - R44: a started programme with nothing logged stays on its week when Monday comes
+//   (autoAdvanceWeek), so the widget, the wrist's week ahead and the reminders give later weeks'
+//   days this week's number and cadence until something is logged.
 const { boot, assert, run } = require('../lib/harness');
+
+// A wall clock the spec can move (spec 108's): local 'YYYY-MM-DDTHH:MM:SS', computed in the page
+// from the real today; a cold boot keeps the storage the app left (the harness re-seeds each load).
+const CLOCK = () => {
+  try {
+    const snap = sessionStorage.getItem('__ls');
+    if (snap) { const o = JSON.parse(snap); localStorage.clear(); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); sessionStorage.removeItem('__ls'); }
+  } catch (e) {}
+  if (window.__setNow) return;
+  const RealDate = Date; let offset = 0;
+  const t = sessionStorage.getItem('__now'); if (t) offset = new RealDate(t).getTime() - RealDate.now();
+  function FakeDate(...a) {
+    if (!(this instanceof FakeDate)) return new RealDate(RealDate.now() + offset).toString();
+    if (a.length === 0) return new RealDate(RealDate.now() + offset);
+    return new RealDate(...a);
+  }
+  FakeDate.prototype = RealDate.prototype;
+  FakeDate.now = () => RealDate.now() + offset;
+  FakeDate.parse = RealDate.parse; FakeDate.UTC = RealDate.UTC;
+  window.Date = FakeDate;
+  window.__setNow = (iso) => { offset = new RealDate(iso).getTime() - RealDate.now(); sessionStorage.setItem('__now', iso); };
+};
+async function coldBoot(app) {
+  await app.page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } sessionStorage.setItem('__ls', JSON.stringify(o)); });
+  await app.page.reload({ waitUntil: 'load' });
+  await app.page.waitForFunction(() => typeof window.render === 'function');
+}
+
+// A model of the build-58 wrist runner (SuperoWatchApp.swift: logSet, pushLive, merge,
+// hasSetsBeyond, finish, the 'ended' branch), fed by the page's own _buildWatchLive/_onWatchLive.
+const WRIST = `
+window.Wrist = function(slot){ Object.assign(this, { dayName: _dayLabel(slot), slot, reps: {}, wlog: {}, rlog: {}, at: {}, ack: {}, startedAt: 0 }); };
+Wrist.prototype.push = function(){ const c = o => JSON.parse(JSON.stringify(o));
+  return { dayName: this.dayName, slot: this.slot, startedAt: this.startedAt, reps: c(this.reps), weights: {}, rlog: c(this.rlog), at: c(this.at), ack: c(this.ack), hk: true }; };
+Wrist.prototype.logSet = function(n, r, w){   // returns the wrist's live push (deliver it, or drop it: out of range)
+  this.at[n] = Math.max(Date.now(), (this.at[n] || 0) + 1);
+  this.reps[n] = (this.reps[n] || []).concat([r]); this.wlog[n] = (this.wlog[n] || []).concat([w]); this.rlog[n] = (this.rlog[n] || []).concat([7]);
+  return this.push(); };
+Wrist.prototype.merge = function(live){
+  const inc = JSON.parse(JSON.stringify(live.reps || {})); let ahead = false;
+  Object.keys(live.own || {}).forEach(n => { if (inc[n] === undefined) inc[n] = []; });
+  Object.keys(inc).forEach(n => { const a = inc[n], l = this.reps[n] || [];
+    const edit = ((live.own || {})[n] || 0) > (this.at[n] || 0) && JSON.stringify(a) !== JSON.stringify(l);
+    if (edit || a.length > l.length) { this.reps[n] = a.slice(); this.wlog[n] = ((live.wlog || {})[n] || a.map(() => (live.weights || {})[n] || 0)).slice(); this.rlog[n] = a.map(() => 7);
+      if (edit && live.own[n]) { this.at[n] = live.own[n]; this.ack[n] = live.own[n]; } }
+    else if (l.length > a.length) ahead = true; });
+  Object.keys(this.reps).forEach(n => { if (this.reps[n].length && inc[n] === undefined) ahead = true; });
+  return ahead ? this.push() : null; };
+Wrist.prototype.copy = function(){ const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\\.\\d{3}Z$/, 'Z');
+  return JSON.stringify({ dayName: this.dayName, slot: this.slot, startedAt: iso(this.startedAt), loggedAt: iso(Date.now()),
+    exercises: Object.keys(this.reps).filter(n => this.reps[n].length).map(n => ({ name: n, weight: Math.max(...this.wlog[n]), reps: this.reps[n],
+      weightLog: this.wlog[n], rpe: 7, rpeLog: this.rlog[n] })) }); };
+Wrist.prototype.ended = function(live){   // sets beyond the phone's final log go as a wrist copy
+  const r = live.reps || {}; return Object.keys(this.reps).some(n => this.reps[n].length > (r[n] || []).length) ? this.copy() : null; };
+window.toWrist = wr => { const lv = _buildWatchLive(); const back = lv && !lv.ended ? wr.merge(lv) : null; if (back) _onWatchLive(back); };
+window.phoneSet = (n, r, w) => { const i = runnerSession.exercises.findIndex(e => e.name === n); if (i !== runnerExIdx) runnerGoTo(i);
+  runnerEngaged = true; runnerReps[n] = r; runnerWeights[n] = w; runnerCompleteSet(); runnerSkipRest(); };
+`;
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
   const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
@@ -410,6 +486,216 @@ run('L51: the staged-page note follows what the shell holds (restore, breaker, n
       'a build the breaker threw out is not fetched or staged again, and About says so: ' + JSON.stringify(out.breaker));
     assert(JSON.stringify(out.newer.stages) === JSON.stringify([out.Y]) && out.newer.note === out.Y, 'a newer build still stages: ' + JSON.stringify(out.newer));
     assert(out.served === out.X, 'a served page syncs the note to it: ' + out.served);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// R41: the wrist mirrors the sets logged here after a correction; a removed or renamed lift that
+// comes back (re-added, swapped back, a case-only rename) and an undo followed by more sets kept
+// a baseline below them, so the wrist copy filed those sets twice (out of range, restored draft).
+run('R41: a lift that comes back after a correction is not doubled by the wrist copy', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    await app.page.evaluate(WRIST);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      // 'Half an hour ago', but never before 00:01 today: sessions file by their start.
+      const recent = () => Math.min(Date.now() - 1000, Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - 30 * 60000));
+      const W = Capacitor.Plugins.TrovoWatch; let pending = [];
+      W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
+      W.clearPendingSessions = (a) => { const d = (a && a.sessions) || []; pending = pending.filter(x => d.indexOf(x) < 0); return Promise.resolve({}); };
+      window.showToast = () => {}; window.showUndoToast = () => {};
+      const today = todayISO(), ALT = 'Spec Swap Press';
+      const recs = () => getSessions().filter(s => s.date === today && s.type === 'Push')
+        .map(s => s.exercises.map(e => e.name + ' ' + JSON.stringify(e.reps)).sort().join(' | '));
+      const start = () => { lsSet('kt_sessions', []); _watchEndedPayload = null; openDeckRunner('Push', true); runnerSession.startedAt = recent();
+        const w = new Wrist('Push'); w.startedAt = runnerSession.startedAt; return w; };
+      const at = n => runnerSession.exercises.findIndex(e => e.name === n);
+      const remove = n => { openRunnerExEdit(at(n)); runnerExRemove(); const ok = document.querySelector('.kt-close-sheet button[id$="ok"]'); if (ok) ok.click(); };
+      const add = (after, n) => { openRunnerExEdit(at(after)); _openRunnerExPicker('add'); runnerExPickExercise(n); closeRunnerExEdit(); };
+      const rename = (from, to) => { openRunnerExEdit(at(from)); _rExEditName = to; saveRunnerExEdit(); };
+      // The phone finishes, its 'ended' reaches the wrist, which holds a set beyond it: its copy drains.
+      const phoneFirst = async w => { runnerFinishSession(); await wait(120);
+        document.querySelectorAll('.kt-complete-sheet, #kt-complete-sheet, .kt-close-sheet').forEach(e => e.remove());
+        const c = w.ended(_buildWatchLive()); if (c) pending.push(c); await drainWatchSessions(); await wait(30); return recs(); };
+      // The app is killed (its draft stays), the owner finishes on the wrist, the app relaunches and drains.
+      const viaDraft = async w => { _flushRunnerDraft(); runnerOpen = false; runnerResumePending = true;
+        pending.push(w.copy()); await drainWatchSessions(); await wait(30); runnerResumePending = false; runnerSession = null; return recs(); };
+      const r = {};
+      let wr = start(); const A = runnerSession.exercises[0].name, B = runnerSession.exercises[1].name, a = A.toLowerCase();
+      const set3 = (n, reps) => { for (let i = 0; i < 3; i++) { phoneSet(n, reps, 185); toWrist(wr); } };
+      // A with 2 mirrored sets is removed; the wrist drops it and acks with its next set (on B); A comes back for 3 sets.
+      const readd = ack => { phoneSet(A, 8, 185); toWrist(wr); phoneSet(A, 8, 185); toWrist(wr); phoneSet(B, 10, 100); toWrist(wr);
+        remove(A); toWrist(wr); if (ack) _onWatchLive(wr.logSet(B, 10, 100)); add(B, A); set3(A, 8); };
+      readd(true); r.ackOwn = (runnerSession.ownLen || {})[A]; wr.logSet(B, 10, 100); r.readd = await phoneFirst(wr);
+      wr = start(); readd(false); wr.logSet(B, 10, 100); r.readdNoAck = await phoneFirst(wr);
+      wr = start(); readd(true); r.readdDraft = await viaDraft(wr);
+      // ...and a set only the wrist logged on it afterwards is still its own
+      wr = start(); readd(true); wr.logSet(A, 6, 185); r.readdWrist = await phoneFirst(wr);
+      // A swapped for another lift and back (the wrist acks each drop), then one more set
+      const swapBack = () => { phoneSet(A, 5, 185); toWrist(wr); phoneSet(A, 5, 185); toWrist(wr); rename(A, ALT); toWrist(wr);
+        _onWatchLive(wr.logSet(B, 10, 100)); rename(ALT, A); toWrist(wr); _onWatchLive(wr.logSet(B, 10, 100)); phoneSet(A, 5, 185); toWrist(wr); };
+      wr = start(); swapBack(); wr.logSet(B, 10, 100); r.swapBack = await phoneFirst(wr);
+      wr = start(); swapBack(); r.swapBackDraft = await viaDraft(wr);
+      // a case-only rename: the old spelling's baseline (0 after the ack) never sets the new one's
+      wr = start(); phoneSet(A, 5, 185); toWrist(wr); phoneSet(A, 5, 185); toWrist(wr); rename(A, a); toWrist(wr);
+      _onWatchLive(wr.logSet(B, 10, 100)); phoneSet(a, 5, 185); toWrist(wr); wr.logSet(B, 10, 100); r.caseOnly = await phoneFirst(wr);
+      // an undo, then two more sets here: not doubled; an undo, a re-logged set and one only the wrist has: kept once
+      wr = start(); set3(A, 8); runnerUndoSet(A, 2); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr);
+      wr.logSet(B, 10, 100); r.undoMore = await phoneFirst(wr);
+      wr = start(); set3(A, 8); runnerUndoSet(A, 2); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr); wr.logSet(A, 10, 185); r.undoWrist = await phoneFirst(wr);
+      return Object.assign(r, { A, B, a });
+    });
+    const one = (k, want) => assert(out[k].length === 1 && out[k][0] === want.sort().join(' | '), k + ': ' + JSON.stringify(out[k]) + ' (want ' + JSON.stringify(want) + ')');
+    const { A, B, a } = out;
+    assert(out.ackOwn === 0, 'the wrist acked the drop: the removed lift’s baseline fell to what it holds (0): ' + out.ackOwn);
+    one('readd', [A + ' [8,8,8]', B + ' [10,10,10]']);
+    one('readdNoAck', [A + ' [8,8,8]', B + ' [10,10]']);
+    one('readdDraft', [A + ' [8,8,8]', B + ' [10,10]']);
+    one('readdWrist', [A + ' [8,8,8,6]', B + ' [10,10]']);
+    one('swapBack', [A + ' [5,5,5]', B + ' [10,10,10]']);
+    one('swapBackDraft', [A + ' [5,5,5]', B + ' [10,10]']);
+    one('caseOnly', [a + ' [5,5,5]', B + ' [10,10]']);
+    one('undoMore', [A + ' [8,8,9,9]', B + ' [10]']);
+    one('undoWrist', [A + ' [8,8,9,10]']);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// R42: the final week (12 of 12) began last Monday and round 2 is set for this Monday. On Sunday
+// evening the phone pushed the week ahead (round 2's week 1 from Monday); the wrist trained Monday's
+// Push from it at 07:00, heavier than planned, and the phone opens at 09:00 (the queue drains, then
+// the swap). Then the same with the wrist's copy arriving only after the swap.
+// tapped: no round is set on Sunday (the wrist trains round 1's parked week); the sheet painted that
+// evening is tapped on Monday after the drain, so the round swaps in at the tap.
+async function r42(late, tapped) {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_week: '12' } });
+  try {
+    await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK);
+    const pre = await app.page.evaluate(([late, tapped]) => {
+      const mon = _mostRecentMonday(), last = addDays(mon, -7), old = addDays(last, -7);
+      __setNow(addDays(mon, -1) + 'T20:00:00');
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; cr.weeks.forEach(w => { delete w.weekPlan; });
+      setCustomRoutine(cr);
+      localStorage.setItem('kt_week_monday', last); localStorage.setItem('kt_final_since', last); lsSet('kt_week', 12); currentWeek = 12;
+      lsSet('kt_sessions', [{ id: new Date(old + 'T18:00:00').getTime(), date: old, type: 'Push', label: 'Push', week: 11, prs: [], startedAt: new Date(old + 'T17:00:00').getTime(),
+        exercises: [{ name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: 185, weightLog: [185, 185, 185, 185] }] }]);
+      if (!tapped) setNextRound('monday', mon);
+      const plan = _watchPlanForDate(mon), bench = plan.exercises.find(e => e.name === 'Bench Press');
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const copy = JSON.stringify({ dayName: plan.dayName, slot: plan.slot, startedAt: iso(new Date(mon + 'T07:00:00').getTime()), loggedAt: iso(new Date(mon + 'T07:50:00').getTime()),
+        exercises: [{ name: 'Bench Press', weight: bench.weight + 40, reps: [8, 8, 8, 8], weightLog: [1, 2, 3, 4].map(() => bench.weight + 40), rpe: 8, rpeLog: [8, 8, 8, 8] }] });
+      sessionStorage.setItem('__pending', JSON.stringify(late ? [] : [copy])); sessionStorage.setItem('__late', late ? copy : '');
+      sessionStorage.setItem('__tap', tapped ? mon : '');
+      __setNow(mon + 'T09:00:00');
+      return { week: plan.week, slot: plan.slot, bench: bench.weight };
+    }, [late, !!tapped]);
+    await app.page.addInitScript(() => { const p = sessionStorage.getItem('__pending'); if (p && window.__mock) window.__mock.pending = JSON.parse(p); });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await wait(500);
+      const lateCopy = sessionStorage.getItem('__late'), tapMon = sessionStorage.getItem('__tap');
+      if (lateCopy) { window.__mock.pending = [lateCopy]; await drainWatchSessions(); await wait(50); }
+      // Tapped after the boot drain (1 s); round 2's week-1 Bench with and without that session first.
+      let built = null;
+      if (tapMon) { await wait(1000); const b = u => _nextRoundBuild(getCustomRoutine(), u).routine.weeks[0].push.find(e => e.name === 'Bench Press').weight;
+        built = { withIt: b(''), without: b(tapMon) }; window.showToast = () => {}; setNextRound('monday', tapMon); }
+      const cr = getCustomRoutine(), rec = getSessions().find(s => s.wristStartedAt), card = rec && _shareCardModel(rec);
+      return { cycle: cr.cycle, week: currentWeek, wk1: cr.weeks[0].bName, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight, built,
+        rec: rec && { week: rec.week, bName: rec.bName, bWk: rec.bWk }, card: card && { week: card.week, phase: card.phase },
+        inRound: !!rec && _roundTest(cr)(rec.date, _cmpT(rec)), carry: rec ? _carryCandidates(rec).length : -1 };
+    });
+    return { pre, out, errors: app.errors };
+  } finally { await app.close(); }
+}
+run('R42: a wrist session trained on a set round’s own days is that round’s week 1', async () => {
+  for (const late of [false, true]) {
+    const { pre, out, errors } = await r42(late), k = late ? 'drained after the swap' : 'drained before the swap';
+    assert(pre.week === 1 && pre.slot === 'Push', 'the wrist was given round 2’s week 1 for the start Monday: ' + JSON.stringify(pre));
+    assert(out.cycle === 2 && out.week === 1, k + ': round 2 started on its Monday: ' + JSON.stringify(out));
+    assert(out.rec && out.rec.week === 1 && out.rec.bName === out.wk1 && out.rec.bWk === 1 && out.card.week === 1 && out.card.phase === out.wk1,
+      k + ': the session is round 2’s week 1 with its block (not week 12, the deload): ' + JSON.stringify(out));
+    assert(out.inRound && out.carry > 0, k + ': it counts for round 2 (above its plan, Carry forward offers it): ' + JSON.stringify(out));
+    assert(out.bench1 === pre.bench, k + ': round 2 is the one the wrist was shown (the heavier session is not round 1’s best): ' + JSON.stringify([pre, out]));
+    assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
+  }
+  // A round set on its Monday swaps in at the tap: the wrist had shown round 1's parked week, so a
+  // session it logged that morning stays round 1's (week 12, its block) and is round 1's best.
+  const { pre, out, errors } = await r42(false, true);
+  assert(pre.week === 12, 'no round set yet: the wrist was given round 1’s parked week 12: ' + JSON.stringify(pre));
+  assert(out.cycle === 2 && out.week === 1, 'tapped on Monday: round 2 started: ' + JSON.stringify(out));
+  assert(out.rec && out.rec.week === 12 && out.rec.bWk === 12 && out.rec.bName !== out.wk1 && !out.inRound,
+    'tapped on Monday: the wrist session trained before the tap is round 1’s week 12: ' + JSON.stringify(out));
+  assert(out.built && out.built.withIt !== out.built.without && out.bench1 === out.built.withIt,
+    'it is round 1’s best (round 2’s week 1 is re-based on it): ' + JSON.stringify([pre, out]));
+  assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
+});
+
+// R43: the wrist's late copy of a session the phone filed adds a set to a lift whose working weight
+// was changed since the finish (the keyless +5, a deload): the change stands. Still the finish's
+// load, a heavier merged set moves it; a backdated session's heavier set can still raise it.
+run('R43: a late wrist copy never undoes a working weight changed since the phone’s finish', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const W = Capacitor.Plugins.TrovoWatch; let pending = [];
+      W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
+      W.clearPendingSessions = (a) => { const d = (a && a.sessions) || []; pending = pending.filter(x => d.indexOf(x) < 0); return Promise.resolve({}); };
+      window.showToast = () => {};
+      const today = todayISO(), L = 'Bench Press', pushName = _dayLabel('Push');
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const at = (day, h) => new Date(day + 'T' + String(h).padStart(2, '0') + ':00:00').getTime();
+      const nowish = Math.max(at(today, 0) + 60e3, Date.now() - 3600e3), d2 = addDays(today, -2);
+      const wrist = (startMs, wl) => JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: iso(startMs), loggedAt: iso(Math.min(Date.now(), startMs + 3600e3)),
+        exercises: [{ name: L, weight: Math.max(...wl), reps: wl.map(() => 5), weightLog: wl, rpe: 8, rpeLog: wl.map(() => 8) }] });
+      // The phone filed the session at `phoneW` (its finish set the working weight, or left a heavier one
+      // for a backdated session); `since` changes it after; the wrist's copy then adds a set at `extra`.
+      const go = async (date, start, phoneW, kt, since, extra) => {
+        lsSet('kt_sessions', [{ id: start + 1800e3, date, type: 'Push', label: pushName, week: currentWeek, note: '', prs: [], startedAt: start,
+          exercises: [{ name: L, sets: 3, reps: [5, 5, 5], weight: phoneW, weightLog: [phoneW, phoneW, phoneW] }] }]);
+        lsSet('kt_weights', { [L]: kt }); if (since) _writeLoadLocal(L, since);
+        pending = [wrist(start + 1000, [phoneW, phoneW, phoneW, extra])]; await drainWatchSessions(); await wait(30);
+        const s = getSessions(); return { w: getWeights()[L], merged: s.length === 1 && s[0].exercises[0].reps.length === 4 };
+      };
+      return { plus5: await go(today, nowish, 185, 185, 190, 185), deload: await go(today, nowish, 185, 185, 166.5, 185),
+        heavier: await go(today, nowish, 185, 185, 0, 195), backHeavier: await go(d2, at(d2, 9), 180, 185, 0, 190), backSame: await go(d2, at(d2, 9), 180, 185, 0, 180) };
+    });
+    assert(Object.keys(out).every(k => out[k].merged), 'each copy merged into the phone’s record: ' + JSON.stringify(out));
+    assert(out.plus5.w === 190 && out.deload.w === 166.5, 'a +5 or a deload made since the finish stands (it was set back to 185): ' + JSON.stringify(out));
+    assert(out.heavier.w === 195, 'still the finish’s load, the copy’s heavier set moves it: ' + JSON.stringify(out.heavier));
+    assert(out.backHeavier.w === 190 && out.backSame.w === 185, 'a backdated session only raises it: ' + JSON.stringify([out.backHeavier, out.backSame]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// R44: a started programme with nothing logged stays on its week when Monday comes (autoAdvanceWeek),
+// so the widget, the wrist's week ahead and the reminders give next week's days this week's number
+// and cadence, as the app will show them; once anything is logged, the weeks count on (L17).
+run('R44: with nothing logged, next week’s days keep this week’s number and cadence', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; cr.weeks.forEach(w => { delete w.weekPlan; });
+      cr.weeks[1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // week 2 has its own cadence
+      setCustomRoutine(cr);
+      _setWeek(1);   // week 1 began this Monday
+      const next = addDays(_mostRecentMonday(), 7);
+      const look = () => ({ days: _nativeSummaryDays(15).filter(d => d.date >= next).map(d => (d.date < addDays(next, 7) ? 'b' : 'c') + d.week),
+        mon: (() => { const p = _watchPlanForDate(next); return p.week + ':' + p.slot; })() });
+      let sum = null; Capacitor.Plugins.TrovoWidget.updateSummary = (o) => { sum = JSON.parse(o.json); return Promise.resolve({}); };
+      _lastNativeSummary = null; _runNativeSync();
+      const none = Object.assign(look(), { sent: sum && sum.days.map(d => d.week) });
+      lsSet('kt_runs', [{ id: Date.now(), date: todayISO(), distance: 5, time: '25:00', type: 'easy' }]);
+      return { none, logged: look() };
+    });
+    assert(out.none.days.length >= 7 && out.none.days.every(s => s.slice(1) === '1') && out.none.mon === '1:Push' && out.none.sent.every(w => w === 1),
+      'nothing logged: next week’s days are week 1 with week 1’s cadence (widget, wrist, reminders): ' + JSON.stringify(out.none));
+    assert(out.logged.days.every(s => s === 'b2' || s === 'c3') && out.logged.mon === '2:Legs',
+      'once something is logged the weeks count on: ' + JSON.stringify(out.logged));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
