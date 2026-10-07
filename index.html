@@ -21482,7 +21482,10 @@ function _mergeWristExercises(rec, wristExs){
     if(owned[key]){
       // The phone corrected this exercise (undo/edit): its log stands, but
       // sets the wrist logged AFTER the correction are still its sets.
-      var base=ownLen[owned[key]]||0;
+      // Never below the phone's own log: the wrist mirrors every set logged here after the
+      // correction too, and a lift removed (or renamed away) and brought back had its baseline
+      // fall to 0 at the wrist's ack, so its copy filed the mirrored sets a second time.
+      var base=Math.max(ownLen[owned[key]]||0, mr.length);
       if(wr.length<=base) return;
       if(Array.isArray(w.rpeLog) && w.rpeLog.length===wr.length){
         var mrl=Array.isArray(mine.rpeLog)?mine.rpeLog.slice(0, mr.length):mr.map(function(){ return ''; });

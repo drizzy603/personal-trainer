@@ -30,7 +30,43 @@
 //   build still stages; a staged folder that is there is left alone; a served page syncs the note.
 // L04 (WatchSessionHub's pending-queue lock) and L05 (WorkoutManager.discard for a discarded
 // session) are native only; the page already sent what they need (spec 68 pins `discarded`).
+//
+// Hunt 4 (2026-10-06), regressions of the above:
+// - R41: a lift removed (or renamed away) and brought back into the session, a case-only rename,
+//   and an undo followed by more sets: the wrist mirrors every set logged here after the
+//   correction, so its copy (out of range, or a restored draft) never files those sets again.
 const { boot, assert, run } = require('../lib/harness');
+
+// A model of the build-58 wrist runner (SuperoWatchApp.swift: logSet, pushLive, merge,
+// hasSetsBeyond, finish, the 'ended' branch), fed by the page's own _buildWatchLive/_onWatchLive.
+const WRIST = `
+window.Wrist = function(slot){ Object.assign(this, { dayName: _dayLabel(slot), slot, reps: {}, wlog: {}, rlog: {}, at: {}, ack: {}, startedAt: 0 }); };
+Wrist.prototype.push = function(){ const c = o => JSON.parse(JSON.stringify(o));
+  return { dayName: this.dayName, slot: this.slot, startedAt: this.startedAt, reps: c(this.reps), weights: {}, rlog: c(this.rlog), at: c(this.at), ack: c(this.ack), hk: true }; };
+Wrist.prototype.logSet = function(n, r, w){   // returns the wrist's live push (deliver it, or drop it: out of range)
+  this.at[n] = Math.max(Date.now(), (this.at[n] || 0) + 1);
+  this.reps[n] = (this.reps[n] || []).concat([r]); this.wlog[n] = (this.wlog[n] || []).concat([w]); this.rlog[n] = (this.rlog[n] || []).concat([7]);
+  return this.push(); };
+Wrist.prototype.merge = function(live){
+  const inc = JSON.parse(JSON.stringify(live.reps || {})); let ahead = false;
+  Object.keys(live.own || {}).forEach(n => { if (inc[n] === undefined) inc[n] = []; });
+  Object.keys(inc).forEach(n => { const a = inc[n], l = this.reps[n] || [];
+    const edit = ((live.own || {})[n] || 0) > (this.at[n] || 0) && JSON.stringify(a) !== JSON.stringify(l);
+    if (edit || a.length > l.length) { this.reps[n] = a.slice(); this.wlog[n] = ((live.wlog || {})[n] || a.map(() => (live.weights || {})[n] || 0)).slice(); this.rlog[n] = a.map(() => 7);
+      if (edit && live.own[n]) { this.at[n] = live.own[n]; this.ack[n] = live.own[n]; } }
+    else if (l.length > a.length) ahead = true; });
+  Object.keys(this.reps).forEach(n => { if (this.reps[n].length && inc[n] === undefined) ahead = true; });
+  return ahead ? this.push() : null; };
+Wrist.prototype.copy = function(){ const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\\.\\d{3}Z$/, 'Z');
+  return JSON.stringify({ dayName: this.dayName, slot: this.slot, startedAt: iso(this.startedAt), loggedAt: iso(Date.now()),
+    exercises: Object.keys(this.reps).filter(n => this.reps[n].length).map(n => ({ name: n, weight: Math.max(...this.wlog[n]), reps: this.reps[n],
+      weightLog: this.wlog[n], rpe: 7, rpeLog: this.rlog[n] })) }); };
+Wrist.prototype.ended = function(live){   // sets beyond the phone's final log go as a wrist copy
+  const r = live.reps || {}; return Object.keys(this.reps).some(n => this.reps[n].length > (r[n] || []).length) ? this.copy() : null; };
+window.toWrist = wr => { const lv = _buildWatchLive(); const back = lv && !lv.ended ? wr.merge(lv) : null; if (back) _onWatchLive(back); };
+window.phoneSet = (n, r, w) => { const i = runnerSession.exercises.findIndex(e => e.name === n); if (i !== runnerExIdx) runnerGoTo(i);
+  runnerEngaged = true; runnerReps[n] = r; runnerWeights[n] = w; runnerCompleteSet(); runnerSkipRest(); };
+`;
 
 run('H06: a lift renamed or removed mid-workout is not brought back by the wrist', async () => {
   const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
@@ -410,6 +446,78 @@ run('L51: the staged-page note follows what the shell holds (restore, breaker, n
       'a build the breaker threw out is not fetched or staged again, and About says so: ' + JSON.stringify(out.breaker));
     assert(JSON.stringify(out.newer.stages) === JSON.stringify([out.Y]) && out.newer.note === out.Y, 'a newer build still stages: ' + JSON.stringify(out.newer));
     assert(out.served === out.X, 'a served page syncs the note to it: ' + out.served);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// R41: the wrist mirrors the sets logged here after a correction; a removed or renamed lift that
+// comes back (re-added, swapped back, a case-only rename) and an undo followed by more sets kept
+// a baseline below them, so the wrist copy filed those sets twice (out of range, restored draft).
+run('R41: a lift that comes back after a correction is not doubled by the wrist copy', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    await app.page.evaluate(WRIST);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      // 'Half an hour ago', but never before 00:01 today: sessions file by their start.
+      const recent = () => Math.min(Date.now() - 1000, Math.max(new Date().setHours(0, 1, 0, 0), Date.now() - 30 * 60000));
+      const W = Capacitor.Plugins.TrovoWatch; let pending = [];
+      W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
+      W.clearPendingSessions = (a) => { const d = (a && a.sessions) || []; pending = pending.filter(x => d.indexOf(x) < 0); return Promise.resolve({}); };
+      window.showToast = () => {}; window.showUndoToast = () => {};
+      const today = todayISO(), ALT = 'Spec Swap Press';
+      const recs = () => getSessions().filter(s => s.date === today && s.type === 'Push')
+        .map(s => s.exercises.map(e => e.name + ' ' + JSON.stringify(e.reps)).sort().join(' | '));
+      const start = () => { lsSet('kt_sessions', []); _watchEndedPayload = null; openDeckRunner('Push', true); runnerSession.startedAt = recent();
+        const w = new Wrist('Push'); w.startedAt = runnerSession.startedAt; return w; };
+      const at = n => runnerSession.exercises.findIndex(e => e.name === n);
+      const remove = n => { openRunnerExEdit(at(n)); runnerExRemove(); const ok = document.querySelector('.kt-close-sheet button[id$="ok"]'); if (ok) ok.click(); };
+      const add = (after, n) => { openRunnerExEdit(at(after)); _openRunnerExPicker('add'); runnerExPickExercise(n); closeRunnerExEdit(); };
+      const rename = (from, to) => { openRunnerExEdit(at(from)); _rExEditName = to; saveRunnerExEdit(); };
+      // The phone finishes, its 'ended' reaches the wrist, which holds a set beyond it: its copy drains.
+      const phoneFirst = async w => { runnerFinishSession(); await wait(120);
+        document.querySelectorAll('.kt-complete-sheet, #kt-complete-sheet, .kt-close-sheet').forEach(e => e.remove());
+        const c = w.ended(_buildWatchLive()); if (c) pending.push(c); await drainWatchSessions(); await wait(30); return recs(); };
+      // The app is killed (its draft stays), the owner finishes on the wrist, the app relaunches and drains.
+      const viaDraft = async w => { _flushRunnerDraft(); runnerOpen = false; runnerResumePending = true;
+        pending.push(w.copy()); await drainWatchSessions(); await wait(30); runnerResumePending = false; runnerSession = null; return recs(); };
+      const r = {};
+      let wr = start(); const A = runnerSession.exercises[0].name, B = runnerSession.exercises[1].name, a = A.toLowerCase();
+      const set3 = (n, reps) => { for (let i = 0; i < 3; i++) { phoneSet(n, reps, 185); toWrist(wr); } };
+      // A with 2 mirrored sets is removed; the wrist drops it and acks with its next set (on B); A comes back for 3 sets.
+      const readd = ack => { phoneSet(A, 8, 185); toWrist(wr); phoneSet(A, 8, 185); toWrist(wr); phoneSet(B, 10, 100); toWrist(wr);
+        remove(A); toWrist(wr); if (ack) _onWatchLive(wr.logSet(B, 10, 100)); add(B, A); set3(A, 8); };
+      readd(true); r.ackOwn = (runnerSession.ownLen || {})[A]; wr.logSet(B, 10, 100); r.readd = await phoneFirst(wr);
+      wr = start(); readd(false); wr.logSet(B, 10, 100); r.readdNoAck = await phoneFirst(wr);
+      wr = start(); readd(true); r.readdDraft = await viaDraft(wr);
+      // ...and a set only the wrist logged on it afterwards is still its own
+      wr = start(); readd(true); wr.logSet(A, 6, 185); r.readdWrist = await phoneFirst(wr);
+      // A swapped for another lift and back (the wrist acks each drop), then one more set
+      const swapBack = () => { phoneSet(A, 5, 185); toWrist(wr); phoneSet(A, 5, 185); toWrist(wr); rename(A, ALT); toWrist(wr);
+        _onWatchLive(wr.logSet(B, 10, 100)); rename(ALT, A); toWrist(wr); _onWatchLive(wr.logSet(B, 10, 100)); phoneSet(A, 5, 185); toWrist(wr); };
+      wr = start(); swapBack(); wr.logSet(B, 10, 100); r.swapBack = await phoneFirst(wr);
+      wr = start(); swapBack(); r.swapBackDraft = await viaDraft(wr);
+      // a case-only rename: the old spelling's baseline (0 after the ack) never sets the new one's
+      wr = start(); phoneSet(A, 5, 185); toWrist(wr); phoneSet(A, 5, 185); toWrist(wr); rename(A, a); toWrist(wr);
+      _onWatchLive(wr.logSet(B, 10, 100)); phoneSet(a, 5, 185); toWrist(wr); wr.logSet(B, 10, 100); r.caseOnly = await phoneFirst(wr);
+      // an undo, then two more sets here: not doubled; an undo, a re-logged set and one only the wrist has: kept once
+      wr = start(); set3(A, 8); runnerUndoSet(A, 2); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr);
+      wr.logSet(B, 10, 100); r.undoMore = await phoneFirst(wr);
+      wr = start(); set3(A, 8); runnerUndoSet(A, 2); toWrist(wr); phoneSet(A, 9, 185); toWrist(wr); wr.logSet(A, 10, 185); r.undoWrist = await phoneFirst(wr);
+      return Object.assign(r, { A, B, a });
+    });
+    const one = (k, want) => assert(out[k].length === 1 && out[k][0] === want.sort().join(' | '), k + ': ' + JSON.stringify(out[k]) + ' (want ' + JSON.stringify(want) + ')');
+    const { A, B, a } = out;
+    assert(out.ackOwn === 0, 'the wrist acked the drop: the removed lift’s baseline fell to what it holds (0): ' + out.ackOwn);
+    one('readd', [A + ' [8,8,8]', B + ' [10,10,10]']);
+    one('readdNoAck', [A + ' [8,8,8]', B + ' [10,10]']);
+    one('readdDraft', [A + ' [8,8,8]', B + ' [10,10]']);
+    one('readdWrist', [A + ' [8,8,8,6]', B + ' [10,10]']);
+    one('swapBack', [A + ' [5,5,5]', B + ' [10,10,10]']);
+    one('swapBackDraft', [A + ' [5,5,5]', B + ' [10,10]']);
+    one('caseOnly', [a + ' [5,5,5]', B + ' [10,10]']);
+    one('undoMore', [A + ' [8,8,9,9]', B + ' [10]']);
+    one('undoWrist', [A + ' [8,8,9,10]']);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
