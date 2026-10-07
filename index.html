@@ -8858,9 +8858,10 @@ async function checkPendingShare(){
     var r = await TS.getPendingShare();
     if(!r || !r.imageBase64) return;
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
-    if(cmpOn || document.getElementById('cmpSheetOverlay')) _cmpExit();   // the sheet would sit over the chat
+    // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
+    // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
+    switchTab('coach');
     coachView = 'chat';
-    currentTab = 'coach';
     render();
     if(r.comment){
       setTimeout(function(){

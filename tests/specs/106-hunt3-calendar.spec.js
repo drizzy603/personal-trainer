@@ -653,3 +653,39 @@ run('R26: deleting the newest log follows the lift\'s older nested-shape logs; t
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R22 (hunt 4): a photo shared into the app (Photos > Share > Fitness Programmer) opened the Coach
+// chat under an open day sheet, its Delete buttons over the chat; L26 closed the sheet only in
+// switchTab, and the share intake set the tab by hand (the tab bar kept Progress lit too).
+run('R22: a shared photo closes the day sheet (and COMPARE) and opens the Coach chat with its tab lit', async () => {
+  const D = daysAgo(3);
+  const app = await boot({ native: true, seed: { kt_runs: JSON.stringify([{ id: 2201, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]) } });
+  try {
+    const out = await app.page.evaluate(async D => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const st = () => ({ sheet: !!document.getElementById('calDayOverlay'), tab: currentTab, view: coachView, sel: calSelectedDate, cmpOn,
+        lit: [...document.querySelectorAll('.tab.active')].map(t => t.getAttribute('data-tab')).join(), img: !!pendingImage });
+      const openDay = async () => { switchTab('progress'); progressTab = 'lifts'; _calNavToDate(D); calSelectedDate = null; render(); await wait(30); document.querySelector('.cal-day[data-date="' + D + '"]').click(); await wait(40); };
+      // back in the foreground with a photo waiting: the shell's share hand-off
+      const share = async () => {
+        Capacitor.Plugins.TrovoShare.getPendingShare = () => { Capacitor.Plugins.TrovoShare.getPendingShare = () => Promise.resolve({}); return Promise.resolve({ imageBase64: 'iVBORw0KGgo=' }); };
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange'));
+        await wait(900);
+      };
+      const r = {};
+      await openDay(); r.opened = st();
+      await share(); r.shared = st();
+      pendingImage = null;
+      switchTab('progress'); render(); await wait(30);
+      document.getElementById('cmp-btn').click(); await wait(30);
+      r.cmp = st();
+      await share(); r.cmpShared = st();
+      return r;
+    }, D);
+    assert(out.opened.sheet && out.opened.lit === 'progress', 'the day sheet is open on Progress: ' + JSON.stringify(out.opened));
+    assert(!out.shared.sheet && out.shared.sel === null && out.shared.tab === 'coach' && out.shared.view === 'chat' && out.shared.lit === 'coach' && out.shared.img, 'the photo lands in the Coach chat with the sheet closed and the Coach tab lit: ' + JSON.stringify(out.shared));
+    assert(out.cmp.cmpOn && !out.cmpShared.cmpOn && out.cmpShared.tab === 'coach' && out.cmpShared.lit === 'coach', 'COMPARE is left as before: ' + JSON.stringify([out.cmp, out.cmpShared]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
