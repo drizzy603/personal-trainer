@@ -4790,8 +4790,8 @@ function _hkPlan(list){
     if(_hkBuried(x.w, x.sid)) x.g.buried=true;
   });
   var addId=function(rec, k){
-    var id=_hkIdOf(rec, k);
-    if(!id || id.st<lo-2*DAY || id.st>hi+2*DAY) return;
+    var s=rec && Number(rec.startMs), id=s>=lo-2*DAY && s<=hi+2*DAY && _hkIdOf(rec, k);   // only records near this fetch
+    if(!id) return;
     id.rec=rec; id.k=k; id.iso=_ymdLocal(new Date(id.st));
     (ids[k+'|'+id.iso]=ids[k+'|'+id.iso]||[]).push(id);
   };
@@ -4812,9 +4812,11 @@ function _hkPlan(list){
   });
   var pairs=[], n=0, taken=[], out={};
   var offer=function(rec, k){
-    if(!rec || _hkIdOf(rec, k)) return;
-    var health=k==='run' ? _isHealthRun(rec) : _isHealthSport(rec);
-    var day=!(health && hasLedger) && days[k+'|'+String(health && rec.hkOrig ? rec.hkOrig.date : rec.date)];
+    var health=!!rec && (k==='run' ? _isHealthRun(rec) : _isHealthSport(rec));
+    // A Health record that knows its start stands only for its own workout (_hkIdOf); one that
+    // does not stands in by tolerance only with no ledger.
+    if(!rec || (health && (hasLedger || Number(rec.startMs)>0))) return;
+    var day=days[k+'|'+String(health && rec.hkOrig ? rec.hkOrig.date : rec.date)];
     if(!day) return;
     var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0;
     day.forEach(function(g){
