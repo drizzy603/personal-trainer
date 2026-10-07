@@ -3842,22 +3842,21 @@ function _streakDueFn(){
   };
 }
 // Called before anything rewrites the schedule under days already lived: every day the
-// streak walks now (yesterday back to the day that ends it, and today once it is logged
-// and counted) is written down as it reads, so the change applies from today on and never
-// reaches back. Moving Friday's Legs to Saturday turned every past Friday into a rest day
-// and every past Saturday into a missed Legs day (8 days -> 2). A day keeps the first
-// answer it was given.
+// streak can reach (yesterday back 400 days, and today once it is logged and counted) is
+// written down as it reads, so the change applies from today on and never reaches back.
+// Moving Friday's Legs to Saturday turned every past Friday into a rest day and every past
+// Saturday into a missed Legs day (8 days -> 2). A day keeps the first answer it was given.
+// Every day, past the one that ends the streak too: a missed day filled in later (a log moved
+// onto it, backdated, or a late watch or Health import) joined the streak to days nobody had
+// written down, read under the new schedule (11 days -> 5).
 function _freezeStreakDays(){
   try{
-    var due=_streakDueFn(), lived=lsGet('kt_streak_days'), add=0, today=todayISO(), d=new Date(today+'T00:00:00');
+    var due=_streakDueFn(), lived=lsGet('kt_streak_days'), add=0, today=todayISO(), v=due(today);
     if(!lived || typeof lived!=='object' || Array.isArray(lived)) lived={};
-    for(var i=0;i<400;i++){
-      var iso=_ymdLocal(d), logged=_loggedOn(iso), v=due(iso);
-      if(i>0 || (logged && v)){
-        if(lived[iso]==null){ lived[iso]=v; add++; }
-        if(v===1 && !logged) break;
-      }
-      d.setDate(d.getDate()-1);
+    if(lived[today]==null && v && _loggedOn(today)){ lived[today]=v; add++; }
+    for(var i=1;i<400;i++){
+      var iso=addDays(today,-i);
+      if(lived[iso]==null){ lived[iso]=due(iso); add++; }
     }
     if(!add) return;
     var cut=addDays(today,-400);
