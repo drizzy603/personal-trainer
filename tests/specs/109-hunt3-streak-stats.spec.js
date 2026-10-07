@@ -490,7 +490,9 @@ runInTurn('the update reads the days before week 1 as the old page did, after an
     }, [CLOCK, LOGS, SWITCHED, OLDFREEZE]);
     assert(out.misread === 14 && out.frozen.streak === 14 && out.frozen.sun === 1, 'the drop this guards against (14 of 26), frozen on a rest Sunday: ' + JSON.stringify(out));
     assert(out.upgraded.streak === 26 && out.upgraded.flag === '1', 'after the update the streak runs across the switch, as the old page showed: ' + JSON.stringify(out.upgraded));
-    assert(out.upgraded.sun === 0 && out.upgraded.days === '1001010', 'A\'s weeks read as week 1 (Mon/Wed/Fri), the frozen Sunday too: ' + JSON.stringify(out.upgraded));
+    // Mon/Wed/Fri are due on both pages; the other days were rest on the old page and due since: 2,
+    // never ending the streak (the frozen Sunday too).
+    assert(out.upgraded.sun === 2 && out.upgraded.days === '1221212', 'A\'s weeks read by week 1\'s Mon/Wed/Fri, the frozen Sunday too: ' + JSON.stringify(out.upgraded));
     assert(out.restored.ok && out.restored.streak === 26, 'an old backup restored here reads the same: ' + JSON.stringify(out.restored));
     assert(out.edited === 26, 'a schedule edit after the update keeps it: ' + out.edited);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
@@ -512,6 +514,35 @@ runInTurn('the first boot writes the old page\'s reading down before anything el
     const out = await app.page.evaluate(() => ({ week: currentWeek, streak: calcStreakDays(), flag: localStorage.getItem('kt_streak_seeded') }));
     assert(first === '1', 'every boot of this page has run it once: ' + first);
     assert(out.week === 4 && out.streak === 26 && out.flag === '1', 'booted on the old data, the streak is the old page\'s: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R38: the old page's reading written as 0 (its rest days) left out the runs logged on them before
+// week 1, which the pages since count: the update took a 37-day streak to 23.
+runInTurn('the update never lowers a streak the pages since 2026-10-04 showed: logs on rest weekdays before week 1 still count (R38)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '3' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      // Mon/Wed/Fri from S; every day logged for the 30 days before it. Wednesday of week 3, not yet logged.
+      const S = addDays(_mostRecentMonday(), 7), rows = [];
+      __setNow(addDays(S, 16) + 'T18:00:00');
+      currentWeek = 3; lsSet('kt_week', 3); localStorage.setItem('kt_week_monday', addDays(S, 14));
+      for (let i = -30; i < 16; i++) { const dw = ((i % 7) + 7) % 7; if (i < 0 || dw === 0 || dw === 2 || dw === 4) rows.push([addDays(S, i), ['Push', 'Push', 'Pull', 'Push', 'Legs', 'Push', 'Push'][dw]]); }
+      lsSet('kt_sessions', logs(rows));
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+      r.since = calcStreakDays();
+      _streakUpgrade();
+      const due = _streakDueFn();
+      r.upgraded = { streak: calcStreakDays(), days: [-7, -8, -9, -10, -11, -12, -13].map(n => due(addDays(S, n))).join('') };
+      const bk = buildBackupJSON(); delete bk.kt_streak_days;
+      r.restored = { ok: _applyImportedData(JSON.parse(JSON.stringify(bk))), streak: calcStreakDays() };
+      return r;
+    }, [CLOCK, LOGS]);
+    assert(out.since === 37, 'the pages since count every logged day before week 1: ' + JSON.stringify(out));
+    assert(out.upgraded.streak === 37 && out.upgraded.days === '1221212', 'and so does this one, a rest weekday reading 2 (it was 23): ' + JSON.stringify(out.upgraded));
+    assert(out.restored.ok && out.restored.streak === 37, 'an old backup restored here keeps it: ' + JSON.stringify(out.restored));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

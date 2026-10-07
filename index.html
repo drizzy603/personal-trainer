@@ -3909,11 +3909,14 @@ function _streakOldRead(cr){
 // Data written before 2026-10-04 has no kt_streak_days, and since then the days before round 1
 // read as having no plan (every day due): a streak that ran across a programme switch made on
 // the old page dropped the moment the page updated (26 days -> 14), and the next schedule edit
-// froze the drop. Every such day not yet written down is written as the old page read it. Once
-// per device at boot, before the week clock moves or a round swaps in (_streakUpgrade), and after
-// every restore (an older backup carries no kt_streak_days). repair, at that first boot only: the
-// pages since froze their misreading, a rest day of the old reading written as a missed training
-// day; with nothing logged on it, it goes back to the old reading.
+// froze the drop. Every such day not yet written down where the two pages disagree is written
+// as 2: it ends the streak only where both pages say so, and a log on it counts wherever either
+// page counted it, so no streak reads lower than on the old page or on the pages since (the old
+// page's rest day written as 0 left out the runs logged on it before the programme: 37 -> 23).
+// Once per device at boot, before the week clock moves or a round swaps in (_streakUpgrade), and
+// after every restore (an older backup carries no kt_streak_days). repair, at that first boot
+// only: the pages since froze their misreading, a rest day of the old reading written as a
+// missed training day; with nothing logged on it, it neither ends nor counts now.
 function _seedStreakDays(repair){
   try{
     var cr=getCustomRoutine(); if(!cr) return true;
@@ -3922,10 +3925,10 @@ function _seedStreakDays(repair){
     for(var i=1;i<400;i++){
       var iso=addDays(today,-i), v=old(iso);
       if(v==null) continue;
-      if(lived[iso]==null){ if(v!==due(iso)){ lived[iso]=v; add++; } }
+      if(lived[iso]==null){ var h=due(iso); if(v!==h && h!==2){ lived[iso]=2; add++; } }
       else if(repair && v===0 && +lived[iso]===1){
         if(!logged){ logged={}; _trainingDays().forEach(function(x){ if(x && x.date) logged[String(x.date).slice(0,10)]=1; }); }
-        if(!logged[iso]){ lived[iso]=0; add++; }
+        if(!logged[iso]){ lived[iso]=2; add++; }
       }
     }
     if(!add) return true;
