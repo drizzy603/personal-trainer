@@ -6629,7 +6629,10 @@ function renderTodayEditorial(){
       var _nx = null; try{ _nx = getNextSession(); }catch(e){}
       if(_nx && _planEntry(_nx).isLift){
         var _nxl = _dayLabel(_nx);
-        var _nxDow = -1; var _wp = getWeekPlan(); for(var _q=1;_q<=7;_q++){ var _dd=((new Date().getDay()+6)%7+_q)%7; if(_wp[_dd] && _wp[_dd].type===_nx){ _nxDow=_dd; break; } }
+        // The next day that holds it, each read from its own week as getNextSession reads it (this
+        // week's plan named a weekday already gone when next week's cadence differs).
+        var _nxDow = -1, _nxTot = getTotalWeeks();
+        for(var _q=1;_q<=7 && _nxDow<0;_q++){ var _dq=addDays(todayISO(),_q), _dw=(new Date(_dq+'T00:00:00').getDay()+6)%7, _pq=getWeekPlanForWeek(Math.min(_nxTot, weekForDate(_dq)))[_dw]; if(_pq && _pq.type===_nx) _nxDow=_dw; }
         body = 'Your first session, '+_nxl+', is '+(_nxDow>=0?['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_nxDow]:'next')+'. Start it today if you are keen \u2014 the plan adjusts.';
       }
     }

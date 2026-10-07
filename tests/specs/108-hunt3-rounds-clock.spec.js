@@ -42,6 +42,9 @@
 //   tapped after the night rolled into week 12 set a round to follow the programme: it started a
 //   week after the Monday shown while the toast named that Monday. The sheet's own state decides,
 //   and the toast names the day Today shows.
+// - R37 After L22 the first session came from next week's cadence while the rest-day text found
+//   its weekday in this week's plan ("Legs, is Friday" with Legs on Monday). Both read each day
+//   from its own week.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -754,6 +757,32 @@ run('R36: the sheet painted on week 11\'s Sunday starts the round on the Monday 
     }
     const l = out.later;
     assert(l.starts === l.d35 && l.toast === 'Round 2 starts ' + l.day35 && l.card === 'Round 2 starts ' + l.day35, 'the toast names the start Today shows (after weeks 13-16): ' + JSON.stringify(l));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('R37: "Start week 1 today" on a Saturday names the first session on the day next week\'s cadence holds it', async () => {
+  const app = await boot({ native: false, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]' } });
+  try {
+    await withClock(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, 5) + 'T10:00:00');   // Saturday: week 1's lift days are gone
+      const cr = buildStarterRoutine({ equip: 'full', days: 3, runs: 0, goal: 'muscle', exp: 0 });
+      cr.weeks[1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // week 2 opens with Legs
+      setCustomRoutine(cr); _startProgramme();
+      const r = { plan: getWeekPlanForWeek(1).map(p => p.type).join(',') };
+      startProgrammeNow();
+      switchTab('log'); switchLogSub('workout'); render();
+      const t = txt();
+      r.next = getNextSession();
+      r.body = (t.match(/Your first session[^.]*\./) || [''])[0];
+      r.cta = (t.match(/FIRST SESSION ?Start [A-Za-z]+ today/) || [''])[0];
+      return r;
+    }, LOGS);
+    assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', 'the starter week this test assumes: ' + out.plan);
+    assert(out.next === 'Legs' && out.body === 'Your first session, Legs, is Monday.' && /Start Legs today/.test(out.cta), 'week 2\'s Monday holds the first session, and the text says Monday: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
