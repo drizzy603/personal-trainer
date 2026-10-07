@@ -762,3 +762,33 @@ seq('R03: a superset opener comes back paired only with its own partner', async 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R07 (incomplete M12): a removed lift added back comes back in the weeks it was removed from, and
+// goes into the weeks that never had it as a new row: those got no load ("your load"), even at the
+// load the coach asked for. The coach: Lateral Raise in weeks 1-8, Cable Fly in its place from week 9.
+seq('R07: a lift added back has a load in the weeks that never had it, the coach\'s when it asked', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => { if (i >= 8) Object.assign(w.push.find(e => e.name === 'Lateral Raise'), { name: 'Cable Fly', weight: 40, sets: 3, reps: 12 }); });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const lr = () => getCustomRoutine().weeks.slice(c).map(w => { const e = w.push.find(x => x.name === 'Lateral Raise'); return e ? e.sets + 'x' + e.reps + '@' + e.weight + (e.rec === null ? '+' : e.rec ? '*' : '') : '-'; });
+      openRoutines(); _rtOpenEdit('Push', 'Lateral Raise'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const removed = localStorage.getItem('kt_routine');
+      const a = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Lateral Raise', action: 'add', sets: 4, reps: 12, weight: 25 });
+      r.coach = { ok: a.ok, lr: lr(), series: a.series, fly: getCustomRoutine().weeks.slice(8).every(w => w.push.some(e => e.name === 'Cable Fly')) };
+      lsSet('kt_routine', JSON.parse(removed));
+      openRoutines(); _rtAddPick('Push', 'Lateral Raise'); await wait(10); closeRoutines();
+      r.owner = lr();
+      return r;
+    });
+    const last = out.coach.lr.length - 1, w = (s) => parseFloat(s.split('@')[1]);
+    assert(out.coach.ok && out.coach.lr.slice(0, last).every(x => x === '4x12@25') && w(out.coach.lr[last]) > 0 && w(out.coach.lr[last]) < 25 && out.coach.fly, 'the coach\'s 4x12 @ 25 in every working week, the deload its share, Cable Fly kept: ' + JSON.stringify(out.coach));
+    assert(!out.coach.series.some(s => /your load/.test(s)), 'the coach is told the loads it set: ' + JSON.stringify(out.coach.series));
+    assert(out.owner.slice(0, 3).every(x => x === '3x15@17.5') && out.owner.slice(3).every(x => /\+$/.test(x) && w(x) > 0), 'the owner\'s add: the coach\'s rows back in weeks 6-8, a loaded ADDED row after: ' + JSON.stringify(out.owner));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

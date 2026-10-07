@@ -10897,6 +10897,17 @@ function _progAdd(cr, slot, ex, c, after, o){
       for(var k2=c;k2<=b0 && k2<end;k2++){ var rd=_progRow(W[k2],slot,ex.name); if(rd && (k2===c || rd.rec===null)) rd.weight=(k2===b)?N:_snapU(N*0.6); }
       if(!o.onlyThisWeek) _progClimb(cr, slot, ex.name, b0, N, {climb:o.climb, Pc0:0});
     }
+  } else if(r0 && parseFloat(r0.weight)>0){
+    // Back from the weeks it was removed from, it is a new row in the weeks that never had it:
+    // those take the load it came back at (the last working week before them; a deload 60%, as
+    // in _progClimb), not "your load". The coach's asked-for load then carries into them too.
+    var lastW=0;
+    for(var k3=c;k3<end;k3++){
+      var rf=_progRow(W[k3],slot,ex.name); if(!rf) continue;
+      var Pf=parseFloat(rf.weight)||0, dlf=_isDeloadWk(W[k3]);
+      if(Pf>0){ if(!dlf) lastW=Pf; continue; }
+      if(rf.rec===null && lastW>0) rf.weight=dlf?_snapU(lastW*0.6):lastW;
+    }
   }
   return n;
 }
