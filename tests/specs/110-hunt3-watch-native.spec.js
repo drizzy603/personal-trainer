@@ -607,3 +607,41 @@ run('R42: a wrist session trained on a set round’s own days is that round’s 
     assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
   }
 });
+
+// R43: the wrist's late copy of a session the phone filed adds a set to a lift whose working weight
+// was changed since the finish (the keyless +5, a deload): the change stands. Still the finish's
+// load, a heavier merged set moves it; a backdated session's heavier set can still raise it.
+run('R43: a late wrist copy never undoes a working weight changed since the phone’s finish', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const W = Capacitor.Plugins.TrovoWatch; let pending = [];
+      W.getPendingSessions = () => Promise.resolve({ sessions: pending.slice() });
+      W.clearPendingSessions = (a) => { const d = (a && a.sessions) || []; pending = pending.filter(x => d.indexOf(x) < 0); return Promise.resolve({}); };
+      window.showToast = () => {};
+      const today = todayISO(), L = 'Bench Press', pushName = _dayLabel('Push');
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const at = (day, h) => new Date(day + 'T' + String(h).padStart(2, '0') + ':00:00').getTime();
+      const nowish = Math.max(at(today, 0) + 60e3, Date.now() - 3600e3), d2 = addDays(today, -2);
+      const wrist = (startMs, wl) => JSON.stringify({ dayName: pushName, slot: 'Push', startedAt: iso(startMs), loggedAt: iso(Math.min(Date.now(), startMs + 3600e3)),
+        exercises: [{ name: L, weight: Math.max(...wl), reps: wl.map(() => 5), weightLog: wl, rpe: 8, rpeLog: wl.map(() => 8) }] });
+      // The phone filed the session at `phoneW` (its finish set the working weight, or left a heavier one
+      // for a backdated session); `since` changes it after; the wrist's copy then adds a set at `extra`.
+      const go = async (date, start, phoneW, kt, since, extra) => {
+        lsSet('kt_sessions', [{ id: start + 1800e3, date, type: 'Push', label: pushName, week: currentWeek, note: '', prs: [], startedAt: start,
+          exercises: [{ name: L, sets: 3, reps: [5, 5, 5], weight: phoneW, weightLog: [phoneW, phoneW, phoneW] }] }]);
+        lsSet('kt_weights', { [L]: kt }); if (since) _writeLoadLocal(L, since);
+        pending = [wrist(start + 1000, [phoneW, phoneW, phoneW, extra])]; await drainWatchSessions(); await wait(30);
+        const s = getSessions(); return { w: getWeights()[L], merged: s.length === 1 && s[0].exercises[0].reps.length === 4 };
+      };
+      return { plus5: await go(today, nowish, 185, 185, 190, 185), deload: await go(today, nowish, 185, 185, 166.5, 185),
+        heavier: await go(today, nowish, 185, 185, 0, 195), backHeavier: await go(d2, at(d2, 9), 180, 185, 0, 190), backSame: await go(d2, at(d2, 9), 180, 185, 0, 180) };
+    });
+    assert(Object.keys(out).every(k => out[k].merged), 'each copy merged into the phone’s record: ' + JSON.stringify(out));
+    assert(out.plus5.w === 190 && out.deload.w === 166.5, 'a +5 or a deload made since the finish stands (it was set back to 185): ' + JSON.stringify(out));
+    assert(out.heavier.w === 195, 'still the finish’s load, the copy’s heavier set moves it: ' + JSON.stringify(out.heavier));
+    assert(out.backHeavier.w === 190 && out.backSame.w === 185, 'a backdated session only raises it: ' + JSON.stringify([out.backHeavier, out.backSame]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});

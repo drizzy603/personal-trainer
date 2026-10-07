@@ -21948,7 +21948,7 @@ function drainWatchSessions(){
         // changes nothing (longest log wins, present exercises stay).
         // What it was before: only the exercises this drain adds or changes speak for the
         // working weight (the phone's finish set it for the rest, and a change since stands).
-        var _was={}; (_prior.exercises||[]).forEach(function(e){ if(e && e.name) _was[e.name]=JSON.stringify(e); });
+        var _was={}, _wasW={}; (_prior.exercises||[]).forEach(function(e){ if(e && e.name){ _was[e.name]=JSON.stringify(e); _wasW[e.name]=parseFloat(e.weight)||0; } });
         _changed=_mergeWristExercises(_prior, exsOut);
         if(_draftExs.length) _changed+=_mergeWristExercises(_prior, _draftExs);
         // Already represented: it is drained all the same. Left in the queue, the next
@@ -21956,7 +21956,18 @@ function drainWatchSessions(){
         // and re-added renamed lifts.
         if(!_changed){ _wchLog('drain: duplicate '+localISO+' '+dayType+' (nothing new)'); drained.push(json); return; }
         _rec=_prior;
-        _wwExs=_rec.exercises.filter(function(e){ return e && _was[e.name]!==JSON.stringify(e); });
+        // The wrist's copy is the same session, not a newer log: a lift it changed speaks only while
+        // the working weight is still what the phone's finish left (the record's load before this
+        // merge). A change since (+5, a deload, the coach, a later session that day) stands; it was
+        // lowered back to this session's load. A backdated session, whose finish only ever raised it,
+        // may still raise it with a heavier set.
+        var _cw=getWeights(), _back=localISO<todayISO();
+        _wwExs=_rec.exercises.filter(function(e){
+          if(!e || _was[e.name]===JSON.stringify(e)) return false;
+          if(!Object.prototype.hasOwnProperty.call(_wasW, e.name)) return true;   // a lift only the wrist logged
+          var cur=parseFloat(_cw[e.name])||0;
+          return !(cur>0) || Math.abs(cur-_wasW[e.name])<0.01 || (_back && (parseFloat(e.weight)||0)>cur);
+        });
         var _mp=_pendingPRs(_rec.exercises);
         _rec.prs=(_rec.prs||[]).concat(_mp.filter(function(p){ return (_rec.prs||[]).indexOf(p)<0; }));
         if(!lsSet('kt_sessions', _all)){ saveFailed=true; return; }
