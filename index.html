@@ -5103,12 +5103,16 @@ function _streakChip(){
 // written — backdated logs would create misleading Health entries.
 function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
+  var now = Date.now(), last = _runnerLastSetAt(sess);
   // A backdated log has no real time to write. The day the session began is its own: one that
-  // ran past midnight is filed on that day and still happened just now.
-  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)))) return;
+  // ran past midnight is filed on that day and still happened just now (a set within the hour).
+  // A draft left in the evening and finished the next morning did not, and was written at 04:00.
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && now-last < 60*60*1000)) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
-  var end = Date.now();
+  // It ends with its last set (ten minutes after at most), not at the tap on Finish: a draft
+  // resumed hours later was written through the hours the app was closed.
+  var end = last>0 ? Math.min(now, last + 10*60*1000) : now;
   var start = (sess && sess.startedAt) || 0;
   var dur = end - start;
   // Implausible window (draft restored across days, phone clock, etc.) —
@@ -8998,6 +9002,7 @@ function runnerLogAllAtTarget(){
     runnerRpeLog[ex.name].push(targetRpe);
   }
   runnerCompleted[ex.name] = ex.sets;
+  runnerSession.lastSetAt = Date.now();   // sets entered now, as runnerCompleteSet stamps (the Health write ends near it)
   runnerEngaged = false;
   runnerResting = false;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
@@ -9178,6 +9183,16 @@ function _paintRestClock(){
 function _runnerStartISO(){
   var t=runnerSession ? Number(runnerSession.startedAt) : 0;
   return t>0 ? _ymdLocal(new Date(t)) : todayISO();
+}
+// When the open session's last set went in: the phone's (a set, Log all, an undo or an edit stamp
+// lastSetAt) or one the wrist mirrored in during this run (those stamp only _wristStamps).
+function _runnerLastSetAt(sess){
+  var t=Number(sess && sess.lastSetAt)||0;
+  if(sess && sess===runnerSession) Object.keys(_wristStamps||{}).forEach(function(n){
+    var m=_wristStamps[n]||{};
+    Object.keys(m).forEach(function(i){ var v=Number(m[i])||0; if(v>t) t=v; });
+  });
+  return t;
 }
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){

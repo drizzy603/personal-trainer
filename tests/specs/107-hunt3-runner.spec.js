@@ -39,6 +39,9 @@
 //   whole, Use coach's gives the coach's sets back); rows that cannot be one are left alone.
 // - R30 a workout that ran past midnight, filed on the day it began, is no backfill: a lighter one
 //   sets the working weight; a day picked before it still only raises one, and a newer log stands.
+// - R31 Save lifts to Health writes a workout filed on the day before only while it is live (a set
+//   within the hour): a draft left in the evening and finished after midnight is not written, and
+//   the window ends with the last set (Log all and sets from the wrist count), not at Finish.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -814,6 +817,81 @@ run('R30 a lighter workout that ran past midnight sets the working weight', asyn
       'filed on the day it began, it is the newest log and sets the working weight: ' + JSON.stringify(out));
     assert(out.backfill.filed !== out.startISO && out.backfill.ww === 185, 'a day picked before it is a backfill and only raises: ' + JSON.stringify(out.backfill));
     assert(out.newer.ww === 185, 'a newer log of the lift still stands: ' + JSON.stringify(out.newer));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// Functions read Date when they run, so swapping it in the page pins "now" for what follows (spec 109's).
+const CLOCK = `(() => { if (window.__setNow) return; const R = Date; let off = 0;
+  function F(...a) { if (!(this instanceof F)) return new R(R.now() + off).toString(); return a.length ? new R(...a) : new R(R.now() + off); }
+  F.prototype = R.prototype; F.now = () => R.now() + off; F.parse = R.parse; F.UTC = R.UTC;
+  window.Date = F; window.__setNow = (s) => { off = new R(s).getTime() - R.now(); _todayActMemo = null; }; })()`;
+
+// R31: M02's start-day exception let a draft resumed after midnight into Apple Health, written at
+// the time of finishing (or through the hours the app was closed).
+run('R31 a workout resumed after midnight is not written to Health; a live one ends at its last set', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_health_write: '1' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1);
+      const hm = ms => { const d = new Date(ms); return _ymdLocal(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      // began at `from`, sets at `sets`, Log all at `logAll`, sets mirrored in from the wrist at
+      // `wrist`, a cold launch at `resume` (the draft restored and resumed), Finish at `fin`
+      const go = async (o) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        window.__hk = [];
+        Capacitor.Plugins.TrovoHealth = { saveLift: a => { window.__hk.push(a); return Promise.resolve({}); } };
+        __setNow(o.from);
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        runnerEngaged = true;
+        for (const t of o.sets || []) { __setNow(t); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        if (o.logAll) { __setNow(o.logAll); runnerGoTo(runnerSession.exercises.length - 1); runnerLogAllAtTarget(); }
+        const B = runnerSession.exercises[1].name;
+        (o.wrist || []).forEach((t, i) => {
+          __setNow(t); runnerEngaged = false;
+          _onWatchLive(JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: runnerSession.startedAt, reps: { [B]: Array(i + 1).fill(10) }, weights: { [B]: 50 } }));
+        });
+        if (o.resume) {
+          _flushRunnerDraft(); __setNow(o.resume);
+          runnerOpen = false; runnerSession = null; runnerCompleted = {}; runnerRepsLog = {}; runnerWeightsLog = {};
+          if (!_restoreRunnerDraft()) return { restored: false };
+          resumeRunnerDraft(); await wait(20);
+        }
+        __setNow(o.fin);
+        if (o.pick) runnerSessionDate = o.pick;
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        const s = getSessions().find(x => x.type === 'Push');
+        return { filed: s && s.date, hk: window.__hk.map(a => hm(a.startMs) + ' -> ' + hm(a.endMs)) };
+      };
+      const at = (d, t) => d + 'T' + t + ':00';
+      const six = (d, h) => ['00', '09', '18', '27', '36', '45'].map(m => at(d, h + ':' + m));
+      const night = [at(yday, '23:35'), at(yday, '23:50'), at(today, '00:05'), at(today, '00:20')];
+      return { today, yday,
+        // an evening workout never finished; the draft resumed and finished after midnight
+        resume0400: await go({ from: at(yday, '20:00'), sets: six(yday, '20'), resume: at(today, '04:00'), fin: at(today, '04:01') }),
+        resume0030: await go({ from: at(yday, '20:00'), sets: six(yday, '20'), resume: at(today, '00:30'), fin: at(today, '00:31') }),
+        // a workout that ran past midnight: finished at once, 40 min after its last set, by Log all, on the wrist
+        live: await go({ from: at(yday, '23:30'), sets: night, fin: at(today, '00:25') }),
+        idle: await go({ from: at(yday, '23:30'), sets: night, fin: at(today, '01:00') }),
+        logAll: await go({ from: at(yday, '23:30'), logAll: at(today, '00:40'), fin: at(today, '00:42') }),
+        wrist: await go({ from: at(yday, '23:30'), sets: night.slice(0, 2), wrist: [at(today, '00:30'), at(today, '00:45')], fin: at(today, '00:52') }),
+        // today: a draft resumed hours later ends at its last set; a backdated log is still not written
+        sameDay: await go({ from: at(today, '08:00'), sets: six(today, '08'), resume: at(today, '12:00'), fin: at(today, '12:01') }),
+        backdated: await go({ from: at(today, '18:00'), sets: [at(today, '18:05'), at(today, '18:20')], fin: at(today, '18:30'), pick: yday }) };
+    }, CLOCK);
+    const Y = out.yday, T = out.today, one = (o, s) => JSON.stringify(o.hk) === JSON.stringify([s]);
+    assert(out.resume0400.filed === Y && out.resume0400.hk.length === 0, 'resumed at 04:00: filed on its evening, no Health workout at 04:00: ' + JSON.stringify(out.resume0400));
+    assert(out.resume0030.filed === Y && out.resume0030.hk.length === 0, 'resumed at 00:30: no workout through the hours the app was closed: ' + JSON.stringify(out.resume0030));
+    assert(out.live.filed === Y && one(out.live, Y + ' 23:30 -> ' + T + ' 00:25'), 'past midnight, finished at once: written as it ran: ' + JSON.stringify(out.live));
+    assert(one(out.idle, Y + ' 23:30 -> ' + T + ' 00:30'), 'finished 40 min after the last set: ends ten minutes after it: ' + JSON.stringify(out.idle));
+    assert(one(out.logAll, Y + ' 23:30 -> ' + T + ' 00:42'), 'Log all is a set: ' + JSON.stringify(out.logAll));
+    assert(one(out.wrist, Y + ' 23:30 -> ' + T + ' 00:52'), 'sets mirrored in from the wrist count: ' + JSON.stringify(out.wrist));
+    assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 08:55'), 'a same-day draft resumed at noon ends at its last set: ' + JSON.stringify(out.sameDay));
+    assert(out.backdated.filed === Y && out.backdated.hk.length === 0, 'a backdated log is not written: ' + JSON.stringify(out.backdated));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
