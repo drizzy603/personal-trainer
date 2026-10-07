@@ -22,6 +22,10 @@
 //   Sunday the clocks go back (Los Angeles, London), from 23:00 "yesterday" was still today and
 //   "last week" was this Monday, and both failed for that hour. Pinned here: addDays counts
 //   calendar days across that night.
+// - R55 (L45 follow-up): the most reps at the heaviest shown load is _prTop's rule, so in kg the
+//   COMPLETE sheet's PR row, RECORD HISTORY, the exercise PR row and the ledger read the record
+//   the share card does (72.5 kg × 6 on 160 × 5 and 159.8 × 6, 6; they said × 5 while the card
+//   said × 6). A lift logged twice in one session is one top on the same rule; lb is unchanged.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
@@ -67,6 +71,55 @@ run('L45: the kg share card reads its top set, vs last and the scheme on the sho
     assert(out.row.scheme === '72.5 kg · 5, 6, 6 reps' && out.row.top === '72.5 kg × 6' && out.row.delta === '−2 reps' && !out.row.up, 'one shown load is one load: ' + JSON.stringify(out.row));
     assert(out.rec.set === '72.5 kg × 6' && out.rec.gain === '+4.5 kg' && out.recRow.top === '72.5 kg × 6' && out.recRow.delta === '+4.5 kg', 'the record and its row agree: ' + JSON.stringify([out.rec, out.recRow]));
     assert(out.lb.scheme === '160×5  159.8×6  159.8×6 lb' && out.lb.top === '160 lb × 5', 'lb shows what was stored: ' + JSON.stringify(out.lb));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R55: every record view reads the card's record in kg (they read the reps of a set heavier only in storage).
+run('R55: in kg the COMPLETE sheet, RECORD HISTORY, the PR row and the share card read one record', async () => {
+  const app = await boot({ native: true, seed: { kt_unit_w: 'kg' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const now = Date.now(), day = 86400000, r = {};
+      const X = (reps, wl) => ({ name: 'Bench Press', sets: reps.length, reps, weight: wl[0], weightLog: wl });
+      // 72.5 kg three times (160 from the programme, then 159.8 after − and +), a record over 150 lb
+      const rec = { id: now, date: todayISO(), type: 'Push', week: 2, prs: ['Bench Press'], exercises: [X([5, 6, 6], [160, 159.8, 159.8])] };
+      const old = { id: now - 14 * day, date: addDays(todayISO(), -14), type: 'Push', week: 1, prs: [], exercises: [X([8, 8], [150, 150])] };
+      lsSet('kt_sessions', [rec, old]);
+      const views = async () => {
+        const v = { head: _prSetTxt('Bench Press', _prHead('Bench Press')) };
+        const m = _shareCardModel(getSessions().find(x => x.id === rec.id));
+        v.card = m.records[0].set; v.row = m.rows[0].top;
+        openCompleteSheet({ rec: getSessions().find(x => x.id === rec.id) }); await wait(30);
+        v.complete = Array.from(document.querySelectorAll('#completeSheetOverlay .kt-cmp-pr')).map(e => e.textContent).join('|');
+        closeCompleteSheet();
+        openPRHistory('Bench Press'); await wait(20);
+        const cur = document.querySelector('#prHistOverlay .kt-prh-cur-v'); v.history = cur ? cur.textContent : '';
+        closePRHistory(true);
+        const d = document.createElement('div'); d.innerHTML = _exDetailHTML({ name: 'Bench Press', equip: 'Barbell' }, [], false);
+        const pr = d.querySelector('.kt-ex-pr .l'); v.prRow = pr ? pr.textContent : '';
+        return v;
+      };
+      r.kg = await views();
+      // the lift logged twice in the session: one top, the most reps at its shown load across both
+      const two = getSessions(); two.find(x => x.id === rec.id).exercises = [X([5], [160]), X([7, 7], [159.8, 159.8])];
+      lsSet('kt_sessions', two);
+      r.twice = await views();
+      // in lb the loads read apart, so the set at 160 decides as it always did
+      localStorage.setItem('kt_unit_w', 'lb');
+      const back = getSessions(); back.find(x => x.id === rec.id).exercises = [X([5, 6, 6], [160, 159.8, 159.8])];
+      lsSet('kt_sessions', back);
+      r.lb = await views();
+      localStorage.setItem('kt_unit_w', 'kg');
+      return r;
+    });
+    const ledger = (v, t) => v.head === t && v.card === t && v.history === t && v.prRow.indexOf('PR · ' + t) >= 0;
+    const all = (v, t) => ledger(v, t) && v.row === t && v.complete.indexOf(t) >= 0;
+    assert(all(out.kg, '72.5 kg × 6'), 'every record view reads 72.5 kg × 6: ' + JSON.stringify(out.kg));
+    // (the runner folds a repeated lift into one card, so the COMPLETE sheet never lists one twice)
+    assert(ledger(out.twice, '72.5 kg × 7'), 'a lift logged twice in one session is one record top: ' + JSON.stringify(out.twice));
+    assert(all(out.lb, '160 lb × 5'), 'lb reads the stored loads apart: ' + JSON.stringify(out.lb));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
