@@ -13708,7 +13708,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // The working-weight cache follows the corrected truth — but only when the
   // edited session is the NEWEST one for that lift. Fixing a typo in a
   // weeks-old session must not regress today's prescription.
-  var wts2=getWeights(), wtsTouched=false, wch={};
+  var wts2=getWeights(), wtsTouched=false, wch={}, wrote=[];
   var newerOf=function(n){ return sessions.some(function(o){
     return o!==s && String(o.date||'')>String(s.date||'') &&
       (o.exercises||[]).some(function(e2){ return e2 && e2.name===n; });
@@ -13719,7 +13719,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
     if(!newerOf(ex.name)){
       var p=parseFloat(wts2[ex.name]);
       if(!(Math.abs((p||0)-w)<0.01)) wch[ex.name]=[p>0?p:null, w];
-      wts2[ex.name]=w; wtsTouched=true;
+      wts2[ex.name]=w; wtsTouched=true; wrote.push(ex.name);
     }
   });
   // A rename carries the per-name records with it: the exercise note, the
@@ -13740,13 +13740,15 @@ function _afterSessionEdit(s, sessions, renamed, only){
       } else if(wts2[rn.to]==null && !newerOf(rn.to)){
         var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
         var rw=parseFloat(rx && rx.weight);
-        if(rw>0){ wts2[rn.to]=rw; wch[rn.to]=[null, rw]; wtsTouched=true; }
+        if(rw>0){ wts2[rn.to]=rw; wch[rn.to]=[null, rw]; wtsTouched=true; wrote.push(rn.to); }
       }
     });
     if(notesTouched) lsSet('kt_ex_notes', notes);
     lsSet('kt_sessions', sessions);
   }
-  if(wtsTouched) lsSet('kt_weights', wts2);
+  // As a new log (_setWorkingWeights): the corrected newest log keeps the load it sets, so a
+  // coach reply's Undo noted before it no longer puts the old working weight back under it.
+  if(wtsTouched && lsSet('kt_weights', wts2)) _dropNotedWeights(wrote);
   if(s.wSet) _wwStamp(s, wch);   // a stamped log now sets what it was corrected to
   recomputePRs();
   invalidateCoachCard();

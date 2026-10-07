@@ -905,6 +905,44 @@ run('Undo of the coach\'s working weight keeps the load a newer workout logged, 
   }
 });
 
+// R15, the edit path: correcting the newest log of a lift (Edit sets) sets its working weight like
+// a new log does, so it drops the lift's note too. Fixing yesterday's Bench typo to the coach's
+// 190 used to leave the note [150, 190] matching, and the reply's Undo put 150 back under it.
+run('Undo of the coach\'s working weight keeps the load a corrected newest log sets', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_sessions: '[]', kt_weights: JSON.stringify({ 'Bench Press': 150 }) } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const c = currentWeek - 1, Y = addDays(todayISO(), -1);
+      const st = () => ({ working: getWeights()['Bench Press'] === undefined ? null : getWeights()['Bench Press'], plan: getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight });
+      lsSet('kt_sessions', [{ id: 5559001, date: Y, week: weekForDate(Y), type: 'Push', label: 'Push', prs: [], exercises: [
+        { name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 150, weightLog: [150, 150, 150], isMain: true }] }]);
+      recomputePRs();
+      eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+      coachMessages.push({ role: 'user', content: 'bench 190' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      const r = { reply: st() };
+      // yesterday's Bench was really 190: the owner fixes the typo in Edit sets
+      openSessionEditor(5559001); await wait(30);
+      ['0', '1', '2'].forEach(i => { document.getElementById('se_0_' + i + '_w').value = '190'; });
+      saveSessionEdit(); await wait(30);
+      r.edited = Object.assign(st(), { logged: getSessions()[0].exercises[0].weight });
+      switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+      const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+      r.undoShown = !!b;
+      if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+      r.undone = st();
+      return r;
+    }, MOCK);
+    assert(out.reply.working === 190 && out.reply.plan === 190, 'the reply set Bench to 190: ' + JSON.stringify(out.reply));
+    assert(out.edited.logged === 190 && out.edited.working === 190, 'the corrected log reads 190 and so does the working weight: ' + JSON.stringify(out.edited));
+    assert(out.undoShown && out.undone.plan === 160 && out.undone.working === 190, 'Undo takes the plan back and keeps the working weight the corrected log sets: ' + JSON.stringify(out.undone));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 // R18: the schedule editor's 'cadence' scope never closed, so Restore previous programme undid the
 // changes of two Settings visits as one (M17 split Routines visits only). Each visit is its own
 // undo point; the changes inside one visit stay one.
