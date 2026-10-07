@@ -2341,8 +2341,9 @@ function _dayShorts(t){
   var plans=cr?[cr.weekPlan].concat(weeks.map(function(w){ return w&&w.weekPlan; })).filter(Array.isArray):[];
   if(cr && !plans.length) plans=[DEFAULT_WEEK_PLAN.map(function(p){ return p.type; })];
   var S=LIFT_TYPES.filter(function(k){
-    return !cr || k===t || plans.some(function(p){ return p.indexOf(k)>=0; }) ||
-      weeks.some(function(w){ var a=w&&w[k.toLowerCase()]; return a&&a.length; });
+    var kl=k.toLowerCase();   // a cadence may spell it "push" (_planEntry title-cases it)
+    return !cr || k===t || plans.some(function(p){ return p.some(function(v){ return String(v).toLowerCase()===kl; }); }) ||
+      weeks.some(function(w){ var a=w&&w[kl]; return a&&a.length; });
   });
   var L={}, P={}, lv={};
   S.forEach(function(k){ L[k]=_wellFormed(_dayLabel(k)); lv[k]=0; P[k]=_dayShortOf(L[k])[0]; });

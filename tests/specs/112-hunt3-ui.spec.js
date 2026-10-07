@@ -143,6 +143,11 @@ run('short day names tell coach-style names apart: Day 1 / Day 2, Week A / B, em
       name('Day 1 Upper'); r.aloneDay = _dayShort('Push');
       name('Week A Upper Body'); r.aloneWeek = _dayShort('Push');
       name('Full Body A', 'Full Body B', 'Lower Body'); r.ab = three();
+      // only days the programme can show count: the seed has no Arms day, until a cadence
+      // (spelled in lower case, as a coach may) schedules one
+      name('Arms Day'); r.unused = _dayShort('Push');
+      const cr = getCustomRoutine(); cr.weekPlan = cr.weekPlan.map(v => v === 'Rest' ? 'arms' : v); lsSet('kt_routine', cr);
+      r.used = [_dayShort('Push'), _dayShort('Arms')];
       return r;
     });
     const M = '\u{1F4AA}';
@@ -161,6 +166,7 @@ run('short day names tell coach-style names apart: Day 1 / Day 2, Week A / B, em
     assert(apart(out.initial) && out.initial.slice(0, 2).every(s => /^Up/.test(s)), 'Upper Power / Upper Pull still differ: ' + JSON.stringify(out.initial));
     assert(out.aloneEmoji === M + ' Upper' && out.aloneDay === 'Day 1' && out.aloneWeek === 'Week A', 'one named day alone keeps its meaning: ' + JSON.stringify([out.aloneEmoji, out.aloneDay, out.aloneWeek]));
     assert(eq(out.ab, ['Full A', 'Full B', 'Lower']), 'Full A / Full B / Lower as before: ' + JSON.stringify(out.ab));
+    assert(out.unused === 'Arms' && out.used[1] === 'Arms' && out.used[0] !== 'Arms' && /^Arms /.test(out.used[0]), 'a day the programme never shows does not crowd a name, a scheduled one does: ' + JSON.stringify([out.unused, out.used]));
     const all = [].concat(out.dash, out.colon, out.mid, out.weekAB, out.emoji, out.initial, out.chips, [out.aloneEmoji, out.aloneDay, out.aloneWeek]);
     assert(all.every(s => s === s.trim() && Array.from(s).length <= 7), 'every short name is trimmed and at most seven characters: ' + JSON.stringify(all));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
