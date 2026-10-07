@@ -302,6 +302,46 @@ run('coach-written block name, week note and programme name read as text (L52)',
   } finally { await app.close(); }
 });
 
+// R54: L52 escaped the block name and the week note, but a coach-written rep target (free
+// text in the schema: "8-10", "Max", or anything) still went out as markup on Today's lift
+// ledger and in Programme > Week by week, which pre-renders every week when it opens.
+run('a coach-written rep target reads as text on Today and in the week ladder (R54)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__xss = 0;
+      const REP = 'Work up to <heavy single> then <b data-leak="reps">3</b> <img src="x-missing.png" data-leak="img" onerror="window.__xss++">';
+      const cr = getCustomRoutine();
+      const dow = (new Date(todayISO() + 'T00:00:00').getDay() + 6) % 7;
+      cr.weeks.forEach(w => {
+        const plan = (Array.isArray(w.weekPlan) && w.weekPlan.length === 7 ? w.weekPlan : (cr.weekPlan || DEFAULT_WEEK_PLAN.map(p => p.type))).slice();
+        plan[dow] = 'Push'; w.weekPlan = plan;
+        (w.push || []).forEach((e, i) => { if (i === 0) { e.reps = REP; e.rpe = '8 <i data-leak="rpe">hard</i>'; } });
+      });
+      lsSet('kt_routine', cr);
+      const r = {};
+      switchTab('log'); switchLogSub('workout'); await wait(60);
+      r.today = Array.from(document.querySelectorAll('#screen .kt-marquee-reps')).map(e => e.textContent);
+      r.todayLeak = Array.from(document.querySelectorAll('#screen [data-leak]')).map(e => e.getAttribute('data-leak'));
+      openProgrammeModal(); await wait(60);
+      const m = document.getElementById('prog-modal');
+      r.ladder = Array.from(m.querySelectorAll('.wk-ex-meta')).map(e => e.textContent).filter(t => /heavy single/.test(t)).slice(0, 2);
+      r.ladderLeak = Array.from(m.querySelectorAll('[data-leak]')).map(e => e.getAttribute('data-leak'));
+      closeProgrammeModal();
+      await wait(150);
+      r.xss = window.__xss;
+      return r;
+    });
+    assert(out.today.some(t => t.indexOf('Work up to <heavy single> then <b data-leak="reps">3</b>') >= 0), 'Today shows the rep target as typed: ' + JSON.stringify(out.today));
+    assert(out.todayLeak.length === 0, 'no rep-target markup renders on Today: ' + JSON.stringify(out.todayLeak));
+    assert(out.ladder.length && out.ladder.every(t => t.indexOf('<heavy single>') >= 0 && t.indexOf('RPE 8 <i data-leak="rpe">hard</i>') >= 0), 'the week ladder shows the rep target and RPE as typed: ' + JSON.stringify(out.ladder));
+    assert(out.ladderLeak.length === 0, 'no rep-target or RPE markup renders in the week ladder: ' + JSON.stringify(out.ladderLeak));
+    assert(out.xss === 0, 'no coach-written handler runs: ' + out.xss);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('an emoji first name is a whole avatar on every tab (L53)', async () => {
   const app = await boot({ native: true, seed: { kt_user_name: '\u{1F98A}Fox', kt_apikey: 'sk-ant-api03-test' } });
   try {

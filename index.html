@@ -6923,7 +6923,7 @@ function renderTodayEditorial(){
           (ex.isMain?'<span class="kt-main-tag">MAIN</span>':'')+
         '</div>'+
         '<div class="kt-marquee-right">'+
-          '<span class="kt-marquee-reps">'+ex.sets+'×'+_fmtRepTarget(ex.reps)+' · '+wLbl+'</span>'+
+          '<span class="kt-marquee-reps">'+_esc(ex.sets+'×'+_fmtRepTarget(ex.reps))+' · '+wLbl+'</span>'+
         '</div>'+
         '</div>'+spark;
     });
@@ -12663,8 +12663,9 @@ function _renderWeekDetail(wd){
         summary = exs.length+' lifts · '+_esc(main.name)+weight;
         fullHTML = '<div class="wk-ex-list">'+exs.map(function(e,i){
           var w = e.weight ? fmtW(e.weight) : '—';
-          var rep = (e.sets||3)+'×'+(e.reps||'8-10');
-          var rpe = e.rpe ? ' · RPE '+e.rpe : '';
+          // the coach writes reps as free text ("8-10", "Max", anything): text, never markup
+          var rep = _esc((e.sets||3)+'×'+(e.reps||'8-10'));
+          var rpe = e.rpe ? ' · RPE '+_esc(String(e.rpe)) : '';
           return '<div class="wk-ex-row">'+
             '<span class="wk-ex-num'+(e.isMain?' main':'')+'">'+String(i+1).padStart(2,'0')+'</span>'+
             '<div class="wk-ex-body">'+
