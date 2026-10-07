@@ -4174,10 +4174,11 @@ function _prGain(c, i){
 function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2 && (_uW()!=='kg' || wDisp(w) > wDisp(best)); }
 // Only the newest log of a lift sets its working weight, and a backdated one can only raise
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
-// log_session and the runner's finish both come through here).
-// rec, the log just saved, is stamped with what it set (_wwStamp).
-function _setWorkingWeights(exs, date, rec){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), set={}, wrote=[];
+// log_session and the runner's finish both come through here). rec, the log just saved, is
+// stamped with what it set (_wwStamp). o.live: a workout finished now and filed on the day it
+// began (it ran past midnight) is no backfill.
+function _setWorkingWeights(exs, date, rec, o){
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO() && !(o && o.live), set={}, wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
@@ -5406,12 +5407,16 @@ function _streakChip(){
 // written — backdated logs would create misleading Health entries.
 function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
+  var now = Date.now(), last = _runnerLastSetAt(sess);
   // A backdated log has no real time to write. The day the session began is its own: one that
-  // ran past midnight is filed on that day and still happened just now.
-  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)))) return;
+  // ran past midnight is filed on that day and still happened just now (a set within the hour).
+  // A draft left in the evening and finished the next morning did not, and was written at 04:00.
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && now-last < 60*60*1000)) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
-  var end = Date.now();
+  // It ends with its last set (ten minutes after at most), not at the tap on Finish: a draft
+  // resumed hours later was written through the hours the app was closed.
+  var end = last>0 ? Math.min(now, last + 10*60*1000) : now;
   var start = (sess && sess.startedAt) || 0;
   var dur = end - start;
   // Implausible window (draft restored across days, phone clock, etc.) —
@@ -8881,6 +8886,19 @@ function _runnerFoldRepeats(exs){
   });
   return out;
 }
+// A finished wrist session files each lift once. The wrist keys its log by name, so a watch
+// still holding a plan that lists a lift twice sends that one log under every row: the longest
+// is kept (they are the same sets) and the repeats are dropped.
+function _wristFoldRepeats(exs){
+  var out=[], at={}, len=function(e){ return Array.isArray(e.reps) ? e.reps.length : 0; };
+  (exs||[]).forEach(function(ex){
+    if(!ex) return;
+    var k=String(ex.name);
+    if(!at.hasOwnProperty(k)){ at[k]=out.length; out.push(ex); return; }
+    if(len(ex)>len(out[at[k]])) out[at[k]]=ex;
+  });
+  return out;
+}
 var _draftTO=null;
 function _saveRunnerDraft(){
   if(!runnerOpen||!runnerSession) return;
@@ -9152,6 +9170,17 @@ function _restDetail(nx){
   var load=w>0 ? fmtW(w) : (_isBodyweightLift(nx.name) ? 'Bodyweight' : '');
   return load ? load+(r>0?' \u00d7 '+r:'') : (r>0 ? r+' reps' : '');
 }
+// The shell's bundled page stamp (TrovoOta.status, build 41+), read once at launch: its native
+// views are that old. The rest Live Activity before build 57 (bundled 20261003-1) prints
+// 'SET n OF m' whatever n is.
+var _shellBuild=null;
+function _shellBuildRead(){
+  if(_shellBuild!==null) return _shellBuild;
+  _shellBuild='';
+  try{ var OTA=_plug('TrovoOta'); if(OTA && OTA.status) Promise.resolve(OTA.status()).then(function(s){ _shellBuild=String((s&&s.bundleBuild)||''); }).catch(function(){}); }catch(e){}
+  return _shellBuild;
+}
+try{ _shellBuildRead(); }catch(e){}
 function _trovoTimerStart(ex, nextSet){
   // Backgrounded-phone alert when the rest is over (Live Activity shows the
   // countdown; the notification does the buzz). Cancelled on skip/return.
@@ -9164,9 +9193,13 @@ function _trovoTimerStart(ex, nextSet){
   if(!TT) return;
   var detail='';
   try{ detail=_restDetail(nx); }catch(e){ detail=''; }
+  // Past the plan (+1 set) build 57's view says 'SET 6'; the views before it read 'SET 6 OF 4'
+  // from the same numbers, so they are sent the set as the last one ('SET 6 OF 6').
+  var nxOf=parseInt(nx.sets)||ex.sets, _sb=_shellBuildRead();
+  if(nxSet>nxOf && !(_sb && !buildNewer('20261003-1', _sb))) nxOf=nxSet;
   // total = the rest granted so far (it grows with +30s), so the Lock Screen bar drains like
   // the in-app one; theme = the room, so the Live Activity wears it (shells before build 57 ignore both).
-  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: parseInt(nx.sets)||ex.sets, detail: detail,
+  TT.startTimer({exerciseName: nx.name, seconds: runnerRestLeft, nextSet: nxSet, totalSets: nxOf, detail: detail,
     total: Math.max(runnerRestLeft, runnerRestTotal||0), theme: _timerThemeTokens()}).catch(function(){});
 }
 function _trovoTimerEnd(){
@@ -9302,6 +9335,7 @@ function runnerLogAllAtTarget(){
     runnerRpeLog[ex.name].push(targetRpe);
   }
   runnerCompleted[ex.name] = ex.sets;
+  runnerSession.lastSetAt = Date.now();   // sets entered now, as runnerCompleteSet stamps (the Health write ends near it)
   runnerEngaged = false;
   runnerResting = false;
   if(runnerRestTick){ clearInterval(runnerRestTick); runnerRestTick=null; }
@@ -9327,7 +9361,7 @@ function _runnerIdxOf(name){
   var i=-1; if(runnerSession) runnerSession.exercises.forEach(function(e,k){ if(e.name===name) i=k; });
   return i;
 }
-function _runnerReopen(name){
+function _runnerReopen(name, lw){
   var i=_runnerIdxOf(name); if(i<0) return;
   var ex=runnerSession.exercises[i];
   if(_runnerAdvanceTO){ clearTimeout(_runnerAdvanceTO); _runnerAdvanceTO=null; }
@@ -9342,9 +9376,11 @@ function _runnerReopen(name){
   var tr=Array.isArray(ex.reps)?ex.reps[Math.min(ti,ex.reps.length-1)]:ex.reps;
   runnerReps[name]=parseInt(tr)||0;
   // Per-set loads too: logging a top set had already moved the stepper to the back-off load,
-  // so the redone top set was filed at it under a card that said the top set's load.
+  // so the redone top set was filed at it under a card that said the top set's load. lw: the
+  // load the undone set was logged at (a typed 230, not the programme's 225), when it is the set
+  // redone next; Log all's undo and a removed earlier set take the next set's target.
   if(Array.isArray(ex.weights) && ex.weights.length){
-    var tw=parseFloat(ex.weights[Math.min(ti, ex.weights.length-1)]);
+    var tw=parseFloat(lw)>0 ? parseFloat(lw) : parseFloat(ex.weights[Math.min(ti, ex.weights.length-1)]);
     if(tw>0) runnerWeights[name]=tw;
   }
   runnerEngaged=true;
@@ -9354,12 +9390,14 @@ function runnerUndoSet(name, idx){
   if(!runnerSession) return;
   var done=runnerCompleted[name]||0;
   if(!(idx>=0 && idx<done)) return;
+  // The last set is the one redone next: its own load comes back (read before the splice).
+  var lw=idx===done-1 ? parseFloat((runnerWeightsLog[name]||[])[idx]) : NaN;
   [runnerRepsLog, runnerWeightsLog, runnerRpeLog].forEach(function(l){ if(Array.isArray(l[name])) l[name].splice(idx,1); });
   runnerCompleted[name]=done-1;
   _markPhoneEdit(name, done);
   if(_justLoggedSet && _justLoggedSet.ex===name) _justLoggedSet=null;
   if(runnerEditSetIdx!=null && runnerEditSetEx===name){ runnerEditSetIdx=null; runnerEditSetEx=null; }
-  _runnerReopen(name);
+  _runnerReopen(name, lw);
   showToast('Set removed');
 }
 function runnerUndoSetAt(i){ var ex=_runnerEx(); if(ex) runnerUndoSet(ex.name, i); }
@@ -9483,6 +9521,16 @@ function _runnerStartISO(){
   var t=runnerSession ? Number(runnerSession.startedAt) : 0;
   return t>0 ? _ymdLocal(new Date(t)) : todayISO();
 }
+// When the open session's last set went in: the phone's (a set, Log all, an undo or an edit stamp
+// lastSetAt) or one the wrist mirrored in during this run (those stamp only _wristStamps).
+function _runnerLastSetAt(sess){
+  var t=Number(sess && sess.lastSetAt)||0;
+  if(sess && sess===runnerSession) Object.keys(_wristStamps||{}).forEach(function(n){
+    var m=_wristStamps[n]||{};
+    Object.keys(m).forEach(function(i){ var v=Number(m[i])||0; if(v>t) t=v; });
+  });
+  return t;
+}
 // Finish: write a real session record and exit to Today.
 function runnerFinishSession(){
   if(!runnerSession){ closeDeckRunner(); return; }
@@ -9538,9 +9586,10 @@ function runnerFinishSession(){
     var ws=x.wristStartedAt?new Date(x.wristStartedAt).getTime():0;
     // The wrist mirrored this start: the same session, whatever day either is filed on.
     if(ws && _myStart && Math.abs(ws-_myStart)<1500) return true;
-    // Otherwise the same day: the one it is filed on, or the one it began (the drain files a
-    // wrist copy by its start, so the copy of a workout that ran past midnight is there).
-    if(x.date!==_sessionDate && x.date!==_startISO) return false;
+    // Otherwise the day it is filed on (a workout that ran past midnight is filed on the day it
+    // began, where the drain files its wrist copy). Only that day: a workout backdated to
+    // yesterday took in today's own wrist session of the same day.
+    if(x.date!==_sessionDate) return false;
     // Only a copy of THIS session: one filed after this runner began, from
     // a wrist session started within 6 h of it. An earlier wrist session
     // of the same slot today stays its own record.
@@ -9572,7 +9621,7 @@ function runnerFinishSession(){
     return;
   }
   // Persist working weights so subsequent prescriptions update.
-  _setWorkingWeights(exsOut, _sessionDate, _newRec);   // a backdated finish used to lower today's working weights
+  _setWorkingWeights(exsOut, _sessionDate, _newRec, {live:_sessionDate===_startISO});   // a backdated finish used to lower today's working weights
   checkAndUpdatePRs(exsOut);
   invalidateCoachCard();
   // The wrist's own Health workout (live heart rate) is the richer record;
@@ -12249,9 +12298,37 @@ function _carryButtons(cands, sessId){
   }).join('');
 }
 
-// Write a session edit into the programme through the engine: this week and
-// every later week of the same day, keeping the climb. Only what the owner
-// changed in the sheet is written (a mid-session stepper bump is not an edit).
+// A lift the day lists twice (a top set and its back-off as two rows) is one card in the runner
+// and on the watch (_runnerFoldRepeats). Before an edit made on that card goes into the programme,
+// its rows in a week are merged the same way into one row with per-set targets, so the edit
+// reaches every set of the lift: it reached the first row alone (+1 set gave five top sets, and a
+// swap or a removal left the back-off row to come back next time). The coach's version merges the
+// same way, so Use coach's and Reset still give the coach's numbers. False when the rows cannot be
+// one row: one carries a load and another is 'your load', or they are different coach lifts.
+function _progMergeLift(w, slot, name){
+  var list=w&&w[slot]; if(!Array.isArray(list)) return true;
+  var at=[]; list.forEach(function(r,i){ if(r && r.name===name) at.push(i); });
+  if(at.length<2) return true;
+  var rows=at.map(function(i){ return list[i]; }), head=rows[0];
+  var loaded=rows.filter(function(r){ return parseFloat(r.weight)>0; }).length;
+  if(loaded && loaded<rows.length) return false;
+  var bare=function(r){ var x=JSON.parse(JSON.stringify(r)); delete x.rec; return x; };
+  var coach=rows.filter(function(r){ return r.rec!==null; }).map(function(r){ return bare(r.rec||r); });
+  if(coach.some(function(x){ return x.name!==coach[0].name; })) return false;
+  // A row paired with a repeat below it loses the pair, as the runner's card does.
+  var pair=true;
+  at.slice(1).forEach(function(i){ var p=list[i-1]; if(p===head) pair=false; else if(p && p.ss && rows.indexOf(p)<0) p.ss=false; });
+  var m=_runnerFoldRepeats(rows.map(bare))[0];
+  if(head.ss && pair) m.ss=true; else delete m.ss;
+  if(rows.some(function(r){ return r.rec!==undefined; })){
+    m.rec=coach.length ? _runnerFoldRepeats(coach)[0] : null;
+    if(m.rec){ if(coach[0].ss && pair) m.rec.ss=true; else delete m.rec.ss; }
+    _progUnmark(m);
+  }
+  list[at[0]]=m;
+  for(var k=at.length-1;k>=1;k--) list.splice(at[k],1);
+  return true;
+}
 // Write a session edit into the programme through the engine: this week and
 // every later week of the same day, keeping the climb. Only what the owner
 // changed in the sheet is written (a mid-session stepper bump is not an edit).
@@ -12259,13 +12336,20 @@ function _runnerApplyToProgramme(op, p){
   if(!runnerSession) return false;
   var slot=String(runnerSession.type||'').toLowerCase();
   if(LIFT_KEYS.indexOf(slot)<0) return false;
-  var c=currentWeek-1, o={markOwner:true};
+  var c=currentWeek-1, o={markOwner:true}, split=false;
   var res=_commitRoutine(function(cr){
     if(!cr.weeks[c]) return false;
     var n=0;
+    var t=p.touched||{sets:true,reps:true,weight:true}, card=(op==='rename')?p.oldName:p.name;
+    // The card stood for every row of a lift the day lists twice: merged first, the edit (or the
+    // removal, which Restore then brings back whole) reaches all of them.
+    var many=(cr.weeks[c][slot]||[]).filter(function(r){ return r && r.name===card; }).length>1;
+    if(many && (op==='remove' || (op==='rename' && (p.ex.name!==card || t.sets || t.reps || t.weight)))){
+      for(var j=c;j<cr.weeks.length;j++) if(!_progMergeLift(cr.weeks[j], slot, card)){ split=true; return false; }
+    }
     if(op==='rename'){
-      var st=_progRow(cr.weeks[c], slot, p.oldName); if(!st) return false;
-      var name=p.oldName, t=p.touched||{sets:true,reps:true,weight:true};
+      var name=p.oldName;
+      var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
       if(p.ex.name!==p.oldName){
         var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, t.weight?p.ex.weight:0, o);
         if(sw===-1) return -1;
@@ -12287,6 +12371,7 @@ function _runnerApplyToProgramme(op, p){
     }
     return n;
   }, {noRender:true, scope:'runner:'+(runnerSession.startedAt||'')});
+  if(split){ showToast((op==='rename'?p.oldName:p.name)+' is on this day twice \u2014 the programme was not changed','err'); return false; }
   if(res===-1){ showToast('That lift is already on this day \u2014 the programme was not changed','err'); return false; }
   if(res) showToast('Programme updated from this week on \u00b7 keeps the climb');
   return !!res;
@@ -12401,8 +12486,9 @@ function saveRunnerExEdit(){
   if(_repsTouched) ex.reps=parseInt(_rExEditReps);
   ex.weight =parseFloat(_rExEditWeight)||0;
   // The sheet edits scalars — stale per-set target arrays would silently
-  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them.
-  if(ex.weight!==_seedW) delete ex.weights;
+  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them;
+  // a swap never does (they are the old lift's loads), though its per-set reps stay.
+  if(newName!==oldName || ex.weight!==_seedW) delete ex.weights;
   // A superset pairs with the card BELOW, so choosing a partner means moving it
   // there. Before this the only reachable partner was whichever exercise
   // happened to sit next in the list — the toggle could be turned on, but the
@@ -22189,6 +22275,15 @@ function _watchPlanForDate(iso){
   var cr=src.cr, w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
   var arr=(w&&w[String(pl.type).toLowerCase()])||[];
   var weights=getWeights();
+  // One card per lift, as the runner folds them: the wrist keys its log by name, so a lift
+  // listed twice was two cards sharing one log and the session was filed with its sets twice.
+  // Each row's load resolves first (as today's do), on copies: arr is the cached routine.
+  arr=_runnerFoldRepeats(arr.map(function(ex){
+    if(!ex) return ex;
+    var c=JSON.parse(JSON.stringify(ex));
+    if(!(parseFloat(c.weight)>0) && parseFloat(weights[c.name])>0) c.weight=parseFloat(weights[c.name]);
+    return c;
+  }));
   var exs=arr.map(function(ex){
     var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
     var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
@@ -22214,8 +22309,9 @@ function _pushWatchPlan(){
     var draftRun = !runnerOpen && runnerResumePending && runnerSession && (runnerSession.exercises||[]).length &&
       (!runnerSessionDate || runnerSessionDate===todayISO());
     var liveRun = (runnerOpen && runnerSession && (runnerSession.exercises||[]).length) || draftRun;
+    // Today's plan folds a lift listed twice into one card, as the runner does (act is a copy).
     var srcExs = liveRun ? runnerSession.exercises
-      : (act.type==='lift'&&act.exercises?act.exercises:[]);
+      : (act.type==='lift'&&act.exercises?_runnerFoldRepeats(act.exercises):[]);
     var exs=srcExs.map(function(ex){
       var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
@@ -22444,8 +22540,8 @@ function drainWatchSessions(){
         _wchLog('drain: "'+s.dayName+'" is not a known day; filed under '+dayType);
       }
       var mainByName={};
-      getSessionExercises(dayType).forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; });
-      var exsOut=s.exercises.map(function(ex){
+      getSessionExercises(dayType).forEach(function(ex){ mainByName[ex.name]=mainByName[ex.name]||!!ex.isMain; });   // a lift listed twice is main if either row is (the runner's fold)
+      var exsOut=_wristFoldRepeats(s.exercises).map(function(ex){
         var reps=(ex.reps||[]).map(function(r){ return parseInt(r)||0; });
         var w=parseFloat(ex.weight)||0;
         // Newer watch builds send per-set weights; older ones one number.
