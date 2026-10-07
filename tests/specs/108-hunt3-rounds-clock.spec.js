@@ -38,6 +38,10 @@
 //   workout was still on screen: round 2 was re-based without it and it was filed as round 2's
 //   week 1. A due round waits for a workout under way (the runner, a draft that can be resumed,
 //   LIVE ON WATCH) and is built with it once it is saved; discarded, it starts without it.
+// - R36 The sheet painted on week 11's Sunday night ("Starting the next round ends it early") and
+//   tapped after the night rolled into week 12 set a round to follow the programme: it started a
+//   week after the Monday shown while the toast named that Monday. The sheet's own state decides,
+//   and the toast names the day Today shows.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -703,6 +707,53 @@ run('R35: a workout discarded after midnight lets the round start; one LIVE ON W
     assert(out.held.cycle === 1 && out.held.week === 12, 'LIVE ON WATCH at midnight: round 1 stays: ' + JSON.stringify(out.held));
     assert(out.drained.cycle === 1 && out.drained.saved && out.drained.saved.sunday && out.drained.saved.week === 12, 'the wrist\'s copy drains as Sunday\'s week 12: ' + JSON.stringify(out.drained));
     assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 227.5, 'the next minute round 2 starts, built with it: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('R36: the sheet painted on week 11\'s Sunday starts the round on the Monday it showed, tapped after the roll into week 12', async () => {
+  const app = await boot({ native: true });
+  try {
+    await app.page.addInitScript(() => { const si = window.setInterval; window.__ticks = []; window.setInterval = function (fn, ms) { window.__ticks.push({ fn, ms }); return si.apply(this, arguments); }; });
+    await withClock(app);
+    await coldBoot(app);   // the minute clock is recorded from the next load
+    const out = await app.page.evaluate(async ({ LOGS, VIS }) => {
+      eval(LOGS); eval(VIS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const mon = _mostRecentMonday(), next = addDays(mon, 7), r = { day: _nrDay(next), next };
+      const tap = async (paintAt, roll) => {
+        lsDel('kt_routine_next'); setCustomRoutine(Object.assign(getCustomRoutine(), { cycle: 1 })); localStorage.removeItem('kt_final_since');
+        __setNow(paintAt); _setWeek(11, mon); _lastSeenDay = todayISO();
+        openNextRound(); await wait(20);
+        const o = { shown: document.getElementById('nrGo').textContent, early: /ends it early/.test(document.getElementById('nrSheet').textContent) };
+        await roll();
+        o.weekAtTap = currentWeek;
+        document.getElementById('nrGo').click(); await wait(30);
+        Object.assign(o, { toast: (document.getElementById('toast') || {}).textContent, set: lsGet('kt_routine_next'), cycle: getCustomRoutine().cycle, week: currentWeek, anchor: localStorage.getItem('kt_week_monday') });
+        return o;
+      };
+      // Week 11's Sunday, 23:58: tapped after the minute clock rolled into week 12, and the next morning.
+      r.tick = await tap(addDays(mon, 6) + 'T23:58:30', async () => { __setNow(next + 'T00:01:10'); window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); await wait(30); });
+      r.overnight = await tap(addDays(mon, 6) + 'T22:00:00', async () => { leave(); __setNow(next + 'T07:30:00'); back(); await wait(30); });
+      // Painted on the last week, then the coach adds weeks 13-16 before the tap: the round follows
+      // them, and the toast says the day Today says.
+      lsDel('kt_routine_next'); setCustomRoutine(Object.assign(getCustomRoutine(), { cycle: 1, weeks: getCustomRoutine().weeks.slice(0, 12) }));
+      __setNow(addDays(mon, 2) + 'T10:00:00'); _setWeek(12, mon); _lastSeenDay = todayISO();
+      openNextRound(); await wait(20);
+      const w12 = getCustomRoutine().weeks[11];
+      executeCoachTool('update_routine_weeks', { weeks: [13, 14, 15, 16].map(wk => Object.assign(JSON.parse(JSON.stringify(w12)), { wk })) });
+      document.getElementById('nrGo').click(); await wait(30);
+      switchTab('log'); switchLogSub('workout'); render();
+      r.later = { toast: (document.getElementById('toast') || {}).textContent, starts: (_nextRoundSet() || {}).startsOn, card: (txt().match(/Round 2 starts [A-Za-z]+, [A-Za-z]+ \d+/) || [''])[0], d35: addDays(mon, 35), day35: _nrDay(addDays(mon, 35)) };
+      return r;
+    }, { LOGS, VIS });
+    for (const k of ['tick', 'overnight']) {
+      const o = out[k];
+      assert(o.shown === 'Start round 2 on ' + out.day && o.early && o.weekAtTap === 12, k + ': the sheet said the round ends week 11\'s programme early, on ' + out.day + ': ' + JSON.stringify(o));
+      assert(o.set === null && o.cycle === 2 && o.week === 1 && o.anchor === out.next && /Round 2 started/.test(o.toast), k + ': round 2 starts on that Monday, now: ' + JSON.stringify(o));
+    }
+    const l = out.later;
+    assert(l.starts === l.d35 && l.toast === 'Round 2 starts ' + l.day35 && l.card === 'Round 2 starts ' + l.day35, 'the toast names the start Today shows (after weeks 13-16): ' + JSON.stringify(l));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

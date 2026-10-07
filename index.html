@@ -11692,7 +11692,10 @@ function _applyNextRound(now){
 }
 // painted: the Monday the sheet showed. Tapped after midnight (or after a night on the
 // screen), recomputing it set the Monday after, a week late; a Monday that has come starts now.
-function setNextRound(when, painted){
+// paintedEnd: whether the sheet was painted on the last week or after it (1: the round follows
+// the programme) or before it (0: "Starting the next round ends it early"). Read at the tap, the
+// night that rolls week 11 into 12 turned an early start into one a week after the shown Monday.
+function setNextRound(when, painted, paintedEnd){
   var cr=getCustomRoutine(); if(!cr) return false;
   var prev=_nextRoundSet() && lsGet('kt_routine_next');   // as stored (the start may follow the programme)
   if(when==='today' && _nrCanToday()){
@@ -11704,13 +11707,13 @@ function setNextRound(when, painted){
     render();
     return true;
   }
-  var mon=/^\d{4}-\d{2}-\d{2}$/.test(String(painted||'')) ? painted : _nextRoundMonday(), set={startsOn:mon, at:todayISO()};
-  if(_roundInfo()) set.afterEnd=true;   // set on the last week or after the end: it follows the programme (_nextRoundSet)
+  var shown=/^\d{4}-\d{2}-\d{2}$/.test(String(painted||'')), mon=shown ? painted : _nextRoundMonday(), set={startsOn:mon, at:todayISO()};
+  if((shown && paintedEnd!=null) ? +paintedEnd : _roundInfo()) set.afterEnd=true;   // set on the last week or after the end: it follows the programme (_nextRoundSet)
   if(!lsSet('kt_routine_next', set)) return false;
   closeNextRound();
   var nb2=mon<=todayISO() ? _applyNextRound(false) : null;   // a failed swap stays set and is retried
   if(nb2){ showToast('Round '+nb2.routine.cycle+' started — week 1 is on the card'); render(); return true; }
-  showToast('Round '+((parseInt(cr.cycle,10)||1)+1)+' starts '+_nrDay(mon));
+  showToast('Round '+((parseInt(cr.cycle,10)||1)+1)+' starts '+_nrDay((_nextRoundSet()||set).startsOn));   // the day Today will say
   invalidateCoachCard(); render();
   return true;
 }
@@ -11774,7 +11777,7 @@ function _paintNextRound(){
       '<button type="button" class="kt-rt-chip'+(_nrWhen==='monday'?' on':'')+'" aria-pressed="'+(_nrWhen==='monday')+'" onclick="_nrSetWhen(\'monday\')">'+_esc(_nrDay(mon))+'</button>'+
       (canToday?'<button type="button" class="kt-rt-chip'+(_nrWhen==='today'?' on':'')+'" aria-pressed="'+(_nrWhen==='today')+'" onclick="_nrSetWhen(\'today\')">Today</button>':'')+
     '</div>'+
-    '<button type="button" class="btn btn-primary btn-full" id="nrGo" style="padding:14px;font-size:15px;margin-top:14px;" onclick="'+(keep?'closeNextRound()':'setNextRound(_nrWhen,\''+mon+'\')')+'">'+_esc(go)+'</button>'+
+    '<button type="button" class="btn btn-primary btn-full" id="nrGo" style="padding:14px;font-size:15px;margin-top:14px;" onclick="'+(keep?'closeNextRound()':'setNextRound(_nrWhen,\''+mon+'\','+(ri?1:0)+')')+'">'+_esc(go)+'</button>'+
     (p?'<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="cancelNextRound()">Cancel the next round</button>':'')+
     '<button type="button" class="btn btn-ghost btn-full" style="margin-top:8px;padding:12px;font-size:14px;" onclick="closeNextRound();startNewProgramme();">Start something different</button>';
   _a11yPass();
