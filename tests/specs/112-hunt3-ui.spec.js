@@ -111,6 +111,70 @@ run('short day names keep what tells days apart (L44)', async () => {
   } finally { await app.close(); }
 });
 
+// R50: the L44 rule kept only the first word ("Day", "Week", an emoji) and then the last
+// word's initial, so "Day 1 - Push" / "Day 2 - Pull" both read "Day P" on the chips, the
+// watch and the widget, and one named day alone read "Day" or just its emoji.
+run('short day names tell coach-style names apart: Day 1 / Day 2, Week A / B, emoji-led (R50)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__widget = [];
+      Capacitor.Plugins.TrovoWidget.updateSummary = (a) => { window.__widget.push(a); return Promise.resolve({}); };
+      await wait(300);
+      const M = '\u{1F4AA}';
+      const name = (a, b, c) => { setDayName('Push', a || 'Push'); setDayName('Pull', b || 'Pull'); setDayName('Legs', c || 'Legs'); };
+      const three = () => [_dayShort('Push'), _dayShort('Pull'), _dayShort('Legs')];
+      const r = {};
+      name('Day 1 - Push', 'Day 2 - Pull', 'Day 3 - Legs'); r.dash = three();
+      switchTab('settings'); await wait(20);
+      r.chips = Array.from(document.querySelectorAll('.kt-day-chip')).map(b => b.querySelector('.kt-day-chip-t').textContent);
+      r.plan = getWeekPlan().map(e => e.type);
+      window.__mock.updateContext.length = 0; window.__widget.length = 0; _lastNativeSummary = null; _lastWatchPlan = null; _runNativeSync(); await wait(30);
+      const ctx = window.__mock.updateContext.slice(-1)[0] || {};
+      r.week = JSON.parse(ctx.week || '[]').filter(d => d.type === 'lift').map(d => d.slot + '=' + d.short);
+      r.widget = JSON.parse((window.__widget.slice(-1)[0] || {}).json || '{"days":[]}').days.filter(d => LIFT_TYPES.indexOf(d.type) >= 0).map(d => d.type + '=' + d.short);
+      name('Day 1: Upper Strength', 'Day 2: Lower Strength', 'Day 3: Upper Hypertrophy'); r.colon = three();
+      name('Day 1 Upper', 'Day 3 Upper'); r.mid = three();
+      name('Week A Upper', 'Week B Upper'); r.weekAB = three();
+      name(M + ' Upper Body', M + ' Lower Body'); r.emoji = three();
+      name('Upper Power', 'Upper Pull'); r.initial = three();
+      name(M + ' Upper Body'); r.aloneEmoji = _dayShort('Push');
+      name('Day 1 Upper'); r.aloneDay = _dayShort('Push');
+      name('Week A Upper Body'); r.aloneWeek = _dayShort('Push');
+      name('Full Body A', 'Full Body B', 'Lower Body'); r.ab = three();
+      name('Ab + Bi + Tri + Calf + Neck'); r.many = _dayShort('Push');   // five initials would be nine characters
+      // only days the programme can show count: the seed has no Arms day, until a cadence
+      // (spelled in lower case, as a coach may) schedules one
+      name('Arms Day'); r.unused = _dayShort('Push');
+      const cr = getCustomRoutine(); cr.weekPlan = cr.weekPlan.map(v => v === 'Rest' ? 'arms' : v); lsSet('kt_routine', cr);
+      r.used = [_dayShort('Push'), _dayShort('Arms')];
+      return r;
+    });
+    const M = '\u{1F4AA}';
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const apart = (a) => a.every((s, i) => a.indexOf(s) === i);
+    assert(eq(out.dash, ['Day 1', 'Day 2', 'Day 3']), 'Day 1 - Push / Day 2 - Pull / Day 3 - Legs: ' + JSON.stringify(out.dash));
+    const chipOf = { Push: 'Day 1', Pull: 'Day 2', Legs: 'Day 3' };
+    assert(out.plan.every((t, i) => !chipOf[t] || out.chips[i] === chipOf[t]), 'the Settings chips read Day 1 / Day 2 / Day 3: ' + JSON.stringify([out.plan, out.chips]));
+    const slotsApart = (list) => { const m = {}; list.forEach(x => { const [k, v] = x.split('='); m[k] = v; }); const v = Object.keys(m).map(k => m[k]); return v.length >= 2 && apart(v) && v.every(s => /^Day \d$/.test(s)); };
+    assert(slotsApart(out.week), 'the watch week keeps the days apart: ' + JSON.stringify(out.week));
+    assert(slotsApart(out.widget), 'the widget summary keeps the days apart: ' + JSON.stringify(out.widget));
+    assert(eq(out.colon, ['Day 1', 'Day 2', 'Day 3']), 'Day 1: Upper Strength / Day 2: Lower Strength: ' + JSON.stringify(out.colon));
+    assert(eq(out.mid, ['Day 1', 'Day 3', 'Legs']), 'Day 1 Upper / Day 3 Upper: ' + JSON.stringify(out.mid));
+    assert(eq(out.weekAB, ['Week A', 'Week B', 'Legs']), 'Week A Upper / Week B Upper: ' + JSON.stringify(out.weekAB));
+    assert(eq(out.emoji, [M + ' Upper', M + ' Lower', 'Legs']), 'an emoji and Upper Body / Lower Body: ' + JSON.stringify(out.emoji));
+    assert(apart(out.initial) && out.initial.slice(0, 2).every(s => /^Up/.test(s)), 'Upper Power / Upper Pull still differ: ' + JSON.stringify(out.initial));
+    assert(out.aloneEmoji === M + ' Upper' && out.aloneDay === 'Day 1' && out.aloneWeek === 'Week A', 'one named day alone keeps its meaning: ' + JSON.stringify([out.aloneEmoji, out.aloneDay, out.aloneWeek]));
+    assert(eq(out.ab, ['Full A', 'Full B', 'Lower']), 'Full A / Full B / Lower as before: ' + JSON.stringify(out.ab));
+    assert(out.unused === 'Arms' && out.used[1] === 'Arms' && out.used[0] !== 'Arms' && /^Arms /.test(out.used[0]), 'a day the programme never shows does not crowd a name, a scheduled one does: ' + JSON.stringify([out.unused, out.used]));
+    assert(out.many === 'A+B+T+C', 'initials stop at seven characters: ' + out.many);
+    const all = [].concat(out.dash, out.colon, out.mid, out.weekAB, out.emoji, out.initial, out.chips, [out.aloneEmoji, out.aloneDay, out.aloneWeek, out.many], out.used);
+    assert(all.every(s => s === s.trim() && Array.from(s).length <= 7), 'every short name is trimmed and at most seven characters: ' + JSON.stringify(all));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('a lift with an apostrophe opens its Strength curve (M40)', async () => {
   const sessions = JSON.parse(SEED.kt_sessions);
   sessions.forEach((s) => { if (Array.isArray(s.exercises)) s.exercises.push({ name: "Farmer's Carry", sets: 3, reps: ['12', '12', '12'], weight: 70 }); });
@@ -246,6 +310,46 @@ run('coach-written block name, week note and programme name read as text (L52)',
   } finally { await app.close(); }
 });
 
+// R54: L52 escaped the block name and the week note, but a coach-written rep target (free
+// text in the schema: "8-10", "Max", or anything) still went out as markup on Today's lift
+// ledger and in Programme > Week by week, which pre-renders every week when it opens.
+run('a coach-written rep target reads as text on Today and in the week ladder (R54)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__xss = 0;
+      const REP = 'Work up to <heavy single> then <b data-leak="reps">3</b> <img src="x-missing.png" data-leak="img" onerror="window.__xss++">';
+      const cr = getCustomRoutine();
+      const dow = (new Date(todayISO() + 'T00:00:00').getDay() + 6) % 7;
+      cr.weeks.forEach(w => {
+        const plan = (Array.isArray(w.weekPlan) && w.weekPlan.length === 7 ? w.weekPlan : (cr.weekPlan || DEFAULT_WEEK_PLAN.map(p => p.type))).slice();
+        plan[dow] = 'Push'; w.weekPlan = plan;
+        (w.push || []).forEach((e, i) => { if (i === 0) { e.reps = REP; e.rpe = '8 <i data-leak="rpe">hard</i>'; } });
+      });
+      lsSet('kt_routine', cr);
+      const r = {};
+      switchTab('log'); switchLogSub('workout'); await wait(60);
+      r.today = Array.from(document.querySelectorAll('#screen .kt-marquee-reps')).map(e => e.textContent);
+      r.todayLeak = Array.from(document.querySelectorAll('#screen [data-leak]')).map(e => e.getAttribute('data-leak'));
+      openProgrammeModal(); await wait(60);
+      const m = document.getElementById('prog-modal');
+      r.ladder = Array.from(m.querySelectorAll('.wk-ex-meta')).map(e => e.textContent).filter(t => /heavy single/.test(t)).slice(0, 2);
+      r.ladderLeak = Array.from(m.querySelectorAll('[data-leak]')).map(e => e.getAttribute('data-leak'));
+      closeProgrammeModal();
+      await wait(150);
+      r.xss = window.__xss;
+      return r;
+    });
+    assert(out.today.some(t => t.indexOf('Work up to <heavy single> then <b data-leak="reps">3</b>') >= 0), 'Today shows the rep target as typed: ' + JSON.stringify(out.today));
+    assert(out.todayLeak.length === 0, 'no rep-target markup renders on Today: ' + JSON.stringify(out.todayLeak));
+    assert(out.ladder.length && out.ladder.every(t => t.indexOf('<heavy single>') >= 0 && t.indexOf('RPE 8 <i data-leak="rpe">hard</i>') >= 0), 'the week ladder shows the rep target and RPE as typed: ' + JSON.stringify(out.ladder));
+    assert(out.ladderLeak.length === 0, 'no rep-target or RPE markup renders in the week ladder: ' + JSON.stringify(out.ladderLeak));
+    assert(out.xss === 0, 'no coach-written handler runs: ' + out.xss);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('an emoji first name is a whole avatar on every tab (L53)', async () => {
   const app = await boot({ native: true, seed: { kt_user_name: '\u{1F98A}Fox', kt_apikey: 'sk-ant-api03-test' } });
   try {
@@ -269,6 +373,40 @@ run('an emoji first name is a whole avatar on every tab (L53)', async () => {
     const all = Object.keys(out.seen).map(k => [k, out.seen[k]]);
     assert(all.every(([, a]) => a.length >= 1 && a.every(t => t === '\u{1F98A}')), 'every avatar shows the whole fox: ' + JSON.stringify(out.seen));
     assert(out.lt.avatars.every(t => t === '<') && !out.lt.injected, 'a name starting with markup shows its first character as text: ' + JSON.stringify(out.lt));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R52: L53 took the first code point, so a flag showed one regional-indicator letter, a
+// skin-toned thumb lost its tone and a family showed only the man. The avatar (and a short
+// day name) now takes the first grapheme.
+run('a flag, a skin tone or a joined emoji is a whole avatar too (R52)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const FLAG = '\u{1F1FA}\u{1F1F8}', THUMB = '\u{1F44D}\u{1F3FD}', FAM = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', HEART = '\u{2764}\u{FE0F}';
+      const r = { want: [FLAG, FLAG, THUMB, FAM, HEART], seen: [] };
+      for (const n of [FLAG + 'Sam', FLAG + ' Sam', THUMB + 'Bo', FAM + 'Fam', HEART + ' Ana']) {
+        localStorage.setItem('kt_user_name', n);
+        const got = {};
+        switchTab('settings'); await wait(10); got.settings = (document.querySelector('.profile-ava') || {}).textContent;
+        switchTab('progress'); await wait(10); got.progress = Array.from(document.querySelectorAll('.kt-meta-ava,.screen-avatar')).map(e => e.textContent);
+        switchTab('coach'); await wait(10); got.coach = Array.from(document.querySelectorAll('.kt-meta-ava,.screen-avatar')).map(e => e.textContent);
+        r.seen.push(got);
+      }
+      setDayName('Push', FLAG + ' Upper Body'); setDayName('Pull', FLAG + ' + Legs');
+      r.short = [_dayShort('Push'), _dayShort('Pull')];
+      // without a segmenter (iOS before 14.5) the first code point is still a whole one
+      _graphSeg = false; r.noSeg = _initialOf(FLAG + 'Sam'); _graphSeg = null;
+      return r;
+    });
+    out.seen.forEach((g, i) => {
+      const w = out.want[i], all = [g.settings].concat(g.progress, g.coach);
+      assert(all.length >= 2 && all.every(t => t === w), 'every avatar shows the whole ' + JSON.stringify(w) + ': ' + JSON.stringify(g));
+    });
+    assert(out.short[0] === '\u{1F1FA}\u{1F1F8} Upper' && out.short[1].indexOf('\u{1F1FA}\u{1F1F8}+') === 0, 'a short day name keeps the flag whole: ' + JSON.stringify(out.short));
+    assert(out.noSeg === '\u{1F1FA}' && !LONE.test(out.noSeg), 'without a segmenter the avatar is a whole code point: ' + JSON.stringify(out.noSeg));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
@@ -308,6 +446,81 @@ run('Escape closes the top sheet with focus inside it, and focus goes back to th
     assert(!r.libInside.lib && r.libInside.focus === '__opener' && !r.libBody.lib, 'the Exercise library closes on Escape: ' + JSON.stringify([r.libInside, r.libBody]));
     assert(!r.confirm.confirm && r.confirm.profile && !r.profile.profile && r.profile.focus === '__opener', 'Escape closes the top sheet only: ' + JSON.stringify([r.confirm, r.profile]));
     assert(!r.prReal.pr && r.prReal.lib && !r.prSynthetic.pr && r.prSynthetic.lib && !r.libLast.lib, 'a sheet that handles Escape closes alone: ' + JSON.stringify([r.prReal, r.prSynthetic, r.libLast]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R51: L55 gave each library row role=button, and the row wrapped its open detail and the
+// custom lift's ✕: a button's content is one flat label to VoiceOver, so the PR history
+// button and Delete could not be reached. Only the header line is the control now.
+run("a library row's control is its header: the open detail, PR history and Delete stay reachable (R51)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const out = await p.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      saveCustomExercise({ name: 'Zercher Hold', cat: 'Legs', muscles: 'core, quads', equip: 'Barbell', desc: 'Hold it.', tips: ['Brace'], _custom: true });
+      switchTab('settings');
+      const lift = getAllExercises().find(e => _prHead(e.name)).name;
+      openExLib(lift); await wait(20);
+      const ov = document.getElementById('exlibOverlay');
+      const head = (n) => Array.from(ov.querySelectorAll('#exlibList [data-n]')).find(x => x.dataset.n === n && x.tagName !== 'BUTTON');
+      const wrapped = () => Array.from(ov.querySelectorAll('#exlibList [role=button]')).filter(b => b.querySelector('button, input, [role=button], [onclick]')).length;
+      const r = { lift };
+      const h = head(lift), pr = ov.querySelector('#exlibList .kt-ex-pr');
+      r.open = { role: h && h.getAttribute('role'), tab: h && h.getAttribute('tabindex'), expanded: h && h.getAttribute('aria-expanded'), name: h ? h.textContent : '',
+        pr: !!pr, prFree: !!pr && !pr.closest('[role=button]'), wrapped: wrapped() };
+      _libSearch = 'Zercher Hold'; _libExpanded = 'Zercher Hold'; _updateExLibList(); await wait(10);
+      const x = Array.from(ov.querySelectorAll('#exlibList button[data-n]')).find(b => b.dataset.n === 'Zercher Hold');
+      r.custom = { x: !!x, xFree: !!x && !x.closest('[role=button]'), label: x && x.getAttribute('aria-label'), wrapped: wrapped() };
+      // a tap on the header still opens and closes the row
+      head('Zercher Hold').click(); await wait(10); r.closed = _libExpanded === '';
+      head('Zercher Hold').click(); await wait(10); r.reopened = _libExpanded === 'Zercher Hold';
+      closeExLib();
+      return r;
+    });
+    assert(out.open.role === 'button' && out.open.tab === '0' && out.open.expanded === 'true', 'the header line is a button that says it is open: ' + JSON.stringify(out.open));
+    assert(!/CUES|HISTORY|PR ·|TOP SET/.test(out.open.name), 'the button is named by its header, not the whole detail: ' + out.open.name.slice(0, 120));
+    assert(out.open.pr && out.open.prFree && out.open.wrapped === 0, 'the PR history button is outside any button: ' + JSON.stringify(out.open));
+    assert(out.custom.x && out.custom.xFree && out.custom.label === 'Delete Zercher Hold' && out.custom.wrapped === 0, 'the custom lift\'s Delete is its own button: ' + JSON.stringify(out.custom));
+    assert(out.closed && out.reopened, 'tapping the header opens and closes the row: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R53: L54 left the runner's Edit sheet out of the sheets Escape closes, so mid-workout
+// Escape did nothing there and closing it never gave focus back to the card.
+run("Escape closes the runner's Edit sheet and focus goes back to the card's Edit (R53)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(30); };
+    const state = () => p.evaluate(() => {
+      const a = document.activeElement;
+      return { open: !!document.getElementById('runner-ex-edit-modal'), runner: !!document.getElementById('runner-root'),
+        onEdit: !!(a && /openRunnerExEdit/.test(a.getAttribute('onclick') || '')) };
+    });
+    await p.evaluate(() => { switchTab('log'); openDeckRunner('Push'); });
+    const edit = p.locator('#runner-root button[onclick*="openRunnerExEdit"]').first();
+    const r = {};
+    // opened from the card with the keyboard, focus on the sheet's ✕
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    r.opened = await state();
+    await p.evaluate(() => document.querySelector('#runner-ex-edit-modal button[onclick^="closeRunnerExEdit"]').focus());
+    await esc(); r.inside = await state();
+    // focus on <body>
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    await p.evaluate(() => document.activeElement && document.activeElement.blur());
+    await esc(); r.body = await state();
+    // in the exercise picker's search field
+    await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
+    await p.evaluate(() => { _openRunnerExPicker(); document.getElementById('runner-ex-picker-q').focus(); });
+    await esc(); r.picker = await state();
+    await p.evaluate(() => closeDeckRunner());
+    assert(r.opened.open, 'Enter on the card opens the Edit sheet: ' + JSON.stringify(r.opened));
+    assert(!r.inside.open && r.inside.runner && r.inside.onEdit, 'Escape with focus inside closes it and focus returns to Edit: ' + JSON.stringify(r.inside));
+    assert(!r.body.open && r.body.runner, 'Escape with focus on the page closes it, the runner stays: ' + JSON.stringify(r.body));
+    assert(!r.picker.open && r.picker.runner && r.picker.onEdit, 'Escape in the picker closes the sheet: ' + JSON.stringify(r.picker));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -2256,6 +2256,21 @@ var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // pr
 // off by an older page is dropped.
 function _chars(s){ return String(s==null?'':s).match(/[\ud800-\udbff][\udc00-\udfff]|[^\ud800-\udfff]/g)||[]; }
 function _wellFormed(s){ s=String(s==null?'':s); return /[\ud800-\udfff]/.test(s)?_chars(s).join(''):s; }
+// What a person counts as one character: a flag, a skin-toned or a joined emoji is
+// several code points but one grapheme (Intl.Segmenter, iOS 14.5+). Code points,
+// as _chars, where there is no segmenter.
+var _graphSeg=null;
+function _graphemes(s){
+  s=_wellFormed(s);
+  if(_graphSeg===null){ try{ _graphSeg=(window.Intl && Intl.Segmenter) ? new Intl.Segmenter(undefined, {granularity:'grapheme'}) : false; }catch(e){ _graphSeg=false; } }
+  if(!_graphSeg || !/[^ -~]/.test(s)) return _chars(s);
+  try{
+    var segs=_graphSeg.segment(s), out=[], i=0, g;
+    while(i<s.length){ g=segs.containing(i); if(!g || !g.segment) break; out.push(g.segment); i=g.index+g.segment.length; }
+    if(out.join('')===s) return out;
+  }catch(e){}
+  return _chars(s);
+}
 // ── Named slots ───────────────────────────────────────────────────────────────
 // A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
 // reads, how history groups, how the runner walks it. Its NAME is the user's:
@@ -2274,23 +2289,80 @@ function _dayLabel(t){
 }
 function _sessLabel(t){ return _dayLabel(t); }
 // The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B",
-// "Full Body A" -> "Full A", "Lower Body" -> "Lower". Seven characters at most
-// (an emoji is one), and two days never shorten to the same word.
-function _dayShortOf(l){
-  if(_chars(l).length<=7) return l;
+// "Full Body A" -> "Full A", "Lower Body" -> "Lower", "Day 1: Upper" -> "Day 1",
+// "Week A Upper" -> "Week A", an emoji and "Upper Body" -> the emoji and "Upper".
+// Seven characters at most (an emoji, a flag or a family counts as one), and two
+// days never shorten alike while their names can be told apart: "Upper Power" and
+// "Upper Volume" read "Upper P" and "Upper V" (the first word, then the word that
+// differs).
+// _dayShortOf(l, rivals) lists the ways to shorten l, best first: [0] is how it
+// reads on its own, the rest tell it from `rivals` (the names it reads like).
+var _DS_EDGE=/^[\s!-\/:-@\[-`{-~\u00a1-\u00bf\u2010-\u2027\u2030-\u205e]+|[\s!-\/:-@\[-`{-~\u00a1-\u00bf\u2010-\u2027\u2030-\u205e]+$/g;
+function _dayShortOf(l, rivals){
+  l=_wellFormed(l);
+  var len=function(s){ return _graphemes(s).length; }, cut=function(s,k){ return _graphemes(s).slice(0,k).join(''); };
+  if(len(l)<=7) return [l];
+  // b keeps bn characters (at least one), a what is left of seven
+  var fit=function(a,b,bn){ bn=Math.max(1,Math.min(bn,len(b),5)); return (cut(a,6-bn)+' '+cut(b,bn)).trim(); };
+  var toks=function(s){ return String(s).split(/\s+/).map(function(w){ return w.replace(_DS_EDGE,''); }).filter(Boolean); };
+  var out=[], T=toks(l), f=T[0]||'', last=T.length>1?T[T.length-1]:'';
+  var tag=function(w){ return /^(\d{1,3}|[A-Za-z]\d{0,2}|\d{1,2}[A-Za-z]|[IVX]{2,4})$/.test(w||''); };
   var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
-  if(parts.length>1) return parts.map(function(p){ return (_chars(p)[0]||'').toUpperCase(); }).join('+');
-  var w=l.split(' '), first=_chars(w[0]), last=w.length>1?_chars(w[w.length-1]):[];
+  if(parts.length>1) out.push(cut(parts.map(function(p){ return (_graphemes(p)[0]||'').toUpperCase(); }).join('+'),7).replace(/\+$/,''));
+  // "Day 1", "Week A": a number or a letter after the first word names the day
+  else if(tag(T[1])) out.push(fit(f,T[1],len(T[1])));
   // A short last word ("A", "B", "2") is what tells two days apart: keep it.
-  if(last.length && last.length<=2) return first.slice(0,6-last.length).join('')+' '+last.join('');
-  return first.slice(0,6).join('');
+  else if(last && len(last)<=2) out.push(fit(f,last,len(last)));
+  // an emoji, a number or a two-letter word says little alone: add the next word
+  else if(T[1] && (len(f)<3 || !/[A-Za-z\u00c0-\u024f\u0370-\u1fff\u3040-\ud7ff]/.test(f))) out.push(fit(f,T[1],6-len(f)));
+  else if(f) out.push(cut(f,6));
+  if(rivals && rivals.length && f){
+    // the first word that differs from every rival's word in the same place
+    var R=rivals.map(toks), p=-1;
+    for(var i=0;i<T.length && p<0;i++){
+      if(R.every(function(r){ return String(r[i]||'').toLowerCase()!==T[i].toLowerCase(); })) p=i;
+    }
+    if(p===0) out.push(cut(f,7));
+    else if(p>1 && tag(T[p])) out.push(fit(T[p-1],T[p],len(T[p])));   // "Week 1 Day 2": "Day 2"
+    else if(p>0) out.push(fit(f,T[p],6-len(f)));
+    out.push(cut(l,7).replace(_DS_EDGE,''));   // the plain cut, trimmed
+    if(p>0) for(var n=1;n<=4;n++) out.push(fit(f,T[p],Math.max(1,6-len(f))+n));   // more of that word
+  }
+  if(!out.length) out.push(cut(l,7).replace(_DS_EDGE,'')||cut(l,7));
+  return out.filter(function(s,i){ return s && out.indexOf(s)===i; });
+}
+// The short names of the lift slots the programme can show (scheduled in a
+// cadence, or holding lifts in some week; t always), apart from each other
+// wherever the names allow: days that read alike all step to their next way of
+// shortening, until none clash or nothing is left to try (a whole name of seven
+// characters never changes).
+function _dayShorts(t){
+  var cr=getCustomRoutine(), weeks=(cr&&cr.weeks)||[];
+  var plans=cr?[cr.weekPlan].concat(weeks.map(function(w){ return w&&w.weekPlan; })).filter(Array.isArray):[];
+  if(cr && !plans.length) plans=[DEFAULT_WEEK_PLAN.map(function(p){ return p.type; })];
+  var S=LIFT_TYPES.filter(function(k){
+    var kl=k.toLowerCase();   // a cadence may spell it "push" (_planEntry title-cases it)
+    return !cr || k===t || plans.some(function(p){ return p.some(function(v){ return String(v).toLowerCase()===kl; }); }) ||
+      weeks.some(function(w){ var a=w&&w[kl]; return a&&a.length; });
+  });
+  var L={}, P={}, lv={};
+  S.forEach(function(k){ L[k]=_wellFormed(_dayLabel(k)); lv[k]=0; P[k]=_dayShortOf(L[k])[0]; });
+  for(var pass=0;pass<16;pass++){
+    var nx={}, moved=false;
+    S.forEach(function(k){
+      nx[k]=P[k];
+      var riv=S.filter(function(j){ return j!==k && P[j]===P[k]; });
+      if(!riv.length) return;
+      var c=_dayShortOf(L[k], riv.map(function(j){ return L[j]; }));
+      if(lv[k]+1<c.length){ lv[k]++; nx[k]=c[lv[k]]; moved=true; }
+    });
+    P=nx; if(!moved) break;
+  }
+  return P;
 }
 function _dayShort(t){
-  var l=_wellFormed(_dayLabel(t)), s=_dayShortOf(l), w=l.split(' ');
-  if(s===l || w.length<2 || /[+\/&]/.test(l)) return s;
-  // "Upper Power" and "Upper Volume" both read "Upper": add the last word's initial.
-  var clash=LIFT_TYPES.some(function(k){ return k!==t && _dayShortOf(_dayLabel(k))===s; });
-  return clash ? _chars(w[0]).slice(0,5).join('')+' '+(_chars(w[w.length-1])[0]||'').toUpperCase() : s;
+  if(LIFT_TYPES.indexOf(t)>=0) return _dayShorts(t)[t];
+  return _dayShortOf(_dayLabel(t))[0]||'';
 }
 // Reverse lookup: a slot id, the name the user gave one (any case), or a stock
 // label -> the slot. `extra` lets a coach call that names AND uses a day in the
@@ -6068,8 +6140,9 @@ function getUserFirstName(){
   }
   return '';
 }
-// The avatar's letter: the first character (a whole emoji, not half of one), ready for HTML.
-function _initialOf(s){ return _esc((_chars(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
+// The avatar's letter: the first character as a person sees it (a whole emoji, flag,
+// skin tone or family, never part of one), ready for HTML.
+function _initialOf(s){ return _esc((_graphemes(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
 
 // ── Editorial Today helpers ──────────────────────────────────────────────────
 // Enriched exercise list for the editorial Today + Deck Runner: prescribed
@@ -6862,7 +6935,7 @@ function renderTodayEditorial(){
           (ex.isMain?'<span class="kt-main-tag">MAIN</span>':'')+
         '</div>'+
         '<div class="kt-marquee-right">'+
-          '<span class="kt-marquee-reps">'+ex.sets+'×'+_fmtRepTarget(ex.reps)+' · '+wLbl+'</span>'+
+          '<span class="kt-marquee-reps">'+_esc(ex.sets+'×'+_fmtRepTarget(ex.reps))+' · '+wLbl+'</span>'+
         '</div>'+
         '</div>'+spark;
     });
@@ -12728,8 +12801,9 @@ function _renderWeekDetail(wd){
         summary = exs.length+' lifts · '+_esc(main.name)+weight;
         fullHTML = '<div class="wk-ex-list">'+exs.map(function(e,i){
           var w = e.weight ? fmtW(e.weight) : '—';
-          var rep = (e.sets||3)+'×'+(e.reps||'8-10');
-          var rpe = e.rpe ? ' · RPE '+e.rpe : '';
+          // the coach writes reps as free text ("8-10", "Max", anything): text, never markup
+          var rep = _esc((e.sets||3)+'×'+(e.reps||'8-10'));
+          var rpe = e.rpe ? ' · RPE '+_esc(String(e.rpe)) : '';
           return '<div class="wk-ex-row">'+
             '<span class="wk-ex-num'+(e.isMain?' main':'')+'">'+String(i+1).padStart(2,'0')+'</span>'+
             '<div class="wk-ex-body">'+
@@ -19437,8 +19511,9 @@ function _buildThemeRows(){
 // Escape closes the top sheet wherever focus is: on <body> (a tap on a sheet's text moves
 // it there) or inside a sheet that has no keydown listener of its own. A sheet that does
 // handle Escape has already prevented the default, or removed the key's target by closing
-// or repainting itself.
-var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg';
+// or repainting itself. The runner's Edit sheet is a bottom sheet with a shell of its own
+// (its backdrop closes it on a click like the others).
+var _SHEETS_SEL='.kt-sheet-overlay, .kt-close-sheet, .ex-modal-bg, #runner-ex-edit-modal';
 document.addEventListener('keydown', function(e){
   if((e.key!=='Escape' && e.key!=='Esc') || e.defaultPrevented) return;
   if(e.target && e.target.nodeType===1 && !e.target.isConnected) return;
@@ -20666,17 +20741,22 @@ function _renderExLibList(){
     } else {
       right='<span class="kt-mono" style="font-size:10.5px;color:var(--muted);opacity:.45;">—</span>';
     }
-    var html='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" aria-expanded="'+expanded+'" style="padding:12px 18px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;'+(expanded?'background:var(--card2);':'')+'">';
-    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    // The header line is the row's control (_a11yPass makes it a button); the ✕ and the open
+    // detail sit beside it, never inside: a button's content is one flat label to VoiceOver, so
+    // a whole-row button hid the detail's PR history and the custom lift's Delete.
+    var html='<div style="border-bottom:1px solid var(--border);'+(expanded?'background:var(--card2);':'')+'">';
+    html+='<div style="display:flex;align-items:center;">';
+    html+='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" aria-expanded="'+expanded+'" style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:12px '+(isCustom?'10px':'18px')+' '+(expanded?'0':'12px')+' 18px;cursor:pointer;-webkit-tap-highlight-color:transparent;">';
     html+='<div style="flex:1;min-width:0;">';
     html+='<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.name)+'</span>'+
       (mains[ex.name.toLowerCase()]?'<span class="kt-main-tag">MAIN</span>':'')+'</div>';
     html+='<div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_esc(ex.equip)+' · '+_esc(ex.muscles.toLowerCase())+'</div>';
     html+='</div>';
     html+=right;
-    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
     html+='</div>';
-    if(expanded) html+=_exDetailHTML(ex, hist, isCustom);
+    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;margin-right:18px;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    html+='</div>';
+    if(expanded) html+='<div style="padding:0 18px 12px;">'+_exDetailHTML(ex, hist, isCustom)+'</div>';
     html+='</div>';
     return html;
   }
