@@ -19,8 +19,7 @@
 //   the day goes by its name.
 // - L35 the coach chips compare the last session's date with today and yesterday on the local
 //   calendar (it was read as UTC midnight: after 20:00 west of UTC today's session was
-//   "yesterday's", east of UTC the reverse) and name the day by its name, without the quotes
-//   and markup the chip's inline handler cannot carry.
+//   "yesterday's", east of UTC the reverse) and name the day by its name (as written: R11).
 // - L36 THIS WEEK'S PLAN prints each set's load when a top set and back-offs differ ("3×3,8,8 @
 //   225 lb" hid 225/185/185), in the "[edited by the user; you had …]" mark too.
 // - L39 a reply's text blocks from separate tool rounds are separate paragraphs ("On it.Bench is
@@ -39,6 +38,8 @@
 //   when the app is opened again: the chat history keeps a call's result but not its weekPlan, so
 //   it read "No weeks changed" with no card. The result says cadenceSaved; one stored before that
 //   (an ok answer that wrote no week) reads as the cadence-only change it was.
+// - R11 (L35) the chip names the day exactly as the owner wrote it: apostrophes and quotes were
+//   stripped and & became +, though the chip carries any text (data-msg, escaped, no inline JS).
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -310,7 +311,7 @@ run('L35: the coach chips read today and yesterday on the local calendar and nam
       lsSet('kt_sessions', s);
       setDayName('Push', 'Chest + Tris');
       const r = { plain: getCoachChips()[0] };
-      // a name the chip's inline handler cannot carry as typed
+      // quotes, markup and an ampersand in the name (R11: carried as written)
       setDayName('Push', 'Mike\'s "A" <Day> & Co');
       r.odd = getCoachChips()[0];
       const sent = [];
@@ -333,7 +334,7 @@ run('L35: the coach chips read today and yesterday on the local calendar and nam
       }
     }
     assert(named.plain === 'How did my Chest + Tris session look?', 'the chip names the day: ' + named.plain);
-    assert(named.odd === 'How did my Mikes A Day + Co session look?', 'quotes and markup stay out of the chip: ' + named.odd);
+    assert(named.odd === 'How did my Mike\'s "A" <Day> & Co session look?', 'the chip carries the name as written (R11): ' + named.odd);
     assert(named.rendered[0] === named.odd && named.sent.length === 1 && named.sent[0] === named.odd, 'the chip renders and sends what it says: ' + JSON.stringify(named));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
@@ -542,6 +543,41 @@ run('R09: a coach cadence change keeps its pill, its PLAN CHANGES card and Undo 
     await relaunch(app);
     const none = await chat();
     assert(none.pill === '✕ No weeks changed' && none.rows === '' && !none.undo, 'a call that saved nothing has no card: ' + JSON.stringify(none));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R11: L35 mangled the owner's day name in the chip ("Kalanis Push + Pull").
+run('R11: the coach chip names the day exactly as the owner wrote it, and nothing in the name runs', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const r = [];
+      const sent = [];
+      window.sendCoachMessage = () => { sent.push(document.getElementById('coach-input').value); };
+      // today's session, then yesterday's: each chip names the day
+      for (const [n, name] of [[0, 'Kalani\'s Push & Pull'], [1, '"Big" <i>One</i> `x` \\']]) {
+        const s = getSessions().filter(x => x.id !== 900030);
+        s.push({ id: 900030, date: addDays(todayISO(), -n), type: 'Push', week: currentWeek, exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 165, weightLog: [165, 165, 165] }] });
+        lsSet('kt_sessions', s);
+        setDayName('Push', name);
+        coachMessages = []; currentTab = 'coach'; coachView = 'chat'; render(); await wait(30);
+        const chip = getCoachChips()[0];
+        const btn = [...document.querySelectorAll('#screen button[data-msg]')].find(b => b.dataset.msg === chip);
+        const at = sent.length;
+        if (btn) btn.click();
+        r.push({ name: _dayLabel('Push'), chip, label: btn && btn.textContent, markup: !!(btn && btn.querySelector('i')), sent: sent.slice(at) });
+      }
+      return r;
+    });
+    const [today, yday] = out;
+    assert(today.name === 'Kalani\'s Push & Pull' && today.chip === 'How did my Kalani\'s Push & Pull session look?', 'today\'s chip keeps the apostrophe and the ampersand: ' + JSON.stringify(today));
+    assert(yday.name === '"Big" <i>One</i> `x` \\' && yday.chip === 'Recovery tips after yesterday\'s "Big" <i>One</i> `x` \\?', 'yesterday\'s chip keeps quotes, brackets and backslashes: ' + JSON.stringify(yday));
+    out.forEach((c) => {
+      assert(c.label === c.chip && !c.markup, 'the chip shows the name as text: ' + JSON.stringify(c));
+      assert(c.sent.length === 1 && c.sent[0] === c.chip, 'a tap sends what the chip says: ' + JSON.stringify(c));
+    });
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

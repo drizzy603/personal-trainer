@@ -16791,8 +16791,8 @@ function getCoachChips(){
     var last=sessions[0], ld=String(last.date||'').slice(0,10);
     // Local calendar days: new Date('YYYY-MM-DD') is UTC midnight, so after 20:00 west of UTC
     // today's session read as yesterday's (east of UTC, the reverse). The day goes by its own
-    // name, without the characters the chip's inline onclick and label cannot carry.
-    var day=_dayLabel(last.type).replace(/&/g,'+').replace(/["'<>\\`]/g,'').replace(/\s+/g,' ').trim()||String(last.type);
+    // name, exactly as written: the chip carries it in data-msg (escaped), never in inline JS.
+    var day=_dayLabel(last.type).replace(/\s+/g,' ').trim()||String(last.type);
     if(ld===todayISO())chips.push('How did my '+day+' session look?');
     else if(ld===addDays(todayISO(),-1))chips.push('Recovery tips after yesterday\'s '+day+'?');
   }
