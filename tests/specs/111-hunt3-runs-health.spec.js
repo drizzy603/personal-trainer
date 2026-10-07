@@ -41,6 +41,11 @@
 //   "Log a run" rather than today's run, and lists WEEK 1 with no day marked today.
 // - Extra (found while fixing L32, in no cluster's list): the coach's run note in the Log › Run
 //   hero body was inserted as HTML; the hero body is plain text now.
+// Regressions and incomplete fixes from the 2026-10-06 review (_hkPlan reads a whole fetch):
+// - R45: a hand log stands for the workout of its day it fits best, not the first within 15%;
+//   one with no duration only on a day with one workout of its kind; identity comes first.
+// - R47: a run or ride typed in by hand that two apps also wrote to Health comes in from neither.
+// - R49: a first import compares each workout only with the ones that began near it.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -685,6 +690,162 @@ run('extra (found with L32): the coach\'s run note in the Log › Run hero shows
       return { ran: window.__ran || 0, tags: hero.querySelectorAll('b, img').length, text: hero.textContent };
     });
     assert(out.ran === 0 && out.tags === 0 && /Strides <b>x6<\/b>/.test(out.text), 'the note reads as written and runs nothing: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R45 (regression of H12): a hand-logged activity took the first workout of its day within 15%
+// (any, with no duration): the match it was typed for came in again and the other was burned
+// without ever being imported, for good. It now takes the one it fits best.
+run('R45: a hand log stands for the workout it fits best; the day\'s other one is imported', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const y = addDays(todayISO(), -1);
+      const at = (h, m) => { const d = new Date(y + 'T00:00:00'); d.setHours(h, m, 0, 0); return d.getTime(); };
+      const iso = ms => new Date(ms).toISOString();
+      const health = x => x === 'From Apple Health';
+      const show = () => getSportLogs().map(l => l.type + ' ' + l.duration + ' ' + (health(l.notes) ? 'Health@' + new Date(l.startMs).getHours() : l.notes || JSON.stringify(l.data))).sort().join(' | ');
+      const led = () => (lsGet('kt_hk_imported') || []).filter(u => u !== 'older-1').sort().join();
+      const toast = () => document.getElementById('toast').textContent;
+      const ledger = on => {
+        if (on) { lsSet('kt_hk_imported', ['older-1']); localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5)); }
+        else { lsDel('kt_hk_imported'); localStorage.removeItem('kt_hk_last_sync'); }
+      };
+      const r = {};
+      // tennis at 9:00 (55 min) and 16:00 (60 min); 'Singles, 60 min' typed in at 18:00: first
+      // connect and connected before
+      for (const L of [false, true]) {
+        lsSet('kt_sports', [{ id: at(18, 0), date: y, type: 'Tennis', duration: 60, data: {}, notes: 'Singles' }]);
+        ledger(L);
+        window.__hk = [{ uuid: 'tennis-am', type: 'Tennis', startDate: iso(at(9, 0)), durationSec: 55 * 60, avgHr: 130 },
+                       { uuid: 'tennis-pm', type: 'Tennis', startDate: iso(at(16, 0)), durationSec: 60 * 60, avgHr: 135 }];
+        importFromHealth(); await wait(300);
+        const k = L ? 'ledger' : 'first';
+        r[k] = { logs: show(), ledger: led(), toast: toast() };
+        importFromHealth(); await wait(300);
+        r[k].again = toast();
+      }
+      // 'Win, 18 pts' with no duration, typed in at 21:00: on a day with two games it stands for
+      // neither (both come in), on a day with one it stands for that one
+      const bb = () => lsSet('kt_sports', [{ id: at(21, 0), date: y, type: 'Basketball', duration: 0, data: { result: 'Win', points: 18 }, notes: '' }]);
+      const pm = { uuid: 'bb-pm', type: 'Basketball', startDate: iso(at(19, 0)), durationSec: 95 * 60, avgHr: 140 };
+      bb(); ledger(true);
+      window.__hk = [{ uuid: 'bb-am', type: 'Basketball', startDate: iso(at(9, 0)), durationSec: 25 * 60, avgHr: 120 }, pm];
+      importFromHealth(); await wait(300);
+      r.two = { logs: show(), ledger: led() };
+      bb(); ledger(true);
+      window.__hk = [pm];
+      importFromHealth(); await wait(300);
+      r.one = { logs: show(), ledger: led(), toast: toast() };
+      // no ledger: the 9:00 match keeps its own Health record, so the hand log stored ahead of it
+      // stands for the 15:00 match and nothing comes in twice
+      lsSet('kt_sports', [{ id: at(16, 30), date: y, type: 'Tennis', duration: 60, data: {}, notes: 'hand' },
+                          { id: at(10, 30), startMs: at(9, 0), date: y, type: 'Tennis', duration: 62, data: {}, notes: 'From Apple Health' }]);
+      ledger(false);
+      window.__hk = [{ uuid: 't9', type: 'Tennis', startDate: iso(at(9, 0)), durationSec: 62 * 60, avgHr: 130 },
+                     { uuid: 't15', type: 'Tennis', startDate: iso(at(15, 0)), durationSec: 60 * 60, avgHr: 135 }];
+      importFromHealth(); await wait(300);
+      r.identity = { logs: show(), ledger: led(), toast: toast() };
+      // runs too: two 5 km runs, the evening one typed in by hand
+      lsSet('kt_sports', []);
+      lsSet('kt_runs', [{ id: at(19, 0), date: y, distance: 5, time: '26:00', week: weekForDate(y), note: 'evening', hr: 0, type: 'easy' }]);
+      ledger(true);
+      window.__hk = [{ uuid: 'r-am', type: 'run', startDate: iso(at(7, 0)), distanceKm: 5, durationSec: 25 * 60, avgHr: 150 },
+                     { uuid: 'r-pm', type: 'run', startDate: iso(at(18, 0)), distanceKm: 5, durationSec: 26 * 60, avgHr: 152 }];
+      importFromHealth(); await wait(300);
+      r.runs = { runs: getRuns().map(x => x.time + ' ' + (health(x.note) ? 'Health@' + new Date(x.startMs).getHours() : x.note)).sort().join(' | '), ledger: led() };
+      return r;
+    });
+    for (const k of ['first', 'ledger']) {
+      const o = out[k];
+      assert(o.logs === 'Tennis 55 Health@9 | Tennis 60 Singles', k + ': the 16:00 match is the one typed in; the 9:00 match is imported: ' + o.logs);
+      assert(o.ledger === 'tennis-am,tennis-pm' && /1 activity imported/.test(o.toast) && /Already up to date/.test(o.again), k + ': both are burned, once: ' + JSON.stringify(o));
+    }
+    assert(out.two.logs === 'Basketball 0 {"result":"Win","points":18} | Basketball 25 Health@9 | Basketball 95 Health@19' && out.two.ledger === 'bb-am,bb-pm',
+      'a log with no duration takes neither of two games: ' + JSON.stringify(out.two));
+    assert(out.one.logs === 'Basketball 0 {"result":"Win","points":18}' && out.one.ledger === 'bb-pm' && /Already up to date/.test(out.one.toast),
+      'it stands for the day\'s only game: ' + JSON.stringify(out.one));
+    assert(out.identity.logs === 'Tennis 60 hand | Tennis 62 Health@9' && out.identity.ledger === 't15,t9' && /Already up to date/.test(out.identity.toast),
+      'a stored Health record keeps its own workout before a hand log is weighed: ' + JSON.stringify(out.identity));
+    assert(out.runs.runs === '25:00 Health@7 | 26:00 evening' && out.runs.ledger === 'r-am,r-pm', 'a hand-logged run takes its own run, the other comes in: ' + JSON.stringify(out.runs));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R47 (H12 with M28): a run or ride typed in by hand that the Watch and Strava both wrote to
+// Health: the first copy was absorbed, the second found nothing to fold into and came in.
+run('R47: a hand-logged run or ride with two Health copies is not imported again', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const y = addDays(todayISO(), -1);
+      const at = (h, m, s) => { const d = new Date(y + 'T00:00:00'); d.setHours(h, m, s || 0, 0); return d.getTime(); };
+      const iso = ms => new Date(ms).toISOString();
+      const hand = () => {
+        lsSet('kt_runs', [{ id: at(8, 0), date: y, distance: 8, time: '45:00', week: weekForDate(y), note: 'hand', hr: 0, type: 'easy' }]);
+        lsSet('kt_sports', [{ id: at(13, 30), date: y, type: 'Cycling', duration: 60, data: {}, notes: 'hand' }]);
+      };
+      window.__hk = [
+        { uuid: 'run-s', type: 'run', startDate: iso(at(7, 0, 0)), distanceKm: 8.0, durationSec: 45 * 60 },
+        { uuid: 'run-w', type: 'run', startDate: iso(at(7, 0, 20)), distanceKm: 8.02, durationSec: 44 * 60 + 58, avgHr: 152 },
+        { uuid: 'ride-s', type: 'ride', startDate: iso(at(12, 0, 0)), distanceKm: 30.2, durationSec: 3610 },
+        { uuid: 'ride-w', type: 'ride', startDate: iso(at(12, 0, 30)), distanceKm: 30, durationSec: 3600, avgHr: 140 },
+      ];
+      const r = {};
+      for (const L of [false, true]) {
+        hand();
+        if (L) { lsSet('kt_hk_imported', ['older-1']); localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5)); }
+        else { lsDel('kt_hk_imported'); localStorage.removeItem('kt_hk_last_sync'); }
+        importFromHealth(); await wait(300);
+        r[L ? 'ledger' : 'first'] = { runs: getRuns().map(x => x.distance + '/' + x.note).join(), sports: getSportLogs().map(x => x.duration + '/' + x.notes).join(),
+          ledger: (lsGet('kt_hk_imported') || []).filter(u => u !== 'older-1').sort().join(), toast: document.getElementById('toast').textContent };
+      }
+      return r;
+    });
+    for (const k of ['first', 'ledger']) {
+      const o = out[k];
+      assert(o.runs === '8/hand' && o.sports === '60/hand', k + ': neither copy comes in: ' + JSON.stringify(o));
+      assert(o.ledger === 'ride-s,ride-w,run-s,run-w' && /Already up to date/.test(o.toast), k + ': both copies are burned with the hand log: ' + JSON.stringify(o));
+    }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R49: _hkBatchTwin scanned the whole batch for every workout, so a first import of a long
+// history was quadratic (about 1 s at 6000 workouts). A copy is looked for only among workouts
+// that began within the longest workout's reach.
+run('R49: a first import compares each workout only with the ones that began near it', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const N = 2400, list = [];
+      for (let i = 0; i < N; i++) {
+        const d = new Date(addDays(todayISO(), -(i + 1)) + 'T00:00:00'); d.setHours(7 + i % 5, 0, 0, 0);
+        const ride = i % 3 === 2, w = { type: ride ? 'ride' : 'run', distanceKm: ride ? 25 + i % 10 : 5 + i % 10, durationSec: ride ? 3000 + i % 900 : 1500 + i % 1200 };
+        list.push(Object.assign({ uuid: 'w' + i, startDate: d.toISOString(), avgHr: 140 }, w));
+        // every 100th workout was also written by a second app, 20 s later
+        if (i % 100 === 0) list.push(Object.assign({ uuid: 'c' + i, startDate: new Date(d.getTime() + 20e3).toISOString() }, w));
+      }
+      Capacitor.Plugins.TrovoHealth = { isAvailable: () => Promise.resolve({ available: true }), requestAuth: () => Promise.resolve({}),
+        fetchRuns: () => Promise.resolve({ runs: list.slice().reverse() }) };
+      const real = window._hkSameActivity; let calls = 0;
+      window._hkSameActivity = function () { calls++; return real.apply(this, arguments); };
+      lsDel('kt_hk_imported'); localStorage.removeItem('kt_hk_last_sync');
+      importFromHealth();
+      for (let t = 0; t < 100 && !/imported/.test(document.getElementById('toast').textContent); t++) await wait(50);
+      window._hkSameActivity = real;
+      return { calls, runs: getRuns().length, sports: getSportLogs().length, hr: getRuns().every(x => x.hr === 140), ledger: (lsGet('kt_hk_imported') || []).length,
+        toast: document.getElementById('toast').textContent };
+    });
+    assert(out.runs === 1600 && out.sports === 800 && out.hr && out.ledger === 2424 && /1600 runs · 800 activities imported/.test(out.toast),
+      'every workout is imported once, copies folded into their richer copy: ' + JSON.stringify(out));
+    assert(out.calls < 200, 'each workout is compared only with its neighbours (24 copies): ' + out.calls + ' comparisons');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
