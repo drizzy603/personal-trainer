@@ -10658,10 +10658,17 @@ function _progRepair(list, row, e){
 function _median(a){ if(!a.length) return 0; var s=a.slice().sort(function(x,y){ return x-y; }); var m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 // A load the owner has actually used for a lift: the same lift elsewhere in this
 // week of the programme, then the last logged session, then their own working
-// weight. Never the demo defaults (getWeights() falls back to them).
+// weight. Never the demo defaults (getWeights() falls back to them). Callers take it
+// as a working weight, so in a deload week the programme's load is read from that
+// day's working week (the deload row of another day was scaled for the deload again:
+// a 35 lb Face Pull added in a 70% deload week went in at 17.5, then 25 in every week).
 function _knownLoadLb(name, cr, c){
-  var w=cr&&cr.weeks&&cr.weeks[c], v=0;
-  if(w) LIFT_KEYS.forEach(function(k){ var r=_progRow(w,k,name); if(r && !(v>0)) v=parseFloat(r.weight)||0; });
+  var W=cr&&cr.weeks, w=W&&W[c], v=0, dl=_isDeloadWk(w);
+  if(w) LIFT_KEYS.forEach(function(k){
+    var r=_progRow(w,k,name); if(!r || v>0) return;
+    var j=dl?_progWorkWk(W, c, k, name):-1, rw=j>=0?_progRow(W[j],k,name):null;
+    v=parseFloat((rw||r).weight)||0;
+  });
   if(v>0) return v;
   var last=getLastSessionData(name); v=last?parseFloat(last.weight)||0:0;
   if(v>0) return v;

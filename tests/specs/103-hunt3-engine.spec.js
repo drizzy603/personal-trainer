@@ -595,3 +595,41 @@ seq('R02: a handed-on main tag is not the owner\'s edit for the coach; its rewri
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R04 (regression from H02): in a deload week a lift's known load came from another day's deload
+// row and was scaled for the deload again: a 35 lb Face Pull (25 in the deload) swapped or added
+// into Push went in at 17.5, then 25 in every working week.
+seq('R04: a known load in a deload week is the lift\'s working weight; the deload takes its share once', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (setupSrc) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = eval('(' + setupSrc + ')')();
+      const reset = () => lsSet('kt_routine', JSON.parse(orig));
+      const curve = (k, n) => getCustomRoutine().weeks.slice(c).map(w => { const x = (w[k] || []).find(e => e.name === n); return x ? x.weight : null; });
+      r.pull = curve('pull', 'Face Pull');
+      r.known = _knownLoadLb('Face Pull', getCustomRoutine(), c);
+      openRoutines(); _rtOpenEdit('Push', 'Lateral Raise'); _rtEdit.swapTo = 'Face Pull'; _rtSave(); await wait(20); closeRoutines();
+      r.swap = curve('push', 'Face Pull'); reset();
+      openRoutines(); _rtAddPick('Push', 'Face Pull'); await wait(20); closeRoutines();
+      r.add = curve('push', 'Face Pull'); reset();
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Lateral Raise', action: 'swap', rename_to: 'Face Pull' });
+      r.coachSwap = curve('push', 'Face Pull'); reset();
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Face Pull', action: 'add', sets: 3, reps: 15 });
+      r.coachAdd = curve('push', 'Face Pull'); reset();
+      // Build day suggests the load the owner works at, not the deload's
+      openBuildDay('Arms'); _bdAdd('Face Pull');
+      r.build = (_bdRows.find(x => x.name === 'Face Pull') || {}).weight; closeBuildDay();
+      return r;
+    }, deloadSetup.toString());
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const last = out.pull.length - 1;
+    assert(out.pull[0] === 25 && out.pull.slice(1).every(x => x === 35) && out.known === 35, 'Pull holds Face Pull at 35, 25 in the deload; its known load is 35: ' + JSON.stringify(out));
+    // Lateral Raise is flat (12.5 in the deload): Face Pull takes its shape at 35
+    assert(eq(out.swap, [25, 35, 35, 35, 35, 35, 35]) && eq(out.coachSwap, out.swap), 'a swap: the deload 25, every working week 35: ' + JSON.stringify([out.swap, out.coachSwap]));
+    assert(out.add[0] === 25 && out.add[1] === 35 && out.add.slice(1, last).every(x => x === 35) && eq(out.coachAdd, out.add), 'an add: the deload 25, the working weeks from 35: ' + JSON.stringify([out.add, out.coachAdd]));
+    assert(out.build === 35, 'Build day offers 35: ' + out.build);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
