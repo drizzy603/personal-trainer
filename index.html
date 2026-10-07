@@ -11642,8 +11642,10 @@ function _nextRoundBuild(cr, until){
 // watch build 53+), so a session trained there is the new round's week 1, not the old round's last
 // week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
 // keeps the last plan the phone sent) or a phone log there means the old round's plan, and null.
+// So does a round set on its Monday or later (a sheet painted the night before, tapped that day): it
+// swaps in at the tap, and the wrist had no preview before it, only the old round's parked week.
 function _nrPreviewTrained(p, now){
-  if(now || p.startsOn<_mostRecentMonday()) return null;
+  if(now || p.startsOn<_mostRecentMonday() || !(String(p.at||'')<p.startsOn)) return null;
   var ss=getSessions().filter(function(s){ return s && String(s.date||'').slice(0,10)>=p.startsOn; });
   return ss.every(function(s){ return !!s.wristStartedAt && (s.exercises||[]).some(function(e){ return e && Array.isArray(e.rpeLog) && e.rpeLog.length>0; }); }) ? ss : null;
 }

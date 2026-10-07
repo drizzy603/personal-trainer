@@ -39,7 +39,9 @@
 //   logged there (watch build 53+: per-set RPE) is the new round's week 1 with its block, drained
 //   before the swap or after it; it counts for the new round (carry forward, its best) and stays
 //   out of the old round's best, so the round built is the one the wrist was shown. A session from
-//   an older watch (no per-set RPE: it kept the last plan sent) is still the old round's (spec 108).
+//   an older watch (no per-set RPE: it kept the last plan sent) is still the old round's (spec 108),
+//   and so is one logged before a round set on its own Monday is tapped in (a sheet painted the
+//   night before): the wrist had only the old round's parked week.
 // - R43: a late wrist copy that adds sets to a lift the phone filed moves its working weight only
 //   while that is still what the phone's finish left: a +5, a deload or the coach's weight set since
 //   stands; a backdated session's heavier set may still raise it.
@@ -564,11 +566,13 @@ run('R41: a lift that comes back after a correction is not doubled by the wrist 
 // evening the phone pushed the week ahead (round 2's week 1 from Monday); the wrist trained Monday's
 // Push from it at 07:00, heavier than planned, and the phone opens at 09:00 (the queue drains, then
 // the swap). Then the same with the wrist's copy arriving only after the swap.
-async function r42(late) {
+// tapped: no round is set on Sunday (the wrist trains round 1's parked week); the sheet painted that
+// evening is tapped on Monday after the drain, so the round swaps in at the tap.
+async function r42(late, tapped) {
   const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_week: '12' } });
   try {
     await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK);
-    const pre = await app.page.evaluate((late) => {
+    const pre = await app.page.evaluate(([late, tapped]) => {
       const mon = _mostRecentMonday(), last = addDays(mon, -7), old = addDays(last, -7);
       __setNow(addDays(mon, -1) + 'T20:00:00');
       const cr = getCustomRoutine();
@@ -577,24 +581,29 @@ async function r42(late) {
       localStorage.setItem('kt_week_monday', last); localStorage.setItem('kt_final_since', last); lsSet('kt_week', 12); currentWeek = 12;
       lsSet('kt_sessions', [{ id: new Date(old + 'T18:00:00').getTime(), date: old, type: 'Push', label: 'Push', week: 11, prs: [], startedAt: new Date(old + 'T17:00:00').getTime(),
         exercises: [{ name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: 185, weightLog: [185, 185, 185, 185] }] }]);
-      setNextRound('monday', mon);
+      if (!tapped) setNextRound('monday', mon);
       const plan = _watchPlanForDate(mon), bench = plan.exercises.find(e => e.name === 'Bench Press');
       const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
       const copy = JSON.stringify({ dayName: plan.dayName, slot: plan.slot, startedAt: iso(new Date(mon + 'T07:00:00').getTime()), loggedAt: iso(new Date(mon + 'T07:50:00').getTime()),
         exercises: [{ name: 'Bench Press', weight: bench.weight + 40, reps: [8, 8, 8, 8], weightLog: [1, 2, 3, 4].map(() => bench.weight + 40), rpe: 8, rpeLog: [8, 8, 8, 8] }] });
       sessionStorage.setItem('__pending', JSON.stringify(late ? [] : [copy])); sessionStorage.setItem('__late', late ? copy : '');
+      sessionStorage.setItem('__tap', tapped ? mon : '');
       __setNow(mon + 'T09:00:00');
       return { week: plan.week, slot: plan.slot, bench: bench.weight };
-    }, late);
+    }, [late, !!tapped]);
     await app.page.addInitScript(() => { const p = sessionStorage.getItem('__pending'); if (p && window.__mock) window.__mock.pending = JSON.parse(p); });
     await coldBoot(app);
     const out = await app.page.evaluate(async () => {
       const wait = ms => new Promise(res => setTimeout(res, ms));
       await wait(500);
-      const lateCopy = sessionStorage.getItem('__late');
+      const lateCopy = sessionStorage.getItem('__late'), tapMon = sessionStorage.getItem('__tap');
       if (lateCopy) { window.__mock.pending = [lateCopy]; await drainWatchSessions(); await wait(50); }
+      // Tapped after the boot drain (1 s); round 2's week-1 Bench with and without that session first.
+      let built = null;
+      if (tapMon) { await wait(1000); const b = u => _nextRoundBuild(getCustomRoutine(), u).routine.weeks[0].push.find(e => e.name === 'Bench Press').weight;
+        built = { withIt: b(''), without: b(tapMon) }; window.showToast = () => {}; setNextRound('monday', tapMon); }
       const cr = getCustomRoutine(), rec = getSessions().find(s => s.wristStartedAt), card = rec && _shareCardModel(rec);
-      return { cycle: cr.cycle, week: currentWeek, wk1: cr.weeks[0].bName, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight,
+      return { cycle: cr.cycle, week: currentWeek, wk1: cr.weeks[0].bName, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight, built,
         rec: rec && { week: rec.week, bName: rec.bName, bWk: rec.bWk }, card: card && { week: card.week, phase: card.phase },
         inRound: !!rec && _roundTest(cr)(rec.date, _cmpT(rec)), carry: rec ? _carryCandidates(rec).length : -1 };
     });
@@ -612,6 +621,16 @@ run('R42: a wrist session trained on a set round’s own days is that round’s 
     assert(out.bench1 === pre.bench, k + ': round 2 is the one the wrist was shown (the heavier session is not round 1’s best): ' + JSON.stringify([pre, out]));
     assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
   }
+  // A round set on its Monday swaps in at the tap: the wrist had shown round 1's parked week, so a
+  // session it logged that morning stays round 1's (week 12, its block) and is round 1's best.
+  const { pre, out, errors } = await r42(false, true);
+  assert(pre.week === 12, 'no round set yet: the wrist was given round 1’s parked week 12: ' + JSON.stringify(pre));
+  assert(out.cycle === 2 && out.week === 1, 'tapped on Monday: round 2 started: ' + JSON.stringify(out));
+  assert(out.rec && out.rec.week === 12 && out.rec.bWk === 12 && out.rec.bName !== out.wk1 && !out.inRound,
+    'tapped on Monday: the wrist session trained before the tap is round 1’s week 12: ' + JSON.stringify(out));
+  assert(out.built && out.built.withIt !== out.built.without && out.bench1 === out.built.withIt,
+    'it is round 1’s best (round 2’s week 1 is re-based on it): ' + JSON.stringify([pre, out]));
+  assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
 });
 
 // R43: the wrist's late copy of a session the phone filed adds a set to a lift whose working weight
