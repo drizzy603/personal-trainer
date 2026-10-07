@@ -549,3 +549,379 @@ seq('L42 + L43: the Routines editor: no flat-row chips on an untouched kg row; s
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R02 (regression from M14): the main tag a removed main hands on is no edit of the lift. The coach
+// was told "[edited by the user]" with identical numbers, its rewrite of that lift was kept at the
+// old numbers as the owner's, and a rebuild that left it out put it back.
+seq('R02: a handed-on main tag is not the owner\'s edit for the coach; its rewrite applies and the tag stays', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = () => getCustomRoutine().weeks[c].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const ohpLine = () => (buildSystemPrompt().match(/ {2}Overhead Press:[^\n]*/) || [''])[0];
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const removed = localStorage.getItem('kt_routine');
+      r.removed = day(); r.prompt = ohpLine();
+      // the coach rewrites week 6's Push: Bench (main) again and Overhead Press at 4x6 @ 115
+      const push = [{ name: 'Bench Press', sets: 4, reps: 8, weight: 160, isMain: true }].concat(getCustomRoutine().weeks[c].push.map(e => e.name === 'Overhead Press' ? { name: e.name, sets: 4, reps: 6, weight: 115 } : { name: e.name, sets: e.sets, reps: e.reps, weight: e.weight }));
+      const rb = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.rebuild = { ok: rb.ok, kept: rb.keptUserEdits, day: day(), stored: JSON.stringify(rb.stored), prompt: ohpLine() };
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.restored = day();
+      // a rebuild that leaves Overhead Press out drops it (Bench stays out: the owner removed it)
+      lsSet('kt_routine', JSON.parse(removed));
+      const rest = getCustomRoutine().weeks[c].push.filter(e => e.name !== 'Overhead Press').map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight }));
+      const lo = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push: rest }] });
+      r.leftOut = { kept: lo.keptUserEdits, day: day() };
+      // control: the owner then changes the lift itself; that is their edit and it wins
+      lsSet('kt_routine', JSON.parse(removed));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.w = wDisp(105); _rtSave(); await wait(10); closeRoutines();
+      r.editPrompt = ohpLine();
+      const ed = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.edited = { kept: ed.keptUserEdits, day: day() };
+      return r;
+    });
+    assert(out.removed === 'Overhead Press 4x8@100!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the tag is handed on, marked for Restore: ' + out.removed);
+    assert(/\(main\)$/.test(out.prompt) && !/edited by the user/.test(out.prompt), 'the coach is not told the owner edited it: ' + out.prompt);
+    assert(out.rebuild.ok && JSON.stringify(out.rebuild.kept) === '["-Bench Press"]' && /^Overhead Press 4x6@115!\* \| Incline/.test(out.rebuild.day), 'the coach\'s 4x6 @ 115 is stored and the tag stays: ' + JSON.stringify(out.rebuild));
+    assert(/"Overhead Press 4×6 115 lb"/.test(out.rebuild.stored) && !/edit kept/.test(out.rebuild.stored) && !/edited by the user/.test(out.rebuild.prompt), 'the readback and the prompt carry no owner mark: ' + JSON.stringify(out.rebuild));
+    assert(out.restored === 'Bench Press 4x8@160! | Overhead Press 4x6@115 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Restore gives Bench back as the one main lift: ' + out.restored);
+    assert(!(out.leftOut.kept || []).length && !/Overhead Press/.test(out.leftOut.day), 'a rebuild that leaves it out drops it: ' + JSON.stringify(out.leftOut));
+    assert(/\[edited by the user; you had 4×8 @ 100 lb\]/.test(out.editPrompt) && (out.edited.kept || []).indexOf('Overhead Press') >= 0 && /^Overhead Press 4x8@105!\*/.test(out.edited.day), 'an owner\'s change to the lift is still theirs: ' + JSON.stringify([out.editPrompt, out.edited]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R04 (regression from H02): in a deload week a lift's known load came from another day's deload
+// row and was scaled for the deload again: a 35 lb Face Pull (25 in the deload) swapped or added
+// into Push went in at 17.5, then 25 in every working week.
+seq('R04: a known load in a deload week is the lift\'s working weight; the deload takes its share once', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (setupSrc) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = eval('(' + setupSrc + ')')();
+      const reset = () => lsSet('kt_routine', JSON.parse(orig));
+      const curve = (k, n) => getCustomRoutine().weeks.slice(c).map(w => { const x = (w[k] || []).find(e => e.name === n); return x ? x.weight : null; });
+      r.pull = curve('pull', 'Face Pull');
+      r.known = _knownLoadLb('Face Pull', getCustomRoutine(), c);
+      openRoutines(); _rtOpenEdit('Push', 'Lateral Raise'); _rtEdit.swapTo = 'Face Pull'; _rtSave(); await wait(20); closeRoutines();
+      r.swap = curve('push', 'Face Pull'); reset();
+      openRoutines(); _rtAddPick('Push', 'Face Pull'); await wait(20); closeRoutines();
+      r.add = curve('push', 'Face Pull'); reset();
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Lateral Raise', action: 'swap', rename_to: 'Face Pull' });
+      r.coachSwap = curve('push', 'Face Pull'); reset();
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Face Pull', action: 'add', sets: 3, reps: 15 });
+      r.coachAdd = curve('push', 'Face Pull'); reset();
+      // Build day suggests the load the owner works at, not the deload's
+      openBuildDay('Arms'); _bdAdd('Face Pull');
+      r.build = (_bdRows.find(x => x.name === 'Face Pull') || {}).weight; closeBuildDay();
+      return r;
+    }, deloadSetup.toString());
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const last = out.pull.length - 1;
+    assert(out.pull[0] === 25 && out.pull.slice(1).every(x => x === 35) && out.known === 35, 'Pull holds Face Pull at 35, 25 in the deload; its known load is 35: ' + JSON.stringify(out));
+    // Lateral Raise is flat (12.5 in the deload): Face Pull takes its shape at 35
+    assert(eq(out.swap, [25, 35, 35, 35, 35, 35, 35]) && eq(out.coachSwap, out.swap), 'a swap: the deload 25, every working week 35: ' + JSON.stringify([out.swap, out.coachSwap]));
+    assert(out.add[0] === 25 && out.add[1] === 35 && out.add.slice(1, last).every(x => x === 35) && eq(out.coachAdd, out.add), 'an add: the deload 25, the working weeks from 35: ' + JSON.stringify([out.add, out.coachAdd]));
+    assert(out.build === 35, 'Build day offers 35: ' + out.build);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R05 (regression from L09): the owner swaps a lift away, the coach adds it back (the programme's
+// version, unmarked), then Reset: the swapped row went back to the coach's original beside the
+// coach's add, so every week held the lift twice (the runner showed 7 sets, the watch both rows).
+seq('R05: Reset keeps one copy of a lift the coach added back after the owner swapped it away', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const day = () => getCustomRoutine().weeks[c].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const count = (n) => getCustomRoutine().weeks.slice(c).map(w => (w.push || []).filter(e => e.name === n).length).join('');
+      const swap = async (from, to) => { openRoutines(); _rtOpenEdit('Push', from); _rtEdit.swapTo = to; _rtSave(); await wait(10); closeRoutines(); };
+      const resetPush = async () => {
+        openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5);
+        document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      };
+      await swap('Overhead Press', 'Arnold Press');
+      r.add = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'add', sets: 3, reps: 10, weight: 95 }).ok;
+      await resetPush();
+      r.day = day(); r.ohp = count('Overhead Press'); r.arnold = count('Arnold Press');
+      r.prompt = (buildSystemPrompt().match(/\nPUSH[^\n]*\n((?: {2}[^\n]*\n)+)/) || ['', ''])[1];
+      openDeckRunner('Push'); await wait(20);
+      r.cards = runnerSession.exercises.filter(e => e.name === 'Overhead Press').map(e => e.sets);
+      closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+      // the main lift: swapped away, added back by the coach, then Reset: one Bench, first and main
+      lsSet('kt_routine', JSON.parse(orig));
+      await swap('Bench Press', 'Barbell Bench Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'add', sets: 5, reps: 5, weight: 165 });
+      await resetPush();
+      r.mainDay = day(); r.bench = count('Bench Press');
+      return r;
+    });
+    assert(out.add && out.ohp === '1111111' && out.arnold === '0000000', 'one Overhead Press a week after Reset: ' + JSON.stringify(out));
+    assert(out.day === 'Bench Press 4x8@160! | Overhead Press 3x10@95 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s newer row, where the coach first had it: ' + out.day);
+    assert((out.prompt.match(/Overhead Press:/g) || []).length === 1 && JSON.stringify(out.cards) === '[3]', 'the coach and the runner see it once, at its 3 sets: ' + JSON.stringify([out.prompt, out.cards]));
+    assert(out.bench === '1111111' && /^Bench Press 5x5@165! \| Overhead Press [^!]*$/.test(out.mainDay), 'a main lift comes back once, first and main, at the coach\'s numbers: ' + out.mainDay);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R01 (regression from L11): a load off the plate grid (166 lb, 34 kg dumbbells) carries as the plate
+// below it, so the lift stayed "above the plan" after the carry: it was offered after every tap, the
+// session never counted as done, the next lift waited behind it, and each tap took a new undo point
+// (Restore previous programme lost the plan from before the carry). A session from last week, so
+// the carry lands in a later week than the plan it is judged by (any weekday).
+seq('R01: an off-grid load is carried once; the next lift follows; one undo point for the session', async () => {
+  const probe = async (unit) => {
+    const app = await boot({ native: true, seed: unit ? { kt_unit_w: unit } : {} });
+    try {
+      const out = await app.page.evaluate(async (unit) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const r = {}, c = currentWeek - 1;
+        const plan = (n, cr) => (cr || getCustomRoutine()).weeks[c].push.find(e => e.name === n).weight;
+        const ex = unit === 'kg'
+          ? [{ name: 'Incline Dumbbell Press', sets: 3, reps: [10, 10, 10], weight: 75, weightLog: [75, 75, 75] }]
+          : [{ name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: 166, weightLog: [166, 166, 166, 166] },
+            { name: 'Overhead Press', sets: 4, reps: [8, 8, 8, 8], weight: 110, weightLog: [110, 110, 110, 110] }];
+        lsSet('kt_sessions', [{ id: 8800, date: addDays(todayISO(), -7), type: 'Push', week: currentWeek - 1, prs: [], exercises: ex }].concat(getSessions()));
+        r.wk = weekForDate(addDays(todayISO(), -7));
+        r.before = { bench: plan('Bench Press'), ohp: plan('Overhead Press'), inc: plan('Incline Dumbbell Press') };
+        const cands = () => _carryCandidates(getSessions().find(x => x.id === 8800)).map(k => k.name);
+        const btns = () => [...document.querySelectorAll('#completeSheetOverlay .kt-carry-row button')];
+        r.c0 = cands();
+        openCompleteSheet({ rec: getSessions().find(x => x.id === 8800), startedAt: Date.now() });
+        btns()[0].click(); await wait(20);
+        r.c1 = cands(); r.seen1 = _carrySeen().indexOf(8800) >= 0;
+        if (btns()[0]) { btns()[0].click(); await wait(20); }
+        r.c2 = cands(); r.seen2 = _carrySeen().indexOf(8800) >= 0;
+        closeCompleteSheet();
+        r.after = { bench: plan('Bench Press'), ohp: plan('Overhead Press'), inc: plan('Incline Dumbbell Press') };
+        const bk = lsGet('kt_routine_backup');
+        r.backup = { bench: plan('Bench Press', bk), ohp: plan('Overhead Press', bk), inc: plan('Incline Dumbbell Press', bk) };
+        return r;
+      }, unit);
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const lb = await probe('');
+  assert(lb.wk === 5 && JSON.stringify(lb.c0) === '["Bench Press","Overhead Press"]', 'last week\'s Push: Bench and Overhead Press above the plan: ' + JSON.stringify(lb));
+  assert(JSON.stringify(lb.c1) === '["Overhead Press"]' && !lb.seen1, 'Bench carried (166 as 165): Overhead Press is next: ' + JSON.stringify(lb));
+  assert(!lb.c2.length && lb.seen2 && lb.after.bench === 165 && lb.after.ohp === 110, 'both carried, then the session is done: ' + JSON.stringify(lb));
+  assert(lb.backup.bench === lb.before.bench && lb.backup.ohp === lb.before.ohp, 'Restore previous programme still has the plan from before the first carry: ' + JSON.stringify(lb));
+  const kg = await probe('kg');
+  assert(JSON.stringify(kg.c0) === '["Incline Dumbbell Press"]' && !kg.c1.length && kg.seen1 && kg.after.inc === 74.4, 'kg: 34 kg dumbbells carry as 33.75 kg, once: ' + JSON.stringify(kg));
+});
+
+// R03 (regression from M14): a superset opener coming back at its place without its partner (the
+// owner removed both and added the opener back; the coach removed the partner, then Restore) kept
+// its pairing and the runner supersetted it with whatever lift followed.
+seq('R03: a superset opener comes back paired only with its own partner', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // the coach supersets Incline Dumbbell Press with Cable Triceps Pushdown
+      const cr0 = getCustomRoutine(); cr0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; }); setCustomRoutine(cr0);
+      const orig = localStorage.getItem('kt_routine');
+      const reset = () => { closeRoutines(); lsSet('kt_routine', JSON.parse(orig)); };
+      // ! = main, ~ = superset opener
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); };
+      const runner = async () => { closeRoutines(); openDeckRunner('Push'); await wait(20); const x = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | '); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      r.coach = day();
+      await remove('Incline Dumbbell Press'); await remove('Cable Triceps Pushdown');
+      _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10);
+      r.addBack = [day(), day(11)]; r.addBackRunner = await runner(); reset();
+      await remove('Incline Dumbbell Press'); closeRoutines();
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Cable Triceps Pushdown', action: 'remove' });
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10);
+      r.restore = day(); r.restoreRunner = await runner(); reset();
+      // with its partner it pairs again: both restored, or the opener alone added back
+      await remove('Incline Dumbbell Press'); await remove('Cable Triceps Pushdown');
+      _rtRestoreRemoved('Push'); await wait(10); r.both = day(); reset();
+      await remove('Incline Dumbbell Press'); _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10); r.alone = day(); reset();
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    const unpaired = 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise';
+    assert(out.coach === C, 'the coach\'s day: ' + out.coach);
+    assert(out.addBack[0] === unpaired && out.addBack[1] === unpaired && !/~/.test(out.addBackRunner), 'added back without its partner it pairs with nothing, in every week and in the runner: ' + JSON.stringify(out));
+    assert(out.restore === unpaired && !/~/.test(out.restoreRunner), 'restored after the coach removed its partner: unpaired: ' + JSON.stringify(out));
+    assert(out.both === C && out.alone === C, 'back beside its partner it pairs again: ' + JSON.stringify([out.both, out.alone]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R07 (incomplete M12): a removed lift added back comes back in the weeks it was removed from, and
+// goes into the weeks that never had it as a new row: those got no load ("your load"), even at the
+// load the coach asked for. The coach: Lateral Raise in weeks 1-8, Cable Fly in its place from week 9.
+seq('R07: a lift added back has a load in the weeks that never had it, the coach\'s when it asked', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => { if (i >= 8) Object.assign(w.push.find(e => e.name === 'Lateral Raise'), { name: 'Cable Fly', weight: 40, sets: 3, reps: 12 }); });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const lr = () => getCustomRoutine().weeks.slice(c).map(w => { const e = w.push.find(x => x.name === 'Lateral Raise'); return e ? e.sets + 'x' + e.reps + '@' + e.weight + (e.rec === null ? '+' : e.rec ? '*' : '') : '-'; });
+      openRoutines(); _rtOpenEdit('Push', 'Lateral Raise'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const removed = localStorage.getItem('kt_routine');
+      const a = executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Lateral Raise', action: 'add', sets: 4, reps: 12, weight: 25 });
+      r.coach = { ok: a.ok, lr: lr(), series: a.series, fly: getCustomRoutine().weeks.slice(8).every(w => w.push.some(e => e.name === 'Cable Fly')) };
+      lsSet('kt_routine', JSON.parse(removed));
+      openRoutines(); _rtAddPick('Push', 'Lateral Raise'); await wait(10); closeRoutines();
+      r.owner = lr();
+      return r;
+    });
+    const last = out.coach.lr.length - 1, w = (s) => parseFloat(s.split('@')[1]);
+    assert(out.coach.ok && out.coach.lr.slice(0, last).every(x => x === '4x12@25') && w(out.coach.lr[last]) > 0 && w(out.coach.lr[last]) < 25 && out.coach.fly, 'the coach\'s 4x12 @ 25 in every working week, the deload its share, Cable Fly kept: ' + JSON.stringify(out.coach));
+    assert(!out.coach.series.some(s => /your load/.test(s)), 'the coach is told the loads it set: ' + JSON.stringify(out.coach.series));
+    assert(out.owner.slice(0, 3).every(x => x === '3x15@17.5') && out.owner.slice(3).every(x => /\+$/.test(x) && w(x) > 0), 'the owner\'s add: the coach\'s rows back in weeks 6-8, a loaded ADDED row after: ' + JSON.stringify(out.owner));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R06 (incomplete M16): a coach rewrite of a week re-recorded a lift the owner had removed without
+// its markers: Use coach's on the lift the owner swapped onto left the coach's original out of that
+// week. The same rewrite left a superset opener paired with the next lift when the owner had
+// removed its partner. The coach: Overhead Press every week, Arnold Press beside it from week 9,
+// Incline Dumbbell Press supersetted with Cable Triceps Pushdown.
+seq('R06: a coach rewrite keeps the swap and superset marks of the lifts the owner removed', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach((w, i) => {
+    w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true;
+    if (i >= 8) { const at = w.push.findIndex(e => e.name === 'Overhead Press'); w.push.splice(at + 1, 0, { name: 'Arnold Press', sets: 3, reps: 10, weight: 45 }); }
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const orig = localStorage.getItem('kt_routine');
+      const has = (n) => getCustomRoutine().weeks.slice(c).map(w => w.push.some(e => e.name === n) ? 1 : 0).join('');
+      // ~ = superset opener
+      const day9 = () => getCustomRoutine().weeks[8].push.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+      // the coach rewrites week 9 as it wrote it
+      const rewrite9 = () => executeCoachTool('update_routine_weeks', { weeks: [{ wk: 9, bName: 'PEAK', bColor: '#0a43f5', push: [
+        { name: 'Bench Press', sets: 4, reps: 8, weight: 167.5, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 8, weight: 105 }, { name: 'Arnold Press', sets: 3, reps: 10, weight: 45 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 65, ss: true }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 60 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }] }] });
+      // the owner swaps Overhead Press for Arnold Press from week 6 (weeks 9-12 drop it)
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10); closeRoutines();
+      r.rewrite = rewrite9().ok;
+      openRoutines(); _rtUseCoach('Push', 'Arnold Press'); await wait(10); closeRoutines();
+      r.useCoach = { ohp: has('Overhead Press'), day9: day9() };
+      // the owner removes the superset's second half, then the coach rewrites week 9 with both
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Cable Triceps Pushdown'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      rewrite9();
+      r.unpaired = day9();
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.restored = day9();
+      return r;
+    });
+    const coach9 = 'Bench Press | Overhead Press | Arnold Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(out.rewrite && out.useCoach.ohp === '1111111' && out.useCoach.day9 === coach9, 'Use coach\'s brings Overhead Press back in every week, the rewritten one too: ' + JSON.stringify(out.useCoach));
+    assert(out.unpaired === 'Bench Press | Overhead Press | Arnold Press | Incline Dumbbell Press | Lateral Raise', 'the opener whose partner stays removed pairs with nothing: ' + out.unpaired);
+    assert(out.restored === coach9, 'Restore pairs it again: ' + out.restored);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R08 (new bug from M11): a kg owner who switched to lb in Settings kept the kg grid for good
+// (159.8, 102, 60.6, 55.1 and 16.5 lb: the launch sweep reads the programme as kg). The switch moves
+// the programme onto lb plates, with an Undo, and the way back to kg gives every load not changed
+// since its exact kg value (M11: a round trip read 106.5 for 106 kg). A relaunch is a new boot on
+// what the last one stored, the device note included.
+seq('R08: a switch to lb in Settings moves the programme onto lb plates; back in kg the kg loads return', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const launch = async (seed, fn, arg) => {
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(fn, arg);
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const keep = (o) => Object.assign({ kt_routine: o.routine, kt_unit_w: 'lb' }, o.note ? { kt_unit_regrid: o.note } : {});
+  // in kg the owner removes Lateral Raise and sets Overhead Press to 47.5 kg, then Settings > Units > lb
+  const a = await launch({ kt_routine: JSON.stringify(kgR), kt_unit_w: 'kg' }, async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const r = {}, c = currentWeek - 1;
+    const unit = async (u) => { switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === u).click(); await wait(30); };
+    // * = marked: the coach's original kept beside it
+    const day = () => getCustomRoutine().weeks[c].push.map(e => fmtW(e.weight) + (e.rec ? '*' : '')).join(' | ');
+    const offLb = () => { let n = 0; getCustomRoutine().weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => {
+      (w[k] || []).forEach(e => [e, e.rec].forEach(h => { if (h && h.weight > 0 && Math.abs(Math.round(h.weight / 2.5) * 2.5 - h.weight) > 0.01) n++; }));
+      ((w.recOut || {})[k] || []).forEach(x => { if (Math.abs(Math.round(x.row.weight / 2.5) * 2.5 - x.row.weight) > 0.01) n++; }); })); return n; };
+    openRoutines(); _rtOpenEdit('Push', 'Lateral Raise'); _rtRemove(); await wait(5);
+    document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+    openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.w = 47.5; _rtSave(); await wait(10); closeRoutines();
+    r.before = localStorage.getItem('kt_routine'); r.offBefore = offLb();
+    await unit('lb');
+    r.toast = document.getElementById('toast').textContent; r.lb = day(); r.off = offLb();
+    r.lrOut = getCustomRoutine().weeks[c].recOut.push.map(x => x.row.name + ' ' + fmtW(x.row.weight)).join();
+    r.plate = _plateMath(getCustomRoutine().weeks[c].push[0].weight);
+    openRoutines(); await wait(10);
+    r.coachLine = [...document.querySelectorAll('#rtSheet *')].map(x => x.textContent.trim()).filter(t => /^Coach:/.test(t))[0];
+    closeRoutines();
+    // Undo keeps lb and puts the kg loads back; then to kg (nothing to move) and to lb again
+    document.querySelector('#toast .kt-toast-undo').click(); await wait(20);
+    r.undone = day(); r.undoneSame = localStorage.getItem('kt_routine') === r.before;
+    await unit('kg'); r.kgSame = localStorage.getItem('kt_routine') === r.before;
+    await unit('lb'); r.lbAgain = day();
+    r.routine = localStorage.getItem('kt_routine'); r.note = localStorage.getItem('kt_unit_regrid');
+    return r;
+  });
+  assert(a.offBefore > 0 && /^Programme loads moved onto lb plates/.test(a.toast) && /Undo$/.test(a.toast), 'the switch says so and offers Undo: ' + JSON.stringify(a.toast));
+  assert(a.lb === '160 lb | 105 lb* | 60 lb | 55 lb' && a.off === 0, 'every load on lb plates, the owner\'s edit still marked: ' + JSON.stringify([a.lb, a.off]));
+  assert(a.lrOut === 'Lateral Raise 17.5 lb' && a.coachLine === 'Coach: 4×8 · 102.5 lb Use coach’s' && a.plate === '45 + 10 + 2.5 / side', 'the coach\'s original and the removed lift follow; the plates add up: ' + JSON.stringify([a.lrOut, a.coachLine, a.plate]));
+  assert(a.undone === '159.8 lb | 104.7 lb* | 60.6 lb | 55.1 lb' && a.undoneSame && a.kgSame && a.lbAgain === a.lb, 'Undo puts the kg loads back; switched again they move again: ' + JSON.stringify([a.undone, a.undoneSame, a.kgSame, a.lbAgain]));
+  // relaunched in lb nothing moves, and the runner prescribes the lb load
+  const b = await launch(keep(a), async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    openDeckRunner('Push'); await wait(20);
+    const card = runnerSession.exercises[0].name + ' ' + runnerSession.exercises[0].weight;
+    closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+    return { card, routine: localStorage.getItem('kt_routine'), note: localStorage.getItem('kt_unit_regrid') };
+  });
+  assert(b.routine === a.routine && b.card === 'Bench Press 160', 'a launch in lb leaves the lb plates: ' + b.card);
+  // in lb: Restore Lateral Raise, Use coach's on Overhead Press, Bench to 162.5 from this week on
+  const d = await launch(keep(b), async () => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+    openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
+    openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtEdit.w = 162.5; _rtSave(); await wait(10); closeRoutines();
+    return { routine: localStorage.getItem('kt_routine'), note: localStorage.getItem('kt_unit_regrid') };
+  });
+  // relaunched, then Settings > Units > kg: each load as the kg programme had it (Overhead Press the
+  // coach's, Lateral Raise the removed row), except Bench from this week on (the owner's lb edit)
+  const e = await launch(keep(d), async (before) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const c = currentWeek - 1;
+    switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === 'kg').click(); await wait(30);
+    const B = JSON.parse(before), diffs = [];
+    getCustomRoutine().weeks.forEach((w, j) => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(x => {
+      const o = (B.weeks[j][k] || []).find(y => y.name === x.name) || ((B.weeks[j].recOut || {})[k] || []).map(y => y.row).find(y => y.name === x.name);
+      const ow = o ? (o.rec && !x.rec ? o.rec.weight : o.weight) : null;
+      if (ow == null || Math.abs(ow - x.weight) > 0.01) diffs.push((j + 1) + ' ' + x.name);
+    })));
+    return { diffs, expect: getCustomRoutine().weeks.slice(c).map((w, i) => (c + i + 1) + ' Bench Press'), day: getCustomRoutine().weeks[c].push.map(x => fmtW(x.weight)).join(' | '), note: localStorage.getItem('kt_unit_regrid') };
+  }, a.before);
+  assert(JSON.stringify(e.diffs) === JSON.stringify(e.expect) && e.day === '73.5 kg | 46.5 kg | 27.5 kg | 25 kg | 7.5 kg' && e.note === null, 'back in kg the kg loads return, the lb edit stays: ' + JSON.stringify(e));
+});
