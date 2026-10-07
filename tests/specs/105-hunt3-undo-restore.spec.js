@@ -825,3 +825,45 @@ run('a day rename after a coach reply is its own undo point: the reply\'s Undo n
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R15: the undo point's working-weight note was compared by value only, so a workout done at the
+// coach's new load matched it, and the reply's Undo put the old working weight back under the
+// newest log (with no old one, it deleted it). A log that sets a lift's working weight drops the
+// lift's note.
+run('Undo of the coach\'s working weight keeps the load a newer workout logged, even the same one', async () => {
+  for (const w0 of [{ 'Bench Press': 150 }, {}]) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_sessions: '[]', kt_weights: JSON.stringify(w0) } });
+    try {
+      const out = await app.page.evaluate(async (MOCK) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const c = currentWeek - 1;
+        const st = () => ({ working: getWeights()['Bench Press'] === undefined ? null : getWeights()['Bench Press'], plan: getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight });
+        eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'bench 190' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: st() };
+        // today's Push at the load Today now prescribes
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        r.card = [runnerSession.exercises[0].name, runnerWeights[runnerSession.exercises[0].name]];
+        runnerEngaged = true; runnerSetWeight(190);
+        [8, 8, 8].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+        runnerFinishSession(); await wait(250); closeCompleteSheet();
+        r.logged = Object.assign(st(), { session: getSessions()[0].date === todayISO() && getSessions()[0].exercises[0].weight });
+        switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+        const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+        r.undoShown = !!b;
+        if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+        r.undone = st();
+        return r;
+      }, MOCK);
+      const tag = w0['Bench Press'] ? 'with an old working weight' : 'with none';
+      assert(out.reply.working === 190 && out.reply.plan === 190, tag + ': the reply set Bench to 190: ' + JSON.stringify(out.reply));
+      assert(out.logged.session === 190 && out.logged.working === 190, tag + ': today\'s workout logged 190: ' + JSON.stringify(out));
+      assert(out.undoShown && out.undone.plan === 160 && out.undone.working === 190, tag + ': Undo takes the plan back and keeps the working weight the workout set: ' + JSON.stringify(out.undone));
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});

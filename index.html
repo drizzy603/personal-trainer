@@ -4034,14 +4034,16 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
 function _setWorkingWeights(exs, date){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO();
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), set=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
     if(back && (parseFloat(w[e.name])||0)>v) return;
-    w[e.name]=v;
+    w[e.name]=v; set.push(e.name);
   });
-  return lsSet('kt_weights', w);
+  var ok=lsSet('kt_weights', w);
+  if(ok) _dropNotedWeights(set);   // a log newer than the undo point keeps the load it set
+  return ok;
 }
 // A delete or a date move takes back the working weight a log set: deleting a 1,850 lb typo kept
 // 1,850 as Bench's working weight, which the coach was told and the plateau deload wrote into the
@@ -18333,6 +18335,22 @@ function _noteBackupWeight(sc, key, from, to){
     w[key]=[w[key]?w[key][0]:from, to];   // the first change in the scope keeps what was there before it
     b._w=w;
     localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
+  }catch(e){}
+}
+// A log that sets a lift's working weight (the runner's finish, the coach's log_session, a wrist
+// session) is newer than the change a note speaks for: the lift's note goes, any spelling. Undo
+// compared values only, so a workout done at the coach's new load matched the note, and the
+// reply's Undo put the old working weight back under the newest log (or deleted it).
+function _dropNotedWeights(names){
+  if(!names || !names.length) return;
+  try{
+    var raw=localStorage.getItem('kt_routine_backup'); if(!raw) return;
+    var b=JSON.parse(raw); if(!b || !b._w || typeof b._w!=='object') return;
+    var low=names.map(function(x){ return String(x).toLowerCase(); }), n=0;
+    Object.keys(b._w).forEach(function(k){ if(low.indexOf(k.toLowerCase())>=0){ delete b._w[k]; n++; } });
+    if(!n) return;
+    if(!Object.keys(b._w).length) delete b._w;
+    localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // as _noteBackupWeight: the log itself was saved
   }catch(e){}
 }
 // The noted weights put back: each only while it still holds what the change wrote (a newer log
