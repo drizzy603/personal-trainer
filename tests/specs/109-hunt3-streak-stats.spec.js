@@ -18,6 +18,12 @@
 //   not "TRAIN TODAY TO KEEP IT" (L33).
 // - Progress THIS WEEK does not count an empty lift day as planned: 3 / 3, as Today says, not
 //   3 / 4 for good (L34).
+// Hunt 4 (regressions of the above):
+// - Data from before 2026-10-04 has no kt_streak_days: the days before a first programme's week 1
+//   read as week 1 there and as "no plan, every day due" since, so a streak that ran across a
+//   programme switch made on that page dropped the moment it updated (26 -> 14). The first boot
+//   (before the week clock moves) and every restore write them down as the old page read them,
+//   and a misreading the pages since froze goes back (R38).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -412,6 +418,96 @@ runInTurn('Progress THIS WEEK leaves an empty lift day out of the planned days (
       return { row: m ? m[0] : '', today: _weekStats().planned };
     }, [CLOCK, LOGS]);
     assert(/THIS WEEK 3 \/ 3 DAYS/.test(out.row) && out.today === 3, 'three of three, as Today counts: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// ── Hunt 4 ──
+// A clock that survives a cold boot (as spec 108's): the storage the app left is snapshotted and
+// put back before the page scripts run (the harness re-seeds on every load).
+const BOOTCLOCK = () => {
+  try {
+    const snap = sessionStorage.getItem('__ls');
+    if (snap) { const o = JSON.parse(snap); localStorage.clear(); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); sessionStorage.removeItem('__ls'); }
+  } catch (e) {}
+  if (window.__setNow) return;
+  const R = Date; let off = 0;
+  const t = sessionStorage.getItem('__now'); if (t) off = new R(t).getTime() - R.now();
+  function F(...a) { if (!(this instanceof F)) return new R(R.now() + off).toString(); return a.length ? new R(...a) : new R(R.now() + off); }
+  F.prototype = R.prototype; F.now = () => R.now() + off; F.parse = R.parse; F.UTC = R.UTC;
+  window.Date = F;
+  window.__setNow = (iso) => { off = new R(iso).getTime() - R.now(); sessionStorage.setItem('__now', iso); try { _todayActMemo = null; } catch (e) {} };
+};
+async function coldBoot(app) {
+  await app.page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } sessionStorage.setItem('__ls', JSON.stringify(o)); });
+  await app.page.reload({ waitUntil: 'load' });
+  await app.page.waitForFunction(() => typeof window.render === 'function');
+}
+// What the pages from 20261004-1 froze on a schedule or week change: the days the streak walked,
+// to the first miss, as they read then.
+const OLDFREEZE = `() => { const due = _streakDueFn(), led = Object.assign({}, lsGet('kt_streak_days') || {}), d = new Date(todayISO() + 'T00:00:00');
+  for (let i = 0; i < 400; i++) { const iso = _ymdLocal(d), lg = _loggedOn(iso), v = due(iso);
+    if (i > 0 || (lg && v)) { if (led[iso] == null) led[iso] = v; if (v === 1 && !lg) break; } d.setDate(d.getDate() - 1); }
+  lsSet('kt_streak_days', led); }`;
+// A switch made on the old page: B (Mon/Wed/Fri) began on S and is on week 4; A (Mon/Wed/Fri too)
+// ran the five weeks before and sits in Programme History. Every Mon/Wed/Fri is logged to S + 23.
+const SWITCHED = `(S) => {
+  currentWeek = 4; lsSet('kt_week', 4); localStorage.setItem('kt_week_monday', addDays(S, 21));
+  lsSet('kt_routine_archive', [{ id: 1789400000000, archivedAt: addDays(S, -2), routine: getCustomRoutine() }]);
+  const rows = []; for (let i = -35; i <= 23; i++) { const dw = ((i % 7) + 7) % 7; if (dw === 0 || dw === 2 || dw === 4) rows.push([addDays(S, i), ['Push', '', 'Pull', '', 'Legs'][dw]]); }
+  return rows; }`;
+
+runInTurn('the update reads the days before week 1 as the old page did, after an old backup too, and repairs a misreading frozen since (R38)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS, SWITCHED, OLDFREEZE]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const S = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(S, 23) + 'T18:00:00');
+      lsSet('kt_sessions', logs(eval(SWITCHED)(S)));
+      // As the old page left it: nothing written down. Read since as "no plan" before week 1.
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+      r.misread = calcStreakDays();
+      // The pages since 20261004-1 froze that misreading on their first freeze: A's rest Sunday as missed.
+      eval(OLDFREEZE)();
+      r.frozen = { streak: calcStreakDays(), sun: lsGet('kt_streak_days')[addDays(S, -8)] };
+      // The first boot of this page.
+      _streakUpgrade();
+      const due = _streakDueFn();
+      r.upgraded = { streak: calcStreakDays(), flag: localStorage.getItem('kt_streak_seeded'), sun: lsGet('kt_streak_days')[addDays(S, -8)],
+        days: [-7, -8, -9, -10, -11, -12, -13].map(n => due(addDays(S, n))).join('') };
+      // An old backup of the same data (no kt_streak_days) restored here.
+      const bk = buildBackupJSON(); delete bk.kt_streak_days;
+      r.restored = { ok: _applyImportedData(JSON.parse(JSON.stringify(bk))), streak: calcStreakDays() };
+      // And the first schedule edit after it keeps the streak.
+      setWeekPlanDay(6, 'Run');
+      r.edited = calcStreakDays();
+      return r;
+    }, [CLOCK, LOGS, SWITCHED, OLDFREEZE]);
+    assert(out.misread === 14 && out.frozen.streak === 14 && out.frozen.sun === 1, 'the drop this guards against (14 of 26), frozen on a rest Sunday: ' + JSON.stringify(out));
+    assert(out.upgraded.streak === 26 && out.upgraded.flag === '1', 'after the update the streak runs across the switch, as the old page showed: ' + JSON.stringify(out.upgraded));
+    assert(out.upgraded.sun === 0 && out.upgraded.days === '1001010', 'A\'s weeks read as week 1 (Mon/Wed/Fri), the frozen Sunday too: ' + JSON.stringify(out.upgraded));
+    assert(out.restored.ok && out.restored.streak === 26, 'an old backup restored here reads the same: ' + JSON.stringify(out.restored));
+    assert(out.edited === 26, 'a schedule edit after the update keeps it: ' + out.edited);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+runInTurn('the first boot writes the old page\'s reading down before anything else runs (R38)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
+  try {
+    await app.page.addInitScript(BOOTCLOCK); await app.page.evaluate(BOOTCLOCK);
+    const first = await app.page.evaluate(() => localStorage.getItem('kt_streak_seeded'));
+    await app.page.evaluate(([LOGS, SWITCHED]) => {
+      const logs = eval(LOGS), S = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(S, 23) + 'T18:00:00');
+      lsSet('kt_sessions', logs(eval(SWITCHED)(S)));
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded'); localStorage.removeItem('kt_last_open');
+    }, [LOGS, SWITCHED]);
+    await coldBoot(app);
+    const out = await app.page.evaluate(() => ({ week: currentWeek, streak: calcStreakDays(), flag: localStorage.getItem('kt_streak_seeded') }));
+    assert(first === '1', 'every boot of this page has run it once: ' + first);
+    assert(out.week === 4 && out.streak === 26 && out.flag === '1', 'booted on the old data, the streak is the old page\'s: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
