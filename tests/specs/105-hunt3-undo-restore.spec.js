@@ -62,10 +62,12 @@ run('a new round retires the old round\'s Undo; Restore Previous brings back rou
       // an open Routines-style scope from before the swap
       _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Lateral Raise', currentWeek - 1, 25, { markOwner: true }), { scope: 'routines' });
       const round1 = localStorage.getItem('kt_routine');
+      // the snapshot's bookkeeping (_clock: the week it was on, R16; _w) is not the programme
+      const bare = o => { const c = JSON.parse(JSON.stringify(o)); delete c._clock; delete c._w; return JSON.stringify(c); };
       lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() });
       const nb = _applyNextRound(false);
       r.swap = { ok: !!nb, cycle: getCustomRoutine().cycle, week: currentWeek, scope: localStorage.getItem('kt_routine_backup_scope'),
-        backupIsRound1: JSON.stringify(lsGet('kt_routine_backup')) === round1, seen: coachMessages.filter(m => m._tools).every(m => m._ledgerSeen),
+        backupIsRound1: bare(lsGet('kt_routine_backup')) === round1, seen: coachMessages.filter(m => m._tools).every(m => m._ledgerSeen),
         stored: JSON.parse(localStorage.getItem('kt_coach_msgs')).filter(m => m._tools).every(m => m._ledgerSeen),
         scopeOpen: _routineScope };   // the 'routines' scope left open would take no snapshot of round 2
       r.after = await ledger();
@@ -383,18 +385,20 @@ run('after a new programme or a reset, Restore Previous brings back the programm
       const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
       const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
       const bench = o => o.weeks[0].push.find(e => e.name === 'Bench Press').weight;
+      // the snapshot's bookkeeping (_clock: the week it was on, R16; _w) is not the programme
+      const bare = raw => { const c = JSON.parse(raw); delete c._clock; delete c._w; return JSON.stringify(c); };
       const r = {};
       // an edit leaves a snapshot from before it
       _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', 0, bench(cr) + 30, { markOwner: true }), { scope: 'routines' });
       const edited = localStorage.getItem('kt_routine');
       startNewProgramme(); await wait(20); confirm(); await wait(30);
-      r.newProg = { routine: getCustomRoutine(), backup: localStorage.getItem('kt_routine_backup') === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
+      r.newProg = { routine: getCustomRoutine(), backup: bare(localStorage.getItem('kt_routine_backup')) === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
       applyStarterRoutine({ goal: 'strength', days: 3, exp: 'intermediate', equip: 'full', focus: 'balanced' }); await wait(20);
-      r.starter = { name: getCustomRoutine().name, backup: localStorage.getItem('kt_routine_backup') === edited };
+      r.starter = { name: getCustomRoutine().name, backup: bare(localStorage.getItem('kt_routine_backup')) === edited };
       await restorePrev();
       r.back = localStorage.getItem('kt_routine') === edited;
       resetCustomRoutine(); await wait(20); confirm(); await wait(30);
-      r.reset = { routine: getCustomRoutine(), backup: localStorage.getItem('kt_routine_backup') === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
+      r.reset = { routine: getCustomRoutine(), backup: bare(localStorage.getItem('kt_routine_backup')) === edited, scope: localStorage.getItem('kt_routine_backup_scope') };
       await restorePrev();
       r.backAgain = localStorage.getItem('kt_routine') === edited;
       return r;
@@ -616,6 +620,365 @@ run('a body-weight or measurement save that fails never reads as saved', async (
     assert(out.msFull.saved === 0 && /storage full/.test(out.msFull.toast) && out.msFull.typed === '32', 'a failed measurement save keeps the error: ' + JSON.stringify(out.msFull));
     assert(out.bw.saved === 1 && out.bw.strip, 'a body-weight save with room logs: ' + JSON.stringify(out.bw));
     assert(out.ms.saved === 1 && /Measurements saved/.test(out.ms.toast), 'a measurement save with room saves: ' + JSON.stringify(out.ms));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R13 (R10, R60 the same): _weightKeyFor folds a case variant into the programme's spelling, and the
+// reply's undo point recorded no old value, so Undo deleted the working weight instead of putting
+// it back. Each folded variant is noted with the change.
+run('Undo of set_exercise_weight puts back a working weight saved under another spelling', async () => {
+  const w0 = { 'bench press': 150, 'Face Pull': 40, 'face pull': 35 };
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify(w0) } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const ws = () => { const w = getWeights(); return JSON.stringify(Object.keys(w).sort().reduce((o, k) => { o[k] = w[k]; return o; }, {})); };
+      eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } },
+        { type: 'tool_use', id: 't1', name: 'set_exercise_weight', input: { name: 'face pull', weight: 50 } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+      coachMessages.push({ role: 'user', content: 'bench 190, face pulls 50' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+      const r = { reply: ws() };
+      const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+      if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+      r.undone = ws();
+      r.prompt = /bench press: 150/.test(buildSystemPrompt());
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.again = ws();
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.back = ws();
+      return r;
+    }, MOCK);
+    const before = JSON.stringify({ 'Face Pull': 40, 'bench press': 150, 'face pull': 35 }), reply = JSON.stringify({ 'Bench Press': 190, 'Face Pull': 50 });
+    assert(out.reply === reply, 'the reply saved both under the programme\'s spelling: ' + out.reply);
+    assert(out.undone === before && out.prompt, 'Undo puts every folded spelling back as it was: ' + JSON.stringify([out.undone, out.prompt]));
+    assert(out.again === reply && out.back === before, 'Restore Previous swaps them back and forth: ' + JSON.stringify([out.again, out.back]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R16 (R61 the same): a programme replaced whole (the next round, a Programme History restore,
+// the starter plan, a new programme, a reset) came back with Restore Previous on week 1: round 1
+// lost its final week, a history restore's programme came back not started. The week clock goes
+// aside with it (_clock) and comes back with it; the version set aside keeps its own.
+run('Restore Previous after the next round brings round 1 back on its final week, ended as it was', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      const st = () => { const cr = getCustomRoutine(), ri = _roundInfo();
+        return { cycle: cr.cycle || 1, week: currentWeek, stored: lsGet('kt_week'), anchor: localStorage.getItem('kt_week_monday'), finalSince: localStorage.getItem('kt_final_since'),
+          ended: !!(ri && ri.ended), bench: cr.weeks[currentWeek - 1].push.find(e => e.name === 'Bench Press').weight, streak: calcStreakDays() }; };
+      // parked on week 12 since last Monday: the programme has ended; a run on every training day of the last four weeks
+      _setWeek(12); const fin = addDays(_mostRecentMonday(), -7); localStorage.setItem('kt_final_since', fin);
+      const due = _streakDueFn(), runs = getRuns().slice();
+      for (let i = 1; i <= 28; i++) { const d = addDays(todayISO(), -i); if (due(d) === 1) runs.unshift({ id: 7100000 + i, date: d, km: 5, time: '25:00' }); }
+      lsSet('kt_runs', runs);
+      const r = { fin, mon: _mostRecentMonday(), before: st() };
+      lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() });
+      _applyNextRound(true);
+      r.round2 = st();
+      await restorePrev();
+      r.restored = st();
+      await restorePrev();
+      r.again = st();
+      await restorePrev();
+      r.back = st();
+      return r;
+    });
+    assert(out.before.week === 12 && out.before.ended && out.before.bench === 175 && out.before.streak > 0, 'seed: round 1 on its final week, ended: ' + JSON.stringify(out.before));
+    assert(out.round2.cycle === 2 && out.round2.week === 1 && out.round2.finalSince === null, 'round 2 started on week 1: ' + JSON.stringify(out.round2));
+    const r1 = out.restored;
+    assert(r1.cycle === 1 && r1.week === 12 && r1.stored === 12 && r1.finalSince === out.fin && r1.ended && r1.bench === 175 && r1.anchor === out.mon,
+      'round 1 comes back on its final week, still ended, at its own loads: ' + JSON.stringify(r1));
+    assert(r1.streak === out.before.streak, 'the streak is untouched: ' + JSON.stringify([out.before.streak, r1.streak]));
+    assert(out.again.cycle === 2 && out.again.week === 1 && out.again.finalSince === null && out.again.bench === out.round2.bench, 'restoring again brings round 2 back on its week 1: ' + JSON.stringify(out.again));
+    assert(out.back.cycle === 1 && out.back.week === 12 && out.back.finalSince === out.fin && out.back.ended, 'and round 1 again: ' + JSON.stringify(out.back));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('Restore Previous after a history restore, the starter plan, a new programme or a reset brings it back on its week', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      const st = () => ({ name: (getCustomRoutine() || {}).name || null, week: currentWeek, stored: lsGet('kt_week'), anchor: localStorage.getItem('kt_week_monday'), started: _programmeStarted(),
+        leak: !!getCustomRoutine() && ('_clock' in getCustomRoutine() || '_w' in getCustomRoutine()) });
+      const A = getCustomRoutine().name, r = { A, mon: _mostRecentMonday(), start: _nextMonday(todayISO()), before: st() };
+      // a Programme History restore (week 1 starts on the next Monday), then back
+      const B = JSON.parse(JSON.stringify(getCustomRoutine())); B.name = 'Programme B';
+      lsSet('kt_routine_archive', [{ id: 42, archivedAt: todayISO(), routine: B }]);
+      restoreArchivedRoutine(42); await wait(20); confirm(); await wait(30);
+      r.history = st();
+      await restorePrev(); r.historyBack = st();
+      await restorePrev(); r.historyAgain = st();
+      await restorePrev(); r.historyBack2 = st();
+      // the starter plan, a new programme and a reset
+      applyStarterRoutine({ goal: 'strength', days: 3, exp: 'intermediate', equip: 'full', focus: 'balanced' }); await wait(20);
+      await restorePrev(); r.starterBack = st();
+      startNewProgramme(); await wait(20); confirm(); await wait(30);
+      await restorePrev(); r.newBack = st();
+      resetCustomRoutine(); await wait(20); confirm(); await wait(30);
+      await restorePrev(); r.resetBack = st();
+      // an edit's undo point is the same programme on the same clock: the week stays where it is
+      _commitRoutine(cr => _progCarryLoad(cr, 'push', 'Bench Press', currentWeek - 1, 200, { markOwner: true }), { scope: 'routines' });
+      adjustWeek(1);
+      await restorePrev(); r.edit = st();
+      return r;
+    });
+    const atSix = (x, k) => assert(x.name === out.A && x.week === 6 && x.stored === 6 && x.anchor === out.mon && x.started && !x.leak, k + ': back on week 6, started this Monday: ' + JSON.stringify(x));
+    assert(out.before.week === 6 && out.before.started, 'seed: week 6: ' + JSON.stringify(out.before));
+    assert(out.history.name === 'Programme B' && out.history.week === 1 && out.history.anchor === out.start, 'the history restore starts B on week 1: ' + JSON.stringify(out.history));
+    atSix(out.historyBack, 'after a history restore');
+    assert(out.historyAgain.name === 'Programme B' && out.historyAgain.week === 1 && out.historyAgain.anchor === out.start && !out.historyAgain.leak, 'restoring again brings B back as it was, still starting on its Monday: ' + JSON.stringify(out.historyAgain));
+    atSix(out.historyBack2, 'and A again');
+    atSix(out.starterBack, 'after the starter plan');
+    atSix(out.newBack, 'after a new programme');
+    atSix(out.resetBack, 'after a reset');
+    assert(out.edit.week === 7, 'an edit\'s undo point leaves the week alone: ' + JSON.stringify(out.edit));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R16 follow-up: a swap stamps the +5 and plateau offers for its week 1, so back on week 6 an offer
+// already put off (or taken) that week was offered again (with a key, a second +5 from the coach).
+// The week's offers go aside with the clock and come back with it.
+run('Restore Previous after a swap keeps the week\'s +5 and plateau offers as they were answered', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      // both main lifts went clean last week, and Bench has stalled
+      const ex = (name, w) => ({ name, isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w, rpe: 7, rpeLog: [7, 7, 7, 7] });
+      lsSet('kt_sessions', [{ id: 8800001, date: addDays(_mostRecentMonday(), -5), type: 'Push', exercises: [ex('Bench Press', 160), ex('Overhead Press', 100)] }].concat(getSessions()));
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 30 }];
+      const st = () => ({ week: currentWeek, prog: _progressionDue(), plateau: _plateauFixDue() });
+      const B = JSON.parse(JSON.stringify(getCustomRoutine())); B.name = 'Programme B';
+      lsSet('kt_routine_archive', [{ id: 42, archivedAt: todayISO(), routine: B }]);
+      const r = { seed: st() };
+      // offers nobody answered yet are still offered after the round trip
+      restoreArchivedRoutine(42); await wait(20); confirm(); await wait(30);
+      r.onB = st();
+      await restorePrev(); r.untouched = st();
+      // put off this week: the starter plan, then back
+      dismissProgression(); dismissPlateauFix(); r.dismissed = st();
+      applyStarterRoutine({ goal: 'strength', days: 3, exp: 'intermediate', equip: 'full', focus: 'balanced' }); await wait(20);
+      await restorePrev(); r.answered = st();
+      return r;
+    });
+    assert(out.seed.week === 6 && out.seed.prog && out.seed.plateau, 'seed: week 6, both offers due: ' + JSON.stringify(out.seed));
+    assert(out.onB.week === 1 && !out.onB.prog && !out.onB.plateau, 'the swapped-in programme starts on week 1 with no offer: ' + JSON.stringify(out.onB));
+    assert(out.untouched.week === 6 && out.untouched.prog && out.untouched.plateau, 'back on week 6, unanswered offers stay offered: ' + JSON.stringify(out.untouched));
+    assert(!out.dismissed.prog && !out.dismissed.plateau, 'both put off: ' + JSON.stringify(out.dismissed));
+    assert(out.answered.week === 6 && !out.answered.prog && !out.answered.plateau, 'back on week 6, offers put off that week stay put off: ' + JSON.stringify(out.answered));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R17: the keyless +5 and the plateau deload wrote the working weight with no note on their undo
+// point, so Restore previous programme put the plan back and left the new load as the working
+// weight (the coach prompt listed it, and the next +5 said "Already progressed this week"). Each
+// tap is one undo point that notes every working weight it moved.
+run('Restore previous programme after the keyless +5 or deload puts the working weights back too', async () => {
+  const app = await boot({ native: true, seed: { kt_weights: JSON.stringify({ 'Bench Press': 160, 'Overhead Press': 101 }) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      const c = currentWeek - 1;
+      const st = () => { const wk = getCustomRoutine().weeks[c].push, w = getWeights();
+        return { bench: [wk.find(e => e.name === 'Bench Press').weight, w['Bench Press']], ohp: [wk.find(e => e.name === 'Overhead Press').weight, w['Overhead Press']], prescribed: _prescribedLb('Bench Press') }; };
+      // both main lifts went clean last week
+      const ex = (name, w) => ({ name, isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w, rpe: 7, rpeLog: [7, 7, 7, 7] });
+      lsSet('kt_sessions', [{ id: 8800001, date: addDays(_mostRecentMonday(), -5), type: 'Push', exercises: [ex('Bench Press', 160), ex('Overhead Press', 101)] }].concat(getSessions()));
+      const r = { before: st(), lifts: _progressionLifts().length };
+      startProgression();   // keyless: the +5 on Today
+      r.plus5 = st();
+      await restorePrev();
+      r.restored = st();
+      r.prompt = /Bench Press: 160/.test(buildSystemPrompt());
+      applyProgressionLocal();   // the earned +5 is offered again, and applies
+      r.again = { st: st(), toast: toast() };
+      await restorePrev();
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 30 }];
+      applyPlateauFixLocal();
+      r.deload = st();
+      await restorePrev();
+      r.deloadBack = st();
+      return r;
+    });
+    const b0 = out.before.bench, o0 = out.before.ohp;
+    assert(out.lifts === 2 && b0[0] === 160 && b0[1] === 160, 'seed: Bench 160 planned and working, two lifts earned +5: ' + JSON.stringify(out.before));
+    assert(out.plus5.bench[0] === 165 && out.plus5.bench[1] === 165 && out.plus5.ohp[1] > o0[1], 'the +5 moved plan and working weight: ' + JSON.stringify(out.plus5));
+    assert(JSON.stringify(out.restored) === JSON.stringify(out.before) && out.prompt, 'Restore previous programme puts both lifts\' plan and working weight back: ' + JSON.stringify([out.before, out.restored]));
+    assert(out.again.st.bench[1] === 165 && !/Already progressed/.test(out.again.toast), 'the +5 is not "already progressed" after the restore: ' + JSON.stringify(out.again));
+    assert(out.deload.bench[0] === 145 && out.deload.bench[1] === 145, 'the deload moved both: ' + JSON.stringify(out.deload));
+    assert(JSON.stringify(out.deloadBack) === JSON.stringify(out.before), 'and Restore previous programme puts both back: ' + JSON.stringify(out.deloadBack));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R14: a reply's Undo is kept across a relaunch (M21), and a day rename took no snapshot, so the
+// card's Undo restored the snapshot from before the reply and dropped the rename made since. A
+// rename is its own undo point: the reply's Undo retires, and Restore previous programme takes back
+// only the rename.
+run('a day rename after a coach reply is its own undo point: the reply\'s Undo no longer drops it', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async ([MOCK, OHP_REPLY]) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const ohp = () => getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Overhead Press').weight;
+      const card = async () => { switchTab('coach'); coachView = 'chat'; render(); await wait(30); const c = document.querySelector('.kt-ledger-card'); return c ? [...c.querySelectorAll('button')].some(b => /Undo/.test(b.textContent)) : null; };
+      eval(MOCK)(OHP_REPLY);
+      coachMessages.push({ role: 'user', content: 'Make my overhead press heavier' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      loadCoachHistory(); _routineScope = null;   // a relaunch: the reply still offers Undo
+      const r = { relaunch: await card(), ohp: ohp() };
+      setDayName('Push', 'Chest Day');   // Settings › Weekly schedule › NAME THIS DAY
+      r.renamed = { label: _dayLabel('Push'), undo: await card() };
+      setDayName('Push', 'Chest Day');   // the same name again changes nothing and keeps the undo point
+      r.backupName = ((lsGet('kt_routine_backup') || {}).dayNames || {}).Push || null;
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.restored = { label: _dayLabel('Push'), ohp: ohp() };
+      return r;
+    }, [MOCK, OHP_REPLY]);
+    assert(out.relaunch === true && out.ohp === 110, 'the reply changed OHP and offers Undo after a relaunch: ' + JSON.stringify(out));
+    assert(out.renamed.label === 'Chest Day' && out.renamed.undo === false, 'after the rename the reply\'s Undo is gone (it would drop the rename): ' + JSON.stringify(out.renamed));
+    assert(out.backupName === null, 'the undo point is the programme just before the rename: ' + out.backupName);
+    assert(out.restored.label === 'Push' && out.restored.ohp === 110, 'Restore previous programme takes back the rename only: ' + JSON.stringify(out.restored));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R15: the undo point's working-weight note was compared by value only, so a workout done at the
+// coach's new load matched it, and the reply's Undo put the old working weight back under the
+// newest log (with no old one, it deleted it). A log that sets a lift's working weight drops the
+// lift's note.
+run('Undo of the coach\'s working weight keeps the load a newer workout logged, even the same one', async () => {
+  for (const w0 of [{ 'Bench Press': 150 }, {}]) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_sessions: '[]', kt_weights: JSON.stringify(w0) } });
+    try {
+      const out = await app.page.evaluate(async (MOCK) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const c = currentWeek - 1;
+        const st = () => ({ working: getWeights()['Bench Press'] === undefined ? null : getWeights()['Bench Press'], plan: getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight });
+        eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'bench 190' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: st() };
+        // today's Push at the load Today now prescribes
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        r.card = [runnerSession.exercises[0].name, runnerWeights[runnerSession.exercises[0].name]];
+        runnerEngaged = true; runnerSetWeight(190);
+        [8, 8, 8].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+        runnerFinishSession(); await wait(250); closeCompleteSheet();
+        r.logged = Object.assign(st(), { session: getSessions()[0].date === todayISO() && getSessions()[0].exercises[0].weight });
+        switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+        const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+        r.undoShown = !!b;
+        if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+        r.undone = st();
+        return r;
+      }, MOCK);
+      const tag = w0['Bench Press'] ? 'with an old working weight' : 'with none';
+      assert(out.reply.working === 190 && out.reply.plan === 190, tag + ': the reply set Bench to 190: ' + JSON.stringify(out.reply));
+      assert(out.logged.session === 190 && out.logged.working === 190, tag + ': today\'s workout logged 190: ' + JSON.stringify(out));
+      assert(out.undoShown && out.undone.plan === 160 && out.undone.working === 190, tag + ': Undo takes the plan back and keeps the working weight the workout set: ' + JSON.stringify(out.undone));
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+// R18: the schedule editor's 'cadence' scope never closed, so Restore previous programme undid the
+// changes of two Settings visits as one (M17 split Routines visits only). Each visit is its own
+// undo point; the changes inside one visit stay one.
+run('schedule changes in two Settings visits are two undo points', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const plan = () => getWeekPlanForWeek(currentWeek).map(p => p.type).join(',');
+      const pick = async (dow, type) => { _schedPick(dow); await wait(10); const b = [...document.querySelectorAll('.kt-sched-pick')].find(x => x.textContent.trim().indexOf(type) === 0); if (b) b.click(); await wait(20); return !!b; };
+      const r = { p0: plan() };
+      switchTab('settings'); await wait(20);
+      r.picked1 = await pick(4, 'Push');   // Friday
+      r.p1 = plan();
+      switchTab('log'); await wait(20);
+      switchTab('settings'); await wait(20);
+      r.picked2 = await pick(6, 'Rest') && await pick(0, 'Rest');   // Sunday, then Monday, in one visit
+      r.p2 = plan();
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.restored = plan();
+      return r;
+    });
+    assert(out.picked1 && out.picked2 && out.p1 !== out.p0 && out.p2 !== out.p1, 'the editor changed the schedule in both visits: ' + JSON.stringify(out));
+    assert(out.restored === out.p1, 'Restore previous programme undoes the second visit only, both of its changes: ' + JSON.stringify([out.p0, out.p1, out.restored]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R19: a backup restore (and Undo last restore) left an edit scope open, so the next schedule edit
+// took no snapshot and Restore previous programme brought back the file's own older programme; the
+// device's scope key also survived, so a stored reply's Undo could point at the file's backup. The
+// restore replaces the programme whole: no scope stays open and no reply owns the restored backup.
+run('after a backup restore or its undo, the next edit is its own undo point', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const plan = () => getWeekPlanForWeek(currentWeek).map(p => p.type).join(',');
+      const st = () => ({ name: getCustomRoutine().name, plan: plan(), backup: (lsGet('kt_routine_backup') || {}).name || null, scope: _routineScope, key: localStorage.getItem('kt_routine_backup_scope') });
+      const r = {};
+      switchTab('settings'); await wait(20);
+      setWeekPlanDay(4, 'Push'); await wait(20);   // a schedule edit in this visit leaves 'cadence' open
+      // a backup file: its programme 'File P', its own previous version 'File OLD', and a reply whose
+      // undo point is the scope this device last took
+      const file = buildBackupJSON(); delete file._manifest;
+      const P = JSON.parse(JSON.stringify(getCustomRoutine())); P.name = 'File P';
+      const OLD = JSON.parse(JSON.stringify(getCustomRoutine())); OLD.name = 'File OLD';
+      file.kt_routine = P; file.kt_routine_backup = OLD;
+      file.kt_coach_msgs = [{ role: 'user', content: 'bench 190' }, { role: 'assistant', content: 'Done.', _tools: [{ name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 }, result: { ok: true } }], _undo: 'cadence' }];
+      r.ok = _applyImportedData(file); await wait(30);
+      r.restored = Object.assign(st(), { replyUndo: _backupScopeIs('cadence') });
+      const p1 = plan();
+      setWeekPlanDay(6, 'Rest'); await wait(20);   // Sunday
+      r.edit = st();
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.prev = Object.assign(st(), { back: plan() === p1 });
+      // Undo last restore, after another edit opened 'cadence' again: the same holds
+      setWeekPlanDay(5, 'Push'); await wait(20);
+      r.undoOk = _applyImportedData(JSON.parse(localStorage.getItem('kt_pre_restore')).data, { undo: true }); await wait(30);
+      r.undone = st();
+      const p2 = plan();
+      setWeekPlanDay(6, 'Rest'); await wait(20);
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.undonePrev = Object.assign(st(), { back: plan() === p2 });
+      return r;
+    });
+    const x = out.restored;
+    assert(out.ok && x.name === 'File P' && x.backup === 'File OLD' && x.scope === null && x.key === null && !x.replyUndo, 'the restore leaves no scope open and no reply owning its backup: ' + JSON.stringify(x));
+    assert(out.edit.backup === 'File P' && out.edit.scope === 'cadence', 'the next edit snapshots the restored programme: ' + JSON.stringify(out.edit));
+    assert(out.prev.name === 'File P' && out.prev.back, 'Restore previous programme brings back the restored programme as it was, not the file\'s older one: ' + JSON.stringify(out.prev));
+    assert(out.undoOk && out.undone.scope === null && out.undone.key === null, 'Undo last restore leaves no scope open either: ' + JSON.stringify(out.undone));
+    assert(out.undonePrev.back, 'and Restore previous programme takes back only the edit made after it: ' + JSON.stringify(out.undonePrev));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

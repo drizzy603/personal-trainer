@@ -2406,14 +2406,18 @@ function _isStockName(slot, clean){
 }
 function setDayName(slot, name){
   if(LIFT_TYPES.indexOf(slot)<0) return;
-  var cr=getCustomRoutine(); if(!cr) return;
-  var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{};
+  if(!getCustomRoutine()) return;
   var clean=_cleanDayLabel(name);
   var why=_dayNameCollision(slot, clean);
   if(why){ showToast('Can\u2019t call it that \u2014 '+why,'err'); render(); return; }
-  if(!_isStockName(slot, clean)) names[slot]=clean; else delete names[slot];
-  if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
-  setCustomRoutine(cr);
+  // Through the programme's one write door, as its own undo point: a coach reply's Undo (kept
+  // across a relaunch) restored its snapshot from before the reply and dropped a rename made since.
+  _commitRoutine(function(cr){
+    var names=(cr.dayNames && typeof cr.dayNames==='object')?cr.dayNames:{}, was=JSON.stringify(cr.dayNames||null);
+    if(!_isStockName(slot, clean)) names[slot]=clean; else delete names[slot];
+    if(Object.keys(names).length) cr.dayNames=names; else delete cr.dayNames;
+    return JSON.stringify(cr.dayNames||null)!==was ? 1 : 0;   // the name it already has changes nothing
+  }, {noRender:true, scope:'name:'+Date.now()});
   if(typeof _scheduleNativeSync==='function') _scheduleNativeSync();   // the wrist and widget show the name
   render();
 }
@@ -4172,14 +4176,16 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here).
 function _setWorkingWeights(exs, date){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO();
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO(), wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
     if(back && (parseFloat(w[e.name])||0)>v) return;
-    w[e.name]=v;
+    w[e.name]=v; wrote.push(e.name);   // at the same load too: the load is the log's now
   });
-  return lsSet('kt_weights', w);
+  var ok=lsSet('kt_weights', w);
+  if(ok) _dropNotedWeights(wrote);   // a log newer than the undo point keeps the load it set
+  return ok;
 }
 // A delete or a date move takes back the working weight a log set: deleting a 1,850 lb typo kept
 // 1,850 as Bench's working weight, which the coach was told and the plateau deload wrote into the
@@ -4597,6 +4603,10 @@ function _applyImportedData(data, opts) {
   var _notStarted=currentWeek===1 && _anc>_mostRecentMonday() && _anc<=_nextMonday(addDays(todayISO(),1)) && _nextMonday(_anc)===_anc;
   localStorage.setItem('kt_week_monday', _notStarted ? _anc : _mostRecentMonday());
   lapsePending = null;
+  // The programme is replaced whole, as _routineReplaced does it: a scope still open (a schedule
+  // edit before the restore) took no snapshot at the next edit, so Restore previous programme
+  // brought back the file's own older one. The restored backup is no reply's undo point either.
+  _routineScope = null; _setBackupScope('');
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   _uniqueLogIds(true);       // and the coach's shared-id twins
@@ -5492,6 +5502,9 @@ function switchTab(tab) {
   // the runner under it, with its Delete buttons mid-screen.
   if(tab!=='progress' && document.getElementById('calDayOverlay')) closeCalDay();
   if(tab !== 'log'){ runLogConfirmed=null; sportLogConfirmed=null; bwLogConfirmed=null; todaySparkEx=null; }
+  // Each Settings visit is its own undo point for the schedule editor, as each Routines visit is
+  // (openRoutines): Restore previous programme undid two visits' schedule changes as one.
+  if(tab==='settings' && currentTab!=='settings' && _routineScope==='cadence') _routineScope=null;
   currentTab = tab;
   if(tab==='coach'&&!intakeMode) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
@@ -7429,10 +7442,17 @@ function _prescribedLb(name){
   return w;
 }
 // The new load from this week on, keeping the programme's climb (it used to
-// change this week only, so next week dropped back to the old curve).
-function _writeLoadLocal(name, nw){
-  var weights=getWeights(); weights[name]=nw; lsSet('kt_weights', weights);
-  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {workScale:true}); }, {noRender:true, scope:'local:'+Date.now()});
+// change this week only, so next week dropped back to the old curve). One undo
+// point per tap (sc) notes the working weight as set_exercise_weight does:
+// Restore previous programme after the +5 put the plan back and left the +5 as
+// the working weight (the prompt listed it, the next +5 said "already progressed").
+function _writeLoadLocal(name, nw, sc){
+  sc=sc||('local:'+Date.now());
+  var weights=getWeights(), was=Object.prototype.hasOwnProperty.call(weights,name)?weights[name]:null;
+  _snapshotRoutineForUndo(sc);
+  weights[name]=nw;
+  if(lsSet('kt_weights', weights)) _noteBackupWeight(sc, name, was, nw);
+  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {workScale:true}); }, {noRender:true, scope:sc});
 }
 function _loadUndoState(){
   var prevW=JSON.stringify(getWeights()), prevR=localStorage.getItem('kt_routine');
@@ -7445,11 +7465,11 @@ function _loadUndoState(){
 function applyProgressionLocal(){
   var pl=_progressionLifts(); if(!pl.length) return;
   var undo=_loadUndoState(), prevWeek=lsGet('kt_last_prog_week');
-  var step=_progStepLb(), moved=[];
+  var step=_progStepLb(), moved=[], sc='local:'+Date.now();   // every lift the tap moves shares one undo point
   pl.forEach(function(x){
     var target=_snapU(x.weight+step);   // on the plates of the unit on screen
     if(_prescribedLb(x.name)>=target) return;   // programme already progressed it
-    _writeLoadLocal(x.name, target); moved.push(x.name);
+    _writeLoadLocal(x.name, target, sc); moved.push(x.name);
   });
   lsSet('kt_last_prog_week', currentWeek);
   invalidateCoachCard(); render();
@@ -18010,14 +18030,20 @@ function _executeCoachToolRaw(name,input){
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
       newW=_coachLoadIn(newW);
       if(!input.name) return {ok:false,error:'name required'};
+      var w0=JSON.parse(JSON.stringify(weights));   // before _weightKeyFor folds the case variants away
       var key=_weightKeyFor(input.name, weights);
       if(!key) key=String(input.name);
       // The reply's undo point holds the working weight too: Undo restored the programme and
       // left the undone load as the working weight (the prompt, keyless +5 and the deload read it).
-      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(weights,key)?weights[key]:null;
+      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(w0,key)?w0[key]:null;
       _snapshotRoutineForUndo(scW);
       weights[key]=newW;
-      if(lsSet('kt_weights',weights)) _noteBackupWeight(scW, key, wasW, newW);
+      if(lsSet('kt_weights',weights)){
+        _noteBackupWeight(scW, key, wasW, newW);
+        // Each variant folded into the key is noted too, so Undo puts it back as it was: a working
+        // weight saved as "bench press" was deleted by the Undo of a reply that set "Bench Press".
+        Object.keys(w0).forEach(function(k){ if(k!==key && !Object.prototype.hasOwnProperty.call(weights,k)) _noteBackupWeight(scW, k, w0[k], null); });
+      }
       // The cache alone never reaches Today when the programme prescribes an
       // explicit weight (the prescription wins in _todayLiftExercises) — so
       // also update the current week's prescription. Future weeks keep their
@@ -18688,10 +18714,34 @@ function _backupScopeIs(sc){ try{ return !!sc && localStorage.getItem('kt_routin
 function _routineReplaced(prev, scope){
   _routineScope=null;   // a scope still open would take no snapshot of the new programme
   if(prev && prev.weeks && prev.weeks.length){
-    if(lsSet('kt_routine_backup', JSON.parse(JSON.stringify(prev)))) _setBackupScope(scope);
+    var keep=JSON.parse(JSON.stringify(prev)); keep._clock=_weekClockNow();   // the week it was on goes aside with it
+    if(lsSet('kt_routine_backup', keep)) _setBackupScope(scope);
     else { lsDel('kt_routine_backup'); _setBackupScope(''); }   // never a stale copy of the replaced programme
   } else _setBackupScope('');
   _retireLedgers();
+}
+// The week clock of a programme set aside whole: its week, the Monday that week began and the
+// Monday its final week began, kept on the snapshot as _clock (bookkeeping like _w, never part of
+// the programme). Restore Previous brought the programme back on week 1: round 1 lost its final
+// week, a Programme History restore's programme came back not started until next Monday. The
+// week's +5 and plateau offers go with it (prog, plateau): a swap stamps them for its week 1.
+function _weekClockNow(){
+  var g=function(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } };
+  return {week:currentWeek, monday:g('kt_week_monday'), finalSince:g('kt_final_since'), prog:lsGet('kt_last_prog_week'), plateau:lsGet('kt_last_plateau_week')};
+}
+// A kept clock put back: its week from this Monday (a start still ahead stays ahead, a week
+// spent on another programme is not counted), and on the final week the Monday that week began,
+// so a programme that had ended still reads as ended. An offer already taken or put off that week
+// stays answered (back on week 6 under the swap's week-1 stamps, both cards were offered again).
+function _weekClockPut(c, total){
+  var re=/^\d{4}-\d{2}-\d{2}$/, wk=Math.min(total, Math.max(1, parseInt(c.week,10)||1)), mon=_mostRecentMonday();
+  var ahead=re.test(String(c.monday||'')) && c.monday>mon;
+  if(!_setWeek(wk, ahead ? c.monday : null)) return;
+  if(wk>=total && !ahead && re.test(String(c.finalSince||'')) && c.finalSince<=mon){ try{ localStorage.setItem('kt_final_since', c.finalSince); }catch(e){} }
+  [['prog','kt_last_prog_week'], ['plateau','kt_last_plateau_week']].forEach(function(p){
+    if(!(p[0] in c)) return;
+    if(c[p[0]]!=null) lsSet(p[1], c[p[0]]); else lsDel(p[1]);
+  });
 }
 // A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
 // card retires (it read "WEEK 1" over the old round's changes).
@@ -18710,6 +18760,22 @@ function _noteBackupWeight(sc, key, from, to){
     w[key]=[w[key]?w[key][0]:from, to];   // the first change in the scope keeps what was there before it
     b._w=w;
     localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
+  }catch(e){}
+}
+// A log that sets a lift's working weight (the runner's finish, the coach's log_session, a wrist
+// session) is newer than the change a note speaks for: the lift's note goes, any spelling. Undo
+// compared values only, so a workout done at the coach's new load matched the note, and the
+// reply's Undo put the old working weight back under the newest log (or deleted it).
+function _dropNotedWeights(names){
+  if(!names || !names.length) return;
+  try{
+    var raw=localStorage.getItem('kt_routine_backup'); if(!raw) return;
+    var b=JSON.parse(raw); if(!b || !b._w || typeof b._w!=='object') return;
+    var low=names.map(function(x){ return String(x).toLowerCase(); }), n=0;
+    Object.keys(b._w).forEach(function(k){ if(low.indexOf(k.toLowerCase())>=0){ delete b._w[k]; n++; } });
+    if(!n) return;
+    if(!Object.keys(b._w).length) delete b._w;
+    localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // as _noteBackupWeight: the log itself was saved
   }catch(e){}
 }
 // The noted weights put back: each only while it still holds what the change wrote (a newer log
@@ -18734,10 +18800,13 @@ function restoreRoutineBackup(onDone){
   _ktConfirm({title:'Restore previous programme?',body:hasCustomRoutine()?'Your current one is set aside: restoring again brings it back.':'',confirmLabel:'Restore',confirmStyle:'var(--accent)',onConfirm:function(){
     var cur=getCustomRoutine();
     // The working weights the change noted go back with the programme; the version set aside
-    // carries the reverse note.
-    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w); delete prog._w;
+    // carries the reverse note. A programme set aside whole comes back on its own week (_clock),
+    // and the one set aside now keeps its week the same way.
+    var prog=JSON.parse(JSON.stringify(b)), sw=_swapNotedWeights(prog._w), clk=(prog._clock && typeof prog._clock==='object')?prog._clock:null;
+    delete prog._w; delete prog._clock;
     var w0=sw?JSON.parse(JSON.stringify(getWeights())):null, putW=function(){ if(sw) lsSet('kt_weights', w0); };
-    var aside=cur; if(cur && sw){ aside=JSON.parse(JSON.stringify(cur)); aside._w=sw.back; }
+    var aside=cur; if(cur && (sw || clk)){ aside=JSON.parse(JSON.stringify(cur)); if(sw) aside._w=sw.back; if(clk) aside._clock=_weekClockNow(); }
+    if(clk) _freezeStreakDays();   // the days already lived keep the programme and week they were lived on
     // The weights and the programme must land before the backup moves: a failed write used to
     // overwrite the backup with the current programme anyway (the previous one was then in no
     // key) and say "restored" over the storage-full error. lsSet has said so; nothing changed.
@@ -18750,9 +18819,10 @@ function restoreRoutineBackup(onDone){
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
     var total=(b.weeks||[]).length||1;
+    if(clk){ _weekClockPut(clk, total); lapsePending=null; invalidateCoachCard(); }   // set aside whole: back on its own week
     // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
     // week. Week 1 sent the owner back to the start and cleared the final-week state.
-    if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
+    else if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
     if(typeof onDone==='function') onDone();
     showToast('Previous programme restored'); render();
   }});
