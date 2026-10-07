@@ -35,7 +35,39 @@
 // - R41: a lift removed (or renamed away) and brought back into the session, a case-only rename,
 //   and an undo followed by more sets: the wrist mirrors every set logged here after the
 //   correction, so its copy (out of range, or a restored draft) never files those sets again.
+// - R42: since M08 the wrist trains a set round's own days from its start Monday. A session it
+//   logged there (watch build 53+: per-set RPE) is the new round's week 1 with its block, drained
+//   before the swap or after it; it counts for the new round (carry forward, its best) and stays
+//   out of the old round's best, so the round built is the one the wrist was shown. A session from
+//   an older watch (no per-set RPE: it kept the last plan sent) is still the old round's (spec 108).
 const { boot, assert, run } = require('../lib/harness');
+
+// A wall clock the spec can move (spec 108's): local 'YYYY-MM-DDTHH:MM:SS', computed in the page
+// from the real today; a cold boot keeps the storage the app left (the harness re-seeds each load).
+const CLOCK = () => {
+  try {
+    const snap = sessionStorage.getItem('__ls');
+    if (snap) { const o = JSON.parse(snap); localStorage.clear(); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); sessionStorage.removeItem('__ls'); }
+  } catch (e) {}
+  if (window.__setNow) return;
+  const RealDate = Date; let offset = 0;
+  const t = sessionStorage.getItem('__now'); if (t) offset = new RealDate(t).getTime() - RealDate.now();
+  function FakeDate(...a) {
+    if (!(this instanceof FakeDate)) return new RealDate(RealDate.now() + offset).toString();
+    if (a.length === 0) return new RealDate(RealDate.now() + offset);
+    return new RealDate(...a);
+  }
+  FakeDate.prototype = RealDate.prototype;
+  FakeDate.now = () => RealDate.now() + offset;
+  FakeDate.parse = RealDate.parse; FakeDate.UTC = RealDate.UTC;
+  window.Date = FakeDate;
+  window.__setNow = (iso) => { offset = new RealDate(iso).getTime() - RealDate.now(); sessionStorage.setItem('__now', iso); };
+};
+async function coldBoot(app) {
+  await app.page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } sessionStorage.setItem('__ls', JSON.stringify(o)); });
+  await app.page.reload({ waitUntil: 'load' });
+  await app.page.waitForFunction(() => typeof window.render === 'function');
+}
 
 // A model of the build-58 wrist runner (SuperoWatchApp.swift: logSet, pushLive, merge,
 // hasSetsBeyond, finish, the 'ended' branch), fed by the page's own _buildWatchLive/_onWatchLive.
@@ -520,4 +552,58 @@ run('R41: a lift that comes back after a correction is not doubled by the wrist 
     one('undoWrist', [A + ' [8,8,9,10]']);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
+});
+
+// R42: the final week (12 of 12) began last Monday and round 2 is set for this Monday. On Sunday
+// evening the phone pushed the week ahead (round 2's week 1 from Monday); the wrist trained Monday's
+// Push from it at 07:00, heavier than planned, and the phone opens at 09:00 (the queue drains, then
+// the swap). Then the same with the wrist's copy arriving only after the swap.
+async function r42(late) {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_week: '12' } });
+  try {
+    await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK);
+    const pre = await app.page.evaluate((late) => {
+      const mon = _mostRecentMonday(), last = addDays(mon, -7), old = addDays(last, -7);
+      __setNow(addDays(mon, -1) + 'T20:00:00');
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; cr.weeks.forEach(w => { delete w.weekPlan; });
+      setCustomRoutine(cr);
+      localStorage.setItem('kt_week_monday', last); localStorage.setItem('kt_final_since', last); lsSet('kt_week', 12); currentWeek = 12;
+      lsSet('kt_sessions', [{ id: new Date(old + 'T18:00:00').getTime(), date: old, type: 'Push', label: 'Push', week: 11, prs: [], startedAt: new Date(old + 'T17:00:00').getTime(),
+        exercises: [{ name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: 185, weightLog: [185, 185, 185, 185] }] }]);
+      setNextRound('monday', mon);
+      const plan = _watchPlanForDate(mon), bench = plan.exercises.find(e => e.name === 'Bench Press');
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const copy = JSON.stringify({ dayName: plan.dayName, slot: plan.slot, startedAt: iso(new Date(mon + 'T07:00:00').getTime()), loggedAt: iso(new Date(mon + 'T07:50:00').getTime()),
+        exercises: [{ name: 'Bench Press', weight: bench.weight + 40, reps: [8, 8, 8, 8], weightLog: [1, 2, 3, 4].map(() => bench.weight + 40), rpe: 8, rpeLog: [8, 8, 8, 8] }] });
+      sessionStorage.setItem('__pending', JSON.stringify(late ? [] : [copy])); sessionStorage.setItem('__late', late ? copy : '');
+      __setNow(mon + 'T09:00:00');
+      return { week: plan.week, slot: plan.slot, bench: bench.weight };
+    }, late);
+    await app.page.addInitScript(() => { const p = sessionStorage.getItem('__pending'); if (p && window.__mock) window.__mock.pending = JSON.parse(p); });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await wait(500);
+      const lateCopy = sessionStorage.getItem('__late');
+      if (lateCopy) { window.__mock.pending = [lateCopy]; await drainWatchSessions(); await wait(50); }
+      const cr = getCustomRoutine(), rec = getSessions().find(s => s.wristStartedAt), card = rec && _shareCardModel(rec);
+      return { cycle: cr.cycle, week: currentWeek, wk1: cr.weeks[0].bName, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight,
+        rec: rec && { week: rec.week, bName: rec.bName, bWk: rec.bWk }, card: card && { week: card.week, phase: card.phase },
+        inRound: !!rec && _roundTest(cr)(rec.date, _cmpT(rec)), carry: rec ? _carryCandidates(rec).length : -1 };
+    });
+    return { pre, out, errors: app.errors };
+  } finally { await app.close(); }
+}
+run('R42: a wrist session trained on a set round’s own days is that round’s week 1', async () => {
+  for (const late of [false, true]) {
+    const { pre, out, errors } = await r42(late), k = late ? 'drained after the swap' : 'drained before the swap';
+    assert(pre.week === 1 && pre.slot === 'Push', 'the wrist was given round 2’s week 1 for the start Monday: ' + JSON.stringify(pre));
+    assert(out.cycle === 2 && out.week === 1, k + ': round 2 started on its Monday: ' + JSON.stringify(out));
+    assert(out.rec && out.rec.week === 1 && out.rec.bName === out.wk1 && out.rec.bWk === 1 && out.card.week === 1 && out.card.phase === out.wk1,
+      k + ': the session is round 2’s week 1 with its block (not week 12, the deload): ' + JSON.stringify(out));
+    assert(out.inRound && out.carry > 0, k + ': it counts for round 2 (above its plan, Carry forward offers it): ' + JSON.stringify(out));
+    assert(out.bench1 === pre.bench, k + ': round 2 is the one the wrist was shown (the heavier session is not round 1’s best): ' + JSON.stringify([pre, out]));
+    assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
+  }
 });

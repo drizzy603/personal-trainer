@@ -11594,7 +11594,9 @@ function _nrDay(iso){
   var d=new Date(String(iso)+'T00:00:00');
   return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
 }
-function _nextRoundBuild(cr){
+// until: the set round's start Monday. Sessions from then on were trained on its own days (the
+// wrist's week ahead), so they are not this round's best (_nrPreviewTrained).
+function _nextRoundBuild(cr, until){
   var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, bestReps={}, rows=[], seen={};
   nr.cycle=(parseInt(cr.cycle,10)||1)+1;
   // A new round is the programme's own version: no "edited by you" marks.
@@ -11604,6 +11606,7 @@ function _nextRoundBuild(cr){
   });
   getSessions().forEach(function(s){
     if(!s || !Array.isArray(s.exercises) || !inRound(s.date, _cmpT(s))) return;
+    if(until && String(s.date||'').slice(0,10)>=until) return;
     s.exercises.forEach(function(ex){
       if(!ex || !ex.name) return;
       _exSetPairs(ex).forEach(function(p){ if(p[0]>0 && p[1]>0){ var e=_epley(p[1],p[0]); if(!(best[ex.name]>=e)){ best[ex.name]=e; bestReps[ex.name]=p[0]; } } });
@@ -11634,13 +11637,26 @@ function _nextRoundBuild(cr){
   }
   return {routine:nr, rows:rows};
 }
+// A set round swapped in on time (not "Today", not late) and the sessions already filed from its
+// start Monday on: the wrist has shown the round's own days since that Monday began (its week ahead,
+// watch build 53+), so a session trained there is the new round's week 1, not the old round's last
+// week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
+// keeps the last plan the phone sent) or a phone log there means the old round's plan, and null.
+function _nrPreviewTrained(p, now){
+  if(now || p.startsOn<_mostRecentMonday()) return null;
+  var ss=getSessions().filter(function(s){ return s && String(s.date||'').slice(0,10)>=p.startsOn; });
+  return ss.every(function(s){ return !!s.wristStartedAt && (s.exercises||[]).some(function(e){ return e && Array.isArray(e.rpeLog) && e.rpeLog.length>0; }); }) ? ss : null;
+}
 // Swaps the set round in on its start morning (autoAdvanceWeek), or now.
 function _applyNextRound(now){
   var p=_nextRoundSet(); if(!p) return null;
   if(!now && todayISO()<p.startsOn) return null;
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
-  var nb=_nextRoundBuild(cr);
-  nb.routine.startedAt=Date.now();   // logs from before this moment are the previous round's (_roundTest)
+  var pv=_nrPreviewTrained(p, now);
+  var nb=_nextRoundBuild(cr, pv ? p.startsOn : '');
+  // Logs from before this moment are the previous round's (_roundTest); on time, the round began at
+  // its Monday's midnight, so a wrist session trained on its days counts, drained before or after.
+  nb.routine.startedAt=pv ? new Date(p.startsOn+'T00:00:00').getTime() : Date.now();
   // All or nothing: the round being replaced must reach Programme History, and a failed
   // routine write takes the archive entry back (each boot retries on the start morning).
   var prevArr=getRoutineArchive().slice();
@@ -11654,6 +11670,12 @@ function _applyNextRound(now){
   var late=!now && p.startsOn<_mostRecentMonday();
   var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
+  // Drained before the swap, they were filed under the old clock (week 12, its block): week 1 now.
+  if(pv && pv.length){
+    var _ss=getSessions();
+    _ss.forEach(function(s){ if(s && String(s.date||'').slice(0,10)>=start){ s.week=weekForDate(s.date); delete s.bName; delete s.bWk; _stampBlock(s); } });
+    lsSet('kt_sessions', _ss);
+  }
   lapsePending=null;   // a welcome-back offer still up was about the old round's weeks
   if(now||late){
     // Days already gone in week 1 are not owed (as startProgrammeNow).
@@ -21280,7 +21302,7 @@ function _nextRoundPreview(){
   var p=_nextRoundSet(), cr=p?getCustomRoutine():null; if(!cr) return null;
   var key=p.startsOn+'|'+_logsVersion+'|'+_uW()+'|'+_roundStartISO()+'|'+(localStorage.getItem('kt_routine')||'');
   if(!_nrPreviewMemo || _nrPreviewMemo.key!==key){
-    var nr=null; try{ nr=_nextRoundBuild(cr).routine; }catch(e){}
+    var nr=null; try{ nr=_nextRoundBuild(cr, p.startsOn).routine; }catch(e){}   // what the wrist trains from the start stays what the swap builds
     _nrPreviewMemo={key:key, startsOn:p.startsOn, routine:nr};
   }
   return _nrPreviewMemo.routine ? _nrPreviewMemo : null;
