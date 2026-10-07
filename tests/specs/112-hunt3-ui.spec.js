@@ -329,6 +329,40 @@ run('an emoji first name is a whole avatar on every tab (L53)', async () => {
   } finally { await app.close(); }
 });
 
+// R52: L53 took the first code point, so a flag showed one regional-indicator letter, a
+// skin-toned thumb lost its tone and a family showed only the man. The avatar (and a short
+// day name) now takes the first grapheme.
+run('a flag, a skin tone or a joined emoji is a whole avatar too (R52)', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const FLAG = '\u{1F1FA}\u{1F1F8}', THUMB = '\u{1F44D}\u{1F3FD}', FAM = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', HEART = '\u{2764}\u{FE0F}';
+      const r = { want: [FLAG, FLAG, THUMB, FAM, HEART], seen: [] };
+      for (const n of [FLAG + 'Sam', FLAG + ' Sam', THUMB + 'Bo', FAM + 'Fam', HEART + ' Ana']) {
+        localStorage.setItem('kt_user_name', n);
+        const got = {};
+        switchTab('settings'); await wait(10); got.settings = (document.querySelector('.profile-ava') || {}).textContent;
+        switchTab('progress'); await wait(10); got.progress = Array.from(document.querySelectorAll('.kt-meta-ava,.screen-avatar')).map(e => e.textContent);
+        switchTab('coach'); await wait(10); got.coach = Array.from(document.querySelectorAll('.kt-meta-ava,.screen-avatar')).map(e => e.textContent);
+        r.seen.push(got);
+      }
+      setDayName('Push', FLAG + ' Upper Body'); setDayName('Pull', FLAG + ' + Legs');
+      r.short = [_dayShort('Push'), _dayShort('Pull')];
+      // without a segmenter (iOS before 14.5) the first code point is still a whole one
+      _graphSeg = false; r.noSeg = _initialOf(FLAG + 'Sam'); _graphSeg = null;
+      return r;
+    });
+    out.seen.forEach((g, i) => {
+      const w = out.want[i], all = [g.settings].concat(g.progress, g.coach);
+      assert(all.length >= 2 && all.every(t => t === w), 'every avatar shows the whole ' + JSON.stringify(w) + ': ' + JSON.stringify(g));
+    });
+    assert(out.short[0] === '\u{1F1FA}\u{1F1F8} Upper' && out.short[1].indexOf('\u{1F1FA}\u{1F1F8}+') === 0, 'a short day name keeps the flag whole: ' + JSON.stringify(out.short));
+    assert(out.noSeg === '\u{1F1FA}' && !LONE.test(out.noSeg), 'without a segmenter the avatar is a whole code point: ' + JSON.stringify(out.noSeg));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('Escape closes the top sheet with focus inside it, and focus goes back to the opener (L54)', async () => {
   const app = await boot({ native: true });
   try {

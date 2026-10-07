@@ -2256,6 +2256,21 @@ var OPTIONAL_LIFT_KEYS = ['legs2','arms','day6','day7'];                   // pr
 // off by an older page is dropped.
 function _chars(s){ return String(s==null?'':s).match(/[\ud800-\udbff][\udc00-\udfff]|[^\ud800-\udfff]/g)||[]; }
 function _wellFormed(s){ s=String(s==null?'':s); return /[\ud800-\udfff]/.test(s)?_chars(s).join(''):s; }
+// What a person counts as one character: a flag, a skin-toned or a joined emoji is
+// several code points but one grapheme (Intl.Segmenter, iOS 14.5+). Code points,
+// as _chars, where there is no segmenter.
+var _graphSeg=null;
+function _graphemes(s){
+  s=_wellFormed(s);
+  if(_graphSeg===null){ try{ _graphSeg=(window.Intl && Intl.Segmenter) ? new Intl.Segmenter(undefined, {granularity:'grapheme'}) : false; }catch(e){ _graphSeg=false; } }
+  if(!_graphSeg || !/[^ -~]/.test(s)) return _chars(s);
+  try{
+    var segs=_graphSeg.segment(s), out=[], i=0, g;
+    while(i<s.length){ g=segs.containing(i); if(!g || !g.segment) break; out.push(g.segment); i=g.index+g.segment.length; }
+    if(out.join('')===s) return out;
+  }catch(e){}
+  return _chars(s);
+}
 // ── Named slots ───────────────────────────────────────────────────────────────
 // A lift day's IDENTITY is one of LIFT_TYPES — the slot: which week array it
 // reads, how history groups, how the runner walks it. Its NAME is the user's:
@@ -2276,15 +2291,16 @@ function _sessLabel(t){ return _dayLabel(t); }
 // The ~55px Settings chip and the wrist complication: "Chest + Back" -> "C+B",
 // "Full Body A" -> "Full A", "Lower Body" -> "Lower", "Day 1: Upper" -> "Day 1",
 // "Week A Upper" -> "Week A", an emoji and "Upper Body" -> the emoji and "Upper".
-// Seven characters at most (an emoji is one), and two days never shorten alike
-// while their names can be told apart: "Upper Power" and "Upper Volume" read
-// "Upper P" and "Upper V" (the first word, then the word that differs).
+// Seven characters at most (an emoji, a flag or a family counts as one), and two
+// days never shorten alike while their names can be told apart: "Upper Power" and
+// "Upper Volume" read "Upper P" and "Upper V" (the first word, then the word that
+// differs).
 // _dayShortOf(l, rivals) lists the ways to shorten l, best first: [0] is how it
 // reads on its own, the rest tell it from `rivals` (the names it reads like).
 var _DS_EDGE=/^[\s!-\/:-@\[-`{-~\u00a1-\u00bf\u2010-\u2027\u2030-\u205e]+|[\s!-\/:-@\[-`{-~\u00a1-\u00bf\u2010-\u2027\u2030-\u205e]+$/g;
 function _dayShortOf(l, rivals){
   l=_wellFormed(l);
-  var len=function(s){ return _chars(s).length; }, cut=function(s,k){ return _chars(s).slice(0,k).join(''); };
+  var len=function(s){ return _graphemes(s).length; }, cut=function(s,k){ return _graphemes(s).slice(0,k).join(''); };
   if(len(l)<=7) return [l];
   // b keeps bn characters (at least one), a what is left of seven
   var fit=function(a,b,bn){ bn=Math.max(1,Math.min(bn,len(b),5)); return (cut(a,6-bn)+' '+cut(b,bn)).trim(); };
@@ -2292,7 +2308,7 @@ function _dayShortOf(l, rivals){
   var out=[], T=toks(l), f=T[0]||'', last=T.length>1?T[T.length-1]:'';
   var tag=function(w){ return /^(\d{1,3}|[A-Za-z]\d{0,2}|\d{1,2}[A-Za-z]|[IVX]{2,4})$/.test(w||''); };
   var parts=l.split(/\s*[+\/&]\s*/).filter(Boolean);
-  if(parts.length>1) out.push(parts.map(function(p){ return (_chars(p)[0]||'').toUpperCase(); }).join('+'));
+  if(parts.length>1) out.push(parts.map(function(p){ return (_graphemes(p)[0]||'').toUpperCase(); }).join('+'));
   // "Day 1", "Week A": a number or a letter after the first word names the day
   else if(tag(T[1])) out.push(fit(f,T[1],len(T[1])));
   // A short last word ("A", "B", "2") is what tells two days apart: keep it.
@@ -6112,8 +6128,9 @@ function getUserFirstName(){
   }
   return '';
 }
-// The avatar's letter: the first character (a whole emoji, not half of one), ready for HTML.
-function _initialOf(s){ return _esc((_chars(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
+// The avatar's letter: the first character as a person sees it (a whole emoji, flag,
+// skin tone or family, never part of one), ready for HTML.
+function _initialOf(s){ return _esc((_graphemes(String(s==null?'':s).trim())[0]||'?').toUpperCase()); }
 
 // ── Editorial Today helpers ──────────────────────────────────────────────────
 // Enriched exercise list for the editorial Today + Deck Runner: prescribed
