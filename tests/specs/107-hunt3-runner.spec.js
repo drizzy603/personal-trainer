@@ -47,6 +47,9 @@
 // - R33 after +1 set a shell before build 57 (its bundled stamp, from TrovoOta.status, older than
 //   20261003-1, or no live-page plugin) is sent the set past the plan as the last one ('SET 6 OF
 //   6', never 'SET 6 OF 4'); build 57+ still gets the set alone. L16's case runs on build 58.
+// - R34 undoing the last set of a per-set lift puts the stepper back on the load it was logged at
+//   (a typed 230 top set is redone at 230, not the programme's 225); Log all's undo and removing an
+//   earlier set take the next set's target, and a lift without per-set loads is unchanged.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -995,4 +998,72 @@ run('R33 after +1 set a shell before build 57 is sent the set as the last one', 
   assert(res['20261003-1'].extra === (n + 2) + ' of ' + n && res['20261003-1'].plus30 === res['20261003-1'].extra,
     'build 57 gets the set past the plan (its view says SET 6): ' + JSON.stringify(res['20261003-1']));
   Object.keys(res).forEach(k => assert(!res[k].errors.length, 'no page errors: ' + JSON.stringify(res)));
+});
+
+// R34: M31 put the stepper back on the programme's load for the undone set, not the load it was
+// logged at: a typed 230 top set, undone, was redone and filed at 225.
+run('R34 undoing a set of a per-set lift puts the stepper back on the load it was logged at', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, B = 'Bench Press';
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === B) { e.sets = 3; e.reps = [3, 8, 8]; e.weights = [225, 185, 185]; e.weight = 225; } });
+      setCustomRoutine(cr);
+      const st = n => [runnerWeights[n], runnerReps[n]];
+      const open = async () => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === B)); runnerEngaged = true;
+      };
+      // the top set typed at 230 with the wrong reps, logged, undone, logged again
+      await open();
+      runnerSetWeight(230); runnerSetReps(2); runnerCompleteSet(); await wait(20);
+      r.afterLog = st(B);
+      runnerUndoSet(B, 0); await wait(20);
+      r.afterUndo = st(B);
+      r.inputs = [...document.querySelectorAll('#runner-root .kt-eng-row input')].map(i => i.value);
+      runnerCompleteSet(); await wait(20);
+      r.relogged = [runnerWeightsLog[B].slice(), runnerRepsLog[B].slice()];
+      closeDeckRunner();
+      // a back-off set typed at 190, undone
+      await open();
+      runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true;
+      runnerSetWeight(190); runnerCompleteSet(); await wait(20);
+      runnerUndoSet(B, 1); await wait(20);
+      r.backoff = st(B);
+      closeDeckRunner();
+      // Remove on the first of two logged sets: the next set is the last one's, at its target
+      await open();
+      runnerSetWeight(230); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true;
+      runnerCompleteSet(); await wait(20);
+      runnerUndoSet(B, 0); await wait(20);
+      r.removed = [st(B), runnerWeightsLog[B].slice()];
+      closeDeckRunner();
+      // Log all, undone: the first set's target
+      await open();
+      runnerLogAllAtTarget(); await wait(20);
+      runnerUndoLogAll(B, { r: [], w: [], p: [], done: 0 }); await wait(20);
+      r.logAll = st(B);
+      closeDeckRunner();
+      // a lift without per-set loads typed at 105, undone: 105, as before
+      await open();
+      const P = runnerSession.exercises.find(e => !Array.isArray(e.weights) && e.name !== B).name;
+      runnerGoTo(runnerSession.exercises.findIndex(e => e.name === P)); runnerEngaged = true;
+      runnerSetWeight(105); runnerCompleteSet(); await wait(20);
+      runnerUndoSet(P, 0); await wait(20);
+      r.plain = st(P)[0];
+      closeDeckRunner();
+      return r;
+    });
+    assert(JSON.stringify(out.afterLog) === '[185,8]', 'logging the top set moves on to the back-off: ' + JSON.stringify(out.afterLog));
+    assert(JSON.stringify(out.afterUndo) === '[230,3]' && out.inputs[0] === '230' && out.inputs[1] === '3', 'Undo puts the stepper back on the load the set was logged at: ' + JSON.stringify([out.afterUndo, out.inputs]));
+    assert(JSON.stringify(out.relogged) === '[[230],[3]]', 'the redone top set is filed at that load: ' + JSON.stringify(out.relogged));
+    assert(JSON.stringify(out.backoff) === '[190,8]', 'a typed back-off set comes back at its load too: ' + JSON.stringify(out.backoff));
+    assert(JSON.stringify(out.removed) === '[[185,8],[185]]', 'removing an earlier set leaves the next set at its target: ' + JSON.stringify(out.removed));
+    assert(JSON.stringify(out.logAll) === '[225,3]', 'Log all undone: the first set\'s target: ' + JSON.stringify(out.logAll));
+    assert(out.plain === 105, 'a lift without per-set loads keeps the typed load: ' + out.plain);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
