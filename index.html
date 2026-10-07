@@ -3893,23 +3893,27 @@ function _freezeStreakIfSchedChanges(r){
   }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
 }
 // How the page before 2026-10-04 read a day before this round's week 1, where the reading has
-// changed since: as week 1 (it measured every earlier day as week 1). null where the reading
-// stands: no programme, a day of this round, or one of the days between building a programme
-// and its first Monday (2, which never breaks the streak).
+// changed since: as week 1, in any round (it measured every earlier day as week 1). Since then a
+// later round reads them as a previous round of exactly its own length that ended the day before,
+// so round 2 swapped in on the old page after a round ended early or parked on its final week
+// read the weeks lived as other weeks' (27 days -> 3). null where the reading stands: no
+// programme, a day of this round, or one of the days between building a first round and its
+// first Monday (2, which never breaks the streak).
 function _streakOldRead(cr){
   if(!cr) return function(){ return null; };
-  var start=_mondayKeyOf(_roundStartISO()), gap=addDays(start,-6), cyc=parseInt(cr.cycle,10)||1;
+  var start=_mondayKeyOf(_roundStartISO()), gap=(parseInt(cr.cycle,10)||1)>1 ? start : addDays(start,-6);
   var w1=(getWeekPlanForWeek(1)||[]).map(function(p){ p=p||{}; return (p.isRest || (p.isLift && _liftDayEmpty(p.type, 1))) ? 0 : 1; });
   return function(iso){
-    if(iso>=start || cyc>1 || iso>=gap) return null;
+    if(iso>=gap) return null;
     var v=w1[(new Date(iso+'T00:00:00').getDay()+6)%7];
     return v==null ? 1 : v;
   };
 }
 // Data written before 2026-10-04 has no kt_streak_days, and since then the days before round 1
-// read as having no plan (every day due): a streak that ran across a programme switch made on
-// the old page dropped the moment the page updated (26 days -> 14), and the next schedule edit
-// froze the drop. Every such day not yet written down where the two pages disagree is written
+// read as having no plan (every day due), and those before a later round as the previous round's
+// (_streakOldRead): a streak that ran across a programme switch made on the old page dropped the
+// moment the page updated (26 days -> 14), and the next schedule edit froze the drop. Every day
+// before this round's week 1 not yet written down where the two pages disagree is written
 // as 2: it ends the streak only where both pages say so, and a log on it counts wherever either
 // page counted it, so no streak reads lower than on the old page or on the pages since (the old
 // page's rest day written as 0 left out the runs logged on it before the programme: 37 -> 23).
