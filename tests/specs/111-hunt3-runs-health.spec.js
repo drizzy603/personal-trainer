@@ -45,6 +45,8 @@
 // - R45: a hand log stands for the workout of its day it fits best, not the first within 15%;
 //   one with no duration only on a day with one workout of its kind; identity comes first.
 // - R47: a run or ride typed in by hand that two apps also wrote to Health comes in from neither.
+// - R48: auto-log and the quick-log card read their fetch whole too: one hand log no longer hides
+//   every workout of its kind that day.
 // - R49: a first import compares each workout only with the ones that began near it.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
@@ -812,6 +814,56 @@ run('R47: a hand-logged run or ride with two Health copies is not imported again
       assert(o.runs === '8/hand' && o.sports === '60/hand', k + ': neither copy comes in: ' + JSON.stringify(o));
       assert(o.ledger === 'ride-s,ride-w,run-s,run-w' && /Already up to date/.test(o.toast), k + ': both copies are burned with the hand log: ' + JSON.stringify(o));
     }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R48 (regression of H12): auto-log and the card weighed each workout alone, so one hand-logged
+// match hid every match of that sport that day; the other one was never logged or offered.
+run('R48: one hand log stands for one workout; auto-log and the card still take the day\'s other one', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const y = addDays(todayISO(), -1);
+      const at = (h, m) => { const d = new Date(y + 'T00:00:00'); d.setHours(h, m, 0, 0); return d.getTime(); };
+      const iso = ms => new Date(ms).toISOString();
+      const am = { uuid: 'am', type: 'Tennis', startDate: iso(at(9, 0)), durationSec: 60 * 60, avgHr: 130 };
+      const pm = { uuid: 'pm', type: 'Tennis', startDate: iso(at(15, 0)), durationSec: 62 * 60, avgHr: 135 };
+      // the morning match, typed in at 16:30
+      const hand = () => { lsSet('kt_sports', [{ id: at(16, 30), date: y, type: 'Tennis', duration: 60, data: {}, notes: 'AM doubles' }]); lsSet('kt_hk_imported', ['older-1']); };
+      const sports = () => getSportLogs().map(x => x.duration + '/' + (x.notes === 'From Apple Health' ? 'Health@' + new Date(x.startMs).getHours() : x.notes)).sort().join(' | ');
+      const toast = () => document.getElementById('toast').textContent;
+      const r = {};
+      localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5));
+      window.__hk = [pm, am];   // Health lists newest first
+      hand(); localStorage.setItem('kt_autolog_runs', '1');
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(300);
+      r.auto = { sports: sports(), ledger: lsGet('kt_hk_imported').slice().sort().join(), toast: toast() };
+      hand(); localStorage.setItem('kt_autolog_runs', '0'); _hkPendingRun = null; _hkPendingDismissed = false;
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(300);
+      r.card = _hkPendingRun && _hkPendingRun.uuid;
+      r.slot = /Log this Tennis/.test(_healthCardSlot());
+      logPendingHealthRun(); await wait(50);
+      r.tap = { sports: sports(), toast: toast(), hidden: _hkPendingLogged(pm) };
+      // runs: two 5 km runs, the evening one typed in by hand at 19:00
+      lsSet('kt_sports', []); lsSet('kt_hk_imported', ['older-1']);
+      lsSet('kt_runs', [{ id: at(19, 0), date: y, distance: 5, time: '26:00', week: weekForDate(y), note: 'evening', hr: 0, type: 'easy' }]);
+      localStorage.setItem('kt_autolog_runs', '1');
+      window.__hk = [{ uuid: 'r-pm', type: 'run', startDate: iso(at(18, 0)), distanceKm: 5, durationSec: 26 * 60, avgHr: 152 },
+                     { uuid: 'r-am', type: 'run', startDate: iso(at(7, 0)), distanceKm: 5, durationSec: 25 * 60, avgHr: 150 }];
+      checkRecentHealthRun(Date.now() - 2 * 864e5); await wait(300);
+      r.runs = getRuns().map(x => x.time + '/' + (x.note === 'From Apple Health' ? 'Health@' + new Date(x.startMs).getHours() : x.note)).sort().join(' | ');
+      localStorage.setItem('kt_autolog_runs', '0');
+      return r;
+    });
+    assert(out.auto.sports === '60/AM doubles | 62/Health@15' && out.auto.ledger === 'older-1,pm' && /Tennis logged from Apple Health/.test(out.auto.toast),
+      'auto-log logs the afternoon match; the hand log stands for the morning one: ' + JSON.stringify(out.auto));
+    assert(out.card === 'pm' && out.slot, 'the card offers the afternoon match: ' + JSON.stringify([out.card, out.slot]));
+    assert(out.tap.sports === '60/AM doubles | 62/Health@15' && /Tennis logged from Apple Health/.test(out.tap.toast) && out.tap.hidden,
+      'the card logs it (not "skipped the duplicate") and then hides: ' + JSON.stringify(out.tap));
+    assert(out.runs === '25:00/Health@7 | 26:00/evening', 'runs too: auto-log takes the morning run: ' + out.runs);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
