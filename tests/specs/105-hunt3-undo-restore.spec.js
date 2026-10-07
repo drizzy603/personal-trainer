@@ -619,3 +619,39 @@ run('a body-weight or measurement save that fails never reads as saved', async (
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R13 (R10, R60 the same): _weightKeyFor folds a case variant into the programme's spelling, and the
+// reply's undo point recorded no old value, so Undo deleted the working weight instead of putting
+// it back. Each folded variant is noted with the change.
+run('Undo of set_exercise_weight puts back a working weight saved under another spelling', async () => {
+  const w0 = { 'bench press': 150, 'Face Pull': 40, 'face pull': 35 };
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify(w0) } });
+  try {
+    const out = await app.page.evaluate(async (MOCK) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const ws = () => { const w = getWeights(); return JSON.stringify(Object.keys(w).sort().reduce((o, k) => { o[k] = w[k]; return o; }, {})); };
+      eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } },
+        { type: 'tool_use', id: 't1', name: 'set_exercise_weight', input: { name: 'face pull', weight: 50 } }], stop_reason: 'tool_use', usage: {} },
+        { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+      coachMessages.push({ role: 'user', content: 'bench 190, face pulls 50' }); saveCoachHistory();
+      await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+      switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+      const r = { reply: ws() };
+      const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+      if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+      r.undone = ws();
+      r.prompt = /bench press: 150/.test(buildSystemPrompt());
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.again = ws();
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.back = ws();
+      return r;
+    }, MOCK);
+    const before = JSON.stringify({ 'Face Pull': 40, 'bench press': 150, 'face pull': 35 }), reply = JSON.stringify({ 'Bench Press': 190, 'Face Pull': 50 });
+    assert(out.reply === reply, 'the reply saved both under the programme\'s spelling: ' + out.reply);
+    assert(out.undone === before && out.prompt, 'Undo puts every folded spelling back as it was: ' + JSON.stringify([out.undone, out.prompt]));
+    assert(out.again === reply && out.back === before, 'Restore Previous swaps them back and forth: ' + JSON.stringify([out.again, out.back]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

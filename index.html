@@ -17608,14 +17608,20 @@ function _executeCoachToolRaw(name,input){
       if(!(newW>0)) return {ok:false,error:'weight must be > 0'};
       newW=_coachLoadIn(newW);
       if(!input.name) return {ok:false,error:'name required'};
+      var w0=JSON.parse(JSON.stringify(weights));   // before _weightKeyFor folds the case variants away
       var key=_weightKeyFor(input.name, weights);
       if(!key) key=String(input.name);
       // The reply's undo point holds the working weight too: Undo restored the programme and
       // left the undone load as the working weight (the prompt, keyless +5 and the deload read it).
-      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(weights,key)?weights[key]:null;
+      var scW=_coachScope(), wasW=Object.prototype.hasOwnProperty.call(w0,key)?w0[key]:null;
       _snapshotRoutineForUndo(scW);
       weights[key]=newW;
-      if(lsSet('kt_weights',weights)) _noteBackupWeight(scW, key, wasW, newW);
+      if(lsSet('kt_weights',weights)){
+        _noteBackupWeight(scW, key, wasW, newW);
+        // Each variant folded into the key is noted too, so Undo puts it back as it was: a working
+        // weight saved as "bench press" was deleted by the Undo of a reply that set "Bench Press".
+        Object.keys(w0).forEach(function(k){ if(k!==key && !Object.prototype.hasOwnProperty.call(weights,k)) _noteBackupWeight(scW, k, w0[k], null); });
+      }
       // The cache alone never reaches Today when the programme prescribes an
       // explicit weight (the prescription wins in _todayLiftExercises) — so
       // also update the current week's prescription. Future weeks keep their
