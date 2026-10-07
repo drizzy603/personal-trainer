@@ -7188,10 +7188,17 @@ function _prescribedLb(name){
   return w;
 }
 // The new load from this week on, keeping the programme's climb (it used to
-// change this week only, so next week dropped back to the old curve).
-function _writeLoadLocal(name, nw){
-  var weights=getWeights(); weights[name]=nw; lsSet('kt_weights', weights);
-  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {workScale:true}); }, {noRender:true, scope:'local:'+Date.now()});
+// change this week only, so next week dropped back to the old curve). One undo
+// point per tap (sc) notes the working weight as set_exercise_weight does:
+// Restore previous programme after the +5 put the plan back and left the +5 as
+// the working weight (the prompt listed it, the next +5 said "already progressed").
+function _writeLoadLocal(name, nw, sc){
+  sc=sc||('local:'+Date.now());
+  var weights=getWeights(), was=Object.prototype.hasOwnProperty.call(weights,name)?weights[name]:null;
+  _snapshotRoutineForUndo(sc);
+  weights[name]=nw;
+  if(lsSet('kt_weights', weights)) _noteBackupWeight(sc, name, was, nw);
+  _commitRoutine(function(cr){ return _progCarryByName(cr, name, currentWeek-1, nw, {workScale:true}); }, {noRender:true, scope:sc});
 }
 function _loadUndoState(){
   var prevW=JSON.stringify(getWeights()), prevR=localStorage.getItem('kt_routine');
@@ -7204,11 +7211,11 @@ function _loadUndoState(){
 function applyProgressionLocal(){
   var pl=_progressionLifts(); if(!pl.length) return;
   var undo=_loadUndoState(), prevWeek=lsGet('kt_last_prog_week');
-  var step=_progStepLb(), moved=[];
+  var step=_progStepLb(), moved=[], sc='local:'+Date.now();   // every lift the tap moves shares one undo point
   pl.forEach(function(x){
     var target=_snapU(x.weight+step);   // on the plates of the unit on screen
     if(_prescribedLb(x.name)>=target) return;   // programme already progressed it
-    _writeLoadLocal(x.name, target); moved.push(x.name);
+    _writeLoadLocal(x.name, target, sc); moved.push(x.name);
   });
   lsSet('kt_last_prog_week', currentWeek);
   invalidateCoachCard(); render();

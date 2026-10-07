@@ -747,3 +747,48 @@ run('Restore Previous after a history restore, the starter plan, a new programme
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R17: the keyless +5 and the plateau deload wrote the working weight with no note on their undo
+// point, so Restore previous programme put the plan back and left the new load as the working
+// weight (the coach prompt listed it, and the next +5 said "Already progressed this week"). Each
+// tap is one undo point that notes every working weight it moved.
+run('Restore previous programme after the keyless +5 or deload puts the working weights back too', async () => {
+  const app = await boot({ native: true, seed: { kt_weights: JSON.stringify({ 'Bench Press': 160, 'Overhead Press': 101 }) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const restorePrev = async () => { restoreRoutineBackup(); await wait(20); confirm(); await wait(30); };
+      const toast = () => (document.getElementById('toast') || {}).textContent || '';
+      const c = currentWeek - 1;
+      const st = () => { const wk = getCustomRoutine().weeks[c].push, w = getWeights();
+        return { bench: [wk.find(e => e.name === 'Bench Press').weight, w['Bench Press']], ohp: [wk.find(e => e.name === 'Overhead Press').weight, w['Overhead Press']], prescribed: _prescribedLb('Bench Press') }; };
+      // both main lifts went clean last week
+      const ex = (name, w) => ({ name, isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w, rpe: 7, rpeLog: [7, 7, 7, 7] });
+      lsSet('kt_sessions', [{ id: 8800001, date: addDays(_mostRecentMonday(), -5), type: 'Push', exercises: [ex('Bench Press', 160), ex('Overhead Press', 101)] }].concat(getSessions()));
+      const r = { before: st(), lifts: _progressionLifts().length };
+      startProgression();   // keyless: the +5 on Today
+      r.plus5 = st();
+      await restorePrev();
+      r.restored = st();
+      r.prompt = /Bench Press: 160/.test(buildSystemPrompt());
+      applyProgressionLocal();   // the earned +5 is offered again, and applies
+      r.again = { st: st(), toast: toast() };
+      await restorePrev();
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 30 }];
+      applyPlateauFixLocal();
+      r.deload = st();
+      await restorePrev();
+      r.deloadBack = st();
+      return r;
+    });
+    const b0 = out.before.bench, o0 = out.before.ohp;
+    assert(out.lifts === 2 && b0[0] === 160 && b0[1] === 160, 'seed: Bench 160 planned and working, two lifts earned +5: ' + JSON.stringify(out.before));
+    assert(out.plus5.bench[0] === 165 && out.plus5.bench[1] === 165 && out.plus5.ohp[1] > o0[1], 'the +5 moved plan and working weight: ' + JSON.stringify(out.plus5));
+    assert(JSON.stringify(out.restored) === JSON.stringify(out.before) && out.prompt, 'Restore previous programme puts both lifts\' plan and working weight back: ' + JSON.stringify([out.before, out.restored]));
+    assert(out.again.st.bench[1] === 165 && !/Already progressed/.test(out.again.toast), 'the +5 is not "already progressed" after the restore: ' + JSON.stringify(out.again));
+    assert(out.deload.bench[0] === 145 && out.deload.bench[1] === 145, 'the deload moved both: ' + JSON.stringify(out.deload));
+    assert(JSON.stringify(out.deloadBack) === JSON.stringify(out.before), 'and Restore previous programme puts both back: ' + JSON.stringify(out.deloadBack));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
