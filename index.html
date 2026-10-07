@@ -10118,6 +10118,17 @@ function _coachSportTwin(dateISO, type, mins){
     return !(ld>0 && mins>0 && Math.abs(ld-mins)/Math.max(ld,mins)>0.15);
   })||null;
 }
+// The same day and day slot, sharing a lift (by name, any case). Sets and loads are not compared:
+// the same session told with other numbers is a fix (edit_session), and a real second session
+// that day goes through with separate:true.
+function _coachSessionTwin(dateISO, type, exs){
+  var key=function(n){ return String(n||'').replace(/\s+/g,' ').trim().toLowerCase(); };
+  var names=(exs||[]).map(function(e){ return key(e&&e.name); }).filter(Boolean);
+  return getSessions().find(function(s){
+    return !!(s && String(s.date||'').slice(0,10)===String(dateISO) && s.type===type && Array.isArray(s.exercises)
+      && s.exercises.some(function(e){ return e && names.indexOf(key(e.name))>=0; }));
+  })||null;
+}
 // Programme run slot from the model: {mi} becomes {km} for storage.
 function _coachRunIn(r){
   if(!r||typeof r!=='object') return r;
@@ -16905,8 +16916,8 @@ function getCoachChips(){
     var last=sessions[0], ld=String(last.date||'').slice(0,10);
     // Local calendar days: new Date('YYYY-MM-DD') is UTC midnight, so after 20:00 west of UTC
     // today's session read as yesterday's (east of UTC, the reverse). The day goes by its own
-    // name, without the characters the chip's inline onclick and label cannot carry.
-    var day=_dayLabel(last.type).replace(/&/g,'+').replace(/["'<>\\`]/g,'').replace(/\s+/g,' ').trim()||String(last.type);
+    // name, exactly as written: the chip carries it in data-msg (escaped), never in inline JS.
+    var day=_dayLabel(last.type).replace(/\s+/g,' ').trim()||String(last.type);
     if(ld===todayISO())chips.push('How did my '+day+' session look?');
     else if(ld===addDays(todayISO(),-1))chips.push('Recovery tips after yesterday\'s '+day+'?');
   }
@@ -17238,7 +17249,7 @@ var COACH_TOOLS=[
      },
      required:['time']}},
   {name:'log_session',
-   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given.',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given. A session that matches one already saved (same day and session type, sharing an exercise) is refused as a duplicate.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
@@ -17251,7 +17262,8 @@ var COACH_TOOLS=[
          rpe:{type:'number',description:'RPE if the user gave one (optional).'},
          isMain:{type:'boolean',description:'True on the primary compound.'}
        },required:['name','sets','reps']}},
-       note:{type:'string',description:'Short note (optional).'}
+       note:{type:'string',description:'Short note (optional).'},
+       separate:{type:'boolean',description:'Only after log_session refused a duplicate: true when the user confirms this is a second, separate session that day.'}
      },
      required:['type','exercises']}},
   {name:'save_profile',
@@ -17600,12 +17612,16 @@ function _executeCoachToolRaw(name,input){
       // kept the archive's anchor (this Monday, last Monday on a weekend): it started in the
       // past and Monday read week 2.
       if(_fresh && written.length) _startProgramme();
-      if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
+      // Every answer from here on says whether the cadence was saved: the chat history keeps a
+      // call's result but not its weekPlan, so after a relaunch the pill and PLAN CHANGES (with
+      // its Undo) read a cadence change as "No weeks changed" with no card.
+      var _cad=function(res){ if(planSupplied) res.cadenceSaved=true; return res; };
+      if(errored) return _cad({ok:false,error:errored,written:written,skipped:skipped});
       if(!written.length){
         if(planSupplied){
           // The cadence WAS written above — reporting failure told the model
           // (and the user) nothing changed while the Log tab already showed it.
-          return {ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone. If the user says they are on an earlier week, call set_current_week with that week first, then write it.',weeks:[],skipped:skipped,stored:_routineReadback([])};
+          return _cad({ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone. If the user says they are on an earlier week, call set_current_week with that week first, then write it.',weeks:[],skipped:skipped,stored:_routineReadback([])});
         }
         return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-'+getTotalWeeks()+' can be changed. If the user says they are on an earlier week (e.g. "it is week 1"), call set_current_week with that week first, then write it again.',skipped:skipped};
       }
@@ -17621,8 +17637,8 @@ function _executeCoachToolRaw(name,input){
         var _kAdd=_keptEdits.filter(function(x){ return x.charAt(0)!=='-'; }), _kRem=_keptEdits.filter(function(x){ return x.charAt(0)==='-'; }).map(function(x){ return x.slice(1); });
         label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked.';
       }
-      return {ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
-        check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'};
+      return _cad({ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
+        check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'});
     }
     if(name==='set_current_week'){
       var w=parseInt(input.week);
@@ -17860,6 +17876,13 @@ function _executeCoachToolRaw(name,input){
           weight:wStore(parseFloat(ge.weight)||0),
           rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
       }
+      // As log_run and log_sport: RECENT SESSIONS lists only the newest, and an older session the
+      // user mentioned was saved a second time (its volume counted twice). The coach is shown
+      // what is saved, in the owner's unit.
+      var _gtw=(input.separate===true||input.separate==='true')?null:_coachSessionTwin(gdate, gtype, gclean);
+      if(_gtw) return {ok:false,duplicate:_gtw.id,error:'Already saved: [id:'+_gtw.id+'] '+_gtw.type+' '+String(_gtw.date).slice(0,10)+': '+_gtw.exercises.map(function(ex){
+        var ps=_exPairs(ex||{}); return String((ex&&ex.name)||'')+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+_exLoadText(ex||{}, ps);
+      }).join(' | ')+'. Nothing was saved. Tell the user it is already logged (to correct a number in it, use edit_session with that id); only if they say it was a second, separate session that day, call log_session again with separate:true.'};
       // Judged first, committed only once the session is on disk (as the runner does): a
       // failed save used to leave the records raised with no session behind them, and the
       // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
@@ -18314,7 +18337,10 @@ function _backupWeightFor(name){
 // call writes no week; the pill and PLAN CHANGES read "No weeks changed" or nothing for those.
 function _routineCallSaved(tc){
   var r=(tc&&tc.result)||{}, i=(tc&&tc.input)||{};
-  var plan=Array.isArray(i.weekPlan)&&i.weekPlan.length===7;
+  // The cadence: the result says so (cadenceSaved), since the chat history keeps the result but
+  // drops the input's weekPlan. A result stored before that flag: an ok answer that wrote no week
+  // is the cadence-only one.
+  var plan=r.cadenceSaved===true || (Array.isArray(i.weekPlan)&&i.weekPlan.length===7) || (r.ok===true && Array.isArray(r.weeks) && !r.weeks.length);
   // A failed call carries `written` only once validation passed; it saved if that wrote anything.
   var saved=r.ok!==false || (Array.isArray(r.written) && (r.written.length>0 || plan));
   if(!saved) return {weeks:[], plan:false};
@@ -18375,7 +18401,7 @@ function _toolCallLabel(tc){
   }
   if(n==='swap_cadence_days') return (i.dayA||'?')+' ⇄ '+(i.dayB||'?')+(i.scope==='global'?' · every week':parseInt(i.week)?' · week '+parseInt(i.week):' · this week');
   if(n==='set_current_week') return 'Week set to '+i.week;
-  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+' logged'+(i.date?' · '+i.date:'');
+  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+(tc.result&&tc.result.duplicate?' already logged':' logged')+(i.date?' · '+i.date:'');
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
