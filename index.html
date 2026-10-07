@@ -4028,9 +4028,10 @@ function _prGain(c, i){
 function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return w > best + 0.2 && (_uW()!=='kg' || wDisp(w) > wDisp(best)); }
 // Only the newest log of a lift sets its working weight, and a backdated one can only raise
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
-// log_session and the runner's finish both come through here).
-function _setWorkingWeights(exs, date){
-  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO();
+// log_session and the runner's finish both come through here). o.live: a workout finished
+// now and filed on the day it began (it ran past midnight) is no backfill.
+function _setWorkingWeights(exs, date, o){
+  var w=getWeights(), d=String(date||todayISO()), back=d<todayISO() && !(o && o.live);
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
   (exs||[]).forEach(function(e){
     var v=parseFloat(e && e.weight); if(!(v>0) || newer(e.name)) return;
@@ -9266,7 +9267,7 @@ function runnerFinishSession(){
     return;
   }
   // Persist working weights so subsequent prescriptions update.
-  _setWorkingWeights(exsOut, _sessionDate);   // a backdated finish used to lower today's working weights
+  _setWorkingWeights(exsOut, _sessionDate, {live:_sessionDate===_startISO});   // a backdated finish used to lower today's working weights
   checkAndUpdatePRs(exsOut);
   invalidateCoachCard();
   // The wrist's own Health workout (live heart rate) is the richer record;

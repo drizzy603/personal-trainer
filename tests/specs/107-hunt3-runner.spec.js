@@ -37,6 +37,8 @@
 //   becomes one row with the card's per-set targets from this week on (+1 set is one more
 //   back-off set, a swap takes every set, a removal takes every row and Restore brings it back
 //   whole, Use coach's gives the coach's sets back); rows that cannot be one are left alone.
+// - R30 a workout that ran past midnight, filed on the day it began, is no backfill: a lighter one
+//   sets the working weight; a day picked before it still only raises one, and a newer log stands.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -777,4 +779,41 @@ run('R29 an edit on a folded card with Also update my programme reaches every ro
     && JSON.stringify(e.toasts) === JSON.stringify(['Bench Press is on this day twice — the programme was not changed']),
     'a lift that cannot be one row is not half-written: ' + JSON.stringify([e.weeks[e.c], e.session, e.toasts]));
   assert(![a, b, d, e].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e].map(o => o.errors.join('|')).join('|'));
+});
+
+// R30: M02 files a workout that ran past midnight on the day it began, which made it read as backdated.
+run('R30 a lighter workout that ran past midnight sets the working weight', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_weights: '{"Bench Press":185}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press') { e.weight = 0; delete e.weights; } });   // the working weight's
+      setCustomRoutine(cr);
+      const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 30).getTime(), startISO = _ymdLocal(new Date(start));
+      // began at 23:30 yesterday, three sets at 165, finished now; date: as filed, or a day the owner picked
+      const finish = async (picked, newer) => {
+        lsSet('kt_weights', { 'Bench Press': 185 });
+        lsSet('kt_sessions', newer ? [{ id: Date.now() - 600e3, date: todayISO(), type: 'Pull', label: 'Pull', week: currentWeek, note: '', prs: [],
+          exercises: [{ name: 'Bench Press', sets: 1, reps: [5], weight: 175, weightLog: [175] }] }] : []);
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        runnerSession.startedAt = start;
+        if (picked) runnerSessionDate = picked;
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerSetWeight(165);
+        [0, 1, 2].forEach(() => { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; });
+        const df = document.getElementById('runner-date'); if (df && picked) df.value = picked;
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        const s = getSessions().find(x => x.type === 'Push');
+        return { filed: s && s.date, ww: getWeights()['Bench Press'], next: (_todayLiftExercises('Push').find(e => e.name === 'Bench Press') || {}).weight };
+      };
+      return { startISO, live: await finish(null, false), backfill: await finish(addDays(startISO, -1), false), newer: await finish(null, true) };
+    });
+    assert(out.live.filed === out.startISO && out.live.ww === 165 && out.live.next === 165,
+      'filed on the day it began, it is the newest log and sets the working weight: ' + JSON.stringify(out));
+    assert(out.backfill.filed !== out.startISO && out.backfill.ww === 185, 'a day picked before it is a backfill and only raises: ' + JSON.stringify(out.backfill));
+    assert(out.newer.ww === 185, 'a newer log of the lift still stands: ' + JSON.stringify(out.newer));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
