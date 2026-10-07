@@ -34,6 +34,11 @@
 // - L10 set_exercise_weight saves the working weight under the programme's spelling (else a saved
 //   key's, else the library's) and folds case variants into it: "face pull" was saved beside
 //   "Face Pull", reported as set, and the "your load" row on Today never showed it.
+// Hunt 4 (2026-10-06), what the review of those fixes found:
+// - R09 (L40 after a relaunch) a cadence change keeps its pill and its PLAN CHANGES card with Undo
+//   when the app is opened again: the chat history keeps a call's result but not its weekPlan, so
+//   it read "No weeks changed" with no card. The result says cadenceSaved; one stored before that
+//   (an ok answer that wrote no week) reads as the cadence-only change it was.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -467,6 +472,76 @@ run('L10: set_exercise_weight saves under the programme\'s spelling, whatever th
     assert(out.faceToday === 40 && JSON.stringify(out.faceKeys) === '["Face Pull=40"]', 'Today shows it, under one key: ' + out.faceToday + ' ' + JSON.stringify(out.faceKeys));
     assert(out.bench.ok && JSON.stringify(out.benchKeys) === '["Bench Press=170"]', 'a stray casing folds into the programme\'s key: ' + JSON.stringify(out.benchKeys));
     assert(out.hip === 'Hip Thrust = 200 lb' && out.odd === 'zercher carry deluxe = 100 lb', 'the library\'s spelling, else the name as given: ' + out.hip + ' / ' + out.odd);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// A relaunch that keeps what the app saved: the harness re-seeds localStorage on every load, so
+// the storage is carried across the reload in sessionStorage and put back after the seed.
+const KEEP_STORAGE = () => { try { const s = sessionStorage.getItem('__ls'); if (s) { const o = JSON.parse(s); localStorage.clear(); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); sessionStorage.removeItem('__ls'); } } catch (e) {} };
+async function relaunch(app) {
+  await app.page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } sessionStorage.setItem('__ls', JSON.stringify(o)); });
+  await app.page.reload({ waitUntil: 'load' });
+  await app.page.waitForFunction(() => typeof window.render === 'function');
+}
+
+// R09: L40's pill and card for a cadence change lasted only until the app was closed.
+run('R09: a coach cadence change keeps its pill, its PLAN CHANGES card and Undo after a relaunch', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  await app.page.addInitScript(KEEP_STORAGE);
+  const PLAN = ['Push', 'Run', 'Pull', 'Rest', 'Legs', 'Run', 'Rest'];
+  const turn = (input) => app.page.evaluate(async ({ MOCK, input }) => {
+    eval(MOCK)([{ content: [{ type: 'tool_use', id: 'r09-' + coachMessages.length, name: 'update_routine_weeks', input }], stop_reason: 'tool_use', usage: {} },
+      { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+    coachMessages.push({ role: 'user', content: 'change my week' });
+    await runCoachTurn('sys', 'claude-haiku-4-5', 512);
+  }, { MOCK, input });
+  const chat = () => app.page.evaluate(async () => {
+    currentTab = 'coach'; coachView = 'chat'; render(); await new Promise((res) => setTimeout(res, 20));
+    const pills = [...document.querySelectorAll('#screen span')].map(s => s.textContent.trim()).filter(t => /^[✓✕] /.test(t));
+    const led = document.querySelector('.kt-ledger-card');
+    return { pill: pills[pills.length - 1], rows: led ? [...led.querySelectorAll('.kt-ledger-row')].map(x => x.textContent).join('|') : '', undo: !!(led && [...led.querySelectorAll('button')].some(b => b.textContent === 'Undo')), plan: getCustomRoutine().weekPlan.join(',') };
+  });
+  try {
+    const s = await app.page.evaluate(() => { const w1 = getCustomRoutine().weeks[0], w = getCustomRoutine().weeks[currentWeek - 1];
+      return { wk: currentWeek, plan0: getCustomRoutine().weekPlan.join(','), past: { wk: 1, bName: w1.bName, bColor: w1.bColor }, now: { wk: currentWeek, bName: w.bName, bColor: w.bColor } }; });
+    assert(s.wk > 1 && s.plan0 !== PLAN.join(','), 'week 1 is behind us and the cadence will change: ' + JSON.stringify(s));
+    const want = JSON.stringify({ pill: '✓ Weekly cadence updated', rows: 'Weekly cadencechanged', undo: true, plan: PLAN.join(',') });
+    // the coach changes only the cadence (sending a past week's header with it)
+    await turn({ weekPlan: PLAN, weeks: [s.past] });
+    const inSession = await chat();
+    await relaunch(app);
+    const relaunched = await chat();
+    assert(JSON.stringify(inSession) === want, 'in the session: ' + JSON.stringify(inSession));
+    assert(JSON.stringify(relaunched) === want, 'after a relaunch it keeps its pill, card and Undo: ' + JSON.stringify(relaunched));
+    // the same answer stored by a page from before the flag
+    await app.page.evaluate(() => { const m = JSON.parse(localStorage.getItem('kt_coach_msgs')); m.forEach(x => (x._tools || []).forEach(t => { delete t.result.cadenceSaved; })); localStorage.setItem('kt_coach_msgs', JSON.stringify(m)); });
+    await relaunch(app);
+    const older = await chat();
+    assert(JSON.stringify(older) === want, 'one stored before the flag reads the same: ' + JSON.stringify(older));
+    // its Undo still puts the old cadence back
+    await app.page.evaluate(async () => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      [...document.querySelectorAll('.kt-ledger-card button')].find(b => b.textContent === 'Undo').click(); await wait(10);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+    });
+    const undone = await app.page.evaluate(() => getCustomRoutine().weekPlan.join(','));
+    assert(undone === s.plan0, 'Undo after the relaunch restores the cadence: ' + undone);
+    // the cadence is saved, then a week fails
+    await turn({ weekPlan: PLAN, weeks: [{ wk: s.wk, bName: '', bColor: '' }] });
+    await relaunch(app);
+    const part = await chat();
+    assert(part.pill === '✕ Weekly cadence updated · week ' + s.wk + ' not saved' && part.rows === 'Weekly cadencechanged' && part.undo, 'a call that saved the cadence and then failed keeps its card: ' + JSON.stringify(part));
+    // this week and the cadence together
+    await turn({ weekPlan: ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Run', 'Rest'], weeks: [s.now] });
+    await relaunch(app);
+    const both = await chat();
+    assert(both.pill === '✓ Week ' + s.wk + ' and the weekly cadence updated' && both.rows === 'Week ' + s.wk + 'rewritten|Weekly cadencechanged' && both.undo, 'a week with the cadence keeps both rows: ' + JSON.stringify(both));
+    // a call that saved nothing still says so
+    await turn({ weeks: [{ wk: s.wk, bName: '', bColor: '' }] });
+    await relaunch(app);
+    const none = await chat();
+    assert(none.pill === '✕ No weeks changed' && none.rows === '' && !none.undo, 'a call that saved nothing has no card: ' + JSON.stringify(none));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -17468,12 +17468,16 @@ function _executeCoachToolRaw(name,input){
       // kept the archive's anchor (this Monday, last Monday on a weekend): it started in the
       // past and Monday read week 2.
       if(_fresh && written.length) _startProgramme();
-      if(errored) return {ok:false,error:errored,written:written,skipped:skipped};
+      // Every answer from here on says whether the cadence was saved: the chat history keeps a
+      // call's result but not its weekPlan, so after a relaunch the pill and PLAN CHANGES (with
+      // its Undo) read a cadence change as "No weeks changed" with no card.
+      var _cad=function(res){ if(planSupplied) res.cadenceSaved=true; return res; };
+      if(errored) return _cad({ok:false,error:errored,written:written,skipped:skipped});
       if(!written.length){
         if(planSupplied){
           // The cadence WAS written above — reporting failure told the model
           // (and the user) nothing changed while the Log tab already showed it.
-          return {ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone. If the user says they are on an earlier week, call set_current_week with that week first, then write it.',weeks:[],skipped:skipped,stored:_routineReadback([])};
+          return _cad({ok:true,message:'Weekly cadence updated. Past weeks '+skipped.join(', ')+' are locked and were left alone. If the user says they are on an earlier week, call set_current_week with that week first, then write it.',weeks:[],skipped:skipped,stored:_routineReadback([])});
         }
         return {ok:false,error:'All requested weeks are before the current week ('+currentWeek+'). Past weeks are locked — only weeks '+currentWeek+'-'+getTotalWeeks()+' can be changed. If the user says they are on an earlier week (e.g. "it is week 1"), call set_current_week with that week first, then write it again.',skipped:skipped};
       }
@@ -17489,8 +17493,8 @@ function _executeCoachToolRaw(name,input){
         var _kAdd=_keptEdits.filter(function(x){ return x.charAt(0)!=='-'; }), _kRem=_keptEdits.filter(function(x){ return x.charAt(0)==='-'; }).map(function(x){ return x.slice(1); });
         label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked.';
       }
-      return {ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
-        check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'};
+      return _cad({ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
+        check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'});
     }
     if(name==='set_current_week'){
       var w=parseInt(input.week);
@@ -18182,7 +18186,10 @@ function _backupWeightFor(name){
 // call writes no week; the pill and PLAN CHANGES read "No weeks changed" or nothing for those.
 function _routineCallSaved(tc){
   var r=(tc&&tc.result)||{}, i=(tc&&tc.input)||{};
-  var plan=Array.isArray(i.weekPlan)&&i.weekPlan.length===7;
+  // The cadence: the result says so (cadenceSaved), since the chat history keeps the result but
+  // drops the input's weekPlan. A result stored before that flag: an ok answer that wrote no week
+  // is the cadence-only one.
+  var plan=r.cadenceSaved===true || (Array.isArray(i.weekPlan)&&i.weekPlan.length===7) || (r.ok===true && Array.isArray(r.weeks) && !r.weeks.length);
   // A failed call carries `written` only once validation passed; it saved if that wrote anything.
   var saved=r.ok!==false || (Array.isArray(r.written) && (r.written.length>0 || plan));
   if(!saved) return {weeks:[], plan:false};
