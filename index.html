@@ -11970,8 +11970,9 @@ function saveRunnerExEdit(){
   if(_repsTouched) ex.reps=parseInt(_rExEditReps);
   ex.weight =parseFloat(_rExEditWeight)||0;
   // The sheet edits scalars — stale per-set target arrays would silently
-  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them.
-  if(ex.weight!==_seedW) delete ex.weights;
+  // reseed the pre-edit loads on every completed set. Untouched, the load keeps them;
+  // a swap never does (they are the old lift's loads), though its per-set reps stay.
+  if(newName!==oldName || ex.weight!==_seedW) delete ex.weights;
   // A superset pairs with the card BELOW, so choosing a partner means moving it
   // there. Before this the only reachable partner was whichever exercise
   // happened to sit next in the list — the toggle could be turned on, but the

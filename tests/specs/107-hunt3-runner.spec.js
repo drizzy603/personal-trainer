@@ -10,7 +10,8 @@
 //   with the lift that moved up, no superset is filed, and a pending pair return is dropped.
 // - M34 the runner Edit sheet on a 'Max' row: the reps field is empty with 'Max' as its hint, a swap
 //   or a load change saves and keeps 'Max' (in the programme too, with Apply), typed reps are still
-//   an edit; untouched reps keep a range or per-set reps, an untouched load keeps per-set loads.
+//   an edit; untouched reps keep a range or per-set reps, an untouched load keeps per-set loads
+//   (on the same lift: a swap drops them, R28).
 // - M33 kg: a load that reads the same as the record (a programme load from the lb grid, a coach
 //   load) is not a new record: no live beat, no PR on the session, one RECORD HISTORY line; a real
 //   step up still is, lb is unchanged, and the records follow a unit switch.
@@ -29,6 +30,9 @@
 // - R27 the watch gets the folded card too (today and the week ahead, each row's load resolved
 //   first, the cached routine untouched), and a wrist session that sends a lift's log under two
 //   rows is filed once, as the main lift.
+// - R28 a swap in the Edit sheet drops the old lift's per-set loads (it keeps the per-set reps): the
+//   new lift's stepper stays where it is set after each set and after Undo, the wrist gets no old
+//   loads, and the sets are filed (and the record set) at the new lift's load.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -287,7 +291,7 @@ run('M34 the Edit sheet saves a swap or a load change on a Max row and keeps Max
       r.cleared = _runnerEx().reps;
       openRunnerExEdit(runnerExIdx); runnerExEditSetReps('10'); saveRunnerExEdit(); await wait(20);
       r.typed = [_runnerEx().reps, runnerReps['Chin Up']];
-      // untouched reps keep per-set reps and loads on a swap; an edited load drops the per-set loads
+      // untouched reps keep per-set reps on a swap, but never the old lift's loads (R28); an edited load drops them too
       const ex0 = runnerSession.exercises[0];
       ex0.sets = 3; ex0.reps = [3, 8, 8]; ex0.weights = [225, 185, 185]; ex0.weight = 225;
       runnerWeights[ex0.name] = 225; runnerReps[ex0.name] = 3; runnerGoTo(0);
@@ -311,7 +315,7 @@ run('M34 the Edit sheet saves a swap or a load change on a Max row and keeps Max
     assert(out.load.reps === 'Max' && out.load.loaded && !out.load.sheetOpen, 'a load change saves and keeps Max: ' + JSON.stringify(out.load));
     assert(out.cleared === 'Max', 'a cleared field is no edit: ' + out.cleared);
     assert(JSON.stringify(out.typed) === '[10,10]', 'typed reps are an edit: ' + JSON.stringify(out.typed));
-    assert(JSON.stringify(out.perSet) === JSON.stringify(['Pendlay Row', [3, 8, 8], [225, 185, 185]]), 'a swap keeps a per-set scheme: ' + JSON.stringify(out.perSet));
+    assert(JSON.stringify(out.perSet) === JSON.stringify(['Pendlay Row', [3, 8, 8], null]), 'a swap keeps the per-set reps, not the old lift’s loads: ' + JSON.stringify(out.perSet));
     assert(JSON.stringify(out.perSetLoad) === JSON.stringify([[3, 8, 8], null, 135]), 'an edited load replaces the per-set loads: ' + JSON.stringify(out.perSetLoad));
     assert(JSON.stringify(out.range) === JSON.stringify([4, '8-10', 10]), 'a range stays a range: ' + JSON.stringify(out.range));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
@@ -647,6 +651,53 @@ run('R27 a lift listed twice is one card on the watch and is filed once from it'
       'the programme itself is untouched: ' + JSON.stringify(out.cache));
     assert(JSON.stringify(out.saved) === JSON.stringify(['Bench Press [3,8,8,8]@[225,190,190,190] main', 'Overhead Press [8,8,8]@[100,100,100]', 'Lateral Raise [15,15,15]@[20,20,20]']) && out.queue === 0,
       'the doubled wrist log is filed once, as the main lift: ' + JSON.stringify(out.saved));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R28: M34 kept per-set loads whenever the load was untouched, a swap included.
+run('R28 a swap drops the old lift’s per-set loads', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      const toasts = []; const ot = window.showToast; window.showToast = function (m) { toasts.push(m); return ot.apply(this, arguments); };
+      const M = 'Machine Chest Press';
+      const cr = getCustomRoutine();
+      cr.weeks[currentWeek - 1].push.forEach(e => { if (e.name === 'Bench Press') { e.sets = 3; e.reps = [3, 8, 8]; e.weights = [225, 185, 185]; e.weight = 225; } });
+      setCustomRoutine(cr);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const i = runnerSession.exercises.findIndex(e => e.name === 'Bench Press');
+      runnerGoTo(i); await wait(20);
+      // the bench is taken: Edit > Change > the machine, the load left alone
+      openRunnerExEdit(i); await wait(20);
+      _rExEditName = M; saveRunnerExEdit(); await wait(20);
+      const ex = runnerSession.exercises[i];
+      r.swapped = [ex.name, ex.reps, ex.weights || null];
+      _lastWatchPlan = ''; _pushWatchPlan(); await wait(20);
+      const wr = JSON.parse(__mock.updateContext[__mock.updateContext.length - 1].json).exercises.find(e => e.name === M) || {};
+      r.wrist = [wr.repsList || null, wr.weights || null];
+      // the machine set to 100: set 1, Undo, then all three
+      runnerEngaged = true; runnerSetWeight(100); runnerCompleteSet(); await wait(20);
+      r.afterSet = runnerWeights[M];
+      runnerUndoSet(M, 0); await wait(20);
+      r.afterUndo = runnerWeights[M];
+      [0, 1, 2].forEach(() => { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; });
+      runnerFinishSession(); await wait(250);
+      closeCompleteSheet();
+      r.filed = (getSessions()[0].exercises.find(e => e.name === M) || {}).weightLog;
+      r.record = getPRs()[M];
+      r.prToast = toasts.filter(t => /^PR/.test(t) && t.indexOf(M) >= 0);
+      window.showToast = ot;
+      return r;
+    });
+    assert(JSON.stringify(out.swapped) === JSON.stringify(['Machine Chest Press', [3, 8, 8], null]), 'the swap keeps the per-set reps, not the bench loads: ' + JSON.stringify(out.swapped));
+    assert(JSON.stringify(out.wrist) === JSON.stringify([[3, 8, 8], null]), 'the wrist gets the reps and no bench loads: ' + JSON.stringify(out.wrist));
+    assert(out.afterSet === 100 && out.afterUndo === 100, 'the stepper stays on the machine’s load after a set and after Undo: ' + JSON.stringify([out.afterSet, out.afterUndo]));
+    assert(JSON.stringify(out.filed) === '[100,100,100]' && out.record === 100 && JSON.stringify(out.prToast) === JSON.stringify(['PR · Machine Chest Press 100 lb']),
+      'filed and recorded at the machine’s load: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
