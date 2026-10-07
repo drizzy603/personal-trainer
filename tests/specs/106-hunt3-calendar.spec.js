@@ -616,3 +616,40 @@ run('R21: a back-off set\'s fix or a rename in Edit sets keeps the +5 written si
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R26 (hunt 4): a lift whose older logs are imports in the nested shape ({sets:[{reps, weight}]},
+// no weight of their own) lost its working weight when its newest log was deleted: the follow
+// read weight alone, saw no log left, and the coach stopped being told the lift.
+run('R26: deleting the newest log follows the lift\'s older nested-shape logs; the working weight stays', async () => {
+  const nested = (id, date, w) => ({ id, date, week: 3, type: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: [{ reps: 8, weight: w }, { reps: 8, weight: w }, { reps: 8, weight: w }] }] });
+  const app = await boot({ native: true, seed: { kt_sessions: JSON.stringify([nested(2601, daysAgo(7), 160), nested(2602, daysAgo(14), 155)]), kt_prs: '{}', kt_weights: JSON.stringify({ 'Bench Press': 160 }) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO();
+      const W = () => getWeights()['Bench Press'];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => /Bench Press/.test(l)).join('|');
+      const r = { nested: getSessions().every(s => Array.isArray(s.exercises[0].sets)) };
+      // a typo from before the stamp, deleted from the day sheet
+      lsSet('kt_sessions', [{ id: 2603, date: T, week: weekForDate(T), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: 1650, weightLog: [1650, 1650, 1650], isMain: true }] }].concat(getSessions()));
+      lsSet('kt_weights', { 'Bench Press': 1650 });
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+      [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+      closeCalDay(); await wait(10);
+      r.legacy = { w: W(), line: benchLine() };
+      // a correct log today (it set 165 over the nested 160), deleted by the coach
+      executeCoachTool('log_session', { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 165 }] });
+      const s = getSessions().find(x => x.date === T);
+      r.logged = [W(), JSON.stringify(s.wSet)];
+      executeCoachTool('delete_log', { store: 'session', id: s.id });
+      r.coachDel = { w: W(), line: benchLine() };
+      return r;
+    });
+    assert(out.nested, 'the imports are still nested after boot');
+    assert(out.legacy.w === 160 && out.legacy.line === '  Bench Press: 160', 'the typo goes back to the newest nested log: ' + JSON.stringify(out.legacy));
+    assert(out.logged[0] === 165 && out.logged[1] === '{"Bench Press":[null,165]}', 'the new log set 165 over the nested log\'s load: ' + JSON.stringify(out.logged));
+    assert(out.coachDel.w === 160 && out.coachDel.line === '  Bench Press: 160', 'deleted, it gives the nested log\'s 160 back: ' + JSON.stringify(out.coachDel));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

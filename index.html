@@ -4072,16 +4072,24 @@ function _wwStamp(rec, ch){
 // from before the stamp set it unless the programme prescribed that load (_planHolds). Moved to
 // the front, a log takes the working weight over and its stamp says so (moved). It returns what
 // it replaced, for Undo (_workingWeightsPut).
+// A logged lift's load in either stored shape: its weight (the top set), or for an import from
+// before the runner, which keeps its sets nested ({sets:[{reps, weight}]}), its heaviest set.
+// Read as weight alone, a lift whose older logs were all nested lost its working weight when
+// its newest log was deleted.
+function _exLoad(e){
+  var v=parseFloat(e && e.weight); if(v>0) return v;
+  return e ? _exSetPairs(e).reduce(function(m, p){ return p[1]>m ? p[1] : m; }, 0) : 0;
+}
 function _newestLog(n, ss){
   var hit=null;
-  (ss||getSessions()).some(function(s){ return ((s&&s.exercises)||[]).some(function(e){ var v=(e && e.name===n) ? parseFloat(e.weight) : 0; if(v>0){ hit={v:v, s:s}; return true; } return false; }); });
+  (ss||getSessions()).some(function(s){ return ((s&&s.exercises)||[]).some(function(e){ var v=(e && e.name===n) ? _exLoad(e) : 0; if(v>0){ hit={v:v, s:s}; return true; } return false; }); });
   return hit;
 }
 function _newestLoad(n, ss){ var x=_newestLog(n, ss); return x ? x.v : null; }
 function _newestLoads(recs){
   var out={}, ss=getSessions();
   (recs||[]).forEach(function(r){ ((r&&r.exercises)||[]).forEach(function(e){
-    if(e && e.name && parseFloat(e.weight)>0 && !Object.prototype.hasOwnProperty.call(out, e.name)) out[e.name]=_newestLog(e.name, ss);
+    if(e && e.name && _exLoad(e)>0 && !Object.prototype.hasOwnProperty.call(out, e.name)) out[e.name]=_newestLog(e.name, ss);
   }); });
   return out;
 }
