@@ -674,3 +674,50 @@ seq('R05: Reset keeps one copy of a lift the coach added back after the owner sw
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R01 (regression from L11): a load off the plate grid (166 lb, 34 kg dumbbells) carries as the plate
+// below it, so the lift stayed "above the plan" after the carry: it was offered after every tap, the
+// session never counted as done, the next lift waited behind it, and each tap took a new undo point
+// (Restore previous programme lost the plan from before the carry). A session from last week, so
+// the carry lands in a later week than the plan it is judged by (any weekday).
+seq('R01: an off-grid load is carried once; the next lift follows; one undo point for the session', async () => {
+  const probe = async (unit) => {
+    const app = await boot({ native: true, seed: unit ? { kt_unit_w: unit } : {} });
+    try {
+      const out = await app.page.evaluate(async (unit) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const r = {}, c = currentWeek - 1;
+        const plan = (n, cr) => (cr || getCustomRoutine()).weeks[c].push.find(e => e.name === n).weight;
+        const ex = unit === 'kg'
+          ? [{ name: 'Incline Dumbbell Press', sets: 3, reps: [10, 10, 10], weight: 75, weightLog: [75, 75, 75] }]
+          : [{ name: 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: 166, weightLog: [166, 166, 166, 166] },
+            { name: 'Overhead Press', sets: 4, reps: [8, 8, 8, 8], weight: 110, weightLog: [110, 110, 110, 110] }];
+        lsSet('kt_sessions', [{ id: 8800, date: addDays(todayISO(), -7), type: 'Push', week: currentWeek - 1, prs: [], exercises: ex }].concat(getSessions()));
+        r.wk = weekForDate(addDays(todayISO(), -7));
+        r.before = { bench: plan('Bench Press'), ohp: plan('Overhead Press'), inc: plan('Incline Dumbbell Press') };
+        const cands = () => _carryCandidates(getSessions().find(x => x.id === 8800)).map(k => k.name);
+        const btns = () => [...document.querySelectorAll('#completeSheetOverlay .kt-carry-row button')];
+        r.c0 = cands();
+        openCompleteSheet({ rec: getSessions().find(x => x.id === 8800), startedAt: Date.now() });
+        btns()[0].click(); await wait(20);
+        r.c1 = cands(); r.seen1 = _carrySeen().indexOf(8800) >= 0;
+        if (btns()[0]) { btns()[0].click(); await wait(20); }
+        r.c2 = cands(); r.seen2 = _carrySeen().indexOf(8800) >= 0;
+        closeCompleteSheet();
+        r.after = { bench: plan('Bench Press'), ohp: plan('Overhead Press'), inc: plan('Incline Dumbbell Press') };
+        const bk = lsGet('kt_routine_backup');
+        r.backup = { bench: plan('Bench Press', bk), ohp: plan('Overhead Press', bk), inc: plan('Incline Dumbbell Press', bk) };
+        return r;
+      }, unit);
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const lb = await probe('');
+  assert(lb.wk === 5 && JSON.stringify(lb.c0) === '["Bench Press","Overhead Press"]', 'last week\'s Push: Bench and Overhead Press above the plan: ' + JSON.stringify(lb));
+  assert(JSON.stringify(lb.c1) === '["Overhead Press"]' && !lb.seen1, 'Bench carried (166 as 165): Overhead Press is next: ' + JSON.stringify(lb));
+  assert(!lb.c2.length && lb.seen2 && lb.after.bench === 165 && lb.after.ohp === 110, 'both carried, then the session is done: ' + JSON.stringify(lb));
+  assert(lb.backup.bench === lb.before.bench && lb.backup.ohp === lb.before.ohp, 'Restore previous programme still has the plan from before the first carry: ' + JSON.stringify(lb));
+  const kg = await probe('kg');
+  assert(JSON.stringify(kg.c0) === '["Incline Dumbbell Press"]' && !kg.c1.length && kg.seen1 && kg.after.inc === 74.4, 'kg: 34 kg dumbbells carry as 33.75 kg, once: ' + JSON.stringify(kg));
+});

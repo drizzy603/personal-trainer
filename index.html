@@ -11536,21 +11536,25 @@ function _carryCandidates(sess){
     var top=_prTop(ex); if(!top || !(top.w>0)) return;
     var need=_repsNum(pr.reps); if(need>0 && !(top.r>=need)) return;
     if(wDisp(top.w)-wDisp(P) < _plateStepDisp()-0.001) return;   // at least a plate over the plan
-    if(now >= top.w-0.05) return;                                  // the programme already asks for it
+    // the programme already asks for it: what a carry writes, on the plates (166 lb carried is 165,
+    // 34 kg is 33.75; read against the raw load the same lift was offered after every tap)
+    if(now >= _snapU(top.w)-0.05) return;
     out.push({slot:sess.type, name:ex.name, to:top.w, from:P, c:c});
   });
   return out;
 }
 function _carrySeen(){ var a=lsGet('kt_carry_seen'); return Array.isArray(a)?a:[]; }
 function dismissCarry(id){ var a=_carrySeen().filter(function(x){ return x!==id; }); a.unshift(id); lsSet('kt_carry_seen', a.slice(0,30)); render(); }
-function carryForward(slot, name, lb, c){
+// scope: one undo point for every lift carried from one session (each tap took its own, and
+// Restore previous programme lost the plan from before the first).
+function carryForward(slot, name, lb, c, scope){
   c=(c>=0)?c:currentWeek-1;
   return _commitRoutine(function(cr){ return _progCarryLoad(cr, String(slot).toLowerCase(), name, c, parseFloat(lb)||0, {markOwner:true, workScale:true}); },
-    {undoLabel:name+' carries '+fmtW(lb)+' forward', scope:'carry:'+Date.now()});
+    {undoLabel:name+' carries '+fmtW(lb)+' forward', scope:scope||('carry:'+Date.now())});
 }
 function _carryTap(btn, sessId){
   var d=btn&&btn.dataset; if(!d) return;
-  if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10)) && sessId){
+  if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10), sessId?'carry:'+sessId:null) && sessId){
     // The session is done with once nothing is left to carry: marked on the first tap, the
     // second lift above the plan was never offered again.
     var ss=getSessions().filter(function(s){ return s && s.id===sessId; })[0];
