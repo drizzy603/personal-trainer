@@ -368,6 +368,44 @@ run('Escape closes the top sheet with focus inside it, and focus goes back to th
   } finally { await app.close(); }
 });
 
+// R51: L55 gave each library row role=button, and the row wrapped its open detail and the
+// custom lift's ✕: a button's content is one flat label to VoiceOver, so the PR history
+// button and Delete could not be reached. Only the header line is the control now.
+run("a library row's control is its header: the open detail, PR history and Delete stay reachable (R51)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const out = await p.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      saveCustomExercise({ name: 'Zercher Hold', cat: 'Legs', muscles: 'core, quads', equip: 'Barbell', desc: 'Hold it.', tips: ['Brace'], _custom: true });
+      switchTab('settings');
+      const lift = getAllExercises().find(e => _prHead(e.name)).name;
+      openExLib(lift); await wait(20);
+      const ov = document.getElementById('exlibOverlay');
+      const head = (n) => Array.from(ov.querySelectorAll('#exlibList [data-n]')).find(x => x.dataset.n === n && x.tagName !== 'BUTTON');
+      const wrapped = () => Array.from(ov.querySelectorAll('#exlibList [role=button]')).filter(b => b.querySelector('button, input, [role=button], [onclick]')).length;
+      const r = { lift };
+      const h = head(lift), pr = ov.querySelector('#exlibList .kt-ex-pr');
+      r.open = { role: h && h.getAttribute('role'), tab: h && h.getAttribute('tabindex'), expanded: h && h.getAttribute('aria-expanded'), name: h ? h.textContent : '',
+        pr: !!pr, prFree: !!pr && !pr.closest('[role=button]'), wrapped: wrapped() };
+      _libSearch = 'Zercher Hold'; _libExpanded = 'Zercher Hold'; _updateExLibList(); await wait(10);
+      const x = Array.from(ov.querySelectorAll('#exlibList button[data-n]')).find(b => b.dataset.n === 'Zercher Hold');
+      r.custom = { x: !!x, xFree: !!x && !x.closest('[role=button]'), label: x && x.getAttribute('aria-label'), wrapped: wrapped() };
+      // a tap on the header still opens and closes the row
+      head('Zercher Hold').click(); await wait(10); r.closed = _libExpanded === '';
+      head('Zercher Hold').click(); await wait(10); r.reopened = _libExpanded === 'Zercher Hold';
+      closeExLib();
+      return r;
+    });
+    assert(out.open.role === 'button' && out.open.tab === '0' && out.open.expanded === 'true', 'the header line is a button that says it is open: ' + JSON.stringify(out.open));
+    assert(!/CUES|HISTORY|PR ·|TOP SET/.test(out.open.name), 'the button is named by its header, not the whole detail: ' + out.open.name.slice(0, 120));
+    assert(out.open.pr && out.open.prFree && out.open.wrapped === 0, 'the PR history button is outside any button: ' + JSON.stringify(out.open));
+    assert(out.custom.x && out.custom.xFree && out.custom.label === 'Delete Zercher Hold' && out.custom.wrapped === 0, 'the custom lift\'s Delete is its own button: ' + JSON.stringify(out.custom));
+    assert(out.closed && out.reopened, 'tapping the header opens and closes the row: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('library and week-ladder rows take Tab, set inputs and glyph buttons are named, the sub-tab is current (L55)', async () => {
   const app = await boot({ native: true });
   try {
