@@ -468,7 +468,7 @@ const SWITCHED = `(S) => {
   const rows = []; for (let i = -35; i <= 23; i++) { const dw = ((i % 7) + 7) % 7; if (dw === 0 || dw === 2 || dw === 4) rows.push([addDays(S, i), ['Push', '', 'Pull', '', 'Legs'][dw]]); }
   return rows; }`;
 
-runInTurn('the update reads the days before week 1 as the old page did, after an old backup too, and repairs a misreading frozen since (R38)', async () => {
+runInTurn('the update keeps the streak the old page showed across a programme switch, after an old backup too, and repairs a misreading frozen since (R38)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
   try {
     const out = await app.page.evaluate(([CLOCK, LOGS, SWITCHED, OLDFREEZE]) => {
@@ -506,7 +506,7 @@ runInTurn('the update reads the days before week 1 as the old page did, after an
   } finally { await app.close(); }
 });
 
-runInTurn('the first boot writes the old page\'s reading down before anything else runs (R38)', async () => {
+runInTurn('the first boot writes the days before week 1 down before anything else runs (R38)', async () => {
   const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
   try {
     await app.page.addInitScript(BOOTCLOCK); await app.page.evaluate(BOOTCLOCK);
