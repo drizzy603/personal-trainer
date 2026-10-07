@@ -40,6 +40,12 @@
 //   before the swap or after it; it counts for the new round (carry forward, its best) and stays
 //   out of the old round's best, so the round built is the one the wrist was shown. A session from
 //   an older watch (no per-set RPE: it kept the last plan sent) is still the old round's (spec 108).
+// - R43: a late wrist copy that adds sets to a lift the phone filed moves its working weight only
+//   while that is still what the phone's finish left: a +5, a deload or the coach's weight set since
+//   stands; a backdated session's heavier set may still raise it.
+// - R44: a started programme with nothing logged stays on its week when Monday comes
+//   (autoAdvanceWeek), so the widget, the wrist's week ahead and the reminders give later weeks'
+//   days this week's number and cadence until something is logged.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (spec 108's): local 'YYYY-MM-DDTHH:MM:SS', computed in the page
@@ -642,6 +648,35 @@ run('R43: a late wrist copy never undoes a working weight changed since the phon
     assert(out.plus5.w === 190 && out.deload.w === 166.5, 'a +5 or a deload made since the finish stands (it was set back to 185): ' + JSON.stringify(out));
     assert(out.heavier.w === 195, 'still the finish’s load, the copy’s heavier set moves it: ' + JSON.stringify(out.heavier));
     assert(out.backHeavier.w === 190 && out.backSame.w === 185, 'a backdated session only raises it: ' + JSON.stringify([out.backHeavier, out.backSame]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// R44: a started programme with nothing logged stays on its week when Monday comes (autoAdvanceWeek),
+// so the widget, the wrist's week ahead and the reminders give next week's days this week's number
+// and cadence, as the app will show them; once anything is logged, the weeks count on (L17).
+run('R44: with nothing logged, next week’s days keep this week’s number and cadence', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_runs: '[]', kt_sports: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; cr.weeks.forEach(w => { delete w.weekPlan; });
+      cr.weeks[1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // week 2 has its own cadence
+      setCustomRoutine(cr);
+      _setWeek(1);   // week 1 began this Monday
+      const next = addDays(_mostRecentMonday(), 7);
+      const look = () => ({ days: _nativeSummaryDays(15).filter(d => d.date >= next).map(d => (d.date < addDays(next, 7) ? 'b' : 'c') + d.week),
+        mon: (() => { const p = _watchPlanForDate(next); return p.week + ':' + p.slot; })() });
+      let sum = null; Capacitor.Plugins.TrovoWidget.updateSummary = (o) => { sum = JSON.parse(o.json); return Promise.resolve({}); };
+      _lastNativeSummary = null; _runNativeSync();
+      const none = Object.assign(look(), { sent: sum && sum.days.map(d => d.week) });
+      lsSet('kt_runs', [{ id: Date.now(), date: todayISO(), distance: 5, time: '25:00', type: 'easy' }]);
+      return { none, logged: look() };
+    });
+    assert(out.none.days.length >= 7 && out.none.days.every(s => s.slice(1) === '1') && out.none.mon === '1:Push' && out.none.sent.every(w => w === 1),
+      'nothing logged: next week’s days are week 1 with week 1’s cadence (widget, wrist, reminders): ' + JSON.stringify(out.none));
+    assert(out.logged.days.every(s => s === 'b2' || s === 'c3') && out.logged.mon === '2:Legs',
+      'once something is logged the weeks count on: ' + JSON.stringify(out.logged));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });

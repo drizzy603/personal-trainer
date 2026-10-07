@@ -21319,6 +21319,9 @@ function _planWeekFor(iso){
     return { cr:cr, wk:wk, plan:cad ? cad.map(_planEntry) : getWeekPlanForWeek(wk) };
   }
   var wk0=Math.min(getTotalWeeks(), Math.max(1, weekForDate(iso)));
+  // Nothing logged yet: Monday keeps the week (autoAdvanceWeek), so a later week's days are this
+  // week's again, as the app will show them (the widget read WK 2 from Monday 00:00, the wrist week 2).
+  if(wk0>currentWeek && !getSessions().length && !getRuns().length && !getSportLogs().length) wk0=Math.max(1, currentWeek);
   return { cr:getCustomRoutine(), wk:wk0, plan:getWeekPlanForWeek(wk0) };
 }
 // Exercise count of a slot in a GIVEN week. getSessionExercises reads the
