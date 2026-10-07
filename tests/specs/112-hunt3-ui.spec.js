@@ -111,6 +111,62 @@ run('short day names keep what tells days apart (L44)', async () => {
   } finally { await app.close(); }
 });
 
+// R50: the L44 rule kept only the first word ("Day", "Week", an emoji) and then the last
+// word's initial, so "Day 1 - Push" / "Day 2 - Pull" both read "Day P" on the chips, the
+// watch and the widget, and one named day alone read "Day" or just its emoji.
+run('short day names tell coach-style names apart: Day 1 / Day 2, Week A / B, emoji-led (R50)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__widget = [];
+      Capacitor.Plugins.TrovoWidget.updateSummary = (a) => { window.__widget.push(a); return Promise.resolve({}); };
+      await wait(300);
+      const M = '\u{1F4AA}';
+      const name = (a, b, c) => { setDayName('Push', a || 'Push'); setDayName('Pull', b || 'Pull'); setDayName('Legs', c || 'Legs'); };
+      const three = () => [_dayShort('Push'), _dayShort('Pull'), _dayShort('Legs')];
+      const r = {};
+      name('Day 1 - Push', 'Day 2 - Pull', 'Day 3 - Legs'); r.dash = three();
+      switchTab('settings'); await wait(20);
+      r.chips = Array.from(document.querySelectorAll('.kt-day-chip')).map(b => b.querySelector('.kt-day-chip-t').textContent);
+      r.plan = getWeekPlan().map(e => e.type);
+      window.__mock.updateContext.length = 0; window.__widget.length = 0; _lastNativeSummary = null; _lastWatchPlan = null; _runNativeSync(); await wait(30);
+      const ctx = window.__mock.updateContext.slice(-1)[0] || {};
+      r.week = JSON.parse(ctx.week || '[]').filter(d => d.type === 'lift').map(d => d.slot + '=' + d.short);
+      r.widget = JSON.parse((window.__widget.slice(-1)[0] || {}).json || '{"days":[]}').days.filter(d => LIFT_TYPES.indexOf(d.type) >= 0).map(d => d.type + '=' + d.short);
+      name('Day 1: Upper Strength', 'Day 2: Lower Strength', 'Day 3: Upper Hypertrophy'); r.colon = three();
+      name('Day 1 Upper', 'Day 3 Upper'); r.mid = three();
+      name('Week A Upper', 'Week B Upper'); r.weekAB = three();
+      name(M + ' Upper Body', M + ' Lower Body'); r.emoji = three();
+      name('Upper Power', 'Upper Pull'); r.initial = three();
+      name(M + ' Upper Body'); r.aloneEmoji = _dayShort('Push');
+      name('Day 1 Upper'); r.aloneDay = _dayShort('Push');
+      name('Week A Upper Body'); r.aloneWeek = _dayShort('Push');
+      name('Full Body A', 'Full Body B', 'Lower Body'); r.ab = three();
+      return r;
+    });
+    const M = '\u{1F4AA}';
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const apart = (a) => a.every((s, i) => a.indexOf(s) === i);
+    assert(eq(out.dash, ['Day 1', 'Day 2', 'Day 3']), 'Day 1 - Push / Day 2 - Pull / Day 3 - Legs: ' + JSON.stringify(out.dash));
+    const chipOf = { Push: 'Day 1', Pull: 'Day 2', Legs: 'Day 3' };
+    assert(out.plan.every((t, i) => !chipOf[t] || out.chips[i] === chipOf[t]), 'the Settings chips read Day 1 / Day 2 / Day 3: ' + JSON.stringify([out.plan, out.chips]));
+    const slotsApart = (list) => { const m = {}; list.forEach(x => { const [k, v] = x.split('='); m[k] = v; }); const v = Object.keys(m).map(k => m[k]); return v.length >= 2 && apart(v) && v.every(s => /^Day \d$/.test(s)); };
+    assert(slotsApart(out.week), 'the watch week keeps the days apart: ' + JSON.stringify(out.week));
+    assert(slotsApart(out.widget), 'the widget summary keeps the days apart: ' + JSON.stringify(out.widget));
+    assert(eq(out.colon, ['Day 1', 'Day 2', 'Day 3']), 'Day 1: Upper Strength / Day 2: Lower Strength: ' + JSON.stringify(out.colon));
+    assert(eq(out.mid, ['Day 1', 'Day 3', 'Legs']), 'Day 1 Upper / Day 3 Upper: ' + JSON.stringify(out.mid));
+    assert(eq(out.weekAB, ['Week A', 'Week B', 'Legs']), 'Week A Upper / Week B Upper: ' + JSON.stringify(out.weekAB));
+    assert(eq(out.emoji, [M + ' Upper', M + ' Lower', 'Legs']), 'an emoji and Upper Body / Lower Body: ' + JSON.stringify(out.emoji));
+    assert(apart(out.initial) && out.initial.slice(0, 2).every(s => /^Up/.test(s)), 'Upper Power / Upper Pull still differ: ' + JSON.stringify(out.initial));
+    assert(out.aloneEmoji === M + ' Upper' && out.aloneDay === 'Day 1' && out.aloneWeek === 'Week A', 'one named day alone keeps its meaning: ' + JSON.stringify([out.aloneEmoji, out.aloneDay, out.aloneWeek]));
+    assert(eq(out.ab, ['Full A', 'Full B', 'Lower']), 'Full A / Full B / Lower as before: ' + JSON.stringify(out.ab));
+    const all = [].concat(out.dash, out.colon, out.mid, out.weekAB, out.emoji, out.initial, out.chips, [out.aloneEmoji, out.aloneDay, out.aloneWeek]);
+    assert(all.every(s => s === s.trim() && Array.from(s).length <= 7), 'every short name is trimmed and at most seven characters: ' + JSON.stringify(all));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('a lift with an apostrophe opens its Strength curve (M40)', async () => {
   const sessions = JSON.parse(SEED.kt_sessions);
   sessions.forEach((s) => { if (Array.isArray(s.exercises)) s.exercises.push({ name: "Farmer's Carry", sets: 3, reps: ['12', '12', '12'], weight: 70 }); });
