@@ -3915,22 +3915,21 @@ function _streakDueFn(){
   };
 }
 // Called before anything rewrites the schedule under days already lived: every day the
-// streak walks now (yesterday back to the day that ends it, and today once it is logged
-// and counted) is written down as it reads, so the change applies from today on and never
-// reaches back. Moving Friday's Legs to Saturday turned every past Friday into a rest day
-// and every past Saturday into a missed Legs day (8 days -> 2). A day keeps the first
-// answer it was given.
+// streak can reach (yesterday back 400 days, and today once it is logged and counted) is
+// written down as it reads, so the change applies from today on and never reaches back.
+// Moving Friday's Legs to Saturday turned every past Friday into a rest day and every past
+// Saturday into a missed Legs day (8 days -> 2). A day keeps the first answer it was given.
+// Every day, past the one that ends the streak too: a missed day filled in later (a log moved
+// onto it, backdated, or a late watch or Health import) joined the streak to days nobody had
+// written down, read under the new schedule (11 days -> 5).
 function _freezeStreakDays(){
   try{
-    var due=_streakDueFn(), lived=lsGet('kt_streak_days'), add=0, today=todayISO(), d=new Date(today+'T00:00:00');
+    var due=_streakDueFn(), lived=lsGet('kt_streak_days'), add=0, today=todayISO(), v=due(today);
     if(!lived || typeof lived!=='object' || Array.isArray(lived)) lived={};
-    for(var i=0;i<400;i++){
-      var iso=_ymdLocal(d), logged=_loggedOn(iso), v=due(iso);
-      if(i>0 || (logged && v)){
-        if(lived[iso]==null){ lived[iso]=v; add++; }
-        if(v===1 && !logged) break;
-      }
-      d.setDate(d.getDate()-1);
+    if(lived[today]==null && v && _loggedOn(today)){ lived[today]=v; add++; }
+    for(var i=1;i<400;i++){
+      var iso=addDays(today,-i);
+      if(lived[iso]==null){ lived[iso]=due(iso); add++; }
     }
     if(!add) return;
     var cut=addDays(today,-400);
@@ -3939,12 +3938,18 @@ function _freezeStreakDays(){
   }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
 }
 // What a routine schedules, as far as the streak can tell: the cadences, which lift
-// days are empty, and how many weeks there are.
+// days are empty, how many weeks there are, and which round it is (_streakDueFn reads the
+// days before week 1 by the round). Two routines with the same signature read every day alike
+// on the same clock, so _setWeek's freeze after a write never reads a new schedule on the old
+// clock. Without the round, a Programme History restore of round 1 over round 2 (or round 2
+// swapped in) froze nothing until _setWeek, with the new round on the old clock: round 1's
+// rest Fridays were frozen as missed days (81 days -> 15), and "Start now" froze the days
+// before round 1 as a phantom earlier round's.
 function _schedSig(cr){
   if(!cr || !Array.isArray(cr.weeks)) return '';
   return JSON.stringify([cr.weekPlan||null, cr.weeks.map(function(w){
     return w ? [w.weekPlan||null, LIFT_KEYS.map(function(k){ return Array.isArray(w[k]) && w[k].length ? 1 : 0; }).join('')] : 0;
-  })]);
+  }), parseInt(cr.cycle,10)||1]);
 }
 // Before a routine write (r; null clears it) that changes what is scheduled, freeze the
 // streak's days under the routine on disk: some writers change the cached copy in place
@@ -3958,6 +3963,59 @@ function _freezeStreakIfSchedChanges(r){
     try{ _freezeStreakDays(); }
     finally{ if(had) _lsCache['kt_routine']=keep; else delete _lsCache['kt_routine']; }
   }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
+}
+// How the page before 2026-10-04 read a day before this round's week 1, where the reading has
+// changed since: as week 1, in any round (it measured every earlier day as week 1). Since then a
+// later round reads them as a previous round of exactly its own length that ended the day before,
+// so round 2 swapped in on the old page after a round ended early or parked on its final week
+// read the weeks lived as other weeks' (27 days -> 3). null where the reading stands: no
+// programme, a day of this round, or one of the days between building a first round and its
+// first Monday (2, which never breaks the streak).
+function _streakOldRead(cr){
+  if(!cr) return function(){ return null; };
+  var start=_mondayKeyOf(_roundStartISO()), gap=(parseInt(cr.cycle,10)||1)>1 ? start : addDays(start,-6);
+  var w1=(getWeekPlanForWeek(1)||[]).map(function(p){ p=p||{}; return (p.isRest || (p.isLift && _liftDayEmpty(p.type, 1))) ? 0 : 1; });
+  return function(iso){
+    if(iso>=gap) return null;
+    var v=w1[(new Date(iso+'T00:00:00').getDay()+6)%7];
+    return v==null ? 1 : v;
+  };
+}
+// Data written before 2026-10-04 has no kt_streak_days, and since then the days before round 1
+// read as having no plan (every day due), and those before a later round as the previous round's
+// (_streakOldRead): a streak that ran across a programme switch made on the old page dropped the
+// moment the page updated (26 days -> 14), and the next schedule edit froze the drop. Every day
+// before this round's week 1 not yet written down where the two pages disagree is written
+// as 2: it ends the streak only where both pages say so, and a log on it counts wherever either
+// page counted it, so no streak reads lower than on the old page or on the pages since (the old
+// page's rest day written as 0 left out the runs logged on it before the programme: 37 -> 23).
+// Once per device at boot, before the week clock moves or a round swaps in (_streakUpgrade), and
+// after every restore (an older backup carries no kt_streak_days). repair, at that first boot
+// only: the pages since froze their misreading, a rest day of the old reading written as a
+// missed training day; with nothing logged on it, it neither ends nor counts now.
+function _seedStreakDays(repair){
+  try{
+    var cr=getCustomRoutine(); if(!cr) return true;
+    var lived=lsGet('kt_streak_days'); if(!lived || typeof lived!=='object' || Array.isArray(lived)) lived={};
+    var old=_streakOldRead(cr), due=_streakDueFn(), today=todayISO(), logged=null, add=0;
+    for(var i=1;i<400;i++){
+      var iso=addDays(today,-i), v=old(iso);
+      if(v==null) continue;
+      if(lived[iso]==null){ var h=due(iso); if(v!==h && h!==2){ lived[iso]=2; add++; } }
+      else if(repair && v===0 && +lived[iso]===1){
+        if(!logged){ logged={}; _trainingDays().forEach(function(x){ if(x && x.date) logged[String(x.date).slice(0,10)]=1; }); }
+        if(!logged[iso]){ lived[iso]=2; add++; }
+      }
+    }
+    if(!add) return true;
+    var cut=addDays(today,-400);
+    Object.keys(lived).forEach(function(k){ if(k<cut) delete lived[k]; });
+    return lsSet('kt_streak_days', lived);
+  }catch(e){ _trapErr('streak seed: '+((e&&e.message)||e)); return false; }
+}
+function _streakUpgrade(){
+  try{ if(localStorage.getItem('kt_streak_seeded')) return; }catch(e){ return; }
+  if(_seedStreakDays(true)){ try{ localStorage.setItem('kt_streak_seeded','1'); }catch(e){} }
 }
 // THE streak: consecutive scheduled training days with something logged
 // (rest days skipped, not broken on); calendar days when there is no plan.
@@ -4542,6 +4600,7 @@ function _applyImportedData(data, opts) {
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   _uniqueLogIds(true);       // and the coach's shared-id twins
+  _seedStreakDays(false);    // and no kt_streak_days: its days before week 1 read as the page that wrote them did
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');
@@ -21134,6 +21193,7 @@ function toggleDynType(){
 }
 try{ applyDynamicType(); document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') applyDynamicType(); }); }catch(e){}
 currentWeek = getWeek();
+_streakUpgrade();   // before the week clock moves or a set round swaps in (its freeze reads these days)
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
 // weeks they never trained. kt_last_open is deliberately NOT exported:
