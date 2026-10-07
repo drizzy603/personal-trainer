@@ -24,6 +24,10 @@
 //   programme switch made on that page dropped the moment it updated (26 -> 14). The first boot
 //   (before the week clock moves) and every restore write them down as the old page read them,
 //   and a misreading the pages since froze goes back (R38).
+// - A whole programme replaced by another round (a Programme History restore, Restore Previous,
+//   the next round started today) writes the lived days down under the outgoing round, before the
+//   week clock moves: round 1's rest Fridays were frozen as missed days under round 2's clock
+//   (79 -> 15), and "Start now" read the days before round 1 as a phantom earlier round (R58).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -508,6 +512,56 @@ runInTurn('the first boot writes the old page\'s reading down before anything el
     const out = await app.page.evaluate(() => ({ week: currentWeek, streak: calcStreakDays(), flag: localStorage.getItem('kt_streak_seeded') }));
     assert(first === '1', 'every boot of this page has run it once: ' + first);
     assert(out.week === 4 && out.streak === 26 && out.flag === '1', 'booted on the old data, the streak is the old page\'s: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R58: a whole programme replaced by another round froze the streak under the new round on the old
+// clock (the schedule signature left the round out, so only _setWeek froze, after the write).
+runInTurn('a Programme History restore of another round, Restore Previous and a round started today keep the streak (R58)', async () => {
+  // Friday is the cadence's rest day.
+  const plan = ['Push', 'Pull', 'Legs', 'Push', 'Rest', 'Pull', 'Legs'];
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '6' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS, plan]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const every = (from, to) => { const rows = []; for (let d = from; d <= to; d = addDays(d, 1)) { const t = plan[(new Date(d + 'T00:00:00').getDay() + 6) % 7]; if (t !== 'Rest') rows.push([d, t]); } return rows; };
+      const r1 = getCustomRoutine(); r1.weekPlan = plan.slice(); delete r1.cycle;
+      // Round 2 began on S (swapped in by a page older than the ledger); round 1 ran the twelve
+      // weeks before it and sits in Programme History. Every non-Friday is logged since round 1's
+      // week 1; it is Monday of round 2's week 2.
+      const S = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(S, 7) + 'T10:00:00');
+      lsSet('kt_routine', Object.assign(JSON.parse(JSON.stringify(r1)), { cycle: 2 }));
+      lsSet('kt_routine_archive', [{ id: 1789400000000, archivedAt: S, routine: r1 }]);
+      currentWeek = 2; lsSet('kt_week', 2); localStorage.setItem('kt_week_monday', addDays(S, 7)); localStorage.removeItem('kt_final_since');
+      lsSet('kt_sessions', logs(every(addDays(S, -84), addDays(S, 7))));
+      lsDel('kt_streak_days');
+      const probe = () => ({ streak: calcStreakDays(), week: currentWeek, cycle: parseInt(getCustomRoutine().cycle, 10) || 1, fri: (lsGet('kt_streak_days') || {})[addDays(S, -10)] });
+      r.before = probe();
+      restoreArchivedRoutine(1789400000000); confirm();
+      r.restored = probe();
+      restoreRoutineBackup(); confirm();
+      r.previous = probe();
+      // Round 1 on its final week, a Wednesday: "Start now" swaps round 2 in on this week's Monday.
+      // Logged since three weeks before round 1, which had no plan then.
+      const T = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(T, 2) + 'T10:00:00');
+      lsSet('kt_routine', JSON.parse(JSON.stringify(r1))); lsSet('kt_routine_archive', []); lsDel('kt_routine_backup'); lsDel('kt_routine_next');
+      currentWeek = 12; lsSet('kt_week', 12); localStorage.setItem('kt_week_monday', T); localStorage.setItem('kt_final_since', T);
+      lsSet('kt_sessions', logs(every(addDays(T, -97), addDays(T, 2))));
+      lsDel('kt_streak_days');
+      r.final = calcStreakDays();
+      r.today = { ok: setNextRound('today'), cycle: getCustomRoutine().cycle, week: currentWeek, streak: calcStreakDays() };
+      return r;
+    }, [CLOCK, LOGS, plan]);
+    assert(out.before.streak === 79 && out.before.cycle === 2 && out.before.week === 2, 'round 2, every non-Friday since round 1 began: ' + JSON.stringify(out.before));
+    assert(out.restored.streak === 79 && out.restored.cycle === 1 && out.restored.week === 1 && out.restored.fri === 0,
+      'restoring round 1 keeps it; its rest Friday is not frozen as a missed day (it was 15): ' + JSON.stringify(out.restored));
+    assert(out.previous.streak === 79 && out.previous.cycle === 2, 'Restore Previous brings round 2 back with the same streak: ' + JSON.stringify(out.previous));
+    assert(out.final === 77 && out.today.ok && out.today.cycle === 2 && out.today.week === 1 && out.today.streak === 77,
+      'a round started today leaves the days before round 1 as they read (no phantom round): ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

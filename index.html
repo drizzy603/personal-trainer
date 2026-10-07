@@ -3866,12 +3866,18 @@ function _freezeStreakDays(){
   }catch(e){ _trapErr('streak freeze: '+((e&&e.message)||e)); }
 }
 // What a routine schedules, as far as the streak can tell: the cadences, which lift
-// days are empty, and how many weeks there are.
+// days are empty, how many weeks there are, and which round it is (_streakDueFn reads the
+// days before week 1 by the round). Two routines with the same signature read every day alike
+// on the same clock, so _setWeek's freeze after a write never reads a new schedule on the old
+// clock. Without the round, a Programme History restore of round 1 over round 2 (or round 2
+// swapped in) froze nothing until _setWeek, with the new round on the old clock: round 1's
+// rest Fridays were frozen as missed days (81 days -> 15), and "Start now" froze the days
+// before round 1 as a phantom earlier round's.
 function _schedSig(cr){
   if(!cr || !Array.isArray(cr.weeks)) return '';
   return JSON.stringify([cr.weekPlan||null, cr.weeks.map(function(w){
     return w ? [w.weekPlan||null, LIFT_KEYS.map(function(k){ return Array.isArray(w[k]) && w[k].length ? 1 : 0; }).join('')] : 0;
-  })]);
+  }), parseInt(cr.cycle,10)||1]);
 }
 // Before a routine write (r; null clears it) that changes what is scheduled, freeze the
 // streak's days under the routine on disk: some writers change the cached copy in place
