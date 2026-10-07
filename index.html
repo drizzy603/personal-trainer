@@ -3922,7 +3922,7 @@ function calcStreak(sessions) {
 // load for more reps is NOT a record — checkAndUpdatePRs uses > too. Memoized
 // on _logsVersion, so edits, renames, deletes and restores follow for free.
 // _prTop: one logged exercise's heaviest load (recomputePRs's max over weight,
-// weightLog and legacy sets[]) and the most reps done at exactly that load.
+// weightLog and legacy sets[]) and the most reps done at that load as it shows.
 // The heaviest set that has reps. A 0-rep entry (Log all on a 'Max' target, a missed single
 // edited to 0) is not a lift, so it never makes a record.
 // [reps, lb] per set from any stored shape; a row with reps but no set count reads its reps.
@@ -3931,13 +3931,24 @@ function _exPairs(ex){
   if(!ps.length && ex && ex.reps!=null){ ps=(Array.isArray(ex.reps)?ex.reps:[ex.reps]).map(function(x, i){ var wl=Array.isArray(ex.weightLog)?parseFloat(ex.weightLog[i]):NaN; return [parseInt(x)||0, wl>=0?wl:(parseFloat(ex.weight)||0)]; }); }
   return ps;
 }
+// Two loads are one when they show the same: kg rounds to 0.5, so one 72.5 kg is stored as 160
+// and as 159.8 lb (a programme load, then − and + on the stepper). The reps of a set heavier only
+// in storage made the record 72.5 kg × 5 on the COMPLETE sheet, RECORD HISTORY and the PR row
+// while its share card read the 6 done at the same 72.5 kg.
+function _prSameLoad(a, b){ return Math.abs(a-b)<0.01 || wDisp(a)===wDisp(b); }
 function _prTop(ex){
   var ps=_exPairs(ex);
   var w=0, r=0;
   ps.forEach(function(p){ if(p[0]>0 && p[1]>w) w=p[1]; });
   if(!(w>0) || !isFinite(w)) return null;
-  ps.forEach(function(p){ if(p[0]>0 && Math.abs(p[1]-w)<0.01 && p[0]>r) r=p[0]; });
+  ps.forEach(function(p){ if(p[0]>0 && _prSameLoad(p[1], w) && p[0]>r) r=p[0]; });
   return {w:w, r:r};
+}
+// One lift's tops as one (logged twice in a session): the heavier load and the most reps at it as shown.
+function _prMerge(o, t){
+  if(!t) return o;
+  if(!o) return {w:t.w, r:t.r};
+  return {w:Math.max(o.w, t.w), r:_prSameLoad(o.w, t.w) ? Math.max(o.r, t.r) : (t.w>o.w ? t.r : o.r)};
 }
 var _prLedgerMemo=null, _prLedgerV=-1, _prLedgerU='';
 // {chains:{'k:'+name:[entry oldest→newest]}, names:[first-seen order], latest:entry|null}
@@ -3959,9 +3970,9 @@ function _prLedger(){
     s.exercises.forEach(function(ex){
       if(!ex || !ex.name) return;
       var t=_prTop(ex); if(!t) return;
-      var n=String(ex.name), o=tops['k:'+n];
-      if(!o){ tops['k:'+n]={w:t.w, r:t.r}; order.push(n); }
-      else if(t.w>o.w || (t.w===o.w && t.r>o.r)){ o.w=t.w; o.r=t.r; }
+      var n=String(ex.name);
+      if(!tops['k:'+n]) order.push(n);
+      tops['k:'+n]=_prMerge(tops['k:'+n], t);
     });
     var first=null;
     order.forEach(function(n){
@@ -12380,6 +12391,7 @@ function applyStarterIntake(){
 }
 function applyStarterRoutine(a){
   var r=buildStarterRoutine(a);
+  r.inUseFrom=todayISO();   // nothing logged before today was trained on it (_sessBlock)
   var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
   if(cur && !archiveCurrentRoutine()){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
   if(!setCustomRoutine(r)){ lsSet('kt_routine_archive', prevArr); return; }
@@ -16518,20 +16530,35 @@ function _shareCardPalette(){
 }
 // The block (phase) a session was trained in: the one stamped when it was filed, while it is
 // still in the week it was filed in (bWk). One with no stamp (logged before stamps, or moved to
-// another week) reads the programme as it stands only if it belongs to it (this round, or no
-// programme or round has replaced it since: Programme History's newest entry), else none: the
-// current programme's week 4 is not an old programme's week 4 (an old BASE card read BUILD).
-function _sessBlock(s){
+// another week) reads this round's block, else the block that week has in every programme that
+// may have been the one on its date: the current one and each Programme History entry replaced
+// on or after it, leaving out one put in after it (routine.inUseFrom). They disagree, or none
+// is left: no block. The current programme's week 4 is not an old programme's week 4 (an old BASE
+// card read BUILD, also after Regenerate, which archives nowhere), and the next round or the
+// programme restored as it was name it alike (they read no block). A log filed after such a
+// replacement (the coach's, a stale wrist session) has its week counted on a later programme's
+// clock: no block. strict, for a stamp: only while the current programme is the one it can have
+// been trained in.
+function _sessBlock(s, strict){
   if(!s) return '';
-  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10);
+  var wk=parseInt(s.week,10)||0, d=String(s.date||'').slice(0,10), filed=Number(s.id)||0;
   if(s.bName && Number(s.bWk)===wk) return String(s.bName);
-  var cr=getCustomRoutine(), w=cr && wk>0 ? cr.weeks[wk-1] : null, live=w && w.bName ? String(w.bName) : '';
-  if(!live || d>=_roundStartISO()) return live;
-  var arc=getRoutineArchive()[0];
-  return (!arc || d>String(arc.archivedAt||'')) ? live : '';
+  var cr=getCustomRoutine(), live=_weekBlock(cr, wk), curIn=!!cr && !(String(cr.inUseFrom||'')>d);
+  if(curIn && d>=_roundStartISO()) return live;
+  var may=curIn ? [live] : [], late=false;
+  getRoutineArchive().forEach(function(e){
+    var r=e && e.routine;
+    if(!r || !(String(e.archivedAt||'')>=d)) return;
+    if(filed>Number(e.id)) late=true;
+    else if(!(String(r.inUseFrom||'')>d)) may.push(_weekBlock(r, wk));
+  });
+  if(late || (strict && !(curIn && may.length===1))) return '';
+  return may.length && may.every(function(b){ return b===may[0]; }) ? may[0] : '';
 }
-// Every writer of a new session stamps it, so its card keeps its block after this programme.
-function _stampBlock(s){ var b=_sessBlock(s); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
+function _weekBlock(r, wk){ var w=r && Array.isArray(r.weeks) && wk>0 ? r.weeks[wk-1] : null; return w && w.bName ? String(w.bName) : ''; }
+// Every writer of a new session stamps it, so its card keeps its block after this programme. A log
+// filed late (the coach's, a stale wrist session) from before this programme was put in is not.
+function _stampBlock(s){ var b=_sessBlock(s, true); if(b){ s.bName=b; s.bWk=parseInt(s.week,10)||0; } return s; }
 // Everything the card says, in the display units, from the stored session.
 function _shareCardModel(s){
   var U=_uW(), all=getSessions();
@@ -16546,13 +16573,9 @@ function _shareCardModel(s){
   function repsTxt(d){ return (d>0?'+':'−')+Math.abs(d)+' rep'+(Math.abs(d)===1?'':'s'); }
   // Loads compare as the card shows them: kg rounds to 0.5, so one 72.5 kg can be stored as 160
   // and 159.8 lb. The top set is the most reps at the heaviest shown load, not the reps of a set
-  // that is heavier only in storage.
-  function topOf(list){
-    var t=null;
-    list.forEach(function(e){ var x=e && _prTop(e); if(x && (!t || x.w>t.w)) t={w:x.w, r:0}; });
-    if(t) list.forEach(function(e){ _exPairs(e).forEach(function(p){ if(p[0]>0 && wDisp(p[1])===wDisp(t.w) && p[0]>t.r) t.r=p[0]; }); });
-    return t;
-  }
+  // that is heavier only in storage: _prTop's rule, so the card, the COMPLETE sheet that opens it,
+  // RECORD HISTORY and the PR row read one record.
+  function topOf(list){ var t=null; list.forEach(function(e){ t=_prMerge(t, e && _prTop(e)); }); return t; }
   var sets=0, reps=0;
   exs.forEach(function(ex){ _exSetPairs(ex).forEach(function(p){ if(p[0]>0){ sets++; reps+=p[0]; } }); });
   var vol=calcVolume(exs), prevDay=null;
@@ -17425,7 +17448,7 @@ function _executeCoachToolRaw(name,input){
       // saved, so the app (and the watch) showed a rename the coach was told had failed.
       var cr=getCustomRoutine();
       var _fresh=!(cr && Array.isArray(cr.weeks) && cr.weeks.length);
-      cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[]};
+      cr=cr?JSON.parse(JSON.stringify(cr)):{name:'Custom Programme',weeks:[],inUseFrom:todayISO()};   // built from nothing: in use from today (_sessBlock)
       if(_inNames){
         var _names=(cr.dayNames&&typeof cr.dayNames==='object')?cr.dayNames:{};
         LIFT_TYPES.forEach(function(sl){
