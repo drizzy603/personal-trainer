@@ -8564,6 +8564,19 @@ function _runnerFoldRepeats(exs){
   });
   return out;
 }
+// A finished wrist session files each lift once. The wrist keys its log by name, so a watch
+// still holding a plan that lists a lift twice sends that one log under every row: the longest
+// is kept (they are the same sets) and the repeats are dropped.
+function _wristFoldRepeats(exs){
+  var out=[], at={}, len=function(e){ return Array.isArray(e.reps) ? e.reps.length : 0; };
+  (exs||[]).forEach(function(ex){
+    if(!ex) return;
+    var k=String(ex.name);
+    if(!at.hasOwnProperty(k)){ at[k]=out.length; out.push(ex); return; }
+    if(len(ex)>len(out[at[k]])) out[at[k]]=ex;
+  });
+  return out;
+}
 var _draftTO=null;
 function _saveRunnerDraft(){
   if(!runnerOpen||!runnerSession) return;
@@ -21597,6 +21610,15 @@ function _watchPlanForDate(iso){
   var cr=src.cr, w=cr&&Array.isArray(cr.weeks)?cr.weeks[wk-1]:null;
   var arr=(w&&w[String(pl.type).toLowerCase()])||[];
   var weights=getWeights();
+  // One card per lift, as the runner folds them: the wrist keys its log by name, so a lift
+  // listed twice was two cards sharing one log and the session was filed with its sets twice.
+  // Each row's load resolves first (as today's do), on copies: arr is the cached routine.
+  arr=_runnerFoldRepeats(arr.map(function(ex){
+    if(!ex) return ex;
+    var c=JSON.parse(JSON.stringify(ex));
+    if(!(parseFloat(c.weight)>0) && parseFloat(weights[c.name])>0) c.weight=parseFloat(weights[c.name]);
+    return c;
+  }));
   var exs=arr.map(function(ex){
     var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
     var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
@@ -21622,8 +21644,9 @@ function _pushWatchPlan(){
     var draftRun = !runnerOpen && runnerResumePending && runnerSession && (runnerSession.exercises||[]).length &&
       (!runnerSessionDate || runnerSessionDate===todayISO());
     var liveRun = (runnerOpen && runnerSession && (runnerSession.exercises||[]).length) || draftRun;
+    // Today's plan folds a lift listed twice into one card, as the runner does (act is a copy).
     var srcExs = liveRun ? runnerSession.exercises
-      : (act.type==='lift'&&act.exercises?act.exercises:[]);
+      : (act.type==='lift'&&act.exercises?_runnerFoldRepeats(act.exercises):[]);
     var exs=srcExs.map(function(ex){
       var firstRep=Array.isArray(ex.reps)?ex.reps[0]:ex.reps;
       var reps=parseInt(firstRep)||(typeof firstRep==='string'?parseInt(String(firstRep).split('-')[0])||8:8);
@@ -21852,8 +21875,8 @@ function drainWatchSessions(){
         _wchLog('drain: "'+s.dayName+'" is not a known day; filed under '+dayType);
       }
       var mainByName={};
-      getSessionExercises(dayType).forEach(function(ex){ mainByName[ex.name]=!!ex.isMain; });
-      var exsOut=s.exercises.map(function(ex){
+      getSessionExercises(dayType).forEach(function(ex){ mainByName[ex.name]=mainByName[ex.name]||!!ex.isMain; });   // a lift listed twice is main if either row is (the runner's fold)
+      var exsOut=_wristFoldRepeats(s.exercises).map(function(ex){
         var reps=(ex.reps||[]).map(function(r){ return parseInt(r)||0; });
         var w=parseFloat(ex.weight)||0;
         // Newer watch builds send per-set weights; older ones one number.

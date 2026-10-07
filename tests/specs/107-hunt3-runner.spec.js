@@ -25,6 +25,10 @@
 //   backdated finish leaves alone, or nothing without one); a bodyweight lift shows its added load.
 // - L16 after '+1 set' the rest Live Activity and the rest alert name the set the runner names
 //   (set 6 past a 4-set plan, no 'of 4'; build 57's view drops 'OF m' itself), and +30s resends it.
+// Review of those fixes (2026-10-06):
+// - R27 the watch gets the folded card too (today and the week ahead, each row's load resolved
+//   first, the cached routine untouched), and a wrist session that sends a lift's log under two
+//   rows is filed once, as the main lift.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -582,6 +586,67 @@ run('L16 after +1 set the Live Activity and the alert name the next set past the
     assert(out.extra.set === n + 2 && out.extra.of === n, 'the Live Activity gets that set, past the plan: ' + JSON.stringify(out.extra));
     assert(out.extra.alert === out.name + ' \u2014 set ' + (n + 2), 'the alert names it with no "of": ' + JSON.stringify(out.extra));
     assert(JSON.stringify(out.plus30) === JSON.stringify(out.extra), '+30s resends the same set: ' + JSON.stringify(out.plus30));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// R27: the H05 fold covered the phone runner only; the watch still got both rows and filed the lift twice.
+run('R27 a lift listed twice is one card on the watch and is filed once from it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {};
+      // every day a Push that lists Bench twice; the back-off row has no load (the working weight's)
+      const cr = getCustomRoutine();
+      cr.weekPlan = ['Push', 'Push', 'Push', 'Push', 'Push', 'Push', 'Push'];
+      cr.weeks.forEach(w => {
+        delete w.weekPlan;
+        w.push = [
+          { name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 },
+          { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 },
+          { name: 'Bench Press', sets: 3, reps: 8, weight: 0, rpe: 7 },
+          { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }
+        ];
+      });
+      setCustomRoutine(cr);
+      lsSet('kt_weights', Object.assign({}, getWeights(), { 'Bench Press': 190 }));
+      await wait(30);
+      const fmt = e => e.name + ' ' + e.sets + 'x' + (e.repsList ? JSON.stringify(e.repsList) : e.reps) + '@' + (e.weights ? JSON.stringify(e.weights) : e.weight)
+        + (e.repsList ? ' first ' + e.reps + '@' + e.weight : '');
+      _lastWatchPlan = ''; _pushWatchPlan(); await wait(20);
+      const ctx = __mock.updateContext[__mock.updateContext.length - 1];
+      const plan = JSON.parse(ctx.json), week = JSON.parse(ctx.week || '[]');
+      r.today = [plan.type, plan.exercises.map(fmt)];
+      r.ahead = week.filter(d => d.type === 'lift').map(d => JSON.stringify(d.exercises.map(fmt)));
+      r.cache = getCustomRoutine().weeks[currentWeek - 1].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.ss ? ' ss' : ''));
+      openDeckRunner('Push'); await wait(20);
+      r.phone = runnerSession.exercises.map(e => e.name);
+      closeDeckRunner(); await wait(20);
+      // a watch that still holds the unfolded plan sends Bench's one log under both rows
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const startMs = Date.now() - 3600e3;
+      const bench = { name: 'Bench Press', weight: 225, reps: [3, 8, 8, 8], weightLog: [225, 190, 190, 190], rpe: 8, rpeLog: [8, 8, 8, 8] };
+      __mock.pending = [JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: iso(startMs), loggedAt: iso(Date.now() - 60e3),
+        exercises: [bench, { name: 'Overhead Press', weight: 100, reps: [8, 8, 8], weightLog: [100, 100, 100], rpe: 7, rpeLog: [7, 7, 7] },
+          Object.assign({}, bench, { weightLog: [225, 225, 225, 225] }),
+          { name: 'Lateral Raise', weight: 20, reps: [15, 15, 15], weightLog: [20, 20, 20], rpe: 7, rpeLog: [7, 7, 7] }] })];
+      window.showToast = () => {};
+      await drainWatchSessions(); await wait(50);
+      const s = getSessions()[0];
+      r.saved = s ? s.exercises.map(e => e.name + ' ' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weightLog) + (e.isMain ? ' main' : '')) : null;
+      r.queue = __mock.pending.length;
+      return r;
+    });
+    const card = ['Bench Press 4x[3,8,8,8]@[225,190,190,190] first 3@225', 'Overhead Press 3x8@100', 'Lateral Raise 3x15@20'];
+    assert(out.today[0] === 'lift' && JSON.stringify(out.today[1]) === JSON.stringify(card),
+      'today’s wrist plan has one Bench card with its per-set targets: ' + JSON.stringify(out.today));
+    assert(out.ahead.length === 6 && out.ahead.every(d => d === JSON.stringify(card)), 'so does every day of the week ahead: ' + JSON.stringify(out.ahead));
+    assert(JSON.stringify(out.phone) === JSON.stringify(['Bench Press', 'Overhead Press', 'Lateral Raise']), 'the phone runner shows the same cards: ' + JSON.stringify(out.phone));
+    assert(JSON.stringify(out.cache) === JSON.stringify(['Bench Press 1x3@225', 'Overhead Press 3x8@100 ss', 'Bench Press 3x8@0', 'Lateral Raise 3x15@20']),
+      'the programme itself is untouched: ' + JSON.stringify(out.cache));
+    assert(JSON.stringify(out.saved) === JSON.stringify(['Bench Press [3,8,8,8]@[225,190,190,190] main', 'Overhead Press [8,8,8]@[100,100,100]', 'Lateral Raise [15,15,15]@[20,20,20]']) && out.queue === 0,
+      'the doubled wrist log is filed once, as the main lift: ' + JSON.stringify(out.saved));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
