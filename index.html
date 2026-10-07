@@ -10631,6 +10631,15 @@ function _progUnmark(row){
   var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k==='rec' || ((k==='isMain' || k==='ss') && !o[k])) return; x[k]=o[k]; }); return JSON.stringify(x); };
   if(norm(row)===norm(row.rec)) delete row.rec;
 }
+// A mark that records only where the main tag or a superset went (a removed main hands its
+// tag on): the lift and its numbers are the coach's. Routines still shows it, but the coach
+// is not told the owner edited the lift and its rewrite of the row stands (the merge kept the
+// old numbers as "the user's own edits", and the prompt said they were).
+function _progTagOnly(row){
+  if(!row || !row.rec) return false;
+  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss') x[k]=o[k]; }); return JSON.stringify(x); };
+  return norm(row)===norm(row.rec);
+}
 // One main lift a day once `row` is back as the coach wrote it (Restore, Reset, Use
 // coach's, adding a removed lift back): a tag handed on when it left, or moved by Make
 // main, goes back with it, and a day left with none gives it back to the coach's main.
@@ -17199,7 +17208,7 @@ function _routineReadback(written){
     var w=(cr.weeks||[])[wk-1]; if(!w) return;
     if(i<2){
       var full={};
-      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined?' (user\u2019s edit kept)':'') : e; }); });
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'') : e; }); });
       if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
       out.weeks[wk]=full;
     } else {
@@ -17437,7 +17446,8 @@ function _executeCoachToolRaw(name,input){
           if(w[k]===undefined) return;   // kept as stored above, marks and all
           var neu=Array.isArray(weekObj[k])?weekObj[k]:(weekObj[k]=[]);
           old.forEach(function(orow, oi){
-            if(!orow || orow.rec===undefined) return;
+            // a mark that only moved the main tag is no edit of the lift: the coach's row stands
+            if(!orow || orow.rec===undefined || _progTagOnly(orow)) return;
             var ni=-1;
             neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.name) ni=i; });
             if(ni<0 && orow.rec && orow.rec.name) neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.rec.name) ni=i; });
@@ -17446,14 +17456,21 @@ function _executeCoachToolRaw(name,input){
             else neu.splice(Math.min(oi, neu.length), 0, keep);
             if(_keptEdits.indexOf(orow.name)<0) _keptEdits.push(orow.name);
           });
-          var ro=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [];
+          var ro=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [], _lostMain=false;
           ro.forEach(function(e){
             if(!e || !e.row) return;
             var _hit=false;
-            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ _hit=true; var gone=neu.splice(i,1)[0]; delete gone.rec; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
+            for(var i=0;i<neu.length;i++){ if(neu[i] && neu[i].name===e.row.name){ _hit=true; var gone=neu.splice(i,1)[0]; delete gone.rec; if(gone.isMain) _lostMain=true; weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push({at:i, row:gone}); if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
             // not re-sent: it stays removed, and stays restorable
             if(!_hit){ weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(JSON.parse(JSON.stringify(e))); }
           });
+          // The coach's main lift stays out, so its tag goes on as the owner's removal handed it
+          // (to the lift that held it, else the first with a load), marked for Restore and Reset.
+          if(_lostMain && neu.length && !neu.some(function(x){ return x && x.isMain; })){
+            var _om=old.filter(function(x){ return x && x.isMain; })[0];
+            var _nx=(_om && neu.filter(function(x){ return x && x.name===_om.name; })[0]) || neu.filter(function(x){ return x && parseFloat(x.weight)>0; })[0] || neu[0];
+            _markRec(_nx); _nx.isMain=true; _progUnmark(_nx);
+          }
           if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
         });
         cr.weeks[wk-1]=weekObj;
@@ -18517,7 +18534,7 @@ function buildSystemPrompt(){
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
         wd[sess].forEach(function(ex){
-          var _mk=ex.rec===null?' [added by the user]':(ex.rec?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':'');
+          var _mk=ex.rec===null?' [added by the user]':(ex.rec && !_progTagOnly(ex)?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':'');
           p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+_rowLoad(ex, 'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
         });
         // Where each main lift is heading, so advice matches the rest of the programme.

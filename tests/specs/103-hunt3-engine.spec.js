@@ -549,3 +549,49 @@ seq('L42 + L43: the Routines editor: no flat-row chips on an untouched kg row; s
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R02 (regression from M14): the main tag a removed main hands on is no edit of the lift. The coach
+// was told "[edited by the user]" with identical numbers, its rewrite of that lift was kept at the
+// old numbers as the owner's, and a rebuild that left it out put it back.
+seq('R02: a handed-on main tag is not the owner\'s edit for the coach; its rewrite applies and the tag stays', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = () => getCustomRoutine().weeks[c].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const ohpLine = () => (buildSystemPrompt().match(/ {2}Overhead Press:[^\n]*/) || [''])[0];
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtRemove(); await wait(5);
+      document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const removed = localStorage.getItem('kt_routine');
+      r.removed = day(); r.prompt = ohpLine();
+      // the coach rewrites week 6's Push: Bench (main) again and Overhead Press at 4x6 @ 115
+      const push = [{ name: 'Bench Press', sets: 4, reps: 8, weight: 160, isMain: true }].concat(getCustomRoutine().weeks[c].push.map(e => e.name === 'Overhead Press' ? { name: e.name, sets: 4, reps: 6, weight: 115 } : { name: e.name, sets: e.sets, reps: e.reps, weight: e.weight }));
+      const rb = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.rebuild = { ok: rb.ok, kept: rb.keptUserEdits, day: day(), stored: JSON.stringify(rb.stored), prompt: ohpLine() };
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.restored = day();
+      // a rebuild that leaves Overhead Press out drops it (Bench stays out: the owner removed it)
+      lsSet('kt_routine', JSON.parse(removed));
+      const rest = getCustomRoutine().weeks[c].push.filter(e => e.name !== 'Overhead Press').map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight }));
+      const lo = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push: rest }] });
+      r.leftOut = { kept: lo.keptUserEdits, day: day() };
+      // control: the owner then changes the lift itself; that is their edit and it wins
+      lsSet('kt_routine', JSON.parse(removed));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.w = wDisp(105); _rtSave(); await wait(10); closeRoutines();
+      r.editPrompt = ohpLine();
+      const ed = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.edited = { kept: ed.keptUserEdits, day: day() };
+      return r;
+    });
+    assert(out.removed === 'Overhead Press 4x8@100!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the tag is handed on, marked for Restore: ' + out.removed);
+    assert(/\(main\)$/.test(out.prompt) && !/edited by the user/.test(out.prompt), 'the coach is not told the owner edited it: ' + out.prompt);
+    assert(out.rebuild.ok && JSON.stringify(out.rebuild.kept) === '["-Bench Press"]' && /^Overhead Press 4x6@115!\* \| Incline/.test(out.rebuild.day), 'the coach\'s 4x6 @ 115 is stored and the tag stays: ' + JSON.stringify(out.rebuild));
+    assert(/"Overhead Press 4×6 115 lb"/.test(out.rebuild.stored) && !/edit kept/.test(out.rebuild.stored) && !/edited by the user/.test(out.rebuild.prompt), 'the readback and the prompt carry no owner mark: ' + JSON.stringify(out.rebuild));
+    assert(out.restored === 'Bench Press 4x8@160! | Overhead Press 4x6@115 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Restore gives Bench back as the one main lift: ' + out.restored);
+    assert(!(out.leftOut.kept || []).length && !/Overhead Press/.test(out.leftOut.day), 'a rebuild that leaves it out drops it: ' + JSON.stringify(out.leftOut));
+    assert(/\[edited by the user; you had 4×8 @ 100 lb\]/.test(out.editPrompt) && (out.edited.kept || []).indexOf('Overhead Press') >= 0 && /^Overhead Press 4x8@105!\*/.test(out.edited.day), 'an owner\'s change to the lift is still theirs: ' + JSON.stringify([out.editPrompt, out.edited]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
