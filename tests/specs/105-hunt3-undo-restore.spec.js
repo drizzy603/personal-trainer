@@ -896,3 +896,52 @@ run('schedule changes in two Settings visits are two undo points', async () => {
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// R19: a backup restore (and Undo last restore) left an edit scope open, so the next schedule edit
+// took no snapshot and Restore previous programme brought back the file's own older programme; the
+// device's scope key also survived, so a stored reply's Undo could point at the file's backup. The
+// restore replaces the programme whole: no scope stays open and no reply owns the restored backup.
+run('after a backup restore or its undo, the next edit is its own undo point', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const plan = () => getWeekPlanForWeek(currentWeek).map(p => p.type).join(',');
+      const st = () => ({ name: getCustomRoutine().name, plan: plan(), backup: (lsGet('kt_routine_backup') || {}).name || null, scope: _routineScope, key: localStorage.getItem('kt_routine_backup_scope') });
+      const r = {};
+      switchTab('settings'); await wait(20);
+      setWeekPlanDay(4, 'Push'); await wait(20);   // a schedule edit in this visit leaves 'cadence' open
+      // a backup file: its programme 'File P', its own previous version 'File OLD', and a reply whose
+      // undo point is the scope this device last took
+      const file = buildBackupJSON(); delete file._manifest;
+      const P = JSON.parse(JSON.stringify(getCustomRoutine())); P.name = 'File P';
+      const OLD = JSON.parse(JSON.stringify(getCustomRoutine())); OLD.name = 'File OLD';
+      file.kt_routine = P; file.kt_routine_backup = OLD;
+      file.kt_coach_msgs = [{ role: 'user', content: 'bench 190' }, { role: 'assistant', content: 'Done.', _tools: [{ name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 }, result: { ok: true } }], _undo: 'cadence' }];
+      r.ok = _applyImportedData(file); await wait(30);
+      r.restored = Object.assign(st(), { replyUndo: _backupScopeIs('cadence') });
+      const p1 = plan();
+      setWeekPlanDay(6, 'Rest'); await wait(20);   // Sunday
+      r.edit = st();
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.prev = Object.assign(st(), { back: plan() === p1 });
+      // Undo last restore, after another edit opened 'cadence' again: the same holds
+      setWeekPlanDay(5, 'Push'); await wait(20);
+      r.undoOk = _applyImportedData(JSON.parse(localStorage.getItem('kt_pre_restore')).data, { undo: true }); await wait(30);
+      r.undone = st();
+      const p2 = plan();
+      setWeekPlanDay(6, 'Rest'); await wait(20);
+      restoreRoutineBackup(); await wait(20); confirm(); await wait(30);
+      r.undonePrev = Object.assign(st(), { back: plan() === p2 });
+      return r;
+    });
+    const x = out.restored;
+    assert(out.ok && x.name === 'File P' && x.backup === 'File OLD' && x.scope === null && x.key === null && !x.replyUndo, 'the restore leaves no scope open and no reply owning its backup: ' + JSON.stringify(x));
+    assert(out.edit.backup === 'File P' && out.edit.scope === 'cadence', 'the next edit snapshots the restored programme: ' + JSON.stringify(out.edit));
+    assert(out.prev.name === 'File P' && out.prev.back, 'Restore previous programme brings back the restored programme as it was, not the file\'s older one: ' + JSON.stringify(out.prev));
+    assert(out.undoOk && out.undone.scope === null && out.undone.key === null, 'Undo last restore leaves no scope open either: ' + JSON.stringify(out.undone));
+    assert(out.undonePrev.back, 'and Restore previous programme takes back only the edit made after it: ' + JSON.stringify(out.undonePrev));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

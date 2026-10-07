@@ -4461,6 +4461,10 @@ function _applyImportedData(data, opts) {
   var _notStarted=currentWeek===1 && _anc>_mostRecentMonday() && _anc<=_nextMonday(addDays(todayISO(),1)) && _nextMonday(_anc)===_anc;
   localStorage.setItem('kt_week_monday', _notStarted ? _anc : _mostRecentMonday());
   lapsePending = null;
+  // The programme is replaced whole, as _routineReplaced does it: a scope still open (a schedule
+  // edit before the restore) took no snapshot at the next edit, so Restore previous programme
+  // brought back the file's own older one. The restored backup is no reply's undo point either.
+  _routineScope = null; _setBackupScope('');
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   _uniqueLogIds(true);       // and the coach's shared-id twins
