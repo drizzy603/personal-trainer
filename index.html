@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261006-1"/>
+<meta name="build" content="20261007-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -2094,10 +2094,12 @@ var coachLoading  = false;
 // runCoachTurn abandon at its next await checkpoint without committing.
 var _coachGen     = 0;
 var streamingContent = '';
+// The Sonnet the coach runs (chat default, the Sonnet side of the toggle, and every intake).
+var COACH_SONNET  = 'claude-sonnet-5-5';
 var coachModel    = (function(){
-  var m = localStorage.getItem('kt_coach_model')||'claude-sonnet-5';
-  // Stored value from before the Sonnet 5 upgrade — same tier, newer model.
-  return m==='claude-sonnet-4-6' ? 'claude-sonnet-5' : m;
+  var m = localStorage.getItem('kt_coach_model')||COACH_SONNET;
+  // A Sonnet saved by an older page (4.6, 5) moves to the current one: same tier, same price.
+  return (m==='claude-sonnet-4-6' || m==='claude-sonnet-5') ? COACH_SONNET : m;
 }());
 var intakeMode    = false;   // true when generating a new routine
 // The intake spans minutes and iOS evicts the webview freely; the flag is
@@ -17612,10 +17614,10 @@ async function startRoutineIntake(){
   render();
   scrollChatBottom();
   try{
-    // 24K cap: Sonnet 5's adaptive thinking spends output tokens before the
+    // 24K cap: Sonnet's adaptive thinking spends output tokens before the
     // programme JSON, and its tokenizer counts ~30% more — 16K risked
     // truncating long intakes.
-    await runCoachTurn(buildIntakeSystemPrompt(),'claude-sonnet-5',24576);
+    await runCoachTurn(buildIntakeSystemPrompt(),COACH_SONNET,24576);
   }catch(err){
     coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
     saveCoachHistory();
@@ -18557,6 +18559,25 @@ function _coachOutputConfig(model, intake){
   if(intake || !/sonnet-5|opus-5|opus-4-[678]|fable/.test(String(model||''))) return undefined;
   return {effort:'medium'};
 }
+// A tool called by a name that differs from one of COACH_TOOLS only in letter case (Sonnet 5.5
+// does it now and then) runs as that tool, and its pill reads as usual; any other unknown name
+// still answers 'unknown tool' so the model can correct the call.
+function _coachToolName(name){
+  var n=String(name||''), hit=null;
+  COACH_TOOLS.forEach(function(t){ if(t.name===n) hit=t.name; });
+  if(hit) return hit;
+  var ci=COACH_TOOLS.filter(function(t){ return t.name.toLowerCase()===n.toLowerCase(); });
+  return ci.length===1 ? ci[0].name : n;
+}
+// Sonnet 5.5 declines a few kinds of request (stop_reason 'refusal'). With the server-side
+// fallback the API answers the ones it can on another model inside the same call (Claude API
+// only; the reply's 'fallback' marker block is dropped like any block the loop does not echo).
+// Sonnet 5.5 only: Haiku 4.5 takes no fallbacks. Off for the session after a 400 that names it.
+var _coachNoFallback=false;
+function _coachFallbacks(model){
+  if(_coachNoFallback || String(model||'')!==COACH_SONNET) return null;
+  return {mode:'default', beta:'server-side-fallback-2026-07-01'};
+}
 // Token spend on the user's own key — what Settings shows next to the key.
 function _recordCoachUsage(u){
   if(!u) return;
@@ -18648,18 +18669,21 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     var res;
     var _apiRetry=0;
     while(true){
+      var _fb=_coachFallbacks(model);
+      var _hdrs={
+        'content-type':'application/json',
+        'x-api-key':getApiKey(),
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      };
+      if(_fb) _hdrs['anthropic-beta']=_fb.beta;
       try{
         // Non-streaming: iOS PWA WKWebView has reliable issues consuming
         // chunked SSE responses (silent stalls past the 60s timeout). The
         // single-JSON path is slower to *feel* but actually completes.
         res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
           method:'POST',
-          headers:{
-            'content-type':'application/json',
-            'x-api-key':getApiKey(),
-            'anthropic-version':'2023-06-01',
-            'anthropic-dangerous-direct-browser-access':'true'
-          },
+          headers:_hdrs,
           body:JSON.stringify({
             model:model,
             max_tokens:maxTok,
@@ -18670,7 +18694,8 @@ async function runCoachTurn(systemPrompt,model,maxTok){
             system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}],
             messages:apiMsgs,
             tools:_cachedCoachTools(),
-            output_config:_coachOutputConfig(model, intakeMode)
+            output_config:_coachOutputConfig(model, intakeMode),
+            fallbacks:_fb?_fb.mode:undefined
           })
         }),intakeMode?300000:180000,'fetch');
       }catch(e){
@@ -18698,6 +18723,9 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       var ed;
       try{ ed=await _withTimeout(res.json(),5000,'errjson'); }catch(e){ ed={}; }
       if(myGen!==_coachGen) return;
+      // A 400 over the server-side fallback (its beta moved on, or this key can't use it): the
+      // coach goes on without it for the session, and this request goes again at once.
+      if(res.status===400 && _fb && /fallback|beta/i.test(String(ed&&ed.error&&ed.error.message||''))){ _coachNoFallback=true; continue; }
       errText=(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status;
       hadError=true;
       break turnLoop;
@@ -18717,9 +18745,11 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       finishedBlocks=data.content.map(function(b){
         if(b && b.type==='tool_use') return {type:'tool_use',id:b.id,name:b.name,input:b.input||{}};
         if(b && b.type==='text')     return {type:'text',text:b.text||''};
-        // Sonnet 5 thinks adaptively; its thinking blocks must be echoed back
+        // Sonnet thinks adaptively; its thinking blocks must be echoed back
         // UNCHANGED in the assistant turn or the tool_result continuation is
-        // rejected. They only live in apiMsgs — history persists text alone.
+        // rejected. They only live in apiMsgs — history persists text alone,
+        // and apiMsgs is append-only within a turn (Sonnet 5.5 binds a block to
+        // the system prompt, tools and every message before it).
         if(b && (b.type==='thinking'||b.type==='redacted_thinking')) return b;
         return null;
       }).filter(Boolean);
@@ -18763,8 +18793,9 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 
     // Execute each tool and build tool_result blocks
     var toolResultBlocks=toolUses.map(function(tu){
-      var out=executeCoachTool(tu.name,tu.input);
-      var call={name:tu.name,input:tu.input,result:out,units:{w:_uW(),d:_uD()}};
+      var tn=_coachToolName(tu.name);
+      var out=executeCoachTool(tn,tu.input);
+      var call={name:tn,input:tu.input,result:out,units:{w:_uW(),d:_uD()}};
       allToolCalls.push(call);
       _runningTools.push(call);
       return {
@@ -18801,8 +18832,11 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // A reply with no text and no tools (refusal, thinking-only, cap hit on a
     // tool result) used to commit content:'' — invisible in the chat, and the
     // API then rejected every later request ('non-empty content'). Say so
-    // locally instead; the Try again chip picks it up.
-    coachMessages.push({role:'assistant',content:'The coach returned no reply — tap Try again.',_error:true,_local:true});
+    // locally instead; the Try again chip picks it up. A decline (stop_reason
+    // 'refusal', after any fallback) says so: asking the same again gets the same.
+    coachMessages.push({role:'assistant',content:stopReason==='refusal'
+      ?'The coach can\u2019t help with that request. Try asking it another way.'
+      :'The coach returned no reply — tap Try again.',_error:true,_local:true});
   }
   if(errText){
     coachMessages.push({role:'assistant',content:errText,_error:true,_local:true});
@@ -19372,6 +19406,7 @@ function buildSystemPrompt(){
   p+='  - PEAK #22c55e (PR attempts / max testing) — final week\n';
   p+='Keep exercise names consistent across weeks so progression tracks. Mark the primary compound per session with isMain:true. Use weight=0 for bodyweight exercises.\n';
   p+='Keep your text reply short — the user sees the effect of the tool calls directly. No need to restate the plan in prose.\n';
+  p+='Write that reply after your last tool call: notes written between tool calls may not be shown, so the final reply has to stand on its own.\n';
   return p;
 }
 
@@ -19458,9 +19493,9 @@ async function sendCoachMessage(){
   scrollChatBottom();
 
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var model=intakeMode?'claude-sonnet-5':coachModel;
+  var model=intakeMode?COACH_SONNET:coachModel;
   // Intake gets extra headroom: adaptive thinking + programme JSON under the
-  // Sonnet 5 tokenizer can overflow 16K.
+  // Sonnet tokenizer can overflow 16K.
   var maxTok=intakeMode?24576:16384;
   // A Stopped turn's pending await can resolve minutes later — its finally
   // must not clear the loading state of a NEWER turn the user has started.
@@ -19523,7 +19558,7 @@ async function coachRetryLast(){
   coachLoading=true; streamingContent='';
   render(); scrollChatBottom();
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var model=intakeMode?'claude-sonnet-5':coachModel;
+  var model=intakeMode?COACH_SONNET:coachModel;
   var maxTok=intakeMode?24576:16384;
   var myGen=_coachGen;
   try{
@@ -19555,7 +19590,7 @@ function renderCoach(){
   var wd3=getWkData();
   var isHaiku=coachModel.indexOf('haiku')!==-1;
   var modelLabel=isHaiku?'Haiku':'Sonnet';
-  var modelNext=isHaiku?'claude-sonnet-5':'claude-haiku-4-5-20251001';
+  var modelNext=isHaiku?COACH_SONNET:'claude-haiku-4-5-20251001';
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';

@@ -46,7 +46,8 @@ run('an empty reply becomes a local notice, never content:""', async () => {
     const out = await app.page.evaluate(async () => {
       coachMessages = [{ role: 'user', content: 'hello' }];
       const realFetch = window.fetch;
-      window.fetch = async () => new Response(JSON.stringify({ content: [], stop_reason: 'refusal', usage: {} }),
+      // An empty reply that is not a decline (a decline has its own notice since 20261007-1: spec 114)
+      window.fetch = async () => new Response(JSON.stringify({ content: [], stop_reason: 'end_turn', usage: {} }),
         { status: 200, headers: { 'content-type': 'application/json' } });
       try {
         localStorage.setItem('kt_apikey', 'sk-test');
