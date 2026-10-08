@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261007-1"/>
+<meta name="build" content="20261007-2"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -478,6 +478,9 @@ select option{background:var(--bg);}
 .coach-head-title{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);}
 .coach-head-r{display:flex;align-items:center;gap:8px;}
 .coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;}
+/* The model switch reads "Sonnet 5.5"; on the narrowest screens (320 pt Display Zoom) the version
+   drops so the header keeps its one-line title (the button's accessible name keeps it). */
+@media (max-width:345px){.kt-model-ver{display:none;}}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
 .coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
 .coach-bubble.assistant{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--accent);color:var(--text);border-bottom-left-radius:5px;font-weight:500;}
@@ -18559,6 +18562,12 @@ function _coachOutputConfig(model, intake){
   if(intake || !/sonnet-5|opus-5|opus-4-[678]|fable/.test(String(model||''))) return undefined;
   return {effort:'medium'};
 }
+// A model's name as the coach header shows it: claude-sonnet-5-5 reads Sonnet 5.5, and a dated
+// snapshot (claude-haiku-4-5-20251001) Haiku 4.5.
+function _coachModelName(m){
+  var x=/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(String(m||''));
+  return x ? x[1].charAt(0).toUpperCase()+x[1].slice(1)+' '+x[2]+(x[3]?'.'+x[3]:'') : 'Claude';
+}
 // A tool called by a name that differs from one of COACH_TOOLS only in letter case (Sonnet 5.5
 // does it now and then) runs as that tool, and its pill reads as usual; any other unknown name
 // still answers 'unknown tool' so the model can correct the call.
@@ -19589,8 +19598,8 @@ function renderCoach(){
   var apiKey=getApiKey();
   var wd3=getWkData();
   var isHaiku=coachModel.indexOf('haiku')!==-1;
-  var modelLabel=isHaiku?'Haiku':'Sonnet';
   var modelNext=isHaiku?COACH_SONNET:'claude-haiku-4-5-20251001';
+  var modelLabel=_coachModelName(coachModel), modelSwitch='Coach model: '+modelLabel+'. Switch to '+_coachModelName(modelNext);
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';
@@ -19752,7 +19761,7 @@ function renderCoach(){
         :'')+
       (intakeMode
         ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
-        :'<button onclick="setCoachModel(\''+modelNext+'\')" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;">'+modelLabel+'</button>'
+        :'<button onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
       )+
     '</div>'+
   '</div>';

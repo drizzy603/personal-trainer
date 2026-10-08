@@ -1,5 +1,5 @@
 // The coach runs Claude Sonnet 5.5 (web 20261007-1): the chat default, the Sonnet side of the
-// Sonnet/Haiku toggle and every intake. A Sonnet saved by an older page (4.6, 5) moves to it;
+// Sonnet/Haiku toggle and every intake; the toggle reads Sonnet 5.5 / Haiku 4.5 (20261007-2). A Sonnet saved by an older page (4.6, 5) moves to it;
 // Haiku stays Haiku. Sonnet 5.5 requests carry the server-side fallback (fallbacks:"default",
 // beta server-side-fallback-2026-07-01), dropped for the session after a 400 that names it;
 // Haiku requests carry neither it nor effort. Within a turn the conversation is append-only and
@@ -41,10 +41,12 @@ run('the coach runs Sonnet 5.5; an older page\'s Sonnet moves to it, Haiku stays
         const r = { model: coachModel };
         switchTab('coach'); coachView = 'chat'; render();
         await new Promise(res => setTimeout(res, 20));
-        // the Sonnet/Haiku toggle, both ways
+        // the Sonnet/Haiku toggle, both ways; it names the model running and the one it switches to
         const tog = () => [...document.querySelectorAll('button')].find(b => /setCoachModel\(/.test(b.getAttribute('onclick') || ''));
-        const t1 = tog(); if (t1) t1.click(); r.afterOne = coachModel;
-        const t2 = tog(); if (t2) t2.click(); r.afterTwo = coachModel; r.saved = localStorage.getItem('kt_coach_model');
+        const lab = b => b ? [b.textContent.trim(), b.getAttribute('aria-label')] : null;
+        const t1 = tog(); r.label0 = lab(t1); if (t1) t1.click(); r.afterOne = coachModel;
+        const t2 = tog(); r.label1 = lab(t2); if (t2) t2.click(); r.afterTwo = coachModel; r.saved = localStorage.getItem('kt_coach_model');
+        r.names = ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5-5', 'claude-fable-5-1', 'gpt-x', ''].map(_coachModelName);
         return r;
       });
       out[key].errors = app.errors.join('|');
@@ -56,6 +58,9 @@ run('the coach runs Sonnet 5.5; an older page\'s Sonnet moves to it, Haiku stays
   assert(out.haiku.model === H, 'Haiku stays Haiku: ' + out.haiku.model);
   assert(out.fresh.afterOne === H && out.fresh.afterTwo === S && out.fresh.saved === S, 'the toggle goes to Haiku and back to Sonnet 5.5: ' + JSON.stringify(out.fresh));
   assert(out.haiku.afterOne === S, 'from Haiku the toggle lands on Sonnet 5.5: ' + out.haiku.afterOne);
+  assert(JSON.stringify(out.fresh.label0) === JSON.stringify(['Sonnet 5.5', 'Coach model: Sonnet 5.5. Switch to Haiku 4.5']) &&
+    JSON.stringify(out.fresh.label1) === JSON.stringify(['Haiku 4.5', 'Coach model: Haiku 4.5. Switch to Sonnet 5.5']), 'the switch reads the model running and names the one it switches to: ' + JSON.stringify([out.fresh.label0, out.fresh.label1]));
+  assert(JSON.stringify(out.fresh.names) === JSON.stringify(['Sonnet 5.5', 'Haiku 4.5', 'Haiku 4.5', 'Sonnet 5', 'Opus 5.5', 'Fable 5.1', 'Claude', 'Claude']), 'model ids read as names: ' + JSON.stringify(out.fresh.names));
   for (const k of Object.keys(out)) assert(out[k].errors === '', k + ': no page errors: ' + out[k].errors);
 });
 
