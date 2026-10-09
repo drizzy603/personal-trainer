@@ -5802,8 +5802,11 @@ function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 // The swap morning waits for the watch queue: a final-week session logged on the wrist and
 // drained a second after launch was left out of round 2's loads and filed as its week 1. With
 // a watch bridge the swap runs once the drain has settled (at most 6 s), then the week clock
-// catches up (the start may have been weeks ago).
-var _nrDrainWait=null, _nrHeld=false;
+// catches up (the start may have been weeks ago). The hold is checked again when the wait ends:
+// START tapped during it opened round 1's last week, and the swap landed under that workout, which
+// was filed as round 2's week 1. Held then, the week clock moves as it would have.
+// _nrThen: what waits for a held round to start (_roundAfterWorkout).
+var _nrDrainWait=null, _nrHeld=false, _nrThen=[];
 function _applyNextRoundAfterDrain(){
   var p=_nextRoundSet(); if(!p || todayISO()<p.startsOn) return;
   // Never under a workout under way (_roundWaitsForWorkout): its sets are not saved yet.
@@ -5812,9 +5815,18 @@ function _applyNextRoundAfterDrain(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions){ _applyNextRound(false); return; }
   if(_nrDrainWait) return;
-  var done=false, go=function(){ if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null; if(_applyNextRound(false)){ autoAdvanceWeek(); render(); } };
+  var done=false, go=function(){
+    if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null;
+    if(_roundWaitsForWorkout()) _nrHeld=true;
+    else if(!_applyNextRound(false)){ _nrFlush(); return; }
+    autoAdvanceWeek(); render(); _nrFlush();
+  };
   _nrDrainWait=setTimeout(go, 6000);
-  Promise.resolve(drainWatchSessions()).then(go, go);
+  // The wrist's live state is read with the queue: a launch or a return decided before the page
+  // had heard from a wrist workout under way, and swapped the round in under it.
+  var live=null;
+  try{ if(TWch.getLiveState) live=Promise.resolve(TWch.getLiveState()).then(function(r){ if(r && r.json) _onWatchLive(r.json); }, function(){}); }catch(e){}
+  Promise.all([drainWatchSessions(), live]).then(go, go);
 }
 function autoAdvanceWeek(){
   _applyNextRoundAfterDrain();
@@ -6313,14 +6325,11 @@ function skipMissed(date, type){
 function _tomorrowLabel(){
   var _dowIdx=(new Date().getDay()+6)%7, _tomIdx=(_dowIdx+1)%7;
   var _tomWeek=getWeekPlan();
-  // On the Sunday BEFORE a programme starts, tomorrow is week 1's Monday, not
-  // week 2's — do not look ahead a week that has not begun.
-  // After the final week it repeats, or a next round starting tomorrow begins at its week 1
-  // (this programme's week 1): read as week 13, the routine-wide cadence named the wrong day.
-  if(_dowIdx===6 && _programmeStarted()){
-    var _nr=_nextRoundSet(), _tw=(_nr && _nr.startsOn<=addDays(todayISO(),1)) ? 1 : Math.min(getTotalWeeks(), currentWeek+1);
-    try{ var _nw=getWeekPlanForWeek(_tw); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
-  }
+  // Read as the app will show tomorrow (_planWeekFor, as the widget and the watch): on the Sunday
+  // before a programme starts that is week 1's Monday; after the final week it repeats, or a next
+  // round starting tomorrow begins at its week 1 (read as week 13, the routine-wide cadence named the
+  // wrong day); with nothing logged Monday keeps the week (it named next week's Monday).
+  try{ var _nw=_planWeekFor(addDays(todayISO(),1)).plan; if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
   return tomPlan.isUnknown ? 'Unset' : tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
@@ -6421,11 +6430,12 @@ function getNextSession() {
   var sports = getSportLogs();
   var skips = getSkips();
   var today = todayISO();
-  var total = getTotalWeeks();
   // From last Monday, but never from before this programme (or round) began, and each day
   // from its own week's cadence: a plan started today offered the Monday of the week before
-  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL").
-  var planFor = function(d){ return getWeekPlanForWeek(Math.min(total, weekForDate(d))); };
+  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL"). Each week as the app
+  // will show it (_planWeekFor): with nothing logged Monday keeps week 1, so next week's cadence
+  // named a first session ("Legs, is Monday") the app, the widget and the watch did not.
+  var planFor = function(d){ return _planWeekFor(d).plan; };
   var start = addDays(getMondayISO(), -7), from = _roundStartISO();
   if (from > start) start = from;
   for (var i = 0; i < 14; i++) {
@@ -7103,8 +7113,8 @@ function renderTodayEditorial(){
         var _nxl = _dayLabel(_nx);
         // The next day that holds it, each read from its own week as getNextSession reads it (this
         // week's plan named a weekday already gone when next week's cadence differs).
-        var _nxDow = -1, _nxTot = getTotalWeeks();
-        for(var _q=1;_q<=7 && _nxDow<0;_q++){ var _dq=addDays(todayISO(),_q), _dw=(new Date(_dq+'T00:00:00').getDay()+6)%7, _pq=getWeekPlanForWeek(Math.min(_nxTot, weekForDate(_dq)))[_dw]; if(_pq && _pq.type===_nx) _nxDow=_dw; }
+        var _nxDow = -1;
+        for(var _q=1;_q<=7 && _nxDow<0;_q++){ var _dq=addDays(todayISO(),_q), _dw=(new Date(_dq+'T00:00:00').getDay()+6)%7, _pq=_planWeekFor(_dq).plan[_dw]; if(_pq && _pq.type===_nx) _nxDow=_dw; }
         body = 'Your first session, '+_nxl+', is '+(_nxDow>=0?['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_nxDow]:'next')+'. Start it today if you are keen \u2014 the plan adjusts.';
       }
     }
@@ -8945,18 +8955,43 @@ function renderRunSegment(){
 // A workout is under way while the runner is open or a restored draft waits to resume
 // (runnerSession outlives a finished or closed session, so it alone does not say so).
 function _runnerInProgress(){ return !!(runnerSession && (runnerOpen || runnerResumePending)); }
-// A set round waits for a workout under way: the runner open, LIVE ON WATCH (a wrist set in the
-// last half hour), or a draft that can still be resumed (read from storage: the boot checks
+// A set round waits for a workout under way: the runner open, one on the wrist (_wristWorkUnderway),
+// or a draft that can still be resumed (read from storage: the boot checks
 // before it restores one). Swapped in at midnight under the runner's wake lock, the round was
 // re-based without the final week's last workout and that workout was filed as its week 1. The
 // minute clock and a return roll the day once, so a held round starts when the workout is saved
 // or discarded here, else at the next minute (a workout the wrist finished drains first).
 function _roundWaitsForWorkout(){
   if(runnerOpen && runnerSession) return true;
-  if(_watchLive && Date.now()-(_watchLive.at||0)<30*60*1000) return true;
+  if(_wristWorkUnderway()) return true;
   try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000); }catch(e){ return false; }
 }
-function _roundAfterWorkout(){ if(!_nrHeld || _roundWaitsForWorkout()) return; _nrHeld=false; autoAdvanceWeek(); render(); }
+// The wrist's workout under way {slot, startedAt, ended}, from every live message and the shell's
+// live cache. Kept apart from the LIVE ON WATCH banner (_watchLive), which it used to be: Hide put
+// the workout away with the banner, the cache is read after a launch has decided, and a phone locked
+// for half an hour heard nothing. It stands until its copy is filed (10 min after the wrist ended it,
+// if that copy never comes), at most 6 h from its start, as the banner does.
+var _wristWork=null;
+function _wristWorkUnderway(){
+  var w=_wristWork, now=Date.now(); if(!w) return false;
+  if(now-w.startedAt>=6*3600*1000 || (w.ended && now-w.ended>=10*60*1000) || _wristSessionFiled(w.slot, w.startedAt)){ _wristWork=null; return false; }
+  return true;
+}
+// then: run once the round has started (on the phone the swap waits for the watch queue), or at
+// once when it cannot (still held, or nothing is due).
+function _roundAfterWorkout(then){
+  if(then) _nrThen.push(then);
+  if(_nrHeld && !_roundWaitsForWorkout()){ _nrHeld=false; autoAdvanceWeek(); render(); }
+  if(!_nrDrainWait) _nrFlush();
+}
+function _nrFlush(){ var a=_nrThen; _nrThen=[]; a.forEach(function(f){ f(); }); }
+// The workout under way gives way to another day's. A round it held starts first, so the new one
+// is built from the round's week 1: "Discard and start" on the round's Monday opened the old
+// round's last week, and that workout was filed into it.
+function _runnerReplace(type){
+  runnerOpen=false; runnerResumePending=false; _clearRunnerDraft();
+  _roundAfterWorkout(function(){ if(!_runnerInProgress()) openDeckRunner(type, true); });
+}
 function _runnerLoggedSets(){ var n=0; Object.keys(runnerCompleted||{}).forEach(function(k){ n+=(parseInt(runnerCompleted[k],10)||0); }); return n; }
 function openDeckRunner(overrideType, force){
   // Never over a workout under way: START, the widget's trovo://start and the make-up and
@@ -8970,10 +9005,12 @@ function openDeckRunner(overrideType, force){
         if(currentTab!=='log'){ switchTab('log'); } else { paintRunner(); }
         return;
       }
+      _runnerReplace(overrideType);   // nothing logged on it: another day takes its place
+      return;
     } else {
       _ktConfirm({title:_dayLabel(_curT)+' is under way', body:_plural(_n,'set')+' logged. Starting '+_dayLabel(overrideType)+' discards them.',
         confirmLabel:'Discard and start '+_dayLabel(overrideType),
-        onConfirm:function(){ try{ _watchSendDiscard(); }catch(e){} runnerOpen=false; runnerResumePending=false; _clearRunnerDraft(); openDeckRunner(overrideType, true); }});
+        onConfirm:function(){ try{ _watchSendDiscard(); }catch(e){} _runnerReplace(overrideType); }});
       return;
     }
   }
@@ -9778,8 +9815,12 @@ function runnerFinishSession(){
   sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
   var _owned=Object.keys(runnerSession.ownAt||{});
   // Filed on the day it began, before a round started since (a draft resumed after "Start round 2
-  // today"): the clock now reads that day as week 1, so it keeps the week it began in.
-  var _wk=(_sessionDate===_startISO && runnerSession.week>0 && _sessionDate<_roundStartISO()) ? runnerSession.week : weekForDate(_sessionDate);
+  // today"): the clock now reads that day as week 1, so it keeps the week it began in. Told by the
+  // time the round was swapped in, not by the date: "today" anchors week 1 on this Monday, so a
+  // draft begun earlier today was filed as week 1 BASE (and left out of the round all the same).
+  var _crNow=getCustomRoutine(), _began=Number(runnerSession.startedAt)||0, _since=_began>0 && (Number(_crNow && _crNow.startedAt)||0)>_began;
+  var _kept=_sessionDate===_startISO && runnerSession.week>0 && (_sessionDate<_roundStartISO() || _since);
+  var _wk=_kept ? runnerSession.week : weekForDate(_sessionDate);
   var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName, label:_dayLabel(runnerSession.dayName),
     week:_wk, exercises:exsOut, note:'', prs:[],
     startedAt:runnerSession.startedAt||undefined,
@@ -9787,6 +9828,12 @@ function runnerFinishSession(){
     phoneOwned:(_owned.length?_owned:undefined),
     phoneOwnedLen:(_owned.length?(runnerSession.ownLen||{}):undefined)};
   _stampBlock(_newRec);
+  // ...and the block that week has in the round it began in, archived at the swap (read on the
+  // round that replaced it, a block it was not trained in, or none).
+  if(_kept && _since){
+    var _a0=getRoutineArchive()[0], _b0=(_a0 && Number(_a0.id)>=_began) ? _weekBlock(_a0.routine, _wk) : '';
+    if(_b0){ _newRec.bName=_b0; _newRec.bWk=_wk; }
+  }
   _wristCopies.forEach(function(w){
     _mergeWristExercises(_newRec, w.exercises);
     (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });
@@ -9822,6 +9869,7 @@ function runnerFinishSession(){
   _newRec.exercises.forEach(function(e){ if(e && e.name && Array.isArray(e.reps)) _endReps[e.name]=e.reps.map(function(r){ return parseInt(r)||0; }); });
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:_endReps, weights:{}, ended:true, endedAt:Date.now() };
+  if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist ends that day's workout on it (its sets drain)
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
@@ -12306,6 +12354,15 @@ function carryForward(slot, name, lb, c, scope){
 }
 function _carryTap(btn, sessId){
   var d=btn&&btn.dataset; if(!d) return;
+  // Judged again at the tap: the COMPLETE sheet paints its offer once, and a round held for the
+  // workout swapped in under it (on the phone the swap waits for the watch queue), so the tap wrote
+  // round 1's carry into round 2's week as the owner's edit.
+  var _s0=sessId ? getSessions().filter(function(s){ return s && s.id===sessId; })[0] : null;
+  if(sessId && !(_s0 && _carryCandidates(_s0).some(function(k){ return k.slot===d.s && k.name===d.n && k.c===parseInt(d.c,10); }))){
+    var r0=btn.closest && btn.closest('.kt-carry-row'); if(r0) r0.remove();
+    showToast('Not carried \u2014 the plan has changed since this workout');
+    return;
+  }
   if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10), sessId?'carry:'+sessId:null) && sessId){
     // The session is done with once nothing is left to carry: marked on the first tap, the
     // second lift above the plan was never offered again.
@@ -22763,6 +22820,7 @@ function _watchSendDiscard(){
   if(!runnerSession) return;
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''),
     startedAt:runnerSession.startedAt||Date.now(), reps:{}, weights:{}, ended:true, discarded:true, endedAt:Date.now() };
+  if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist drops that day's workout too
   // Sent now, not on the debounce: START within 800 ms used to replace it
   // with the new session's state and the wrist kept the discarded sets.
   if(!runnerOpen){ try{ _pushWatchPlan(); }catch(e){} }
@@ -22963,7 +23021,15 @@ function _pushWatchPlan(){
         rpe:parseInt(ex.rpe)||0 });
     });
     var hasPlan=!!(hasCustomRoutine()||liveRun);
-    var plan={ week:currentWeek, date:todayISO(),
+    // A set round due today and not swapped in yet (held for a workout under way, or waiting for the
+    // queue): the wrist has shown its week 1 since midnight (the week ahead), and a session trained
+    // there is the round's (_nrPreviewTrained). Sent the old round's parked week instead, the wrist
+    // trained that and it was filed as the new round's week 1. Only while that claim holds (on time,
+    // set before its Monday): a round first opened after its start week claims nothing.
+    var _nrP=(!liveRun && hasCustomRoutine()) ? _nextRoundSet() : null;
+    var _nrOwn=!!(_nrP && _nrP.startsOn<=todayISO() && !(_nrP.startsOn<_mostRecentMonday()) && String(_nrP.at||'')<_nrP.startsOn);
+    var plan=_nrOwn ? Object.assign(_watchPlanForDate(todayISO()), { theme:_watchThemeTokens(), unit:_uW() })
+      : { week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
       slot:String(liveRun?(runnerSession.dayName||''):(hasPlan?(act.dayName||''):'')),
       short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan?(act.type==='lift'?_dayShort(act.dayName):(act.dayName||'')):'')),
@@ -23002,6 +23068,9 @@ function _onWatchLive(json){
   var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
   var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
   _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
+  // The workout a due round waits for (_wristWorkUnderway, stamped below with the banner): its end.
+  var _ws=Number(s.startedAt)||0, _same=!!(_wristWork && _wristWork.slot===String(wristSlot) && Math.abs(_wristWork.startedAt-_ws)<1500);
+  if(s.ended && _same) _wristWork.ended=Date.now();
   if(s.hk===true) _wristHKActive=true;   // the wrist runs a Health workout for this session (build 52+)
   // The wrist has moved on to a session begun after the phone's finish: the
   // repeated 'ended' is stale now. Watches before build 51 reset on any
@@ -23153,6 +23222,8 @@ function _onWatchLive(json){
     _watchLive=null;
   } else {
     _watchLive={ dayName:String(wristSlot), sets:n, at:Date.now() };   // a slot: the banner renders it through _dayLabel
+    // Not mirrored here (the runner and its draft hold a round for that one): the workout itself.
+    if(!_same && _ws>0) _wristWork={ slot:String(wristSlot), startedAt:_ws, ended:0 };
   }
   if(currentTab==='log') render();
 }
