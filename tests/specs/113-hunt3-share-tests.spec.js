@@ -37,6 +37,13 @@
 //   or after it, less one put in later), so round 2, a Programme History restore and Restore
 //   Previous of its own programme keep BASE/BUILD (they read no block), and after Start new it
 //   reads Programme History's copy. A log filed after such a replacement still reads none.
+// - T41 (R57 follow-up): a programme with no inUseFrom (put in by a page from before 20261006-1)
+//   could name any old card's block, so after Regenerate on such a page (archived nowhere) or a
+//   deleted Programme History entry, the next programme named the old cards' blocks once it was
+//   archived itself (WEEK 02 · HYPERTROPHY on a BASE card; the page before R57 read none).
+//   Programme History now dates such a programme from its own week 1, and a programme with no date
+//   can veto a block but never names one alone. R57's cases keep their blocks on the clock their
+//   logs were filed on (the seed's floating clock put every log before its week 1).
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
@@ -244,6 +251,12 @@ run('R57: old cards keep their block after round 2, a Programme History restore 
         const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
         const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
         const starter = () => applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 });
+        // The seed's programme on the clock its logs were filed on (its week-6 log fell in week 6),
+        // parked on its last week since, as on a phone that trained it. Programme History dates a
+        // programme with no inUseFrom by its own week 1 (T41): on the seed's floating clock (week 6
+        // = this week) all its logs came before it, as a later programme's do.
+        const w6 = getSessions().filter(s => Number(s.week) === 6).map(s => s.date).sort()[0];
+        _setWeek(6, addDays(w6, -((new Date(w6 + 'T00:00:00').getDay() + 6) % 7))); autoAdvanceWeek();
         // the stale wrist session below was trained ten days ago, in this programme's week and block
         const lateD = addDays(todayISO(), -10); r.lateWant = [weekForDate(lateD), _weekBlock(cr0, weekForDate(lateD))];
         if (path === 'round') {
@@ -298,6 +311,94 @@ run('R57: old cards keep their block after round 2, a Programme History restore 
     assert(out[p].errors === '', p + ': no page errors: ' + out[p].errors);
   }
   assert(JSON.stringify(out.history.unknown) === '["BASE","","BUILD"]', 'programmes that may have been the one disagree on week 4: no block there, never BUILD: ' + JSON.stringify(out.history.unknown));
+});
+
+// T41: a programme from a page before inUseFrom no longer names the blocks of old cards it was never the
+// programme of, once it is archived (the programme those cards were trained in left no trace).
+run('T41: after Regenerate on an older page or a deleted entry, old cards name none of the next programme\'s blocks', async () => {
+  const out = {};
+  for (const path of ['round', 'startNew', 'oldArchive', 'deleted']) {
+    const app = await boot({ native: true });
+    try {
+      out[path] = await app.page.evaluate(async (path) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const ok = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const cr0 = getCustomRoutine(), r = {};
+        // the seed's logs from before stamps, in weeks 2, 4 and 6: BASE, BASE, BUILD
+        const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
+        const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+        r.before = phases();
+        // the seed leaves without a trace: Regenerate (archived nowhere), or Start new and its entry deleted
+        if (path === 'deleted') {
+          startNewProgramme(); ok(); await wait(20);
+          deleteArchivedRoutine(getRoutineArchive()[0].id); ok(); await wait(20); closeRoutineArchiveModal();
+        } else { resetCustomRoutine(); ok(); await wait(20); }
+        // P1: the coach's programme, saved by a page from before inUseFrom, its blocks named otherwise
+        const names = w => w <= 4 ? 'HYPERTROPHY' : w <= 8 ? 'STRENGTH' : w <= 11 ? 'POWER' : 'DELOAD';
+        const weeks = cr0.weeks.map((w, i) => Object.assign(JSON.parse(JSON.stringify(w)), { wk: i + 1, bName: names(i + 1) }));
+        r.res = executeCoachTool('update_routine_weeks', { weeks, weekPlan: cr0.weekPlan });
+        const p1 = getCustomRoutine(); delete p1.inUseFrom; lsSet('kt_routine', p1);
+        // trained ten weeks since: its week 1 began after every one of those logs
+        _setWeek(11, _mostRecentMonday());
+        r.p1Start = _roundStartISO(); r.newest = legacy.map(s => s.date).sort().pop();
+        // P1 leaves in turn: its round 2, or Start new and the starter
+        if (path === 'startNew') { startNewProgramme(); ok(); await wait(20); applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 }); }
+        else { lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() }); _applyNextRound(true); }
+        await wait(20);
+        // round 2 started on a page from before this one: its Programme History entry has no date
+        if (path === 'oldArchive') { const a = getRoutineArchive(); delete a[0].routine.inUseFrom; lsSet('kt_routine_archive', a); }
+        const cr = getCustomRoutine(), a0 = getRoutineArchive()[0];
+        r.state = [cr.name, parseInt(cr.cycle, 10) || 1, cr.inUseFrom || null, a0 && a0.routine.name, a0 && (a0.routine.inUseFrom || null)];
+        r.after = phases();
+        return r;
+      }, path);
+      out[path].errors = app.errors.join('|');
+    } finally { await app.close(); }
+  }
+  for (const p of Object.keys(out)) {
+    const o = out[p];
+    assert(JSON.stringify(o.before) === '["BASE","BASE","BUILD"]', p + ': the old logs read their blocks first: ' + JSON.stringify(o.before));
+    assert(o.res && o.res.ok && o.p1Start > o.newest, p + ': P1 was saved and its week 1 began after the old logs: ' + JSON.stringify([o.res && o.res.error, o.p1Start, o.newest]));
+    assert(o.after.every(x => x === ''), p + ': the old cards name none of P1\'s blocks (read HYPERTROPHY/HYPERTROPHY/STRENGTH): ' + JSON.stringify(o));
+    assert(o.errors === '', p + ': no page errors: ' + o.errors);
+  }
+  // Programme History dates the undated P1 from its own week 1; the programme in use is left as it was
+  for (const p of ['round', 'deleted']) {
+    const s = out[p].state;
+    assert(s[0] === 'Custom Programme' && s[1] === 2 && s[2] === null && s[3] === 'Custom Programme' && s[4] === out[p].p1Start, p + ': round 2 is on as it was built, P1 archived from its week 1: ' + JSON.stringify(out[p]));
+  }
+  assert(out.startNew.state[0] === 'Your starter block' && out.startNew.state[4] === out.startNew.p1Start, 'startNew: the starter is on, P1 archived from its week 1: ' + JSON.stringify(out.startNew.state));
+  assert(out.oldArchive.state[1] === 2 && out.oldArchive.state[4] === null, 'oldArchive: an undated entry from an older page: ' + JSON.stringify(out.oldArchive.state));
+});
+
+// T41: Programme History dates a programme with no inUseFrom without counting it twice: archiving it
+// again, or restoring its entry while it is the one in use, adds no copy, and the restored one keeps its date.
+run('T41: Programme History dates an undated programme from its week 1 and still never holds it twice', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const ok = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+      const r = {}, cur = () => localStorage.getItem('kt_routine');
+      lsSet('kt_routine_archive', []);
+      _setWeek(3, _mostRecentMonday());
+      const before = cur(), start = _roundStartISO();
+      r.twice = [archiveCurrentRoutine(), archiveCurrentRoutine(), getRoutineArchive().length];
+      const e = getRoutineArchive()[0];
+      r.dated = [e.routine.inUseFrom === start, start === addDays(_mostRecentMonday(), -14), cur() === before, !getCustomRoutine().inUseFrom];
+      // its entry restored while the same programme is the one in use: nothing is archived again
+      restoreArchivedRoutine(e.id); ok(); await wait(20);
+      r.restored = [getRoutineArchive().length, getCustomRoutine().inUseFrom === start];
+      // and once it carries its date, archiving it again keeps that date (no new one from the restarted clock)
+      r.again = [archiveCurrentRoutine(), getRoutineArchive().length, getRoutineArchive()[0].routine.inUseFrom === start];
+      return r;
+    });
+    assert(out.twice[0] && out.twice[1] && out.twice[2] === 1, 'archiving the same programme twice adds one entry: ' + JSON.stringify(out.twice));
+    assert(out.dated.every(Boolean), 'the entry is dated from its week 1 and the programme in use is untouched: ' + JSON.stringify(out.dated));
+    assert(out.restored[0] === 0 && out.restored[1], 'restoring its entry adds no copy of the same programme, and it comes back dated: ' + JSON.stringify(out.restored));
+    assert(out.again[0] && out.again[1] === 1 && out.again[2], 'archived again, it keeps the date it already has: ' + JSON.stringify(out.again));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
 
 run('L47: the share card rounds the minutes before it splits off the hours', async () => {
