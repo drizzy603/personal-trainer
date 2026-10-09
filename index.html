@@ -22491,7 +22491,13 @@ function _pushWatchPlan(){
         rpe:parseInt(ex.rpe)||0 });
     });
     var hasPlan=!!(hasCustomRoutine()||liveRun);
-    var plan={ week:currentWeek, date:todayISO(),
+    // A set round due today and not swapped in yet (held for a workout under way, or waiting for the
+    // queue): the wrist has shown its week 1 since midnight (the week ahead), and a session trained
+    // there is the round's (_nrPreviewTrained). Sent the old round's parked week instead, the wrist
+    // trained that and it was filed as the new round's week 1.
+    var _nrP=(!liveRun && hasCustomRoutine()) ? _nextRoundSet() : null;
+    var plan=(_nrP && _nrP.startsOn<=todayISO()) ? Object.assign(_watchPlanForDate(todayISO()), { theme:_watchThemeTokens(), unit:_uW() })
+      : { week:currentWeek, date:todayISO(),
       dayName:String(liveRun?(_dayLabel(runnerSession.dayName)||'Session'):(hasPlan?(_dayLabel(act.dayName)||act.type||'Rest'):'No plan')),
       slot:String(liveRun?(runnerSession.dayName||''):(hasPlan?(act.dayName||''):'')),
       short:String(liveRun?_dayShort(runnerSession.dayName):(hasPlan?(act.type==='lift'?_dayShort(act.dayName):(act.dayName||'')):'')),
