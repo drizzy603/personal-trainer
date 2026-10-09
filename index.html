@@ -4194,7 +4194,7 @@ function _setWorkingWeights(exs, date, rec, o){
   });
   var ok=lsSet('kt_weights', w);
   if(ok && rec) _wwStamp(rec, set);
-  if(ok) _dropNotedWeights(wrote);   // a log newer than the undo point keeps the load it set
+  if(ok) _dropNotedWeights(wrote, rec);   // a log newer than the undo point keeps the load it set
   return ok;
 }
 // A log's stamp: rec.wSet = {lift: [kept, set]} for each lift whose working weight it wrote (set),
@@ -13753,7 +13753,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
   }
   // As a new log (_setWorkingWeights): the corrected newest log keeps the load it sets, so a
   // coach reply's Undo noted before it no longer puts the old working weight back under it.
-  if(wtsTouched && lsSet('kt_weights', wts2)) _dropNotedWeights(wrote);
+  if(wtsTouched && lsSet('kt_weights', wts2)) _dropNotedWeights(wrote, s);
   if(s.wSet) _wwStamp(s, wch);   // a stamped log now sets what it was corrected to
   recomputePRs();
   invalidateCoachCard();
@@ -19046,35 +19046,92 @@ function _noteBackupWeight(sc, key, from, to){
   }catch(e){}
 }
 // A log that sets a lift's working weight (the runner's finish, the coach's log_session, a wrist
-// session) is newer than the change a note speaks for: the lift's note goes, any spelling. Undo
-// compared values only, so a workout done at the coach's new load matched the note, and the
-// reply's Undo put the old working weight back under the newest log (or deleted it).
-function _dropNotedWeights(names){
+// session, an Edit sets fix) is newer than the change a note speaks for: the log holds the lift's
+// note, any spelling (its id goes on the note: [before, after, [log ids]]), and Undo keeps the
+// load it set while it is the lift's newest log. Undo compared values only, so a workout done at
+// the coach's new load matched the note and the reply's Undo put the old working weight back
+// under it. The note used to be dropped instead: deleting that workout (a log that met the load
+// sets nothing on its stamp) and then Undo left the undone load as the working weight for good.
+// rec: the log (without one, the lift's newest log holds it).
+function _dropNotedWeights(names, rec){
   if(!names || !names.length) return;
   try{
     var raw=localStorage.getItem('kt_routine_backup'); if(!raw) return;
     var b=JSON.parse(raw); if(!b || !b._w || typeof b._w!=='object') return;
-    var low=names.map(function(x){ return String(x).toLowerCase(); }), n=0;
-    Object.keys(b._w).forEach(function(k){ if(low.indexOf(k.toLowerCase())>=0){ delete b._w[k]; n++; } });
+    var n=0;
+    Object.keys(b._w).forEach(function(k){
+      var p=b._w[k], lk=k.toLowerCase(), nm=null;
+      names.forEach(function(x){ if(nm==null && String(x).toLowerCase()===lk) nm=String(x); });
+      if(nm==null) return;
+      var hl=(rec && rec.id!=null) ? rec : (_newestLog(nm)||{}).s, id=hl ? hl.id : null;
+      if(id==null || !Array.isArray(p)){ delete b._w[k]; n++; return; }
+      var ids=Array.isArray(p[2]) ? p[2].slice() : [];
+      if(ids.indexOf(id)<0){ ids.push(id); b._w[k]=[p[0], p[1], ids]; n++; }
+    });
     if(!n) return;
     if(!Object.keys(b._w).length) delete b._w;
     localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // as _noteBackupWeight: the log itself was saved
   }catch(e){}
 }
-// The noted weights put back: each only while it still holds what the change wrote (a newer log
-// or edit keeps its own). `back` is the reverse note for the version set aside, so Restore
-// Previous again swaps them back.
+// A holder still holds the lift while it is on the lift's newest day (a log with a load), as a
+// log's working weight only ever follows the newest log: deleted, or moved behind an older log,
+// it holds nothing and the note puts the load back.
+function _noteHeld(k, ids, ss){
+  if(!Array.isArray(ids) || !ids.length) return false;
+  var lk=String(k).toLowerCase(), top=null, at=[];
+  (ss||[]).forEach(function(s){
+    if(!s || !(s.exercises||[]).some(function(e){ return e && String(e.name||'').toLowerCase()===lk && _exLoad(e)>0; })) return;
+    var d=String(s.date||'');
+    if(top===null || d>top){ top=d; at=[s]; } else if(d===top) at.push(s);
+  });
+  return at.some(function(s){ return ids.indexOf(s.id)>=0; });
+}
+// The stamps of the logs that hold a lift follow the change put back: a stamp whose kept is the
+// change's load (the log replaced it), or a log that met that load (no entry), now gives back the
+// load from before the change. Undo kept the newer log's load, but its stamp still named the
+// undone one, and deleting the log afterwards brought that load back. Stamped logs only: a log
+// from before the stamp keeps its own rule (_planHolds).
+function _noteStamps(k, p, ids, ss){
+  var out=[], to=p[1]==null ? 0 : parseFloat(p[1]), lk=String(k).toLowerCase();
+  if(!Array.isArray(ids) || !ids.length || !(to>0)) return out;
+  (ss||[]).forEach(function(s){
+    if(!s || ids.indexOf(s.id)<0 || !s.wSet || typeof s.wSet!=='object') return;
+    var done=false;
+    (s.exercises||[]).forEach(function(e){
+      var m=e ? String(e.name||'') : ''; if(done || !m || m.toLowerCase()!==lk) return;
+      var cur=s.wSet[m], v=_exLoad(e); done=true;
+      var mine=Array.isArray(cur) ? (cur[0]!=null && Math.abs((parseFloat(cur[0])||0)-to)<0.01) : (!cur && Math.abs(v-to)<0.01);
+      if(mine) out.push({id:s.id, n:m, v:[p[0]==null ? null : p[0], Array.isArray(cur) ? cur[1] : v]});
+    });
+  });
+  return out;
+}
+function _putNoteStamps(list){
+  if(!list || !list.length) return;
+  var ss=getSessions(), any=false;
+  list.forEach(function(x){ ss.forEach(function(s){
+    if(!s || s.id!==x.id || !s.wSet || typeof s.wSet!=='object') return;
+    s.wSet=Object.assign({}, s.wSet); s.wSet[x.n]=x.v; any=true;
+  }); });
+  if(any) lsSet('kt_sessions', ss);
+}
+// The noted weights put back: each only while it still holds what the change wrote and no log
+// holds it (a newer log or edit keeps its own); the holders' stamps follow (_noteStamps). `back`
+// is the reverse note for the version set aside, holders and all, so Restore Previous again
+// swaps them back.
 function _swapNotedWeights(w){
   if(!w || typeof w!=='object') return null;
-  var weights=JSON.parse(JSON.stringify(getWeights())), back={}, n=0;
+  var weights=JSON.parse(JSON.stringify(getWeights())), back={}, ss=getSessions(), stamps=[];
   Object.keys(w).forEach(function(k){
     var p=w[k]; if(!Array.isArray(p) || p.length<2) return;
+    var ids=(Array.isArray(p[2]) && p[2].length) ? p[2] : null, held=_noteHeld(k, ids, ss);
     var now=Object.prototype.hasOwnProperty.call(weights,k)?weights[k]:null;
-    if(!(now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])))) return;
-    if(p[0]==null) delete weights[k]; else weights[k]=p[0];
-    back[k]=[p[1], p[0]]; n++;
+    var put=!held && (now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])));
+    if(put){ if(p[0]==null) delete weights[k]; else weights[k]=p[0]; }
+    var st=_noteStamps(k, p, ids, ss); stamps=stamps.concat(st);
+    if(put || held || st.length) back[k]=ids ? [p[1], p[0], ids] : [p[1], p[0]];
   });
-  return n ? {weights:weights, back:back} : null;
+  return Object.keys(back).length ? {weights:weights, back:back, stamps:stamps} : null;
 }
 function restoreRoutineBackup(onDone){
   var b=lsGet('kt_routine_backup');
@@ -19097,6 +19154,7 @@ function restoreRoutineBackup(onDone){
     if(!setCustomRoutine(prog)){ putW(); return; }
     if(cur && !lsSet('kt_routine_backup',aside)){ setCustomRoutine(cur); putW(); return; }
     if(!cur) lsDel('kt_routine_backup');
+    if(sw) _putNoteStamps(sw.stamps);   // a log that holds a lift now gives back the load from before the change
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
     _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.

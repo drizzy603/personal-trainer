@@ -1020,3 +1020,110 @@ run('after a backup restore or its undo, the next edit is its own undo point', a
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T11 / T12 / T43 (hunt 5): R15 dropped a lift's note when a workout set its working weight, and a
+// workout that met the noted load stamps nothing (R20). So deleting a workout trained at the
+// coach's (or the keyless +5's) load and then the reply's Undo / Restore previous programme, in
+// either order, left the undone load as the working weight (the coach was told it, the next +5
+// said "Already progressed this week"); a heavier workout's stamp kept the undone load as the one
+// it replaced, and deleting it after the Undo brought that load back. The workout now holds the
+// note: Undo keeps its load while it is the lift's newest log and puts its stamp back with the
+// load, so the delete, before or after, lands on the load from before the change. Restore Previous
+// again (the change back) swaps the stamp back too.
+run('T11/T12/T43: Undo and deleting the workout logged over the change, either order, land on the load from before it', async () => {
+  const variants = [['coach', 190, 'delete-undo'], ['coach', 190, 'undo-delete'], ['coach', 195, 'undo-delete'], ['coach', 185, 'delete-undo'],
+    ['coach', 195, 'undo-redo-delete'], ['keyless', 0, 'delete-undo'], ['keyless', 0, 'undo-delete'], ['keyless', 170, 'undo-delete']];
+  for (const [path, load, order] of variants) {
+    const w0 = path === 'coach' ? 150 : 160;
+    const seed = { kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Bench Press': w0 }) };
+    if (path === 'coach') seed.kt_apikey = 'sk-test';
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, path, load, order, w0]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), c = currentWeek - 1, lastWed = addDays(_mostRecentMonday(), -5);
+        // the lift's older log: last week's Push, every set clean (the keyless +5 is earned on it)
+        lsSet('kt_sessions', [{ id: 8800101, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: 'Bench Press', isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w0, weightLog: [w0, w0, w0, w0], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        recomputePRs();
+        const W = () => getWeights()['Bench Press'] === undefined ? null : getWeights()['Bench Press'];
+        const plan = () => getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight;
+        const todays = () => getSessions().find(s => s.date === T && s.type === 'Push');
+        const st = () => ({ w: W(), plan: plan(), prescribed: _prescribedLb('Bench Press') });
+        const r = {};
+        if (path === 'coach') {
+          eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+            { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+          coachMessages.push({ role: 'user', content: 'bench 190' }); saveCoachHistory();
+          await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        } else startProgression();   // keyless: Today's +5
+        r.changed = st();
+        // today's Push in the runner, at the load it prescribes (load 0) or another
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press'));
+        r.presc = runnerWeights['Bench Press'];
+        if (load) runnerSetWeight(load);
+        runnerEngaged = true; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); closeCompleteSheet(); await wait(20);
+        r.logged = Object.assign(st(), { load: todays().exercises.find(e => e.name === 'Bench Press').weight });
+        const undo = async () => {
+          if (path === 'coach') {
+            switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+            const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+            if (!b) return false;
+            b.click();
+          } else {
+            switchTab('settings'); await wait(30);
+            const row = [...document.querySelectorAll('.settings-row')].find(x => /Restore previous programme/.test(x.textContent));
+            if (!row) return false;
+            row.click();
+          }
+          await wait(20); confirm(); await wait(30); return true;
+        };
+        const del = async () => {
+          switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+          document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+          [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+          closeCalDay(); await wait(10);
+          return !todays();
+        };
+        if (order === 'delete-undo') { r.del = await del(); r.deleted = st(); r.undo = await undo(); r.undone = st(); }
+        else if (order === 'undo-delete') { r.undo = await undo(); r.undone = st(); r.del = await del(); r.deleted = st(); }
+        else {
+          r.undo = await undo(); r.undone = st();
+          restoreRoutineBackup(); await wait(20); confirm(); await wait(30); r.redone = st();
+          r.del = await del(); r.deleted = st();
+          restoreRoutineBackup(); await wait(20); confirm(); await wait(30); r.undoneAgain = st();
+        }
+        r.final = st();
+        if (path === 'coach') r.line = ((buildSystemPrompt().split('CURRENT EXERCISE WEIGHTS')[1] || '').match(/\n  Bench Press: [0-9.]+/) || [''])[0].trim();
+        else {
+          applyProgressionLocal();   // the earned +5 is offered again, and applies
+          r.again = { w: W(), toast: (document.getElementById('toast') || {}).textContent || '' };
+        }
+        return r;
+      }, [MOCK, path, load, order, w0]);
+      const tag = path + ' ' + (load || 'at the prescribed load') + ' ' + order + ': ';
+      const to = path === 'coach' ? 190 : 165, L = load || to;
+      assert(out.changed.w === to && out.changed.plan === to && out.presc === to, tag + 'the change moved the working weight and the plan: ' + JSON.stringify(out));
+      assert(out.logged.load === L && out.logged.w === L, tag + 'today\'s workout logged ' + L + ': ' + JSON.stringify(out.logged));
+      assert(out.undo && out.del, tag + 'Undo was offered and the workout deleted: ' + JSON.stringify(out));
+      if (order === 'delete-undo') {
+        assert(out.deleted.w === to, tag + 'with the change standing, deleting the workout keeps the change\'s load (R20): ' + JSON.stringify(out.deleted));
+      } else {
+        assert(out.undone.w === L && out.undone.plan === 160, tag + 'Undo takes the plan back and keeps the load the newer workout set (R15): ' + JSON.stringify(out.undone));
+      }
+      if (order === 'undo-redo-delete') {
+        assert(out.redone.w === L && out.redone.plan === 190, tag + 'Restore Previous again brings the reply back under the workout\'s load: ' + JSON.stringify(out.redone));
+        assert(out.deleted.w === 190, tag + 'with the reply back, deleting the workout gives back the reply\'s load: ' + JSON.stringify(out.deleted));
+        assert(out.undoneAgain.w === w0 && out.undoneAgain.plan === 160, tag + 'and the reply\'s undo again puts back the load from before it: ' + JSON.stringify(out.undoneAgain));
+      }
+      assert(out.final.w === w0 && out.final.plan === 160 && out.final.prescribed === 160, tag + 'the working weight is the load from before the change: ' + JSON.stringify(out.final));
+      if (path === 'coach') assert(out.line === 'Bench Press: ' + w0, tag + 'and the coach is told it: ' + out.line);
+      else assert(out.again.w === 165 && !/Already progressed/.test(out.again.toast), tag + 'the next +5 is not "already progressed": ' + JSON.stringify(out.again));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
