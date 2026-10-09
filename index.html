@@ -3979,15 +3979,16 @@ function _freezeStreakIfSchedChanges(r){
 // so round 2 swapped in on the old page after a round ended early or parked on its final week
 // read the weeks lived as other weeks' (27 days -> 3). null where the reading stands: no
 // programme, a day of this round, or one of the days between building a first round and its
-// first Monday (2, which never breaks the streak). Week 1 is the one the old page last ran with:
-// as this round's week-1 days were first written down, else as it stands. A schedule edit since
-// 2026-10-04 writes them down before it rewrites week 1 (on 20261004-1/5-1 when the streak
-// reached them), and the old page never read the days before by an edit made after it: the
-// first boot read them by Friday's Legs moved to Saturday on 20261005-1 (26 days -> 14).
-function _streakOldRead(cr){
+// first Monday (2, which never breaks the streak). written: week 1 as this round's week-1 days
+// were first written down, else as it stands. A schedule edit since 2026-10-04 writes them down
+// before it rewrites week 1 (on 20261004-1/5-1 when the streak reached them), and the old page
+// never read the days before by an edit made after it: the first boot read them by Friday's Legs
+// moved to Saturday on 20261005-1 (26 days -> 14). A week stepped back for good writes week 2's
+// days down where week 1 now falls, so _seedStreakDays takes whichever of the two reads further.
+function _streakOldRead(cr, written){
   if(!cr) return function(){ return null; };
   var start=_mondayKeyOf(_roundStartISO()), gap=(parseInt(cr.cycle,10)||1)>1 ? start : addDays(start,-6);
-  var lived=lsGet('kt_streak_days')||{};
+  var lived=(written && lsGet('kt_streak_days')) || {};
   var w1=(getWeekPlanForWeek(1)||[]).map(function(p, i){
     var f=lived[addDays(start, i)];
     if(f!=null && (+f===0 || +f===1)) return +f;
@@ -4004,7 +4005,8 @@ function _streakOldRead(cr){
 // (_streakOldRead): a streak that ran across a programme switch made on the old page dropped the
 // moment the page updated (26 days -> 14), and the next schedule edit froze the drop. So the days
 // before this round's week 1 are walked back twice from the last of them, by each page's
-// reading, each walk to its first training day with nothing logged. Inside the walk that reaches
+// reading, each walk to its first training day with nothing logged (the old page's by week 1 as
+// it stands or as first written down, whichever reaches further). Inside the walk that reaches
 // further, a day not yet written down that the two pages read differently is written as 2: it
 // ends the streak only where both pages say so, and a log on it counts wherever either page
 // counted it, so no streak reads lower than on the old page or on the pages since (the old page's
@@ -4023,8 +4025,10 @@ function _seedStreakDays(repair){
   try{
     var cr=getCustomRoutine(); if(!cr) return true;
     var lived=lsGet('kt_streak_days'); if(!lived || typeof lived!=='object' || Array.isArray(lived)) lived={};
-    var old=_streakOldRead(cr), due=_streakDueFn(), today=todayISO(), logged={}, days=[], oEnd=-1, nEnd=-1, add=0;
+    var old=_streakOldRead(cr), alt=_streakOldRead(cr, true), due=_streakDueFn(), today=todayISO(), logged={}, days=[], oEnd=-1, nEnd=-1, add=0;
     _trainingDays().forEach(function(x){ if(x && x.date) logged[String(x.date)]=1; });
+    var reach=function(rd){ for(var k=1;k<400;k++){ var d=addDays(today,-k); if(rd(d)===1 && !logged[d]) return k; } return 400; };
+    if(reach(alt)>reach(old)) old=alt;
     for(var i=1;i<400;i++){
       var iso=addDays(today,-i), o=old(iso);
       if(o==null) continue;

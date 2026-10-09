@@ -780,12 +780,29 @@ runInTurn('a schedule edit made on the pages before this one does not reach back
         r[k] = { before, streak: calcStreakDays(), wk1: getWeekPlanForWeek(1).map(p => p.isRest ? '-' : p.type[0]).join(''),
           days: [-7, -8, -9, -10, -11, -12, -13].map(n => due(addDays(S, n))).join('') };
       });
+      // A week stepped back for good on 20261005-1 (its freeze, then the clock) leaves week 2's days
+      // (Tue/Thu/Sat here) written down where week 1 now falls: the old page read the days before
+      // by week 1 as it stands, so that reading still counts.
+      __setNow(addDays(S, 16) + 'T18:00:00');
+      const r2 = JSON.parse(base); r2.weeks[1].weekPlan = ['Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest'];
+      lsSet('kt_routine', r2);
+      currentWeek = 3; lsSet('kt_week', 3); localStorage.setItem('kt_week_monday', addDays(S, 14));
+      const rows = [];
+      for (let i = -35; i <= 16; i++) { const dw = ((i % 7) + 7) % 7; if ((i >= 7 && i < 14) ? dw % 2 === 1 && dw < 6 : dw % 2 === 0 && dw < 5) rows.push([addDays(S, i), 'Push']); }
+      lsSet('kt_sessions', logs(rows));
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+      eval(OLDFREEZE)();
+      currentWeek = 2; lsSet('kt_week', 2);
+      r.stepped = { before: calcStreakDays(), start: _roundStartISO() === addDays(S, 7) };
+      _streakUpgrade();
+      r.stepped.streak = calcStreakDays();
       return r;
     }, [CLOCK, LOGS, SWITCHED, OLDFREEZE]);
     assert(out.satLegs.before === 14 && out.satLegs.wk1 === 'P-P--L-', 'the drop, with Friday\'s Legs on Saturday from now on: ' + JSON.stringify(out.satLegs));
     assert(out.satLegs.streak === 26 && out.satLegs.days === '1221212', 'the first boot reads the days before week 1 as the old page did, not by the edit (it was 14): ' + JSON.stringify(out.satLegs));
     assert(out.sunRun.before === 14 && out.sunRun.wk1 === 'P-P-L-R' && out.sunRun.streak === 26 && out.sunRun.days === '1221212',
       'Sunday made a run day the same: A\'s rest Sunday frozen as missed is repaired (it was 14): ' + JSON.stringify(out.sunRun));
+    assert(out.stepped.start && out.stepped.before === 11 && out.stepped.streak === 23, 'a week stepped back keeps the old page\'s week 1 (23, as it showed): ' + JSON.stringify(out.stepped));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
