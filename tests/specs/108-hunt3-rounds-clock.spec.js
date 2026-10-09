@@ -49,6 +49,13 @@
 // - T50 The R35 hold was checked once, before the watch-drain wait: START tapped during that wait
 //   (a launch or a return on the round's Monday) opened round 1's last week, the swap landed under
 //   it, and that workout was filed as round 2's week 1. The hold is checked again when the wait ends.
+// - T24 A draft holding round 2 on its Monday was discarded by "Discard and start <day>" (or replaced
+//   with nothing logged) without letting the round start: the new workout was built from round 1's
+//   final week and filed into it. The round starts first, and the new workout is its week 1.
+// - T26 LIVE ON WATCH held the round only through the banner's state: a cold launch decided before
+//   the shell's live cache was read, a phone locked for half an hour had heard nothing, and Hide
+//   cleared it. The wrist's workout is kept apart, read with the queue, and holds until its copy is
+//   filed (at most 6 h from its start).
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -887,6 +894,73 @@ run('T24: another day started over the workout that held the round starts the ro
       assert(out.saved && out.saved.week === 1 && out.saved.bName === out.saved.w1 && out.saved.inRound, tag + ': and is filed as round 2\'s week 1: ' + JSON.stringify(out.saved));
       assert(!out.legs, tag + ': Sunday\'s discarded sets are not filed');
       assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+run('T26: a workout on the wrist holds the round at a cold launch, on a return after a long lock, after Hide, until its copy is filed', async () => {
+  // The wrist runs Legs from Sunday 23:20. killed: the phone app launched at 00:05 (the shell's live
+  // cache says so); return: a live set seen at 23:25, locked at 23:30, back at 00:05 with no message;
+  // hide: held at midnight, then the banner's Hide; abandoned: never finished on the wrist.
+  for (const mode of ['killed', 'return', 'hide', 'abandoned']) {
+    const app = await boot({ native: true, seed: { kt_week: '12' } });
+    try {
+      await app.page.addInitScript(() => { if (window.__mock) Capacitor.Plugins.TrovoWatch.getLiveState = () => Promise.resolve({ json: sessionStorage.getItem('__live') || '' }); });
+      await finalWeekSunday(app);
+      await app.page.evaluate(async ({ LOGS, VIS, mode }) => {
+        eval(LOGS); eval(VIS);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        await wait(1500);
+        const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), start = at(sun, '23:20');
+        sessionStorage.setItem('__start', String(start));
+        __setNow(sun + (mode === 'return' ? 'T23:25:00' : 'T23:50:00'));
+        const live = JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': [5, 5] } });
+        sessionStorage.setItem('__live', live);
+        _onWatchLive(live);
+        if (mode === 'return') { __setNow(sun + 'T23:30:00'); leave(); __setNow(next + 'T00:05:00'); back(); }
+        if (mode === 'killed' || mode === 'abandoned') __setNow(next + 'T00:05:00');
+        if (mode === 'hide') { __setNow(next + 'T00:00:40'); window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); }
+        await wait(300);
+      }, { LOGS, VIS, mode });
+      if (mode === 'killed' || mode === 'abandoned') await coldBoot(app);
+      const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE, mode }) => {
+        eval(LOGS); eval(ROUND_STATE);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
+        const next = addDays(sessionStorage.getItem('__mon'), 7), start = Number(sessionStorage.getItem('__start'));
+        await wait(1500);
+        switchTab('log'); switchLogSub('workout'); render();
+        const r = { held: Object.assign(roundState(), { banner: /from your wrist/.test(txt()) }) };
+        if (mode === 'hide') { hideWatchLive(); r.hidden = !/from your wrist/.test(txt()); __setNow(next + 'T00:01:40'); tick(); await wait(1200); r.afterHide = roundState(); }
+        __setNow(next + 'T00:15:00'); tick(); await wait(1200);
+        r.later = roundState();
+        if (mode === 'abandoned') {
+          __setNow(next + 'T05:21:00'); tick(); await wait(1500);   // 6 h from its start
+          r.after = roundState();
+          return r;
+        }
+        // 00:20: the wrist finishes; its copy arrives on the queue and drains.
+        __setNow(next + 'T00:20:00');
+        sessionStorage.removeItem('__live');
+        window.__mock.pending = [JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: new Date(start).toISOString(), loggedAt: new Date().toISOString(),
+          exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 260, weightLog: [260, 260, 260] }] })];
+        _onWatchLive(JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': [5, 5, 5] }, ended: true }));
+        await wait(3500);
+        r.drained = roundState();
+        __setNow(next + 'T00:21:00'); tick(); await wait(1500);
+        r.after = roundState();
+        return r;
+      }, { LOGS, ROUND_STATE, mode });
+      assert(out.held.cycle === 1 && out.held.week === 12 && out.held.banner, mode + ': past midnight with the wrist workout under way, round 1 stays: ' + JSON.stringify(out.held));
+      if (mode === 'hide') assert(out.hidden && out.afterHide.cycle === 1, mode + ': Hide puts the banner away, not the workout: ' + JSON.stringify(out.afterHide));
+      assert(out.later.cycle === 1, mode + ': and it stays with no message for a while: ' + JSON.stringify(out.later));
+      if (mode === 'abandoned') {
+        assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 212.5, mode + ': a wrist workout never finished stops holding it 6 h from its start: ' + JSON.stringify(out.after));
+      } else {
+        assert(out.drained.cycle === 1 && out.drained.saved && out.drained.saved.sunday && out.drained.saved.week === 12, mode + ': the wrist\'s copy drains as Sunday\'s week 12: ' + JSON.stringify(out.drained));
+        assert(out.after.cycle === 2 && out.after.week === 1 && out.after.anchored && out.after.sq1 === 227.5, mode + ': then round 2 starts, built with it: ' + JSON.stringify(out.after));
+      }
+      assert(app.errors.length === 0, mode + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
 });

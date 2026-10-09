@@ -5670,7 +5670,11 @@ function _applyNextRoundAfterDrain(){
     autoAdvanceWeek(); render(); _nrFlush();
   };
   _nrDrainWait=setTimeout(go, 6000);
-  Promise.resolve(drainWatchSessions()).then(go, go);
+  // The wrist's live state is read with the queue: a launch or a return decided before the page
+  // had heard from a wrist workout under way, and swapped the round in under it.
+  var live=null;
+  try{ if(TWch.getLiveState) live=Promise.resolve(TWch.getLiveState()).then(function(r){ if(r && r.json) _onWatchLive(r.json); }, function(){}); }catch(e){}
+  Promise.all([drainWatchSessions(), live]).then(go, go);
 }
 function autoAdvanceWeek(){
   _applyNextRoundAfterDrain();
@@ -8798,16 +8802,27 @@ function renderRunSegment(){
 // A workout is under way while the runner is open or a restored draft waits to resume
 // (runnerSession outlives a finished or closed session, so it alone does not say so).
 function _runnerInProgress(){ return !!(runnerSession && (runnerOpen || runnerResumePending)); }
-// A set round waits for a workout under way: the runner open, LIVE ON WATCH (a wrist set in the
-// last half hour), or a draft that can still be resumed (read from storage: the boot checks
+// A set round waits for a workout under way: the runner open, one on the wrist (_wristWorkUnderway),
+// or a draft that can still be resumed (read from storage: the boot checks
 // before it restores one). Swapped in at midnight under the runner's wake lock, the round was
 // re-based without the final week's last workout and that workout was filed as its week 1. The
 // minute clock and a return roll the day once, so a held round starts when the workout is saved
 // or discarded here, else at the next minute (a workout the wrist finished drains first).
 function _roundWaitsForWorkout(){
   if(runnerOpen && runnerSession) return true;
-  if(_watchLive && Date.now()-(_watchLive.at||0)<30*60*1000) return true;
+  if(_wristWorkUnderway()) return true;
   try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000); }catch(e){ return false; }
+}
+// The wrist's workout under way {slot, startedAt, ended}, from every live message and the shell's
+// live cache. Kept apart from the LIVE ON WATCH banner (_watchLive), which it used to be: Hide put
+// the workout away with the banner, the cache is read after a launch has decided, and a phone locked
+// for half an hour heard nothing. It stands until its copy is filed (10 min after the wrist ended it,
+// if that copy never comes), at most 6 h from its start, as the banner does.
+var _wristWork=null;
+function _wristWorkUnderway(){
+  var w=_wristWork, now=Date.now(); if(!w) return false;
+  if(now-w.startedAt>=6*3600*1000 || (w.ended && now-w.ended>=10*60*1000) || _wristSessionFiled(w.slot, w.startedAt)){ _wristWork=null; return false; }
+  return true;
 }
 // then: run once the round has started (on the phone the swap waits for the watch queue), or at
 // once when it cannot (still held, or nothing is due).
@@ -22275,6 +22290,7 @@ function _watchSendDiscard(){
   if(!runnerSession) return;
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''),
     startedAt:runnerSession.startedAt||Date.now(), reps:{}, weights:{}, ended:true, discarded:true, endedAt:Date.now() };
+  if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist drops that day's workout too
   // Sent now, not on the debounce: START within 800 ms used to replace it
   // with the new session's state and the wrist kept the discarded sets.
   if(!runnerOpen){ try{ _pushWatchPlan(); }catch(e){} }
@@ -22514,6 +22530,10 @@ function _onWatchLive(json){
   var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
   var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
   _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
+  // The workout a due round waits for (_wristWorkUnderway), whichever way this message goes below.
+  var _ws=Number(s.startedAt)||0, _same=!!(_wristWork && _wristWork.slot===String(wristSlot) && Math.abs(_wristWork.startedAt-_ws)<1500);
+  if(s.ended){ if(_same) _wristWork.ended=Date.now(); }
+  else if(fresh && _ws>0 && !_same && !_wristSessionFiled(wristSlot, _ws)) _wristWork={ slot:String(wristSlot), startedAt:_ws, ended:0 };
   if(s.hk===true) _wristHKActive=true;   // the wrist runs a Health workout for this session (build 52+)
   // The wrist has moved on to a session begun after the phone's finish: the
   // repeated 'ended' is stale now. Watches before build 51 reset on any
