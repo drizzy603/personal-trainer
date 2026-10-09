@@ -9660,8 +9660,12 @@ function runnerFinishSession(){
   sessions = sessions.filter(function(x){ return _wristCopies.indexOf(x)<0; });
   var _owned=Object.keys(runnerSession.ownAt||{});
   // Filed on the day it began, before a round started since (a draft resumed after "Start round 2
-  // today"): the clock now reads that day as week 1, so it keeps the week it began in.
-  var _wk=(_sessionDate===_startISO && runnerSession.week>0 && _sessionDate<_roundStartISO()) ? runnerSession.week : weekForDate(_sessionDate);
+  // today"): the clock now reads that day as week 1, so it keeps the week it began in. Told by the
+  // time the round was swapped in, not by the date: "today" anchors week 1 on this Monday, so a
+  // draft begun earlier today was filed as week 1 BASE (and left out of the round all the same).
+  var _crNow=getCustomRoutine(), _began=Number(runnerSession.startedAt)||0, _since=_began>0 && (Number(_crNow && _crNow.startedAt)||0)>_began;
+  var _kept=_sessionDate===_startISO && runnerSession.week>0 && (_sessionDate<_roundStartISO() || _since);
+  var _wk=_kept ? runnerSession.week : weekForDate(_sessionDate);
   var _newRec={id:Date.now(), date:_sessionDate, type:runnerSession.dayName, label:_dayLabel(runnerSession.dayName),
     week:_wk, exercises:exsOut, note:'', prs:[],
     startedAt:runnerSession.startedAt||undefined,
@@ -9669,6 +9673,12 @@ function runnerFinishSession(){
     phoneOwned:(_owned.length?_owned:undefined),
     phoneOwnedLen:(_owned.length?(runnerSession.ownLen||{}):undefined)};
   _stampBlock(_newRec);
+  // ...and the block that week has in the round it began in, archived at the swap (read on the
+  // round that replaced it, a block it was not trained in, or none).
+  if(_kept && _since){
+    var _a0=getRoutineArchive()[0], _b0=(_a0 && Number(_a0.id)>=_began) ? _weekBlock(_a0.routine, _wk) : '';
+    if(_b0){ _newRec.bName=_b0; _newRec.bWk=_wk; }
+  }
   _wristCopies.forEach(function(w){
     _mergeWristExercises(_newRec, w.exercises);
     (w.prs||[]).forEach(function(p){ if(_newRec.prs.indexOf(p)<0) _newRec.prs.push(p); });

@@ -59,6 +59,10 @@
 // - T25 While a draft held round 2 on its Monday, the phone sent the wrist round 1's parked week for
 //   today; a wrist workout trained on it was then claimed as round 2's week 1 when the round swapped
 //   in. Until the swap the wrist is sent the round's own day, as its week ahead (and the widget) said.
+// - T46 "Start round 2 today" with a final-week draft waiting: the resumed workout was filed as round
+//   2's week 1 BASE (and left out of round 2), since "today" anchors week 1 on this Monday and the
+//   backstop compared dates. It compares the time the round came in with the time the workout began,
+//   and the workout keeps its week and that week's block in the round it began in.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -1020,6 +1024,50 @@ run('T25: while a draft holds round 2 on its Monday the wrist is sent the round\
     assert(out.wrist.date === out.next && out.wrist.week === 1 && out.wrist.dayName === 'Push' && out.wrist.bench === sun.bench, 'the wrist is sent the round\'s Monday as it showed since midnight, not round 1\'s week 12: ' + JSON.stringify(out.wrist));
     assert(out.after.cycle === 2 && out.after.week === 1, 'the draft discarded, round 2 starts: ' + JSON.stringify(out.after));
     assert(out.after.filed && out.after.filed.week === 1 && out.after.filed.bName === out.after.w1 && out.after.filed.inRound && out.after.filed.bench === out.after.planned, 'the wrist workout is round 2\'s week 1, trained at its own load: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('T46: a final-week draft resumed after "Start round 2 today" keeps its week and its block', async () => {
+  const app = await boot({ native: false, seed: { kt_week: '12' } });
+  try {
+    await withClock(app);
+    // Thursday 17:00 of the final week: Legs begun, three sets, the app killed.
+    await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      sessionStorage.setItem('__mon', mon);
+      __setNow(addDays(mon, 3) + 'T17:00:00');
+      localStorage.setItem('kt_week_monday', mon); localStorage.setItem('kt_final_since', mon);
+    });
+    await coldBoot(app);
+    const pre = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      switchTab('log'); switchLogSub('workout'); await wait(30);
+      openDeckRunner('Legs', true); await wait(20);
+      runnerEngaged = true; runnerSetWeight(260);
+      [5, 5, 5].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+      _flushRunnerDraft();
+      __setNow(todayISO() + 'T17:30:00');
+      return { week: currentWeek, bName: getCustomRoutine().weeks[11].bName };
+    });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async (FILED) => {
+      eval(FILED);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = { resumable: runnerResumePending };
+      r.started = setNextRound('today'); await wait(50);
+      // The coach renames round 2's last week before the workout is finished.
+      const cr = getCustomRoutine(); cr.weeks[11].bName = 'PEAK'; setCustomRoutine(cr);
+      r.round = [getCustomRoutine().cycle, currentWeek, localStorage.getItem('kt_week_monday') === sessionStorage.getItem('__mon')];
+      resumeRunnerDraft(); await wait(20);
+      __setNow(todayISO() + 'T18:00:00');
+      runnerFinishSession(); await wait(300); try { closeCompleteSheet(); } catch (e) {}
+      r.filed = filed(); r.today = todayISO();
+      return r;
+    }, FILED);
+    assert(pre.week === 12, 'the draft was begun on week 12: ' + JSON.stringify(pre));
+    assert(out.resumable && out.started && out.round[0] === 2 && out.round[1] === 1 && out.round[2], 'round 2 starts today, its week 1 anchored on this Monday: ' + JSON.stringify(out));
+    assert(out.filed && out.filed.date === out.today && out.filed.week === 12 && out.filed.bName === pre.bName && !out.filed.inRound, 'the resumed workout is round 1\'s week 12 (' + pre.bName + '), not round 2\'s week 1 or its renamed week 12: ' + JSON.stringify(out.filed));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
