@@ -63,6 +63,9 @@
 // - T22 Save lifts to Health writes a live workout that ran past midnight however long after its
 //   last set Finish comes (it ends ten minutes after that set, as a same-day one does); a draft
 //   picked up again after the app was closed is not written unless a set came after (R31 kept).
+// - T23 a workout that ran past midnight, its Log date set to the finish day, still folds in the
+//   wrist copy of it filed on the day it began (one record, the wrist's sets once); a workout
+//   backdated before its start still leaves today's own wrist session alone (R32 kept).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1217,6 +1220,54 @@ run('T22 a live workout past midnight is written to Health whenever Finish comes
     assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 10:00'), 'the same timings on one day: ' + JSON.stringify(out.sameDay));
     assert(out.resumed.filed === Y && out.resumed.hk.length === 0, 'a draft picked up after midnight with no set since is not written: ' + JSON.stringify(out.resumed));
     assert(one(out.relaunched, Y + ' 23:30 -> ' + T + ' 00:40'), 'picked up again and trained on: written to its last set: ' + JSON.stringify(out.relaunched));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T23: R32 kept a finish to its filed day alone, which also dropped the start day of a workout
+// whose Log date was moved on to the finish day: its wrist copy stayed a second record.
+run('T23 a past-midnight workout dated the finish day folds in its wrist copy from the day it began', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1), at = (d, t) => d + 'T' + t + ':00';
+      const OHP = 'Overhead Press', B = 'Bench Press', ws = new Date(at(yday, '23:32')).getTime();
+      const recs = () => getSessions().filter(s => s.type === 'Push').map(s => s.date + ' ' + (s.note || 'phone') + ' ' + s.exercises.map(e => e.name + 'x' + e.sets).join('+'));
+      // the phone opens Push at 23:30; the watch starts its own Push at 23:32 (no mirror of the
+      // phone's start) and logs Overhead Press; its copy drains during the runner, filed yesterday
+      const go = async (live) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        __setNow(at(yday, '23:30'));
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        // live: the wrist's sets also reach the open runner as it logs them
+        if (live) [1, 2, 3].forEach(i => { __setNow(at(yday, '23:3' + (3 + i))); _onWatchLive(JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: ws, reps: { [OHP]: Array(i).fill(8) }, weights: { [OHP]: 100 } })); });
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === B)); runnerEngaged = true;
+        for (const t of ['23:42', '23:46', '23:50']) { __setNow(at(yday, t)); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        __setNow(at(yday, '23:55'));
+        window.showToast = () => {};
+        if (live) _onWatchLive(JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: ws, reps: { [OHP]: [8, 8, 8] }, weights: { [OHP]: 100 }, ended: true }));
+        __setNow(at(yday, '23:56'));
+        __mock.pending = [JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: new Date(ws).toISOString(), loggedAt: new Date(at(yday, '23:55')).toISOString(),
+          exercises: [{ name: OHP, reps: [8, 8, 8], weight: 100, weightLog: [100, 100, 100], rpe: 7 }] })];
+        await drainWatchSessions(); await wait(30);
+        const drained = recs();
+        // Finish after midnight with the Log date set to today
+        __setNow(at(today, '00:30'));
+        runnerSessionDate = today;
+        const df = document.getElementById('runner-date'); if (df) df.value = today;
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        return { drained, recs: recs() };
+      };
+      return { today, yday, plain: await go(false), live: await go(true) };
+    }, CLOCK);
+    const T = out.today, Y = out.yday;
+    assert(JSON.stringify(out.plain.drained) === JSON.stringify([Y + ' From Apple Watch Overhead Pressx3']), 'the wrist copy is filed on the day it began: ' + JSON.stringify(out.plain.drained));
+    assert(JSON.stringify(out.plain.recs) === JSON.stringify([T + ' phone Bench Pressx3+Overhead Pressx3']), 'one record on the day picked, the wrist copy folded in: ' + JSON.stringify(out.plain.recs));
+    assert(JSON.stringify(out.live.recs) === JSON.stringify([T + ' phone Bench Pressx3+Overhead Pressx3']), 'mirrored live: one record, the wrist’s sets once: ' + JSON.stringify(out.live.recs));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
