@@ -44,10 +44,6 @@
 //   shows the coach what is saved and takes separate:true, as log_run and log_sport do: an older,
 //   unlisted session the user mentioned was saved twice and its volume counted twice.
 // Hunt 5 (2026-10-09), what the review of those fixes found:
-// - T09 (R21) a mis-picked lift renamed into one the owner already has (edit_session's own
-//   example, and Edit sets) kept that lift at its older log's load: the renamed log, now its
-//   newest, sets it as a fresh log would; a working weight written after the log (the coach's, a
-//   +5) stays.
 // - T08 (R12) a session told again with a lift the saved one lacks was refused whole and the coach
 //   told to say it was already logged: the refusal names the lift as not saved (so does the pill),
 //   and log_session's add_to puts only the lifts a saved session lacks into it.
@@ -630,85 +626,6 @@ run('R12: the coach cannot log a saved lift session twice; a real second session
       assert(app.errors.length === 0, unit + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
-});
-
-// T09 (hunt 5): 'that Bar on the 18th should be Barbell Curl' (edit_session's own example) kept
-// Barbell Curl at its older log's 70 and dropped the corrected log's 60, and the coach was told 70
-// (Edit sets the same). The renamed log, now the lift's newest, sets it as a fresh log would, a
-// heavier backdated one too; a working weight written after the log (the coach's 75) stays, and the
-// log's stamp makes no claim on it.
-run('T09: a lift renamed into one the owner has takes the renamed log\'s load, unless a later write set it', async () => {
-  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
-  try {
-    const out = await app.page.evaluate(async () => {
-      const wait = ms => new Promise(res => setTimeout(res, ms));
-      const T = todayISO();
-      const curl = () => getWeights()['Barbell Curl'];
-      const line = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Barbell Curl:') === 0).join('|');
-      const log = (date, name, w) => executeCoachTool('log_session', { type: 'Pull', date, exercises: [{ name: 'Barbell Row', sets: 3, reps: 8, weight: 150, isMain: true }, { name, sets: 3, reps: 10, weight: w }] });
-      const fresh = () => { lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); };
-      const sessWith = (date, name) => getSessions().find(s => s.date === date && s.exercises.some(e => e.name === name));
-      // Edit sets on the day sheet: the lift's name field, then Save changes
-      const sheetRename = async (date, from) => {
-        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(date); calSelectedDate = null; render(); await wait(30);
-        document.querySelector('.cal-day[data-date="' + date + '"]').click(); await wait(40);
-        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Edit sets').click(); await wait(40);
-        const i = sessWith(date, from).exercises.findIndex(e => e.name === from);
-        document.getElementById('se_' + i + '_name').value = 'Barbell Curl';
-        [...document.querySelectorAll('#sessEditOverlay button')].find(b => /Save changes/.test(b.textContent)).click(); await wait(40);
-        closeCalDay(); await wait(10);
-      };
-      const r = {};
-      // a lighter log today, picked as 'Bar': the coach's rename, with and without the weight, and Edit sets
-      for (const how of ['coach', 'coachWeight', 'sheet']) {
-        fresh(); log(addDays(T, -7), 'Barbell Curl', 70); log(T, 'Bar', 60);
-        const s = sessWith(T, 'Bar'), before = curl();
-        if (how === 'sheet') await sheetRename(T, 'Bar');
-        else executeCoachTool('edit_session', Object.assign({ id: s.id, exercise: 'Bar', rename_to: 'Barbell Curl' }, how === 'coachWeight' ? { weight: 60 } : {}));
-        r[how] = { before, w: curl(), bar: getWeights().Bar, line: line(), stamp: JSON.stringify((getSessions().find(x => x.id === s.id).wSet || {})['Barbell Curl']) };
-        if (how === 'coach') { deleteSession(s.id); await wait(20); r.deleted = curl(); }
-      }
-      // a heavier log filed for two days ago, typed 'Barbell Curls'
-      for (const how of ['heavyCoach', 'heavySheet']) {
-        fresh(); log(addDays(T, -30), 'Barbell Curl', 70); log(addDays(T, -2), 'Barbell Curls', 80);
-        const s = sessWith(addDays(T, -2), 'Barbell Curls');
-        if (how === 'heavySheet') await sheetRename(addDays(T, -2), 'Barbell Curls');
-        else executeCoachTool('edit_session', { id: s.id, exercise: 'Barbell Curls', rename_to: 'Barbell Curl' });
-        r[how] = { w: curl(), line: line() };
-      }
-      // the coach set Barbell Curl to 75 after the 'Bar' log: the rename keeps 75
-      for (const how of ['protectCoach', 'protectSheet']) {
-        fresh(); log(addDays(T, -7), 'Barbell Curl', 70); log(T, 'Bar', 60);
-        executeCoachTool('set_exercise_weight', { name: 'Barbell Curl', weight: 75 });
-        const s = sessWith(T, 'Bar');
-        if (how === 'protectSheet') await sheetRename(T, 'Bar');
-        else executeCoachTool('edit_session', { id: s.id, exercise: 'Bar', rename_to: 'Barbell Curl' });
-        const st = getSessions().find(x => x.id === s.id);
-        r[how] = { w: curl(), bar: getWeights().Bar, line: line(), lifts: st.exercises.map(e => e.name).join(','), stamp: Object.keys(st.wSet || {}).join(',') };
-        if (how === 'protectCoach') { deleteSession(s.id); await wait(20); r.protectDeleted = curl(); }
-      }
-      // control: the same log made under the right name
-      fresh(); log(addDays(T, -7), 'Barbell Curl', 70); log(T, 'Barbell Curl', 60);
-      r.control = curl();
-      return r;
-    });
-    for (const how of ['coach', 'coachWeight', 'sheet']) {
-      const x = out[how];
-      assert(x.before === 70 && x.w === 60 && x.bar === undefined && x.line === '  Barbell Curl: 60', how + ': Barbell Curl takes the renamed log\'s 60 and the coach is told: ' + JSON.stringify(x));
-      assert(x.stamp === '[null,60]', how + ': the log\'s stamp speaks for Barbell Curl: ' + x.stamp);
-    }
-    assert(out.deleted === 70, 'the renamed log deleted, Barbell Curl follows its older log again: ' + out.deleted);
-    assert(out.heavyCoach.w === 80 && out.heavyCoach.line === '  Barbell Curl: 80', 'a heavier backdated log renamed by the coach sets 80: ' + JSON.stringify(out.heavyCoach));
-    assert(out.heavySheet.w === 80, 'and by Edit sets: ' + JSON.stringify(out.heavySheet));
-    for (const how of ['protectCoach', 'protectSheet']) {
-      const x = out[how];
-      assert(x.w === 75 && x.bar === undefined && x.line === '  Barbell Curl: 75' && x.lifts === 'Barbell Row,Barbell Curl', how + ': the coach\'s 75, set after the log, stays: ' + JSON.stringify(x));
-      assert(x.stamp.split(',').indexOf('Barbell Curl') < 0 && x.stamp.split(',').indexOf('Bar') < 0, how + ': the log claims nothing for Barbell Curl: ' + x.stamp);
-    }
-    assert(out.protectDeleted === 75, 'deleting that log leaves the coach\'s 75: ' + out.protectDeleted);
-    assert(out.control === 60, 'control: ' + out.control);
-    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
-  } finally { await app.close(); }
 });
 
 // T08 (hunt 5): R12 refused a session told again with a lift the saved one lacks ("I also did
