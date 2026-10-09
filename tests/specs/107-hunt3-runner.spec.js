@@ -50,6 +50,22 @@
 // - R34 undoing the last set of a per-set lift puts the stepper back on the load it was logged at
 //   (a typed 230 top set is redone at 230, not the programme's 225); Log all's undo and removing an
 //   earlier set take the next set's target, and a lift without per-set loads is unchanged.
+// Review of round two (2026-10-09):
+// - T19 a reps or load edit with 'Also update my programme' on a lift of a top set and back-offs
+//   (two rows folded, or one row with per-set targets) reaches the run of sets the sheet showed,
+//   carried through the weeks as its own: back-off reps 8 -> 10 is [3,10,10,10] (it was 4x10 at the
+//   top set's 225), a back-off load 185 -> 190 moves the back-offs alone (it scaled every set from
+//   225: 155), a top-set edit leaves the back-offs, and a swap's typed load is the back-offs'.
+// - T20 R29's one row survives a coach rewrite that writes the lift as two rows again: +1 set stays
+//   5 sets (it became 8), a removed lift stays out and Restore brings it back whole, a swap keeps
+//   the coach's back-off out, Use coach's gives all the coach's sets; rows the owner removed or
+//   edited one by one still match the coach's rows one by one.
+// - T22 Save lifts to Health writes a live workout that ran past midnight however long after its
+//   last set Finish comes (it ends ten minutes after that set, as a same-day one does); a draft
+//   picked up again after the app was closed is not written unless a set came after (R31 kept).
+// - T23 a workout that ran past midnight, its Log date set to the finish day, still folds in the
+//   wrist copy of it filed on the day it began (one record, the wrist's sets once); a workout
+//   backdated before its start still leaves today's own wrist session alone (R32 kept).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1066,4 +1082,274 @@ run('R34 undoing a set of a per-set lift puts the stepper back on the load it wa
     assert(out.plain === 105, 'a lift without per-set loads keeps the typed load: ' + out.plain);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// T19: R29 merged a lift's two rows before the edit, and the engine then read the sheet's numbers
+// (the back-off set's) as the top set's: reps 10 became 4x10 at 225, a load of 190 scaled every
+// set from 225 (back-offs 155). A lift already one row with per-set targets did the same.
+const t19 = async (edit) => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (edit) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      // every week's Push: Bench as a top set and back-offs, +5 lb a working week (the deload 60%)
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      cr.weeks.forEach((w, j) => {
+        const dl = _isDeloadWk(w), k = (j - c) * 5, f = x => dl ? Math.round(x * 0.6 / 2.5) * 2.5 : x;
+        const bench = edit.oneRow
+          ? [{ name: 'Bench Press', sets: 4, reps: [3, 8, 8, 8], weights: [f(225 + k), f(185 + k), f(185 + k), f(185 + k)], weight: f(225 + k), isMain: true, rpe: 8 }]
+          : [{ name: 'Bench Press', sets: 1, reps: 3, weight: f(225 + k), isMain: true, rpe: 8 }];
+        w.push = bench.concat([{ name: 'Overhead Press', sets: 3, reps: 8, weight: 100, rpe: 7 }],
+          edit.oneRow ? [] : [{ name: 'Bench Press', sets: 3, reps: 8, weight: f(185 + k), rpe: 7 }],
+          [{ name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }]);
+      });
+      setCustomRoutine(cr);
+      const N = edit.name || 'Bench Press';
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.isMain ? ' main' : '');
+      const lift = j => (getCustomRoutine().weeks[j].push || []).filter(e => e.name === N || e.name === 'Bench Press').map(fmt);
+      const r = { c, dl: getCustomRoutine().weeks.map(w => _isDeloadWk(w)) };
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const bi = runnerSession.exercises.findIndex(e => e.name === 'Bench Press');
+      runnerGoTo(bi); runnerEngaged = true;
+      if (edit.afterTop) { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+      // the sheet's own fields and toggle
+      openRunnerExEdit(bi); await wait(20);
+      r.seed = ['runner-ex-reps-input', 'runner-ex-weight-input'].map(id => document.getElementById(id).value);
+      const type = (id, v) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+      if (edit.reps) type('runner-ex-reps-input', edit.reps);
+      if (edit.weight) type('runner-ex-weight-input', edit.weight);
+      if (edit.name) _rExEditName = edit.name;
+      runnerExEditToggleApply();
+      saveRunnerExEdit(); await wait(20);
+      r.weeks = getCustomRoutine().weeks.map((w, j) => lift(j));
+      closeDeckRunner(); await wait(20);
+      openDeckRunner('Push', true); await wait(20);
+      r.next = fmt(runnerSession.exercises.find(e => e.name === N));
+      closeDeckRunner(); await wait(20);
+      if (edit.useCoach) { _rtUseCoach('Push', 'Bench Press'); await wait(20); r.coach = lift(c); }
+      return r;
+    }, edit);
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('T19 a reps or load edit on a top set and back-offs reaches the sets the sheet showed', async () => {
+  // weeks before this one are untouched (two rows, or the one per-set row)
+  const two = (o, j) => { const k = (j - o.c) * 5; return ['Bench Press 1x3@' + (225 + k) + ' main', 'Bench Press 3x8@' + (185 + k)]; };
+  const one = (o, j) => { const k = (j - o.c) * 5; return ['Bench Press 4x[3,8,8,8]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main']; };
+  const early = (o, f) => o.weeks.slice(0, o.c).every((d, j) => JSON.stringify(d) === JSON.stringify((f || two)(o, j)));
+  // every working week from this one on: f(k), k the programme's own climb since this week
+  const working = (o, f, g) => o.weeks.slice(o.c).every((d, i) => o.dl[o.c + i] || JSON.stringify(d) === JSON.stringify([f(i * 5)])) && early(o, g);
+  // (a) after the top set (the sheet shows the back-off's 8 x 185), reps 10
+  const a = await t19({ afterTop: true, reps: 10, useCoach: true });
+  assert(JSON.stringify(a.seed) === '["8","185"]', 'the sheet shows the back-off set: ' + JSON.stringify(a.seed));
+  assert(working(a, k => 'Bench Press 4x[3,10,10,10]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main'),
+    'the back-offs take 10 reps at their loads, the top set keeps its triple: ' + JSON.stringify(a.weeks));
+  const dl = a.dl.indexOf(true);
+  assert(dl > a.c && /^Bench Press 4x\[3,8,8,8\]/.test(a.weeks[dl][0]), 'the deload keeps its own reps: ' + JSON.stringify(a.weeks[dl]));
+  assert(a.next === 'Bench Press 4x[3,10,10,10]@[225,185,185,185] main', 'the next session: ' + a.next);
+  assert(JSON.stringify(a.coach) === JSON.stringify(['Bench Press 4x[3,8,8,8]@[225,185,185,185] main']), 'Use coach’s gives the coach’s sets back: ' + JSON.stringify(a.coach));
+  // (b) after the top set, the back-off load 185 -> 190: the back-offs move and keep the climb
+  const b = await t19({ afterTop: true, weight: 190 });
+  assert(working(b, k => 'Bench Press 4x[3,8,8,8]@[' + [225 + k, 190 + k, 190 + k, 190 + k] + '] main'),
+    'the back-offs go to 190 and climb from it, the top set is left: ' + JSON.stringify(b.weeks));
+  // (c) a lift that is already one row with per-set targets (the coach's, or merged by an earlier edit)
+  const d = await t19({ afterTop: true, reps: 10, oneRow: true });
+  assert(working(d, k => 'Bench Press 4x[3,10,10,10]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main', one),
+    'one per-set row: the same, its loads kept: ' + JSON.stringify(d.weeks));
+  // (d) before any set (the sheet shows the top set): load 230 moves the top set alone
+  const e = await t19({ afterTop: false, weight: 230 });
+  assert(JSON.stringify(e.seed) === '["3","225"]' && working(e, k => 'Bench Press 4x[3,8,8,8]@[' + [230 + k, 185 + k, 185 + k, 185 + k] + '] main'),
+    'a top-set load leaves the back-offs: ' + JSON.stringify([e.seed, e.weeks]));
+  // (e) a swap with a load typed on the back-off: the new lift's back-offs take it, the top set its share
+  const f = await t19({ afterTop: true, name: 'Machine Chest Press', weight: 100 });
+  assert(JSON.stringify(f.weeks[f.c]) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[122.5,100,100,100] main']) && early(f),
+    'the typed load is the back-offs’: ' + JSON.stringify(f.weeks[f.c]));
+  assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
+});
+
+// T22: R31's gate (a set within the hour) also dropped a live workout that ran past midnight when
+// Finish came over an hour after its last set; the same timings on one day were written.
+run('T22 a live workout past midnight is written to Health whenever Finish comes', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_health_write: '1' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1);
+      const hm = ms => { const d = new Date(ms); return _ymdLocal(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      // opened at `from`, sets at `sets`; a cold launch at `resume` (the draft restored and resumed)
+      // with sets `after` it; Finish at `fin`, the runner open throughout otherwise
+      const go = async (o) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        window.__hk = [];
+        Capacitor.Plugins.TrovoHealth = { saveLift: a => { window.__hk.push(a); return Promise.resolve({}); } };
+        __setNow(o.from);
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        runnerEngaged = true;
+        for (const t of o.sets) { __setNow(t); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        if (o.resume) {
+          _flushRunnerDraft(); __setNow(o.resume);
+          runnerOpen = false; runnerSession = null; runnerCompleted = {}; runnerRepsLog = {}; runnerWeightsLog = {};
+          if (!_restoreRunnerDraft()) return { restored: false };
+          resumeRunnerDraft(); await wait(20);
+          for (const t of o.after || []) { __setNow(t); runnerEngaged = true; runnerCompleteSet(); if (runnerResting) runnerSkipRest(); }
+        }
+        __setNow(o.fin);
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        const s = getSessions().find(x => x.type === 'Push');
+        return { filed: s && s.date, hk: window.__hk.map(a => hm(a.startMs) + ' -> ' + hm(a.endMs)) };
+      };
+      const at = (d, t) => d + 'T' + t + ':00';
+      const night = [at(yday, '22:10'), at(yday, '22:40'), at(yday, '23:10'), at(yday, '23:50')];
+      return { today, yday,
+        late: await go({ from: at(yday, '22:00'), sets: night, fin: at(today, '00:55') }),
+        later: await go({ from: at(yday, '22:00'), sets: night, fin: at(today, '03:00') }),
+        sameDay: await go({ from: at(today, '08:00'), sets: [at(today, '08:10'), at(today, '08:40'), at(today, '09:10'), at(today, '09:50')], fin: at(today, '10:55') }),
+        // the evening's draft picked up after midnight: no set since, not written; a set since, written
+        resumed: await go({ from: at(yday, '20:00'), sets: [at(yday, '20:05'), at(yday, '20:20'), at(yday, '20:45')], resume: at(today, '00:30'), fin: at(today, '00:31') }),
+        relaunched: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(today, '00:12'), after: [at(today, '00:15'), at(today, '00:30')], fin: at(today, '01:50') }),
+        // closed and opened again just before Finish, within the hour of the last set (as R31 wrote it)
+        reopened: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(yday, '23:58'), fin: at(today, '00:10') }) };
+    }, CLOCK);
+    const Y = out.yday, T = out.today, one = (o, s) => JSON.stringify(o.hk) === JSON.stringify([s]);
+    assert(out.late.filed === Y && one(out.late, Y + ' 22:00 -> ' + T + ' 00:00'), 'Finish 65 min after the last set: written, ending ten minutes after it: ' + JSON.stringify(out.late));
+    assert(one(out.later, Y + ' 22:00 -> ' + T + ' 00:00'), 'Finish hours later: the same window: ' + JSON.stringify(out.later));
+    assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 10:00'), 'the same timings on one day: ' + JSON.stringify(out.sameDay));
+    assert(out.resumed.filed === Y && out.resumed.hk.length === 0, 'a draft picked up after midnight with no set since is not written: ' + JSON.stringify(out.resumed));
+    assert(one(out.relaunched, Y + ' 23:30 -> ' + T + ' 00:40'), 'picked up again and trained on: written to its last set: ' + JSON.stringify(out.relaunched));
+    assert(one(out.reopened, Y + ' 23:30 -> ' + T + ' 00:00'), 'reopened just before Finish, within the hour: still written: ' + JSON.stringify(out.reopened));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T23: R32 kept a finish to its filed day alone, which also dropped the start day of a workout
+// whose Log date was moved on to the finish day: its wrist copy stayed a second record.
+run('T23 a past-midnight workout dated the finish day folds in its wrist copy from the day it began', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1), at = (d, t) => d + 'T' + t + ':00';
+      const OHP = 'Overhead Press', B = 'Bench Press', ws = new Date(at(yday, '23:32')).getTime();
+      const recs = () => getSessions().filter(s => s.type === 'Push').map(s => s.date + ' ' + (s.note || 'phone') + ' ' + s.exercises.map(e => e.name + 'x' + e.sets).join('+'));
+      // the phone opens Push at 23:30; the watch starts its own Push at 23:32 (no mirror of the
+      // phone's start) and logs Overhead Press; its copy drains during the runner, filed yesterday
+      const go = async (live) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        __setNow(at(yday, '23:30'));
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        // live: the wrist's sets also reach the open runner as it logs them
+        if (live) [1, 2, 3].forEach(i => { __setNow(at(yday, '23:3' + (3 + i))); _onWatchLive(JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: ws, reps: { [OHP]: Array(i).fill(8) }, weights: { [OHP]: 100 } })); });
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === B)); runnerEngaged = true;
+        for (const t of ['23:42', '23:46', '23:50']) { __setNow(at(yday, t)); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        __setNow(at(yday, '23:55'));
+        window.showToast = () => {};
+        if (live) _onWatchLive(JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: ws, reps: { [OHP]: [8, 8, 8] }, weights: { [OHP]: 100 }, ended: true }));
+        __setNow(at(yday, '23:56'));
+        __mock.pending = [JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: new Date(ws).toISOString(), loggedAt: new Date(at(yday, '23:55')).toISOString(),
+          exercises: [{ name: OHP, reps: [8, 8, 8], weight: 100, weightLog: [100, 100, 100], rpe: 7 }] })];
+        await drainWatchSessions(); await wait(30);
+        const drained = recs();
+        // Finish after midnight with the Log date set to today
+        __setNow(at(today, '00:30'));
+        runnerSessionDate = today;
+        const df = document.getElementById('runner-date'); if (df) df.value = today;
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        return { drained, recs: recs() };
+      };
+      return { today, yday, plain: await go(false), live: await go(true) };
+    }, CLOCK);
+    const T = out.today, Y = out.yday;
+    assert(JSON.stringify(out.plain.drained) === JSON.stringify([Y + ' From Apple Watch Overhead Pressx3']), 'the wrist copy is filed on the day it began: ' + JSON.stringify(out.plain.drained));
+    assert(JSON.stringify(out.plain.recs) === JSON.stringify([T + ' phone Bench Pressx3+Overhead Pressx3']), 'one record on the day picked, the wrist copy folded in: ' + JSON.stringify(out.plain.recs));
+    assert(JSON.stringify(out.live.recs) === JSON.stringify([T + ' phone Bench Pressx3+Overhead Pressx3']), 'mirrored live: one record, the wrist’s sets once: ' + JSON.stringify(out.live.recs));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T20: R29 made one row (or one removed row) stand for the coach's two, and the coach merge mapped
+// it onto the coach's first row alone: a rewrite in the coach's two-row style brought the second back.
+const t20 = async (edit) => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (edit) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const coachPush = () => [
+        { name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 },
+        { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 },
+        { name: 'Bench Press', sets: 3, reps: 8, weight: 185, rpe: 7 },
+        { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }
+      ];
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      cr.weeks.forEach(w => { w.push = coachPush(); });
+      setCustomRoutine(cr);
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.isMain ? ' main' : '') + (e.ss ? ' ss' : '');
+      const day = j => (getCustomRoutine().weeks[j].push || []).map(fmt);
+      const r = { c };
+      if (edit.routines) {
+        // Routines, row by row: both rows removed one after the other, or the top set's load edited
+        if (edit.routines === 'remove2') { _commitRoutine(x => _progRemove(x, 'push', 'Bench Press', c)); _commitRoutine(x => _progRemove(x, 'push', 'Bench Press', c)); }
+        else _commitRoutine(x => _progCarryLoad(x, 'push', 'Bench Press', c, 230, { markOwner: true }));
+      } else {
+        // the runner's folded card, 'Also update my programme' on
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        openRunnerExEdit(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); await wait(20);
+        runnerExEditToggleApply();
+        if (edit.sets) { _rExEditSets = edit.sets; saveRunnerExEdit(); }
+        else if (edit.name) { _rExEditName = edit.name; saveRunnerExEdit(); }
+        else runnerExRemove();
+        await wait(20);
+        closeDeckRunner(); await wait(20);
+      }
+      r.before = day(c);
+      // the coach rebuilds this week and the next in its own style
+      const W = getCustomRoutine().weeks;
+      const res = executeCoachTool('update_routine_weeks', { weeks: [c, c + 1].map(j => ({ wk: j + 1, bName: W[j].bName, bColor: W[j].bColor, push: coachPush() })) });
+      r.kept = res.keptUserEdits;
+      r.after = [day(c), day(c + 1)];
+      openDeckRunner('Push', true); await wait(20);
+      r.next = runnerSession.exercises.map(fmt);
+      closeDeckRunner(); await wait(20);
+      if (edit.restore) { _rtRestoreRemoved('Push'); await wait(20); r.restored = day(c); }
+      if (edit.useCoach) { _rtUseCoach('Push', edit.useCoach); await wait(20); r.coach = day(c); }
+      return r;
+    }, edit);
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('T20 a coach rewrite in two rows keeps the runner’s one row of a lift', async () => {
+  const rest = ['Overhead Press 3x8@100', 'Lateral Raise 3x15@20'], coach4 = 'Bench Press 4x[3,8,8,8]@[225,185,185,185] main';
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  // +1 set: one row of five sets, kept as the owner's; Use coach's gives the coach's four
+  const a = await t20({ sets: 5, useCoach: 'Bench Press' });
+  const five = ['Bench Press 5x[3,8,8,8]@[225,185,185,185] main'].concat(rest);
+  assert(same(a.before, five) && a.after.every(d => same(d, five)) && same(a.kept, ['Bench Press']), 'the five sets stay one row: ' + JSON.stringify([a.before, a.after, a.kept]));
+  assert(same(a.next, five), 'the next session has five Bench sets, not eight: ' + JSON.stringify(a.next));
+  assert(same(a.coach, [coach4].concat(rest)), 'Use coach’s gives back all the coach’s sets: ' + JSON.stringify(a.coach));
+  // removed: it stays out, as the coach is told, and Restore brings the whole lift back
+  const b = await t20({ restore: true });
+  assert(b.after.every(d => !d.some(t => /^Bench/.test(t))) && same(b.kept, ['-Bench Press']), 'the removed lift stays out: ' + JSON.stringify([b.after, b.kept]));
+  assert(same(b.restored, [coach4].concat(rest)), 'Restore brings back every set of it: ' + JSON.stringify(b.restored));
+  // swapped: the machine stays alone; Use coach's on it gives the coach's Bench back whole
+  const d = await t20({ name: 'Machine Chest Press', useCoach: 'Machine Chest Press' });
+  assert(d.after.every(x => !x.some(t => /^Bench/.test(t)) && /^Machine Chest Press 4x/.test(x[0])), 'the coach’s back-off row stays out: ' + JSON.stringify(d.after));
+  assert(same(d.coach, [coach4].concat(rest)), 'Use coach’s gives the coach’s Bench back: ' + JSON.stringify(d.coach));
+  // row by row in Routines: two rows removed stay out; an edited top set keeps the coach's back-off row
+  const e = await t20({ routines: 'remove2' });
+  assert(e.after.every(x => !x.some(t => /^Bench/.test(t))), 'two removed rows stay out: ' + JSON.stringify(e.after));
+  const f = await t20({ routines: 'top' });
+  assert(f.after.every(x => same(x, ['Bench Press 1x3@230 main', 'Overhead Press 3x8@100 ss', 'Bench Press 3x8@185', 'Lateral Raise 3x15@20'])),
+    'an edited top-set row keeps its back-off row: ' + JSON.stringify(f.after));
+  assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
 });

@@ -5561,9 +5561,13 @@ function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
   var now = Date.now(), last = _runnerLastSetAt(sess);
   // A backdated log has no real time to write. The day the session began is its own: one that
-  // ran past midnight is filed on that day and still happened just now (a set within the hour).
-  // A draft left in the evening and finished the next morning did not, and was written at 04:00.
-  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && now-last < 60*60*1000)) return;
+  // ran past midnight is filed on that day and still happened, however long after its last set
+  // Finish came (the window ends with that set, below). A draft picked up again after the app was
+  // closed (restoredAt) with no set since and none in the last hour did not: one left in the
+  // evening and finished the next morning was written at 04:00. The hour alone stood for that,
+  // and dropped a live workout finished over an hour after its last set.
+  var resumed = !!(sess && sess.restoredAt && last < sess.restoredAt && now-last >= 60*60*1000);
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && !resumed)) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
   // It ends with its last set (ten minutes after at most), not at the tap on Finish: a draft
@@ -9122,6 +9126,7 @@ function _restoreRunnerDraft(){
     var _fresh=(Date.now()-(d.savedAt||0)) < 8*3600*1000;
     if(d.date!==todayISO() && !_fresh) return false;
     runnerSession=d.session;
+    runnerSession.restoredAt=Date.now();   // picked up after the app was closed: Health asks for a set since
     runnerExIdx=d.exIdx||0;
     runnerCompleted=d.completed||{};
     runnerWeights=d.weights||{};
@@ -9760,9 +9765,10 @@ function runnerFinishSession(){
     // The wrist mirrored this start: the same session, whatever day either is filed on.
     if(ws && _myStart && Math.abs(ws-_myStart)<1500) return true;
     // Otherwise the day it is filed on (a workout that ran past midnight is filed on the day it
-    // began, where the drain files its wrist copy). Only that day: a workout backdated to
-    // yesterday took in today's own wrist session of the same day.
-    if(x.date!==_sessionDate) return false;
+    // began, where the drain files its wrist copy), or the day it began when it is filed later (a
+    // Log date moved to the finish day left that copy a second record). Not a day before it: a
+    // workout backdated to yesterday took in today's own wrist session of the same day.
+    if(x.date!==_sessionDate && !(x.date===_startISO && _sessionDate>_startISO)) return false;
     // Only a copy of THIS session: one filed after this runner began, from
     // a wrist session started within 6 h of it. An earlier wrist session
     // of the same slot today stays its own record.
@@ -11038,7 +11044,7 @@ function openRunnerExEdit(idx){
   _rExEditReps   =parseInt(runnerReps[ex.name])>0?parseInt(runnerReps[ex.name]):(parseInt(_tr)>0?parseInt(_tr):'');
   _rExEditRepsHint=(_rExEditReps===''&&_tr!=null)?String(_tr):'';
   _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
-  _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets};
+  _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets, at:_ti};   // at: the set whose numbers these are
   _rExEditApply  =false;   // "Also update my programme" is a per-edit choice, never left on from the last sheet
   // ex.ss means "paired with the NEXT card", so the current partner is the one
   // sitting below. The sheet lets you choose a different one.
@@ -12637,6 +12643,57 @@ function _progMergeLift(w, slot, name){
   for(var k=at.length-1;k>=1;k--) list.splice(at[k],1);
   return true;
 }
+// A row's sets as runs of equal sets (the same reps and load, set after set): a top set and its
+// back-offs, as one row with per-set targets or two rows merged above, are two runs. A per-set
+// load of 0 is the row's own load, as the runner reads it.
+function _progRuns(r){
+  var n=Math.max(1, parseInt(r.sets)||1), base=parseFloat(r.weight)||0, reps=[], w=[], runs=[];
+  var at=function(a, i){ return a[Math.min(i, a.length-1)]; };
+  for(var i=0;i<n;i++){
+    reps.push(Array.isArray(r.reps) ? (r.reps.length ? at(r.reps, i) : '8-10') : r.reps);
+    var x=(Array.isArray(r.weights) && r.weights.length) ? parseFloat(at(r.weights, i)) : base;
+    w.push(x>0 ? x : base);
+  }
+  for(var j=0;j<n;j++){
+    var last=runs[runs.length-1];
+    if(last && String(last.reps)===String(reps[j]) && last.w===w[j]) last.at.push(j);
+    else runs.push({at:[j], reps:reps[j], w:w[j]});
+  }
+  return {reps:reps, w:w, runs:runs};
+}
+// The runner's Edit sheet shows the numbers of the set on screen. On a row of several runs its
+// reps or load edit is that run's (k, counted from the first set): carried through the weeks as a
+// row of its own would be (each later week's run k, its own climb, deloads their share), then
+// written back set by set. Applied to the whole row, a back-off edit rewrote every set at the top
+// set's load (185x8 became 225x10), and a back-off load scaled from the top set's.
+function _progEditRun(cr, slot, name, c, k, ed, o){
+  var W=cr.weeks, tmp=' '+name+' (run) ', made=[], n=0;   // a name no lift has: names are trimmed
+  for(var j=c;j<W.length;j++){
+    var list=W[j]&&W[j][slot], r=_progRow(W[j], slot, name); if(!r || !Array.isArray(list)) continue;
+    var g=_progRuns(r), run=g.runs[k]; if(!run) continue;
+    var t={name:tmp, sets:run.at.length, reps:run.reps, weight:run.w, rpe:r.rpe};
+    list.push(t); made.push({list:list, r:r, g:g, run:run, t:t});
+  }
+  if(made.length && _progRow(W[c], slot, tmp)){
+    var t0=made[0].t, repsOld=t0.reps;
+    if(ed.reps!==undefined && String(ed.reps)!==String(t0.reps)) _progSetScheme(cr, slot, tmp, c, 'reps', ed.reps, o);
+    if(ed.weight>0 && Math.abs(ed.weight-(parseFloat(t0.weight)||0))>0.05) _progCarryLoad(cr, slot, tmp, c, ed.weight, {markOwner:true, repsOld:repsOld});
+  }
+  var same=function(a){ return a.every(function(x){ return String(x)===String(a[0]); }); };
+  made.forEach(function(m){
+    m.list.splice(m.list.indexOf(m.t), 1);
+    var nr=m.t.reps, nw=parseFloat(m.t.weight)||0;
+    if(String(nr)===String(m.run.reps) && Math.abs(nw-m.run.w)<0.01) return;
+    var reps=m.g.reps.slice(), w=m.g.w.slice();
+    m.run.at.forEach(function(i){ reps[i]=nr; w[i]=nw; });
+    _markRec(m.r);
+    m.r.reps=same(reps) ? reps[0] : reps;
+    if(same(w)){ delete m.r.weights; m.r.weight=w[0]; }
+    else { m.r.weights=w; if(m.run.at[0]===0) m.r.weight=w[0]; }   // the row's load is its first set's
+    _progUnmark(m.r); n++;
+  });
+  return n;
+}
 // Write a session edit into the programme through the engine: this week and
 // every later week of the same day, keeping the climb. Only what the owner
 // changed in the sheet is written (a mid-session stepper bump is not an edit).
@@ -12658,17 +12715,27 @@ function _runnerApplyToProgramme(op, p){
     if(op==='rename'){
       var name=p.oldName;
       var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
+      var ti=function(g){ return Math.min(Math.max(0, parseInt(p.at,10)||0), g.w.length-1); };   // the set on screen
       if(p.ex.name!==p.oldName){
-        var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, t.weight?p.ex.weight:0, o);
+        // A load typed for a back-off set is that set's: the new lift keeps the row's shape at it.
+        var Nsw=t.weight?p.ex.weight:0, g0=_progRuns(st), L0=g0.w[ti(g0)], P0=parseFloat(st.weight)||0;
+        if(Nsw>0 && L0>0 && P0>0) Nsw=Nsw*P0/L0;
+        var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, Nsw, o);
         if(sw===-1) return -1;
         n+=sw; name=p.ex.name; st=_progRow(cr.weeks[c], slot, name);
         if(!st) return n;
       }
       var repsOld=JSON.parse(JSON.stringify(st.reps===undefined?null:st.reps));
       if(t.sets && String(p.ex.sets)!==String(st.sets)) n+=_progSetScheme(cr, slot, name, c, 'sets', p.ex.sets, o);
-      if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
-      if(p.ex.name===p.oldName && t.weight && p.ex.weight>0 && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
-        n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
+      var load=p.ex.name===p.oldName && t.weight && p.ex.weight>0;
+      var g=(t.reps || load) ? _progRuns(st) : null, k=-1;
+      if(g && g.runs.length>1) g.runs.forEach(function(x, i){ if(x.at.indexOf(ti(g))>=0) k=i; });
+      if(k>=0) n+=_progEditRun(cr, slot, name, c, k, {reps:t.reps?p.ex.reps:undefined, weight:load?p.ex.weight:0}, o);
+      else {
+        if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
+        if(load && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
+          n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
+      }
     } else if(op==='add'){
       var ex=p.ex, N=_knownLoadLb(ex.name, cr, c);
       var a=_progAdd(cr, slot, {name:ex.name, sets:ex.sets, reps:ex.reps, rpe:ex.rpe||7, weight:N}, c, p.after, {firstIsMain:false});
@@ -12864,7 +12931,7 @@ function saveRunnerExEdit(){
     }
   }
   if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight},
-    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}});
+    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}, at:_rExEditSeed?_rExEditSeed.at:0});
   _bwLiftCache={};
   closeRunnerExEdit(); _saveRunnerDraft(); paintRunner();
 }
@@ -18354,6 +18421,26 @@ function _executeCoachToolRaw(name,input){
           var old=Array.isArray(_prevW[k])?_prevW[k]:[];
           if(w[k]===undefined) return;   // kept as stored above, marks and all
           var neu=Array.isArray(weekObj[k])?weekObj[k]:(weekObj[k]=[]);
+          // One owner's row (or one removed row) can stand for a lift the coach writes twice: a top set
+          // and its back-offs made one row by the runner's 'Also update my programme'. The owner's row
+          // replaced the coach's first row alone, so the second came back beside it (8 sets), and a
+          // removal took the first alone (the lift came back). The coach's rows fold into one first,
+          // as the runner folds them (Restore brings one row of a lift back, Use coach's all its sets).
+          var _ro0=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [], _fold={};
+          var _stand=function(nm){ return old.filter(function(x){ return x && (x.name===nm || (x.rec && x.rec.name===nm)); }).length
+            + _ro0.filter(function(e){ return e && e.row && e.row.name===nm; }).length; };
+          old.forEach(function(x){ if(x && x.rec!==undefined) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
+          _ro0.forEach(function(e){ if(e && e.row && _stand(e.row.name)===1) _fold[e.row.name]=1; });
+          Object.keys(_fold).forEach(function(nm){
+            if(neu.filter(function(y){ return y && y.name===nm; }).length<2 || _progMergeLift(weekObj, k, nm)) return;
+            // rows that cannot be one (a load and 'your load'): the owner's one row stands for them all
+            for(var i=0, f=-1; i<neu.length; i++){
+              if(!neu[i] || neu[i].name!==nm) continue;
+              if(f<0){ f=i; continue; }
+              if(neu[i-1] && neu[i-1].ss) neu[i-1].ss=false;
+              neu.splice(i--, 1);
+            }
+          });
           old.forEach(function(orow, oi){
             // a mark that only moved the main tag is no edit of the lift: the coach's row stands
             if(!orow || orow.rec===undefined || _progTagOnly(orow)) return;
