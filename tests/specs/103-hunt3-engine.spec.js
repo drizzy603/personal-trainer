@@ -1029,3 +1029,56 @@ seq('T02: a superset opener comes back beside its partner, or its swap; Use coac
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T04 (incomplete R03): removals made on a page before 20261006-1 have no ssTo, so an opener added
+// back or restored still paired with whatever lift followed it. Its partner is read off a week
+// that still has the pair (else the row removed after it from its place). The data such a page
+// wrote: Incline Dumbbell Press (the opener) removed from week 6 on, then (a) its partner too,
+// (b) nothing else, (c) its partner by the coach (no entry).
+seq('T04: an opener removed on an older page comes back paired only with its own partner', async () => {
+  const { SEED } = require('../lib/harness');
+  const older = (v) => {
+    const r0 = JSON.parse(SEED.kt_routine);
+    r0.weeks.forEach((w, j) => {
+      const inc = w.push.find(e => e.name === 'Incline Dumbbell Press'), pd = w.push.find(e => e.name === 'Cable Triceps Pushdown');
+      inc.ss = true;
+      if (j < 5) return;
+      w.push = w.push.filter(e => e !== inc && (v === 'alone' || e !== pd));
+      w.recOut = { push: v === 'both' ? [{ at: 2, row: inc }, { at: 2, row: pd }] : [{ at: 2, row: inc }] };
+    });
+    return JSON.stringify(r0);
+  };
+  const probe = async (v) => {
+    const app = await boot({ native: true, seed: { kt_routine: older(v) } });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1, orig = localStorage.getItem('kt_routine');
+        // ~ = superset opener
+        const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+        _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10);
+        r.add = [day(), day(last)];
+        openDeckRunner('Push'); await wait(20);
+        r.runner = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+        closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+        openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+        r.thenRestore = day();
+        lsSet('kt_routine', JSON.parse(orig));
+        openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+        r.restore = [day(), day(last)];
+        return r;
+      });
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const C = 'Bench Press | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+  const unpaired = 'Bench Press | Overhead Press | Incline Dumbbell Press | Lateral Raise';
+  const both = await probe('both');
+  assert(both.add.every(x => x === unpaired) && both.runner === unpaired, 'added back without its partner it pairs with nothing, in the runner too: ' + JSON.stringify(both));
+  assert(both.thenRestore === C && both.restore.every(x => x === C), 'its partner restored after it, or both restored, pair again: ' + JSON.stringify(both));
+  const alone = await probe('alone');
+  assert(alone.add.every(x => x === C) && alone.runner === C && alone.restore.every(x => x === C), 'back beside its partner it pairs: ' + JSON.stringify(alone));
+  const coach = await probe('coach');
+  assert(coach.add.every(x => x === unpaired) && coach.restore.every(x => x === unpaired), 'its partner gone from the programme: unpaired: ' + JSON.stringify(coach));
+});

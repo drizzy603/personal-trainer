@@ -11159,6 +11159,20 @@ function _progPutBack(list, back, e, ro){
   }
   _progSettleMain(list, back);
 }
+// An opener removed on a page before 20261006-1 has no ssTo (it came back paired with whatever
+// lift followed): its partner is the lift it pairs with in the nearest week that still has the
+// pair, else the row removed after it from the same place. ro[q] is the entry, still in ro.
+function _progSsFill(W, slot, j, ro, q){
+  var e=ro[q]; if(!e || !e.row || !e.row.ss || typeof e.ssTo==='string') return;
+  var nm=e.row.name, to=null, near=[];
+  for(var d=1;d<W.length;d++){ if(j-d>=0) near.push(j-d); if(j+d<W.length) near.push(j+d); }
+  near.forEach(function(k){
+    var l=W[k] && W[k][slot]; if(to!=null || !Array.isArray(l)) return;
+    for(var i=0;i<l.length-1;i++) if(l[i] && l[i].name===nm && l[i].ss && l[i+1] && l[i+1].rec!==null){ to=(l[i+1].rec && l[i+1].rec.name) || l[i+1].name; return; }
+  });
+  for(var x=q+1; to==null && x<ro.length; x++) if(ro[x] && ro[x].row && String(ro[x].at)===String(e.at)) to=ro[x].row.name;
+  if(to!=null) e.ssTo=to;
+}
 function _median(a){ if(!a.length) return 0; var s=a.slice().sort(function(x,y){ return x-y; }); var m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 // A load the owner has actually used for a lift: the same lift elsewhere in this
 // week of the programme, then the last logged session, then their own working
@@ -11360,7 +11374,7 @@ function _progAdd(cr, slot, ex, c, after, o){
     var back=null, ent=null, ro=null;
     if(w.recOut && Array.isArray(w.recOut[slot])){
       ro=w.recOut[slot];
-      for(var q=ro.length-1;q>=0;q--){ if(ro[q] && ro[q].row && ro[q].row.name===ex.name){ ent=ro.splice(q,1)[0]; back=ent.row; break; } }
+      for(var q=ro.length-1;q>=0;q--){ if(ro[q] && ro[q].row && ro[q].row.name===ex.name){ _progSsFill(W, slot, j, ro, q); ent=ro.splice(q,1)[0]; back=ent.row; break; } }
     }
     if(back){
       // its place, its main tag (handed back) and the superset its removal broke
@@ -11701,7 +11715,7 @@ function _progRestoreOut(cr, slot, want, c){
     if(!Array.isArray(w[slot])) w[slot]=[];
     for(var q=ro.length-1;q>=0;q--){   // last removed first, so each lands where it was
       var e=ro[q]; if(!e || !e.row || !want(e) || _progRow(w, slot, e.row.name)) continue;
-      ro.splice(q,1);
+      _progSsFill(W, slot, j, ro, q); ro.splice(q,1);
       var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
       _progPutBack(w[slot], back, e, ro); n++;
     }
@@ -11736,6 +11750,7 @@ function _progResetSlot(cr, slot, c){
     // after the other came back swapped), with its main tag and its superset.
     for(var q=ro.length-1;q>=0;q--){
       var e=ro[q]; if(!e || !e.row || out.some(function(x){ return x.name===e.row.name; })) continue;
+      _progSsFill(W, slot, j, ro, q);
       var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
       _progPutBack(out, back, e, ro); n++;
     }
