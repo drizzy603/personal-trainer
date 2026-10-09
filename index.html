@@ -10405,17 +10405,22 @@ function _regridLb(cr){
 }
 // The moves put back on the way to kg, each on the holder at its place that still holds what the
 // switch wrote. The programme's own notes first (bk: Restore previous programme's, m.b), then the
-// other's: a restore point taken since, or swapped in, is a copy of the other.
+// other's: a restore point taken since, or swapped in, is a copy of the other. A lift a day lists
+// twice (a top set and back-offs) has a holder per row, each note going to the next one not yet
+// put back: the key named only the first, so the back-off rows stayed on lb plates.
 function _regridBack(cr, rows, bk){
   var n=0, at={}, done=[];
   var key=function(m, p){ return m.j+'|'+m.k+'|'+(p||m.p)+'|'+m.n; };
-  _unitHolders(cr, function(h, m){ if(!at[key(m)]) at[key(m)]=h; });
-  var put=function(h, m){
-    if(!h || done.indexOf(h)>=0) return;
-    var hit=false;
-    if(m.w && Math.abs((parseFloat(h.weight)||0)-m.w[1])<0.01){ h.weight=m.w[0]; hit=true; }
-    if(m.ws && JSON.stringify(h.weights)===JSON.stringify(m.ws[1])){ h.weights=m.ws[0]; hit=true; }
-    if(hit){ done.push(h); n++; }
+  _unitHolders(cr, function(h, m){ (at[key(m)]=at[key(m)]||[]).push(h); });
+  var put=function(hs, m){
+    for(var i=0;i<(hs||[]).length;i++){
+      var h=hs[i]; if(done.indexOf(h)>=0) continue;
+      var okW=!!m.w && Math.abs((parseFloat(h.weight)||0)-m.w[1])<0.01, okWs=!!m.ws && JSON.stringify(h.weights)===JSON.stringify(m.ws[1]);
+      if(!okW && !okWs) continue;
+      if(okW) h.weight=m.w[0];
+      if(okWs) h.weights=m.ws[0];
+      done.push(h); n++; return;
+    }
   };
   var own=function(m){ return !!m.b===!!bk; }, ord=rows.filter(function(m){ return m && own(m); }).concat(rows.filter(function(m){ return m && !own(m); }));
   // The rows first; then the coach's kept originals and removed rows, where they are or back

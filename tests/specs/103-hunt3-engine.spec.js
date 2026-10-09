@@ -1133,3 +1133,42 @@ seq('T03 + T48: a units switch keeps a coach reply\'s Undo and the programme fro
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T05 (incomplete R08): a lift a day lists twice (a top set and back-off sets) came back from lb
+// with only its first row exact: the second stayed on lb plates (102.5 kg read 102). Every row and
+// the restore point (a Routines visit before the switch) come back exactly.
+seq('T05: kg to lb and back is exact for a lift listed twice on a day', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgW = (kg) => Math.round(kg * LB * 10) / 10;
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach((w, i) => {
+    w.push = [{ name: 'Bench Press', sets: 1, reps: 3, weight: kgW(105 + i * 1.25), isMain: true },
+      { name: 'Bench Press', sets: 3, reps: 6, weight: kgW(91.25 + i * 1.25) }, { name: 'Overhead Press', sets: 4, reps: 8, weight: kgW(46.25) }];
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(kgR), kt_unit_w: 'kg' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const unit = async (u) => { switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === u).click(); await wait(30); };
+      // a Routines change first, so Restore previous programme holds the day as it was
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.w = 47.5; _rtSave(); await wait(10); closeRoutines();
+      const prog = localStorage.getItem('kt_routine'), point = localStorage.getItem('kt_routine_backup');
+      const onLb = () => getCustomRoutine().weeks.every(w => w.push.every(e => Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01));
+      r.kgDay = getCustomRoutine().weeks[c].push.map(e => fmtW(e.weight)).join(' | ');
+      await unit('lb');
+      r.onLb = onLb();
+      openDeckRunner('Push'); await wait(20);
+      const b = runnerSession.exercises[0], top = getCustomRoutine().weeks[c].push.map(e => e.weight);
+      r.runner = b.name === 'Bench Press' && JSON.stringify(b.weights) === JSON.stringify([top[0], top[1], top[1], top[1]]);
+      closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+      await unit('kg');
+      r.same = localStorage.getItem('kt_routine') === prog; r.pointSame = localStorage.getItem('kt_routine_backup') === point;
+      r.day = getCustomRoutine().weeks[c].push.map(e => fmtW(e.weight)).join(' | ');
+      return r;
+    });
+    assert(out.onLb && out.runner, 'in lb every row on lb plates, the runner\'s back-off sets too: ' + JSON.stringify(out));
+    assert(out.same && out.pointSame && out.day === out.kgDay, 'back in kg the top set and the back-offs are exact, the restore point too: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
