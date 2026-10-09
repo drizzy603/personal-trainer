@@ -1172,3 +1172,69 @@ seq('T05: kg to lb and back is exact for a lift listed twice on a day', async ()
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T06 (incomplete R08): only the switch moved a programme onto lb plates, so a kg-built programme
+// put back after it (Programme History, Restore previous programme, a backup file) kept its kg
+// plates for good in lb (148.8 lb, "+1.9 / side"; the launch sweep keeps a programme that reads as
+// kg on its grid). Put back in lb it goes onto lb plates with no undo point, and the way back to
+// kg gives it its exact kg loads. A kg owner: programme B now, A (built in kg) in Programme History.
+seq('T06: a kg programme put back while the owner reads lb goes onto lb plates', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  const A = JSON.parse(SEED.kt_routine); A.name = 'Programme A';
+  A.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const B = JSON.parse(JSON.stringify(A)); B.name = 'Programme B';
+  B.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight * 1.05); })));
+  const launch = async (seed, fn, arg) => {
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(fn, arg);
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  // loads off the lb plate grid, programme-wide
+  const OFF = `(cr) => { let n = 0; (cr.weeks || []).forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0 && Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) > 0.01) n++; }))); return n; }`;
+  const a = await launch({ kt_routine: JSON.stringify(B), kt_unit_w: 'kg' }, async ({ A, OFF }) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const off = eval(OFF), r = {};
+    lsSet('kt_routine_archive', [{ id: 1111, archivedAt: addDays(todayISO(), -30), routine: A }]);
+    switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === 'lb').click(); await wait(30);
+    openRoutineArchiveModal(); await wait(10);
+    [...document.querySelectorAll('#routine-archive-modal button')].find(b => b.textContent === 'Restore this programme').click(); await wait(10);
+    document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+    r.name = getCustomRoutine().name; r.off = off(getCustomRoutine()); r.scope = localStorage.getItem('kt_routine_backup_scope');
+    openDeckRunner('Push'); await wait(20);
+    r.runner = runnerSession.exercises.every(e => !(e.weight > 0) || Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01);
+    closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+    r.keep = {}; ['kt_routine', 'kt_routine_backup', 'kt_routine_archive', 'kt_unit_regrid', 'kt_week', 'kt_week_monday'].forEach(k => { const v = localStorage.getItem(k); if (v != null) r.keep[k] = v; });
+    return r;
+  }, { A, OFF });
+  assert(a.name === 'Programme A' && a.off === 0 && a.runner && /^history:/.test(a.scope), 'Programme History in lb: every load on lb plates, the runner too: ' + JSON.stringify(a));
+  // relaunched in lb nothing moves; then Settings > Units > kg gives A its exact kg loads
+  const back = await launch(Object.assign({ kt_unit_w: 'lb' }, a.keep), async (A) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const r = { stored: localStorage.getItem('kt_routine') };
+    switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === 'kg').click(); await wait(30);
+    const diffs = [];
+    getCustomRoutine().weeks.forEach((w, j) => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach((e, i) => { if (Math.abs(A.weeks[j][k][i].weight - e.weight) > 0.01) diffs.push((j + 1) + ' ' + e.name); })));
+    r.diffs = diffs;
+    return r;
+  }, A);
+  assert(back.stored === a.keep.kt_routine && !back.diffs.length, 'a relaunch keeps the lb plates; back in kg A is exactly as built: ' + JSON.stringify(back.diffs));
+  // Restore previous programme in lb, the restore point on kg plates (taken before the switch on 20261006-1)
+  const b = await launch({ kt_routine: JSON.stringify(B), kt_routine_backup: JSON.stringify(A), kt_routine_backup_scope: 'units', kt_unit_w: 'lb' }, async (OFF) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    restoreRoutineBackup(); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+    return { name: getCustomRoutine().name, off: eval(OFF)(getCustomRoutine()) };
+  }, OFF);
+  assert(b.name === 'Programme A' && b.off === 0, 'Restore previous programme in lb: on lb plates: ' + JSON.stringify(b));
+  // a backup file restored in lb: its programme and its restore point
+  const c = await launch({ kt_unit_w: 'lb' }, async ({ A, B, OFF }) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const data = buildBackupJSON(); data.kt_routine = A; data.kt_routine_backup = B; data.kt_unit_w = 'lb';
+    const ok = _applyImportedData(data); await wait(20);
+    return { ok, off: eval(OFF)(getCustomRoutine()), offPoint: eval(OFF)(lsGet('kt_routine_backup')) };
+  }, { A, B, OFF });
+  assert(c.ok && c.off === 0 && c.offPoint === 0, 'a backup file in lb: on lb plates: ' + JSON.stringify(c));
+});

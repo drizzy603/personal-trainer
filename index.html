@@ -3562,6 +3562,7 @@ function restoreArchivedRoutine(id){
     _routineReplaced(cur, 'history:'+id);
     setRoutineArchive(withCur.filter(function(e){return e.id!==id;}).slice(0,5));
     _startProgramme();
+    _unitsPutIn();   // in lb, onto lb plates
     closeRoutineArchiveModal();
     showToast('Programme restored'); render();
   }});
@@ -4675,6 +4676,7 @@ function _applyImportedData(data, opts) {
   _seedStreakDays(false);    // and no kt_streak_days: its days before week 1 read as the page that wrote them did
   invalidateCoachCard();
   loadCoachHistory();
+  _unitsPutIn({backup:true});   // in lb, the file's programme and its restore point onto lb plates
   var importedTheme = localStorage.getItem('kt_theme');
   applyTheme(THEMES[importedTheme]?importedTheme:'heavyweight');
   render();
@@ -10370,7 +10372,7 @@ function _unitsRegrid(to){
   try{ localStorage.removeItem('kt_unit_regrid'); }catch(e){}
   var rawB=null, bk=null; try{ rawB=localStorage.getItem('kt_routine_backup'); bk=rawB?JSON.parse(rawB):null; }catch(e){ bk=null; }
   if(!bk || !Array.isArray(bk.weeks)) bk=null;
-  var putB=function(s){ try{ localStorage.setItem('kt_routine_backup', s); delete _lsCache['kt_routine_backup']; _backupDirty=true; return true; }catch(e){ return false; } };
+  var putB=_putBackupRaw;
   if(to==='lb'){
     var moved=[], bMoved=bk?_regridLb(bk):[], bNew=bMoved.length?JSON.stringify(bk):null;
     if(bNew && !putB(bNew)){ bNew=null; bMoved=[]; }
@@ -10385,6 +10387,26 @@ function _unitsRegrid(to){
   if(!rows.length) return;
   if(hasCustomRoutine()) _commitRoutine(function(cr){ return _regridBack(cr, rows, false); }, {keepBackup:true, noRender:true});
   if(bk && _regridBack(bk, rows, true)>0) putB(JSON.stringify(bk));
+}
+// Restore previous programme rewritten in place, quietly (its scope and the reply's Undo stay).
+function _putBackupRaw(s){ try{ localStorage.setItem('kt_routine_backup', s); delete _lsCache['kt_routine_backup']; _backupDirty=true; return true; }catch(e){ return false; } }
+// A programme put back whole while the owner reads lb (Programme History, Restore previous
+// programme, a backup file; o.backup: its restore point came with it) goes onto lb plates as the
+// switch puts one: no undo point, the moves noted for the way back to kg. A kg-built programme put
+// back after the switch kept its kg plates for good (148.8 lb, "+1.9 / side"): only the switch
+// moved them, and the launch sweep keeps a programme that reads as kg on its grid.
+function _unitsPutIn(o){
+  o=o||{};
+  try{
+    if(localStorage.getItem('kt_unit_w')==='kg') return;
+    var mem=null; try{ mem=JSON.parse(localStorage.getItem('kt_unit_regrid')||'null'); }catch(e){}
+    var rows=(mem && Array.isArray(mem.rows)) ? mem.rows : [], add=[];
+    var cr=getCustomRoutine();
+    if(cr){ var c2=JSON.parse(JSON.stringify(cr)), mv=_regridLb(c2); if(mv.length && setCustomRoutine(c2)) add=mv; }
+    var raw=o.backup ? localStorage.getItem('kt_routine_backup') : null, b=raw ? JSON.parse(raw) : null;
+    if(b && Array.isArray(b.weeks)){ var bm=_regridLb(b); if(bm.length && _putBackupRaw(JSON.stringify(b))){ bm.forEach(function(m){ m.b=1; }); add=add.concat(bm); } }
+    if(add.length) localStorage.setItem('kt_unit_regrid', JSON.stringify({rows:add.concat(rows).slice(0, 4000)}));
+  }catch(e){}
 }
 // A load off the lb plate grid onto the nearest 2.5 lb (kg plates read 159.8 lb).
 function _lbPlateOf(v){ return (v>0 && !_onPlateGrid(v, false)) ? Math.max(2.5, Math.round(v/2.5)*2.5) : v; }
@@ -19184,6 +19206,7 @@ function restoreRoutineBackup(onDone){
     // Past the end of the restored programme (Undo after the coach added weeks 13-14): its last
     // week. Week 1 sent the owner back to the start and cleared the final-week state.
     else if(currentWeek>total) _setWeek(total); else if(currentWeek<1) _setWeek(1);
+    _unitsPutIn();   // in lb, onto lb plates
     if(typeof onDone==='function') onDone();
     showToast('Previous programme restored'); render();
   }});
