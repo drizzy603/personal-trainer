@@ -48,6 +48,9 @@
 //   example, and Edit sets) kept that lift at its older log's load: the renamed log, now its
 //   newest, sets it as a fresh log would; a working weight written after the log (the coach's, a
 //   +5) stays.
+// - T08 (R12) a session told again with a lift the saved one lacks was refused whole and the coach
+//   told to say it was already logged: the refusal names the lift as not saved (so does the pill),
+//   and log_session's add_to puts only the lifts a saved session lacks into it.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -706,4 +709,94 @@ run('T09: a lift renamed into one the owner has takes the renamed log\'s load, u
     assert(out.control === 60, 'control: ' + out.control);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// T08 (hunt 5): R12 refused a session told again with a lift the saved one lacks ("I also did
+// overhead press in that session", the model re-sending the whole session; an older, unlisted
+// session told with a lift it never had) and told the coach to say it was already logged: the new
+// lift was dropped and never named, and edit_session cannot add a lift. The refusal names it as not
+// saved, the pill says so, and log_session's add_to puts only the lifts a saved session lacks into
+// it (its date and day; records, working weights and the stamp as a log of that day).
+run('T08: a re-told session with a lift the saved one lacks names it; add_to puts it into that session', async () => {
+  for (const unit of ['lb', 'kg']) {
+    const app = await boot({ native: true, seed: { kt_unit_w: unit, kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_coach_model: 'claude-haiku-4-5' } });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const sent = [], queue = [];
+        window.fetch = async (u, o) => {
+          if (String(u).indexOf('api.anthropic.com') < 0) return new Response('{}', { status: 404 });
+          try { sent.push(JSON.parse(o.body)); } catch (e) {}
+          return new Response(JSON.stringify(queue.shift() || { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }), { status: 200, headers: { 'content-type': 'application/json' } });
+        };
+        const tu = (id, name, input) => ({ content: [{ type: 'tool_use', id, name, input }], stop_reason: 'tool_use', usage: {} });
+        const send = async (text, replies) => { queue.push(...replies); document.getElementById('coach-input').value = text; await sendCoachMessage(); await wait(40); };
+        const toolResults = () => sent.map(b => b.messages[b.messages.length - 1]).filter(m => Array.isArray(m.content)).map(m => m.content.filter(x => x.type === 'tool_result').map(x => String(x.content)).join('')).filter(Boolean);
+        const pills = () => [...document.querySelectorAll('#screen span')].map(s => s.textContent.trim()).filter(t => /^[✓✕] /.test(t));
+        const T = todayISO(), r = {};
+        // 1. the same chat: today's Push logged, then "I also did overhead press in that session"
+        switchTab('coach'); coachView = 'chat'; render(); await wait(20);
+        const bench = { name: 'Bench Press', sets: 3, reps: 5, weight: 80, isMain: true }, ohp = { name: 'Overhead Press', sets: 3, reps: 8, weight: 40, isMain: true };
+        const n0 = getSessions().length;
+        await send('Log my push from today: bench 3x5 at 80', [tu('t08a', 'log_session', { type: 'Push', exercises: [bench] })]);
+        const sid = (getSessions().find(s => s.date === T && s.source === 'coach') || {}).id;
+        await send('Oh, I also did overhead press 3x8 at 40 in that same session', [tu('t08b', 'log_session', { type: 'Push', exercises: [bench, ohp] }), tu('t08c', 'log_session', { type: 'Push', add_to: sid, exercises: [ohp] })]);
+        const sys = (b => typeof b.system === 'string' ? b.system : (b.system || []).map(x => x.text).join(''))(sent[sent.length - 1]);
+        const today = getSessions().filter(s => s.date === T);
+        const rec = today[0] || { exercises: [] };
+        render(); await wait(20);
+        r.chat = { T, added: getSessions().length - n0, today: today.length, lifts: rec.exercises.map(e => e.name + (e.isMain ? '*' : '')).join(','), ohpW: rec.exercises.filter(e => e.name === 'Overhead Press').map(e => e.weight).join(','), want: wStore(40),
+          ohpWorking: getWeights()['Overhead Press'], stamp: JSON.stringify((rec.wSet || {})['Overhead Press']), results: toolResults().slice(-2), pills: pills().slice(-3), sid,
+          guide: /log_session with add_to set to that session's \[id:\.\.\.\]/.test(sys), listed: sys.indexOf('[id:' + sid + ']') >= 0 };
+        // 2. an older session, not in RECENT SESSIONS, told again with a lift it never had
+        const old = getSessions().filter(s => s.type === 'Push').slice(-1)[0];
+        r.oldListed = buildSystemPrompt().indexOf('[id:' + old.id + ']') >= 0;
+        const told = old.exercises.map(e => { const ps = _exPairs(e); return { name: e.name, sets: ps.length, reps: ps.map(p => p[0]), weight: wDisp(Math.max.apply(null, ps.map(p => p[1]))) }; });
+        const fly = { name: 'Dumbbell Fly', sets: 3, reps: 12, weight: 12 }, n1 = getSessions().length, lifts0 = old.exercises.length;
+        const call = (input) => { const res = executeCoachTool('log_session', input); return { res, pill: toolCallLabel({ name: 'log_session', input, result: res }) }; };
+        r.retold = call({ type: 'Push', date: old.date, exercises: told.concat([fly]) });
+        r.retoldSaved = getSessions().length - n1;
+        r.addFly = call({ type: 'Push', date: old.date, add_to: old.id, exercises: [fly] });
+        const after = getSessions().find(s => s.id === old.id);
+        r.old = { date: old.date, lifts0, lifts: after.exercises.length, fly: (after.exercises.find(e => e.name === 'Dumbbell Fly') || {}).weight, want: wStore(12), sameDay: getSessions().filter(s => s.date === old.date).length, added: getSessions().length - n1,
+          stamped: Object.prototype.hasOwnProperty.call(old, 'wSet') || Object.prototype.hasOwnProperty.call(after, 'wSet') };
+        // told once more in full: every lift is in it now, so it is plainly already logged
+        r.again = call({ type: 'Push', date: old.date, exercises: told.concat([fly]) });
+        // 3. add_to's guards: an unknown id, another day, only lifts it has; nothing is saved
+        const n2 = getSessions().length;
+        r.unknown = call({ type: 'Push', add_to: 123, exercises: [fly] }).res;
+        r.otherDay = call({ type: 'Pull', add_to: old.id, exercises: [{ name: 'Face Pull', sets: 3, reps: 15, weight: 20 }] }).res;
+        r.otherDate = call({ type: 'Push', date: addDays(old.date, 1), add_to: old.id, exercises: [{ name: 'Cable Fly', sets: 3, reps: 15, weight: 20 }] }).res;
+        r.allIn = call({ type: 'Push', date: old.date, add_to: old.id, exercises: [told[0]] });
+        r.guarded = { saved: getSessions().length - n2, lifts: getSessions().find(s => s.id === old.id).exercises.length };
+        // edit_session cannot add a lift: it says where that goes
+        r.editAdd = executeCoachTool('edit_session', { id: old.id, exercise: 'Pec Deck', reps: [12, 12], weight: 30 });
+        r.schema = !!(_cachedCoachTools().find(t => t.name === 'log_session') || { input_schema: { properties: {} } }).input_schema.properties.add_to;
+        return r;
+      });
+      const c = out.chat, dayP = 'Push';
+      assert(c.added === 1 && c.today === 1 && c.lifts === 'Bench Press*,Overhead Press' && c.ohpW === String(c.want), unit + ': one session with both lifts; the main stays Bench: ' + JSON.stringify(c));
+      assert(c.ohpWorking === c.want && c.stamp === JSON.stringify([null, c.want]), unit + ': the added lift sets its working weight and the log\'s stamp says so: ' + JSON.stringify(c));
+      assert(/It does not have Overhead Press/.test(c.results[0]) && /NOT logged/.test(c.results[0]) && /add_to:/.test(c.results[0]) && !/Tell the user it is already logged/.test(c.results[0]), unit + ': the coach is told the new lift is not saved and how to add it: ' + c.results[0]);
+      assert(/"added":\["Overhead Press"\]/.test(c.results[1]) && /Added Overhead Press to the Push session of /.test(c.results[1]), unit + ': and that add_to added it: ' + c.results[1]);
+      assert(JSON.stringify(c.pills) === JSON.stringify(['✓ ' + dayP + ' logged', '✕ ' + dayP + ': Overhead Press not saved', '✓ ' + dayP + ': Overhead Press added · ' + c.T]), unit + ': the pills say what happened: ' + JSON.stringify(c.pills));
+      assert(c.guide && c.listed, unit + ': the prompt lists the saved session and says add_to adds to it: ' + JSON.stringify([c.guide, c.listed]));
+      assert(!out.oldListed, unit + ': the older session is not in the prompt\'s list');
+      const rt = out.retold;
+      assert(rt.res.ok === false && rt.res.duplicate && JSON.stringify(rt.res.missing) === '["Dumbbell Fly"]' && out.retoldSaved === 0, unit + ': the re-told session is refused, naming the lift it lacks: ' + JSON.stringify(rt.res));
+      assert(/It does not have Dumbbell Fly/.test(rt.res.error) && /NOT logged/.test(rt.res.error) && rt.res.error.indexOf('add_to:' + rt.res.duplicate) > 0 && !/Tell the user it is already logged/.test(rt.res.error) && rt.res.error.indexOf(' ' + unit) > 0, unit + ': the error says so, in the owner\'s unit: ' + rt.res.error);
+      assert(rt.pill === dayP + ': Dumbbell Fly not saved · ' + out.old.date, unit + ': its pill does not say already logged: ' + rt.pill);
+      assert(out.addFly.res.ok && out.addFly.pill === dayP + ': Dumbbell Fly added · ' + out.old.date, unit + ': add_to saves it: ' + JSON.stringify(out.addFly));
+      assert(out.old.lifts === out.old.lifts0 + 1 && out.old.fly === out.old.want && out.old.sameDay === 1 && out.old.added === 0, unit + ': into the saved session, no new one: ' + JSON.stringify(out.old));
+      assert(out.old.stamped === false, unit + ': a log from before the stamp stays unstamped: ' + JSON.stringify(out.old));
+      assert(out.again.res.ok === false && !out.again.res.missing && out.again.pill === dayP + ' already logged · ' + out.old.date, unit + ': told again in full it is plainly already logged: ' + JSON.stringify(out.again));
+      assert(out.unknown.ok === false && /not found/.test(out.unknown.error), unit + ': an unknown id: ' + JSON.stringify(out.unknown));
+      assert(out.otherDay.ok === false && out.otherDate.ok === false, unit + ': another day or date is refused: ' + JSON.stringify([out.otherDay, out.otherDate]));
+      assert(out.allIn.res.ok === false && out.allIn.res.duplicate && out.allIn.pill === dayP + ' already logged · ' + out.old.date, unit + ': only lifts it has: ' + JSON.stringify(out.allIn));
+      assert(out.guarded.saved === 0 && out.guarded.lifts === out.old.lifts, unit + ': the guards save nothing: ' + JSON.stringify(out.guarded));
+      assert(out.editAdd.ok === false && /log_session with add_to:/.test(out.editAdd.error), unit + ': edit_session points to add_to: ' + out.editAdd.error);
+      assert(out.schema, unit + ': the tool offers add_to');
+      assert(app.errors.length === 0, unit + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });

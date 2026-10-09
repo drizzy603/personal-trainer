@@ -10516,8 +10516,9 @@ function _coachSportTwin(dateISO, type, mins){
 // The same day and day slot, sharing a lift (by name, any case). Sets and loads are not compared:
 // the same session told with other numbers is a fix (edit_session), and a real second session
 // that day goes through with separate:true.
+function _coachLiftKey(n){ return String(n||'').replace(/\s+/g,' ').trim().toLowerCase(); }
 function _coachSessionTwin(dateISO, type, exs){
-  var key=function(n){ return String(n||'').replace(/\s+/g,' ').trim().toLowerCase(); };
+  var key=_coachLiftKey;
   var names=(exs||[]).map(function(e){ return key(e&&e.name); }).filter(Boolean);
   return getSessions().find(function(s){
     return !!(s && String(s.date||'').slice(0,10)===String(dateISO) && s.type===type && Array.isArray(s.exercises)
@@ -17782,7 +17783,7 @@ var COACH_TOOLS=[
      },
      required:['time']}},
   {name:'log_session',
-   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given. A session that matches one already saved (same day and session type, sharing an exercise) is refused as a duplicate.',
+   description:'Save a completed gym LIFTING session to the user\'s log (kt_sessions). Use whenever the user describes lift work they already did (e.g. "I did push day at a hotel gym: bench 4x8 at 185") and it is not in the RECENT SESSIONS list (it lists the newest only: one dated before its oldest may already be saved, so log that only if the user says it is missing). Use the actual training date, not today, when they trained on a different day. Weights are what they actually lifted — record them as given. A session that matches one already saved (same day and session type, sharing an exercise) is refused as a duplicate; the refusal names any lifts you sent that the saved one lacks. Lifts the user did in a session that is already saved ("I also did curls in that workout") go into it with add_to, not into a new session.',
    input_schema:{type:'object',
      properties:{
        type:{type:'string',enum:LIFT_TYPES,description:'Session type (a lift slot id).'},
@@ -17796,7 +17797,8 @@ var COACH_TOOLS=[
          isMain:{type:'boolean',description:'True on the primary compound.'}
        },required:['name','sets','reps']}},
        note:{type:'string',description:'Short note (optional).'},
-       separate:{type:'boolean',description:'Only after log_session refused a duplicate: true when the user confirms this is a second, separate session that day.'}
+       separate:{type:'boolean',description:'Only after log_session refused a duplicate: true when the user confirms this is a second, separate session that day.'},
+       add_to:{type:'number',description:'The [id:...] of a saved session these lifts were part of (the user says so, or log_session named lifts the saved session lacks). Send only the lifts it lacks, with its day as type: they are added to that session, on its date. A lift already in it is left as saved (fix a number with edit_session).'}
      },
      required:['type','exercises']}},
   {name:'save_profile',
@@ -18415,13 +18417,47 @@ function _executeCoachToolRaw(name,input){
           weight:wStore(parseFloat(ge.weight)||0),
           rpe:(grpe>0?grpe:''), isMain:!!ge.isMain});
       }
+      // add_to: lifts done in a session that is already saved ("I also did overhead press in that
+      // workout", an older session told again with a lift it lacks) join that record on its date
+      // and day: only the lifts it lacks, each judged for records and working weights as a log of
+      // that day. edit_session could not add a lift, so the twin refusal below dropped it.
+      if(input.add_to!=null && input.add_to!==''){
+        var gall=getSessions(), gto=gall.find(function(x){ return x && x.id===Number(input.add_to); });
+        if(!gto || !Array.isArray(gto.exercises)) return {ok:false,error:'session id '+input.add_to+' not found. Nothing was saved.'};
+        var gtd=String(gto.date||'').slice(0,10), gtl=(LIFT_TYPES.indexOf(gto.type)>=0 && _dayLabel(gto.type)!==gto.type)?_dayLabel(gto.type)+' ('+gto.type+')':String(gto.type||'');
+        var gbad=(LIFT_TYPES.indexOf(gto.type)>=0 && gto.type!==gtype) ? 'is '+gtl+', not '+gtype
+          : (/^\d{4}-\d{2}-\d{2}$/.test(String(input.date||'').trim()) && gdate!==gtd) ? 'is from '+gtd+', not '+gdate : '';
+        if(gbad) return {ok:false,error:'session [id:'+gto.id+'] '+gbad+'. Nothing was saved. Pass the id of the session these lifts were part of, with its day as type.'};
+        var ghave=gto.exercises.map(function(e){ return _coachLiftKey(e&&e.name); }), gadd=[], gkept=[];
+        gclean.forEach(function(e){ var k=_coachLiftKey(e.name); if(ghave.indexOf(k)>=0) gkept.push(e.name); else { ghave.push(k); gadd.push(e); } });
+        if(!gadd.length) return {ok:false,duplicate:gto.id,error:'Every lift you sent is already in [id:'+gto.id+'] '+gtl+' '+gtd+'. Nothing was saved. To correct a number in it, use edit_session with that id.'};
+        if(gto.exercises.some(function(e){ return e && e.isMain; })) gadd.forEach(function(e){ e.isMain=false; });
+        var gaPRs=_pendingPRs(gadd), gp0=Array.isArray(gto.prs)?gto.prs:[];
+        var gnew=Object.assign({}, gto, {exercises:gto.exercises.concat(gadd), prs:gp0.concat(gaPRs.filter(function(p){ return gp0.indexOf(p)<0; }))});
+        if(!lsSet('kt_sessions', gall.map(function(x){ return x===gto ? gnew : x; }))) return {ok:false,error:'Storage is full on the phone, so nothing was saved. Ask the user to export a backup from Settings and free space, then try again.'};
+        checkAndUpdatePRs(gadd);
+        _setWorkingWeights(gadd, gtd, gnew.wSet ? gnew : null);   // a log from before the stamp stays unstamped
+        invalidateCoachCard();
+        checkMilestones({quiet:false, delayToast:600});
+        render();
+        var gan=gadd.map(function(e){ return e.name; });
+        return {ok:true, added:gan, into:gto.id, type:gto.type, date:gtd,
+          message:'Added '+gan.join(', ')+' to the '+gtl+' session of '+gtd+' [id:'+gto.id+'], now '+gnew.exercises.length+' exercises'+(gaPRs.length?', '+gaPRs.length+' PR'+(gaPRs.length===1?'':'s'):'')+(gkept.length?'. Already in it, left as saved: '+gkept.join(', ')+' (to correct a number there, use edit_session)':'')};
+      }
       // As log_run and log_sport: RECENT SESSIONS lists only the newest, and an older session the
       // user mentioned was saved a second time (its volume counted twice). The coach is shown
-      // what is saved, in the owner's unit.
+      // what is saved, in the owner's unit, and any lift it sent that the saved one lacks: those
+      // were dropped with the rest, and the coach was told to say all of it was logged.
       var _gtw=(input.separate===true||input.separate==='true')?null:_coachSessionTwin(gdate, gtype, gclean);
-      if(_gtw) return {ok:false,duplicate:_gtw.id,error:'Already saved: [id:'+_gtw.id+'] '+_gtw.type+' '+String(_gtw.date).slice(0,10)+': '+_gtw.exercises.map(function(ex){
-        var ps=_exPairs(ex||{}); return String((ex&&ex.name)||'')+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+_exLoadText(ex||{}, ps);
-      }).join(' | ')+'. Nothing was saved. Tell the user it is already logged (to correct a number in it, use edit_session with that id); only if they say it was a second, separate session that day, call log_session again with separate:true.'};
+      if(_gtw){
+        var _gts='Already saved: [id:'+_gtw.id+'] '+_gtw.type+' '+String(_gtw.date).slice(0,10)+': '+_gtw.exercises.map(function(ex){
+          var ps=_exPairs(ex||{}); return String((ex&&ex.name)||'')+' '+ps.length+'×('+ps.map(function(p){ return p[0]; }).join('/')+')@'+_exLoadText(ex||{}, ps);
+        }).join(' | ');
+        var _gth=_gtw.exercises.map(function(e){ return _coachLiftKey(e&&e.name); }), _gtm=[];
+        gclean.forEach(function(e){ var k=_coachLiftKey(e.name); if(_gth.indexOf(k)<0){ _gth.push(k); _gtm.push(e.name); } });
+        if(_gtm.length) return {ok:false,duplicate:_gtw.id,missing:_gtm,error:_gts+'. It does not have '+_gtm.join(', ')+', and nothing was saved: '+(_gtm.length===1?'that lift is':'those lifts are')+' NOT logged. If '+(_gtm.length===1?'it was':'they were')+' part of that session, call log_session again with add_to:'+_gtw.id+' and only the lifts it lacks: they are added to it. To correct a number in a lift it has, use edit_session with that id; only if the user says this was a second, separate session that day, call log_session again with separate:true.'};
+        return {ok:false,duplicate:_gtw.id,error:_gts+'. Nothing was saved. Tell the user it is already logged (to correct a number in it, use edit_session with that id); only if they say it was a second, separate session that day, call log_session again with separate:true.'};
+      }
       // Judged first, committed only once the session is on disk (as the runner does): a
       // failed save used to leave the records raised with no session behind them, and the
       // coach was told 'logged'. A new array, not an in-place unshift of the cached list.
@@ -18472,7 +18508,7 @@ function _executeCoachToolRaw(name,input){
       var esWant=String(input.exercise||'').trim().toLowerCase();
       var esExs=es.exercises||[], esIdx=-1;
       for(var esI=0;esI<esExs.length;esI++){ if(esExs[esI] && String(esExs[esI].name||'').trim().toLowerCase()===esWant){ esIdx=esI; break; } }
-      if(esIdx<0) return {ok:false,error:'no exercise "'+input.exercise+'" in the '+es.date+' session; it has: '+esExs.map(function(e){ return e&&e.name; }).join(', ')+'. Nothing was changed.'};
+      if(esIdx<0) return {ok:false,error:'no exercise "'+input.exercise+'" in the '+es.date+' session; it has: '+esExs.map(function(e){ return e&&e.name; }).join(', ')+'. Nothing was changed. To add a lift the user did in that session, use log_session with add_to:'+es.id+'.'};
       var esEx=esExs[esIdx];
       var esPairs=_exSetPairs(esEx);
       var esReps=esPairs.map(function(p){ return p[0]; }), esW=esPairs.map(function(p){ return p[1]; });
@@ -18981,7 +19017,15 @@ function _toolCallLabel(tc){
   }
   if(n==='swap_cadence_days') return (i.dayA||'?')+' ⇄ '+(i.dayB||'?')+(i.scope==='global'?' · every week':parseInt(i.week)?' · week '+parseInt(i.week):' · this week');
   if(n==='set_current_week') return 'Week set to '+i.week;
-  if(n==='log_session') return (LIFT_TYPES.indexOf(i.type)>=0?_dayLabel(i.type):(i.type||'Session'))+(tc.result&&tc.result.duplicate?' already logged':' logged')+(i.date?' · '+i.date:'');
+  if(n==='log_session'){
+    // 'already logged' only when every lift sent is in the saved session; lifts it lacks are named
+    // (not saved), and add_to says which lifts joined which day.
+    var lr=tc.result||{}, lt=lr.type||i.type, ld=LIFT_TYPES.indexOf(lt)>=0?_dayLabel(lt):(lt||'Session');
+    var ln=function(a){ return a.length<=2 ? a.join(' and ') : a.length+' lifts'; };
+    if(lr.ok!==false && Array.isArray(lr.added) && lr.added.length) return ld+': '+ln(lr.added)+' added'+(lr.date?' · '+lr.date:'');
+    if(Array.isArray(lr.missing) && lr.missing.length) return ld+': '+ln(lr.missing)+' not saved'+(i.date?' · '+i.date:'');
+    return ld+(lr.duplicate?' already logged':' logged')+(i.date?' · '+i.date:'');
+  }
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
   if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
@@ -19413,6 +19457,7 @@ function buildSystemPrompt(){
   p+='Quick guide:\n';
   p+='  - Change a goal / weight / current week → one small tool call (set_bench_goal, set_exercise_weight, set_current_week, etc.). A stated week ("it\'s week 1") IS a request to set it: act, do not discuss.\n';
   p+='  - User describes a lift session they already did (hotel gym, off-app) that is NOT in RECENT SESSIONS → one log_session call with their actual numbers.'+(_sl.more?' One from before '+_sl.from+' may already be saved (RECENT SESSIONS lists only the newest): log it only if the user says it is missing.':'')+'\n';
+  p+='  - User did more in a session that IS saved ("I also did curls in that workout") → log_session with add_to set to that session\'s [id:...] and only the lifts it lacks.\n';
   p+='  - Log a run (user shares stats or a screenshot) → call log_run with distance (in '+_uD()+'), time (MM:SS), date (YYYY-MM-DD — use the actual run date, not today if they ran yesterday), type, hr, note. ALWAYS call this tool instead of just claiming the run is logged in text.\n';
   p+='  - Log a sport/activity (cycling, swimming, yoga, etc.) → call log_sport with type, duration (minutes), date (YYYY-MM-DD), notes. ALWAYS call this tool — never claim it\'s logged in text.\n';
   p+='  - Log body weight → call log_bodyweight with weight ('+_uW()+') and date (YYYY-MM-DD, use the actual weigh-in date). ALWAYS call this tool — never claim it\'s logged in text.\n';
