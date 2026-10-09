@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261007-3"/>
+<meta name="build" content="20261009-1"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -21540,6 +21540,8 @@ function applyDynamicType(force){
   var sc=_dynTypeScale(force);
   document.documentElement.style.zoom = sc===1 ? '' : String(sc);
   document.documentElement.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+  // A smaller text size lowers the root zoom: fields raised for the larger one go up again.
+  if(typeof _fieldFloor==='function' && document.body) _fieldFloor(document.body);
 }
 function toggleDynType(){
   localStorage.setItem('kt_dyn_type', localStorage.getItem('kt_dyn_type')==='0'?'1':'0');
@@ -21668,6 +21670,33 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
   // document itself — which should never scroll.
   window.addEventListener('scroll', _kbSnapSoon);
 })();
+
+// ── iOS focus zoom: no field types under 16 px ────────────────────────────────
+// iOS zooms the whole page into a text field (or picker) whose text is under 16 px when it takes
+// focus, and stays zoomed after the keyboard closes: the runner's cue note at 14 px left the app
+// cut off at the screen's right edge. Pinch zoom stays allowed (maximum-scale=3, since 20260914-10),
+// so the viewport no longer prevents it: instead every editable field is raised to 16 px on screen
+// as it is added (the Dynamic Type root zoom counts toward it). Design new fields at 16 px.
+var _FIELD_SEL='input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=hidden]):not([type=image]),textarea,select';
+function _fieldFloor(root){
+  try{
+    if(!root || root.nodeType!==1 || !_FIELD_SEL) return;   // (applyDynamicType runs before the selector is set)
+    var z=parseFloat(document.documentElement.style.zoom)||1, min=Math.ceil(1600/z)/100;
+    var list=root.matches(_FIELD_SEL) ? [root] : [];
+    list=list.concat([].slice.call(root.querySelectorAll(_FIELD_SEL)));
+    list.forEach(function(f){
+      if(f.readOnly || f.disabled) return;   // no keyboard, no zoom
+      var fs=parseFloat(getComputedStyle(f).fontSize)||0;
+      if(fs && fs<min-0.01) f.style.setProperty('font-size', min+'px', 'important');
+    });
+  }catch(e){}
+}
+try{
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){ for(var i=0;i<m.addedNodes.length;i++) _fieldFloor(m.addedNodes[i]); });
+  }).observe(document.documentElement, {childList:true, subtree:true});
+  _fieldFloor(document.body);
+}catch(e){}
 loadCoachHistory();
 // One-time sweep: older AI-written programmes can carry fractional loads
 // (151.3 lb) that no gym can rack — snap every prescription already on this
