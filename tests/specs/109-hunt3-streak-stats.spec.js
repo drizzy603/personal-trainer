@@ -35,6 +35,11 @@
 // - A schedule change writes down every day the streak can reach, not only the days it walks to
 //   the first miss: that day filled in later (a log moved onto it, a late log) joined the streak
 //   to days nobody had written down, read under the new schedule (11 -> 5) (R40).
+// Hunt 5 (regressions of hunt 4):
+// - The update's 2s go only inside the walk (old page's or this page's) that reaches further back:
+//   a 2 on every day the two pages read differently ran the streak past days really missed where
+//   the two broke on different days (11 as lived -> 38, and the boot awarded a 30-day milestone),
+//   and the first boot's repair leaves a 1 past the old page's own break (T30).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -685,6 +690,62 @@ runInTurn('a missed day filled in after a schedule edit joins the streak to the 
     assert(out.moved.before === 2 && out.moved.edited === 2, 'the missed Friday ends it, before and after the edit: ' + JSON.stringify(out.moved));
     assert(out.moved.filled === 11 && out.moved.read === '10', 'filled in, the streak runs back over Fridays trained and Saturdays rested (it was 5): ' + JSON.stringify(out.moved));
     assert(out.backdated.ok && out.backdated.filled === 11, 'a late log on that Friday joins it the same way: ' + JSON.stringify(out.backdated));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// ── Hunt 5 ──
+// T30: round 1 trained Mon/Wed/Fri in weeks 1-8 and Tue/Thu/Sat in weeks 9-12, and week 10's Tuesday
+// and Thursday were really missed. Round 2 (Mon/Wed/Fri) was swapped in on the old page, which wrote
+// nothing down: it read every day before round 2 as round 2's week 1 (4 days), the pages since as
+// round 1's own weeks (11). The update wrote 2 on every day the two read differently: 38, and the
+// boot's milestone baseline awarded the 30-day streak.
+const R39SPLIT = `(S, r1j) => {
+  const r1 = JSON.parse(r1j), MWF = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest'], TTS = ['Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest'];
+  r1.weeks.forEach((w, i) => { if (i >= 8) w.weekPlan = TTS.slice(); });
+  lsSet('kt_routine', Object.assign(JSON.parse(JSON.stringify(r1)), { cycle: 2 }));
+  lsSet('kt_routine_archive', [{ id: 1789400000000, archivedAt: addDays(S, -2), routine: r1 }]);
+  currentWeek = 2; lsSet('kt_week', 2); localStorage.setItem('kt_week_monday', addDays(S, 7)); localStorage.removeItem('kt_final_since');
+  const rows = [];
+  for (let i = -84; i <= 7; i++) {
+    const wk = i < 0 ? Math.floor((i + 84) / 7) + 1 : 0, t = (wk >= 9 ? TTS : MWF)[(new Date(addDays(S, i) + 'T00:00:00').getDay() + 6) % 7];
+    if (t !== 'Rest' && !(wk === 10 && t !== 'Legs')) rows.push([addDays(S, i), t]);
+  }
+  return rows; }`;
+runInTurn('round 2 swapped in on the old page: the update keeps the streak as lived, never runs past a day really missed, and awards no milestone never reached (T30)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '1' }) });
+  try {
+    await app.page.addInitScript(BOOTCLOCK); await app.page.evaluate(BOOTCLOCK);
+    // Wednesday morning of round 2's week 2; Monday logged. As the old page left it: nothing written down.
+    const before = await app.page.evaluate(([LOGS, R39SPLIT, r1j]) => {
+      const logs = eval(LOGS), S = addDays(_mostRecentMonday(), 7);
+      __setNow(addDays(S, 9) + 'T07:30:00');
+      lsSet('kt_sessions', logs(eval(R39SPLIT)(S, r1j)));
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded'); localStorage.removeItem('kt_last_open');
+      lsSet('kt_milestones', { 'sess-10': 1, 'streak-7': 1, 'streak-14': 1 });
+      return { S, since: calcStreakDays() };
+    }, [LOGS, R39SPLIT, JSON.stringify(mwf())]);
+    // The first boot of this page.
+    await coldBoot(app);
+    const out = await app.page.evaluate(([S, OLDFREEZE]) => {
+      const ms = lsGet('kt_milestones') || {}, due = _streakDueFn(), r = {};
+      r.boot = { streak: calcStreakDays(), flag: localStorage.getItem('kt_streak_seeded'), ms: Object.keys(ms).filter(k => /^streak-/.test(k)).sort().join(','),
+        week10: [0, 1, 2, 3, 4, 5, 6].map(n => due(addDays(S, -21 + n))).join('') };
+      // The pages since froze the walk to its first miss first (week 10's Thursday, written as 1):
+      // the repair leaves it, past the old page's own break (round 1's last Friday).
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+      eval(OLDFREEZE)();
+      r.frozen = { streak: calcStreakDays(), thu: lsGet('kt_streak_days')[addDays(S, -18)] };
+      _streakUpgrade();
+      r.repaired = { streak: calcStreakDays(), thu: lsGet('kt_streak_days')[addDays(S, -18)], tue: _streakDueFn()(addDays(S, -20)) };
+      return r;
+    }, [before.S, OLDFREEZE]);
+    assert(before.since === 11, 'as lived: round 2\'s four days, round 1\'s weeks 12 and 11, week 10\'s Saturday: ' + JSON.stringify(before));
+    assert(out.boot.streak === 11 && out.boot.flag === '1', 'the update keeps 11, not every day the pages read differently (it was 38): ' + JSON.stringify(out.boot));
+    assert(out.boot.ms === 'streak-14,streak-7', 'no 30-day milestone was ever reached: ' + JSON.stringify(out.boot));
+    assert(/^.1.1/.test(out.boot.week10), 'week 10\'s Tuesday and Thursday are still training days missed: ' + JSON.stringify(out.boot));
+    assert(out.frozen.streak === 11 && out.frozen.thu === 1 && out.repaired.streak === 11 && out.repaired.thu === 1 && out.repaired.tue === 1,
+      'a real miss frozen since is not repaired into a rest day (it was 37): ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
