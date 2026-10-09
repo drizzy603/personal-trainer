@@ -11116,6 +11116,18 @@ function _progTagOnly(row){
   var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss') x[k]=o[k]; }); return JSON.stringify(x); };
   return norm(row)===norm(row.rec);
 }
+// The lift the owner made main on a day (Make main): the coach's main is still on the day,
+// marked for its tag alone. A tag handed on when the main left the day is no choice of theirs.
+function _progMainChosen(list){
+  if(!Array.isArray(list) || !list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
+  return list.filter(function(x){ return x && x.isMain && (x.rec===null || (x.rec && !x.rec.isMain)); })[0] || null;
+}
+// The main tag on `name` alone in one day, each row it moves marked (Make main).
+function _progMainOf(list, name){
+  var n=0;
+  (list||[]).forEach(function(r){ if(!r) return; var m=(r.name===name); if(!!r.isMain!==m){ _markRec(r); r.isMain=m; _progUnmark(r); n++; } });
+  return n;
+}
 // One main lift a day once `row` is back as the coach wrote it (Restore, Reset, Use
 // coach's, adding a removed lift back): a tag handed on when it left, or moved by Make
 // main, goes back with it, and a day left with none gives it back to the coach's main.
@@ -11723,7 +11735,7 @@ function _progMakeMain(cr, slot, name, c){
   var W=cr.weeks, n=0;
   for(var j=c;j<W.length;j++){
     var list=W[j]&&W[j][slot]; if(!Array.isArray(list) || !_progRow(W[j],slot,name)) continue;
-    list.forEach(function(r){ var m=(r.name===name); if(!!r.isMain!==m){ _markRec(r); r.isMain=m; n++; } });
+    n+=_progMainOf(list, name);
   }
   return n;
 }
@@ -17841,7 +17853,7 @@ function _routineReadback(written){
     var w=(cr.weeks||[])[wk-1]; if(!w) return;
     if(i<2){
       var full={};
-      LIFT_KEYS.forEach(function(k, ki){ var a=w[k]; if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'') : e; }); });
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k], ch=_progMainChosen(a); if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'')+(e===ch?' (main lift: the user\u2019s choice)':'') : e; }); });
       if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
       out.weeks[wk]=full;
     } else {
@@ -18113,6 +18125,16 @@ function _executeCoachToolRaw(name,input){
             var _om=old.filter(function(x){ return x && x.isMain; })[0];
             var _nx=(_om && neu.filter(function(x){ return x && x.name===_om.name; })[0]) || neu.filter(function(x){ return x && parseFloat(x.weight)>0; })[0] || neu[0];
             _markRec(_nx); _nx.isMain=true; _progUnmark(_nx);
+          }
+          // The owner's Make main stands over the coach's pick: the coach's rows and numbers apply,
+          // the lift they made main stays main (on the day, as it was, when the rewrite left it
+          // out) and the coach's main is marked for Use coach's and Reset. Both marks only moved
+          // the tag, so the merge took the coach's main and dropped them.
+          var _ch=_progMainChosen(old);
+          if(_ch){
+            var _chIn=neu.some(function(x){ return x && x.name===_ch.name; });
+            if(!_chIn) neu.splice(Math.min(old.indexOf(_ch), neu.length), 0, JSON.parse(JSON.stringify(_ch)));
+            if((_progMainOf(neu, _ch.name) || !_chIn) && _keptEdits.indexOf(_ch.name)<0) _keptEdits.push(_ch.name);
           }
           if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
         });
@@ -19268,7 +19290,7 @@ function buildSystemPrompt(){
     p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
-    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user" or "added by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
+    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
     // A row's load: each set's when a top set and back-offs differ (the headline weight alone
     // read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
     var _rowLoad=function(r, none){
@@ -19281,8 +19303,9 @@ function buildSystemPrompt(){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';
         var label=sess==='legs2'?'LEGS B':sess.toUpperCase();
         p+=label+done+':\n';
+        var _chM=_progMainChosen(wd[sess]);
         wd[sess].forEach(function(ex){
-          var _mk=ex.rec===null?' [added by the user]':(ex.rec && !_progTagOnly(ex)?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':'');
+          var _mk=(ex.rec===null?' [added by the user]':(ex.rec && !_progTagOnly(ex)?' [edited by the user; you had '+(ex.rec.name!==ex.name?ex.rec.name+' ':'')+ex.rec.sets+'×'+ex.rec.reps+' @ '+_rowLoad(ex.rec, 'their load')+']':''))+(ex===_chM?' [main lift chosen by the user]':'');
           p+='  '+ex.name+': '+ex.sets+'×'+ex.reps+' @ '+_rowLoad(ex, 'the user\'s own load')+' RPE'+fmtRpe(ex.rpe)+(ex.isMain?' (main)':'')+_mk+'\n';
         });
         // Where each main lift is heading, so advice matches the rest of the programme.

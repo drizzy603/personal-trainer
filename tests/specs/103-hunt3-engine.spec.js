@@ -925,3 +925,51 @@ seq('R08: a switch to lb in Settings moves the programme onto lb plates; back in
   }, a.before);
   assert(JSON.stringify(e.diffs) === JSON.stringify(e.expect) && e.day === '73.5 kg | 46.5 kg | 27.5 kg | 25 kg | 7.5 kg' && e.note === null, 'back in kg the kg loads return, the lb edit stays: ' + JSON.stringify(e));
 });
+
+// T01 (regression from R02): the owner's Make main lift marks both rows with the tag alone, so a
+// coach rewrite of the day took the coach's main and dropped both marks (and the coach was never
+// told the main was the owner's pick); a rewrite that left the lift out dropped it. The coach's
+// rows and numbers apply, the main stays the owner's, and the prompt says so.
+seq('T01: the owner\'s Make main survives a coach rewrite of the day; the coach\'s numbers apply', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const line = (n) => (buildSystemPrompt().match(new RegExp(' {2}' + n + ':[^\\n]*')) || [''])[0];
+      const coachPush = (j) => getCustomRoutine().weeks[j].push.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, isMain: e.name === 'Bench Press' }));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtMakeMain(); await wait(10); closeRoutines();
+      const made = localStorage.getItem('kt_routine');
+      r.made = day(); r.prompt = [line('Overhead Press'), line('Bench Press')];
+      // the coach rewrites this week's Push as it designed it: Bench main, a little harder
+      const push = [{ name: 'Bench Press', sets: 4, reps: 6, weight: 165, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60 }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }];
+      const rb = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.rebuild = { ok: rb.ok, kept: rb.keptUserEdits, day: day(), next: day(c + 1), stored: JSON.stringify(rb.stored), prompt: line('Overhead Press') };
+      openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
+      r.useCoach = day();
+      // a rewrite of next week that leaves Overhead Press out keeps it, as the main lift
+      lsSet('kt_routine', JSON.parse(made));
+      const lo = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek + 1, bName: 'BUILD', bColor: '#0a43f5', push: coachPush(c + 1).filter(e => e.name !== 'Overhead Press') }] });
+      r.leftOut = { kept: lo.keptUserEdits, day: day(c + 1) };
+      // the coach regenerates every week from this one with its own main
+      lsSet('kt_routine', JSON.parse(made));
+      const weeks = [];
+      for (let w = currentWeek; w <= getTotalWeeks(); w++) weeks.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: coachPush(w - 1) });
+      executeCoachTool('update_routine_weeks', { weeks });
+      r.regen = getCustomRoutine().weeks.slice(c).map(w => w.push.filter(e => e.isMain).map(e => e.name).join('+') + ':' + w.push.filter(e => e.rec).length);
+      return r;
+    });
+    assert(out.made === 'Bench Press 4x8@160* | Overhead Press 4x8@100!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Make main: ' + out.made);
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.prompt[0]) && !/main lift chosen|edited by the user/.test(out.prompt[1]), 'the coach is told the main is the user\'s pick: ' + JSON.stringify(out.prompt));
+    assert(out.rebuild.ok && out.rebuild.day === 'Bench Press 4x6@165* | Overhead Press 4x6@105!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s numbers, the owner\'s main, both marked: ' + JSON.stringify(out.rebuild));
+    assert(JSON.stringify(out.rebuild.kept) === '["Overhead Press"]' && /"Overhead Press 4×6 105 lb \(main lift: the user’s choice\)"/.test(out.rebuild.stored) && /\[main lift chosen by the user\]$/.test(out.rebuild.prompt), 'the readback and the prompt say whose main it is: ' + JSON.stringify(out.rebuild));
+    assert(out.rebuild.next === 'Bench Press 4x8@162.5* | Overhead Press 4x8@102.5!* | Incline Dumbbell Press 3x10@62.5 | Cable Triceps Pushdown 3x12@57.5 | Lateral Raise 3x15@17.5', 'a week the call did not send is untouched: ' + out.rebuild.next);
+    assert(out.useCoach === 'Bench Press 4x6@165! | Overhead Press 4x6@105 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Use coach\'s gives the coach\'s main back, unmarked: ' + out.useCoach);
+    assert(JSON.stringify(out.leftOut.kept) === '["Overhead Press"]' && out.leftOut.day === 'Bench Press 4x8@162.5* | Overhead Press 4x8@102.5!* | Incline Dumbbell Press 3x10@62.5 | Cable Triceps Pushdown 3x12@57.5 | Lateral Raise 3x15@17.5', 'a rewrite that leaves the owner\'s main out keeps it: ' + JSON.stringify(out.leftOut));
+    assert(out.regen.every(x => x === 'Overhead Press:2'), 'a regeneration keeps the owner\'s main in every week: ' + JSON.stringify(out.regen));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
