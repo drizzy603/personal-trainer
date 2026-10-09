@@ -11192,13 +11192,14 @@ function _progSettleMain(list, row){
 // the partner comes back. A partner whose opener is on the day unpaired (e.ss: its removal
 // unpaired it) comes back right after it. A lift put between them, or the two brought back the
 // other way round, lost the coach's superset for good (Use coach's and Reset had nothing to undo).
+// No row comes back between the two halves of a superset (brought back out of order, it did).
 function _progPutBack(list, back, e, ro){
   var at=Math.min(list.length, Math.max(0, parseInt(e.at,10)||0)), pi=-1, oi=-1;
   var is=function(x, n){ return !!(x && n && (x.name===n || (x.rec && x.rec.name===n))); };
   var to=(back.ss && typeof e.ssTo==='string') ? e.ssTo : null;
   if(to) list.forEach(function(x, i){ if(pi<0 && is(x, to) && !(i>0 && list[i-1] && list[i-1].ss)) pi=i; });
-  if(e.ss && !back.ss) list.forEach(function(x, i){ if(oi<0 && is(x, e.ss) && !x.ss && !(list[i+1] && list[i+1].ss)) oi=i; });
-  if(pi>=0) at=pi; else if(oi>=0) at=oi+1;
+  if(e.ss && !back.ss) list.forEach(function(x, i){ if(oi<0 && is(x, e.ss) && !x.ss) oi=i; });
+  if(pi>=0) at=pi; else if(oi>=0) at=oi+1; else if(at>0 && list[at-1] && list[at-1].ss) at++;
   list.splice(at, 0, back);
   if(oi>=0){ list[oi].ss=true; _progUnmark(list[oi]); }
   if(to!=null && pi<0){

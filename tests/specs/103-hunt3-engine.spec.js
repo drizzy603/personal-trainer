@@ -1030,6 +1030,49 @@ seq('T02: a superset opener comes back beside its partner, or its swap; Use coac
   } finally { await app.close(); }
 });
 
+// T02 (continued): a removed partner comes back beside its opener with another superset right
+// after them, and a row brought back out of order never lands between a superset's two halves (it
+// paired the opener with that row). The coach: Incline Dumbbell Press with Cable Triceps Pushdown,
+// Lateral Raise with Cable Fly.
+seq('T02: no row comes back between the halves of a superset; two supersets side by side stay paired', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => {
+    w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true;
+    w.push.find(e => e.name === 'Lateral Raise').ss = true;
+    w.push.push({ name: 'Cable Fly', sets: 3, reps: 12, weight: 30 });
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      r.coach = day();
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.partner = [day(), day(last)];
+      // one superset: Bench out, then Lateral Raise (fourth by then); Bench added back first, then
+      // Lateral Raise (its place is between the superset's halves by then)
+      const one = JSON.parse(orig);
+      one.weeks.forEach(w => { w.push = w.push.filter(e => e.name !== 'Cable Fly'); w.push.find(e => e.name === 'Lateral Raise').ss = false; });
+      lsSet('kt_routine', one);
+      await remove('Bench Press'); await remove('Lateral Raise');
+      _rtAddPick('Push', 'Bench Press'); await wait(10);
+      _rtAddPick('Push', 'Lateral Raise'); await wait(10);
+      r.order = [day(), day(last)];
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise~ | Cable Fly';
+    assert(out.coach === C, 'the coach\'s day: ' + out.coach);
+    assert(out.partner.every(x => x === C), 'the partner comes back beside its opener: ' + JSON.stringify(out.partner));
+    assert(out.order.every(x => x === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise'), 'back out of order, a row lands after the superset, not inside it: ' + JSON.stringify(out.order));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 // T04 (incomplete R03): removals made on a page before 20261006-1 have no ssTo, so an opener added
 // back or restored still paired with whatever lift followed it. Its partner is read off a week
 // that still has the pair (else the row removed after it from its place). The data such a page
