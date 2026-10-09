@@ -4693,7 +4693,13 @@ function _applyImportedData(data, opts) {
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   _uniqueLogIds(true);       // and the coach's shared-id twins
-  _seedStreakDays(false);    // and no kt_streak_days: its days before week 1 read as the page that wrote them did
+  // and no kt_streak_days: its days before week 1 read as the page that wrote them did. A backup
+  // from before 2026-10-06 (its manifest names an older build, or it has none) may carry the
+  // misreading the pages since 2026-10-04 froze, which the first boot repairs: it is repaired
+  // here too, or the restore brought the drop back for good (26 days -> 14), on a new phone as
+  // well. Undo last restore puts back this phone's own data as it was.
+  var _bkM=(data._manifest && typeof data._manifest==='object') ? String(data._manifest.build||'') : '';
+  _seedStreakDays(!opts.undo && (!_bkM || _bkM.slice(0,8)<'20261006'));
   invalidateCoachCard();
   loadCoachHistory();
   var importedTheme = localStorage.getItem('kt_theme');

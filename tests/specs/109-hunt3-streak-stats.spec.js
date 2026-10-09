@@ -42,6 +42,8 @@
 //   and the first boot's repair leaves a 1 past the old page's own break (T30).
 // - The old page's reading takes week 1 as it was first written down: a schedule edit made on
 //   20261004-1/5-1 rewrote week 1 under days the old page never read that way (26 -> 14) (T29).
+// - A backup written before 2026-10-06 gets the first boot's repair when it is restored: the
+//   misreading 20261004-1/5-1 froze came back with it for good, on a new phone too (26 -> 14) (T28).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -784,6 +786,50 @@ runInTurn('a schedule edit made on the pages before this one does not reach back
     assert(out.satLegs.streak === 26 && out.satLegs.days === '1221212', 'the first boot reads the days before week 1 as the old page did, not by the edit (it was 14): ' + JSON.stringify(out.satLegs));
     assert(out.sunRun.before === 14 && out.sunRun.wk1 === 'P-P-L-R' && out.sunRun.streak === 26 && out.sunRun.days === '1221212',
       'Sunday made a run day the same: A\'s rest Sunday frozen as missed is repaired (it was 14): ' + JSON.stringify(out.sunRun));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T28: a backup written by 20261004-1/5-1 carries the misreading their freeze wrote (A's rest Sunday
+// before the switch as a missed day). The first boot repaired it on the phone, but restoring that
+// backup (a weekday auto-backup, the iCloud copy, a new phone) brought it back for good: 14.
+runInTurn('restoring a backup written by 20261004-1/5-1 keeps the streak the first boot gave back, on a new phone too (T28)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS, SWITCHED, OLDFREEZE]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const S = addDays(_mostRecentMonday(), 7), sun = () => (lsGet('kt_streak_days') || {})[addDays(S, -8)];
+      __setNow(addDays(S, 23) + 'T18:00:00');
+      lsSet('kt_sessions', logs(eval(SWITCHED)(S)));
+      lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+      // On 20261005-1 a week-stepper tap froze the misreading; that evening's backup carries it.
+      eval(OLDFREEZE)();
+      const bk = JSON.parse(JSON.stringify(buildBackupJSON())); bk._manifest.build = '20261005-1';
+      const restore = (data, o) => _applyImportedData(JSON.parse(JSON.stringify(data)), o);
+      r.frozen = { streak: calcStreakDays(), sun: bk.kt_streak_days[addDays(S, -8)] };
+      // This page's first boot repairs it on the phone; the next morning the owner restores that backup.
+      _streakUpgrade();
+      r.upgraded = calcStreakDays();
+      __setNow(addDays(S, 24) + 'T09:00:00');
+      r.restored = { ok: restore(bk), streak: calcStreakDays(), sun: sun() };
+      // Undo last restore puts back what was here, as it was.
+      lsSet('kt_streak_days', Object.assign(lsGet('kt_streak_days'), { [addDays(S, -8)]: 1 }));
+      restore(bk);
+      r.undone = { ok: restore(JSON.parse(localStorage.getItem('kt_pre_restore')).data, { undo: true }), sun: sun() };
+      // A backup this page wrote is restored as written.
+      const own = buildBackupJSON();
+      r.own = { ok: restore(own), streak: calcStreakDays(), sun: sun() };
+      // A new phone: its first boot had no programme (and set its flag), then the 20261005-1 backup.
+      lsDel('kt_routine'); lsDel('kt_streak_days'); lsSet('kt_sessions', []); localStorage.removeItem('kt_streak_seeded');
+      _streakUpgrade();
+      r.newPhone = { flag: localStorage.getItem('kt_streak_seeded'), ok: restore(bk), streak: calcStreakDays(), sun: sun() };
+      return r;
+    }, [CLOCK, LOGS, SWITCHED, OLDFREEZE]);
+    assert(out.frozen.streak === 14 && out.frozen.sun === 1 && out.upgraded === 26, 'the backup carries the misreading; the first boot repaired it: ' + JSON.stringify(out));
+    assert(out.restored.ok && out.restored.streak === 26 && out.restored.sun === 2, 'restoring the backup keeps the streak (it went back to 14): ' + JSON.stringify(out.restored));
+    assert(out.undone.ok && out.undone.sun === 1, 'Undo last restore puts this phone\'s own data back as it was: ' + JSON.stringify(out.undone));
+    assert(out.own.ok && out.own.streak === 14 && out.own.sun === 1, 'a backup this page wrote is restored as written: ' + JSON.stringify(out.own));
+    assert(out.newPhone.flag === '1' && out.newPhone.ok && out.newPhone.streak === 26 && out.newPhone.sun === 2, 'on a new phone too: ' + JSON.stringify(out.newPhone));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
