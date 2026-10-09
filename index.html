@@ -12099,7 +12099,7 @@ function _carryTap(btn, sessId){
   var _s0=sessId ? getSessions().filter(function(s){ return s && s.id===sessId; })[0] : null;
   if(sessId && !(_s0 && _carryCandidates(_s0).some(function(k){ return k.slot===d.s && k.name===d.n && k.c===parseInt(d.c,10); }))){
     var r0=btn.closest && btn.closest('.kt-carry-row'); if(r0) r0.remove();
-    showToast('Not carried — the plan has changed since this workout');
+    showToast('Not carried \u2014 the plan has changed since this workout');
     return;
   }
   if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10), sessId?'carry:'+sessId:null) && sessId){
