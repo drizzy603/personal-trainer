@@ -2328,7 +2328,9 @@ function _dayShortOf(l, rivals){
     for(var i=0;i<T.length && p<0;i++){
       if(R.every(function(r){ return String(r[i]||'').toLowerCase()!==T[i].toLowerCase(); })) p=i;
     }
-    if(p===0) out.push(cut(f,7));
+    // the first words differ past what fits ("Deadlifts" / "Deadlift Accessories"): the next
+    // word's initial tells them apart ("Deadl A"), else one more letter
+    if(p===0){ if(T[1]) out.push(fit(f,T[1],1)); out.push(cut(f,7)); }
     else if(p>1 && tag(T[p])) out.push(fit(T[p-1],T[p],len(T[p])));   // "Week 1 Day 2": "Day 2"
     else if(p>0) out.push(fit(f,T[p],6-len(f)));
     out.push(cut(l,7).replace(_DS_EDGE,''));   // the plain cut, trimmed

@@ -175,6 +175,51 @@ run('short day names tell coach-style names apart: Day 1 / Day 2, Week A / B, em
   } finally { await app.close(); }
 });
 
+// T37: R50 offered a name whose first word differs from its rival's only one more letter of
+// that word, so "Deadlifts" / "Deadlift Accessories" (and Shoulders / Shoulder Prehab) both
+// read "Deadlif" on the chips, the watch week and the widget. The next word's initial tells
+// them apart again, as before R50: "Deadl A".
+run('plural and singular first words stay apart: Deadlifts / Deadlift Accessories (T37)', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__widget = [];
+      Capacitor.Plugins.TrovoWidget.updateSummary = (a) => { window.__widget.push(a); return Promise.resolve({}); };
+      await wait(300);
+      // cleared first: a name another day still holds is refused
+      const pair = (a, b) => { setDayName('Push', ''); setDayName('Pull', ''); setDayName('Push', a); setDayName('Pull', b); return [_dayShort('Push'), _dayShort('Pull'), _dayShort('Legs')]; };
+      const r = {};
+      r.shoulders = pair('Shoulders', 'Shoulder Prehab');
+      r.flipped = pair('Shoulder Prehab', 'Shoulders');
+      r.hamstrings = pair('Hamstrings', 'Hamstring Focus');
+      r.accessories = pair('Accessories', 'Accessory Work');
+      r.squats = pair('Squats', 'Squat Accessories');
+      r.deadlifts = pair('Deadlifts', 'Deadlift Accessories');
+      switchTab('settings'); await wait(20);
+      r.plan = getWeekPlan().map(e => e.type);
+      r.chips = Array.from(document.querySelectorAll('.kt-day-chip')).map(b => b.querySelector('.kt-day-chip-t').textContent);
+      window.__mock.updateContext.length = 0; window.__widget.length = 0; _lastNativeSummary = null; _lastWatchPlan = null; _runNativeSync(); await wait(30);
+      const ctx = window.__mock.updateContext.slice(-1)[0] || {};
+      r.week = JSON.parse(ctx.week || '[]').filter(d => d.type === 'lift').map(d => d.slot + '=' + d.short);
+      r.widget = JSON.parse((window.__widget.slice(-1)[0] || {}).json || '{"days":[]}').days.filter(d => LIFT_TYPES.indexOf(d.type) >= 0).map(d => d.type + '=' + d.short);
+      return r;
+    });
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    assert(eq(out.shoulders, ['Shoulde', 'Shoul P', 'Legs']) && eq(out.flipped, ['Shoul P', 'Shoulde', 'Legs']), 'Shoulders / Shoulder Prehab: ' + JSON.stringify([out.shoulders, out.flipped]));
+    assert(eq(out.hamstrings, ['Hamstri', 'Hamst F', 'Legs']) && eq(out.accessories, ['Accesso', 'Acces W', 'Legs']), 'Hamstrings / Hamstring Focus, Accessories / Accessory Work: ' + JSON.stringify([out.hamstrings, out.accessories]));
+    assert(eq(out.squats, ['Squats', 'Squat', 'Legs']), 'Squats / Squat Accessories as before: ' + JSON.stringify(out.squats));
+    assert(eq(out.deadlifts, ['Deadlif', 'Deadl A', 'Legs']), 'Deadlifts / Deadlift Accessories: ' + JSON.stringify(out.deadlifts));
+    const want = { Push: 'Deadlif', Pull: 'Deadl A' };
+    assert(out.plan.some(t => want[t]) && out.plan.every((t, i) => !want[t] || out.chips[i] === want[t]), 'the Settings chips read Deadlif / Deadl A: ' + JSON.stringify([out.plan, out.chips]));
+    const read = (list) => { const m = {}; list.forEach(x => { const [k, v] = x.split('='); m[k] = v; }); return m; };
+    const wk = read(out.week), wg = read(out.widget);
+    assert((wk.Push || wk.Pull) && Object.keys(want).every(k => !wk[k] || wk[k] === want[k]), 'the watch week keeps the two days apart: ' + JSON.stringify(out.week));
+    assert((wg.Push || wg.Pull) && Object.keys(want).every(k => !wg[k] || wg[k] === want[k]), 'the widget summary keeps the two days apart: ' + JSON.stringify(out.widget));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('a lift with an apostrophe opens its Strength curve (M40)', async () => {
   const sessions = JSON.parse(SEED.kt_sessions);
   sessions.forEach((s) => { if (Array.isArray(s.exercises)) s.exercises.push({ name: "Farmer's Carry", sets: 3, reps: ['12', '12', '12'], weight: 70 }); });
