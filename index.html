@@ -4181,7 +4181,8 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here). rec, the log just saved, is
 // stamped with what it set (_wwStamp). o.live: a workout finished now and filed on the day it
-// began (it ran past midnight) is no backfill.
+// began (it ran past midnight) is no backfill, nor is a wrist session drained with nothing done
+// in the app since its finish (_wristLive).
 function _setWorkingWeights(exs, date, rec, o){
   var w=getWeights(), d=String(date||todayISO()), back=d<todayISO() && !(o && o.live), set={}, wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
@@ -21550,6 +21551,10 @@ function toggleDynType(){
 try{ applyDynamicType(); document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') applyDynamicType(); }); }catch(e){}
 currentWeek = getWeek();
 _streakUpgrade();   // before the week clock moves or a set round swaps in (its freeze reads these days)
+// When this visit began, and the last time the owner was here before it (kt_last_open as the
+// visit found it, read before the visit stamps it): see _wristLive. _arrive() runs on a return.
+var _visitFrom=Date.now(), _awayFrom=parseFloat(localStorage.getItem('kt_last_open'))||0;
+function _arrive(){ _awayFrom=parseFloat(localStorage.getItem('kt_last_open'))||0; _visitFrom=Date.now(); }
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
 // weeks they never trained. kt_last_open is deliberately NOT exported:
@@ -21834,6 +21839,7 @@ document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){
     var s=document.getElementById('screen');
     if(s && !s.firstElementChild) { window.location.reload(); return; }
+    _arrive();   // before anything stamps this visit
     _resumeDayAndRest();
     _stampVisit();   // after the welcome-back check has read the previous visit
     setTimeout(checkPendingShare, 600);
@@ -22645,6 +22651,17 @@ function _onWatchLive(json){
   if(currentTab==='log') render();
 }
 function hideWatchLive(){ _watchLive=null; render(); }
+// A drained wrist session is the live finish (_setWorkingWeights o.live), not a backfill, when the
+// owner has not been in the app since the wrist finished it: nothing here could have changed a
+// working weight in between. Filed on the day it began, a workout that ran past midnight (or one
+// drained the next morning) is the newest log, as the runner's finish is; a lighter one stayed
+// raise-only. Time in this visit counts from the finish or the visit's start, whichever is later,
+// and a few minutes cover the drain that runs as the visit begins or the session arrives. A
+// session finished before a visit since then (a +5, the coach) stays raise-only.
+function _wristLive(s){
+  var t=s && (s.loggedAt || s.startedAt) ? new Date(s.loggedAt || s.startedAt).getTime() : 0;
+  return t>0 && t>=_awayFrom && Date.now()-Math.max(t, _visitFrom) <= 5*60e3;
+}
 function drainWatchSessions(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions) return Promise.resolve();
@@ -22788,8 +22805,9 @@ function drainWatchSessions(){
       // leave PRs and working weights raised with no session behind them.
       // The runner's rule: only the newest log of a lift sets it, a backdated one only raises
       // it. Raise-only here let a late Friday session top today's lighter log, and a newer,
-      // lighter wrist session never set it.
-      _setWorkingWeights(_wwExs, _rec.date, _rec);
+      // lighter wrist session never set it. A new record drained with nothing done here since
+      // its finish is live (_wristLive); a merge keeps its own rule above.
+      _setWorkingWeights(_wwExs, _rec.date, _rec, _prior ? null : {live:_wristLive(s)});
       checkAndUpdatePRs(_rec.exercises);
       if(_draftHere){
         localStorage.removeItem('kt_runner_draft');

@@ -48,6 +48,10 @@
 // - R44: a started programme with nothing logged stays on its week when Monday comes
 //   (autoAdvanceWeek), so the widget, the wrist's week ahead and the reminders give later weeks'
 //   days this week's number and cadence until something is logged.
+//
+// Hunt 5 (2026-10-09), regressions and incomplete fixes of the above:
+// - T45: a drained wrist session the owner did nothing in the app after (_wristLive) is the live
+//   finish, as R30 made the runner's: one that ran past midnight sets a lighter working weight.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (spec 108's): local 'YYYY-MM-DDTHH:MM:SS', computed in the page
@@ -696,6 +700,71 @@ run('R44: with nothing logged, next week’s days keep this week’s number and 
       'nothing logged: next week’s days are week 1 with week 1’s cadence (widget, wrist, reminders): ' + JSON.stringify(out.none));
     assert(out.logged.days.every(s => s === 'b2' || s === 'c3') && out.logged.mon === '2:Legs',
       'once something is logged the weeks count on: ' + JSON.stringify(out.logged));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// T45 (hunt 5): a wrist-only Push 23:30 -> 00:20 at a lighter Bench (165; working weight 185, no
+// programme load) is filed on the day it began. With nothing done in the app since the wrist
+// finished, its drain is the live finish (as R30 made the runner's): 165 is the working weight,
+// drained at 00:21, on a return the next morning, or arriving while the app is open across
+// midnight. A session the owner was in the app after (a +5 since, or a late delivery to an app
+// open for half an hour) stays raise-only: the +5 stands.
+run('T45: a wrist workout that ran past midnight sets the working weight when nothing was done in the app since', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]' } });
+  try {
+    await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK);
+    await app.page.addInitScript(() => { const p = sessionStorage.getItem('__pending'); if (p && window.__mock) { window.__mock.pending = JSON.parse(p); sessionStorage.removeItem('__pending'); } });
+    // 'Y hh:mm' is yesterday, 'T hh:mm' today (local), fixed before the clock moves.
+    const D = await app.page.evaluate(() => ({ T: todayISO(), Y: addDays(todayISO(), -1) }));
+    const at = s => (s[0] === 'Y' ? D.Y : D.T) + 'T' + s.slice(2) + ':00';
+    const now = s => app.page.evaluate(x => __setNow(x), at(s));
+    const wait = ms => app.page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms);
+    // Bench has no programme load, its working weight is 185, the owner was last here at `left`;
+    // the wrist's copy waits in the hub for the next launch (queued) or arrives later (deliver).
+    const setup = (left, queued) => app.page.evaluate(([D, left, queued]) => {
+      const cr = getCustomRoutine();
+      cr.weeks.forEach(w => (w.push || []).forEach(e => { if (e.name === 'Bench Press') { e.weight = 0; delete e.weights; } }));
+      setCustomRoutine(cr);
+      lsSet('kt_sessions', []); lsSet('kt_weights', { 'Bench Press': 185 });
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      window.__copy = JSON.stringify({ dayName: _dayLabel('Push'), slot: 'Push', startedAt: iso(new Date(D.Y + 'T23:30:00').getTime()), loggedAt: iso(new Date(D.T + 'T00:20:00').getTime()),
+        exercises: [{ name: 'Bench Press', reps: [5, 5, 5], weight: 165, weightLog: [165, 165, 165], rpe: 7, rpeLog: [7, 7, 7] }] });
+      sessionStorage.setItem('__copy', window.__copy);
+      if (queued) sessionStorage.setItem('__pending', JSON.stringify([window.__copy]));
+      localStorage.setItem('kt_last_open', String(new Date(left).getTime()));
+    }, [D, at(left), !!queued]);
+    const deliver = () => app.page.evaluate(async () => { window.__mock.pending = [sessionStorage.getItem('__copy')]; await drainWatchSessions(); await new Promise(r => setTimeout(r, 50)); });
+    const read = () => app.page.evaluate(() => { const s = getSessions().find(x => x.wristStartedAt); return { filed: s && s.date, ww: getWeights()['Bench Press'] }; });
+    const r = {};
+    // (a) the owner left at 22:00; the app is opened at 00:21 (a cold launch: the boot drain)
+    await now('Y 21:00'); await setup('Y 22:00', true); await now('T 00:21'); await coldBoot(app); await wait(1600);
+    r.atOnce = await read();
+    // (b) the app was in use until 22:00 and comes back from the background at 07:00 (a return)
+    await now('Y 21:00'); await setup('Y 21:00', false); await coldBoot(app);
+    await app.page.evaluate(() => { let v = 'visible'; Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+      window.__vis = s => { v = s; document.dispatchEvent(new Event('visibilitychange')); }; });
+    await now('Y 22:00'); await app.page.evaluate(() => __vis('hidden'));
+    await now('T 07:00'); await app.page.evaluate(() => { window.__mock.pending = [sessionStorage.getItem('__copy')]; __vis('visible'); }); await wait(1300);
+    r.morning = await read();
+    // (c) the app open across midnight (since 23:00): the session arrives at 00:20:30
+    await now('Y 23:00'); await setup('Y 22:00', false); await coldBoot(app); await wait(1100);
+    await now('T 00:20'); await deliver();
+    r.open = await read();
+    // (d) the owner was in the app after the finish (a +5 to 190 at 06:05) before the late copy drains at 07:00
+    await now('Y 21:00'); await setup('T 06:05', true); await app.page.evaluate(() => lsSet('kt_weights', { 'Bench Press': 190 }));
+    await now('T 07:00'); await coldBoot(app); await wait(1600);
+    r.since = await read();
+    // (e) a late delivery to an app open since 06:00, with a +5 made at 06:10: the copy arrives at 06:30
+    await now('T 06:00'); await setup('Y 22:00', false); await coldBoot(app); await wait(1100);
+    await now('T 06:10'); await app.page.evaluate(() => lsSet('kt_weights', { 'Bench Press': 190 }));
+    await now('T 06:30'); await deliver();
+    r.lateInApp = await read();
+    for (const k of Object.keys(r)) assert(r[k].filed === D.Y, k + ': filed on the day it began: ' + JSON.stringify(r[k]));
+    assert(r.atOnce.ww === 165, 'drained at 00:21 with nothing done since: the lighter newest log sets the working weight: ' + JSON.stringify(r));
+    assert(r.morning.ww === 165, 'drained on a return the next morning: 165: ' + JSON.stringify(r.morning));
+    assert(r.open.ww === 165, 'arriving while the app is open across midnight: 165: ' + JSON.stringify(r.open));
+    assert(r.since.ww === 190 && r.lateInApp.ww === 190, 'the owner was in the app after the finish: a +5 made since stands: ' + JSON.stringify([r.since, r.lateInApp]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
