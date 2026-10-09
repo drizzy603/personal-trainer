@@ -13762,7 +13762,8 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // A name that already has a working weight takes the log's (the old name's, a +5 since
   // included, when the log was its only one) whenever this is now that lift's newest log: only
   // the newest log sets a working weight, and 'Flat Bench' 170 today renamed to Bench Press left
-  // Bench at last week's 160 (the coach was told it). A newer log of that name keeps its own.
+  // Bench at last week's 160 (the coach was told it). A newer log of that name keeps its own, and
+  // so does one written since its newest log (the coach's, +5, a deload: the owner's plan).
   if(renamed && renamed.length){
     var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
     renamed.forEach(function(rn){
@@ -13781,6 +13782,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
       if(fixed[rn.to]) return;   // its corrected top set has moved the new name's working weight
       if(!had && carry!=null){ wts2[rn.to]=carry; wtsTouched=true; return; }
       if(newerOf(rn.to)) return;
+      if(had){ var pl=_newestLoad(rn.to, sessions.filter(function(o){ return o!==s; })); if(!(pl!=null && Math.abs(pl-parseFloat(wts2[rn.to]))<0.01)) return; }
       var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
       var rw=carry!=null ? carry : parseFloat(rx && rx.weight);
       if(!(rw>0)) return;

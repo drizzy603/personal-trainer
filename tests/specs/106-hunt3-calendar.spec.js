@@ -837,7 +837,8 @@ run('R25: the Sunday recap reads a 5.05 km week as 3.1 mi, as the Activity card 
 // today, renamed to Bench Press, kept Bench at last week's 160 (the coach was told 160). The
 // renamed log, now the lift's newest, sets it as a fresh log would: the old name's working weight
 // (a +5 since included) when the log was its only one, else the log's top. A newer log of the
-// new name keeps its own, and a corrected top set in the same edit wins.
+// new name keeps its own, so does a load written since its newest log (the coach's), and a
+// corrected top set in the same edit wins.
 run('T15: a rename into a lift that has a working weight sets it from the renamed log; a newer log of that lift keeps its own', async () => {
   const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
   try {
@@ -884,6 +885,12 @@ run('T15: a rename into a lift that has a working weight sets it from the rename
       s = getSessions().find(x => x.date === addDays(T, -3));
       executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
       r.newer = W();
+      // a load the coach wrote for Bench after the mis-named log is the owner's plan: it stays
+      s = setup();
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 175 });
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.written = { w: W(), stamp: JSON.stringify(getSessions().find(x => x.id === s.id).wSet) };
+      deleteSession(s.id); await wait(20); r.written.deleted = W()['Bench Press'];
       // a corrected top set in the same edit wins
       s = setup();
       await sheetEdit(T, el => { el('se_0_name').value = 'Bench Press'; ['0', '1', '2'].forEach(i => { el('se_0_' + i + '_w').value = '172.5'; }); });
@@ -901,6 +908,7 @@ run('T15: a rename into a lift that has a working weight sets it from the rename
     assert(out.plus5['Bench Press'] === 175 && !('Flat Bench' in out.plus5), 'a +5 on the old name since goes along: ' + JSON.stringify(out.plus5));
     assert(out.stillUsed['Bench Press'] === 170 && out.stillUsed['Flat Bench'] === 170, 'with the old name still logged, Bench takes the log\'s top: ' + JSON.stringify(out.stillUsed));
     assert(out.newer['Bench Press'] === 180 && !('Flat Bench' in out.newer), 'a newer Bench log keeps its own: ' + JSON.stringify(out.newer));
+    assert(out.written.w['Bench Press'] === 175 && !('Flat Bench' in out.written.w) && out.written.stamp === '{}' && out.written.deleted === 175, 'a load the coach wrote since stays, also once the log is deleted: ' + JSON.stringify(out.written));
     assert(out.fixed['Bench Press'] === 172.5 && !('Flat Bench' in out.fixed), 'a corrected top set in the same edit wins: ' + JSON.stringify(out.fixed));
     assert(out.control['Bench Press'] === 170, 'control: ' + JSON.stringify(out.control));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
