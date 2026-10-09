@@ -3501,8 +3501,27 @@ function setRoutineArchive(a){ lsSet('kt_routine_archive',a); }
 function archiveCurrentRoutine(){
   var cr=getCustomRoutine(); if(!cr) return true;
   var arr=getRoutineArchive();
-  if(arr.length && arr[0] && JSON.stringify(arr[0].routine)===JSON.stringify(cr)) return true;
-  return lsSet('kt_routine_archive', [{id:Date.now(),archivedAt:todayISO(),routine:cr}].concat(arr).slice(0,5));
+  if(_archivedAlready(arr[0], cr)) return true;
+  return lsSet('kt_routine_archive', [{id:Date.now(),archivedAt:todayISO(),routine:_archiveCopy(cr)}].concat(arr).slice(0,5));
+}
+// The current programme as Programme History keeps it. One with no inUseFrom (put in by a page
+// from before it) is dated from the Monday its round's week 1 began on its own week clock, the
+// only sign left of when it came in. Undated, it could name any older card's block: after
+// Regenerate on such a page (archived nowhere) or a deleted entry, the next programme alone named
+// the old cards' blocks once it was archived (a BASE card read HYPERTROPHY; _sessBlock). A week
+// set back dates it later than it came in: its oldest cards then name no block, never a wrong one.
+function _archiveCopy(cr){
+  if(!cr || cr.inUseFrom) return cr;
+  var c=JSON.parse(JSON.stringify(cr)), s=_roundStartISO(), t=todayISO();
+  c.inUseFrom=(/^\d{4}-\d{2}-\d{2}$/.test(s) && s<t) ? s : t;
+  return c;
+}
+// Whether a Programme History entry already holds this programme, as _archiveCopy dated it or as
+// a page from before it wrote it (a retried swap adds nothing).
+function _archivedAlready(e, cr){
+  var r=e && e.routine; if(!r || !cr) return false;
+  if(r.inUseFrom && !cr.inUseFrom){ r=JSON.parse(JSON.stringify(r)); delete r.inUseFrom; }
+  return JSON.stringify(r)===JSON.stringify(cr);
 }
 function openRoutineArchiveModal(){
   closeRoutineArchiveModal();
@@ -3556,7 +3575,7 @@ function restoreArchivedRoutine(id){
     // goes in on top of every entry (six for a moment) and only the restored one leaves:
     // archiving first trimmed a full history to five, which cost it its oldest programme.
     var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
-    var withCur=(cur && !(prevArr[0] && JSON.stringify(prevArr[0].routine)===JSON.stringify(cur))) ? [{id:Date.now(),archivedAt:todayISO(),routine:cur}].concat(prevArr) : prevArr;
+    var withCur=(cur && !_archivedAlready(prevArr[0], cur)) ? [{id:Date.now(),archivedAt:todayISO(),routine:_archiveCopy(cur)}].concat(prevArr) : prevArr;
     if(!lsSet('kt_routine_archive', withCur)){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
     _routineReplaced(cur, 'history:'+id);
@@ -17026,7 +17045,12 @@ function _shareCardPalette(){
 // another week) reads this round's block, else the block that week has in every programme that
 // may have been the one on its date: the current one and each Programme History entry replaced
 // on or after it, leaving out one put in after it (routine.inUseFrom). They disagree, or none
-// is left: no block. The current programme's week 4 is not an old programme's week 4 (an old BASE
+// is left: no block. One of them must be known to have been in use then: its inUseFrom on or
+// before that date (Programme History dates one archived without it, _archiveCopy), or the
+// current programme while nothing has been replaced since. An undated one (from a page before
+// inUseFrom) may have been put in on any day, so it can veto a block but never name one alone:
+// after Regenerate on such a page, the next programme named the old cards' blocks once it was
+// archived. The current programme's week 4 is not an old programme's week 4 (an old BASE
 // card read BUILD, also after Regenerate, which archives nowhere), and the next round or the
 // programme restored as it was name it alike (they read no block). A log filed after such a
 // replacement (the coach's, a stale wrist session) has its week counted on a later programme's
@@ -17038,14 +17062,15 @@ function _sessBlock(s, strict){
   if(s.bName && Number(s.bWk)===wk) return String(s.bName);
   var cr=getCustomRoutine(), live=_weekBlock(cr, wk), curIn=!!cr && !(String(cr.inUseFrom||'')>d);
   if(curIn && d>=_roundStartISO()) return live;
-  var may=curIn ? [live] : [], late=false;
+  var may=curIn ? [live] : [], late=false, since=false, sure=curIn && !!cr.inUseFrom;
   getRoutineArchive().forEach(function(e){
     var r=e && e.routine;
     if(!r || !(String(e.archivedAt||'')>=d)) return;
+    since=true;
     if(filed>Number(e.id)) late=true;
-    else if(!(String(r.inUseFrom||'')>d)) may.push(_weekBlock(r, wk));
+    else if(!(String(r.inUseFrom||'')>d)){ may.push(_weekBlock(r, wk)); if(r.inUseFrom) sure=true; }
   });
-  if(late || (strict && !(curIn && may.length===1))) return '';
+  if(late || !(sure || (curIn && !since)) || (strict && !(curIn && may.length===1))) return '';
   return may.length && may.every(function(b){ return b===may[0]; }) ? may[0] : '';
 }
 function _weekBlock(r, wk){ var w=r && Array.isArray(r.weeks) && wk>0 ? r.weeks[wk-1] : null; return w && w.bName ? String(w.bName) : ''; }
