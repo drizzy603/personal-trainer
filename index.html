@@ -4249,7 +4249,8 @@ function _prBeats(w, best){ w=parseFloat(w)||0; best=parseFloat(best)||0; return
 // it: a session logged for three weeks ago used to lower today's prescription (the coach's
 // log_session and the runner's finish both come through here). rec, the log just saved, is
 // stamped with what it set (_wwStamp). o.live: a workout finished now and filed on the day it
-// began (it ran past midnight) is no backfill.
+// began (it ran past midnight) is no backfill, nor is a wrist session drained with nothing done
+// in the app since its finish (_wristLive).
 function _setWorkingWeights(exs, date, rec, o){
   var w=getWeights(), d=String(date||todayISO()), back=d<todayISO() && !(o && o.live), set={}, wrote=[];
   var newer=function(n){ return getSessions().some(function(x){ return x && String(x.date)>d && (x.exercises||[]).some(function(y){ return y && y.name===n; }); }); };
@@ -12417,16 +12418,19 @@ function _nextRoundBuild(cr, until){
   }
   return {routine:nr, rows:rows};
 }
-// A set round swapped in on time (not "Today", not late) and the sessions already filed from its
-// start Monday on: the wrist has shown the round's own days since that Monday began (its week ahead,
-// watch build 53+), so a session trained there is the new round's week 1, not the old round's last
-// week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
+// A set round swapped in on its date or after it (not "Today") and the sessions already filed from
+// its start Monday on: the wrist has shown the round's own days since that Monday began (its week
+// ahead, watch build 53+), so a session trained there is the new round's week 1, not the old round's
+// last week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
 // keeps the last plan the phone sent) or a phone log there means the old round's plan, and null.
 // So does a round set on its Monday or later (a sheet painted the night before, tapped that day): it
 // swaps in at the tap, and the wrist had no preview before it, only the old round's parked week.
+// Swapped in late (the phone first opened after the start week), the round's days were trained only
+// if the wrist logged its start week: with nothing there, null (the round starts this week).
 function _nrPreviewTrained(p, now){
-  if(now || p.startsOn<_mostRecentMonday() || !(String(p.at||'')<p.startsOn)) return null;
+  if(now || !(String(p.at||'')<p.startsOn)) return null;
   var ss=getSessions().filter(function(s){ return s && String(s.date||'').slice(0,10)>=p.startsOn; });
+  if(p.startsOn<_mostRecentMonday() && !ss.some(function(s){ return String(s.date||'').slice(0,10)<addDays(p.startsOn,7); })) return null;
   return ss.every(function(s){ return !!s.wristStartedAt && (s.exercises||[]).some(function(e){ return e && Array.isArray(e.rpeLog) && e.rpeLog.length>0; }); }) ? ss : null;
 }
 // Swaps the set round in on its start morning (autoAdvanceWeek), or now.
@@ -12436,9 +12440,15 @@ function _applyNextRound(now){
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
   var pv=_nrPreviewTrained(p, now);
   var nb=_nextRoundBuild(cr, pv ? p.startsOn : '');
-  // Logs from before this moment are the previous round's (_roundTest); on time, the round began at
-  // its Monday's midnight, so a wrist session trained on its days counts, drained before or after.
-  nb.routine.startedAt=pv ? new Date(p.startsOn+'T00:00:00').getTime() : Date.now();
+  // First opened after its start week had gone (away, or the app never opened): the round starts
+  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
+  // of a round nobody saw, at loads already past the re-base. A start week the wrist trained (pv)
+  // was the round's week 1 as the wrist showed it: opened in the week after, the round goes on
+  // from its Monday (week 2 now); opened later, it starts this week and those sessions stay week 1.
+  var late=!now && p.startsOn<_mostRecentMonday() && !(pv && addDays(p.startsOn,7)===_mostRecentMonday());
+  // Logs from before this moment are the previous round's (_roundTest); on its own clock, the round
+  // began at its Monday's midnight, so a wrist session trained on its days counts, drained before or after.
+  nb.routine.startedAt=(pv && !late) ? new Date(p.startsOn+'T00:00:00').getTime() : Date.now();
   // All or nothing: the round being replaced must reach Programme History, and a failed
   // routine write takes the archive entry back (each boot retries on the start morning).
   var prevArr=getRoutineArchive().slice();
@@ -12446,16 +12456,13 @@ function _applyNextRound(now){
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
   _routineReplaced(cr, 'round:'+nb.routine.cycle);
   lsDel('kt_routine_next');
-  // First opened after its start week had gone (away, or the app never opened): the round starts
-  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
-  // of a round nobody saw, at loads already past the re-base.
-  var late=!now && p.startsOn<_mostRecentMonday();
   var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
-  // Drained before the swap, they were filed under the old clock (week 12, its block): week 1 now.
+  // Drained before the swap, they were filed under the old clock (week 12, its block): week 1 now
+  // (or later on the round's clock). Before a round started late, week 1 with no block (_stampBlock).
   if(pv && pv.length){
     var _ss=getSessions();
-    _ss.forEach(function(s){ if(s && String(s.date||'').slice(0,10)>=start){ s.week=weekForDate(s.date); delete s.bName; delete s.bWk; _stampBlock(s); } });
+    _ss.forEach(function(s){ if(s && String(s.date||'').slice(0,10)>=p.startsOn){ s.week=weekForDate(s.date); delete s.bName; delete s.bWk; _stampBlock(s); } });
     lsSet('kt_sessions', _ss);
   }
   lapsePending=null;   // a welcome-back offer still up was about the old round's weeks
@@ -22050,6 +22057,10 @@ function toggleDynType(){
 try{ applyDynamicType(); document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') applyDynamicType(); }); }catch(e){}
 currentWeek = getWeek();
 _streakUpgrade();   // before the week clock moves or a set round swaps in (its freeze reads these days)
+// When this visit began, and the last time the owner was here before it (kt_last_open as the
+// visit found it, read before the visit stamps it): see _wristLive. _arrive() runs on a return.
+var _visitFrom=Date.now(), _awayFrom=parseFloat(localStorage.getItem('kt_last_open'))||0;
+function _arrive(){ _awayFrom=parseFloat(localStorage.getItem('kt_last_open'))||0; _visitFrom=Date.now(); }
 // Welcome-back check — if the user was away 10+ days and the calendar
 // auto-advanced the programme, offer a rewind instead of silently skipping
 // weeks they never trained. kt_last_open is deliberately NOT exported:
@@ -22334,6 +22345,7 @@ document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){
     var s=document.getElementById('screen');
     if(s && !s.firstElementChild) { window.location.reload(); return; }
+    _arrive();   // before anything stamps this visit
     _resumeDayAndRest();
     _stampVisit();   // after the welcome-back check has read the previous visit
     setTimeout(checkPendingShare, 600);
@@ -23145,6 +23157,17 @@ function _onWatchLive(json){
   if(currentTab==='log') render();
 }
 function hideWatchLive(){ _watchLive=null; render(); }
+// A drained wrist session is the live finish (_setWorkingWeights o.live), not a backfill, when the
+// owner has not been in the app since the wrist finished it: nothing here could have changed a
+// working weight in between. Filed on the day it began, a workout that ran past midnight (or one
+// drained the next morning) is the newest log, as the runner's finish is; a lighter one stayed
+// raise-only. Time in this visit counts from the finish or the visit's start, whichever is later,
+// and a few minutes cover the drain that runs as the visit begins or the session arrives. A
+// session finished before a visit since then (a +5, the coach) stays raise-only.
+function _wristLive(s){
+  var t=s && (s.loggedAt || s.startedAt) ? new Date(s.loggedAt || s.startedAt).getTime() : 0;
+  return t>0 && t>=_awayFrom && Date.now()-Math.max(t, _visitFrom) <= 5*60e3;
+}
 function drainWatchSessions(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions) return Promise.resolve();
@@ -23288,8 +23311,9 @@ function drainWatchSessions(){
       // leave PRs and working weights raised with no session behind them.
       // The runner's rule: only the newest log of a lift sets it, a backdated one only raises
       // it. Raise-only here let a late Friday session top today's lighter log, and a newer,
-      // lighter wrist session never set it.
-      _setWorkingWeights(_wwExs, _rec.date, _rec);
+      // lighter wrist session never set it. A new record drained with nothing done here since
+      // its finish is live (_wristLive); a merge keeps its own rule above.
+      _setWorkingWeights(_wwExs, _rec.date, _rec, _prior ? null : {live:_wristLive(s)});
       checkAndUpdatePRs(_rec.exercises);
       if(_draftHere){
         localStorage.removeItem('kt_runner_draft');
