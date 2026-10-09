@@ -13713,7 +13713,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // The working-weight cache follows the corrected truth — but only when the
   // edited session is the NEWEST one for that lift. Fixing a typo in a
   // weeks-old session must not regress today's prescription.
-  var wts2=getWeights(), wtsTouched=false, wch={}, wrote=[];
+  var wts2=getWeights(), wtsTouched=false, wch={}, wrote=[], fixed={};
   var newerOf=function(n){ return sessions.some(function(o){
     return o!==s && String(o.date||'')>String(s.date||'') &&
       (o.exercises||[]).some(function(e2){ return e2 && e2.name===n; });
@@ -13724,7 +13724,7 @@ function _afterSessionEdit(s, sessions, renamed, only){
     if(!newerOf(ex.name)){
       var p=parseFloat(wts2[ex.name]);
       if(!(Math.abs((p||0)-w)<0.01)) wch[ex.name]=[p>0?p:null, w];
-      wts2[ex.name]=w; wtsTouched=true; wrote.push(ex.name);
+      wts2[ex.name]=w; wtsTouched=true; wrote.push(ex.name); fixed[ex.name]=1;
     }
   });
   // A rename carries the per-name records with it: the exercise note, the
@@ -13732,21 +13732,34 @@ function _afterSessionEdit(s, sessions, renamed, only){
   // when no other session still uses the old name; else the new name starts at
   // this log's top, as a fresh log of it would. recomputePRs below rebuilds
   // kt_prs from the corrected sessions, so records follow without extra work.
+  // A name that already has a working weight takes the log's (the old name's, a +5 since
+  // included, when the log was its only one) whenever this is now that lift's newest log: only
+  // the newest log sets a working weight, and 'Flat Bench' 170 today renamed to Bench Press left
+  // Bench at last week's 160 (the coach was told it). A newer log of that name keeps its own.
   if(renamed && renamed.length){
     var notes=lsGet('kt_ex_notes')||{}, notesTouched=false;
     renamed.forEach(function(rn){
       if(notes[rn.from] && !notes[rn.to]){ notes[rn.to]=notes[rn.from]; delete notes[rn.from]; notesTouched=true; }
       if(Array.isArray(s.prs)) s.prs=s.prs.map(function(p){ return p===rn.from?rn.to:p; });
       var stillUsed=sessions.some(function(o){ return o!==s && (o.exercises||[]).some(function(e2){ return e2 && e2.name===rn.from; }); });
-      if(!stillUsed && wts2[rn.from]!=null){
-        if(wts2[rn.to]==null) wts2[rn.to]=wts2[rn.from];
-        delete wts2[rn.from]; wtsTouched=true;
-        if(s.wSet && s.wSet[rn.from] && !s.wSet[rn.to]){ s.wSet=Object.assign({}, s.wSet); s.wSet[rn.to]=s.wSet[rn.from]; delete s.wSet[rn.from]; }
-      } else if(wts2[rn.to]==null && !newerOf(rn.to)){
-        var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
-        var rw=parseFloat(rx && rx.weight);
-        if(rw>0){ wts2[rn.to]=rw; wch[rn.to]=[null, rw]; wtsTouched=true; wrote.push(rn.to); }
+      var had=wts2[rn.to]!=null, carry=(!stillUsed && wts2[rn.from]!=null) ? parseFloat(wts2[rn.from]) : null;
+      // The log's stamp speaks for the lifts it has: the old name's entry leaves with the old name,
+      // and goes along only to a name of its own (no working weight yet). Into a lift that has
+      // one, _wwStamp below writes the entry from what the rename changed.
+      if(s.wSet && s.wSet[rn.from]){
+        var e0=s.wSet[rn.from]; s.wSet=Object.assign({}, s.wSet); delete s.wSet[rn.from];
+        if(!had && carry!=null && !s.wSet[rn.to]) s.wSet[rn.to]=e0;
       }
+      if(!stillUsed && wts2[rn.from]!=null){ delete wts2[rn.from]; wtsTouched=true; }
+      if(fixed[rn.to]) return;   // its corrected top set has moved the new name's working weight
+      if(!had && carry!=null){ wts2[rn.to]=carry; wtsTouched=true; return; }
+      if(newerOf(rn.to)) return;
+      var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
+      var rw=carry!=null ? carry : parseFloat(rx && rx.weight);
+      if(!(rw>0)) return;
+      var rp=parseFloat(wts2[rn.to]);
+      if(!(Math.abs((rp||0)-rw)<0.01)) wch[rn.to]=[rp>0?rp:null, rw];
+      wts2[rn.to]=rw; wtsTouched=true; wrote.push(rn.to);
     });
     if(notesTouched) lsSet('kt_ex_notes', notes);
     lsSet('kt_sessions', sessions);

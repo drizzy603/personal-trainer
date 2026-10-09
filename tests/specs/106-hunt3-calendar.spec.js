@@ -831,3 +831,78 @@ run('R25: the Sunday recap reads a 5.05 km week as 3.1 mi, as the Activity card 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T15 (hunt 5): renaming a log's lift (Edit sets, or the coach's edit_session) into a name that
+// already had a working weight left that lift at its older log's load: 'Flat Bench' 170 logged
+// today, renamed to Bench Press, kept Bench at last week's 160 (the coach was told 160). The
+// renamed log, now the lift's newest, sets it as a fresh log would: the old name's working weight
+// (a +5 since included) when the log was its only one, else the log's top. A newer log of the
+// new name keeps its own, and a corrected top set in the same edit wins.
+run('T15: a rename into a lift that has a working weight sets it from the renamed log; a newer log of that lift keeps its own', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), O = addDays(T, -7);
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, name, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name, sets: 3, reps: 8, weight: w }] });
+      const fresh = () => { lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); };
+      const setup = () => { fresh(); log(O, 'Bench Press', 160); log(T, 'Flat Bench', 170); return getSessions().find(s => s.date === T); };
+      // Edit sets on the day sheet: the name field, then Save changes
+      const sheetEdit = async (date, fn) => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(date); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + date + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Edit sets').click(); await wait(40);
+        fn(id => document.getElementById(id));
+        [...document.querySelectorAll('#sessEditOverlay button')].find(b => /Save changes/.test(b.textContent)).click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const r = {};
+      let s = setup();
+      r.before = W();
+      await sheetEdit(T, el => { el('se_0_name').value = 'Bench Press'; });
+      r.sheet = { w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press'), stamp: JSON.stringify(getSessions().find(x => x.id === s.id).wSet) };
+      // deleted again: Bench goes back to its older log's load
+      deleteSession(s.id); await wait(20);
+      r.sheetDeleted = W();
+      // the coach's edit_session
+      s = setup();
+      r.coach = { res: executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' }).ok, w: W(), line: benchLine() };
+      // a +5 on the mislabeled lift since (the coach's 175): it goes along
+      s = setup();
+      executeCoachTool('set_exercise_weight', { name: 'Flat Bench', weight: 175 });
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.plus5 = W();
+      // the old name still has an older log: it keeps its working weight, Bench takes the log's top
+      fresh(); log(addDays(T, -14), 'Flat Bench', 165); log(O, 'Bench Press', 160); log(T, 'Flat Bench', 170);
+      s = getSessions().find(x => x.date === T);
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.stillUsed = W();
+      // a newer Bench log keeps Bench's working weight
+      fresh(); log(T, 'Bench Press', 180); log(addDays(T, -3), 'Flat Bench', 170);
+      s = getSessions().find(x => x.date === addDays(T, -3));
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.newer = W();
+      // a corrected top set in the same edit wins
+      s = setup();
+      await sheetEdit(T, el => { el('se_0_name').value = 'Bench Press'; ['0', '1', '2'].forEach(i => { el('se_0_' + i + '_w').value = '172.5'; }); });
+      r.fixed = W();
+      // control: the same log made under the right name
+      fresh(); log(O, 'Bench Press', 160); log(T, 'Bench Press', 170);
+      r.control = W();
+      return r;
+    });
+    assert(out.before['Bench Press'] === 160 && out.before['Flat Bench'] === 170, 'set up: ' + JSON.stringify(out.before));
+    assert(out.sheet.w['Bench Press'] === 170 && !('Flat Bench' in out.sheet.w) && out.sheet.line === '  Bench Press: 170' && out.sheet.prescribed === 170, 'Edit sets: Bench takes the renamed log\'s 170: ' + JSON.stringify(out.sheet));
+    assert(out.sheet.stamp === '{"Bench Press":[null,170]}', 'the log\'s stamp speaks for Bench: ' + out.sheet.stamp);
+    assert(out.sheetDeleted['Bench Press'] === 160, 'deleted, Bench follows its older log again: ' + JSON.stringify(out.sheetDeleted));
+    assert(out.coach.res && out.coach.w['Bench Press'] === 170 && out.coach.line === '  Bench Press: 170', 'the coach\'s rename too: ' + JSON.stringify(out.coach));
+    assert(out.plus5['Bench Press'] === 175 && !('Flat Bench' in out.plus5), 'a +5 on the old name since goes along: ' + JSON.stringify(out.plus5));
+    assert(out.stillUsed['Bench Press'] === 170 && out.stillUsed['Flat Bench'] === 170, 'with the old name still logged, Bench takes the log\'s top: ' + JSON.stringify(out.stillUsed));
+    assert(out.newer['Bench Press'] === 180 && !('Flat Bench' in out.newer), 'a newer Bench log keeps its own: ' + JSON.stringify(out.newer));
+    assert(out.fixed['Bench Press'] === 172.5 && !('Flat Bench' in out.fixed), 'a corrected top set in the same edit wins: ' + JSON.stringify(out.fixed));
+    assert(out.control['Bench Press'] === 170, 'control: ' + JSON.stringify(out.control));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
