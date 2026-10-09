@@ -2328,7 +2328,9 @@ function _dayShortOf(l, rivals){
     for(var i=0;i<T.length && p<0;i++){
       if(R.every(function(r){ return String(r[i]||'').toLowerCase()!==T[i].toLowerCase(); })) p=i;
     }
-    if(p===0) out.push(cut(f,7));
+    // the first words differ past what fits ("Deadlifts" / "Deadlift Accessories"): the next
+    // word's initial tells them apart ("Deadl A"), else one more letter
+    if(p===0){ if(T[1]) out.push(fit(f,T[1],1)); out.push(cut(f,7)); }
     else if(p>1 && tag(T[p])) out.push(fit(T[p-1],T[p],len(T[p])));   // "Week 1 Day 2": "Day 2"
     else if(p>0) out.push(fit(f,T[p],6-len(f)));
     out.push(cut(l,7).replace(_DS_EDGE,''));   // the plain cut, trimmed
@@ -6938,7 +6940,7 @@ function renderTodayEditorial(){
       var whenBit = lastAge<=10 ? 'last week' : 'last time';
       var rpeBit = (last && lastRpe>0)
         ? (lastRpe<=7 ? ' \u2014 '+whenBit+' was clean at RPE '+lastRpe+'.' : ' \u2014 '+whenBit+' hit RPE '+lastRpe+', so no grinding.')
-        : (main.rpe ? ' \u2014 target RPE '+main.rpe+'.' : '.');
+        : (main.rpe ? ' \u2014 target RPE '+_esc(String(main.rpe))+'.' : '.');   // the coach's RPE is free text
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
         _esc(main.name)+upBit+rpeBit;
@@ -10953,6 +10955,19 @@ function runnerExEditBackFromSS(){
   _rExSSPicking=false;
   var sheet=document.getElementById('runner-ex-edit-sheet');
   if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
+}
+// Escape in the sheet's exercise or superset picker steps back to the sheet as its ‹ / Back
+// does, unsaved edits kept, focus on what opened the picker (it closed the whole sheet and
+// dropped them). False from the sheet itself: Escape closes it there.
+function _runnerExEditEscBack(){
+  var sheet=document.getElementById('runner-ex-edit-sheet'), sel;
+  if(!sheet) return false;
+  if(_rExSSPicking){ runnerExEditBackFromSS(); sel='[onclick*="runnerExEditPickSS()"]'; }
+  else if(document.getElementById('runner-ex-picker-q')){ sel=_rExPickMode==='add'?'[onclick*="_openRunnerExPicker(\'add\')"]':'[onclick*="_openRunnerExPicker()"]'; _closeRunnerExPicker(); }
+  else return false;
+  var b=sheet.querySelector('button'+sel);
+  if(b){ try{ b.focus({preventScroll:true}); }catch(e){} }
+  return true;
 }
 // By index, not by name: a name interpolated into an inline onclick breaks on
 // the first exercise with an apostrophe in it.
@@ -20093,6 +20108,7 @@ document.addEventListener('keydown', function(e){
   if(!ovs.length) return;
   var top=ovs[ovs.length-1];
   e.preventDefault();
+  if(top.id==='runner-ex-edit-modal' && _runnerExEditEscBack()) return;   // a picker inside it steps back
   top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
 });
 // When a sheet closes (Escape, its ✕, the backdrop) focus goes back to what was focused
@@ -21315,7 +21331,9 @@ function _renderExLibList(){
     }
     // The header line is the row's control (_a11yPass makes it a button); the ✕ and the open
     // detail sit beside it, never inside: a button's content is one flat label to VoiceOver, so
-    // a whole-row button hid the detail's PR history and the custom lift's Delete.
+    // a whole-row button hid the detail's PR history and the custom lift's Delete. The ✕ takes
+    // the header's top and bottom padding as margins, so it centres on the name block when the
+    // open row drops the bottom padding.
     var html='<div style="border-bottom:1px solid var(--border);'+(expanded?'background:var(--card2);':'')+'">';
     html+='<div style="display:flex;align-items:center;">';
     html+='<div data-n="'+_esc(ex.name)+'" onclick="toggleLibEx(this.dataset.n)" aria-expanded="'+expanded+'" style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:12px '+(isCustom?'10px':'18px')+' '+(expanded?'0':'12px')+' 18px;cursor:pointer;-webkit-tap-highlight-color:transparent;">';
@@ -21326,7 +21344,7 @@ function _renderExLibList(){
     html+='</div>';
     html+=right;
     html+='</div>';
-    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;margin-right:18px;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
+    if(isCustom)html+='<button data-n="'+_esc(ex.name)+'" onclick="event.stopPropagation();deleteCustomEx(this.dataset.n)" aria-label="Delete '+_esc(ex.name)+'" style="flex-shrink:0;margin:12px 18px '+(expanded?'0':'12px')+' 0;border:none;background:var(--card2);color:var(--muted);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>';
     html+='</div>';
     if(expanded) html+='<div style="padding:0 18px 12px;">'+_exDetailHTML(ex, hist, isCustom)+'</div>';
     html+='</div>';
