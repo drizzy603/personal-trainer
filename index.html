@@ -5180,7 +5180,10 @@ function _hkPlanOf(r, ctx){
   var list=(ctx||[]).some(function(x){ return x && x.uuid===r.uuid; }) ? ctx : [r];
   return _hkPlan(list)[r.uuid]||null;
 }
-function _logHealthRun(r, ctx){
+// o (optional) gets o.burned, the uuids put in the ledger with the record (the workout and its other
+// copies), so the card's Undo gives every one back (_unmarkHealthUuid): it gave back only the copy
+// logged, and the other kept the activity 'seen', so it was never offered or imported again.
+function _logHealthRun(r, ctx, o){
   if(_hkAlreadyImported(r)) return null;
   var localISO = _hkLocalISO(r);
   _hkTouchCursor();
@@ -5207,6 +5210,7 @@ function _logHealthRun(r, ctx){
   var runs = [rec].concat(getRuns());
   if(!lsSet('kt_runs', runs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(burn);
+  if(o) o.burned = burn;
   invalidateCoachCard();
   return rec;
 }
@@ -5235,8 +5239,8 @@ function _healthSportRec(r, sportId, idOffset){
   return {id: Date.now()+(idOffset||0), startMs: d.getTime()||undefined, date: localISO, type: sportId,
     duration: Math.round((r.durationSec||0)/60), data: data, notes:'From Apple Health'};
 }
-// Shared by the one-tap card and auto-log: writes the workout + dedup marker.
-function _logHealthSport(r, sportId, ctx){
+// Shared by the one-tap card and auto-log: writes the workout + dedup marker (o: as _logHealthRun).
+function _logHealthSport(r, sportId, ctx, o){
   if(_hkAlreadyImported(r)) return null;
   var p = _hkSportId(r)===sportId ? _hkPlanOf(r, ctx) : null, burn = [r.uuid].concat(_hkCopiesOf(r, p));
   if(p ? p.g.st!=='new' : _healthSportDupe(r, sportId)){ _hkMarkSeen(burn); return null; }   // already in the log (by hand, or restored)
@@ -5246,6 +5250,7 @@ function _logHealthSport(r, sportId, ctx){
   _hkTouchCursor();
   if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(burn);
+  if(o) o.burned = burn;
   invalidateCoachCard();
   return rec;
 }
@@ -5476,20 +5481,20 @@ function toggleBgSync(){
 function logPendingHealthRun(){
   var r = _hkPendingRun; if(!r) return;
   _hkPendingRun = null;
-  var sid = _hkSportId(r);
+  var sid = _hkSportId(r), o = {};   // o.burned: every copy the log burned, for the Undo
   if(sid){
-    var srec = _logHealthSport(r, sid, _hkPendingCtx);
+    var srec = _logHealthSport(r, sid, _hkPendingCtx, o);
     if(srec){
-      sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
+      sportLogConfirmed = {id: srec.id, type: sid, hkUuids: o.burned||[r.uuid],
         label: sid+(srec.duration?' · '+srec.duration+' min':'')};
       showToast(sid+' logged from Apple Health');
     } else if(srec===null){
       showToast('Already in your log \u2014 skipped the duplicate');
     }
   } else {
-    var rec = _logHealthRun(r, _hkPendingCtx);
+    var rec = _logHealthRun(r, _hkPendingCtx, o);
     if(rec){
-      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
+      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuids: o.burned||[r.uuid]};
       // Off the Run tab the strip is out of sight: the toast carries the Undo itself.
       if(!(currentTab==='log' && logSubTab==='run')) showUndoToast(fmtD(rec.distance)+' run logged from Apple Health', function(){ if(runLogConfirmed && runLogConfirmed.id===rec.id) undoLastRun(); });
       checkMilestones({delayToast:600});
@@ -8308,17 +8313,20 @@ function saveInlineRun(){
 // A Health quick-log marks the workout's UUID as imported before the record
 // exists; undoing the record alone left the marker, so the workout could
 // never be offered or imported again ('Already up to date' forever).
+// Takes one uuid or the list the log burned (the workout and its other copies, _hkCopiesOf): one
+// copy left in the ledger kept the whole activity 'seen' (_hkPlan).
 function _unmarkHealthUuid(uuid){
-  if(!uuid) return;
+  var drop=[].concat(uuid||[]).filter(Boolean);
+  if(!drop.length) return;
   var imp=lsGet('kt_hk_imported');
-  if(Array.isArray(imp)) lsSet('kt_hk_imported', imp.filter(function(u){ return u!==uuid; }));
-  else if(imp && typeof imp==='object' && imp[uuid]){ delete imp[uuid]; lsSet('kt_hk_imported', imp); }
+  if(Array.isArray(imp)) lsSet('kt_hk_imported', imp.filter(function(u){ return drop.indexOf(u)<0; }));
+  else if(imp && typeof imp==='object' && drop.some(function(u){ return imp[u]; })){ drop.forEach(function(u){ delete imp[u]; }); lsSet('kt_hk_imported', imp); }
   _hkPendingDismissed=false;
   if(typeof checkRecentHealthRun==='function') setTimeout(checkRecentHealthRun, 300);
 }
 function undoLastRun(){
   if(!runLogConfirmed) return;
-  var id = runLogConfirmed.id, uuid = runLogConfirmed.hkUuid;
+  var id = runLogConfirmed.id, uuid = runLogConfirmed.hkUuids;
   var runs = getRuns().filter(function(r){ return r.id !== id; });
   lsSet('kt_runs', runs);
   invalidateCoachCard();
@@ -13887,7 +13895,7 @@ function saveSportLog(){
 }
 function undoLastSportLog(){
   if(!sportLogConfirmed) return;
-  var id=sportLogConfirmed.id, uuid=sportLogConfirmed.hkUuid;
+  var id=sportLogConfirmed.id, uuid=sportLogConfirmed.hkUuids;
   lsSet('kt_sports',getSportLogs().filter(function(s){return s.id!==id;}));
   sportLogConfirmed=null;
   _unmarkHealthUuid(uuid);

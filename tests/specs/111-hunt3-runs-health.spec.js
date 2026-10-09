@@ -50,6 +50,9 @@
 // - R48: auto-log and the quick-log card read their fetch whole too: one hand log no longer hides
 //   every workout of its kind that day.
 // - R49: a first import compares each workout only with the ones that began near it.
+// Regressions from the 2026-10-09 review of those fixes:
+// - T34: Undo on the Health card gives back every copy the log burned (the Watch's and Strava's),
+//   so the workout is offered again and Import brings it in once.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -970,6 +973,64 @@ run('R49: a first import compares each workout only with the ones that began nea
     assert(out.runs === 1600 && out.sports === 800 && out.hr && out.ledger === 2424 && /1600 runs · 800 activities imported/.test(out.toast),
       'every workout is imported once, copies folded into their richer copy: ' + JSON.stringify(out));
     assert(out.calls < 200, 'each workout is compared only with its neighbours (24 copies): ' + out.calls + ' comparisons');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T34 (regression of R46): the card burns the other app's copy with the one it logs, but its Undo
+// took back only the copy logged; the other kept the activity 'seen', so the workout was never
+// offered again and the next Import burned it too ('Already up to date'). Driven through the
+// card's button and the saved strip's UNDO, for a run (Log › Run) and a ride (the + tab).
+run('T34: Undo on the Health card gives back a workout two apps wrote to Health', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const iso = ms => new Date(ms).toISOString();
+      const btn = re => [...document.querySelectorAll('button')].find(b => re.test(b.getAttribute('onclick') || ''));
+      const led = () => (lsGet('kt_hk_imported') || []).filter(u => u !== 'older-1').sort().join();
+      const toast = () => document.getElementById('toast').textContent;
+      const r = {};
+      for (const kind of ['run', 'ride']) {
+        const st = Date.now() - 3 * 3600e3;   // inside the card's 24 h window
+        lsSet('kt_runs', []); lsSet('kt_sports', []); lsDel('kt_hk_gone');
+        lsSet('kt_hk_imported', ['older-1']); localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5));
+        localStorage.setItem('kt_autolog_runs', '0');
+        window.__hk = kind === 'run'
+          ? [{ uuid: 'strava-1', type: 'run', startDate: iso(st + 20e3), distanceKm: 8.0, durationSec: 45 * 60 + 10 },
+             { uuid: 'watch-1', type: 'run', startDate: iso(st), distanceKm: 8.02, durationSec: 45 * 60, avgHr: 152 }]
+          : [{ uuid: 'ride-s', type: 'ride', startDate: iso(st + 25e3), distanceKm: 30, durationSec: 60 * 60 },
+             { uuid: 'ride-w', type: 'ride', startDate: iso(st), distanceKm: 30.2, durationSec: 60 * 60, avgHr: 140 }];
+        const recs = () => kind === 'run' ? getRuns().map(x => x.distance + '@' + x.hr).join()
+          : getSportLogs().map(x => x.type + ' ' + x.duration + '@' + (x.data || {}).avgHR).join();
+        _hkPendingRun = null; _hkPendingDismissed = false;
+        switchTab('log'); switchLogSub(kind === 'run' ? 'run' : 'sport'); await wait(400);
+        const o = r[kind] = { offered: _hkPendingRun && _hkPendingRun.uuid };
+        const logBtn = btn(/^logPendingHealthRun\(\)$/);
+        o.button = !!logBtn;
+        if (logBtn) logBtn.click();
+        await wait(50);
+        o.logged = { recs: recs(), ledger: led() };
+        const undo = btn(/^undoLast(Run|SportLog)\(\)$/);
+        o.undoButton = !!undo;
+        if (undo) undo.click();
+        await wait(700);   // the re-check runs 300 ms after the Undo
+        o.undone = { recs: recs(), ledger: led(), offered: _hkPendingRun && _hkPendingRun.uuid };
+        _hkPendingRun = null;
+        importFromHealth(); await wait(300);
+        o.imported = { recs: recs(), ledger: led(), toast: toast() };
+      }
+      return r;
+    });
+    const want = { run: ['watch-1', '8.02@152', 'strava-1,watch-1', /1 run imported/], ride: ['ride-w', 'Cycling 60@140', 'ride-s,ride-w', /1 activity imported/] };
+    for (const kind of ['run', 'ride']) {
+      const o = out[kind], [keep, rec, both, toastRe] = want[kind];
+      assert(o.offered === keep && o.button && o.undoButton, kind + ': the card offers the richer copy and the strip has UNDO: ' + JSON.stringify(o));
+      assert(o.logged.recs === rec && o.logged.ledger === both, kind + ': the card logs it and burns both copies: ' + JSON.stringify(o.logged));
+      assert(o.undone.recs === '' && o.undone.ledger === '' && o.undone.offered === keep, kind + ': Undo gives back both copies and the card offers it again: ' + JSON.stringify(o.undone));
+      assert(o.imported.recs === rec && o.imported.ledger === both && toastRe.test(o.imported.toast), kind + ': Import brings it in once and burns both: ' + JSON.stringify(o.imported));
+    }
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
