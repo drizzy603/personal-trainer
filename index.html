@@ -6900,7 +6900,7 @@ function renderTodayEditorial(){
       var whenBit = lastAge<=10 ? 'last week' : 'last time';
       var rpeBit = (last && lastRpe>0)
         ? (lastRpe<=7 ? ' \u2014 '+whenBit+' was clean at RPE '+lastRpe+'.' : ' \u2014 '+whenBit+' hit RPE '+lastRpe+', so no grinding.')
-        : (main.rpe ? ' \u2014 target RPE '+main.rpe+'.' : '.');
+        : (main.rpe ? ' \u2014 target RPE '+_esc(String(main.rpe))+'.' : '.');   // the coach's RPE is free text
       body = act.exercises.length+' lifts · ~'+
         Math.round(act.exercises.length*8.5)+' min. '+
         _esc(main.name)+upBit+rpeBit;

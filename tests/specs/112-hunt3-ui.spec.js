@@ -395,6 +395,46 @@ run('a coach-written rep target reads as text on Today and in the week ladder (R
   } finally { await app.close(); }
 });
 
+// T38: R54's spec main lift had a logged RPE, so Today's hero quoted that. A main lift never
+// logged (or logged without RPE) quotes the plan's "target RPE", which went out as markup.
+run("Today's hero quotes a never-logged main lift's coach-written target RPE as text (T38)", async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-api03-test' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      window.__xss = 0;
+      const RPE = '8 <b data-leak="rpe-b">hard</b> <img src="x-missing.png" data-leak="rpe-img" onerror="window.__xss++">';
+      // the coach puts today's day on Push, led by a lift never logged, through its own tool
+      const dow = (new Date(todayISO() + 'T00:00:00').getDay() + 6) % 7;
+      const cr = getCustomRoutine();
+      const plan = (cr.weekPlan || DEFAULT_WEEK_PLAN.map(p => p.type)).slice();
+      if (plan[dow] !== 'Push') { plan[plan.indexOf('Push')] = plan[dow]; plan[dow] = 'Push'; }
+      const wk = getWkData();
+      const res = executeCoachTool('update_routine_weeks', {
+        weekPlan: plan,
+        weeks: [{ wk: currentWeek, bName: wk.bName || 'Block', bColor: wk.bColor || '#0a43f5', wkNote: '',
+          push: [{ name: 'Landmine Press', sets: 4, reps: '8', weight: 60, rpe: RPE, isMain: true }, { name: 'Dumbbell Fly', sets: 3, reps: '12', weight: 25, rpe: 7 }] }],
+      });
+      const r = { ok: res && res.ok, today: getTodayActivity().dayName, logged: !!getLastSessionData('Landmine Press'), deload: isDeloadWeek() };
+      switchTab('log'); switchLogSub('workout'); await wait(60);
+      const body = () => (document.querySelector('#screen .kt-hero-body') || {}).textContent || '';
+      r.hero = body();
+      r.leaks = Array.from(document.querySelectorAll('#screen .kt-hero-body [data-leak]')).map(e => e.getAttribute('data-leak'));
+      // words in angle brackets are kept, not swallowed as a tag
+      const cr2 = getCustomRoutine(); cr2.weeks[currentWeek - 1].push[0].rpe = '7-8 <leave 2 in the tank>'; lsSet('kt_routine', cr2); render(); await wait(30);
+      r.hero2 = body();
+      await wait(150);
+      r.xss = window.__xss;
+      return r;
+    });
+    assert(out.ok && out.today === 'Push' && !out.logged && !out.deload, 'today is the coach\'s Push day, led by a lift never logged: ' + JSON.stringify(out));
+    assert(out.hero.indexOf('target RPE 8 <b data-leak="rpe-b">hard</b> <img') >= 0, 'the hero quotes the target RPE as typed: ' + out.hero);
+    assert(out.leaks.length === 0 && out.xss === 0, 'no RPE markup renders and no handler runs: ' + JSON.stringify([out.leaks, out.xss]));
+    assert(out.hero2.indexOf('target RPE 7-8 <leave 2 in the tank>.') >= 0, 'a note in angle brackets keeps its words: ' + out.hero2);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('an emoji first name is a whole avatar on every tab (L53)', async () => {
   const app = await boot({ native: true, seed: { kt_user_name: '\u{1F98A}Fox', kt_apikey: 'sk-ant-api03-test' } });
   try {
