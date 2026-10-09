@@ -1082,6 +1082,34 @@ run('T25: while a draft holds round 2 on its Monday the wrist is sent the round\
   } finally { await app.close(); }
 });
 
+run('T25: a round first opened after its start week claims nothing, so while it is held the wrist keeps the old round\'s day', async () => {
+  // Round 2 was set for last Monday and the phone app not opened since; this Monday 07:00 it opens
+  // while the wrist runs Legs (the shell's live cache): the round is held, and starts this week.
+  const app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await app.page.addInitScript(() => { if (window.__mock) Capacitor.Plugins.TrovoWatch.getLiveState = () => Promise.resolve({ json: sessionStorage.getItem('__live') || '' }); });
+    await withClock(app);
+    await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      sessionStorage.setItem('__mon', mon);
+      __setNow(mon + 'T07:00:00');
+      localStorage.setItem('kt_week_monday', addDays(mon, -14)); localStorage.setItem('kt_final_since', addDays(mon, -14));
+      lsSet('kt_routine_next', { startsOn: addDays(mon, -7), at: addDays(mon, -10), afterEnd: true });
+      sessionStorage.setItem('__live', JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: new Date(mon + 'T06:30:00').getTime(), reps: { 'Back Squat': [5, 5] } }));
+    });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await wait(2500);
+      const u = window.__mock.updateContext, today = u.length ? JSON.parse(u[u.length - 1].json) : {};
+      return { cycle: getCustomRoutine().cycle || 1, week: currentWeek, held: _nrHeld, wrist: { date: today.date, week: today.week, day: today.slot }, today: todayISO(), act: getTodayActivity().dayName };
+    });
+    assert(out.cycle === 1 && out.week === 12 && out.held, 'the wrist workout holds the late round: ' + JSON.stringify(out));
+    assert(out.wrist.date === out.today && out.wrist.week === 12 && out.wrist.day === out.act, 'the wrist is sent the old round\'s day, as the phone shows it (nothing it trains is claimed): ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('T46: a final-week draft resumed after "Start round 2 today" keeps its week and its block', async () => {
   const app = await boot({ native: false, seed: { kt_week: '12' } });
   try {
