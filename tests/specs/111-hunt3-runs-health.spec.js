@@ -1044,10 +1044,13 @@ run('T34: Undo on the Health card gives back a workout two apps wrote to Health'
 // run (imported from Health at 9:00, 25:05) better than its own (26:00), so the evening run came
 // in again from auto-log, the card and Import; the same for a 60-min match typed for a 62-min one
 // and a 'Win, 18 pts' log on a day whose morning game was imported; and with both commutes typed
-// by hand the evening log took the morning log's only match. An old pair (a hand log typed before
-// its Health twin came in) still stands for its workout, and a log that absorbed the first
-// workout still lets the second in. The no-duration rule counts only the activities a log may be
-// for: a game that began after a 'Win, 18 pts' was saved no longer makes it take neither.
+// by hand the evening log took the morning log's only match. The imported workout gives way only
+// in that order (it came in before the others the log fits began, and they were over before the
+// log was typed); otherwise the log is weighed by fit as before, so a run typed in again never
+// swallows one that was under way. An old pair (a hand log typed before its Health twin came in)
+// still stands for its workout, and a log that absorbed the first workout still lets the second
+// in. The no-duration rule counts only the activities a log may be for: a game that began after a
+// 'Win, 18 pts' was saved no longer makes it take neither.
 run('T35: a hand log typed after the day\'s first workout was imported stands for its own workout', async () => {
   const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
   try {
@@ -1093,6 +1096,14 @@ run('T35: a hand log typed after the day\'s first workout was imported stands fo
         nodurLater: { show: sports, runs: [], led: [],
                       sports: [{ id: at(10, 0), date: y, type: 'Basketball', duration: 0, data: { result: 'Win', points: 18 }, notes: '' }],
                       hk: [hk('gam', 'Basketball', 9, 0, 40 * 60), hk('gpm', 'Basketball', 19, 0, 95 * 60)] },
+        // the morning run came in from Health at 10:00 while the 9:30 run was under way; the morning
+        // run typed in again at 12:00 does not take the 9:30 run (it would be lost): it comes in
+        underway: { show: runs, runs: [run(at(12, 0), '25:05', 'again'), run(at(10, 0), '25:05', 'From Apple Health', at(7, 0))], sports: [], led: ['am'],
+                    hk: [hk('mid', 'run', 9, 30, 26 * 60, 5), hk('am', 'run', 7, 0, 25 * 60 + 5, 5)] },
+        // the same with a third run at 13:00 that began after the morning run came in: one of the
+        // others did not, so the log is weighed by fit and takes the morning run; both come in
+        mixed: { show: runs, runs: [run(at(15, 0), '25:05', 'again'), run(at(10, 0), '25:05', 'From Apple Health', at(7, 0))], sports: [], led: ['am'],
+                 hk: [hk('pm', 'run', 13, 0, 25 * 60 + 50, 5), hk('mid', 'run', 9, 30, 25 * 60 + 35, 5), hk('am', 'run', 7, 0, 25 * 60 + 5, 5)] },
       };
       const r = {};
       for (const k of Object.keys(S)) {
@@ -1139,6 +1150,12 @@ run('T35: a hand log typed after the day\'s first workout was imported stands fo
     const nl = out.nodurLater, nlLogs = 'Basketball 0/{"result":"Win","points":18} | Basketball 95/Health@19:00';
     assert(nl.auto.logs === nlLogs && nl.card === 'gpm' && nl.import.logs === nlLogs && nl.import.ledger === 'gam,gpm' && /1 activity imported/.test(nl.import.toast),
       'a log with no duration stands for the game before it, and the later game comes in: ' + JSON.stringify(nl));
+    const uw = out.underway, uwLogs = '25:05/Health@7:00 | 25:05/again | 26:00/Health@9:30';
+    assert(uw.auto.logs === uwLogs && uw.card === 'mid' && uw.import.logs === uwLogs && /1 run imported/.test(uw.import.toast),
+      'a run under way when the first came in is not lost to the first typed in again: ' + JSON.stringify(uw));
+    const mx = out.mixed, mxLogs = '25:05/Health@7:00 | 25:05/again | 25:35/Health@9:30 | 25:50/Health@13:00';
+    assert(mx.auto.logs === mxLogs && mx.card && mx.import.logs === mxLogs && /2 runs imported/.test(mx.import.toast),
+      'with one of the others begun before the first came in, the log is weighed by fit: ' + JSON.stringify(mx));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

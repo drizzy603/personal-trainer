@@ -4977,11 +4977,12 @@ function _hkFit(rec, x, hasLedger){
 //   the match typed in came in again while the other was burned unimported, and one hand log hid
 //   every match of its day from auto-log and the card. Every activity of the day competes, handled
 //   ones too, so a log already standing for one never takes another; but one whose own Health
-//   record was in the log before the hand log was typed competes only when no activity outside the
-//   log fits it. A log with no duration fits only a day with one activity of its kind it may be
-//   for (begun before it was saved, not in the log then); on equal fits the one that ended last
-//   before the log was saved wins. A log left with no activity then takes one from a log that fits
-//   another, so a second log never takes the only match of the first.
+//   record came into the log before every activity outside the log that the log fits began, all
+//   of them over before it was typed, gives way to them. A log with no duration fits only a day
+//   with one activity of its kind it may be for (begun before it was saved, not given way); on
+//   equal fits the one that ended last before the log was saved wins. A log left with no activity
+//   then takes one from a log that fits another, so a second log never takes the only match of the
+//   first.
 // Returns {uuid: {g, keep}} for each loggable workout: g.st is 'buried', 'seen', 'dupe' or 'new',
 // g.m the copies in start order, g.keep the copy a new record is built from (richest, then first).
 function _hkPlan(list){
@@ -5040,11 +5041,6 @@ function _hkPlan(list){
     var day=days[k+'|'+String(health && rec.hkOrig ? rec.hkOrig.date : rec.date)];
     if(!day) return;
     var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0, mine=[];
-    // An activity whose own Health record was in the log before this log was typed is not the one
-    // it was typed for while one not in the log fits it: the evening commute typed 25:00 fitted
-    // the morning run, imported hours before, a little better, and its own run came in again. An
-    // old pair (typed before its Health twin came in) still stands for its activity.
-    var old=function(g){ return save>0 && g.t0>0 && g.t0<save; };
     day.forEach(function(g){
       var s=null, bx=null;
       g.m.forEach(function(x){
@@ -5054,14 +5050,23 @@ function _hkPlan(list){
       });
       if(s==null) return;
       var end=bx.st+bx.sec*1000;
-      mine.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i, old:old(g)});
+      mine.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i});
+    });
+    // An activity whose own Health record came into the log before the others of its day this log
+    // fits began, all of them over before it was typed, is not what it was typed for: the evening
+    // commute typed 25:00 at 18:40 fitted the morning run (in the log since 9:00) a little better,
+    // and its own run came in again. In any other order the log may be for either and is weighed by
+    // fit (a possible copy, never a loss: an owner typing in the morning run again would lose the
+    // other), and an old pair (typed before its Health twin came in) stands for its activity.
+    var outside=mine.filter(function(p){ return !(p.g.seen || p.g.buried || p.g.rec); });
+    mine=mine.filter(function(p){
+      var t0=p.g.t0;
+      return !(save>0 && t0>0 && t0<save && outside.length && outside.every(function(f){ return f.st>t0 && f.gap<1e13; }));
     });
     // No duration: only a day with one activity it may be for (begun before it was saved, and not
-    // in the log then); a game that began after a 'Win, 18 pts' saved at 10:00 made it take neither.
-    var open=mine.filter(function(p){ return !p.old; }).length;
-    mine=mine.filter(function(p){ return !(p.s===2 && open>1); });
-    var fresh=mine.some(function(p){ return !(p.g.seen || p.g.buried || p.g.rec); });   // one not in the log fits
-    mine.forEach(function(p){ if(!(p.old && fresh)) pairs.push(p); });
+    // one it gives up above); a game that began after a 'Win, 18 pts' saved at 10:00 made it take neither.
+    var open=mine.length;
+    mine.forEach(function(p){ if(!(p.s===2 && open>1)) pairs.push(p); });
   };
   getRuns().forEach(function(r){ offer(r, 'run'); });
   getSportLogs().forEach(function(l){ if(l && l.type) offer(l, String(l.type)); });
