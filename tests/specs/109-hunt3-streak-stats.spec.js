@@ -40,6 +40,8 @@
 //   a 2 on every day the two pages read differently ran the streak past days really missed where
 //   the two broke on different days (11 as lived -> 38, and the boot awarded a 30-day milestone),
 //   and the first boot's repair leaves a 1 past the old page's own break (T30).
+// - The old page's reading takes week 1 as it was first written down: a schedule edit made on
+//   20261004-1/5-1 rewrote week 1 under days the old page never read that way (26 -> 14) (T29).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
 // today, and builds its logs from there.
 const { boot, assert, run, SEED } = require('../lib/harness');
@@ -745,7 +747,43 @@ runInTurn('round 2 swapped in on the old page: the update keeps the streak as li
     assert(out.boot.ms === 'streak-14,streak-7', 'no 30-day milestone was ever reached: ' + JSON.stringify(out.boot));
     assert(/^.1.1/.test(out.boot.week10), 'week 10\'s Tuesday and Thursday are still training days missed: ' + JSON.stringify(out.boot));
     assert(out.frozen.streak === 11 && out.frozen.thu === 1 && out.repaired.streak === 11 && out.repaired.thu === 1 && out.repaired.tue === 1,
-      'a real miss frozen since is not repaired into a rest day (it was 37): ' + JSON.stringify(out));
+      'a real miss frozen since is not repaired into a rest day (the streak ran on past both misses): ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T29: on 20261004-1/5-1 a schedule edit froze the streak's walk (A's rest Sunday before the switch
+// written as a missed day), then rewrote week 1. The first boot read the days before week 1 by the
+// edited week 1, which the old page never ran with: the repair and the 2s stopped at the first of
+// A's rest days the edit made a training day, and the streak stayed at 14.
+runInTurn('a schedule edit made on the pages before this one does not reach back: the first boot keeps the streak the old page showed across a programme switch (T29)', async () => {
+  const app = await boot({ seed: Object.assign({}, EMPTY, { kt_routine: JSON.stringify(mwf()), kt_week: '4' }) });
+  try {
+    const out = await app.page.evaluate(([CLOCK, LOGS, SWITCHED, OLDFREEZE]) => {
+      eval(CLOCK); const logs = eval(LOGS), r = {};
+      const S = addDays(_mostRecentMonday(), 7), base = localStorage.getItem('kt_routine');
+      const edits = { satLegs: p => { p[4] = 'Rest'; p[5] = 'Legs'; }, sunRun: p => { p[6] = 'Run'; } };
+      Object.keys(edits).forEach(k => {
+        __setNow(addDays(S, 23) + 'T18:00:00');
+        lsSet('kt_routine', JSON.parse(base));
+        lsSet('kt_sessions', logs(eval(SWITCHED)(S)));
+        lsDel('kt_streak_days'); localStorage.removeItem('kt_streak_seeded');
+        // Settings > Schedule on 20261005-1: its freeze (to the first miss), then the new cadence.
+        eval(OLDFREEZE)();
+        const cr = getCustomRoutine(); edits[k](cr.weekPlan); lsSet('kt_routine', cr);
+        const before = calcStreakDays();
+        // The first boot of this page.
+        _streakUpgrade();
+        const due = _streakDueFn();
+        r[k] = { before, streak: calcStreakDays(), wk1: getWeekPlanForWeek(1).map(p => p.isRest ? '-' : p.type[0]).join(''),
+          days: [-7, -8, -9, -10, -11, -12, -13].map(n => due(addDays(S, n))).join('') };
+      });
+      return r;
+    }, [CLOCK, LOGS, SWITCHED, OLDFREEZE]);
+    assert(out.satLegs.before === 14 && out.satLegs.wk1 === 'P-P--L-', 'the drop, with Friday\'s Legs on Saturday from now on: ' + JSON.stringify(out.satLegs));
+    assert(out.satLegs.streak === 26 && out.satLegs.days === '1221212', 'the first boot reads the days before week 1 as the old page did, not by the edit (it was 14): ' + JSON.stringify(out.satLegs));
+    assert(out.sunRun.before === 14 && out.sunRun.wk1 === 'P-P-L-R' && out.sunRun.streak === 26 && out.sunRun.days === '1221212',
+      'Sunday made a run day the same: A\'s rest Sunday frozen as missed is repaired (it was 14): ' + JSON.stringify(out.sunRun));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

@@ -3979,11 +3979,20 @@ function _freezeStreakIfSchedChanges(r){
 // so round 2 swapped in on the old page after a round ended early or parked on its final week
 // read the weeks lived as other weeks' (27 days -> 3). null where the reading stands: no
 // programme, a day of this round, or one of the days between building a first round and its
-// first Monday (2, which never breaks the streak).
+// first Monday (2, which never breaks the streak). Week 1 is the one the old page last ran with:
+// as this round's week-1 days were first written down, else as it stands. A schedule edit since
+// 2026-10-04 writes them down before it rewrites week 1 (on 20261004-1/5-1 when the streak
+// reached them), and the old page never read the days before by an edit made after it: the
+// first boot read them by Friday's Legs moved to Saturday on 20261005-1 (26 days -> 14).
 function _streakOldRead(cr){
   if(!cr) return function(){ return null; };
   var start=_mondayKeyOf(_roundStartISO()), gap=(parseInt(cr.cycle,10)||1)>1 ? start : addDays(start,-6);
-  var w1=(getWeekPlanForWeek(1)||[]).map(function(p){ p=p||{}; return (p.isRest || (p.isLift && _liftDayEmpty(p.type, 1))) ? 0 : 1; });
+  var lived=lsGet('kt_streak_days')||{};
+  var w1=(getWeekPlanForWeek(1)||[]).map(function(p, i){
+    var f=lived[addDays(start, i)];
+    if(f!=null && (+f===0 || +f===1)) return +f;
+    p=p||{}; return (p.isRest || (p.isLift && _liftDayEmpty(p.type, 1))) ? 0 : 1;
+  });
   return function(iso){
     if(iso>=gap) return null;
     var v=w1[(new Date(iso+'T00:00:00').getDay()+6)%7];
