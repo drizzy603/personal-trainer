@@ -53,6 +53,9 @@
 // Regressions from the 2026-10-09 review of those fixes:
 // - T34: Undo on the Health card gives back every copy the log burned (the Watch's and Strava's),
 //   so the workout is offered again and Import brings it in once.
+// - T35: a hand log typed for the day's second workout stands for it, not for the first one
+//   already in the log from Health (auto-log, the card and Import no longer bring the second in
+//   again), and a second hand log no longer takes the first log's only match.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -1031,6 +1034,101 @@ run('T34: Undo on the Health card gives back a workout two apps wrote to Health'
       assert(o.undone.recs === '' && o.undone.ledger === '' && o.undone.offered === keep, kind + ': Undo gives back both copies and the card offers it again: ' + JSON.stringify(o.undone));
       assert(o.imported.recs === rec && o.imported.ledger === both && toastRe.test(o.imported.toast), kind + ': Import brings it in once and burns both: ' + JSON.stringify(o.imported));
     }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T35 (regression of R45/R48): every activity of the day competed for a hand log, imported ones
+// too, best fit first and greedily. The evening run typed in at 18:40 as 25:00 fitted the morning
+// run (imported from Health at 9:00, 25:05) better than its own (26:00), so the evening run came
+// in again from auto-log, the card and Import; the same for a 60-min match typed for a 62-min one
+// and a 'Win, 18 pts' log on a day whose morning game was imported; and with both commutes typed
+// by hand the evening log took the morning log's only match. An old pair (a hand log typed before
+// its Health twin came in) still stands for its workout, and a log that absorbed the first
+// workout still lets the second in.
+run('T35: a hand log typed after the day\'s first workout was imported stands for its own workout', async () => {
+  const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
+  try {
+    await app.page.evaluate(HK_MOCK);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const y = addDays(todayISO(), -1);
+      const at = (h, m) => { const d = new Date(y + 'T00:00:00'); d.setHours(h, m, 0, 0); return d.getTime(); };
+      const iso = ms => new Date(ms).toISOString();
+      const hhmm = ms => { const d = new Date(ms); return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      const H = x => x === 'From Apple Health';
+      const runs = () => getRuns().map(x => x.time + '/' + (H(x.note) ? 'Health@' + hhmm(x.startMs) : x.note)).sort().join(' | ');
+      const sports = () => getSportLogs().map(x => x.type + ' ' + x.duration + '/' + (H(x.notes) ? 'Health@' + hhmm(x.startMs) : x.notes || JSON.stringify(x.data))).sort().join(' | ');
+      const led = () => (lsGet('kt_hk_imported') || []).filter(u => u !== 'older-1').sort().join();
+      const toast = () => document.getElementById('toast').textContent;
+      const run = (id, time, note, startMs) => Object.assign({ id, date: y, distance: 5, time, week: weekForDate(y), note, hr: startMs ? 150 : 0, type: 'easy' }, startMs ? { startMs } : {});
+      const hk = (uuid, type, h, m, sec, km) => Object.assign({ uuid, type, startDate: iso(at(h, m)), durationSec: sec, avgHr: 140 }, km ? { distanceKm: km } : {});
+      const S = {
+        // the morning run imported at 9:00; the evening one typed at 18:40 as 25:00 (the Watch: 26:00)
+        run: { show: runs, runs: [run(at(18, 40), '25:00', 'home'), run(at(9, 0), '25:05', 'From Apple Health', at(8, 0))], sports: [], led: ['am'],
+               hk: [hk('pm', 'run', 18, 0, 26 * 60, 5), hk('am', 'run', 8, 0, 25 * 60 + 5, 5)] },
+        // the 9:00 match imported at 10:05; the 16:00 match (62 min) typed at 17:30 as 60 min
+        tennis: { show: sports, runs: [], led: ['tam'],
+                  sports: [{ id: at(17, 30), date: y, type: 'Tennis', duration: 60, data: {}, notes: 'Doubles' },
+                           { id: at(10, 5), startMs: at(9, 0), date: y, type: 'Tennis', duration: 60, data: { avgHR: 140 }, notes: 'From Apple Health' }],
+                  hk: [hk('tpm', 'Tennis', 16, 0, 62 * 60), hk('tam', 'Tennis', 9, 0, 60 * 60)] },
+        // 'Win, 18 pts' (no duration) saved at 21:00; the 9:00 game imported at 9:40
+        nodur: { show: sports, runs: [], led: ['bam'],
+                 sports: [{ id: at(21, 0), date: y, type: 'Basketball', duration: 0, data: { result: 'Win', points: 18 }, notes: '' },
+                          { id: at(9, 40), startMs: at(9, 0), date: y, type: 'Basketball', duration: 25, data: { avgHR: 140 }, notes: 'From Apple Health' }],
+                 hk: [hk('bpm', 'Basketball', 19, 0, 95 * 60), hk('bam', 'Basketball', 9, 0, 25 * 60)] },
+        // both commutes typed by hand, rounded (the Watch: 25:40 and 26:30), the morning run
+        // absorbed before (in the ledger) or not yet
+        twoHand: { show: runs, runs: [run(at(18, 45), '25:45', 'home'), run(at(8, 40), '26:00', 'to work')], sports: [], led: ['am'],
+                   hk: [hk('pm', 'run', 18, 0, 26 * 60 + 30, 5), hk('am', 'run', 8, 0, 25 * 60 + 40, 5)] },
+        twoHandNew: { show: runs, runs: [run(at(18, 45), '25:45', 'home'), run(at(8, 40), '26:00', 'to work')], sports: [], led: [],
+                      hk: [hk('pm', 'run', 18, 0, 26 * 60 + 30, 5), hk('am', 'run', 8, 0, 25 * 60 + 40, 5)] },
+        // an old pair: the evening log was typed before the morning run's Health record came in (20:00)
+        oldPair: { show: runs, runs: [run(at(20, 0), '25:05', 'From Apple Health', at(8, 0)), run(at(18, 40), '25:00', 'home')], sports: [], led: ['am'],
+                   hk: [hk('pm', 'run', 18, 0, 26 * 60, 5), hk('am', 'run', 8, 0, 25 * 60 + 5, 5)] },
+      };
+      const r = {};
+      for (const k of Object.keys(S)) {
+        const s = S[k];
+        r[k] = {};
+        for (const mode of ['auto', 'card', 'import']) {
+          lsSet('kt_runs', s.runs); lsSet('kt_sports', s.sports); lsDel('kt_hk_gone');
+          lsSet('kt_hk_imported', ['older-1'].concat(s.led)); localStorage.setItem('kt_hk_last_sync', String(Date.now() - 3 * 864e5));
+          localStorage.setItem('kt_autolog_runs', mode === 'auto' ? '1' : '0');
+          window.__hk = s.hk; _hkPendingRun = null; _hkPendingDismissed = false;
+          document.getElementById('toast').textContent = '';
+          if (mode === 'import') importFromHealth(); else checkRecentHealthRun(at(0, 0));
+          await wait(300);
+          r[k][mode] = mode === 'card' ? (_hkPendingRun && _hkPendingRun.uuid) : { logs: s.show(), ledger: led(), toast: toast() };
+        }
+      }
+      // the hand log typed after both runs absorbed the morning one (alone in Health then); the
+      // evening run, a worse fit, still comes in
+      lsSet('kt_runs', [run(at(20, 0), '25:00', 'typed')]); lsSet('kt_sports', []);
+      lsSet('kt_hk_imported', ['older-1']); localStorage.setItem('kt_autolog_runs', '0');
+      window.__hk = [hk('a1', 'run', 7, 0, 25 * 60 + 5, 5)];
+      importFromHealth(); await wait(300);
+      window.__hk = [hk('a2', 'run', 18, 0, 26 * 60 + 30, 5), hk('a1', 'run', 7, 0, 25 * 60 + 5, 5)];
+      importFromHealth(); await wait(300);
+      r.absorbed = { logs: runs(), ledger: led(), toast: toast() };
+      return r;
+    });
+    const same = (k, logs, ledger) => {
+      const o = out[k];
+      assert(o.auto.logs === logs && !/Apple Health/.test(o.auto.toast), k + ': auto-log logs nothing: ' + JSON.stringify(o.auto));
+      assert(o.card === null, k + ': the card offers nothing: ' + o.card);
+      assert(o.import.logs === logs && o.import.ledger === ledger && /Already up to date/.test(o.import.toast), k + ': Import brings nothing in and burns the typed workout: ' + JSON.stringify(o.import));
+    };
+    same('run', '25:00/home | 25:05/Health@8:00', 'am,pm');
+    same('tennis', 'Tennis 60/Doubles | Tennis 60/Health@9:00', 'tam,tpm');
+    same('nodur', 'Basketball 0/{"result":"Win","points":18} | Basketball 25/Health@9:00', 'bam,bpm');
+    same('twoHand', '25:45/home | 26:00/to work', 'am,pm');
+    same('twoHandNew', '25:45/home | 26:00/to work', 'am,pm');
+    const op = out.oldPair;
+    assert(op.auto.logs === '25:00/home | 25:05/Health@8:00 | 26:00/Health@18:00' && op.card === 'pm' && /1 run imported/.test(op.import.toast),
+      'an old pair still stands for the morning run, so the evening run comes in: ' + JSON.stringify(op));
+    assert(out.absorbed.logs === '25:00/typed | 26:30/Health@18:00' && out.absorbed.ledger === 'a1,a2' && /1 run imported/.test(out.absorbed.toast),
+      'a log that absorbed the first run lets the second in: ' + JSON.stringify(out.absorbed));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

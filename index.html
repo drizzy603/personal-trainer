@@ -4976,9 +4976,12 @@ function _hkFit(rec, x, hasLedger){
 //   no other. A hand log took the day's first match within 15% (any match, with no duration), so
 //   the match typed in came in again while the other was burned unimported, and one hand log hid
 //   every match of its day from auto-log and the card. Every activity of the day competes, handled
-//   ones too, so a log already standing for one never takes another; a log with no duration fits
-//   only a day with one activity of its kind; on equal fits the one that ended last before the
-//   log was saved wins.
+//   ones too, so a log already standing for one never takes another; but one whose own Health
+//   record was in the log before the hand log was typed competes only when no activity outside the
+//   log fits it, and does not count for a log with no duration, which fits only a day with one
+//   activity of its kind it may be for; on equal fits the one that ended last before the log was
+//   saved wins. A log left with no activity then takes one from a log that fits another, so a
+//   second log never takes the only match of the first.
 // Returns {uuid: {g, keep}} for each loggable workout: g.st is 'buried', 'seen', 'dupe' or 'new',
 // g.m the copies in start order, g.keep the copy a new record is built from (richest, then first).
 function _hkPlan(list){
@@ -5011,20 +5014,24 @@ function _hkPlan(list){
   };
   getRuns().forEach(function(r){ addId(r, 'run'); });
   getSportLogs().forEach(function(l){ if(l) addId(l, String(l.type||'')); });
+  // t0: when the activity's own Health record (the earliest, by its id) came into the log.
+  var cameIn=function(g, rec){ var t=Number(rec && rec.id); if(t>1e12 && !(g.t0<=t)) g.t0=t; };
   W.forEach(function(x){
     if(x.st>0) [addDays(x.iso, -1), x.iso, addDays(x.iso, 1)].forEach(function(d){
       (ids[x.k+'|'+d]||[]).forEach(function(c){
-        if(_hkSameActivity(c.st, c.sec, c.km, x.st, x.sec, x.km)){ x.g.rec=x.g.rec||c.rec; c.held=true; }
+        if(_hkSameActivity(c.st, c.sec, c.km, x.st, x.sec, x.km)){ x.g.rec=x.g.rec||c.rec; cameIn(x.g, c.rec); c.held=true; }
       });
     });
   });
   // A stored Health workout this fetch did not bring is still one of its day's activities.
   Object.keys(ids).forEach(function(key){
     if(days[key]) ids[key].forEach(function(c){
-      if(!c.held) days[key].push({k:c.k, m:[{st:c.st, sec:c.sec, km:c.km, iso:c.iso, seen:true}], rec:c.rec});
+      if(c.held) return;
+      var g={k:c.k, m:[{st:c.st, sec:c.sec, km:c.km, iso:c.iso, seen:true}], rec:c.rec};
+      cameIn(g, c.rec); days[key].push(g);
     });
   });
-  var pairs=[], n=0, taken=[], out={};
+  var pairs=[], n=0, at={}, by={}, out={};
   var offer=function(rec, k){
     var health=!!rec && (k==='run' ? _isHealthRun(rec) : _isHealthSport(rec));
     // A Health record that knows its start stands only for its own workout (_hkIdOf); one that
@@ -5032,7 +5039,13 @@ function _hkPlan(list){
     if(!rec || (health && (hasLedger || Number(rec.startMs)>0))) return;
     var day=days[k+'|'+String(health && rec.hkOrig ? rec.hkOrig.date : rec.date)];
     if(!day) return;
-    var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0;
+    var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0, mine=[];
+    // An activity whose own Health record was in the log before this log was typed is not the one
+    // it was typed for while one not in the log fits it: the evening commute typed 25:00 fitted
+    // the morning run, imported hours before, a little better, and its own run came in again. An
+    // old pair (typed before its Health twin came in) still stands for its activity.
+    var old=function(g){ return save>0 && g.t0>0 && g.t0<save; };
+    var open=day.filter(function(g){ return !old(g); }).length;
     day.forEach(function(g){
       var s=null, bx=null;
       g.m.forEach(function(x){
@@ -5040,15 +5053,29 @@ function _hkPlan(list){
         if(f!=null && f<0) f=2;   // only the day agrees: after every real fit
         if(f!=null && (s==null || f<s)){ s=f; bx=x; }
       });
-      if(s==null || (s===2 && day.length>1)) return;
+      if(s==null || (s===2 && open>1)) return;   // no duration: only a day with one activity it may be for
       var end=bx.st+bx.sec*1000;
-      pairs.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i});
+      mine.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i, old:old(g)});
     });
+    var fresh=mine.some(function(p){ return !(p.g.seen || p.g.buried || p.g.rec); });   // one not in the log fits
+    mine.forEach(function(p){ if(!(p.old && fresh)) pairs.push(p); });
   };
   getRuns().forEach(function(r){ offer(r, 'run'); });
   getSportLogs().forEach(function(l){ if(l && l.type) offer(l, String(l.type)); });
   pairs.sort(function(a,b){ return a.s-b.s || a.gap-b.gap || a.st-b.st || a.i-b.i; });
-  pairs.forEach(function(p){ if(p.g.hand || taken.indexOf(p.c)>=0) return; taken.push(p.c); p.g.hand=p.c; });
+  pairs.forEach(function(p){ (by[p.i]=by[p.i]||[]).push(p); if(p.g.hand || at[p.i]) return; at[p.i]=p.g; p.g.hand=p; });
+  // Best pairs first; then a log left with no activity takes one from a log that fits another (a
+  // free one, or one freed the same way): the evening commute typed in by hand took the morning
+  // run, the morning log's only match, and the evening run came in again.
+  var v=0, move=function(i){
+    return by[i].some(function(p){
+      if(p.g.v===v) return false;
+      p.g.v=v;
+      if(p.g.hand && !move(p.g.hand.i)) return false;
+      at[i]=p.g; p.g.hand=p; return true;
+    });
+  };
+  Object.keys(by).forEach(function(i){ if(!at[i]){ v++; move(i); } });
   G.forEach(function(g){
     g.st=g.buried ? 'buried' : g.seen ? 'seen' : (g.rec || g.hand) ? 'dupe' : 'new';
     var keep=null;
