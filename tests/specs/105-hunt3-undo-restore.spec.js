@@ -990,6 +990,9 @@ run('after a backup restore or its undo, the next edit is its own undo point', a
       // a backup file: its programme 'File P', its own previous version 'File OLD', and a reply whose
       // undo point is the scope this device last took
       const file = buildBackupJSON(); delete file._manifest;
+      // a file from a page before the undo point's key was exported (T13: a file carries its own,
+      // which names its own backup), so this device's key is the one that could leak onto it
+      delete file.kt_routine_backup_scope;
       const P = JSON.parse(JSON.stringify(getCustomRoutine())); P.name = 'File P';
       const OLD = JSON.parse(JSON.stringify(getCustomRoutine())); OLD.name = 'File OLD';
       file.kt_routine = P; file.kt_routine_backup = OLD;
@@ -1015,8 +1018,214 @@ run('after a backup restore or its undo, the next edit is its own undo point', a
     assert(out.ok && x.name === 'File P' && x.backup === 'File OLD' && x.scope === null && x.key === null && !x.replyUndo, 'the restore leaves no scope open and no reply owning its backup: ' + JSON.stringify(x));
     assert(out.edit.backup === 'File P' && out.edit.scope === 'cadence', 'the next edit snapshots the restored programme: ' + JSON.stringify(out.edit));
     assert(out.prev.name === 'File P' && out.prev.back, 'Restore previous programme brings back the restored programme as it was, not the file\'s older one: ' + JSON.stringify(out.prev));
-    assert(out.undoOk && out.undone.scope === null && out.undone.key === null, 'Undo last restore leaves no scope open either: ' + JSON.stringify(out.undone));
+    // T13: the device's undo point comes back with its key (it was cleared, so a reply's Undo whose
+    // snapshot came back never showed again)
+    assert(out.undoOk && out.undone.scope === null && out.undone.key === 'cadence', 'Undo last restore leaves no scope open either, and puts back the device\'s undo point with its key: ' + JSON.stringify(out.undone));
     assert(out.undonePrev.back, 'and Restore previous programme takes back only the edit made after it: ' + JSON.stringify(out.undonePrev));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// T11 / T12 / T43 (hunt 5): R15 dropped a lift's note when a workout set its working weight, and a
+// workout that met the noted load stamps nothing (R20). So deleting a workout trained at the
+// coach's (or the keyless +5's) load and then the reply's Undo / Restore previous programme, in
+// either order, left the undone load as the working weight (the coach was told it, the next +5
+// said "Already progressed this week"); a heavier workout's stamp kept the undone load as the one
+// it replaced, and deleting it after the Undo brought that load back. The workout now holds the
+// note: Undo keeps its load while it is the lift's newest log and puts its stamp back with the
+// load, so the delete, before or after, lands on the load from before the change. Restore Previous
+// again (the change back) swaps the stamp back too.
+run('T11/T12/T43: Undo and deleting the workout logged over the change, either order, land on the load from before it', async () => {
+  const variants = [['coach', 190, 'delete-undo'], ['coach', 190, 'undo-delete'], ['coach', 195, 'undo-delete'], ['coach', 185, 'delete-undo'],
+    ['coach', 195, 'undo-redo-delete'], ['keyless', 0, 'delete-undo'], ['keyless', 0, 'undo-delete'], ['keyless', 170, 'undo-delete']];
+  for (const [path, load, order] of variants) {
+    const w0 = path === 'coach' ? 150 : 160;
+    const seed = { kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Bench Press': w0 }) };
+    if (path === 'coach') seed.kt_apikey = 'sk-test';
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, path, load, order, w0]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), c = currentWeek - 1, lastWed = addDays(_mostRecentMonday(), -5);
+        // the lift's older log: last week's Push, every set clean (the keyless +5 is earned on it)
+        lsSet('kt_sessions', [{ id: 8800101, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: 'Bench Press', isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: w0, weightLog: [w0, w0, w0, w0], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        recomputePRs();
+        const W = () => getWeights()['Bench Press'] === undefined ? null : getWeights()['Bench Press'];
+        const plan = () => getCustomRoutine().weeks[c].push.find(e => e.name === 'Bench Press').weight;
+        const todays = () => getSessions().find(s => s.date === T && s.type === 'Push');
+        const st = () => ({ w: W(), plan: plan(), prescribed: _prescribedLb('Bench Press') });
+        const r = {};
+        if (path === 'coach') {
+          eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+            { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+          coachMessages.push({ role: 'user', content: 'bench 190' }); saveCoachHistory();
+          await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        } else startProgression();   // keyless: Today's +5
+        r.changed = st();
+        // today's Push in the runner, at the load it prescribes (load 0) or another
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press'));
+        r.presc = runnerWeights['Bench Press'];
+        if (load) runnerSetWeight(load);
+        runnerEngaged = true; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); closeCompleteSheet(); await wait(20);
+        r.logged = Object.assign(st(), { load: todays().exercises.find(e => e.name === 'Bench Press').weight });
+        const undo = async () => {
+          if (path === 'coach') {
+            switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+            const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+            if (!b) return false;
+            b.click();
+          } else {
+            switchTab('settings'); await wait(30);
+            const row = [...document.querySelectorAll('.settings-row')].find(x => /Restore previous programme/.test(x.textContent));
+            if (!row) return false;
+            row.click();
+          }
+          await wait(20); confirm(); await wait(30); return true;
+        };
+        const del = async () => {
+          switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+          document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+          [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+          closeCalDay(); await wait(10);
+          return !todays();
+        };
+        if (order === 'delete-undo') { r.del = await del(); r.deleted = st(); r.undo = await undo(); r.undone = st(); }
+        else if (order === 'undo-delete') { r.undo = await undo(); r.undone = st(); r.del = await del(); r.deleted = st(); }
+        else {
+          r.undo = await undo(); r.undone = st();
+          restoreRoutineBackup(); await wait(20); confirm(); await wait(30); r.redone = st();
+          r.del = await del(); r.deleted = st();
+          restoreRoutineBackup(); await wait(20); confirm(); await wait(30); r.undoneAgain = st();
+        }
+        r.final = st();
+        if (path === 'coach') r.line = ((buildSystemPrompt().split('CURRENT EXERCISE WEIGHTS')[1] || '').match(/\n  Bench Press: [0-9.]+/) || [''])[0].trim();
+        else {
+          applyProgressionLocal();   // the earned +5 is offered again, and applies
+          r.again = { w: W(), toast: (document.getElementById('toast') || {}).textContent || '' };
+        }
+        return r;
+      }, [MOCK, path, load, order, w0]);
+      const tag = path + ' ' + (load || 'at the prescribed load') + ' ' + order + ': ';
+      const to = path === 'coach' ? 190 : 165, L = load || to;
+      assert(out.changed.w === to && out.changed.plan === to && out.presc === to, tag + 'the change moved the working weight and the plan: ' + JSON.stringify(out));
+      assert(out.logged.load === L && out.logged.w === L, tag + 'today\'s workout logged ' + L + ': ' + JSON.stringify(out.logged));
+      assert(out.undo && out.del, tag + 'Undo was offered and the workout deleted: ' + JSON.stringify(out));
+      if (order === 'delete-undo') {
+        assert(out.deleted.w === to, tag + 'with the change standing, deleting the workout keeps the change\'s load (R20): ' + JSON.stringify(out.deleted));
+      } else {
+        assert(out.undone.w === L && out.undone.plan === 160, tag + 'Undo takes the plan back and keeps the load the newer workout set (R15): ' + JSON.stringify(out.undone));
+      }
+      if (order === 'undo-redo-delete') {
+        assert(out.redone.w === L && out.redone.plan === 190, tag + 'Restore Previous again brings the reply back under the workout\'s load: ' + JSON.stringify(out.redone));
+        assert(out.deleted.w === 190, tag + 'with the reply back, deleting the workout gives back the reply\'s load: ' + JSON.stringify(out.deleted));
+        assert(out.undoneAgain.w === w0 && out.undoneAgain.plan === 160, tag + 'and the reply\'s undo again puts back the load from before it: ' + JSON.stringify(out.undoneAgain));
+      }
+      assert(out.final.w === w0 && out.final.plan === 160 && out.final.prescribed === 160, tag + 'the working weight is the load from before the change: ' + JSON.stringify(out.final));
+      if (path === 'coach') assert(out.line === 'Bench Press: ' + w0, tag + 'and the coach is told it: ' + out.line);
+      else assert(out.again.w === 165 && !/Already progressed/.test(out.again.toast), tag + 'the next +5 is not "already progressed": ' + JSON.stringify(out.again));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+// T11 / T12, within one reply: the coach sets a lift, logs a session of it, and sets it again. The
+// log holds the first change's note, so the second change starts from the log's load: the reply's
+// Undo keeps that load (R15), the log's stamp now names the load from before the reply (deleting
+// the log after the Undo gave back the first change's undone load), and with the reply standing a
+// delete keeps the reply's load.
+run('T11/T12: a reply that sets a lift, logs it and sets it again: Undo keeps the log\'s load, a delete after it the load from before', async () => {
+  for (const [load, undo] of [[187, true], [185, true], [187, false]]) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Bench Press': 150 }) } });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, load, undo]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), lastWed = addDays(_mostRecentMonday(), -5);
+        lsSet('kt_sessions', [{ id: 8800201, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: 'Bench Press', isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: 150, weightLog: [150, 150, 150, 150], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        const W = () => getWeights()['Bench Press'];
+        const todays = () => getSessions().find(s => s.date === T && s.type === 'Push');
+        eval(MOCK)([{ content: [
+          { type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 185 } },
+          { type: 'tool_use', id: 't1', name: 'log_session', input: { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: load }] } },
+          { type: 'tool_use', id: 't2', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'bench' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: W(), logged: !!todays() };
+        if (undo) {
+          switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+          const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+          r.undoShown = !!b; if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+          r.undone = W();
+        }
+        deleteSession(todays().id); await wait(20);
+        r.deleted = W();
+        return r;
+      }, [MOCK, load, undo]);
+      const tag = 'logged ' + load + (undo ? ', Undo, then deleted' : ', deleted with the reply standing') + ': ';
+      assert(out.reply === 190 && out.logged, tag + 'the reply set 190 around the log: ' + JSON.stringify(out));
+      if (undo) {
+        assert(out.undoShown && out.undone === load, tag + 'Undo keeps the load the log set (R15): ' + JSON.stringify(out));
+        assert(out.deleted === 150, tag + 'deleting the log gives back the load from before the reply: ' + JSON.stringify(out));
+      } else assert(out.deleted === 190, tag + 'the reply\'s load stays: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+// T13 (hunt 5): R19 cleared kt_routine_backup_scope after every restore, and the key was in no
+// backup, so Undo last restore brought back a coach reply's snapshot and its chat but not the key:
+// the reply's PLAN CHANGES Undo never showed again. A backup saved right after the reply lost it
+// the same way. The key travels with the backup it names: a restore puts back the data's own.
+run('T13: Undo last restore, or a backup saved after a coach reply, keeps the reply\'s Undo', async () => {
+  for (const when of ['before', 'after']) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Overhead Press': 100, 'Bench Press': 160 }) } });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, when]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const st = () => ({ w: getWeights()['Overhead Press'], plan: getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Overhead Press').weight });
+        const undoBtn = async () => { switchTab('coach'); coachView = 'chat'; render(); await wait(30); return [...document.querySelectorAll('.kt-ledger-card button')].find(b => /Undo/.test(b.textContent)) || null; };
+        // the owner's backup file: saved before the reply, or right after it (as text: buildBackupJSON
+        // hands back the cached objects the reply then changes)
+        let file = when === 'before' ? JSON.stringify(buildBackupJSON()) : null;
+        eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Overhead Press', weight: 110 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'overhead press 110' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: Object.assign(st(), { undo: !!(await undoBtn()) }) };
+        if (!file) file = JSON.stringify(buildBackupJSON());
+        r.restoreOk = _applyImportedData(JSON.parse(file)) === true; await wait(30);
+        r.restored = Object.assign(st(), { undo: !!(await undoBtn()) });
+        if (when === 'before') {
+          // Settings › Data › Undo last restore
+          switchTab('settings'); await wait(30);
+          const row = [...document.querySelectorAll('.settings-row')].find(x => /Undo last restore/.test(x.textContent));
+          r.undoRow = !!row; if (row) { row.click(); await wait(20); confirm(); await wait(40); }
+          r.undoneRestore = Object.assign(st(), { undo: !!(await undoBtn()) });
+        }
+        const b = await undoBtn();
+        if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+        r.replyUndone = st();
+        return r;
+      }, [MOCK, when]);
+      const tag = 'a backup saved ' + when + ' the reply: ';
+      assert(out.reply.undo && out.reply.w === 110 && out.reply.plan === 110, tag + 'the reply moved OHP to 110 and offers Undo: ' + JSON.stringify(out.reply));
+      assert(out.restoreOk, tag + 'the backup was restored: ' + JSON.stringify(out));
+      if (when === 'before') {
+        assert(!out.restored.undo && out.restored.w === 100, tag + 'the older backup holds no reply: ' + JSON.stringify(out.restored));
+        assert(out.undoRow && out.undoneRestore.undo && out.undoneRestore.w === 110 && out.undoneRestore.plan === 110, tag + 'Undo last restore brings back the reply and its Undo: ' + JSON.stringify(out.undoneRestore));
+      } else {
+        assert(out.restored.undo && out.restored.w === 110, tag + 'the restored reply still offers Undo: ' + JSON.stringify(out.restored));
+      }
+      assert(out.replyUndone.w === 100 && out.replyUndone.plan === 100, tag + 'and the reply\'s Undo takes OHP back to 100: ' + JSON.stringify(out.replyUndone));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
