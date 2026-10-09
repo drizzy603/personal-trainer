@@ -573,6 +573,43 @@ run("a library row's control is its header: the open detail, PR history and Dele
   } finally { await app.close(); }
 });
 
+// T40: R51 moved the custom lift's ✕ out of the header into the row beside it. An open row's
+// header has no bottom padding, so the ✕ centred 6 px above the name block it used to sit level with.
+run("an open custom lift's ✕ stays level with its name in the Exercise library (T40)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      saveCustomExercise({ name: 'Zercher Hold', cat: 'Legs', muscles: 'core, quads', equip: 'Barbell', desc: 'Hold it.', tips: ['Brace'], _custom: true });
+      switchTab('settings');
+      const r = [];
+      for (const room of ['heavyweight', 'dark']) {
+        applyTheme(room);
+        for (const z of [1, 1.25]) {
+          document.documentElement.style.zoom = z === 1 ? '' : String(z);
+          openExLib('Zercher Hold'); await wait(20);
+          const ov = document.getElementById('exlibOverlay');
+          const off = () => {
+            const x = Array.from(ov.querySelectorAll('#exlibList button[data-n]')).find(b => b.dataset.n === 'Zercher Hold');
+            const head = Array.from(ov.querySelectorAll('#exlibList [data-n]')).find(e => e.dataset.n === 'Zercher Hold' && e.tagName !== 'BUTTON');
+            const c = (el) => { const q = el.getBoundingClientRect(); return q.top + q.height / 2; };
+            return { off: Math.round((c(x) - c(head.firstElementChild)) * 10) / 10, h: Math.round(head.getBoundingClientRect().height * 10) / 10, xh: Math.round(x.getBoundingClientRect().height * 10) / 10 };
+          };
+          const open = off();
+          _libExpanded = ''; _updateExLibList(); await wait(10);
+          r.push({ room, z, open, closed: off() });
+          closeExLib();
+        }
+      }
+      document.documentElement.style.zoom = '';
+      return r;
+    });
+    assert(out.every(o => Math.abs(o.open.off) <= 0.5 && Math.abs(o.closed.off) <= 0.5), 'the ✕ centres on the name block, open and closed, in both rooms and at Larger Text: ' + JSON.stringify(out));
+    assert(out.every(o => o.open.xh < o.open.h && o.closed.xh < o.closed.h), 'the ✕ is shorter than the header it sits beside: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 // R53: L54 left the runner's Edit sheet out of the sheets Escape closes, so mid-workout
 // Escape did nothing there and closing it never gave focus back to the card.
 run("Escape closes the runner's Edit sheet and focus goes back to the card's Edit (R53)", async () => {
