@@ -52,6 +52,9 @@
 // Hunt 5 (2026-10-09), regressions and incomplete fixes of the above:
 // - T45: a drained wrist session the owner did nothing in the app after (_wristLive) is the live
 //   finish, as R30 made the runner's: one that ran past midnight sets a lighter working weight.
+// - T32: R42 when the phone is first opened after the start week: a start week the wrist trained
+//   stays the round's week 1 (opened the week after, the round goes on from its Monday; later, it
+//   starts this week and those sessions stay week 1 with no block), never round 1's week 12 or best.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (spec 108's): local 'YYYY-MM-DDTHH:MM:SS', computed in the page
@@ -767,4 +770,66 @@ run('T45: a wrist workout that ran past midnight sets the working weight when no
     assert(r.since.ww === 190 && r.lateInApp.ww === 190, 'the owner was in the app after the finish: a +5 made since stands: ' + JSON.stringify([r.since, r.lateInApp]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
+});
+
+// T32 (hunt 5), R42 opened late: round 1 is parked on week 12 (began S-7). On Sunday S-1 the round is
+// set for Monday S and the phone pushes the week ahead; the wrist trains Monday's Push (Bench 40 lb over
+// the plan) and Wednesday's Pull from it; the phone is first opened `openDays` after S. Opened in the
+// week after (S+7, S+9), the round goes on from its Monday: week 2 now, the two sessions round 2's week 1
+// with its block, and round 2 as the wrist showed it (not re-based on its own heavier session). Opened
+// later (S+14), the round starts this week (spec 108's M25) and the sessions stay week 1 (no block), out
+// of round 1's best.
+async function t32(openDays) {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_week: '12' } });
+  try {
+    await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK);
+    await app.page.addInitScript(() => { const p = sessionStorage.getItem('__pending'); if (p && window.__mock) { window.__mock.pending = JSON.parse(p); sessionStorage.removeItem('__pending'); } });
+    const pre = await app.page.evaluate(async (openDays) => {
+      const S = _mostRecentMonday();
+      __setNow(addDays(S, -1) + 'T20:00:00');
+      const cr = getCustomRoutine(); cr.weekPlan = ['Push', 'Rest', 'Pull', 'Rest', 'Legs', 'Rest', 'Rest']; cr.weeks.forEach(w => { delete w.weekPlan; }); setCustomRoutine(cr);
+      localStorage.setItem('kt_week_monday', addDays(S, -7)); localStorage.setItem('kt_final_since', addDays(S, -7)); lsSet('kt_week', 12); currentWeek = 12;
+      const mk = (date, type, wk, name, w) => ({ id: new Date(date + 'T18:00:00').getTime(), date, type, label: type, week: wk, prs: [], startedAt: new Date(date + 'T17:00:00').getTime(),
+        exercises: [{ name, sets: 4, reps: [8, 8, 8, 8], weight: w, weightLog: [w, w, w, w] }] });
+      lsSet('kt_sessions', [mk(addDays(S, -7), 'Push', 12, 'Bench Press', 175), mk(addDays(S, -12), 'Pull', 11, 'Barbell Row', 150), mk(addDays(S, -14), 'Push', 11, 'Bench Press', 172.5)]);
+      window.showToast = () => {}; setNextRound('monday', S, 1);
+      _lastWatchPlan = ''; _runNativeSync();
+      const week = JSON.parse(window.__mock.updateContext[window.__mock.updateContext.length - 1].week);
+      const mon = week.find(d => d.date === S), wed = week.find(d => d.date === addDays(S, 2));
+      const iso = ms => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const copy = (day, plan) => JSON.stringify({ dayName: plan.dayName, slot: plan.slot, startedAt: iso(new Date(day + 'T07:00:00').getTime()), loggedAt: iso(new Date(day + 'T07:55:00').getTime()),
+        exercises: plan.exercises.slice(0, 3).map(e => { const w = e.weight + (e.name === 'Bench Press' ? 40 : 0); return { name: e.name, weight: w, reps: [8, 8, 8], weightLog: [w, w, w], rpe: 8, rpeLog: [8, 8, 8] }; }) });
+      sessionStorage.setItem('__pending', JSON.stringify([copy(S, mon), copy(addDays(S, 2), wed)]));
+      __setNow(addDays(S, openDays) + 'T09:00:00');
+      return { S, openMon: addDays(S, 7 * Math.floor(openDays / 7)), mon: mon.week + ':' + mon.slot, wed: wed.week + ':' + wed.slot, bench: (mon.exercises.find(e => e.name === 'Bench Press') || {}).weight };
+    }, openDays);
+    await coldBoot(app);
+    const out = await app.page.evaluate(async () => {
+      await new Promise(r => setTimeout(r, 2500));
+      const cr = getCustomRoutine(), inR = _roundTest(cr);
+      return { cycle: cr.cycle, week: currentWeek, anchor: localStorage.getItem('kt_week_monday'), wk1: cr.weeks[0].bName, bench1: cr.weeks[0].push.find(e => e.name === 'Bench Press').weight,
+        startedAt: cr.startedAt, queue: window.__mock.pending.length,
+        recs: getSessions().filter(s => s.wristStartedAt).map(s => ({ date: s.date, week: s.week, bName: s.bName || '', card: _shareCardModel(s).week, inRound: inR(s.date, _cmpT(s)) })) };
+    });
+    return { pre, out, errors: app.errors };
+  } finally { await app.close(); }
+}
+run('T32: a set round’s week 1 trained on the wrist stays its week 1 when the phone is first opened after it', async () => {
+  for (const d of [7, 9]) {
+    const { pre, out, errors } = await t32(d), k = 'opened S+' + d;
+    assert(pre.mon === '1:Push' && pre.wed === '1:Pull', 'the wrist was given round 2’s week 1: ' + JSON.stringify(pre));
+    assert(out.cycle === 2 && out.week === 2 && out.anchor === pre.openMon && out.queue === 0,
+      k + ': round 2 goes on from its Monday, week 2 now: ' + JSON.stringify([pre, out]));
+    assert(out.startedAt === new Date(pre.S + 'T00:00:00').getTime(), k + ': the round began at its Monday’s midnight: ' + JSON.stringify(out));
+    assert(out.recs.length === 2 && out.recs.every(r => r.week === 1 && r.bName === out.wk1 && r.card === 1 && r.inRound),
+      k + ': both wrist sessions are round 2’s week 1 with its block (not 12, the deload): ' + JSON.stringify(out.recs));
+    assert(out.bench1 === pre.bench, k + ': round 2 is the one the wrist showed (its heavier session is not round 1’s best): ' + JSON.stringify([pre, out]));
+    assert(errors.length === 0, k + ': no page errors: ' + errors.join(' | '));
+  }
+  const { pre, out, errors } = await t32(14);
+  assert(out.cycle === 2 && out.week === 1 && out.anchor === pre.openMon, 'opened two weeks after: the round starts this week (M25): ' + JSON.stringify([pre, out]));
+  assert(out.recs.length === 2 && out.recs.every(r => r.week === 1 && r.bName === '' && r.card === 1 && !r.inRound),
+    'opened two weeks after: the wrist sessions stay week 1, with no block stamped, before the round: ' + JSON.stringify(out.recs));
+  assert(out.bench1 === pre.bench, 'opened two weeks after: the wrist’s round-2 session is not round 1’s best: ' + JSON.stringify([pre, out]));
+  assert(errors.length === 0, 'no page errors: ' + errors.join(' | '));
 });

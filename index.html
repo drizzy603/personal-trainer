@@ -12158,16 +12158,19 @@ function _nextRoundBuild(cr, until){
   }
   return {routine:nr, rows:rows};
 }
-// A set round swapped in on time (not "Today", not late) and the sessions already filed from its
-// start Monday on: the wrist has shown the round's own days since that Monday began (its week ahead,
-// watch build 53+), so a session trained there is the new round's week 1, not the old round's last
-// week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
+// A set round swapped in on its date or after it (not "Today") and the sessions already filed from
+// its start Monday on: the wrist has shown the round's own days since that Monday began (its week
+// ahead, watch build 53+), so a session trained there is the new round's week 1, not the old round's
+// last week. Build 53 brought the week ahead with per-set RPE: a wrist session without it (an older watch
 // keeps the last plan the phone sent) or a phone log there means the old round's plan, and null.
 // So does a round set on its Monday or later (a sheet painted the night before, tapped that day): it
 // swaps in at the tap, and the wrist had no preview before it, only the old round's parked week.
+// Swapped in late (the phone first opened after the start week), the round's days were trained only
+// if the wrist logged its start week: with nothing there, null (the round starts this week).
 function _nrPreviewTrained(p, now){
-  if(now || p.startsOn<_mostRecentMonday() || !(String(p.at||'')<p.startsOn)) return null;
+  if(now || !(String(p.at||'')<p.startsOn)) return null;
   var ss=getSessions().filter(function(s){ return s && String(s.date||'').slice(0,10)>=p.startsOn; });
+  if(p.startsOn<_mostRecentMonday() && !ss.some(function(s){ return String(s.date||'').slice(0,10)<addDays(p.startsOn,7); })) return null;
   return ss.every(function(s){ return !!s.wristStartedAt && (s.exercises||[]).some(function(e){ return e && Array.isArray(e.rpeLog) && e.rpeLog.length>0; }); }) ? ss : null;
 }
 // Swaps the set round in on its start morning (autoAdvanceWeek), or now.
@@ -12177,9 +12180,15 @@ function _applyNextRound(now){
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
   var pv=_nrPreviewTrained(p, now);
   var nb=_nextRoundBuild(cr, pv ? p.startsOn : '');
-  // Logs from before this moment are the previous round's (_roundTest); on time, the round began at
-  // its Monday's midnight, so a wrist session trained on its days counts, drained before or after.
-  nb.routine.startedAt=pv ? new Date(p.startsOn+'T00:00:00').getTime() : Date.now();
+  // First opened after its start week had gone (away, or the app never opened): the round starts
+  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
+  // of a round nobody saw, at loads already past the re-base. A start week the wrist trained (pv)
+  // was the round's week 1 as the wrist showed it: opened in the week after, the round goes on
+  // from its Monday (week 2 now); opened later, it starts this week and those sessions stay week 1.
+  var late=!now && p.startsOn<_mostRecentMonday() && !(pv && addDays(p.startsOn,7)===_mostRecentMonday());
+  // Logs from before this moment are the previous round's (_roundTest); on its own clock, the round
+  // began at its Monday's midnight, so a wrist session trained on its days counts, drained before or after.
+  nb.routine.startedAt=(pv && !late) ? new Date(p.startsOn+'T00:00:00').getTime() : Date.now();
   // All or nothing: the round being replaced must reach Programme History, and a failed
   // routine write takes the archive entry back (each boot retries on the start morning).
   var prevArr=getRoutineArchive().slice();
@@ -12187,16 +12196,13 @@ function _applyNextRound(now){
   if(!setCustomRoutine(nb.routine)){ lsSet('kt_routine_archive', prevArr); return null; }   // storage full: this round stays, and the next stays set
   _routineReplaced(cr, 'round:'+nb.routine.cycle);
   lsDel('kt_routine_next');
-  // First opened after its start week had gone (away, or the app never opened): the round starts
-  // this week as "Today" does. Anchored on the old date, the week clock caught up to week 3 or 4
-  // of a round nobody saw, at loads already past the re-base.
-  var late=!now && p.startsOn<_mostRecentMonday();
   var start=(now||late) ? (_nrCanToday() ? _mostRecentMonday() : _nextMonday(addDays(todayISO(),1))) : p.startsOn;
   _setWeek(1, start);
-  // Drained before the swap, they were filed under the old clock (week 12, its block): week 1 now.
+  // Drained before the swap, they were filed under the old clock (week 12, its block): week 1 now
+  // (or later on the round's clock). Before a round started late, week 1 with no block (_stampBlock).
   if(pv && pv.length){
     var _ss=getSessions();
-    _ss.forEach(function(s){ if(s && String(s.date||'').slice(0,10)>=start){ s.week=weekForDate(s.date); delete s.bName; delete s.bWk; _stampBlock(s); } });
+    _ss.forEach(function(s){ if(s && String(s.date||'').slice(0,10)>=p.startsOn){ s.week=weekForDate(s.date); delete s.bName; delete s.bWk; _stampBlock(s); } });
     lsSet('kt_sessions', _ss);
   }
   lapsePending=null;   // a welcome-back offer still up was about the old round's weeks
