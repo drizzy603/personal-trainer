@@ -5416,9 +5416,10 @@ function _saveLiftToHealth(sess, exs, dateISO){
   // A backdated log has no real time to write. The day the session began is its own: one that
   // ran past midnight is filed on that day and still happened, however long after its last set
   // Finish came (the window ends with that set, below). A draft picked up again after the app was
-  // closed (restoredAt) with no set since did not: one left in the evening and finished the next
-  // morning was written at 04:00. An hour since the last set stood for that, and dropped a live one.
-  var resumed = !!(sess && sess.restoredAt && last < sess.restoredAt);
+  // closed (restoredAt) with no set since and none in the last hour did not: one left in the
+  // evening and finished the next morning was written at 04:00. The hour alone stood for that,
+  // and dropped a live workout finished over an hour after its last set.
+  var resumed = !!(sess && sess.restoredAt && last < sess.restoredAt && now-last >= 60*60*1000);
   if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && !resumed)) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;

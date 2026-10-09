@@ -1212,7 +1212,9 @@ run('T22 a live workout past midnight is written to Health whenever Finish comes
         sameDay: await go({ from: at(today, '08:00'), sets: [at(today, '08:10'), at(today, '08:40'), at(today, '09:10'), at(today, '09:50')], fin: at(today, '10:55') }),
         // the evening's draft picked up after midnight: no set since, not written; a set since, written
         resumed: await go({ from: at(yday, '20:00'), sets: [at(yday, '20:05'), at(yday, '20:20'), at(yday, '20:45')], resume: at(today, '00:30'), fin: at(today, '00:31') }),
-        relaunched: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(today, '00:12'), after: [at(today, '00:15'), at(today, '00:30')], fin: at(today, '01:50') }) };
+        relaunched: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(today, '00:12'), after: [at(today, '00:15'), at(today, '00:30')], fin: at(today, '01:50') }),
+        // closed and opened again just before Finish, within the hour of the last set (as R31 wrote it)
+        reopened: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(yday, '23:58'), fin: at(today, '00:10') }) };
     }, CLOCK);
     const Y = out.yday, T = out.today, one = (o, s) => JSON.stringify(o.hk) === JSON.stringify([s]);
     assert(out.late.filed === Y && one(out.late, Y + ' 22:00 -> ' + T + ' 00:00'), 'Finish 65 min after the last set: written, ending ten minutes after it: ' + JSON.stringify(out.late));
@@ -1220,6 +1222,7 @@ run('T22 a live workout past midnight is written to Health whenever Finish comes
     assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 10:00'), 'the same timings on one day: ' + JSON.stringify(out.sameDay));
     assert(out.resumed.filed === Y && out.resumed.hk.length === 0, 'a draft picked up after midnight with no set since is not written: ' + JSON.stringify(out.resumed));
     assert(one(out.relaunched, Y + ' 23:30 -> ' + T + ' 00:40'), 'picked up again and trained on: written to its last set: ' + JSON.stringify(out.relaunched));
+    assert(one(out.reopened, Y + ' 23:30 -> ' + T + ' 00:00'), 'reopened just before Finish, within the hour: still written: ' + JSON.stringify(out.reopened));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
