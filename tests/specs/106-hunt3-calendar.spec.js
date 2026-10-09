@@ -982,3 +982,92 @@ run('T16: a log moved back to the front takes the working weight over, past a lo
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T17 (hunt 5): deleting a workout gave back the load its stamp said it replaced even when that
+// load no longer stood: the coach's 145 (or a +5) since undone with Restore previous programme
+// came back under a plan of 160 (also when the workout had only met it, which left 145 with no log
+// and no plan behind it), and a 155 logged for yesterday after today's workout was passed over for
+// the deload's 145. What a delete gives back now stands: the programme does not say otherwise, and
+// the lift's newest log left, when saved after the deleted one, had set it then (a backdated one
+// only raising it). A load the programme says nothing of (a lift not in it) still comes back.
+run('T17: a deleted workout gives back only a load that still stands; a log saved after it wins', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), cr0 = JSON.stringify(getCustomRoutine());
+      const W = () => getWeights()['Bench Press'];
+      const row = () => { const x = (getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press'); return x && x.weight; };
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, name, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name, sets: 3, reps: 8, weight: w }] });
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); log(addDays(T, -10), 'Bench Press', 160); };
+      const restorePrev = async () => {
+        switchTab('settings'); await wait(30);
+        [...document.querySelectorAll('.settings-row')].find(x => /Restore previous programme/.test(x.textContent)).click(); await wait(20);
+        document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+      };
+      const delOnSheet = async () => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      // today's Push through the runner, Bench at w
+      const runToday = async w => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerWeights['Bench Press'] = w; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      // (a) the coach's 145, today's workout at 150 over it, the change undone, the workout deleted
+      reset(); executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      let s = await runToday(150);
+      r.a = { stamp: JSON.stringify(s.wSet) };
+      await restorePrev(); r.a.undone = [W(), row()];
+      await delOnSheet(); r.a.deleted = { w: W(), row: row(), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      const u = document.querySelector('#toast .kt-toast-undo'); if (u) u.click(); await wait(40);
+      r.a.undo = W();
+      // the keyless +5 the same way
+      reset(); _writeLoadLocal('Bench Press', 165);
+      await runToday(170); await restorePrev(); r.plus5 = { undone: [W(), row()] };
+      await delOnSheet(); r.plus5.deleted = W();
+      // (b) the workout only met the coach's 145
+      reset(); executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      s = await runToday(145);
+      r.b = { stamp: JSON.stringify(s.wSet) };
+      await restorePrev(); r.b.undone = [W(), row()];
+      await delOnSheet(); r.b.deleted = { w: W(), line: benchLine() };
+      // (c) today's 150 over the deload's 145, then yesterday's logged after it, today's deleted
+      for (const y of [155, 140]) {
+        reset(); _writeLoadLocal('Bench Press', 145);
+        s = await runToday(150);
+        log(addDays(T, -1), 'Bench Press', y);
+        r['c' + y] = { before: W() };
+        executeCoachTool('delete_log', { store: 'session', id: s.id });
+        r['c' + y].deleted = { w: W(), line: benchLine() };
+      }
+      // the change not undone: the deload's 145 comes back
+      reset(); _writeLoadLocal('Bench Press', 145); s = await runToday(150);
+      await delOnSheet(); r.stands = W();
+      // a lift the programme says nothing of: the coach's load comes back
+      reset(); executeCoachTool('set_exercise_weight', { name: 'Zercher Squat', weight: 100 });
+      log(T, 'Zercher Squat', 110);
+      s = getSessions().find(x => x.date === T);
+      r.offPlan = { stamp: JSON.stringify(s.wSet) };
+      deleteSession(s.id); await wait(20); r.offPlan.deleted = getWeights()['Zercher Squat'];
+      return r;
+    });
+    assert(out.a.stamp === '{"Bench Press":[145,150]}' && out.a.undone[0] === 150 && out.a.undone[1] === 160, '(a) set up, and undone: ' + JSON.stringify(out.a));
+    assert(out.a.deleted.w === 160 && out.a.deleted.line === '  Bench Press: 160' && out.a.deleted.prescribed === 160, '(a) the undone 145 does not come back: ' + JSON.stringify(out.a.deleted));
+    assert(out.a.undo === 150, '(a) Undo of the delete puts 150 back: ' + out.a.undo);
+    assert(out.plus5.undone[1] === 160 && out.plus5.deleted === 160, 'the undone +5 does not come back: ' + JSON.stringify(out.plus5));
+    assert(out.b.stamp === '{}' && out.b.undone[0] === 145 && out.b.deleted.w === 160 && out.b.deleted.line === '  Bench Press: 160', '(b) the met, undone 145 goes with the workout: ' + JSON.stringify(out.b));
+    assert(out.c155.before === 150 && out.c155.deleted.w === 155 && out.c155.deleted.line === '  Bench Press: 155', '(c) yesterday\'s 155, saved after, wins: ' + JSON.stringify(out.c155));
+    assert(out.c140.before === 150 && out.c140.deleted.w === 145, '(c) a lighter one for yesterday only raises: the deload\'s 145 stands: ' + JSON.stringify(out.c140));
+    assert(out.stands === 145, 'a change that stands comes back: ' + out.stands);
+    assert(out.offPlan.stamp === '{"Zercher Squat":[100,110]}' && out.offPlan.deleted === 100, 'a lift the programme says nothing of gets the coach\'s load back: ' + JSON.stringify(out.offPlan));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

@@ -4220,11 +4220,11 @@ function _wwStamp(rec, ch){
 // programme. Read _newestLoads before the change (for each of the log's lifts, its newest log;
 // sessions are newest first); once the change is saved, _workingWeightsFollow moves a working
 // weight that log set to the lift's new newest log (none left: it goes), as an edit already does,
-// or back to the load the log replaced (its stamp: the coach's, +5, a deload). A load written
-// since differs from the log, and a log that met the working weight set nothing: both stay. A log
-// from before the stamp set it unless the programme prescribed that load (_planHolds). Moved to
-// the front, a log takes the working weight over and its stamp says so (moved). It returns what
-// it replaced, for Undo (_workingWeightsPut).
+// or back to the load the log replaced (its stamp: the coach's, +5, a deload) while that still
+// stands. A load written since differs from the log, and a log that met the working weight set
+// nothing: both stay (the met load while it stands). A log from before the stamp set it unless the
+// programme prescribed that load (_planHolds). Moved to the front, a log takes the working weight
+// over and its stamp says so (moved). It returns what it replaced, for Undo (_workingWeightsPut).
 // A logged lift's load in either stored shape: its weight (the top set), or for an import from
 // before the runner, which keeps its sets nested ({sets:[{reps, weight}]}), its heaviest set.
 // Read as weight alone, a lift whose older logs were all nested lost its working weight when
@@ -4251,12 +4251,24 @@ function _workingWeightsFollow(before, moved){
   Object.keys(before||{}).forEach(function(n){
     var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
     if(b==null || a===b || Math.abs(cur-b)>0.01) return;
-    var st=x.s && x.s.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved);
+    var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved), to=a;
     // Moved to the front, a log takes over whatever the log it passed set (a log that only met the
     // coach's or the deload's load, or one from before the stamp, set nothing): a date mis-picked
     // and fixed, or a workout filed on the wrong day moved to today, left the passed log's load.
-    if(!front && (st ? !(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01) : _planHolds(n, cur, x.s && x.s.week))) return;
-    var to=(mine && mine[0]!=null && !front) ? mine[0] : a;
+    if(!front){
+      // Deleted or moved behind: what stands without the log is the load its stamp says it
+      // replaced, or the one it only met, while the programme does not say otherwise (a coach
+      // change or +5 since undone came back as the working weight, under a plan that no longer had
+      // it); a log from before the stamp set it unless the programme prescribed it. The lift's
+      // newest log left, saved after this one, had set it then (a backdated one only raising it):
+      // the deload's 145 came back over a 155 logged for yesterday after today's log.
+      var set=!!(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01), k=set ? parseFloat(mine[0]) : cur;
+      if(st ? (k>0 && _planSays(n, k, ls.week)!==false) : _planHolds(n, cur, ls.week)){
+        var nr=nx && nx.s, later=!!(nr && Number(nr.id)>Number(ls.id));
+        to=(later && (_loggedLive(nr) || a>k)) ? a : k;
+      }
+    }
+    if(to!=null && Math.abs(to-cur)<0.01) return;
     prev[n]=w[n]; any=true;
     if(to!=null) w[n]=to; else delete w[n];
     if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[null, to]; took=true; }
@@ -4269,18 +4281,30 @@ function _workingWeightsFollow(before, moved){
 // A log from before the stamp met the plan: the programme prescribed this load for the lift in
 // the log's week or this one (a deload week reads its working week), so the programme, the coach,
 // +5 or a deload wrote it, not the log. A typo is far from any of them.
-function _planHolds(n, v, wk){
-  var cr=getCustomRoutine(), W=cr && cr.weeks, hit=false;
-  if(!Array.isArray(W) || !W.length) return false;
+function _planHolds(n, v, wk){ return _planSays(n, v, wk)===true; }
+// What the programme says of a load for a lift in those weeks: true when it prescribes it, false
+// when it prescribes the lift only at other loads, null when it says nothing (no programme, the
+// lift not in it, or rows that take the working weight).
+function _planSays(n, v, wk){
+  var cr=getCustomRoutine(), W=cr && cr.weeks, hit=null;
+  if(!Array.isArray(W) || !W.length) return null;
   [parseInt(wk,10), currentWeek].forEach(function(k){
     if(!(k>0)) return;
     var c=Math.min(W.length, k)-1;
     LIFT_KEYS.forEach(function(s){
-      var cc=_isDeloadWk(W[c]) ? _progWorkWk(W, c, s, n) : c, r=cc>=0 ? _progRow(W[cc], s, n) : null;
-      if(r && Math.abs((parseFloat(r.weight)||0)-v)<0.06) hit=true;
+      var cc=_isDeloadWk(W[c]) ? _progWorkWk(W, c, s, n) : c, r=cc>=0 ? _progRow(W[cc], s, n) : null, rw=r ? parseFloat(r.weight)||0 : 0;
+      if(!(rw>0)) return;
+      if(Math.abs(rw-v)<0.06) hit=true; else if(hit!==true) hit=false;
     });
   });
   return hit;
+}
+// A log saved on the day it is dated (its id is the time it was saved): only such a log sets a
+// working weight lower, one saved later for an earlier day only raises it (_setWorkingWeights).
+// An id that is no save time (an old import) reads as saved on its own day.
+function _loggedLive(s){
+  var t=Number(s && s.id);
+  return !(t>1e12) || String((s && s.date)||'').slice(0,10)>=_ymdLocal(new Date(t));
 }
 function _workingWeightsPut(prev){
   if(!prev) return;
