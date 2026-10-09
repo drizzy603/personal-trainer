@@ -1133,6 +1133,52 @@ run('T11/T12/T43: Undo and deleting the workout logged over the change, either o
   }
 });
 
+// T11 / T12, within one reply: the coach sets a lift, logs a session of it, and sets it again. The
+// log holds the first change's note, so the second change starts from the log's load: the reply's
+// Undo keeps that load (R15), the log's stamp now names the load from before the reply (deleting
+// the log after the Undo gave back the first change's undone load), and with the reply standing a
+// delete keeps the reply's load.
+run('T11/T12: a reply that sets a lift, logs it and sets it again: Undo keeps the log\'s load, a delete after it the load from before', async () => {
+  for (const [load, undo] of [[187, true], [185, true], [187, false]]) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Bench Press': 150 }) } });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, load, undo]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), lastWed = addDays(_mostRecentMonday(), -5);
+        lsSet('kt_sessions', [{ id: 8800201, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: 'Bench Press', isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: 150, weightLog: [150, 150, 150, 150], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        const W = () => getWeights()['Bench Press'];
+        const todays = () => getSessions().find(s => s.date === T && s.type === 'Push');
+        eval(MOCK)([{ content: [
+          { type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 185 } },
+          { type: 'tool_use', id: 't1', name: 'log_session', input: { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: load }] } },
+          { type: 'tool_use', id: 't2', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'bench' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: W(), logged: !!todays() };
+        if (undo) {
+          switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+          const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+          r.undoShown = !!b; if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+          r.undone = W();
+        }
+        deleteSession(todays().id); await wait(20);
+        r.deleted = W();
+        return r;
+      }, [MOCK, load, undo]);
+      const tag = 'logged ' + load + (undo ? ', Undo, then deleted' : ', deleted with the reply standing') + ': ';
+      assert(out.reply === 190 && out.logged, tag + 'the reply set 190 around the log: ' + JSON.stringify(out));
+      if (undo) {
+        assert(out.undoShown && out.undone === load, tag + 'Undo keeps the load the log set (R15): ' + JSON.stringify(out));
+        assert(out.deleted === 150, tag + 'deleting the log gives back the load from before the reply: ' + JSON.stringify(out));
+      } else assert(out.deleted === 190, tag + 'the reply\'s load stays: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
 // T13 (hunt 5): R19 cleared kt_routine_backup_scope after every restore, and the key was in no
 // backup, so Undo last restore brought back a coach reply's snapshot and its chat but not the key:
 // the reply's PLAN CHANGES Undo never showed again. A backup saved right after the reply lost it
