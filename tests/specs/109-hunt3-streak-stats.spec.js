@@ -40,8 +40,10 @@
 //   a 2 on every day the two pages read differently ran the streak past days really missed where
 //   the two broke on different days (11 as lived -> 38, and the boot awarded a 30-day milestone),
 //   and the first boot's repair leaves a 1 past the old page's own break (T30).
-// - The old page's reading takes week 1 as it was first written down: a schedule edit made on
-//   20261004-1/5-1 rewrote week 1 under days the old page never read that way (26 -> 14) (T29).
+// - The old page's reading takes week 1 as it was first written down or as it stands, whichever
+//   walk reaches further: a schedule edit made on 20261004-1/5-1 rewrote week 1 under days the old
+//   page never read that way (26 -> 14), and a week stepped back for good there left week 2's days
+//   written down where week 1 now falls (23 -> 11 when read only as written) (T29).
 // - A backup written before 2026-10-06 gets the first boot's repair when it is restored: the
 //   misreading 20261004-1/5-1 froze came back with it for good, on a new phone too (26 -> 14) (T28).
 // Clock-proof: each case pins the page clock to a weekday of a coming week, worked out from
