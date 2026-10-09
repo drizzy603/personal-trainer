@@ -5653,7 +5653,8 @@ function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 // catches up (the start may have been weeks ago). The hold is checked again when the wait ends:
 // START tapped during it opened round 1's last week, and the swap landed under that workout, which
 // was filed as round 2's week 1. Held then, the week clock moves as it would have.
-var _nrDrainWait=null, _nrHeld=false;
+// _nrThen: what waits for a held round to start (_roundAfterWorkout).
+var _nrDrainWait=null, _nrHeld=false, _nrThen=[];
 function _applyNextRoundAfterDrain(){
   var p=_nextRoundSet(); if(!p || todayISO()<p.startsOn) return;
   // Never under a workout under way (_roundWaitsForWorkout): its sets are not saved yet.
@@ -5665,8 +5666,8 @@ function _applyNextRoundAfterDrain(){
   var done=false, go=function(){
     if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null;
     if(_roundWaitsForWorkout()) _nrHeld=true;
-    else if(!_applyNextRound(false)) return;
-    autoAdvanceWeek(); render();
+    else if(!_applyNextRound(false)){ _nrFlush(); return; }
+    autoAdvanceWeek(); render(); _nrFlush();
   };
   _nrDrainWait=setTimeout(go, 6000);
   Promise.resolve(drainWatchSessions()).then(go, go);
@@ -8808,7 +8809,21 @@ function _roundWaitsForWorkout(){
   if(_watchLive && Date.now()-(_watchLive.at||0)<30*60*1000) return true;
   try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000); }catch(e){ return false; }
 }
-function _roundAfterWorkout(){ if(!_nrHeld || _roundWaitsForWorkout()) return; _nrHeld=false; autoAdvanceWeek(); render(); }
+// then: run once the round has started (on the phone the swap waits for the watch queue), or at
+// once when it cannot (still held, or nothing is due).
+function _roundAfterWorkout(then){
+  if(then) _nrThen.push(then);
+  if(_nrHeld && !_roundWaitsForWorkout()){ _nrHeld=false; autoAdvanceWeek(); render(); }
+  if(!_nrDrainWait) _nrFlush();
+}
+function _nrFlush(){ var a=_nrThen; _nrThen=[]; a.forEach(function(f){ f(); }); }
+// The workout under way gives way to another day's. A round it held starts first, so the new one
+// is built from the round's week 1: "Discard and start" on the round's Monday opened the old
+// round's last week, and that workout was filed into it.
+function _runnerReplace(type){
+  runnerOpen=false; runnerResumePending=false; _clearRunnerDraft();
+  _roundAfterWorkout(function(){ if(!_runnerInProgress()) openDeckRunner(type, true); });
+}
 function _runnerLoggedSets(){ var n=0; Object.keys(runnerCompleted||{}).forEach(function(k){ n+=(parseInt(runnerCompleted[k],10)||0); }); return n; }
 function openDeckRunner(overrideType, force){
   // Never over a workout under way: START, the widget's trovo://start and the make-up and
@@ -8822,10 +8837,12 @@ function openDeckRunner(overrideType, force){
         if(currentTab!=='log'){ switchTab('log'); } else { paintRunner(); }
         return;
       }
+      _runnerReplace(overrideType);   // nothing logged on it: another day takes its place
+      return;
     } else {
       _ktConfirm({title:_dayLabel(_curT)+' is under way', body:_plural(_n,'set')+' logged. Starting '+_dayLabel(overrideType)+' discards them.',
         confirmLabel:'Discard and start '+_dayLabel(overrideType),
-        onConfirm:function(){ try{ _watchSendDiscard(); }catch(e){} runnerOpen=false; runnerResumePending=false; _clearRunnerDraft(); openDeckRunner(overrideType, true); }});
+        onConfirm:function(){ try{ _watchSendDiscard(); }catch(e){} _runnerReplace(overrideType); }});
       return;
     }
   }

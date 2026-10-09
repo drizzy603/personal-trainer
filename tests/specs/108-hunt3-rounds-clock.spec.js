@@ -832,3 +832,61 @@ run('T50: a workout opened during the round\'s drain wait holds the round, and i
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+run('T24: another day started over the workout that held the round starts the round first, and is its week 1', async () => {
+  // Sunday night's Legs left as a draft (two sets, or none), the app killed; launched Monday 05:30,
+  // the owner starts Push instead ("Discard and start Push", or no question with nothing logged).
+  for (const native of [false, true]) for (const logged of [true, false]) {
+    const app = await boot({ native, seed: { kt_week: '12' } });
+    const tag = (native ? 'native' : 'web') + (logged ? ', sets logged' : ', nothing logged');
+    try {
+      await finalWeekSunday(app);
+      await app.page.evaluate(async ({ LOGS, logged }) => {
+        eval(LOGS);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        switchTab('log'); switchLogSub('workout'); await wait(30);
+        openDeckRunner('Legs'); await wait(20);
+        if (logged) { runnerEngaged = true; runnerSetWeight(260); [5, 5].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; }); }
+        _flushRunnerDraft();
+        __setNow(addDays(sessionStorage.getItem('__mon'), 7) + 'T05:30:00');
+      }, { LOGS, logged });
+      await coldBoot(app);
+      const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
+        eval(LOGS); eval(ROUND_STATE);
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const next = addDays(sessionStorage.getItem('__mon'), 7);
+        await wait(1500);
+        // A slow bridge on the phone: the swap lands 400 ms after the tap.
+        if (window.__mock) Capacitor.Plugins.TrovoWatch.getPendingSessions = () => new Promise(res => setTimeout(() => res({ sessions: [] }), 400));
+        switchTab('log'); switchLogSub('workout'); render(); await wait(30);
+        const r = { boot: Object.assign(roundState(), { held: _nrHeld, banner: /WORKOUT IN PROGRESS/.test(txt()) }) };
+        const pill = [...document.querySelectorAll('.kt-adhoc-pill')].find(b => /^push$/i.test(b.textContent.trim()));
+        r.pill = !!pill;
+        if (pill) pill.click(); else openDeckRunner('Push');
+        await wait(30);
+        const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); r.confirm = ok ? ok.textContent.trim() : null; if (ok) ok.click();
+        await wait(900);
+        const cr = getCustomRoutine();
+        r.runner = { open: runnerOpen, day: runnerSession && runnerSession.dayName, week: runnerSession && runnerSession.week,
+          bench: runnerSession ? (runnerSession.exercises.find(e => e.name === 'Bench Press') || {}).weight : null,
+          planned: (cr.weeks[0].push.find(e => e.name === 'Bench Press') || {}).weight };
+        r.round = roundState();
+        runnerEngaged = true; runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
+        __setNow(next + 'T06:30:00');
+        runnerFinishSession(); await wait(900);
+        const s = getSessions().find(x => x.date === next && x.type === 'Push');
+        const cr2 = getCustomRoutine();
+        r.saved = s ? { week: s.week, bName: s.bName || '', inRound: _roundTest(cr2)(s.date, _cmpT(s)), w1: cr2.weeks[0].bName } : null;
+        r.legs = getSessions().some(x => x.date === addDays(next, -1) && x.type === 'Legs' && x.exercises.some(e => e.weight === 260));
+        return r;
+      }, { LOGS, ROUND_STATE });
+      assert(out.boot.cycle === 1 && out.boot.week === 12 && out.boot.held && out.boot.banner, tag + ': launched with the draft waiting, round 1 is held: ' + JSON.stringify(out.boot));
+      assert(logged ? out.confirm === 'Discard and start Push' : out.confirm === null, tag + ': the confirm (only with sets logged): ' + out.confirm);
+      assert(out.round.cycle === 2 && out.round.week === 1 && out.round.anchored, tag + ': the draft gone, round 2 starts: ' + JSON.stringify(out.round));
+      assert(out.runner.open && out.runner.day === 'Push' && out.runner.week === 1 && out.runner.bench === out.runner.planned, tag + ': Push opens from round 2\'s week 1: ' + JSON.stringify(out.runner));
+      assert(out.saved && out.saved.week === 1 && out.saved.bName === out.saved.w1 && out.saved.inRound, tag + ': and is filed as round 2\'s week 1: ' + JSON.stringify(out.saved));
+      assert(!out.legs, tag + ': Sunday\'s discarded sets are not filed');
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
