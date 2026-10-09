@@ -994,6 +994,38 @@ run('T26: a workout on the wrist holds the round at a cold launch, on a return a
   }
 });
 
+run('T26: the phone finishing the workout the wrist began lets the round start at once', async () => {
+  // The wrist starts Legs at 23:30; after midnight the phone opens Legs and mirrors it, and finishes.
+  const app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await finalWeekSunday(app);
+    const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
+      eval(LOGS); eval(ROUND_STATE);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
+      await wait(1500);
+      const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), start = at(sun, '23:30');
+      const live = (reps) => _onWatchLive(JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, weights: { 'Back Squat': 260 } }));
+      __setNow(sun + 'T23:40:00'); live([5]);
+      __setNow(next + 'T00:00:40'); tick(); await wait(500);
+      const r = { held: roundState() };
+      __setNow(next + 'T00:05:00');
+      switchTab('log'); switchLogSub('workout');
+      openDeckRunner('Legs'); await wait(20);
+      live([5, 5]); await wait(50);
+      r.mirrored = (runnerRepsLog['Back Squat'] || []).length;
+      runnerEngaged = true; runnerSetWeight(260); runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
+      __setNow(next + 'T00:30:00');
+      runnerFinishSession(); await wait(1500);
+      r.after = roundState();
+      return r;
+    }, { LOGS, ROUND_STATE });
+    assert(out.held.cycle === 1 && out.mirrored === 2, 'held by the wrist, then mirrored on the phone: ' + JSON.stringify(out));
+    assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 227.5, 'the phone\'s finish ends it on the wrist too: round 2 starts, built with it: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('T25: while a draft holds round 2 on its Monday the wrist is sent the round\'s own day, so a workout trained there is its week 1', async () => {
   const app = await boot({ native: true, seed: { kt_week: '12' } });
   try {

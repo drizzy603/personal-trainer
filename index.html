@@ -9712,6 +9712,7 @@ function runnerFinishSession(){
   _newRec.exercises.forEach(function(e){ if(e && e.name && Array.isArray(e.reps)) _endReps[e.name]=e.reps.map(function(r){ return parseInt(r)||0; }); });
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:_endReps, weights:{}, ended:true, endedAt:Date.now() };
+  if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist ends that day's workout on it (its sets drain)
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
@@ -22553,10 +22554,9 @@ function _onWatchLive(json){
   var n=0; Object.keys(s.reps||{}).forEach(function(k){ n+=(s.reps[k]||[]).length; });
   var fresh=(Date.now()-(s.startedAt||0))<6*3600*1000;
   _wchLog('live: '+s.dayName+' sets='+n+(s.ended?' ENDED':(fresh?'':' STALE')));
-  // The workout a due round waits for (_wristWorkUnderway), whichever way this message goes below.
+  // The workout a due round waits for (_wristWorkUnderway, stamped below with the banner): its end.
   var _ws=Number(s.startedAt)||0, _same=!!(_wristWork && _wristWork.slot===String(wristSlot) && Math.abs(_wristWork.startedAt-_ws)<1500);
-  if(s.ended){ if(_same) _wristWork.ended=Date.now(); }
-  else if(fresh && _ws>0 && !_same && !_wristSessionFiled(wristSlot, _ws)) _wristWork={ slot:String(wristSlot), startedAt:_ws, ended:0 };
+  if(s.ended && _same) _wristWork.ended=Date.now();
   if(s.hk===true) _wristHKActive=true;   // the wrist runs a Health workout for this session (build 52+)
   // The wrist has moved on to a session begun after the phone's finish: the
   // repeated 'ended' is stale now. Watches before build 51 reset on any
@@ -22708,6 +22708,8 @@ function _onWatchLive(json){
     _watchLive=null;
   } else {
     _watchLive={ dayName:String(wristSlot), sets:n, at:Date.now() };   // a slot: the banner renders it through _dayLabel
+    // Not mirrored here (the runner and its draft hold a round for that one): the workout itself.
+    if(!_same && _ws>0) _wristWork={ slot:String(wristSlot), startedAt:_ws, ended:0 };
   }
   if(currentTab==='log') render();
 }
