@@ -946,6 +946,7 @@ seq('T01: the owner\'s Make main survives a coach rewrite of the day; the coach\
       // the coach rewrites this week's Push as it designed it: Bench main, a little harder
       const push = [{ name: 'Bench Press', sets: 4, reps: 6, weight: 165, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 },
         { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60 }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }];
+      const push0 = JSON.stringify(push);   // each call gets its own copy, as the model's JSON is
       const rb = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
       r.rebuild = { ok: rb.ok, kept: rb.keptUserEdits, day: day(), next: day(c + 1), stored: JSON.stringify(rb.stored), prompt: line('Overhead Press') };
       openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
@@ -960,8 +961,15 @@ seq('T01: the owner\'s Make main survives a coach rewrite of the day; the coach\
       for (let w = currentWeek; w <= getTotalWeeks(); w++) weeks.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: coachPush(w - 1) });
       executeCoachTool('update_routine_weeks', { weeks });
       r.regen = getCustomRoutine().weeks.slice(c).map(w => w.push.filter(e => e.isMain).map(e => e.name).join('+') + ':' + w.push.filter(e => e.rec).length);
+      // the coach changes the owner's main lift itself (its version of that lift now), then rewrites the day
+      lsSet('kt_routine', JSON.parse(made));
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'change', weight: 105 });
+      r.edited = line('Overhead Press');
+      executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push: JSON.parse(push0) }] });
+      r.editedRebuild = day();
       return r;
     });
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.edited) && out.editedRebuild === 'Bench Press 4x6@165* | Overhead Press 4x6@105!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s own change to that lift keeps it the owner\'s main: ' + JSON.stringify([out.edited, out.editedRebuild]));
     assert(out.made === 'Bench Press 4x8@160* | Overhead Press 4x8@100!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Make main: ' + out.made);
     assert(/\(main\) \[main lift chosen by the user\]$/.test(out.prompt[0]) && !/main lift chosen|edited by the user/.test(out.prompt[1]), 'the coach is told the main is the user\'s pick: ' + JSON.stringify(out.prompt));
     assert(out.rebuild.ok && out.rebuild.day === 'Bench Press 4x6@165* | Overhead Press 4x6@105!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s numbers, the owner\'s main, both marked: ' + JSON.stringify(out.rebuild));

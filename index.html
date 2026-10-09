@@ -11165,10 +11165,11 @@ function _progTagOnly(row){
   return norm(row)===norm(row.rec);
 }
 // The lift the owner made main on a day (Make main): the coach's main is still on the day,
-// marked for its tag alone. A tag handed on when the main left the day is no choice of theirs.
+// marked for its tag alone (the main lift may since be the coach's own edit of it). A tag handed
+// on when the main left the day is no choice of theirs.
 function _progMainChosen(list){
   if(!Array.isArray(list) || !list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
-  return list.filter(function(x){ return x && x.isMain && (x.rec===null || (x.rec && !x.rec.isMain)); })[0] || null;
+  return list.filter(function(x){ return x && x.isMain && !(x.rec && x.rec.isMain); })[0] || null;
 }
 // The main tag on `name` alone in one day, each row it moves marked (Make main).
 function _progMainOf(list, name){
