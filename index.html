@@ -4306,7 +4306,9 @@ function checkAndUpdatePRs(exercises) {
 // Export all app data as JSON file download
 // Keys stored as raw strings (not JSON) — lsGet can't read them because
 // JSON.parse chokes on e.g. "6:00". Round-trip them via raw localStorage.
-var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero','kt_week_monday'];
+// kt_routine_backup_scope travels with the kt_routine_backup it names (a coach reply's undo point):
+// Undo last restore brought the reply's snapshot back without it, and its Undo never came back.
+var RAW_STRING_KEYS = ['kt_final_since','kt_run_goal','kt_user_name','kt_theme','kt_unit_w','kt_unit_d','kt_dyn_type','kt_hk_last_sync','kt_coach_model','kt_rest_default','kt_autolog_runs','kt_notif_daily','kt_health_write','kt_bg_sync','kt_readiness_on','kt_progress_hero','kt_week_monday','kt_routine_backup_scope'];
 // One list for export AND import so the two can never drift apart.
 var BACKUP_KEYS = ['kt_sessions','kt_runs','kt_sports','kt_weights','kt_prs','kt_week','kt_bw','kt_routine','kt_routine_backup','kt_routine_archive','kt_measurements','kt_custom_ex','kt_skips','kt_bench_goal','kt_squat_goal','kt_5k_goal','kt_bw_goal','kt_coach_msgs','kt_last_export','kt_backup_snooze','kt_hk_imported','kt_last_review_week','kt_log_tabs','kt_sport_fields','kt_cf_moves','kt_milestones','kt_ex_notes','kt_last_plateau_week','kt_last_prog_week','kt_last_wrap','kt_last_weekwrap','kt_debrief_seen','kt_profile','kt_coach_usage','kt_routine_next','kt_round_intro','kt_streak_days'];
 function buildBackupJSON() {
@@ -4641,7 +4643,8 @@ function _applyImportedData(data, opts) {
     // Absent raw keys: only data-ish ones are cleared. Device-capability
     // opt-ins (Health write, notifications, readiness, theme…) belong to
     // THIS phone — an old backup must not silently switch them off.
-    else if (k === 'kt_run_goal' || k === 'kt_user_name' || k === 'kt_final_since') localStorage.removeItem(k);
+    // A file from before the undo point's key was exported names no reply: none owns its backup.
+    else if (k === 'kt_run_goal' || k === 'kt_user_name' || k === 'kt_final_since' || k === 'kt_routine_backup_scope') localStorage.removeItem(k);
   });
   if (_failed) return _rollback();
   if (dropped.length) {
@@ -4667,8 +4670,10 @@ function _applyImportedData(data, opts) {
   lapsePending = null;
   // The programme is replaced whole, as _routineReplaced does it: a scope still open (a schedule
   // edit before the restore) took no snapshot at the next edit, so Restore previous programme
-  // brought back the file's own older one. The restored backup is no reply's undo point either.
-  _routineScope = null; _setBackupScope('');
+  // brought back the file's own older one. The restored backup is the undo point the data names
+  // (kt_routine_backup_scope came with it above, or went: this device's never survives), so Undo
+  // last restore gives a reply its Undo back, and a backup saved after a reply keeps it.
+  _routineScope = null;
   _syncPRCache();
   _sweepDemoWeights(true);   // an older backup brings back the demo loads its first session saved
   _uniqueLogIds(true);       // and the coach's shared-id twins

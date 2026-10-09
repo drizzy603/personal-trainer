@@ -990,6 +990,9 @@ run('after a backup restore or its undo, the next edit is its own undo point', a
       // a backup file: its programme 'File P', its own previous version 'File OLD', and a reply whose
       // undo point is the scope this device last took
       const file = buildBackupJSON(); delete file._manifest;
+      // a file from a page before the undo point's key was exported (T13: a file carries its own,
+      // which names its own backup), so this device's key is the one that could leak onto it
+      delete file.kt_routine_backup_scope;
       const P = JSON.parse(JSON.stringify(getCustomRoutine())); P.name = 'File P';
       const OLD = JSON.parse(JSON.stringify(getCustomRoutine())); OLD.name = 'File OLD';
       file.kt_routine = P; file.kt_routine_backup = OLD;
@@ -1015,7 +1018,9 @@ run('after a backup restore or its undo, the next edit is its own undo point', a
     assert(out.ok && x.name === 'File P' && x.backup === 'File OLD' && x.scope === null && x.key === null && !x.replyUndo, 'the restore leaves no scope open and no reply owning its backup: ' + JSON.stringify(x));
     assert(out.edit.backup === 'File P' && out.edit.scope === 'cadence', 'the next edit snapshots the restored programme: ' + JSON.stringify(out.edit));
     assert(out.prev.name === 'File P' && out.prev.back, 'Restore previous programme brings back the restored programme as it was, not the file\'s older one: ' + JSON.stringify(out.prev));
-    assert(out.undoOk && out.undone.scope === null && out.undone.key === null, 'Undo last restore leaves no scope open either: ' + JSON.stringify(out.undone));
+    // T13: the device's undo point comes back with its key (it was cleared, so a reply's Undo whose
+    // snapshot came back never showed again)
+    assert(out.undoOk && out.undone.scope === null && out.undone.key === 'cadence', 'Undo last restore leaves no scope open either, and puts back the device\'s undo point with its key: ' + JSON.stringify(out.undone));
     assert(out.undonePrev.back, 'and Restore previous programme takes back only the edit made after it: ' + JSON.stringify(out.undonePrev));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
@@ -1123,6 +1128,57 @@ run('T11/T12/T43: Undo and deleting the workout logged over the change, either o
       assert(out.final.w === w0 && out.final.plan === 160 && out.final.prescribed === 160, tag + 'the working weight is the load from before the change: ' + JSON.stringify(out.final));
       if (path === 'coach') assert(out.line === 'Bench Press: ' + w0, tag + 'and the coach is told it: ' + out.line);
       else assert(out.again.w === 165 && !/Already progressed/.test(out.again.toast), tag + 'the next +5 is not "already progressed": ' + JSON.stringify(out.again));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+// T13 (hunt 5): R19 cleared kt_routine_backup_scope after every restore, and the key was in no
+// backup, so Undo last restore brought back a coach reply's snapshot and its chat but not the key:
+// the reply's PLAN CHANGES Undo never showed again. A backup saved right after the reply lost it
+// the same way. The key travels with the backup it names: a restore puts back the data's own.
+run('T13: Undo last restore, or a backup saved after a coach reply, keeps the reply\'s Undo', async () => {
+  for (const when of ['before', 'after']) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Overhead Press': 100, 'Bench Press': 160 }) } });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, when]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const st = () => ({ w: getWeights()['Overhead Press'], plan: getCustomRoutine().weeks[currentWeek - 1].push.find(e => e.name === 'Overhead Press').weight });
+        const undoBtn = async () => { switchTab('coach'); coachView = 'chat'; render(); await wait(30); return [...document.querySelectorAll('.kt-ledger-card button')].find(b => /Undo/.test(b.textContent)) || null; };
+        // the owner's backup file: saved before the reply, or right after it (as text: buildBackupJSON
+        // hands back the cached objects the reply then changes)
+        let file = when === 'before' ? JSON.stringify(buildBackupJSON()) : null;
+        eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Overhead Press', weight: 110 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'overhead press 110' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const r = { reply: Object.assign(st(), { undo: !!(await undoBtn()) }) };
+        if (!file) file = JSON.stringify(buildBackupJSON());
+        r.restoreOk = _applyImportedData(JSON.parse(file)) === true; await wait(30);
+        r.restored = Object.assign(st(), { undo: !!(await undoBtn()) });
+        if (when === 'before') {
+          // Settings › Data › Undo last restore
+          switchTab('settings'); await wait(30);
+          const row = [...document.querySelectorAll('.settings-row')].find(x => /Undo last restore/.test(x.textContent));
+          r.undoRow = !!row; if (row) { row.click(); await wait(20); confirm(); await wait(40); }
+          r.undoneRestore = Object.assign(st(), { undo: !!(await undoBtn()) });
+        }
+        const b = await undoBtn();
+        if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+        r.replyUndone = st();
+        return r;
+      }, [MOCK, when]);
+      const tag = 'a backup saved ' + when + ' the reply: ';
+      assert(out.reply.undo && out.reply.w === 110 && out.reply.plan === 110, tag + 'the reply moved OHP to 110 and offers Undo: ' + JSON.stringify(out.reply));
+      assert(out.restoreOk, tag + 'the backup was restored: ' + JSON.stringify(out));
+      if (when === 'before') {
+        assert(!out.restored.undo && out.restored.w === 100, tag + 'the older backup holds no reply: ' + JSON.stringify(out.restored));
+        assert(out.undoRow && out.undoneRestore.undo && out.undoneRestore.w === 110 && out.undoneRestore.plan === 110, tag + 'Undo last restore brings back the reply and its Undo: ' + JSON.stringify(out.undoneRestore));
+      } else {
+        assert(out.restored.undo && out.restored.w === 110, tag + 'the restored reply still offers Undo: ' + JSON.stringify(out.restored));
+      }
+      assert(out.replyUndone.w === 100 && out.replyUndone.plan === 100, tag + 'and the reply\'s Undo takes OHP back to 100: ' + JSON.stringify(out.replyUndone));
       assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
