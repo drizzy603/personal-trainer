@@ -4978,10 +4978,10 @@ function _hkFit(rec, x, hasLedger){
 //   every match of its day from auto-log and the card. Every activity of the day competes, handled
 //   ones too, so a log already standing for one never takes another; but one whose own Health
 //   record was in the log before the hand log was typed competes only when no activity outside the
-//   log fits it, and does not count for a log with no duration, which fits only a day with one
-//   activity of its kind it may be for; on equal fits the one that ended last before the log was
-//   saved wins. A log left with no activity then takes one from a log that fits another, so a
-//   second log never takes the only match of the first.
+//   log fits it. A log with no duration fits only a day with one activity of its kind it may be
+//   for (begun before it was saved, not in the log then); on equal fits the one that ended last
+//   before the log was saved wins. A log left with no activity then takes one from a log that fits
+//   another, so a second log never takes the only match of the first.
 // Returns {uuid: {g, keep}} for each loggable workout: g.st is 'buried', 'seen', 'dupe' or 'new',
 // g.m the copies in start order, g.keep the copy a new record is built from (richest, then first).
 function _hkPlan(list){
@@ -5045,7 +5045,6 @@ function _hkPlan(list){
     // the morning run, imported hours before, a little better, and its own run came in again. An
     // old pair (typed before its Health twin came in) still stands for its activity.
     var old=function(g){ return save>0 && g.t0>0 && g.t0<save; };
-    var open=day.filter(function(g){ return !old(g); }).length;
     day.forEach(function(g){
       var s=null, bx=null;
       g.m.forEach(function(x){
@@ -5053,10 +5052,14 @@ function _hkPlan(list){
         if(f!=null && f<0) f=2;   // only the day agrees: after every real fit
         if(f!=null && (s==null || f<s)){ s=f; bx=x; }
       });
-      if(s==null || (s===2 && open>1)) return;   // no duration: only a day with one activity it may be for
+      if(s==null) return;
       var end=bx.st+bx.sec*1000;
       mine.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i, old:old(g)});
     });
+    // No duration: only a day with one activity it may be for (begun before it was saved, and not
+    // in the log then); a game that began after a 'Win, 18 pts' saved at 10:00 made it take neither.
+    var open=mine.filter(function(p){ return !p.old; }).length;
+    mine=mine.filter(function(p){ return !(p.s===2 && open>1); });
     var fresh=mine.some(function(p){ return !(p.g.seen || p.g.buried || p.g.rec); });   // one not in the log fits
     mine.forEach(function(p){ if(!(p.old && fresh)) pairs.push(p); });
   };

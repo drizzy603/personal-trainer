@@ -55,7 +55,8 @@
 //   so the workout is offered again and Import brings it in once.
 // - T35: a hand log typed for the day's second workout stands for it, not for the first one
 //   already in the log from Health (auto-log, the card and Import no longer bring the second in
-//   again), and a second hand log no longer takes the first log's only match.
+//   again), a second hand log no longer takes the first log's only match, and a log with no
+//   duration counts only the games it may be for (begun before it was saved).
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A TrovoHealth mock whose workouts a test sets in window.__hk (the harness leaves it out).
@@ -1045,7 +1046,8 @@ run('T34: Undo on the Health card gives back a workout two apps wrote to Health'
 // and a 'Win, 18 pts' log on a day whose morning game was imported; and with both commutes typed
 // by hand the evening log took the morning log's only match. An old pair (a hand log typed before
 // its Health twin came in) still stands for its workout, and a log that absorbed the first
-// workout still lets the second in.
+// workout still lets the second in. The no-duration rule counts only the activities a log may be
+// for: a game that began after a 'Win, 18 pts' was saved no longer makes it take neither.
 run('T35: a hand log typed after the day\'s first workout was imported stands for its own workout', async () => {
   const app = await boot({ native: true, seed: { kt_sports: '[]', kt_runs: '[]' } });
   try {
@@ -1086,6 +1088,11 @@ run('T35: a hand log typed after the day\'s first workout was imported stands fo
         // an old pair: the evening log was typed before the morning run's Health record came in (20:00)
         oldPair: { show: runs, runs: [run(at(20, 0), '25:05', 'From Apple Health', at(8, 0)), run(at(18, 40), '25:00', 'home')], sports: [], led: ['am'],
                    hk: [hk('pm', 'run', 18, 0, 26 * 60, 5), hk('am', 'run', 8, 0, 25 * 60 + 5, 5)] },
+        // 'Win, 18 pts' saved at 10:00, right after the 9:00 game; a 19:00 game began after it was
+        // saved, so it cannot be that log's and does not make the log take neither
+        nodurLater: { show: sports, runs: [], led: [],
+                      sports: [{ id: at(10, 0), date: y, type: 'Basketball', duration: 0, data: { result: 'Win', points: 18 }, notes: '' }],
+                      hk: [hk('gam', 'Basketball', 9, 0, 40 * 60), hk('gpm', 'Basketball', 19, 0, 95 * 60)] },
       };
       const r = {};
       for (const k of Object.keys(S)) {
@@ -1129,6 +1136,9 @@ run('T35: a hand log typed after the day\'s first workout was imported stands fo
       'an old pair still stands for the morning run, so the evening run comes in: ' + JSON.stringify(op));
     assert(out.absorbed.logs === '25:00/typed | 26:30/Health@18:00' && out.absorbed.ledger === 'a1,a2' && /1 run imported/.test(out.absorbed.toast),
       'a log that absorbed the first run lets the second in: ' + JSON.stringify(out.absorbed));
+    const nl = out.nodurLater, nlLogs = 'Basketball 0/{"result":"Win","points":18} | Basketball 95/Health@19:00';
+    assert(nl.auto.logs === nlLogs && nl.card === 'gpm' && nl.import.logs === nlLogs && nl.import.ledger === 'gam,gpm' && /1 activity imported/.test(nl.import.toast),
+      'a log with no duration stands for the game before it, and the later game comes in: ' + JSON.stringify(nl));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
