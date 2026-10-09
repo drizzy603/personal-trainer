@@ -7077,7 +7077,7 @@ function renderTodayEditorial(){
     line2Class = 'accent';
     body = 'No lifts scheduled — log the run from the Run tab.';
   } else if(act.type === 'sport'){
-    line1 = _esc(act.dayName);
+    line1 = act.dayName;   // the hero escapes line1 and line2 itself
     line2 = 'today.';
     line2Class = 'accent';
     body = 'No lifts scheduled — log it from the + tab.';
@@ -7091,7 +7091,7 @@ function renderTodayEditorial(){
       ' Nothing is due before then.';
   } else if(act.unknown){
     line1 = 'Unrecognised day.';
-    line2 = '\u201c'+_esc(act.unknown)+'\u201d';
+    line2 = '\u201c'+act.unknown+'\u201d';   // escaped once, by the hero (an inner _esc read Rock &amp; Roll)
     line2Class = 'accent';
     body = 'Today is set to something this version can\u2019t read. It is kept exactly as written \u2014 choose what it should be, or train anything below.';
   } else {
@@ -13587,7 +13587,7 @@ function _renderWeekDetail(wd){
         if(_rkm) bits.push(fmtD(_rkm));
         if(rd.paceMin!=null && rd.paceSec!=null) bits.push(fmtPaceStr(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0')));
         else if(rd.pace) bits.push(rd.pace);
-        summary = bits.length ? bits.join(' · ') : 'Run';
+        summary = bits.length ? _esc(bits.join(' · ')) : 'Run';   // the coach's pace and run type are its own text
         var detailParts = [];
         if(_rkm) detailParts.push(['DIST', fmtD(_rkm)]);
         if(rd.paceMin!=null && rd.paceSec!=null) detailParts.push(['PACE', fmtPaceStr(rd.paceMin+':'+String(rd.paceSec).padStart(2,'0'))]);

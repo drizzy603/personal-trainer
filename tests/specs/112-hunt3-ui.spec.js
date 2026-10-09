@@ -755,3 +755,39 @@ run('library and week-ladder rows take Tab, set inputs and glyph buttons are nam
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// Hunt 5 (integration): Week by week put the coach's run pace and type into the day row as markup
+// (the detail row escaped them), and Today escaped an unrecognised day twice ("Rock &amp; Roll's
+// Club"). Each is escaped once now.
+run('the coach\'s run text in Week by week reads as text; an unrecognised day on Today reads as written', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const cr = getCustomRoutine(), w = cr.weeks[currentWeek - 1];
+      const plan = (w.weekPlan || cr.weekPlan || DEFAULT_WEEK_PLAN.map(p => p.type)).slice();
+      plan[0] = 'Run'; w.weekPlan = plan;
+      w.runs = Object.assign({}, w.runs, { Mon: { type: 'tempo', km: 5, pace: '<b>6:00</b>/km' } });
+      lsSet('kt_routine', cr);
+      openProgrammeModal(); await wait(60);
+      const sum = document.querySelector('#wk-' + w.wk + '-day-0-row .wk-day-sum');
+      const r = { sum: sum ? sum.textContent : null, tags: sum ? sum.querySelectorAll('b').length : -1 };
+      if (typeof closeProgrammeModal === 'function') closeProgrammeModal();
+      // today's cadence entry is one this version cannot read
+      const dow = (new Date(todayISO() + 'T00:00:00').getDay() + 6) % 7;
+      const cr2 = getCustomRoutine();
+      const p2 = (cr2.weekPlan || DEFAULT_WEEK_PLAN.map(p => p.type)).slice();
+      p2[dow] = "Rock & Roll's Club"; cr2.weekPlan = p2;
+      (cr2.weeks || []).forEach(x => { if (Array.isArray(x.weekPlan)) x.weekPlan[dow] = p2[dow]; });
+      lsSet('kt_routine', cr2);
+      switchTab('log'); try { switchLogSub('workout'); } catch (e) {}
+      await wait(60);
+      const h = document.querySelector('#screen .kt-hero-headline');
+      r.headline = h ? h.textContent : null;
+      return r;
+    });
+    assert(out.sum && out.sum.indexOf('<b>6:00</b>/km') >= 0 && out.tags === 0, 'the coach\'s pace reads as typed, not as markup: ' + JSON.stringify(out));
+    assert(out.headline === 'Unrecognised day.“Rock & Roll\'s Club”', 'the unrecognised day reads as written: ' + out.headline);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
