@@ -66,6 +66,9 @@
 // - T49 A round held for a workout swapped in (on the phone, after the watch queue) under the COMPLETE
 //   sheet, whose "Carry ... forward" was judged against round 1: the tap wrote round 1's carry into
 //   round 2 as the owner's edit and took the swap's restore point. The offer is judged again at the tap.
+// - T47 After R37, with nothing logged Today said "Your first session, Legs, is Monday" (and Sunday
+//   "TOMORROW · LEGS") from next week's cadence, while Monday keeps week 1 (R44) and the app, the
+//   widget and the watch gave Push. Later weeks are read as the app will show them (_planWeekFor).
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -782,30 +785,46 @@ run('R36: the sheet painted on week 11\'s Sunday starts the round on the Monday 
   } finally { await app.close(); }
 });
 
-run('R37: "Start week 1 today" on a Saturday names the first session on the day next week\'s cadence holds it', async () => {
-  const app = await boot({ native: false, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]' } });
-  try {
-    await withClock(app);
-    const out = await app.page.evaluate(async (LOGS) => {
-      eval(LOGS);
-      const mon = _mostRecentMonday();
-      __setNow(addDays(mon, 5) + 'T10:00:00');   // Saturday: week 1's lift days are gone
-      const cr = buildStarterRoutine({ equip: 'full', days: 3, runs: 0, goal: 'muscle', exp: 0 });
-      cr.weeks[1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // week 2 opens with Legs
-      setCustomRoutine(cr); _startProgramme();
-      const r = { plan: getWeekPlanForWeek(1).map(p => p.type).join(',') };
-      startProgrammeNow();
-      switchTab('log'); switchLogSub('workout'); render();
-      const t = txt();
-      r.next = getNextSession();
-      r.body = (t.match(/Your first session[^.]*\./) || [''])[0];
-      r.cta = (t.match(/FIRST SESSION ?Start [A-Za-z]+ today/) || [''])[0];
-      return r;
-    }, LOGS);
-    assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', 'the starter week this test assumes: ' + out.plan);
-    assert(out.next === 'Legs' && out.body === 'Your first session, Legs, is Monday.' && /Start Legs today/.test(out.cta), 'week 2\'s Monday holds the first session, and the text says Monday: ' + JSON.stringify(out));
-    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
-  } finally { await app.close(); }
+run('R37/T47: "Start week 1 today" on a Saturday names the first session on the day that holds it, as Monday will show it', async () => {
+  // Nothing logged: Monday keeps week 1 (autoAdvanceWeek), so the first session is week 1's Monday
+  // Push, as the widget and the watch say (T47). A run logged this week moves Monday to week 2, whose
+  // cadence opens with Legs (R37: the text names the weekday that holds it).
+  for (const ran of [false, true]) {
+    const app = await boot({ native: false, seed: { kt_sessions: '[]', kt_prs: '{}', kt_runs: '[]' } });
+    const tag = ran ? 'a run logged' : 'nothing logged';
+    try {
+      await withClock(app);
+      const out = await app.page.evaluate(async ({ LOGS, ran }) => {
+        eval(LOGS);
+        const mon = _mostRecentMonday();
+        __setNow(addDays(mon, 5) + 'T10:00:00');   // Saturday: week 1's lift days are gone
+        const cr = buildStarterRoutine({ equip: 'full', days: 3, runs: 0, goal: 'muscle', exp: 0 });
+        cr.weeks[1].weekPlan = ['Legs', 'Rest', 'Push', 'Rest', 'Pull', 'Rest', 'Rest'];   // week 2 opens with Legs
+        setCustomRoutine(cr); _startProgramme();
+        const r = { plan: getWeekPlanForWeek(1).map(p => p.type).join(',') };
+        startProgrammeNow();
+        if (ran) lsSet('kt_runs', [{ id: at(addDays(mon, 2), '07:00'), date: addDays(mon, 2), distance: 5, time: '25:00', type: 'easy', note: '' }]);
+        switchTab('log'); switchLogSub('workout'); render();
+        const t = txt(), next = addDays(mon, 7);
+        r.next = getNextSession();
+        r.body = (t.match(/Your first session[^.]*\./) || [''])[0];
+        r.cta = (t.match(/FIRST SESSION ?Start [A-Za-z]+ today/) || [''])[0];
+        r.widget = (_nativeSummaryDays() || []).filter(d => d.date === next).map(d => d.type + ' ' + d.week)[0];
+        r.watch = (p => p.dayName + ' ' + p.week)(_watchPlanForDate(next));
+        __setNow(addDays(mon, 6) + 'T10:00:00'); render();   // Sunday
+        r.tomorrow = [...document.querySelectorAll('#screen .kt-marquee-reps')].map(e => e.textContent.trim()).find(s => /^TOMORROW/.test(s));
+        __setNow(next + 'T08:00:00'); autoAdvanceWeek(); _todayActMemo = null;
+        r.monday = getTodayActivity().dayName + ' ' + currentWeek;
+        return r;
+      }, { LOGS, ran });
+      const day = ran ? 'Legs' : 'Push', wk = ran ? 2 : 1;
+      assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', tag + ': the starter week this test assumes: ' + out.plan);
+      assert(out.next === day && out.body === 'Your first session, ' + day + ', is Monday.' && new RegExp('Start ' + day + ' today').test(out.cta), tag + ': the first session is Monday\'s ' + day + ': ' + JSON.stringify(out));
+      assert(out.tomorrow === 'TOMORROW · ' + day.toUpperCase(), tag + ': Sunday says so too: ' + JSON.stringify(out));
+      assert(out.monday === day + ' ' + wk && out.widget === day + ' ' + wk && out.watch === day + ' ' + wk, tag + ': as Monday, the widget and the watch: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + ': no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
 
 // The 260 x 5 squat workout as it was filed, wherever it landed.

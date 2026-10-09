@@ -6173,14 +6173,11 @@ function skipMissed(date, type){
 function _tomorrowLabel(){
   var _dowIdx=(new Date().getDay()+6)%7, _tomIdx=(_dowIdx+1)%7;
   var _tomWeek=getWeekPlan();
-  // On the Sunday BEFORE a programme starts, tomorrow is week 1's Monday, not
-  // week 2's — do not look ahead a week that has not begun.
-  // After the final week it repeats, or a next round starting tomorrow begins at its week 1
-  // (this programme's week 1): read as week 13, the routine-wide cadence named the wrong day.
-  if(_dowIdx===6 && _programmeStarted()){
-    var _nr=_nextRoundSet(), _tw=(_nr && _nr.startsOn<=addDays(todayISO(),1)) ? 1 : Math.min(getTotalWeeks(), currentWeek+1);
-    try{ var _nw=getWeekPlanForWeek(_tw); if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
-  }
+  // Read as the app will show tomorrow (_planWeekFor, as the widget and the watch): on the Sunday
+  // before a programme starts that is week 1's Monday; after the final week it repeats, or a next
+  // round starting tomorrow begins at its week 1 (read as week 13, the routine-wide cadence named the
+  // wrong day); with nothing logged Monday keeps the week (it named next week's Monday).
+  try{ var _nw=_planWeekFor(addDays(todayISO(),1)).plan; if(Array.isArray(_nw) && _nw.length===7) _tomWeek=_nw; }catch(e){}
   var tomPlan=_tomWeek[_tomIdx];
   if(!tomPlan) return '';
   return tomPlan.isUnknown ? 'Unset' : tomPlan.isRest ? 'Rest' : tomPlan.isRun ? 'Run' : (_dayLabel(tomPlan.type)||'');
@@ -6281,11 +6278,12 @@ function getNextSession() {
   var sports = getSportLogs();
   var skips = getSkips();
   var today = todayISO();
-  var total = getTotalWeeks();
   // From last Monday, but never from before this programme (or round) began, and each day
   // from its own week's cadence: a plan started today offered the Monday of the week before
-  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL").
-  var planFor = function(d){ return getWeekPlanForWeek(Math.min(total, weekForDate(d))); };
+  // it as the first session ("Push, is Monday" beside "TOMORROW · PULL"). Each week as the app
+  // will show it (_planWeekFor): with nothing logged Monday keeps week 1, so next week's cadence
+  // named a first session ("Legs, is Monday") the app, the widget and the watch did not.
+  var planFor = function(d){ return _planWeekFor(d).plan; };
   var start = addDays(getMondayISO(), -7), from = _roundStartISO();
   if (from > start) start = from;
   for (var i = 0; i < 14; i++) {
@@ -6963,8 +6961,8 @@ function renderTodayEditorial(){
         var _nxl = _dayLabel(_nx);
         // The next day that holds it, each read from its own week as getNextSession reads it (this
         // week's plan named a weekday already gone when next week's cadence differs).
-        var _nxDow = -1, _nxTot = getTotalWeeks();
-        for(var _q=1;_q<=7 && _nxDow<0;_q++){ var _dq=addDays(todayISO(),_q), _dw=(new Date(_dq+'T00:00:00').getDay()+6)%7, _pq=getWeekPlanForWeek(Math.min(_nxTot, weekForDate(_dq)))[_dw]; if(_pq && _pq.type===_nx) _nxDow=_dw; }
+        var _nxDow = -1;
+        for(var _q=1;_q<=7 && _nxDow<0;_q++){ var _dq=addDays(todayISO(),_q), _dw=(new Date(_dq+'T00:00:00').getDay()+6)%7, _pq=_planWeekFor(_dq).plan[_dw]; if(_pq && _pq.type===_nx) _nxDow=_dw; }
         body = 'Your first session, '+_nxl+', is '+(_nxDow>=0?['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][_nxDow]:'next')+'. Start it today if you are keen \u2014 the plan adjusts.';
       }
     }
