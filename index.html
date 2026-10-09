@@ -3659,8 +3659,29 @@ function weekForDate(dateStr){
   // 28-day reminders drew next week from this week's cadence. Never past the
   // last week though: on the round-swap morning the watch drains under the old
   // clock, and a session from that morning was filed as "Week 13 of 12".
+  // A programme Restore Previous resumed on its week from a later Monday counts none of the weeks
+  // it spent set aside, so a date from before it was set aside reads that many weeks later, on the
+  // clock it was trained on (_awayWeeks): a stale wrist session or the coach's backfill from the
+  // week before the swap was filed a week early, with that week's block.
   var weeksAgo=Math.round((monNow-mon)/(7*86400000));
-  return Math.min(total, Math.max(1,(fin?total:currentWeek)-weeksAgo));
+  return Math.min(total, Math.max(1,(fin?total:currentWeek)-weeksAgo+_awayWeeks(String(dateStr).slice(0,10))));
+}
+// The Monday week 1 began on the clock weekForDate reads (counted back from the final week's
+// Monday on the last week).
+function _clockWeek1(){
+  var total=getTotalWeeks(), fin=currentWeek>=total ? localStorage.getItem('kt_final_since') : null;
+  return addDays(fin||_weekAnchor(), -7*((fin?total:currentWeek)-1));
+}
+// The weeks a programme spent set aside that its clock leaves out, for a date before it was set
+// aside (d), or all of them (d null: its week 1). _weekClockPut notes them on the programme it
+// puts back on a later Monday (routine.away {start, gaps:[{before, weeks}]}); the note holds only
+// while week 1 is still where the note found it (start): the week stepper, a new start or a new
+// round reads every date on its own clock again.
+function _awayWeeks(d){
+  var cr=getCustomRoutine(), a=cr && cr.away, n=0;
+  if(!a || typeof a!=='object' || !Array.isArray(a.gaps) || String(a.start||'')!==_clockWeek1()) return 0;
+  a.gaps.forEach(function(g){ var k=g ? parseInt(g.weeks,10)||0 : 0; if(k>0 && (d==null || d<String(g.before||''))) n+=k; });
+  return n;
 }
 function getBWGoal() { return parseFloat(localStorage.getItem('kt_bw_goal'))||0; }
 function setBWGoal(v) { if(v>0) lsSet('kt_bw_goal',v); else lsDel('kt_bw_goal'); }
@@ -12089,10 +12110,10 @@ function _roundInfo(){
   var end=addDays(since,6);
   return {total:total, since:since, endISO:end, ended:todayISO()>end};
 }
-// The Monday this round's week 1 began.
+// The Monday this round's week 1 began (before the weeks it spent set aside: _awayWeeks).
 function _roundStartISO(){
   var ri=_roundInfo();
-  return ri ? addDays(ri.since, -7*(ri.total-1)) : addDays(_weekAnchor(), -7*(currentWeek-1));
+  return addDays(ri ? addDays(ri.since, -7*(ri.total-1)) : addDays(_weekAnchor(), -7*(currentWeek-1)), -7*_awayWeeks(null));
 }
 // Whether a log (its date, and when it started: _cmpT) belongs to this round. A round started
 // "Today" is anchored on this week's Monday, and a set round is swapped in when the app first
@@ -19044,12 +19065,27 @@ function _weekClockNow(){
 function _weekClockPut(c, total){
   var re=/^\d{4}-\d{2}-\d{2}$/, wk=Math.min(total, Math.max(1, parseInt(c.week,10)||1)), mon=_mostRecentMonday();
   var ahead=re.test(String(c.monday||'')) && c.monday>mon;
+  // week 1 on the clock it was set aside on, as weekForDate read it then
+  var fin=(wk>=total && re.test(String(c.finalSince||''))) ? String(c.finalSince) : '', m0=fin || (re.test(String(c.monday||'')) ? String(c.monday) : '');
+  var was=m0 ? addDays(m0, -7*((fin ? total : wk)-1)) : '';
   if(!_setWeek(wk, ahead ? c.monday : null)) return;
   if(wk>=total && !ahead && re.test(String(c.finalSince||'')) && c.finalSince<=mon){ try{ localStorage.setItem('kt_final_since', c.finalSince); }catch(e){} }
   [['prog','kt_last_prog_week'], ['plateau','kt_last_plateau_week']].forEach(function(p){
     if(!(p[0] in c)) return;
     if(c[p[0]]!=null) lsSet(p[1], c[p[0]]); else lsDel(p[1]);
   });
+  // The weeks it was away, noted on it (_awayWeeks): every date before the Monday after the week it
+  // was set aside in reads on the clock it was trained on. A note it carried holds when it was taken
+  // on that clock. None for one set aside on its first week: every earlier date reads week 1 either
+  // way, and one set aside before its start had not run then.
+  var cr=getCustomRoutine(); if(!cr) return;
+  var a=cr.away, now=_clockWeek1(), k=was ? Math.round((new Date(now+'T00:00:00')-new Date(was+'T00:00:00'))/(7*86400000)) : 0;
+  var gaps=(k>=0 && was && a && typeof a==='object' && Array.isArray(a.gaps) && String(a.start||'')===was) ? a.gaps.slice() : [];
+  if(k>0 && re.test(String(c.monday||'')) && (wk>1 || gaps.length)) gaps.push({before:addDays(c.monday, 7), weeks:k});
+  var note=gaps.length ? {start:now, gaps:gaps} : null;
+  if(JSON.stringify(note)===JSON.stringify(a||null)) return;
+  var cp=JSON.parse(JSON.stringify(cr)); if(note) cp.away=note; else delete cp.away;
+  setCustomRoutine(cp);
 }
 // A PLAN CHANGES card speaks for the programme it changed: once that programme is replaced the
 // card retires (it read "WEEK 1" over the old round's changes).
