@@ -5018,9 +5018,13 @@ function _hkFit(rec, x, hasLedger){
 //   no other. A hand log took the day's first match within 15% (any match, with no duration), so
 //   the match typed in came in again while the other was burned unimported, and one hand log hid
 //   every match of its day from auto-log and the card. Every activity of the day competes, handled
-//   ones too, so a log already standing for one never takes another; a log with no duration fits
-//   only a day with one activity of its kind; on equal fits the one that ended last before the
-//   log was saved wins.
+//   ones too, so a log already standing for one never takes another; but one whose own Health
+//   record came into the log before every activity outside the log that the log fits began, all
+//   of them over before it was typed, gives way to them. A log with no duration fits only a day
+//   with one activity of its kind it may be for (begun before it was saved, not given way); on
+//   equal fits the one that ended last before the log was saved wins. A log left with no activity
+//   then takes one from a log that fits another, so a second log never takes the only match of the
+//   first.
 // Returns {uuid: {g, keep}} for each loggable workout: g.st is 'buried', 'seen', 'dupe' or 'new',
 // g.m the copies in start order, g.keep the copy a new record is built from (richest, then first).
 function _hkPlan(list){
@@ -5053,20 +5057,24 @@ function _hkPlan(list){
   };
   getRuns().forEach(function(r){ addId(r, 'run'); });
   getSportLogs().forEach(function(l){ if(l) addId(l, String(l.type||'')); });
+  // t0: when the activity's own Health record (the earliest, by its id) came into the log.
+  var cameIn=function(g, rec){ var t=Number(rec && rec.id); if(t>1e12 && !(g.t0<=t)) g.t0=t; };
   W.forEach(function(x){
     if(x.st>0) [addDays(x.iso, -1), x.iso, addDays(x.iso, 1)].forEach(function(d){
       (ids[x.k+'|'+d]||[]).forEach(function(c){
-        if(_hkSameActivity(c.st, c.sec, c.km, x.st, x.sec, x.km)){ x.g.rec=x.g.rec||c.rec; c.held=true; }
+        if(_hkSameActivity(c.st, c.sec, c.km, x.st, x.sec, x.km)){ x.g.rec=x.g.rec||c.rec; cameIn(x.g, c.rec); c.held=true; }
       });
     });
   });
   // A stored Health workout this fetch did not bring is still one of its day's activities.
   Object.keys(ids).forEach(function(key){
     if(days[key]) ids[key].forEach(function(c){
-      if(!c.held) days[key].push({k:c.k, m:[{st:c.st, sec:c.sec, km:c.km, iso:c.iso, seen:true}], rec:c.rec});
+      if(c.held) return;
+      var g={k:c.k, m:[{st:c.st, sec:c.sec, km:c.km, iso:c.iso, seen:true}], rec:c.rec};
+      cameIn(g, c.rec); days[key].push(g);
     });
   });
-  var pairs=[], n=0, taken=[], out={};
+  var pairs=[], n=0, at={}, by={}, out={};
   var offer=function(rec, k){
     var health=!!rec && (k==='run' ? _isHealthRun(rec) : _isHealthSport(rec));
     // A Health record that knows its start stands only for its own workout (_hkIdOf); one that
@@ -5074,7 +5082,7 @@ function _hkPlan(list){
     if(!rec || (health && (hasLedger || Number(rec.startMs)>0))) return;
     var day=days[k+'|'+String(health && rec.hkOrig ? rec.hkOrig.date : rec.date)];
     if(!day) return;
-    var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0;
+    var i=n++, save=!health && Number(rec.id)>1e12 ? Number(rec.id) : 0, mine=[];
     day.forEach(function(g){
       var s=null, bx=null;
       g.m.forEach(function(x){
@@ -5082,15 +5090,42 @@ function _hkPlan(list){
         if(f!=null && f<0) f=2;   // only the day agrees: after every real fit
         if(f!=null && (s==null || f<s)){ s=f; bx=x; }
       });
-      if(s==null || (s===2 && day.length>1)) return;
+      if(s==null) return;
       var end=bx.st+bx.sec*1000;
-      pairs.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i});
+      mine.push({c:rec, g:g, s:s, gap:save ? (end<=save ? save-end : 1e13+end-save) : 0, st:bx.st, i:i});
     });
+    // An activity whose own Health record came into the log before the others of its day this log
+    // fits began, all of them over before it was typed, is not what it was typed for: the evening
+    // commute typed 25:00 at 18:40 fitted the morning run (in the log since 9:00) a little better,
+    // and its own run came in again. In any other order the log may be for either and is weighed by
+    // fit (a possible copy, never a loss: an owner typing in the morning run again would lose the
+    // other), and an old pair (typed before its Health twin came in) stands for its activity.
+    var outside=mine.filter(function(p){ return !(p.g.seen || p.g.buried || p.g.rec); });
+    mine=mine.filter(function(p){
+      var t0=p.g.t0;
+      return !(save>0 && t0>0 && t0<save && outside.length && outside.every(function(f){ return f.st>t0 && f.gap<1e13; }));
+    });
+    // No duration: only a day with one activity it may be for (begun before it was saved, and not
+    // one it gives up above); a game that began after a 'Win, 18 pts' saved at 10:00 made it take neither.
+    var open=mine.length;
+    mine.forEach(function(p){ if(!(p.s===2 && open>1)) pairs.push(p); });
   };
   getRuns().forEach(function(r){ offer(r, 'run'); });
   getSportLogs().forEach(function(l){ if(l && l.type) offer(l, String(l.type)); });
   pairs.sort(function(a,b){ return a.s-b.s || a.gap-b.gap || a.st-b.st || a.i-b.i; });
-  pairs.forEach(function(p){ if(p.g.hand || taken.indexOf(p.c)>=0) return; taken.push(p.c); p.g.hand=p.c; });
+  pairs.forEach(function(p){ (by[p.i]=by[p.i]||[]).push(p); if(p.g.hand || at[p.i]) return; at[p.i]=p.g; p.g.hand=p; });
+  // Best pairs first; then a log left with no activity takes one from a log that fits another (a
+  // free one, or one freed the same way): the evening commute typed in by hand took the morning
+  // run, the morning log's only match, and the evening run came in again.
+  var v=0, move=function(i){
+    return by[i].some(function(p){
+      if(p.g.v===v) return false;
+      p.g.v=v;
+      if(p.g.hand && !move(p.g.hand.i)) return false;
+      at[i]=p.g; p.g.hand=p; return true;
+    });
+  };
+  Object.keys(by).forEach(function(i){ if(!at[i]){ v++; move(i); } });
   G.forEach(function(g){
     g.st=g.buried ? 'buried' : g.seen ? 'seen' : (g.rec || g.hand) ? 'dupe' : 'new';
     var keep=null;
@@ -5222,7 +5257,10 @@ function _hkPlanOf(r, ctx){
   var list=(ctx||[]).some(function(x){ return x && x.uuid===r.uuid; }) ? ctx : [r];
   return _hkPlan(list)[r.uuid]||null;
 }
-function _logHealthRun(r, ctx){
+// o (optional) gets o.burned, the uuids put in the ledger with the record (the workout and its other
+// copies), so the card's Undo gives every one back (_unmarkHealthUuid): it gave back only the copy
+// logged, and the other kept the activity 'seen', so it was never offered or imported again.
+function _logHealthRun(r, ctx, o){
   if(_hkAlreadyImported(r)) return null;
   var localISO = _hkLocalISO(r);
   _hkTouchCursor();
@@ -5249,6 +5287,7 @@ function _logHealthRun(r, ctx){
   var runs = [rec].concat(getRuns());
   if(!lsSet('kt_runs', runs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(burn);
+  if(o) o.burned = burn;
   invalidateCoachCard();
   return rec;
 }
@@ -5277,8 +5316,8 @@ function _healthSportRec(r, sportId, idOffset){
   return {id: Date.now()+(idOffset||0), startMs: d.getTime()||undefined, date: localISO, type: sportId,
     duration: Math.round((r.durationSec||0)/60), data: data, notes:'From Apple Health'};
 }
-// Shared by the one-tap card and auto-log: writes the workout + dedup marker.
-function _logHealthSport(r, sportId, ctx){
+// Shared by the one-tap card and auto-log: writes the workout + dedup marker (o: as _logHealthRun).
+function _logHealthSport(r, sportId, ctx, o){
   if(_hkAlreadyImported(r)) return null;
   var p = _hkSportId(r)===sportId ? _hkPlanOf(r, ctx) : null, burn = [r.uuid].concat(_hkCopiesOf(r, p));
   if(p ? p.g.st!=='new' : _healthSportDupe(r, sportId)){ _hkMarkSeen(burn); return null; }   // already in the log (by hand, or restored)
@@ -5288,6 +5327,7 @@ function _logHealthSport(r, sportId, ctx){
   _hkTouchCursor();
   if(!lsSet('kt_sports', logs)) return false;   // storage full; lsSet has toasted
   _hkMarkSeen(burn);
+  if(o) o.burned = burn;
   invalidateCoachCard();
   return rec;
 }
@@ -5518,20 +5558,20 @@ function toggleBgSync(){
 function logPendingHealthRun(){
   var r = _hkPendingRun; if(!r) return;
   _hkPendingRun = null;
-  var sid = _hkSportId(r);
+  var sid = _hkSportId(r), o = {};   // o.burned: every copy the log burned, for the Undo
   if(sid){
-    var srec = _logHealthSport(r, sid, _hkPendingCtx);
+    var srec = _logHealthSport(r, sid, _hkPendingCtx, o);
     if(srec){
-      sportLogConfirmed = {id: srec.id, type: sid, hkUuid: r.uuid,
+      sportLogConfirmed = {id: srec.id, type: sid, hkUuids: o.burned||[r.uuid],
         label: sid+(srec.duration?' · '+srec.duration+' min':'')};
       showToast(sid+' logged from Apple Health');
     } else if(srec===null){
       showToast('Already in your log \u2014 skipped the duplicate');
     }
   } else {
-    var rec = _logHealthRun(r, _hkPendingCtx);
+    var rec = _logHealthRun(r, _hkPendingCtx, o);
     if(rec){
-      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuid: r.uuid};
+      runLogConfirmed = {id: rec.id, km: rec.distance, time: rec.time, hkUuids: o.burned||[r.uuid]};
       // Off the Run tab the strip is out of sight: the toast carries the Undo itself.
       if(!(currentTab==='log' && logSubTab==='run')) showUndoToast(fmtD(rec.distance)+' run logged from Apple Health', function(){ if(runLogConfirmed && runLogConfirmed.id===rec.id) undoLastRun(); });
       checkMilestones({delayToast:600});
@@ -8350,17 +8390,20 @@ function saveInlineRun(){
 // A Health quick-log marks the workout's UUID as imported before the record
 // exists; undoing the record alone left the marker, so the workout could
 // never be offered or imported again ('Already up to date' forever).
+// Takes one uuid or the list the log burned (the workout and its other copies, _hkCopiesOf): one
+// copy left in the ledger kept the whole activity 'seen' (_hkPlan).
 function _unmarkHealthUuid(uuid){
-  if(!uuid) return;
+  var drop=[].concat(uuid||[]).filter(Boolean);
+  if(!drop.length) return;
   var imp=lsGet('kt_hk_imported');
-  if(Array.isArray(imp)) lsSet('kt_hk_imported', imp.filter(function(u){ return u!==uuid; }));
-  else if(imp && typeof imp==='object' && imp[uuid]){ delete imp[uuid]; lsSet('kt_hk_imported', imp); }
+  if(Array.isArray(imp)) lsSet('kt_hk_imported', imp.filter(function(u){ return drop.indexOf(u)<0; }));
+  else if(imp && typeof imp==='object' && drop.some(function(u){ return imp[u]; })){ drop.forEach(function(u){ delete imp[u]; }); lsSet('kt_hk_imported', imp); }
   _hkPendingDismissed=false;
   if(typeof checkRecentHealthRun==='function') setTimeout(checkRecentHealthRun, 300);
 }
 function undoLastRun(){
   if(!runLogConfirmed) return;
-  var id = runLogConfirmed.id, uuid = runLogConfirmed.hkUuid;
+  var id = runLogConfirmed.id, uuid = runLogConfirmed.hkUuids;
   var runs = getRuns().filter(function(r){ return r.id !== id; });
   lsSet('kt_runs', runs);
   invalidateCoachCard();
@@ -13942,7 +13985,7 @@ function saveSportLog(){
 }
 function undoLastSportLog(){
   if(!sportLogConfirmed) return;
-  var id=sportLogConfirmed.id, uuid=sportLogConfirmed.hkUuid;
+  var id=sportLogConfirmed.id, uuid=sportLogConfirmed.hkUuids;
   lsSet('kt_sports',getSportLogs().filter(function(s){return s.id!==id;}));
   sportLogConfirmed=null;
   _unmarkHealthUuid(uuid);
