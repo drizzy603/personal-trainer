@@ -597,15 +597,71 @@ run("Escape closes the runner's Edit sheet and focus goes back to the card's Edi
     await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
     await p.evaluate(() => document.activeElement && document.activeElement.blur());
     await esc(); r.body = await state();
-    // in the exercise picker's search field
+    // in the exercise picker's search field: Escape steps back to the sheet (T39; this case
+    // asserted the bug, the whole sheet closing), the next one closes it
     await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30);
     await p.evaluate(() => { _openRunnerExPicker(); document.getElementById('runner-ex-picker-q').focus(); });
     await esc(); r.picker = await state();
+    r.picker.sheet = await p.evaluate(() => !!document.getElementById('runner-ex-sets-input') && !document.getElementById('runner-ex-picker-q'));
+    await esc(); r.pickerThen = await state();
     await p.evaluate(() => closeDeckRunner());
     assert(r.opened.open, 'Enter on the card opens the Edit sheet: ' + JSON.stringify(r.opened));
     assert(!r.inside.open && r.inside.runner && r.inside.onEdit, 'Escape with focus inside closes it and focus returns to Edit: ' + JSON.stringify(r.inside));
     assert(!r.body.open && r.body.runner, 'Escape with focus on the page closes it, the runner stays: ' + JSON.stringify(r.body));
-    assert(!r.picker.open && r.picker.runner && r.picker.onEdit, 'Escape in the picker closes the sheet: ' + JSON.stringify(r.picker));
+    assert(r.picker.open && r.picker.sheet && !r.pickerThen.open && r.pickerThen.runner && r.pickerThen.onEdit, 'Escape in the picker steps back to the sheet, the next closes it: ' + JSON.stringify([r.picker, r.pickerThen]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T39: R53 put the Edit sheet among the sheets Escape closes, so Escape in its exercise or
+// superset picker (views painted inside the sheet, with their own ‹ / Back) closed the whole
+// sheet and dropped its unsaved sets and weight. It steps back one level now, as Routines does.
+run("Escape in the runner Edit sheet's pickers steps back and keeps the unsaved edits (T39)", async () => {
+  const app = await boot({ native: true });
+  try {
+    const p = app.page;
+    const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(40); };
+    const state = () => p.evaluate(() => {
+      const v = (id) => { const e = document.getElementById(id); return e ? e.value : null; };
+      const a = document.activeElement;
+      return { open: !!document.getElementById('runner-ex-edit-modal'), picker: !!document.getElementById('runner-ex-picker-q'),
+        sets: v('runner-ex-sets-input'), weight: v('runner-ex-weight-input'), focus: (a && a.getAttribute('onclick')) || (a && a.tagName) };
+    });
+    await p.evaluate(() => { switchTab('log'); openDeckRunner('Push'); });
+    const edit = p.locator('#runner-root button[onclick*="openRunnerExEdit"]').first();
+    const openEdit = async () => { await edit.focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(30); };
+    const sheetBtn = (frag) => p.locator('#runner-ex-edit-modal button[onclick*="' + frag + '"]').first();
+    const r = {};
+    await openEdit();
+    r.seed = await state();
+    await sheetBtn('runnerExEditStepSets(1)').click(); await sheetBtn('runnerExEditStepWeight(2.5)').click();   // the seed is in lb
+    r.edited = await state();
+    // Exercise › Change ›, type in the search field, Escape
+    await sheetBtn('_openRunnerExPicker()').click();
+    await p.locator('#runner-ex-picker-q').click(); await p.keyboard.type('lat');
+    r.inPicker = await state();
+    await esc(); r.swap = await state();
+    // + Add exercise after, focus dropped to the page, Escape
+    await sheetBtn("_openRunnerExPicker('add')").click();
+    await p.evaluate(() => document.activeElement && document.activeElement.blur());
+    await esc(); r.add = await state();
+    // Superset with › (its view takes focus off the sheet), Escape
+    await sheetBtn('runnerExEditPickSS()').click();
+    r.inSS = await p.evaluate(() => _rExSSPicking && !document.getElementById('runner-ex-sets-input'));
+    await esc(); r.ss = await state();
+    r.ssPicking = await p.evaluate(() => _rExSSPicking);
+    // from the sheet itself Escape closes it, focus back on the card's Edit
+    await esc(); r.closed = await state();
+    r.session = await p.evaluate(() => { const e = runnerSession.exercises[0]; return { sets: e.sets, name: e.name }; });
+    await p.evaluate(() => closeDeckRunner());
+    const kept = (s) => s.open && !s.picker && s.sets === r.edited.sets && s.weight === r.edited.weight;
+    assert(r.edited.sets !== r.seed.sets && r.edited.weight !== r.seed.weight, 'the sheet holds unsaved sets and weight: ' + JSON.stringify([r.seed, r.edited]));
+    assert(r.inPicker.picker, 'the exercise picker is open: ' + JSON.stringify(r.inPicker));
+    assert(kept(r.swap) && /_openRunnerExPicker\(\)/.test(r.swap.focus), 'Escape in the picker steps back to the sheet, edits kept, focus on Change: ' + JSON.stringify(r.swap));
+    assert(kept(r.add) && /_openRunnerExPicker\('add'\)/.test(r.add.focus), 'Escape in the add picker steps back, focus on + Add exercise after: ' + JSON.stringify(r.add));
+    assert(r.inSS && kept(r.ss) && !r.ssPicking && /runnerExEditPickSS\(\)/.test(r.ss.focus), 'Escape in the superset picker steps back, focus on Superset with: ' + JSON.stringify(r.ss));
+    assert(!r.closed.open && /openRunnerExEdit/.test(r.closed.focus || ''), 'Escape from the sheet closes it, focus on the card\'s Edit: ' + JSON.stringify(r.closed));
+    assert(String(r.session.sets) === String(r.seed.sets), 'nothing was saved without Save: ' + JSON.stringify([r.session, r.seed]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

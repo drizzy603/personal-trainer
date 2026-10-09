@@ -10916,6 +10916,19 @@ function runnerExEditBackFromSS(){
   var sheet=document.getElementById('runner-ex-edit-sheet');
   if(sheet) sheet.innerHTML=_buildRunnerExEditHTML();
 }
+// Escape in the sheet's exercise or superset picker steps back to the sheet as its ‹ / Back
+// does, unsaved edits kept, focus on what opened the picker (it closed the whole sheet and
+// dropped them). False from the sheet itself: Escape closes it there.
+function _runnerExEditEscBack(){
+  var sheet=document.getElementById('runner-ex-edit-sheet'), sel;
+  if(!sheet) return false;
+  if(_rExSSPicking){ runnerExEditBackFromSS(); sel='[onclick*="runnerExEditPickSS()"]'; }
+  else if(document.getElementById('runner-ex-picker-q')){ sel=_rExPickMode==='add'?'[onclick*="_openRunnerExPicker(\'add\')"]':'[onclick*="_openRunnerExPicker()"]'; _closeRunnerExPicker(); }
+  else return false;
+  var b=sheet.querySelector('button'+sel);
+  if(b){ try{ b.focus({preventScroll:true}); }catch(e){} }
+  return true;
+}
 // By index, not by name: a name interpolated into an inline onclick breaks on
 // the first exercise with an apostrophe in it.
 function runnerExEditSetSSIdx(i){
@@ -20034,6 +20047,7 @@ document.addEventListener('keydown', function(e){
   if(!ovs.length) return;
   var top=ovs[ovs.length-1];
   e.preventDefault();
+  if(top.id==='runner-ex-edit-modal' && _runnerExEditEscBack()) return;   // a picker inside it steps back
   top.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
 });
 // When a sheet closes (Escape, its ✕, the backdrop) focus goes back to what was focused
