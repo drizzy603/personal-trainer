@@ -50,6 +50,12 @@
 // - R34 undoing the last set of a per-set lift puts the stepper back on the load it was logged at
 //   (a typed 230 top set is redone at 230, not the programme's 225); Log all's undo and removing an
 //   earlier set take the next set's target, and a lift without per-set loads is unchanged.
+// Review of round two (2026-10-09):
+// - T19 a reps or load edit with 'Also update my programme' on a lift of a top set and back-offs
+//   (two rows folded, or one row with per-set targets) reaches the run of sets the sheet showed,
+//   carried through the weeks as its own: back-off reps 8 -> 10 is [3,10,10,10] (it was 4x10 at the
+//   top set's 225), a back-off load 185 -> 190 moves the back-offs alone (it scaled every set from
+//   225: 155), a top-set edit leaves the back-offs, and a swap's typed load is the back-offs'.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1066,4 +1072,90 @@ run('R34 undoing a set of a per-set lift puts the stepper back on the load it wa
     assert(out.plain === 105, 'a lift without per-set loads keeps the typed load: ' + out.plain);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// T19: R29 merged a lift's two rows before the edit, and the engine then read the sheet's numbers
+// (the back-off set's) as the top set's: reps 10 became 4x10 at 225, a load of 190 scaled every
+// set from 225 (back-offs 155). A lift already one row with per-set targets did the same.
+const t19 = async (edit) => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (edit) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      // every week's Push: Bench as a top set and back-offs, +5 lb a working week (the deload 60%)
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      cr.weeks.forEach((w, j) => {
+        const dl = _isDeloadWk(w), k = (j - c) * 5, f = x => dl ? Math.round(x * 0.6 / 2.5) * 2.5 : x;
+        const bench = edit.oneRow
+          ? [{ name: 'Bench Press', sets: 4, reps: [3, 8, 8, 8], weights: [f(225 + k), f(185 + k), f(185 + k), f(185 + k)], weight: f(225 + k), isMain: true, rpe: 8 }]
+          : [{ name: 'Bench Press', sets: 1, reps: 3, weight: f(225 + k), isMain: true, rpe: 8 }];
+        w.push = bench.concat([{ name: 'Overhead Press', sets: 3, reps: 8, weight: 100, rpe: 7 }],
+          edit.oneRow ? [] : [{ name: 'Bench Press', sets: 3, reps: 8, weight: f(185 + k), rpe: 7 }],
+          [{ name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }]);
+      });
+      setCustomRoutine(cr);
+      const N = edit.name || 'Bench Press';
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.isMain ? ' main' : '');
+      const lift = j => (getCustomRoutine().weeks[j].push || []).filter(e => e.name === N || e.name === 'Bench Press').map(fmt);
+      const r = { c, dl: getCustomRoutine().weeks.map(w => _isDeloadWk(w)) };
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      const bi = runnerSession.exercises.findIndex(e => e.name === 'Bench Press');
+      runnerGoTo(bi); runnerEngaged = true;
+      if (edit.afterTop) { runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+      // the sheet's own fields and toggle
+      openRunnerExEdit(bi); await wait(20);
+      r.seed = ['runner-ex-reps-input', 'runner-ex-weight-input'].map(id => document.getElementById(id).value);
+      const type = (id, v) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+      if (edit.reps) type('runner-ex-reps-input', edit.reps);
+      if (edit.weight) type('runner-ex-weight-input', edit.weight);
+      if (edit.name) _rExEditName = edit.name;
+      runnerExEditToggleApply();
+      saveRunnerExEdit(); await wait(20);
+      r.weeks = getCustomRoutine().weeks.map((w, j) => lift(j));
+      closeDeckRunner(); await wait(20);
+      openDeckRunner('Push', true); await wait(20);
+      r.next = fmt(runnerSession.exercises.find(e => e.name === N));
+      closeDeckRunner(); await wait(20);
+      if (edit.useCoach) { _rtUseCoach('Push', 'Bench Press'); await wait(20); r.coach = lift(c); }
+      return r;
+    }, edit);
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('T19 a reps or load edit on a top set and back-offs reaches the sets the sheet showed', async () => {
+  // weeks before this one are untouched (two rows, or the one per-set row)
+  const two = (o, j) => { const k = (j - o.c) * 5; return ['Bench Press 1x3@' + (225 + k) + ' main', 'Bench Press 3x8@' + (185 + k)]; };
+  const one = (o, j) => { const k = (j - o.c) * 5; return ['Bench Press 4x[3,8,8,8]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main']; };
+  const early = (o, f) => o.weeks.slice(0, o.c).every((d, j) => JSON.stringify(d) === JSON.stringify((f || two)(o, j)));
+  // every working week from this one on: f(k), k the programme's own climb since this week
+  const working = (o, f, g) => o.weeks.slice(o.c).every((d, i) => o.dl[o.c + i] || JSON.stringify(d) === JSON.stringify([f(i * 5)])) && early(o, g);
+  // (a) after the top set (the sheet shows the back-off's 8 x 185), reps 10
+  const a = await t19({ afterTop: true, reps: 10, useCoach: true });
+  assert(JSON.stringify(a.seed) === '["8","185"]', 'the sheet shows the back-off set: ' + JSON.stringify(a.seed));
+  assert(working(a, k => 'Bench Press 4x[3,10,10,10]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main'),
+    'the back-offs take 10 reps at their loads, the top set keeps its triple: ' + JSON.stringify(a.weeks));
+  const dl = a.dl.indexOf(true);
+  assert(dl > a.c && /^Bench Press 4x\[3,8,8,8\]/.test(a.weeks[dl][0]), 'the deload keeps its own reps: ' + JSON.stringify(a.weeks[dl]));
+  assert(a.next === 'Bench Press 4x[3,10,10,10]@[225,185,185,185] main', 'the next session: ' + a.next);
+  assert(JSON.stringify(a.coach) === JSON.stringify(['Bench Press 4x[3,8,8,8]@[225,185,185,185] main']), 'Use coach’s gives the coach’s sets back: ' + JSON.stringify(a.coach));
+  // (b) after the top set, the back-off load 185 -> 190: the back-offs move and keep the climb
+  const b = await t19({ afterTop: true, weight: 190 });
+  assert(working(b, k => 'Bench Press 4x[3,8,8,8]@[' + [225 + k, 190 + k, 190 + k, 190 + k] + '] main'),
+    'the back-offs go to 190 and climb from it, the top set is left: ' + JSON.stringify(b.weeks));
+  // (c) a lift that is already one row with per-set targets (the coach's, or merged by an earlier edit)
+  const d = await t19({ afterTop: true, reps: 10, oneRow: true });
+  assert(working(d, k => 'Bench Press 4x[3,10,10,10]@[' + [225 + k, 185 + k, 185 + k, 185 + k] + '] main', one),
+    'one per-set row: the same, its loads kept: ' + JSON.stringify(d.weeks));
+  // (d) before any set (the sheet shows the top set): load 230 moves the top set alone
+  const e = await t19({ afterTop: false, weight: 230 });
+  assert(JSON.stringify(e.seed) === '["3","225"]' && working(e, k => 'Bench Press 4x[3,8,8,8]@[' + [230 + k, 185 + k, 185 + k, 185 + k] + '] main'),
+    'a top-set load leaves the back-offs: ' + JSON.stringify([e.seed, e.weeks]));
+  // (e) a swap with a load typed on the back-off: the new lift's back-offs take it, the top set its share
+  const f = await t19({ afterTop: true, name: 'Machine Chest Press', weight: 100 });
+  assert(JSON.stringify(f.weeks[f.c]) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[122.5,100,100,100] main']) && early(f),
+    'the typed load is the back-offs’: ' + JSON.stringify(f.weeks[f.c]));
+  assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
 });

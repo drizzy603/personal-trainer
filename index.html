@@ -10841,7 +10841,7 @@ function openRunnerExEdit(idx){
   _rExEditReps   =parseInt(runnerReps[ex.name])>0?parseInt(runnerReps[ex.name]):(parseInt(_tr)>0?parseInt(_tr):'');
   _rExEditRepsHint=(_rExEditReps===''&&_tr!=null)?String(_tr):'';
   _rExEditWeight =runnerWeights[ex.name]!=null?runnerWeights[ex.name]:(parseFloat(ex.weight)||0);
-  _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets};
+  _rExEditSeed   ={w:_rExEditWeight, r:_rExEditReps, s:_rExEditSets, at:_ti};   // at: the set whose numbers these are
   _rExEditApply  =false;   // "Also update my programme" is a per-edit choice, never left on from the last sheet
   // ex.ss means "paired with the NEXT card", so the current partner is the one
   // sitting below. The sheet lets you choose a different one.
@@ -12383,6 +12383,57 @@ function _progMergeLift(w, slot, name){
   for(var k=at.length-1;k>=1;k--) list.splice(at[k],1);
   return true;
 }
+// A row's sets as runs of equal sets (the same reps and load, set after set): a top set and its
+// back-offs, as one row with per-set targets or two rows merged above, are two runs. A per-set
+// load of 0 is the row's own load, as the runner reads it.
+function _progRuns(r){
+  var n=Math.max(1, parseInt(r.sets)||1), base=parseFloat(r.weight)||0, reps=[], w=[], runs=[];
+  var at=function(a, i){ return a[Math.min(i, a.length-1)]; };
+  for(var i=0;i<n;i++){
+    reps.push(Array.isArray(r.reps) ? (r.reps.length ? at(r.reps, i) : '8-10') : r.reps);
+    var x=(Array.isArray(r.weights) && r.weights.length) ? parseFloat(at(r.weights, i)) : base;
+    w.push(x>0 ? x : base);
+  }
+  for(var j=0;j<n;j++){
+    var last=runs[runs.length-1];
+    if(last && String(last.reps)===String(reps[j]) && last.w===w[j]) last.at.push(j);
+    else runs.push({at:[j], reps:reps[j], w:w[j]});
+  }
+  return {reps:reps, w:w, runs:runs};
+}
+// The runner's Edit sheet shows the numbers of the set on screen. On a row of several runs its
+// reps or load edit is that run's (k, counted from the first set): carried through the weeks as a
+// row of its own would be (each later week's run k, its own climb, deloads their share), then
+// written back set by set. Applied to the whole row, a back-off edit rewrote every set at the top
+// set's load (185x8 became 225x10), and a back-off load scaled from the top set's.
+function _progEditRun(cr, slot, name, c, k, ed, o){
+  var W=cr.weeks, tmp=' '+name+' (run) ', made=[], n=0;   // a name no lift has: names are trimmed
+  for(var j=c;j<W.length;j++){
+    var list=W[j]&&W[j][slot], r=_progRow(W[j], slot, name); if(!r || !Array.isArray(list)) continue;
+    var g=_progRuns(r), run=g.runs[k]; if(!run) continue;
+    var t={name:tmp, sets:run.at.length, reps:run.reps, weight:run.w, rpe:r.rpe};
+    list.push(t); made.push({list:list, r:r, g:g, run:run, t:t});
+  }
+  if(made.length && _progRow(W[c], slot, tmp)){
+    var t0=made[0].t, repsOld=t0.reps;
+    if(ed.reps!==undefined && String(ed.reps)!==String(t0.reps)) _progSetScheme(cr, slot, tmp, c, 'reps', ed.reps, o);
+    if(ed.weight>0 && Math.abs(ed.weight-(parseFloat(t0.weight)||0))>0.05) _progCarryLoad(cr, slot, tmp, c, ed.weight, {markOwner:true, repsOld:repsOld});
+  }
+  var same=function(a){ return a.every(function(x){ return String(x)===String(a[0]); }); };
+  made.forEach(function(m){
+    m.list.splice(m.list.indexOf(m.t), 1);
+    var nr=m.t.reps, nw=parseFloat(m.t.weight)||0;
+    if(String(nr)===String(m.run.reps) && Math.abs(nw-m.run.w)<0.01) return;
+    var reps=m.g.reps.slice(), w=m.g.w.slice();
+    m.run.at.forEach(function(i){ reps[i]=nr; w[i]=nw; });
+    _markRec(m.r);
+    m.r.reps=same(reps) ? reps[0] : reps;
+    if(same(w)){ delete m.r.weights; m.r.weight=w[0]; }
+    else { m.r.weights=w; if(m.run.at[0]===0) m.r.weight=w[0]; }   // the row's load is its first set's
+    _progUnmark(m.r); n++;
+  });
+  return n;
+}
 // Write a session edit into the programme through the engine: this week and
 // every later week of the same day, keeping the climb. Only what the owner
 // changed in the sheet is written (a mid-session stepper bump is not an edit).
@@ -12404,17 +12455,27 @@ function _runnerApplyToProgramme(op, p){
     if(op==='rename'){
       var name=p.oldName;
       var st=_progRow(cr.weeks[c], slot, name); if(!st) return false;
+      var ti=function(g){ return Math.min(Math.max(0, parseInt(p.at,10)||0), g.w.length-1); };   // the set on screen
       if(p.ex.name!==p.oldName){
-        var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, t.weight?p.ex.weight:0, o);
+        // A load typed for a back-off set is that set's: the new lift keeps the row's shape at it.
+        var Nsw=t.weight?p.ex.weight:0, g0=_progRuns(st), L0=g0.w[ti(g0)], P0=parseFloat(st.weight)||0;
+        if(Nsw>0 && L0>0 && P0>0) Nsw=Nsw*P0/L0;
+        var sw=_progSwap(cr, slot, p.oldName, p.ex.name, c, Nsw, o);
         if(sw===-1) return -1;
         n+=sw; name=p.ex.name; st=_progRow(cr.weeks[c], slot, name);
         if(!st) return n;
       }
       var repsOld=JSON.parse(JSON.stringify(st.reps===undefined?null:st.reps));
       if(t.sets && String(p.ex.sets)!==String(st.sets)) n+=_progSetScheme(cr, slot, name, c, 'sets', p.ex.sets, o);
-      if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
-      if(p.ex.name===p.oldName && t.weight && p.ex.weight>0 && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
-        n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
+      var load=p.ex.name===p.oldName && t.weight && p.ex.weight>0;
+      var g=(t.reps || load) ? _progRuns(st) : null, k=-1;
+      if(g && g.runs.length>1) g.runs.forEach(function(x, i){ if(x.at.indexOf(ti(g))>=0) k=i; });
+      if(k>=0) n+=_progEditRun(cr, slot, name, c, k, {reps:t.reps?p.ex.reps:undefined, weight:load?p.ex.weight:0}, o);
+      else {
+        if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
+        if(load && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
+          n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
+      }
     } else if(op==='add'){
       var ex=p.ex, N=_knownLoadLb(ex.name, cr, c);
       var a=_progAdd(cr, slot, {name:ex.name, sets:ex.sets, reps:ex.reps, rpe:ex.rpe||7, weight:N}, c, p.after, {firstIsMain:false});
@@ -12610,7 +12671,7 @@ function saveRunnerExEdit(){
     }
   }
   if(_rExEditApply) _runnerApplyToProgramme('rename', {oldName:oldName, ex:{name:newName, sets:ex.sets, reps:ex.reps, weight:ex.weight},
-    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}});
+    touched:{sets:String(ex.sets)!==String(_rExEditSeed?_rExEditSeed.s:ex.sets), reps:_repsTouched, weight:ex.weight!==_seedW}, at:_rExEditSeed?_rExEditSeed.at:0});
   _bwLiftCache={};
   closeRunnerExEdit(); _saveRunnerDraft(); paintRunner();
 }
