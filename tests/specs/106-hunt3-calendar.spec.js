@@ -906,3 +906,79 @@ run('T15: a rename into a lift that has a working weight sets it from the rename
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T16 (hunt 5): a log moved back to the front (a date mis-picked on the day sheet and fixed, or a
+// workout filed on the wrong day moved to today) no longer took the working weight back when the
+// log it passed had only met the coach's or the deload's load, or was from before the stamp: the
+// same logs ended at 145 instead of 150, and the coach was told 145. Moved to the front, a log takes
+// over as a fresh log would; a load written after the log it passed still stays.
+run('T16: a log moved back to the front takes the working weight over, past a log that met the coach\'s load or one from before the stamp', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), cr0 = JSON.stringify(getCustomRoutine());
+      const W = () => getWeights()['Bench Press'];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: w }] });
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); log(addDays(T, -20), 160); };
+      // the day sheet's Date field, picked (the iOS wheel, a calendar: a change with no keys)
+      const pick = async (from, to) => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(from); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + from + '"]').click(); await wait(40);
+        const f = document.querySelector('#cdBody input[type=date]'); f.value = to; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const r = {};
+      // the coach's 145 (or the plateau deload's), a log that met it, a newer log at 150 picked to
+      // a week ago and back
+      for (const k of ['coach', 'deload']) {
+        reset();
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); else _writeLoadLocal('Bench Press', 145);
+        log(addDays(T, -5), 145); log(addDays(T, -2), 150);
+        const id = getSessions().find(s => s.date === addDays(T, -2)).id;
+        r[k] = { start: W(), metStamp: JSON.stringify(getSessions().find(s => s.date === addDays(T, -5)).wSet) };
+        await pick(addDays(T, -2), addDays(T, -7)); r[k].behind = W();
+        await pick(addDays(T, -7), addDays(T, -2)); r[k].back = W(); r[k].line = benchLine(); r[k].prescribed = _prescribedLb('Bench Press');
+        r[k].stamp = JSON.stringify(getSessions().find(s => s.id === id).wSet);
+        deleteSession(id); await wait(20); r[k].deleted = W();
+      }
+      // logs from before the stamp: the older one at the programme's load
+      reset();
+      const planned = parseFloat((getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press').weight);
+      const mk = (id, date, w) => ({ id, date, week: weekForDate(date), type: 'Push', label: 'Push', prs: [], exercises: [{ name: 'Bench Press', sets: 3, reps: [8, 8, 8], weight: w, weightLog: [w, w, w], isMain: true }] });
+      lsSet('kt_sessions', [mk(9002, addDays(T, -2), planned + 5), mk(9001, addDays(T, -5), planned)]); recomputePRs(); lsSet('kt_weights', { 'Bench Press': planned + 5 });
+      r.legacy = { planned };
+      await pick(addDays(T, -2), addDays(T, -7)); r.legacy.behind = W();
+      await pick(addDays(T, -7), addDays(T, -2)); r.legacy.back = W();
+      // today's workout through the runner at 150, filed with the Log date left on 9 days ago (a log
+      // at the deload's 145 six days ago is newer, so it set nothing), then moved to today
+      reset(); _writeLoadLocal('Bench Press', 145); log(addDays(T, -6), 145);
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push'); await wait(20);
+      runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerWeights['Bench Press'] = 150; runnerLogAllAtTarget(); await wait(20);
+      runnerSessionDate = addDays(T, -9); const de = document.getElementById('runner-date'); if (de) de.value = addDays(T, -9);
+      runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+      const f = getSessions().find(s => s.date === addDays(T, -9));
+      r.misdated = { filed: f ? f.exercises.find(e => e.name === 'Bench Press').weight : null, afterFinish: W() };
+      await pick(addDays(T, -9), T);
+      r.misdated.today = W(); r.misdated.line = benchLine();
+      // a load the coach wrote after the logs stays through a round trip
+      reset(); executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); log(addDays(T, -5), 145); log(addDays(T, -2), 150);
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 140 });
+      await pick(addDays(T, -2), addDays(T, -7)); await pick(addDays(T, -7), addDays(T, -2));
+      r.written = W();
+      return r;
+    });
+    ['coach', 'deload'].forEach(k => {
+      const x = out[k];
+      assert(x.start === 150 && x.metStamp === '{}' && x.behind === 145, k + ': set up, and the move behind hands the met log\'s 145 back: ' + JSON.stringify(x));
+      assert(x.back === 150 && x.line === '  Bench Press: 150' && x.prescribed === 150, k + ': moved back to the front, it takes 150 back: ' + JSON.stringify(x));
+      assert(x.stamp === '{"Bench Press":[null,150]}' && x.deleted === 145, k + ': its stamp says so, and deleting it gives 145 back: ' + JSON.stringify(x));
+    });
+    assert(out.legacy.behind === out.legacy.planned && out.legacy.back === out.legacy.planned + 5, 'logs from before the stamp: there and back: ' + JSON.stringify(out.legacy));
+    assert(out.misdated.filed === 150 && out.misdated.afterFinish === 145 && out.misdated.today === 150 && out.misdated.line === '  Bench Press: 150', 'a workout filed on the wrong day, moved to today, takes over: ' + JSON.stringify(out.misdated));
+    assert(out.written === 140, 'a load the coach wrote after the logs stays: ' + out.written);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

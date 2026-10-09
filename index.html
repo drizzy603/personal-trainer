@@ -4252,7 +4252,10 @@ function _workingWeightsFollow(before, moved){
     var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
     if(b==null || a===b || Math.abs(cur-b)>0.01) return;
     var st=x.s && x.s.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved);
-    if(st ? !(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01) : _planHolds(n, cur, x.s && x.s.week)) return;
+    // Moved to the front, a log takes over whatever the log it passed set (a log that only met the
+    // coach's or the deload's load, or one from before the stamp, set nothing): a date mis-picked
+    // and fixed, or a workout filed on the wrong day moved to today, left the passed log's load.
+    if(!front && (st ? !(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01) : _planHolds(n, cur, x.s && x.s.week))) return;
     var to=(mine && mine[0]!=null && !front) ? mine[0] : a;
     prev[n]=w[n]; any=true;
     if(to!=null) w[n]=to; else delete w[n];
