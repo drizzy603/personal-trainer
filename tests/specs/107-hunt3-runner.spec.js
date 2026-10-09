@@ -56,6 +56,10 @@
 //   carried through the weeks as its own: back-off reps 8 -> 10 is [3,10,10,10] (it was 4x10 at the
 //   top set's 225), a back-off load 185 -> 190 moves the back-offs alone (it scaled every set from
 //   225: 155), a top-set edit leaves the back-offs, and a swap's typed load is the back-offs'.
+// - T20 R29's one row survives a coach rewrite that writes the lift as two rows again: +1 set stays
+//   5 sets (it became 8), a removed lift stays out and Restore brings it back whole, a swap keeps
+//   the coach's back-off out, Use coach's gives all the coach's sets; rows the owner removed or
+//   edited one by one still match the coach's rows one by one.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1157,5 +1161,84 @@ run('T19 a reps or load edit on a top set and back-offs reaches the sets the she
   const f = await t19({ afterTop: true, name: 'Machine Chest Press', weight: 100 });
   assert(JSON.stringify(f.weeks[f.c]) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[122.5,100,100,100] main']) && early(f),
     'the typed load is the back-offs’: ' + JSON.stringify(f.weeks[f.c]));
+  assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
+});
+
+// T20: R29 made one row (or one removed row) stand for the coach's two, and the coach merge mapped
+// it onto the coach's first row alone: a rewrite in the coach's two-row style brought the second back.
+const t20 = async (edit) => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async (edit) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const coachPush = () => [
+        { name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 },
+        { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 },
+        { name: 'Bench Press', sets: 3, reps: 8, weight: 185, rpe: 7 },
+        { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }
+      ];
+      const cr = getCustomRoutine(), c = currentWeek - 1;
+      cr.weeks.forEach(w => { w.push = coachPush(); });
+      setCustomRoutine(cr);
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.isMain ? ' main' : '') + (e.ss ? ' ss' : '');
+      const day = j => (getCustomRoutine().weeks[j].push || []).map(fmt);
+      const r = { c };
+      if (edit.routines) {
+        // Routines, row by row: both rows removed one after the other, or the top set's load edited
+        if (edit.routines === 'remove2') { _commitRoutine(x => _progRemove(x, 'push', 'Bench Press', c)); _commitRoutine(x => _progRemove(x, 'push', 'Bench Press', c)); }
+        else _commitRoutine(x => _progCarryLoad(x, 'push', 'Bench Press', c, 230, { markOwner: true }));
+      } else {
+        // the runner's folded card, 'Also update my programme' on
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        openRunnerExEdit(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); await wait(20);
+        runnerExEditToggleApply();
+        if (edit.sets) { _rExEditSets = edit.sets; saveRunnerExEdit(); }
+        else if (edit.name) { _rExEditName = edit.name; saveRunnerExEdit(); }
+        else runnerExRemove();
+        await wait(20);
+        closeDeckRunner(); await wait(20);
+      }
+      r.before = day(c);
+      // the coach rebuilds this week and the next in its own style
+      const W = getCustomRoutine().weeks;
+      const res = executeCoachTool('update_routine_weeks', { weeks: [c, c + 1].map(j => ({ wk: j + 1, bName: W[j].bName, bColor: W[j].bColor, push: coachPush() })) });
+      r.kept = res.keptUserEdits;
+      r.after = [day(c), day(c + 1)];
+      openDeckRunner('Push', true); await wait(20);
+      r.next = runnerSession.exercises.map(fmt);
+      closeDeckRunner(); await wait(20);
+      if (edit.restore) { _rtRestoreRemoved('Push'); await wait(20); r.restored = day(c); }
+      if (edit.useCoach) { _rtUseCoach('Push', edit.useCoach); await wait(20); r.coach = day(c); }
+      return r;
+    }, edit);
+    out.errors = app.errors.slice();
+    return out;
+  } finally { await app.close(); }
+};
+
+run('T20 a coach rewrite in two rows keeps the runner’s one row of a lift', async () => {
+  const rest = ['Overhead Press 3x8@100', 'Lateral Raise 3x15@20'], coach4 = 'Bench Press 4x[3,8,8,8]@[225,185,185,185] main';
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  // +1 set: one row of five sets, kept as the owner's; Use coach's gives the coach's four
+  const a = await t20({ sets: 5, useCoach: 'Bench Press' });
+  const five = ['Bench Press 5x[3,8,8,8]@[225,185,185,185] main'].concat(rest);
+  assert(same(a.before, five) && a.after.every(d => same(d, five)) && same(a.kept, ['Bench Press']), 'the five sets stay one row: ' + JSON.stringify([a.before, a.after, a.kept]));
+  assert(same(a.next, five), 'the next session has five Bench sets, not eight: ' + JSON.stringify(a.next));
+  assert(same(a.coach, [coach4].concat(rest)), 'Use coach’s gives back all the coach’s sets: ' + JSON.stringify(a.coach));
+  // removed: it stays out, as the coach is told, and Restore brings the whole lift back
+  const b = await t20({ restore: true });
+  assert(b.after.every(d => !d.some(t => /^Bench/.test(t))) && same(b.kept, ['-Bench Press']), 'the removed lift stays out: ' + JSON.stringify([b.after, b.kept]));
+  assert(same(b.restored, [coach4].concat(rest)), 'Restore brings back every set of it: ' + JSON.stringify(b.restored));
+  // swapped: the machine stays alone; Use coach's on it gives the coach's Bench back whole
+  const d = await t20({ name: 'Machine Chest Press', useCoach: 'Machine Chest Press' });
+  assert(d.after.every(x => !x.some(t => /^Bench/.test(t)) && /^Machine Chest Press 4x/.test(x[0])), 'the coach’s back-off row stays out: ' + JSON.stringify(d.after));
+  assert(same(d.coach, [coach4].concat(rest)), 'Use coach’s gives the coach’s Bench back: ' + JSON.stringify(d.coach));
+  // row by row in Routines: two rows removed stay out; an edited top set keeps the coach's back-off row
+  const e = await t20({ routines: 'remove2' });
+  assert(e.after.every(x => !x.some(t => /^Bench/.test(t))), 'two removed rows stay out: ' + JSON.stringify(e.after));
+  const f = await t20({ routines: 'top' });
+  assert(f.after.every(x => same(x, ['Bench Press 1x3@230 main', 'Overhead Press 3x8@100 ss', 'Bench Press 3x8@185', 'Lateral Raise 3x15@20'])),
+    'an edited top-set row keeps its back-off row: ' + JSON.stringify(f.after));
   assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
 });

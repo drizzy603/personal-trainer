@@ -18139,6 +18139,26 @@ function _executeCoachToolRaw(name,input){
           var old=Array.isArray(_prevW[k])?_prevW[k]:[];
           if(w[k]===undefined) return;   // kept as stored above, marks and all
           var neu=Array.isArray(weekObj[k])?weekObj[k]:(weekObj[k]=[]);
+          // One owner's row (or one removed row) can stand for a lift the coach writes twice: a top set
+          // and its back-offs made one row by the runner's 'Also update my programme'. The owner's row
+          // replaced the coach's first row alone, so the second came back beside it (8 sets), and a
+          // removal took the first alone (the lift came back). The coach's rows fold into one first,
+          // as the runner folds them (Restore brings one row of a lift back, Use coach's all its sets).
+          var _ro0=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [], _fold={};
+          var _stand=function(nm){ return old.filter(function(x){ return x && (x.name===nm || (x.rec && x.rec.name===nm)); }).length
+            + _ro0.filter(function(e){ return e && e.row && e.row.name===nm; }).length; };
+          old.forEach(function(x){ if(x && x.rec!==undefined) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
+          _ro0.forEach(function(e){ if(e && e.row && _stand(e.row.name)===1) _fold[e.row.name]=1; });
+          Object.keys(_fold).forEach(function(nm){
+            if(neu.filter(function(y){ return y && y.name===nm; }).length<2 || _progMergeLift(weekObj, k, nm)) return;
+            // rows that cannot be one (a load and 'your load'): the owner's one row stands for them all
+            for(var i=0, f=-1; i<neu.length; i++){
+              if(!neu[i] || neu[i].name!==nm) continue;
+              if(f<0){ f=i; continue; }
+              if(neu[i-1] && neu[i-1].ss) neu[i-1].ss=false;
+              neu.splice(i--, 1);
+            }
+          });
           old.forEach(function(orow, oi){
             // a mark that only moved the main tag is no edit of the lift: the coach's row stands
             if(!orow || orow.rec===undefined || _progTagOnly(orow)) return;
