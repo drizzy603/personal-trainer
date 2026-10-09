@@ -10360,48 +10360,69 @@ function setUnitW(u){
 // launch sweep keeps a programme that reads as kg on its grid (one launch in lb is no decision).
 // What moved is kept on the device (kt_unit_regrid), so the switch back to kg gives every load
 // not changed since its exact kg value (a round trip read 106.5 for 106 kg).
+// The switch is no undo point: Restore previous programme (a coach reply's Undo) moves onto the
+// new plates in place, under its own scope. Taken as one, it hid the reply's Undo and Restore
+// previous gave back the programme from before the switch, not from before the reply.
 function _unitsRegrid(to){
-  if(!hasCustomRoutine()) return;
   // a device-only note, read and written quietly (a failed write is no lost training data)
   var mem=null; try{ mem=JSON.parse(localStorage.getItem('kt_unit_regrid')||'null'); }catch(e){}
   var rows=(mem && Array.isArray(mem.rows)) ? mem.rows : [];
   try{ localStorage.removeItem('kt_unit_regrid'); }catch(e){}
+  var rawB=null, bk=null; try{ rawB=localStorage.getItem('kt_routine_backup'); bk=rawB?JSON.parse(rawB):null; }catch(e){ bk=null; }
+  if(!bk || !Array.isArray(bk.weeks)) bk=null;
+  var putB=function(s){ try{ localStorage.setItem('kt_routine_backup', s); delete _lsCache['kt_routine_backup']; _backupDirty=true; return true; }catch(e){ return false; } };
   if(to==='lb'){
-    var lbP=function(v){ return (v>0 && !_onPlateGrid(v, false)) ? Math.max(2.5, Math.round(v/2.5)*2.5) : v; }, moved=[];
-    var n=_commitRoutine(function(cr){
-      moved=[];
-      _unitHolders(cr, function(h, m){
-        var P=parseFloat(h.weight)||0, hit=false;
-        if(lbP(P)!==P){ m.w=[P, lbP(P)]; h.weight=m.w[1]; hit=true; }
-        if(Array.isArray(h.weights)){
-          var nw=h.weights.map(function(x){ var v=parseFloat(x)||0; return lbP(v)!==v ? lbP(v) : x; });
-          if(JSON.stringify(nw)!==JSON.stringify(h.weights)){ m.ws=[h.weights, nw]; h.weights=nw; hit=true; }
-        }
-        if(hit) moved.push(m);
-      });
-      return moved.length;
-    }, {scope:'units', noRender:true, undoLabel:'Programme loads moved onto lb plates'});
-    if(n>0){ try{ localStorage.setItem('kt_unit_regrid', JSON.stringify({rows:moved})); }catch(e){} }
+    var moved=[], bMoved=bk?_regridLb(bk):[], bNew=bMoved.length?JSON.stringify(bk):null;
+    if(bNew && !putB(bNew)){ bNew=null; bMoved=[]; }
+    if(hasCustomRoutine()) _commitRoutine(function(cr){ moved=_regridLb(cr); return moved.length; }, {keepBackup:true, noRender:true, undoLabel:'Programme loads moved onto lb plates',
+      // the restore point goes back with it, while it is still the one the switch moved
+      onUndo:function(){ try{ if(bNew && localStorage.getItem('kt_routine_backup')===bNew) putB(rawB); }catch(e){} }});
+    bMoved.forEach(function(m){ m.b=1; });   // the restore point's own
+    var all=moved.concat(bMoved);
+    if(all.length){ try{ localStorage.setItem('kt_unit_regrid', JSON.stringify({rows:all})); }catch(e){} }
     return;
   }
   if(!rows.length) return;
-  _commitRoutine(function(cr){
-    var n=0, at={}, done=[];
-    var key=function(m, p){ return m.j+'|'+m.k+'|'+(p||m.p)+'|'+m.n; };
-    _unitHolders(cr, function(h, m){ if(!at[key(m)]) at[key(m)]=h; });
-    var put=function(h, m){
-      if(!h || done.indexOf(h)>=0) return;
-      var hit=false;
-      if(m.w && Math.abs((parseFloat(h.weight)||0)-m.w[1])<0.01){ h.weight=m.w[0]; hit=true; }
-      if(m.ws && JSON.stringify(h.weights)===JSON.stringify(m.ws[1])){ h.weights=m.ws[0]; hit=true; }
-      if(hit){ done.push(h); n++; }
-    };
-    // The rows first; then the coach's kept originals and removed rows, where they are or back
-    // on the day as the row (Use coach's, Restore or Reset in lb).
-    rows.forEach(function(m){ if(m && m.p==='row') put(at[key(m)], m); });
-    rows.forEach(function(m){ if(m && m.p!=='row') put(at[key(m)] || at[key(m, 'row')], m); });
-    return n;
-  }, {scope:'units', noRender:true});
+  if(hasCustomRoutine()) _commitRoutine(function(cr){ return _regridBack(cr, rows, false); }, {keepBackup:true, noRender:true});
+  if(bk && _regridBack(bk, rows, true)>0) putB(JSON.stringify(bk));
+}
+// A load off the lb plate grid onto the nearest 2.5 lb (kg plates read 159.8 lb).
+function _lbPlateOf(v){ return (v>0 && !_onPlateGrid(v, false)) ? Math.max(2.5, Math.round(v/2.5)*2.5) : v; }
+// Every load of a programme onto lb plates, in place; the moves, each {j,k,p,n,w:[before, after]}
+// (ws: per-set loads).
+function _regridLb(cr){
+  var moved=[];
+  _unitHolders(cr, function(h, m){
+    var P=parseFloat(h.weight)||0, hit=false;
+    if(_lbPlateOf(P)!==P){ m.w=[P, _lbPlateOf(P)]; h.weight=m.w[1]; hit=true; }
+    if(Array.isArray(h.weights)){
+      var nw=h.weights.map(function(x){ var v=parseFloat(x)||0; return _lbPlateOf(v)!==v ? _lbPlateOf(v) : x; });
+      if(JSON.stringify(nw)!==JSON.stringify(h.weights)){ m.ws=[h.weights, nw]; h.weights=nw; hit=true; }
+    }
+    if(hit) moved.push(m);
+  });
+  return moved;
+}
+// The moves put back on the way to kg, each on the holder at its place that still holds what the
+// switch wrote. The programme's own notes first (bk: Restore previous programme's, m.b), then the
+// other's: a restore point taken since, or swapped in, is a copy of the other.
+function _regridBack(cr, rows, bk){
+  var n=0, at={}, done=[];
+  var key=function(m, p){ return m.j+'|'+m.k+'|'+(p||m.p)+'|'+m.n; };
+  _unitHolders(cr, function(h, m){ if(!at[key(m)]) at[key(m)]=h; });
+  var put=function(h, m){
+    if(!h || done.indexOf(h)>=0) return;
+    var hit=false;
+    if(m.w && Math.abs((parseFloat(h.weight)||0)-m.w[1])<0.01){ h.weight=m.w[0]; hit=true; }
+    if(m.ws && JSON.stringify(h.weights)===JSON.stringify(m.ws[1])){ h.weights=m.ws[0]; hit=true; }
+    if(hit){ done.push(h); n++; }
+  };
+  var own=function(m){ return !!m.b===!!bk; }, ord=rows.filter(function(m){ return m && own(m); }).concat(rows.filter(function(m){ return m && !own(m); }));
+  // The rows first; then the coach's kept originals and removed rows, where they are or back
+  // on the day as the row (Use coach's, Restore or Reset in lb).
+  ord.forEach(function(m){ if(m.p==='row') put(at[key(m)], m); });
+  ord.forEach(function(m){ if(m.p!=='row') put(at[key(m)] || at[key(m, 'row')], m); });
+  return n;
 }
 // Every load a programme holds, with where it is: each row, the coach's original kept on an
 // edited row (rec: "Use coach's" and Reset write it back), and the rows the owner removed
@@ -11514,7 +11535,9 @@ function _commitRoutine(mutate, o){
   if(!cr || !Array.isArray(cr.weeks)) return false;
   var res=mutate(cr);
   if(res===false || res===-1 || res===0) return res;
-  if(!o.scope || o.scope!==_routineScope){
+  // o.keepBackup: no undo point (a units switch moved the plates under a coach reply's Undo and
+  // Restore previous programme, which then gave back the switch, not the reply)
+  if(!o.keepBackup && (!o.scope || o.scope!==_routineScope)){
     try{ var prev=JSON.parse(raw); if(prev && prev.weeks && prev.weeks.length){ lsSet('kt_routine_backup', prev); _setBackupScope(o.scope||''); } }catch(e){}
     _routineScope=o.scope||null;
   }

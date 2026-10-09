@@ -1082,3 +1082,54 @@ seq('T04: an opener removed on an older page comes back paired only with its own
   const coach = await probe('coach');
   assert(coach.add.every(x => x === unpaired) && coach.restore.every(x => x === unpaired), 'its partner gone from the programme: unpaired: ' + JSON.stringify(coach));
 });
+
+// T03 + T48 (regression from R08): the switch to lb took the programme's undo point: a coach
+// reply's PLAN CHANGES Undo disappeared and Restore previous programme gave back the programme from
+// before the switch, not from before the reply. The switch is no undo point; the restore point
+// moves onto the new plates with the programme (and back to its exact kg loads), and the switch's
+// own Undo puts both back. A kg owner's coach reply moves Bench from 72.5 to 80 kg.
+seq('T03 + T48: a units switch keeps a coach reply\'s Undo and the programme from before it', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(kgR), kt_unit_w: 'kg', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, sc = 'coach:turn:t03';
+      const bench = (cr) => fmtW((cr || getCustomRoutine()).weeks[c].push.find(e => e.name === 'Bench Press').weight);
+      const unit = async (u) => { switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === u).click(); await wait(30); };
+      const offLb = (cr) => { let n = 0; cr.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0 && Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) > 0.01) n++; }))); return n; };
+      _coachTurnScope = sc;
+      const input = { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 80 };
+      const res = executeCoachTool('edit_programme_exercise', input);
+      _coachTurnScope = null;
+      coachMessages.push({ role: 'assistant', content: 'Bench is 80 kg from this week.', _tools: [{ name: 'edit_programme_exercise', input, result: res, units: { w: 'kg', d: 'km' } }], _undo: sc });
+      saveCoachHistory();
+      const idx = coachMessages.length - 1, card = () => /Undo<\/button>/.test(_planChangeLedger(coachMessages[idx]._tools, idx));
+      const reply = localStorage.getItem('kt_routine'), point = localStorage.getItem('kt_routine_backup');
+      r.reply = { ok: res.ok, now: bench(), point: bench(lsGet('kt_routine_backup')), card: card() };
+      await unit('lb');
+      r.lb = { toast: document.getElementById('toast').textContent, card: card(), scope: localStorage.getItem('kt_routine_backup_scope'), now: bench(), point: bench(lsGet('kt_routine_backup')), off: offLb(getCustomRoutine()) + offLb(lsGet('kt_routine_backup')) };
+      await unit('kg');
+      r.kg = { card: card(), same: localStorage.getItem('kt_routine') === reply, pointSame: localStorage.getItem('kt_routine_backup') === point };
+      // the switch's own Undo puts the programme and the restore point back as they were
+      await unit('lb');
+      document.querySelector('#toast .kt-toast-undo').click(); await wait(20);
+      r.undone = { card: card(), same: localStorage.getItem('kt_routine') === reply, pointSame: localStorage.getItem('kt_routine_backup') === point };
+      await unit('kg');
+      // in lb the reply's Undo gives the programme from before the reply, on lb plates
+      await unit('lb');
+      _ledgerUndo(idx); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+      r.replyUndo = { now: bench(), off: offLb(getCustomRoutine()) };
+      return r;
+    });
+    assert(out.reply.ok && out.reply.now === '80 kg' && out.reply.point === '72.5 kg' && out.reply.card, 'the reply, its Undo and its restore point: ' + JSON.stringify(out.reply));
+    assert(/^Programme loads moved onto lb plates/.test(out.lb.toast) && out.lb.card && out.lb.scope === 'coach:turn:t03' && out.lb.now === '177.5 lb' && out.lb.point === '160 lb' && out.lb.off === 0, 'in lb the reply\'s Undo stays, its restore point on lb plates too: ' + JSON.stringify(out.lb));
+    assert(out.kg.card && out.kg.same && out.kg.pointSame, 'back in kg both are exactly as they were: ' + JSON.stringify(out.kg));
+    assert(out.undone.card && out.undone.same && out.undone.pointSame, 'the switch\'s Undo puts both back, the reply\'s Undo stays: ' + JSON.stringify(out.undone));
+    assert(out.replyUndo.now === '160 lb' && out.replyUndo.off === 0, 'the reply undone in lb: the programme from before it, on lb plates: ' + JSON.stringify(out.replyUndo));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
