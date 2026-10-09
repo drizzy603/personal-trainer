@@ -63,6 +63,9 @@
 //   2's week 1 BASE (and left out of round 2), since "today" anchors week 1 on this Monday and the
 //   backstop compared dates. It compares the time the round came in with the time the workout began,
 //   and the workout keeps its week and that week's block in the round it began in.
+// - T49 A round held for a workout swapped in (on the phone, after the watch queue) under the COMPLETE
+//   sheet, whose "Carry ... forward" was judged against round 1: the tap wrote round 1's carry into
+//   round 2 as the owner's edit and took the swap's restore point. The offer is judged again at the tap.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -1068,6 +1071,61 @@ run('T46: a final-week draft resumed after "Start round 2 today" keeps its week 
     assert(pre.week === 12, 'the draft was begun on week 12: ' + JSON.stringify(pre));
     assert(out.resumable && out.started && out.round[0] === 2 && out.round[1] === 1 && out.round[2], 'round 2 starts today, its week 1 anchored on this Monday: ' + JSON.stringify(out));
     assert(out.filed && out.filed.date === out.today && out.filed.week === 12 && out.filed.bName === pre.bName && !out.filed.inRound, 'the resumed workout is round 1\'s week 12 (' + pre.bName + '), not round 2\'s week 1 or its renamed week 12: ' + JSON.stringify(out.filed));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('T49: a Carry forward offered before a held round swapped in is not written into the new round', async () => {
+  const app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await withClock(app);
+    // Wednesday of a final week that tests (no deload): Bench Press 3 x 5 at 200 all programme long.
+    await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      __setNow(addDays(mon, 2) + 'T17:00:00');
+      localStorage.setItem('kt_week_monday', mon); localStorage.setItem('kt_final_since', mon);
+      const cr = getCustomRoutine();
+      cr.weeks[11].bName = 'TEST';
+      cr.weeks.forEach(w => (w.push || []).forEach(e => { if (e.name === 'Bench Press') { e.weight = 200; e.reps = 5; e.sets = 3; delete e.weights; } }));
+      setCustomRoutine(cr);
+    });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const bench = (w) => { const e = (getCustomRoutine().weeks[w].push || []).find(x => x.name === 'Bench Press'); return e ? { w: e.weight, edited: e.rec !== undefined } : null; };
+      await wait(1500);
+      // A slow bridge: the queue answers 400 ms after the finish, after the sheet has painted.
+      Capacitor.Plugins.TrovoWatch.getPendingSessions = () => new Promise(res => setTimeout(() => res({ sessions: [] }), 400));
+      switchTab('log'); switchLogSub('workout'); await wait(20);
+      openDeckRunner('Push', true); await wait(20);
+      // Round 2 comes due under the workout (set for this Monday, before it): held.
+      lsSet('kt_routine_next', { startsOn: _mostRecentMonday(), at: addDays(_mostRecentMonday(), -3) });
+      autoAdvanceWeek(); await wait(20);
+      const r = { held: [_nrHeld, getCustomRoutine().cycle || 1] };
+      runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press'));
+      runnerEngaged = true; runnerSetWeight(210);
+      [5, 5, 5].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+      runnerFinishSession(); await wait(200);
+      const btn = [...document.querySelectorAll('.kt-carry-row button')][0];
+      r.offer = btn ? btn.textContent : null;
+      r.cycleAtOffer = getCustomRoutine().cycle || 1;
+      await wait(900);   // round 2 swaps in under the sheet
+      r.swapped = [getCustomRoutine().cycle || 1, currentWeek];
+      r.before = bench(11); r.scope0 = localStorage.getItem('kt_routine_backup_scope');
+      const b2 = [...document.querySelectorAll('.kt-carry-row button')][0];
+      if (b2) b2.click();
+      await wait(50);
+      r.after = bench(11); r.week1 = bench(0);
+      r.scope = localStorage.getItem('kt_routine_backup_scope');
+      r.gone = !document.querySelector('.kt-carry-row');
+      r.toast = (document.getElementById('toast') || {}).textContent;
+      return r;
+    });
+    assert(out.held[0] && out.held[1] === 1, 'held while the workout is under way: ' + JSON.stringify(out.held));
+    assert(out.offer === 'Carry 210 lb forward on Bench Press' && out.cycleAtOffer === 1, 'the sheet offers the carry, judged against round 1: ' + JSON.stringify(out));
+    assert(out.swapped[0] === 2 && out.swapped[1] === 1 && /^round:/.test(out.scope0), 'round 2 swaps in under the sheet: ' + JSON.stringify(out));
+    assert(JSON.stringify(out.after) === JSON.stringify(out.before) && !out.after.edited && out.scope === out.scope0, 'the stale tap writes nothing into round 2 and keeps the swap\'s restore point: ' + JSON.stringify(out));
+    assert(out.gone && /Not carried/.test(out.toast), 'the offer goes, and says why: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

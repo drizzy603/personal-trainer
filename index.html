@@ -12094,6 +12094,15 @@ function carryForward(slot, name, lb, c, scope){
 }
 function _carryTap(btn, sessId){
   var d=btn&&btn.dataset; if(!d) return;
+  // Judged again at the tap: the COMPLETE sheet paints its offer once, and a round held for the
+  // workout swapped in under it (on the phone the swap waits for the watch queue), so the tap wrote
+  // round 1's carry into round 2's week as the owner's edit.
+  var _s0=sessId ? getSessions().filter(function(s){ return s && s.id===sessId; })[0] : null;
+  if(sessId && !(_s0 && _carryCandidates(_s0).some(function(k){ return k.slot===d.s && k.name===d.n && k.c===parseInt(d.c,10); }))){
+    var r0=btn.closest && btn.closest('.kt-carry-row'); if(r0) r0.remove();
+    showToast('Not carried — the plan has changed since this workout');
+    return;
+  }
   if(carryForward(d.s, d.n, parseFloat(d.w), parseInt(d.c,10), sessId?'carry:'+sessId:null) && sessId){
     // The session is done with once nothing is left to carry: marked on the first tap, the
     // second lift above the plan was never offered again.
