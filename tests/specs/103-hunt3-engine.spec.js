@@ -973,3 +973,59 @@ seq('T01: the owner\'s Make main survives a coach rewrite of the day; the coach\
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// T02 (regression from R03): a superset opener came back unpaired, with nothing recorded, when its
+// partner had been swapped (by the owner or by the coach) or a lift sat between them, and neither
+// Use coach's nor Reset gave the coach's superset back; brought back one by one the other way
+// round, the partner landed before its opener. The coach supersets Incline Dumbbell Press with
+// Cable Triceps Pushdown.
+seq('T02: a superset opener comes back beside its partner, or its swap; Use coach\'s and Reset give the coach\'s pair back', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const restore = async () => { openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines(); };
+      const reset = async () => { openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const runner = async () => { openDeckRunner('Push'); await wait(20); const x = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | '); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      r.coach = day();
+      // the owner: removes the opener, swaps its partner, Restore, then Use coach's on the swap
+      await remove('Incline Dumbbell Press');
+      openRoutines(); _rtOpenEdit('Push', 'Cable Triceps Pushdown'); _rtEdit.swapTo = 'Skull Crusher'; _rtSave(); await wait(10); closeRoutines();
+      await restore(); r.ownerSwap = day();
+      openRoutines(); _rtUseCoach('Push', 'Skull Crusher'); await wait(10); closeRoutines();
+      r.useCoach = [day(), day(last)];
+      // the coach swaps the partner (the programme's version) while the opener is removed
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Cable Triceps Pushdown', action: 'swap', rename_to: 'Skull Crusher' });
+      await restore(); r.coachSwap = [day(), day(last)];
+      // a lift the runner put in after Overhead Press, where the opener was
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press');
+      _commitRoutine(cr => _progAdd(cr, 'push', { name: 'Dips', sets: 3, reps: 10, rpe: 7, weight: 0 }, c, 'Overhead Press', { firstIsMain: false }), { noRender: true, scope: 'runner:test' });
+      await restore(); r.between = day(); r.betweenRunner = await runner();
+      await reset(); r.reset = [day(), day(last)];
+      // removed one after the other, the opener added back alone, then its partner restored
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press'); await remove('Cable Triceps Pushdown');
+      _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10); r.alone = day();
+      await restore(); r.after = [day(), day(last)];
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(out.coach === C, 'the coach\'s day: ' + out.coach);
+    assert(out.ownerSwap === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Skull Crusher* | Lateral Raise' && out.useCoach.every(x => x === C), 'paired with the owner\'s swap of its partner; Use coach\'s on it gives the coach\'s day in every week: ' + JSON.stringify([out.ownerSwap, out.useCoach]));
+    assert(out.coachSwap.every(x => x === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Skull Crusher | Lateral Raise'), 'paired with the coach\'s new partner: ' + JSON.stringify(out.coachSwap));
+    assert(out.between === 'Bench Press! | Overhead Press | Dips+ | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise' && out.betweenRunner === 'Bench Press | Overhead Press | Dips | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise', 'back right before its partner, the lift put in stays where it is: ' + JSON.stringify([out.between, out.betweenRunner]));
+    assert(out.reset.every(x => x === C), 'Reset gives the coach\'s day: ' + JSON.stringify(out.reset));
+    assert(out.alone === 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise' && out.after.every(x => x === C), 'added back alone it waits unpaired; its partner comes back after it, paired: ' + JSON.stringify([out.alone, out.after]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

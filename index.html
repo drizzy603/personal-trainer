@@ -11137,14 +11137,27 @@ function _progSettleMain(list, row){
   if(list.some(function(r){ return r && r.isMain; })) return;
   for(var i=0;i<list.length;i++){ var m=list[i]; if(m && m.rec && m.rec.isMain){ m.isMain=true; _progUnmark(m); return; } }
 }
-// A removed row coming back at its place pairs again with the superset opener its
-// removal unpaired (e.ss: that opener's name), and an opener comes back paired only
-// with the partner it had (e.ssTo; '' = none on the day): back without it, it paired
-// with whatever lift now followed it.
-function _progRepair(list, row, e){
-  var i=list.indexOf(row), p=i>0?list[i-1]:null, nx=list[i+1];
-  if(e && e.ss && p && p.name===e.ss && !p.ss){ p.ss=true; _progUnmark(p); }
-  if(e && typeof e.ssTo==='string' && row.ss && !(nx && nx.name===e.ssTo)) row.ss=false;
+// A removed coach row back on the day (Restore, adding it back, Reset): at its place, with its
+// main tag and its superset. An opener comes back paired only with its own partner (e.ssTo;
+// '' = none on the day): right before it when the partner, or the owner's swap of it, is on the
+// day; else unpaired, and the partner's own entry then names it, so the pair is whole again when
+// the partner comes back. A partner whose opener is on the day unpaired (e.ss: its removal
+// unpaired it) comes back right after it. A lift put between them, or the two brought back the
+// other way round, lost the coach's superset for good (Use coach's and Reset had nothing to undo).
+function _progPutBack(list, back, e, ro){
+  var at=Math.min(list.length, Math.max(0, parseInt(e.at,10)||0)), pi=-1, oi=-1;
+  var is=function(x, n){ return !!(x && n && (x.name===n || (x.rec && x.rec.name===n))); };
+  var to=(back.ss && typeof e.ssTo==='string') ? e.ssTo : null;
+  if(to) list.forEach(function(x, i){ if(pi<0 && is(x, to) && !(i>0 && list[i-1] && list[i-1].ss)) pi=i; });
+  if(e.ss && !back.ss) list.forEach(function(x, i){ if(oi<0 && is(x, e.ss) && !x.ss && !(list[i+1] && list[i+1].ss)) oi=i; });
+  if(pi>=0) at=pi; else if(oi>=0) at=oi+1;
+  list.splice(at, 0, back);
+  if(oi>=0){ list[oi].ss=true; _progUnmark(list[oi]); }
+  if(to!=null && pi<0){
+    back.ss=false;
+    if(to) (ro||[]).forEach(function(x){ if(x && x.row && x.row.name===to && !x.ss) x.ss=back.name; });
+  }
+  _progSettleMain(list, back);
 }
 function _median(a){ if(!a.length) return 0; var s=a.slice().sort(function(x,y){ return x-y; }); var m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
 // A load the owner has actually used for a lift: the same lift elsewhere in this
@@ -11344,15 +11357,14 @@ function _progAdd(cr, slot, ex, c, after, o){
     if(!Array.isArray(w[slot])) w[slot]=[];
     var list=w[slot];
     if(_progRow(w,slot,ex.name)) continue;
-    var back=null, ent=null;
+    var back=null, ent=null, ro=null;
     if(w.recOut && Array.isArray(w.recOut[slot])){
-      var ro=w.recOut[slot];
+      ro=w.recOut[slot];
       for(var q=ro.length-1;q>=0;q--){ if(ro[q] && ro[q].row && ro[q].row.name===ex.name){ ent=ro.splice(q,1)[0]; back=ent.row; break; } }
     }
     if(back){
       // its place, its main tag (handed back) and the superset its removal broke
-      list.splice(Math.min(list.length, Math.max(0, parseInt(ent.at,10)||0)), 0, back);
-      _progSettleMain(list, back); _progRepair(list, back, ent); n++;
+      _progPutBack(list, back, ent, ro); n++;
       continue;
     }
     var dl=_isDeloadWk(w), row, sch=o.perWeek ? o.perWeek(w, !!ex.isMain) : null;
@@ -11424,7 +11436,7 @@ function _progDrop(w, slot, idx, o){
   if(r.rec!==null && !o.coach){
     var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
     var ent={at:idx, row:keep}; if(unpair) ent.ss=p.name; if(o.swap) ent.swap=o.swap;
-    if(keep.ss) ent.ssTo=(r.ss && list[idx+1]) ? list[idx+1].name : '';   // the partner it comes back to
+    if(keep.ss) ent.ssTo=(r.ss && list[idx+1]) ? ((list[idx+1].rec && list[idx+1].rec.name) || list[idx+1].name) : '';   // the partner it comes back to (the coach's, under an owner's swap)
     w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push(ent);
   }
   if(unpair) p.ss=false;
@@ -11460,6 +11472,9 @@ function _progSwap(cr, slot, from, to, c, N, o){
   var n=0, end=o.onlyThisWeek?c+1:W.length;
   for(var j=c;j<end;j++){
     var w=W[j], r=_progRow(w,slot,from); if(!r) continue;
+    // The coach's swap is the programme's version: a removed superset opener comes back to the
+    // new partner, a removed partner to the new opener (Restore left them unpaired).
+    if(!o.markOwner && w.recOut && Array.isArray(w.recOut[slot])) w.recOut[slot].forEach(function(x){ if(x && x.ssTo===from) x.ssTo=to; if(x && x.ss===from) x.ss=to; });
     if(j>c && _progRow(w,slot,to)){ _progDrop(w, slot, w[slot].indexOf(r), {coach:!o.markOwner, swap:to, mainTo:to}); n++; continue; }
     if(o.markOwner) _markRec(r);
     var P=parseFloat(r.weight)||0;
@@ -11688,8 +11703,7 @@ function _progRestoreOut(cr, slot, want, c){
       var e=ro[q]; if(!e || !e.row || !want(e) || _progRow(w, slot, e.row.name)) continue;
       ro.splice(q,1);
       var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
-      w[slot].splice(Math.min(w[slot].length, Math.max(0, parseInt(e.at,10)||0)), 0, back);
-      _progSettleMain(w[slot], back); _progRepair(w[slot], back, e); n++;
+      _progPutBack(w[slot], back, e, ro); n++;
     }
     if(!ro.length){ delete w.recOut[slot]; if(!Object.keys(w.recOut).length) delete w.recOut; }
   }
@@ -11723,8 +11737,7 @@ function _progResetSlot(cr, slot, c){
     for(var q=ro.length-1;q>=0;q--){
       var e=ro[q]; if(!e || !e.row || out.some(function(x){ return x.name===e.row.name; })) continue;
       var back=JSON.parse(JSON.stringify(e.row)); delete back.rec;
-      out.splice(Math.min(out.length, Math.max(0, parseInt(e.at,10)||0)), 0, back); n++;
-      _progSettleMain(out, back); _progRepair(out, back, e);
+      _progPutBack(out, back, e, ro); n++;
     }
     if(w.recOut){ delete w.recOut[slot]; if(!Object.keys(w.recOut).length) delete w.recOut; }
     if(out.length || Array.isArray(w[slot])) w[slot]=out;
