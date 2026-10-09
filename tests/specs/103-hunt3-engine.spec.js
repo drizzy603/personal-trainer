@@ -925,3 +925,367 @@ seq('R08: a switch to lb in Settings moves the programme onto lb plates; back in
   }, a.before);
   assert(JSON.stringify(e.diffs) === JSON.stringify(e.expect) && e.day === '73.5 kg | 46.5 kg | 27.5 kg | 25 kg | 7.5 kg' && e.note === null, 'back in kg the kg loads return, the lb edit stays: ' + JSON.stringify(e));
 });
+
+// T01 (regression from R02): the owner's Make main lift marks both rows with the tag alone, so a
+// coach rewrite of the day took the coach's main and dropped both marks (and the coach was never
+// told the main was the owner's pick); a rewrite that left the lift out dropped it. The coach's
+// rows and numbers apply, the main stays the owner's, and the prompt says so.
+seq('T01: the owner\'s Make main survives a coach rewrite of the day; the coach\'s numbers apply', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const line = (n) => (buildSystemPrompt().match(new RegExp(' {2}' + n + ':[^\\n]*')) || [''])[0];
+      const coachPush = (j) => getCustomRoutine().weeks[j].push.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, isMain: e.name === 'Bench Press' }));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtMakeMain(); await wait(10); closeRoutines();
+      const made = localStorage.getItem('kt_routine');
+      r.made = day(); r.prompt = [line('Overhead Press'), line('Bench Press')];
+      // the coach rewrites this week's Push as it designed it: Bench main, a little harder
+      const push = [{ name: 'Bench Press', sets: 4, reps: 6, weight: 165, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60 }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }];
+      const push0 = JSON.stringify(push);   // each call gets its own copy, as the model's JSON is
+      const rb = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push }] });
+      r.rebuild = { ok: rb.ok, kept: rb.keptUserEdits, day: day(), next: day(c + 1), stored: JSON.stringify(rb.stored), prompt: line('Overhead Press') };
+      openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
+      r.useCoach = day();
+      // a rewrite of next week that leaves Overhead Press out keeps it, as the main lift
+      lsSet('kt_routine', JSON.parse(made));
+      const lo = executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek + 1, bName: 'BUILD', bColor: '#0a43f5', push: coachPush(c + 1).filter(e => e.name !== 'Overhead Press') }] });
+      r.leftOut = { kept: lo.keptUserEdits, day: day(c + 1) };
+      // the coach regenerates every week from this one with its own main
+      lsSet('kt_routine', JSON.parse(made));
+      const weeks = [];
+      for (let w = currentWeek; w <= getTotalWeeks(); w++) weeks.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: coachPush(w - 1) });
+      executeCoachTool('update_routine_weeks', { weeks });
+      r.regen = getCustomRoutine().weeks.slice(c).map(w => w.push.filter(e => e.isMain).map(e => e.name).join('+') + ':' + w.push.filter(e => e.rec).length);
+      // the coach changes the owner's main lift itself (its version of that lift now), then rewrites the day
+      lsSet('kt_routine', JSON.parse(made));
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Overhead Press', action: 'change', weight: 105 });
+      r.edited = line('Overhead Press');
+      executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push: JSON.parse(push0) }] });
+      r.editedRebuild = day();
+      return r;
+    });
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.edited) && out.editedRebuild === 'Bench Press 4x6@165* | Overhead Press 4x6@105!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s own change to that lift keeps it the owner\'s main: ' + JSON.stringify([out.edited, out.editedRebuild]));
+    assert(out.made === 'Bench Press 4x8@160* | Overhead Press 4x8@100!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Make main: ' + out.made);
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.prompt[0]) && !/main lift chosen|edited by the user/.test(out.prompt[1]), 'the coach is told the main is the user\'s pick: ' + JSON.stringify(out.prompt));
+    assert(out.rebuild.ok && out.rebuild.day === 'Bench Press 4x6@165* | Overhead Press 4x6@105!* | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'the coach\'s numbers, the owner\'s main, both marked: ' + JSON.stringify(out.rebuild));
+    assert(JSON.stringify(out.rebuild.kept) === '["Overhead Press"]' && /"Overhead Press 4×6 105 lb \(main lift: the user’s choice\)"/.test(out.rebuild.stored) && /\[main lift chosen by the user\]$/.test(out.rebuild.prompt), 'the readback and the prompt say whose main it is: ' + JSON.stringify(out.rebuild));
+    assert(out.rebuild.next === 'Bench Press 4x8@162.5* | Overhead Press 4x8@102.5!* | Incline Dumbbell Press 3x10@62.5 | Cable Triceps Pushdown 3x12@57.5 | Lateral Raise 3x15@17.5', 'a week the call did not send is untouched: ' + out.rebuild.next);
+    assert(out.useCoach === 'Bench Press 4x6@165! | Overhead Press 4x6@105 | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5', 'Use coach\'s gives the coach\'s main back, unmarked: ' + out.useCoach);
+    assert(JSON.stringify(out.leftOut.kept) === '["Overhead Press"]' && out.leftOut.day === 'Bench Press 4x8@162.5* | Overhead Press 4x8@102.5!* | Incline Dumbbell Press 3x10@62.5 | Cable Triceps Pushdown 3x12@57.5 | Lateral Raise 3x15@17.5', 'a rewrite that leaves the owner\'s main out keeps it: ' + JSON.stringify(out.leftOut));
+    assert(out.regen.every(x => x === 'Overhead Press:2'), 'a regeneration keeps the owner\'s main in every week: ' + JSON.stringify(out.regen));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T02 (regression from R03): a superset opener came back unpaired, with nothing recorded, when its
+// partner had been swapped (by the owner or by the coach) or a lift sat between them, and neither
+// Use coach's nor Reset gave the coach's superset back; brought back one by one the other way
+// round, the partner landed before its opener. The coach supersets Incline Dumbbell Press with
+// Cable Triceps Pushdown.
+seq('T02: a superset opener comes back beside its partner, or its swap; Use coach\'s and Reset give the coach\'s pair back', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const restore = async () => { openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines(); };
+      const reset = async () => { openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const runner = async () => { openDeckRunner('Push'); await wait(20); const x = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | '); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      r.coach = day();
+      // the owner: removes the opener, swaps its partner, Restore, then Use coach's on the swap
+      await remove('Incline Dumbbell Press');
+      openRoutines(); _rtOpenEdit('Push', 'Cable Triceps Pushdown'); _rtEdit.swapTo = 'Skull Crusher'; _rtSave(); await wait(10); closeRoutines();
+      await restore(); r.ownerSwap = day();
+      openRoutines(); _rtUseCoach('Push', 'Skull Crusher'); await wait(10); closeRoutines();
+      r.useCoach = [day(), day(last)];
+      // the coach swaps the partner (the programme's version) while the opener is removed
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Cable Triceps Pushdown', action: 'swap', rename_to: 'Skull Crusher' });
+      await restore(); r.coachSwap = [day(), day(last)];
+      // a lift the runner put in after Overhead Press, where the opener was
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press');
+      _commitRoutine(cr => _progAdd(cr, 'push', { name: 'Dips', sets: 3, reps: 10, rpe: 7, weight: 0 }, c, 'Overhead Press', { firstIsMain: false }), { noRender: true, scope: 'runner:test' });
+      await restore(); r.between = day(); r.betweenRunner = await runner();
+      await reset(); r.reset = [day(), day(last)];
+      // removed one after the other, the opener added back alone, then its partner restored
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Incline Dumbbell Press'); await remove('Cable Triceps Pushdown');
+      _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10); r.alone = day();
+      await restore(); r.after = [day(), day(last)];
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(out.coach === C, 'the coach\'s day: ' + out.coach);
+    assert(out.ownerSwap === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Skull Crusher* | Lateral Raise' && out.useCoach.every(x => x === C), 'paired with the owner\'s swap of its partner; Use coach\'s on it gives the coach\'s day in every week: ' + JSON.stringify([out.ownerSwap, out.useCoach]));
+    assert(out.coachSwap.every(x => x === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Skull Crusher | Lateral Raise'), 'paired with the coach\'s new partner: ' + JSON.stringify(out.coachSwap));
+    assert(out.between === 'Bench Press! | Overhead Press | Dips+ | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise' && out.betweenRunner === 'Bench Press | Overhead Press | Dips | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise', 'back right before its partner, the lift put in stays where it is: ' + JSON.stringify([out.between, out.betweenRunner]));
+    assert(out.reset.every(x => x === C), 'Reset gives the coach\'s day: ' + JSON.stringify(out.reset));
+    assert(out.alone === 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise' && out.after.every(x => x === C), 'added back alone it waits unpaired; its partner comes back after it, paired: ' + JSON.stringify([out.alone, out.after]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T02 (continued): a removed partner comes back beside its opener with another superset right
+// after them, and a row brought back out of order never lands between a superset's two halves (it
+// paired the opener with that row). The coach: Incline Dumbbell Press with Cable Triceps Pushdown,
+// Lateral Raise with Cable Fly.
+seq('T02: no row comes back between the halves of a superset; two supersets side by side stay paired', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => {
+    w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true;
+    w.push.find(e => e.name === 'Lateral Raise').ss = true;
+    w.push.push({ name: 'Cable Fly', sets: 3, reps: 12, weight: 30 });
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      r.coach = day();
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.partner = [day(), day(last)];
+      // one superset: Bench out, then Lateral Raise (fourth by then); Bench added back first, then
+      // Lateral Raise (its place is between the superset's halves by then)
+      const one = JSON.parse(orig);
+      one.weeks.forEach(w => { w.push = w.push.filter(e => e.name !== 'Cable Fly'); w.push.find(e => e.name === 'Lateral Raise').ss = false; });
+      lsSet('kt_routine', one);
+      await remove('Bench Press'); await remove('Lateral Raise');
+      _rtAddPick('Push', 'Bench Press'); await wait(10);
+      _rtAddPick('Push', 'Lateral Raise'); await wait(10);
+      r.order = [day(), day(last)];
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise~ | Cable Fly';
+    assert(out.coach === C, 'the coach\'s day: ' + out.coach);
+    assert(out.partner.every(x => x === C), 'the partner comes back beside its opener: ' + JSON.stringify(out.partner));
+    assert(out.order.every(x => x === 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise'), 'back out of order, a row lands after the superset, not inside it: ' + JSON.stringify(out.order));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T04 (incomplete R03): removals made on a page before 20261006-1 have no ssTo, so an opener added
+// back or restored still paired with whatever lift followed it. Its partner is read off a week
+// that still has the pair (else the row removed after it from its place). The data such a page
+// wrote: Incline Dumbbell Press (the opener) removed from week 6 on, then (a) its partner too,
+// (b) nothing else, (c) its partner by the coach (no entry).
+seq('T04: an opener removed on an older page comes back paired only with its own partner', async () => {
+  const { SEED } = require('../lib/harness');
+  const older = (v) => {
+    const r0 = JSON.parse(SEED.kt_routine);
+    r0.weeks.forEach((w, j) => {
+      const inc = w.push.find(e => e.name === 'Incline Dumbbell Press'), pd = w.push.find(e => e.name === 'Cable Triceps Pushdown');
+      inc.ss = true;
+      if (j < 5) return;
+      w.push = w.push.filter(e => e !== inc && (v === 'alone' || e !== pd));
+      w.recOut = { push: v === 'both' ? [{ at: 2, row: inc }, { at: 2, row: pd }] : [{ at: 2, row: inc }] };
+    });
+    return JSON.stringify(r0);
+  };
+  const probe = async (v) => {
+    const app = await boot({ native: true, seed: { kt_routine: older(v) } });
+    try {
+      const out = await app.page.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1, orig = localStorage.getItem('kt_routine');
+        // ~ = superset opener
+        const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+        _rtAddPick('Push', 'Incline Dumbbell Press'); await wait(10);
+        r.add = [day(), day(last)];
+        openDeckRunner('Push'); await wait(20);
+        r.runner = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | ');
+        closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+        openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+        r.thenRestore = day();
+        lsSet('kt_routine', JSON.parse(orig));
+        openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+        r.restore = [day(), day(last)];
+        return r;
+      });
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  const C = 'Bench Press | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+  const unpaired = 'Bench Press | Overhead Press | Incline Dumbbell Press | Lateral Raise';
+  const both = await probe('both');
+  assert(both.add.every(x => x === unpaired) && both.runner === unpaired, 'added back without its partner it pairs with nothing, in the runner too: ' + JSON.stringify(both));
+  assert(both.thenRestore === C && both.restore.every(x => x === C), 'its partner restored after it, or both restored, pair again: ' + JSON.stringify(both));
+  const alone = await probe('alone');
+  assert(alone.add.every(x => x === C) && alone.runner === C && alone.restore.every(x => x === C), 'back beside its partner it pairs: ' + JSON.stringify(alone));
+  const coach = await probe('coach');
+  assert(coach.add.every(x => x === unpaired) && coach.restore.every(x => x === unpaired), 'its partner gone from the programme: unpaired: ' + JSON.stringify(coach));
+});
+
+// T03 + T48 (regression from R08): the switch to lb took the programme's undo point: a coach
+// reply's PLAN CHANGES Undo disappeared and Restore previous programme gave back the programme from
+// before the switch, not from before the reply. The switch is no undo point; the restore point
+// moves onto the new plates with the programme (and back to its exact kg loads), and the switch's
+// own Undo puts both back. A kg owner's coach reply moves Bench from 72.5 to 80 kg.
+seq('T03 + T48: a units switch keeps a coach reply\'s Undo and the programme from before it', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(kgR), kt_unit_w: 'kg', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, sc = 'coach:turn:t03';
+      const bench = (cr) => fmtW((cr || getCustomRoutine()).weeks[c].push.find(e => e.name === 'Bench Press').weight);
+      const unit = async (u) => { switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === u).click(); await wait(30); };
+      const offLb = (cr) => { let n = 0; cr.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0 && Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) > 0.01) n++; }))); return n; };
+      _coachTurnScope = sc;
+      const input = { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 80 };
+      const res = executeCoachTool('edit_programme_exercise', input);
+      _coachTurnScope = null;
+      coachMessages.push({ role: 'assistant', content: 'Bench is 80 kg from this week.', _tools: [{ name: 'edit_programme_exercise', input, result: res, units: { w: 'kg', d: 'km' } }], _undo: sc });
+      saveCoachHistory();
+      const idx = coachMessages.length - 1, card = () => /Undo<\/button>/.test(_planChangeLedger(coachMessages[idx]._tools, idx));
+      const reply = localStorage.getItem('kt_routine'), point = localStorage.getItem('kt_routine_backup');
+      r.reply = { ok: res.ok, now: bench(), point: bench(lsGet('kt_routine_backup')), card: card() };
+      await unit('lb');
+      r.lb = { toast: document.getElementById('toast').textContent, card: card(), scope: localStorage.getItem('kt_routine_backup_scope'), now: bench(), point: bench(lsGet('kt_routine_backup')), off: offLb(getCustomRoutine()) + offLb(lsGet('kt_routine_backup')) };
+      await unit('kg');
+      r.kg = { card: card(), same: localStorage.getItem('kt_routine') === reply, pointSame: localStorage.getItem('kt_routine_backup') === point };
+      // the switch's own Undo puts the programme and the restore point back as they were
+      await unit('lb');
+      document.querySelector('#toast .kt-toast-undo').click(); await wait(20);
+      r.undone = { card: card(), same: localStorage.getItem('kt_routine') === reply, pointSame: localStorage.getItem('kt_routine_backup') === point };
+      await unit('kg');
+      // in lb the reply's Undo gives the programme from before the reply, on lb plates
+      await unit('lb');
+      _ledgerUndo(idx); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+      r.replyUndo = { now: bench(), off: offLb(getCustomRoutine()) };
+      return r;
+    });
+    assert(out.reply.ok && out.reply.now === '80 kg' && out.reply.point === '72.5 kg' && out.reply.card, 'the reply, its Undo and its restore point: ' + JSON.stringify(out.reply));
+    assert(/^Programme loads moved onto lb plates/.test(out.lb.toast) && out.lb.card && out.lb.scope === 'coach:turn:t03' && out.lb.now === '177.5 lb' && out.lb.point === '160 lb' && out.lb.off === 0, 'in lb the reply\'s Undo stays, its restore point on lb plates too: ' + JSON.stringify(out.lb));
+    assert(out.kg.card && out.kg.same && out.kg.pointSame, 'back in kg both are exactly as they were: ' + JSON.stringify(out.kg));
+    assert(out.undone.card && out.undone.same && out.undone.pointSame, 'the switch\'s Undo puts both back, the reply\'s Undo stays: ' + JSON.stringify(out.undone));
+    assert(out.replyUndo.now === '160 lb' && out.replyUndo.off === 0, 'the reply undone in lb: the programme from before it, on lb plates: ' + JSON.stringify(out.replyUndo));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T05 (incomplete R08): a lift a day lists twice (a top set and back-off sets) came back from lb
+// with only its first row exact: the second stayed on lb plates (102.5 kg read 102). Every row and
+// the restore point (a Routines visit before the switch) come back exactly.
+seq('T05: kg to lb and back is exact for a lift listed twice on a day', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgW = (kg) => Math.round(kg * LB * 10) / 10;
+  const kgR = JSON.parse(SEED.kt_routine);
+  kgR.weeks.forEach((w, i) => {
+    w.push = [{ name: 'Bench Press', sets: 1, reps: 3, weight: kgW(105 + i * 1.25), isMain: true },
+      { name: 'Bench Press', sets: 3, reps: 6, weight: kgW(91.25 + i * 1.25) }, { name: 'Overhead Press', sets: 4, reps: 8, weight: kgW(46.25) }];
+  });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(kgR), kt_unit_w: 'kg' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const unit = async (u) => { switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === u).click(); await wait(30); };
+      // a Routines change first, so Restore previous programme holds the day as it was
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtEdit.w = 47.5; _rtSave(); await wait(10); closeRoutines();
+      const prog = localStorage.getItem('kt_routine'), point = localStorage.getItem('kt_routine_backup');
+      const onLb = () => getCustomRoutine().weeks.every(w => w.push.every(e => Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01));
+      r.kgDay = getCustomRoutine().weeks[c].push.map(e => fmtW(e.weight)).join(' | ');
+      await unit('lb');
+      r.onLb = onLb();
+      openDeckRunner('Push'); await wait(20);
+      const b = runnerSession.exercises[0], top = getCustomRoutine().weeks[c].push.map(e => e.weight);
+      r.runner = b.name === 'Bench Press' && JSON.stringify(b.weights) === JSON.stringify([top[0], top[1], top[1], top[1]]);
+      closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+      await unit('kg');
+      r.same = localStorage.getItem('kt_routine') === prog; r.pointSame = localStorage.getItem('kt_routine_backup') === point;
+      r.day = getCustomRoutine().weeks[c].push.map(e => fmtW(e.weight)).join(' | ');
+      return r;
+    });
+    assert(out.onLb && out.runner, 'in lb every row on lb plates, the runner\'s back-off sets too: ' + JSON.stringify(out));
+    assert(out.same && out.pointSame && out.day === out.kgDay, 'back in kg the top set and the back-offs are exact, the restore point too: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// T06 (incomplete R08): only the switch moved a programme onto lb plates, so a kg-built programme
+// put back after it (Programme History, Restore previous programme, a backup file) kept its kg
+// plates for good in lb (148.8 lb, "+1.9 / side"; the launch sweep keeps a programme that reads as
+// kg on its grid). Put back in lb it goes onto lb plates with no undo point, and the way back to
+// kg gives it its exact kg loads. A kg owner: programme B now, A (built in kg) in Programme History.
+seq('T06: a kg programme put back while the owner reads lb goes onto lb plates', async () => {
+  const { SEED } = require('../lib/harness');
+  const LB = 2.2046226218, kgGrid = (lb) => Math.round(Math.max(1.25, Math.round(lb / LB / 1.25) * 1.25) * LB * 10) / 10;
+  const A = JSON.parse(SEED.kt_routine); A.name = 'Programme A';
+  A.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight); })));
+  const B = JSON.parse(JSON.stringify(A)); B.name = 'Programme B';
+  B.weeks.forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0) e.weight = kgGrid(e.weight * 1.05); })));
+  const launch = async (seed, fn, arg) => {
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(fn, arg);
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+      return out;
+    } finally { await app.close(); }
+  };
+  // loads off the lb plate grid, programme-wide
+  const OFF = `(cr) => { let n = 0; (cr.weeks || []).forEach(w => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach(e => { if (e.weight > 0 && Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) > 0.01) n++; }))); return n; }`;
+  const a = await launch({ kt_routine: JSON.stringify(B), kt_unit_w: 'kg' }, async ({ A, OFF }) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const off = eval(OFF), r = {};
+    lsSet('kt_routine_archive', [{ id: 1111, archivedAt: addDays(todayISO(), -30), routine: A }]);
+    switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === 'lb').click(); await wait(30);
+    openRoutineArchiveModal(); await wait(10);
+    [...document.querySelectorAll('#routine-archive-modal button')].find(b => b.textContent === 'Restore this programme').click(); await wait(10);
+    document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+    r.name = getCustomRoutine().name; r.off = off(getCustomRoutine()); r.scope = localStorage.getItem('kt_routine_backup_scope');
+    openDeckRunner('Push'); await wait(20);
+    r.runner = runnerSession.exercises.every(e => !(e.weight > 0) || Math.abs(Math.round(e.weight / 2.5) * 2.5 - e.weight) < 0.01);
+    closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft');
+    r.keep = {}; ['kt_routine', 'kt_routine_backup', 'kt_routine_archive', 'kt_unit_regrid', 'kt_week', 'kt_week_monday'].forEach(k => { const v = localStorage.getItem(k); if (v != null) r.keep[k] = v; });
+    return r;
+  }, { A, OFF });
+  assert(a.name === 'Programme A' && a.off === 0 && a.runner && /^history:/.test(a.scope), 'Programme History in lb: every load on lb plates, the runner too: ' + JSON.stringify(a));
+  // relaunched in lb nothing moves; then Settings > Units > kg gives A its exact kg loads
+  const back = await launch(Object.assign({ kt_unit_w: 'lb' }, a.keep), async (A) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const r = { stored: localStorage.getItem('kt_routine') };
+    switchTab('settings'); await wait(20); [...document.querySelectorAll('.kt-units-opt')].find(b => b.textContent === 'kg').click(); await wait(30);
+    const diffs = [];
+    getCustomRoutine().weeks.forEach((w, j) => ['push', 'pull', 'legs'].forEach(k => (w[k] || []).forEach((e, i) => { if (Math.abs(A.weeks[j][k][i].weight - e.weight) > 0.01) diffs.push((j + 1) + ' ' + e.name); })));
+    r.diffs = diffs;
+    return r;
+  }, A);
+  assert(back.stored === a.keep.kt_routine && !back.diffs.length, 'a relaunch keeps the lb plates; back in kg A is exactly as built: ' + JSON.stringify(back.diffs));
+  // Restore previous programme in lb, the restore point on kg plates (taken before the switch on 20261006-1)
+  const b = await launch({ kt_routine: JSON.stringify(B), kt_routine_backup: JSON.stringify(A), kt_routine_backup_scope: 'units', kt_unit_w: 'lb' }, async (OFF) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    restoreRoutineBackup(); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(30);
+    return { name: getCustomRoutine().name, off: eval(OFF)(getCustomRoutine()) };
+  }, OFF);
+  assert(b.name === 'Programme A' && b.off === 0, 'Restore previous programme in lb: on lb plates: ' + JSON.stringify(b));
+  // a backup file restored in lb: its programme and its restore point
+  const c = await launch({ kt_unit_w: 'lb' }, async ({ A, B, OFF }) => {
+    const wait = ms => new Promise(res => setTimeout(res, ms));
+    const data = buildBackupJSON(); data.kt_routine = A; data.kt_routine_backup = B; data.kt_unit_w = 'lb';
+    const ok = _applyImportedData(data); await wait(20);
+    return { ok, off: eval(OFF)(getCustomRoutine()), offPoint: eval(OFF)(lsGet('kt_routine_backup')) };
+  }, { A, B, OFF });
+  assert(c.ok && c.off === 0 && c.offPoint === 0, 'a backup file in lb: on lb plates: ' + JSON.stringify(c));
+});
