@@ -45,6 +45,10 @@
 // - R37 After L22 the first session came from next week's cadence while the rest-day text found
 //   its weekday in this week's plan ("Legs, is Friday" with Legs on Monday). Both read each day
 //   from its own week.
+// Hunt 5 (regressions of hunt 4's fixes):
+// - T50 The R35 hold was checked once, before the watch-drain wait: START tapped during that wait
+//   (a launch or a return on the round's Monday) opened round 1's last week, the swap landed under
+//   it, and that workout was filed as round 2's week 1. The hold is checked again when the wait ends.
 const { boot, assert, run } = require('../lib/harness');
 
 // A wall clock the spec can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from
@@ -783,6 +787,48 @@ run('R37: "Start week 1 today" on a Saturday names the first session on the day 
     }, LOGS);
     assert(out.plan === 'Push,Rest,Pull,Rest,Legs,Rest,Rest', 'the starter week this test assumes: ' + out.plan);
     assert(out.next === 'Legs' && out.body === 'Your first session, Legs, is Monday.' && /Start Legs today/.test(out.cta), 'week 2\'s Monday holds the first session, and the text says Monday: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// The 260 x 5 squat workout as it was filed, wherever it landed.
+const FILED = `
+  var filed = () => {
+    const s = getSessions().find(x => x.exercises.some(e => e.name === 'Back Squat' && e.weight === 260));
+    return s ? { date: s.date, week: s.week, bName: s.bName || '', inRound: _roundTest(getCustomRoutine())(s.date, _cmpT(s)) } : null;
+  };
+`;
+
+run('T50: a workout opened during the round\'s drain wait holds the round, and is filed in the week it was built from', async () => {
+  const app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await finalWeekSunday(app);
+    const bName = await app.page.evaluate(() => getCustomRoutine().weeks[11].bName);
+    const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE, FILED }) => {
+      eval(LOGS); eval(ROUND_STATE); eval(FILED);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const next = addDays(sessionStorage.getItem('__mon'), 7);
+      await wait(1500);   // past the boot's own drain
+      // A slow bridge: the queue answers after 400 ms.
+      Capacitor.Plugins.TrovoWatch.getPendingSessions = () => new Promise(res => setTimeout(() => res({ sessions: [] }), 400));
+      __setNow(next + 'T07:00:00');
+      autoAdvanceWeek();   // the round's morning: the swap waits for the queue
+      const r = { waiting: !!_nrDrainWait };
+      switchTab('log'); switchLogSub('workout');
+      openDeckRunner('Legs'); await wait(20);   // START, before the queue has answered
+      r.built = runnerSession.week;
+      runnerEngaged = true; runnerSetWeight(260); runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
+      await wait(900);
+      r.during = Object.assign(roundState(), { open: runnerOpen, held: _nrHeld });
+      __setNow(next + 'T07:45:00');
+      runnerFinishSession(); await wait(1200);
+      r.after = roundState(); r.filed = filed(); r.next = next;
+      return r;
+    }, { LOGS, ROUND_STATE, FILED });
+    assert(out.waiting && out.built === 12, 'START during the wait opened round 1\'s week 12: ' + JSON.stringify(out));
+    assert(out.during.cycle === 1 && out.during.week === 12 && out.during.open && out.during.held, 'the wait ends with the runner open: round 1 is held, not swapped under it: ' + JSON.stringify(out.during));
+    assert(out.filed && out.filed.date === out.next && out.filed.week === 12 && out.filed.bName === bName && !out.filed.inRound, 'the workout is filed as week 12 (' + bName + '), round 1\'s: ' + JSON.stringify(out.filed));
+    assert(out.after.cycle === 2 && out.after.week === 1 && out.after.anchored && out.after.sq1 === 227.5, 'round 2 starts once it is saved, built with it: ' + JSON.stringify(out.after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

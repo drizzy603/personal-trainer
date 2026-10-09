@@ -5650,7 +5650,9 @@ function _programmeStarted(){ return todayISO() >= _weekAnchor(); }
 // The swap morning waits for the watch queue: a final-week session logged on the wrist and
 // drained a second after launch was left out of round 2's loads and filed as its week 1. With
 // a watch bridge the swap runs once the drain has settled (at most 6 s), then the week clock
-// catches up (the start may have been weeks ago).
+// catches up (the start may have been weeks ago). The hold is checked again when the wait ends:
+// START tapped during it opened round 1's last week, and the swap landed under that workout, which
+// was filed as round 2's week 1. Held then, the week clock moves as it would have.
 var _nrDrainWait=null, _nrHeld=false;
 function _applyNextRoundAfterDrain(){
   var p=_nextRoundSet(); if(!p || todayISO()<p.startsOn) return;
@@ -5660,7 +5662,12 @@ function _applyNextRoundAfterDrain(){
   var TWch=_plug('TrovoWatch');
   if(!TWch || !TWch.getPendingSessions){ _applyNextRound(false); return; }
   if(_nrDrainWait) return;
-  var done=false, go=function(){ if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null; if(_applyNextRound(false)){ autoAdvanceWeek(); render(); } };
+  var done=false, go=function(){
+    if(done) return; done=true; clearTimeout(_nrDrainWait); _nrDrainWait=null;
+    if(_roundWaitsForWorkout()) _nrHeld=true;
+    else if(!_applyNextRound(false)) return;
+    autoAdvanceWeek(); render();
+  };
   _nrDrainWait=setTimeout(go, 6000);
   Promise.resolve(drainWatchSessions()).then(go, go);
 }
