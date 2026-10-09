@@ -60,6 +60,9 @@
 //   5 sets (it became 8), a removed lift stays out and Restore brings it back whole, a swap keeps
 //   the coach's back-off out, Use coach's gives all the coach's sets; rows the owner removed or
 //   edited one by one still match the coach's rows one by one.
+// - T22 Save lifts to Health writes a live workout that ran past midnight however long after its
+//   last set Finish comes (it ends ten minutes after that set, as a same-day one does); a draft
+//   picked up again after the app was closed is not written unless a set came after (R31 kept).
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1162,6 +1165,60 @@ run('T19 a reps or load edit on a top set and back-offs reaches the sets the she
   assert(JSON.stringify(f.weeks[f.c]) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[122.5,100,100,100] main']) && early(f),
     'the typed load is the back-offs’: ' + JSON.stringify(f.weeks[f.c]));
   assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
+});
+
+// T22: R31's gate (a set within the hour) also dropped a live workout that ran past midnight when
+// Finish came over an hour after its last set; the same timings on one day were written.
+run('T22 a live workout past midnight is written to Health whenever Finish comes', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_health_write: '1' } });
+  try {
+    const out = await app.page.evaluate(async (CLOCK) => {
+      eval(CLOCK);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const today = todayISO(), yday = addDays(today, -1);
+      const hm = ms => { const d = new Date(ms); return _ymdLocal(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+      // opened at `from`, sets at `sets`; a cold launch at `resume` (the draft restored and resumed)
+      // with sets `after` it; Finish at `fin`, the runner open throughout otherwise
+      const go = async (o) => {
+        lsSet('kt_sessions', []); localStorage.removeItem('kt_runner_draft');
+        window.__hk = [];
+        Capacitor.Plugins.TrovoHealth = { saveLift: a => { window.__hk.push(a); return Promise.resolve({}); } };
+        __setNow(o.from);
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push', true); await wait(20);
+        runnerEngaged = true;
+        for (const t of o.sets) { __setNow(t); runnerCompleteSet(); if (runnerResting) runnerSkipRest(); runnerEngaged = true; }
+        if (o.resume) {
+          _flushRunnerDraft(); __setNow(o.resume);
+          runnerOpen = false; runnerSession = null; runnerCompleted = {}; runnerRepsLog = {}; runnerWeightsLog = {};
+          if (!_restoreRunnerDraft()) return { restored: false };
+          resumeRunnerDraft(); await wait(20);
+          for (const t of o.after || []) { __setNow(t); runnerEngaged = true; runnerCompleteSet(); if (runnerResting) runnerSkipRest(); }
+        }
+        __setNow(o.fin);
+        runnerFinishSession(); await wait(250);
+        closeCompleteSheet();
+        const s = getSessions().find(x => x.type === 'Push');
+        return { filed: s && s.date, hk: window.__hk.map(a => hm(a.startMs) + ' -> ' + hm(a.endMs)) };
+      };
+      const at = (d, t) => d + 'T' + t + ':00';
+      const night = [at(yday, '22:10'), at(yday, '22:40'), at(yday, '23:10'), at(yday, '23:50')];
+      return { today, yday,
+        late: await go({ from: at(yday, '22:00'), sets: night, fin: at(today, '00:55') }),
+        later: await go({ from: at(yday, '22:00'), sets: night, fin: at(today, '03:00') }),
+        sameDay: await go({ from: at(today, '08:00'), sets: [at(today, '08:10'), at(today, '08:40'), at(today, '09:10'), at(today, '09:50')], fin: at(today, '10:55') }),
+        // the evening's draft picked up after midnight: no set since, not written; a set since, written
+        resumed: await go({ from: at(yday, '20:00'), sets: [at(yday, '20:05'), at(yday, '20:20'), at(yday, '20:45')], resume: at(today, '00:30'), fin: at(today, '00:31') }),
+        relaunched: await go({ from: at(yday, '23:30'), sets: [at(yday, '23:35'), at(yday, '23:50')], resume: at(today, '00:12'), after: [at(today, '00:15'), at(today, '00:30')], fin: at(today, '01:50') }) };
+    }, CLOCK);
+    const Y = out.yday, T = out.today, one = (o, s) => JSON.stringify(o.hk) === JSON.stringify([s]);
+    assert(out.late.filed === Y && one(out.late, Y + ' 22:00 -> ' + T + ' 00:00'), 'Finish 65 min after the last set: written, ending ten minutes after it: ' + JSON.stringify(out.late));
+    assert(one(out.later, Y + ' 22:00 -> ' + T + ' 00:00'), 'Finish hours later: the same window: ' + JSON.stringify(out.later));
+    assert(out.sameDay.filed === T && one(out.sameDay, T + ' 08:00 -> ' + T + ' 10:00'), 'the same timings on one day: ' + JSON.stringify(out.sameDay));
+    assert(out.resumed.filed === Y && out.resumed.hk.length === 0, 'a draft picked up after midnight with no set since is not written: ' + JSON.stringify(out.resumed));
+    assert(one(out.relaunched, Y + ' 23:30 -> ' + T + ' 00:40'), 'picked up again and trained on: written to its last set: ' + JSON.stringify(out.relaunched));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
 
 // T20: R29 made one row (or one removed row) stand for the coach's two, and the coach merge mapped

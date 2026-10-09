@@ -5414,9 +5414,12 @@ function _saveLiftToHealth(sess, exs, dateISO){
   if(!isNativeIOS() || localStorage.getItem('kt_health_write')!=='1') return;
   var now = Date.now(), last = _runnerLastSetAt(sess);
   // A backdated log has no real time to write. The day the session began is its own: one that
-  // ran past midnight is filed on that day and still happened just now (a set within the hour).
-  // A draft left in the evening and finished the next morning did not, and was written at 04:00.
-  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && now-last < 60*60*1000)) return;
+  // ran past midnight is filed on that day and still happened, however long after its last set
+  // Finish came (the window ends with that set, below). A draft picked up again after the app was
+  // closed (restoredAt) with no set since did not: one left in the evening and finished the next
+  // morning was written at 04:00. An hour since the last set stood for that, and dropped a live one.
+  var resumed = !!(sess && sess.restoredAt && last < sess.restoredAt);
+  if(dateISO !== todayISO() && !(sess && sess.startedAt && dateISO === _ymdLocal(new Date(sess.startedAt)) && last>0 && !resumed)) return;
   var TH = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoHealth;
   if(!TH || !TH.saveLift) return;
   // It ends with its last set (ten minutes after at most), not at the tap on Finish: a draft
@@ -8972,6 +8975,7 @@ function _restoreRunnerDraft(){
     var _fresh=(Date.now()-(d.savedAt||0)) < 8*3600*1000;
     if(d.date!==todayISO() && !_fresh) return false;
     runnerSession=d.session;
+    runnerSession.restoredAt=Date.now();   // picked up after the app was closed: Health asks for a set since
     runnerExIdx=d.exIdx||0;
     runnerCompleted=d.completed||{};
     runnerWeights=d.weights||{};
