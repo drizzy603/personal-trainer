@@ -15,6 +15,17 @@
 //   box by script there; the hidden bar leaves the accessibility tree; reduced motion fades it.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
+// One run at a time: several of these read timers and transitions (the tab bar back within 400ms,
+// the 1s keyboard wait, frames sampled while a reply lands), and a file's runs otherwise start
+// together, each with its own browser, which starves those timers on a slow runner.
+let _chain = Promise.resolve();
+function serial(name, fn) {
+  const prev = _chain;
+  let done;
+  _chain = new Promise((r) => { done = r; });
+  run(name, async () => { await prev; try { await fn(); } finally { done(); } });
+}
+
 // A scriptable visualViewport standing in for WebKit's (iOS keeps the layout viewport and pans the
 // visual one over it), and a count of the non-passive touchmove listeners on the document.
 const FAKE_VV = `(() => {
@@ -113,7 +124,7 @@ const open = (page) => page.evaluate(async () => {
 });
 
 // ── M1 ─────────────────────────────────────────────────────────────────────────
-run('M1: the chat is one column; the composer sits 8px above the bar or dock and nothing shows through', async () => {
+serial('M1: the chat is one column; the composer sits 8px above the bar or dock and nothing shows through', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const size of [{ width: 390, height: 844 }, { width: 320, height: 700 }]) {
       const tag = room + ' ' + size.width + ': ';
@@ -184,7 +195,7 @@ run('M1: the chat is one column; the composer sits 8px above the bar or dock and
   }
 });
 
-run('M1: a render keeps the reader\'s place; the end stays pinned; the hub opens at its top; a toast clears the composer', async () => {
+serial('M1: a render keeps the reader\'s place; the end stays pinned; the hub opens at its top; a toast clears the composer', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 });
   try {
     const out = await app.page.evaluate(async () => {
@@ -225,7 +236,7 @@ run('M1: a render keeps the reader\'s place; the end stays pinned; the hub opens
 });
 
 // ── M2 ─────────────────────────────────────────────────────────────────────────
-run('M2: with the keys up the chat is laid over the visual viewport; pinch zoom and small cuts never count', async () => {
+serial('M2: with the keys up the chat is laid over the visual viewport; pinch zoom and small cuts never count', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const [size, kb] of [[{ width: 430, height: 932 }, 347], [{ width: 390, height: 844 }, 336], [{ width: 320, height: 700 }, 290]]) {
       const tag = room + ' ' + size.width + ': ';
@@ -289,7 +300,7 @@ const MOCK_FETCH = `(delay) => {
     return new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'Squat is moving well.' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
   };
 }`;
-run('M3: on a touch screen the tab bar follows the keyboard; a reply never refocuses the box', async () => {
+serial('M3: on a touch screen the tab bar follows the keyboard; a reply never refocuses the box', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 }, { touch: true });
@@ -339,7 +350,7 @@ run('M3: on a touch screen the tab bar follows the keyboard; a reply never refoc
   }
 });
 
-run('M3: reduced motion fades the bar without sliding it; a desktop send still refocuses the box', async () => {
+serial('M3: reduced motion fades the bar without sliding it; a desktop send still refocuses the box', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 });
   try {
     await app.page.emulateMedia({ reducedMotion: 'reduce' });
@@ -367,7 +378,7 @@ const rgbOf = (s) => (String(s).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
 const lumOf = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
 const ratioOf = (fg, bg) => { const a = lumOf(rgbOf(fg)), b = lumOf(rgbOf(bg)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
 
-run('M4: the composer is one field with 44pt controls and an honest Send / Stop', async () => {
+serial('M4: the composer is one field with 44pt controls and an honest Send / Stop', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 });
@@ -436,7 +447,7 @@ run('M4: the composer is one field with 44pt controls and an honest Send / Stop'
   }
 });
 
-run('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', async () => {
+serial('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 }, { touch: true });
   try {
     await open(app.page);
@@ -453,7 +464,7 @@ run('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', async
 });
 
 // ── M5 ─────────────────────────────────────────────────────────────────────────
-run('M5: PLAN CHANGES tells the truth once Undo is gone; a later log-only reply keeps the card; Restore previous retires it', async () => {
+serial('M5: PLAN CHANGES tells the truth once Undo is gone; a later log-only reply keeps the card; Restore previous retires it', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
@@ -526,7 +537,7 @@ const OWNER = [
   { role: 'user', content: 'And my squat?' },
   { role: 'assistant', content: 'Could not connect. Check your internet connection.', _error: true, _local: true },
 ];
-run('S1: one left edge, one rhythm, one hairline under the header', async () => {
+serial('S1: one left edge, one rhythm, one hairline under the header', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const size of [{ width: 390, height: 844 }, { width: 320, height: 700 }]) {
       const tag = room + ' ' + size.width + ': ';
@@ -564,7 +575,7 @@ run('S1: one left edge, one rhythm, one hairline under the header', async () => 
 const LONG_METRIC = '%%type: Run check\n%%metric: Avg heart rate over the last six easy runs | 171 bpm | vs 150 cap | +21 | warn\n%%metric: Bench Press | 225 lb x 4 | vs 230 x 6 target | -5 lb | warn\n%%metric: Latest run | 12:39/mi @ 171bpm | vs 11:00 goal | +1:39 | warn\n%%metric: Pace | 8:07 | vs 8:15 | -8s | good\nShort note.\n%%action: Lower my run intensity | Lower it\n%%action: Log body weight | Log it';
 const LONG_SWAP = { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'DB Lateral Raise', action: 'swap', rename_to: 'Single-Arm Cable Lateral Raise (Behind the Back)' }, result: { ok: true }, units: { w: 'lb', d: 'mi' } };
 const BAD = { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 999 }, result: { ok: false, error: 'no' }, units: { w: 'lb', d: 'mi' } };
-run('S2: message parts wear the room\'s tokens; nothing runs off the column at 320pt or Larger Text', async () => {
+serial('S2: message parts wear the room\'s tokens; nothing runs off the column at 320pt or Larger Text', async () => {
   const colours = {};
   for (const room of ['heavyweight', 'dark']) {
     for (const zoom of [1, 1.25]) {
@@ -632,7 +643,7 @@ run('S2: message parts wear the room\'s tokens; nothing runs off the column at 3
 });
 
 // ── S3 ─────────────────────────────────────────────────────────────────────────
-run('S3: coach replies have one presentation; notes, the owner\'s text, Thinking and stale chips follow it', async () => {
+serial('S3: coach replies have one presentation; notes, the owner\'s text, Thinking and stale chips follow it', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const [size, zoom] of [[{ width: 390, height: 844 }, 1], [{ width: 320, height: 700 }, 1.25]]) {
       const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
@@ -693,7 +704,7 @@ run('S3: coach replies have one presentation; notes, the owner\'s text, Thinking
   }
 });
 
-run('S3: a photo sent with no words shows only the photo, also after a relaunch', async () => {
+serial('S3: a photo sent with no words shows only the photo, also after a relaunch', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
   try {
     await open(app.page);
@@ -723,7 +734,7 @@ const PLATEAU = [
   '',
   'Pull Up and Hammer Curl plateaus are already being addressed.',
 ].join('\n');
-run('S4: md() renders what the coach writes: one list per list, headings, numbered steps, tables, no blank line after a list', async () => {
+serial('S4: md() renders what the coach writes: one list per list, headings, numbered steps, tables, no blank line after a list', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
   try {
     const out = await app.page.evaluate(() => {
@@ -764,7 +775,7 @@ run('S4: md() renders what the coach writes: one list per list, headings, number
   } finally { await app.close(); }
 });
 
-run('S4: on screen, no blank line under a list, bullets 6px apart, a table scrolls inside its card', async () => {
+serial('S4: on screen, no blank line under a list, bullets 6px apart, a table scrolls inside its card', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const [size, zoom] of [[{ width: 390, height: 844 }, 1], [{ width: 320, height: 700 }, 1.25]]) {
       const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
@@ -809,7 +820,7 @@ const REPLY_FETCH = `(text, delay) => {
   };
 }`;
 const LONG_ANSWER = Array.from({ length: 30 }, (_, i) => '- **Point ' + (i + 1) + ':** a full sentence of advice that wraps onto a second line on a phone.').join('\n');
-run('S5: a long reply lands at its start; a short one at the end; a reader who scrolled up keeps their place', async () => {
+serial('S5: a long reply lands at its start; a short one at the end; a reader who scrolled up keeps their place', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 });
@@ -858,7 +869,7 @@ run('S5: a long reply lands at its start; a short one at the end; a reader who s
 });
 
 // ── S6 ─────────────────────────────────────────────────────────────────────────
-run('S6: the chat header fits on one line, its controls take a 44pt press, and its status is honest', async () => {
+serial('S6: the chat header fits on one line, its controls take a 44pt press, and its status is honest', async () => {
   for (const room of ['heavyweight', 'dark']) {
     for (const [size, zoom] of [[{ width: 320, height: 700 }, 1], [{ width: 390, height: 844 }, 1.25], [{ width: 375, height: 667 }, 1.25]]) {
       const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
@@ -914,7 +925,7 @@ run('S6: the chat header fits on one line, its controls take a 44pt press, and i
 });
 
 // ── S7 ─────────────────────────────────────────────────────────────────────────
-run('S7: VoiceOver hears the coach, and every chat control has a name', async () => {
+serial('S7: VoiceOver hears the coach, and every chat control has a name', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: JSON.stringify(OWNER.slice(0, 4)), kt_routine_backup: SEED.kt_routine, kt_routine_backup_scope: 'coach:t117' } });
@@ -974,7 +985,7 @@ const STATUS_FETCH = `(status, message) => {
     return new Response(JSON.stringify({ type: 'error', error: { type: 'x', message } }), { status, headers: { 'content-type': 'application/json' } });
   };
 }`;
-run('C1: no dead ends after Stop or an error that retrying cannot fix', async () => {
+serial('C1: no dead ends after Stop or an error that retrying cannot fix', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
   try {
     await open(app.page);
@@ -1025,7 +1036,7 @@ run('C1: no dead ends after Stop or an error that retrying cannot fix', async ()
 });
 
 // ── C4 ─────────────────────────────────────────────────────────────────────────
-run('C4: coming back to the Coach tab mid-reply shows the chat; once it has landed the tab opens on the hub', async () => {
+serial('C4: coming back to the Coach tab mid-reply shows the chat; once it has landed the tab opens on the hub', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 });
   try {
     await open(app.page);
@@ -1054,7 +1065,7 @@ run('C4: coming back to the Coach tab mid-reply shows the chat; once it has land
 });
 
 // ── C2 ─────────────────────────────────────────────────────────────────────────
-run('C2: day dividers say when advice was given; unstamped history shows none; the API never sees the stamp', async () => {
+serial('C2: day dividers say when advice was given; unstamped history shows none; the API never sees the stamp', async () => {
   for (const room of ['heavyweight', 'dark']) {
     const tag = room + ': ';
     const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
@@ -1098,7 +1109,7 @@ run('C2: day dividers say when advice was given; unstamped history shows none; t
 });
 
 // ── C3 ─────────────────────────────────────────────────────────────────────────
-run('C3: prompts the app writes for the owner read as what they are; programme setup asks before it clears the chat', async () => {
+serial('C3: prompts the app writes for the owner read as what they are; programme setup asks before it clears the chat', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 });
   try {
     await open(app.page);
@@ -1141,7 +1152,7 @@ run('C3: prompts the app writes for the owner read as what they are; programme s
 });
 
 // ── The share sheet's photo and comment land in the composer as typed ───────────
-run('a shared photo with a comment lands in the composer at the composer\'s own size, Send ready', async () => {
+serial('a shared photo with a comment lands in the composer at the composer\'s own size, Send ready', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
   try {
     const out = await app.page.evaluate(async () => {
