@@ -965,3 +965,61 @@ run('S7: VoiceOver hears the coach, and every chat control has a name', async ()
     } finally { await app.close(); }
   }
 });
+
+// ── C1 ─────────────────────────────────────────────────────────────────────────
+const STATUS_FETCH = `(status, message) => {
+  window.fetch = async (url) => {
+    if (!String(url).includes('anthropic')) return new Response('', { status: 404 });
+    if (status === 0) throw new TypeError('Failed to fetch');
+    return new Response(JSON.stringify({ type: 'error', error: { type: 'x', message } }), { status, headers: { 'content-type': 'application/json' } });
+  };
+}`;
+run('C1: no dead ends after Stop or an error that retrying cannot fix', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+  try {
+    await open(app.page);
+    const out = await app.page.evaluate(async ({ STATUS_FETCH, REPLY_FETCH }) => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+      const chip = () => { const b = document.querySelector('.kt-chat-retry button'); return b ? b.textContent : null; };
+      const ask = async (q) => { document.getElementById('coach-input').value = q; await sendCoachMessage(); await wait(40); };
+      // Stop with nothing done: the note and Try again, which runs the turn again
+      eval(REPLY_FETCH)('late', 3000);
+      document.getElementById('coach-input').value = 'Plan my week'; sendCoachMessage(); await wait(60);
+      coachStop(); await wait(40);
+      r.stop = { chip: chip(), last: coachMessages[coachMessages.length - 1].content };
+      loadCoachHistory(); render(); await wait(40); r.stopRelaunch = chip();
+      eval(REPLY_FETCH)('Here is your week.', 30);
+      document.querySelector('.kt-chat-retry button').click(); await wait(200);
+      r.retried = coachMessages.map((m) => m.content).slice(-2);
+      // Stop after a tool ran: the note and its pills, no Try again
+      coachLoading = true; _runningTools = [{ name: 'set_current_week', input: { week: 4 }, result: { ok: true } }]; render();
+      coachStop(); await wait(40);
+      r.stopTools = { chip: chip(), pills: document.querySelectorAll('.kt-tool-pill').length > 0 };
+      // a rejected key: the fix, and a way to it
+      eval(STATUS_FETCH)(401, 'invalid x-api-key');
+      await ask('hello');
+      r.key = { text: coachMessages[coachMessages.length - 1].content, chip: chip() };
+      loadCoachHistory(); render(); await wait(40); r.keyRelaunch = chip();
+      document.querySelector('.kt-chat-retry button').click(); await wait(40);
+      r.keyLands = currentTab;
+      switchTab('coach'); coachView = 'chat'; render(); await wait(40);
+      // an empty balance: what to do, and no chip (trying again cannot work)
+      eval(STATUS_FETCH)(400, 'Your credit balance is too low to access the Anthropic API.');
+      await ask('hello again');
+      r.billing = { text: coachMessages[coachMessages.length - 1].content, chip: chip() };
+      // a network error keeps Try again
+      eval(STATUS_FETCH)(0, '');
+      await ask('and again');
+      r.net = { text: coachMessages[coachMessages.length - 1].content, chip: chip() };
+      return r;
+    }, { STATUS_FETCH, REPLY_FETCH }).catch((e) => ({ err: String(e) }));
+    assert(!out.err, out.err);
+    assert(out.stop.last === 'Stopped.' && out.stop.chip === 'Try again →' && out.stopRelaunch === 'Try again →', 'Stop with nothing done offers Try again, also after a relaunch: ' + JSON.stringify([out.stop, out.stopRelaunch]));
+    assert(out.retried[1] === 'Here is your week.' && out.retried[0] === 'Plan my week', 'Try again runs the stopped turn: ' + JSON.stringify(out.retried));
+    assert(out.stopTools.chip === null && out.stopTools.pills, 'Stop after a change keeps its pills and offers no Try again: ' + JSON.stringify(out.stopTools));
+    assert(/did not accept your API key/.test(out.key.text) && out.key.chip === 'Open Settings →' && out.keyRelaunch === 'Open Settings →' && out.keyLands === 'settings', 'a rejected key names the fix and opens Settings: ' + JSON.stringify([out.key, out.keyRelaunch, out.keyLands]));
+    assert(/out of credit/.test(out.billing.text) && out.billing.chip === null, 'an empty balance says so, with no chip: ' + JSON.stringify(out.billing));
+    assert(/Could not connect/.test(out.net.text) && out.net.chip === 'Try again →', 'a network error keeps Try again: ' + JSON.stringify(out.net));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
