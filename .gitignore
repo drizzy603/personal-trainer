@@ -11,4 +11,5 @@ screenshots/out/
 xcuserdata/
 ios/App/CapApp-SPM/build/
 ios/App/build/
+ios/App/FPKit/.build
 supero-backup-*.json
