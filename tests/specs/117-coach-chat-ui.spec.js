@@ -1096,3 +1096,46 @@ run('C2: day dividers say when advice was given; unstamped history shows none; t
     } finally { await app.close(); }
   }
 });
+
+// ── C3 ─────────────────────────────────────────────────────────────────────────
+run('C3: prompts the app writes for the owner read as what they are; programme setup asks before it clears the chat', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 });
+  try {
+    await open(app.page);
+    const out = await app.page.evaluate(async (REPLY_FETCH) => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+      const bodies = [];
+      eval(REPLY_FETCH)(Array.from({ length: 24 }, (_, i) => '- Step ' + (i + 1) + ': a line of advice long enough to wrap on a phone screen.').join('\n'), 40);
+      const f = window.fetch; window.fetch = async (u, o) => { if (String(u).includes('anthropic')) bodies.push(JSON.parse(o.body)); return f(u, o); };
+      // a plateau tap: the long prompt is a labelled rule, not the owner's words; the API gets the prompt
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 28 }];
+      startPlateauFix(); await wait(600);
+      const seed = document.querySelector('.kt-chat-seed');
+      const last = [...document.querySelectorAll('.coach-bubble.user')].pop();
+      r.seed = { label: seed && seed.textContent, upper: seed && getComputedStyle(seed).textTransform, turn: seed && seed.classList.contains('kt-turn'),
+        bubble: last ? /plateaued/.test(last.textContent) : false, api: JSON.stringify(bodies.map((b) => b.messages)).indexOf('These lifts have plateaued') >= 0 };
+      // S5 lands the reply under the label
+      const L = document.querySelector('.coach-msgs-area');
+      r.landed = seed.getBoundingClientRect().top - L.getBoundingClientRect().top;
+      r.saved = JSON.parse(localStorage.getItem('kt_coach_msgs')).some((m) => m._seed === 'Plateau check');
+      // programme setup over an existing chat asks first; Cancel keeps the chat
+      const n = coachMessages.length;
+      startRoutineIntake(); await wait(60);
+      r.asked = { sheet: !!document.querySelector('.kt-close-sheet'), intake: intakeMode };
+      const cancel = [...document.querySelectorAll('.kt-close-sheet button')].find((b) => /Cancel/i.test(b.textContent)); if (cancel) cancel.click(); await wait(60);
+      r.kept = { n: coachMessages.length === n, intake: intakeMode };
+      eval(REPLY_FETCH)('What is your main goal?', 1500);   // read setup before its first answer lands (with a programme already saved, setup ends after one turn)
+      startRoutineIntake(); await wait(60);
+      const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); if (ok) ok.click(); await wait(200);
+      r.started = { intake: intakeMode, first: coachMessages[0] && coachMessages[0]._seed, label: (document.querySelector('.kt-chat-seed') || {}).textContent };
+      _setIntakeMode(false);
+      return r;
+    }, REPLY_FETCH).catch((e) => ({ err: String(e) }));
+    assert(!out.err, out.err);
+    assert(out.seed.label === 'Plateau check' && out.seed.upper === 'uppercase' && out.seed.turn && !out.seed.bubble && out.seed.api, 'a plateau tap reads as PLATEAU CHECK; the API still gets the prompt: ' + JSON.stringify(out.seed));
+    assert(Math.abs(out.landed - 12) <= 2 && out.saved, 'the reply lands under the label, and the label is saved: ' + JSON.stringify([out.landed, out.saved]));
+    assert(out.asked.sheet && !out.asked.intake && out.kept.n && !out.kept.intake, 'setup over a chat asks first; Cancel keeps the chat: ' + JSON.stringify([out.asked, out.kept]));
+    assert(out.started.intake && out.started.first === 'Programme setup' && out.started.label === 'Programme setup', 'confirmed, setup starts under a PROGRAMME SETUP label: ' + JSON.stringify(out.started));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

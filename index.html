@@ -494,6 +494,10 @@ html:not([data-dyn-type="1"]) .kt-model-ver,html:not([data-dyn-type="1"]) .coach
    the owner's turn. Every part takes the column's full width: one left edge. */
 .coach-msgs-wrap{display:flex;flex-direction:column;gap:8px;margin-bottom:0;}
 .coach-msgs-wrap>.coach-bubble.user:not(:first-child),.coach-msgs-wrap>.coach-bubble.user+*{margin-top:12px;}
+/* A prompt the app wrote for the owner (programme setup, a plateau check): a labelled rule, not their words. */
+.kt-chat-seed{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.kt-chat-seed::before,.kt-chat-seed::after{content:'';flex:1;height:1px;background:var(--border);}
+.coach-msgs-wrap>.kt-chat-seed:not(:first-child),.coach-msgs-wrap>.kt-chat-seed+*{margin-top:12px;}
 .kt-tool-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;}
 .kt-chat-retry{margin:0;}
 
@@ -1936,7 +1940,7 @@ html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:
 html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
 html[data-room="heavyweight"] .kt-tool-pill{background:var(--card);}
 html[data-room="heavyweight"] .kt-md-code{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;}
-html[data-room="heavyweight"] .kt-chat-day{font-family:'Archivo',sans-serif;}
+html[data-room="heavyweight"] .kt-chat-day,html[data-room="heavyweight"] .kt-chat-seed{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .kt-tool-pill:not(.bad) .kt-tool-pill-ic{color:var(--earned-ink);}
 html[data-room="heavyweight"] .kt-cmb-chip{background:var(--card);border-color:var(--border);color:var(--text);}
 html[data-room="heavyweight"] .kt-cmb-chip.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
@@ -7760,6 +7764,7 @@ function _plateauFixDue(){
 }
 function dismissPlateauFix(){ lsSet('kt_last_plateau_week', currentWeek); render(); }
 function startPlateauFix(){
+  var _seedLabel='Plateau check';
   var pl=_plateauLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyPlateauFixLocal(); return; }
@@ -7773,7 +7778,7 @@ function startPlateauFix(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -7817,6 +7822,7 @@ function _progressionDue(){
 }
 function dismissProgression(){ lsSet('kt_last_prog_week', currentWeek); render(); }
 function startProgression(){
+  var _seedLabel='Progression check';
   var pl=_progressionLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyProgressionLocal(); return; }
@@ -7829,7 +7835,7 @@ function startProgression(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -7947,6 +7953,7 @@ function _recoveryDue(){
 }
 function dismissRecoveryAdjust(){ lsSet('kt_readiness_adj_seen', todayISO()); render(); }
 function startRecoveryAdjust(){
+  var _seedLabel='Recovery check';
   var r=lsGet('kt_readiness');
   if(!r) return;
   lsSet('kt_readiness_adj_seen', todayISO());
@@ -7962,7 +7969,7 @@ function startRecoveryAdjust(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -15957,7 +15964,7 @@ function startWeeklyReview(){
     var ta=document.getElementById('coach-input');
     if(!ta) return;
     ta.value=_buildWeekReviewMsg();
-    sendCoachMessage();
+    sendCoachMessage({seed:'Weekly review'});
   }, 250);
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
@@ -18316,14 +18323,23 @@ _intakeKnownBlock()+
 'Start with the first question now.';
 }
 
-async function startRoutineIntake(){
+// Setup starts from an empty chat: over an existing conversation it asks first (it wiped the chat
+// with no word).
+function startRoutineIntake(){
+  if(coachMessages.length){
+    _ktConfirm({title:'Start programme setup?', body:'This clears your coach chat.', confirmLabel:'Start', confirmStyle:'var(--accent)', onConfirm:function(){ _runRoutineIntake(); }});
+    return;
+  }
+  return _runRoutineIntake();
+}
+async function _runRoutineIntake(){
   _setIntakeMode(true);
   // Reset to week 1 so the executor doesn't silently drop weeks before
   // currentWeek when the AI sends the freshly-generated 12.
   currentWeek=1;
   lsSet('kt_week',1);
   clearCoachHistory();
-  _pushCoach({role:'user',content:'I want to generate my training programme.'});
+  _pushCoach({role:'user',content:'I want to generate my training programme.',_seed:'Programme setup'});
   coachLoading=true;
   streamingContent='';
   render();
@@ -20150,6 +20166,7 @@ function saveCoachHistory(){
       var out={role:m.role};
       if(m._hadImage) out._hadImage=true;
       if(m._auto) out._auto=true;
+      if(m._seed) out._seed=m._seed;
       if(m._tools) out._tools=m._tools.map(function(t){
         // The pill only needs name + result; a full update_routine_weeks
         // input is the whole programme JSON and bloated history by 10s of KB.
@@ -20455,7 +20472,9 @@ function _cachedCoachTools(){
 }
 function clearPendingImage(){pendingImage=null;render();}
 
-async function sendCoachMessage(){
+// o.seed: a prompt the app wrote on the owner's behalf (a plateau check, a weekly review) shows
+// as that label, not as the owner's words; the API still gets the whole prompt.
+async function sendCoachMessage(o){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
   // Focus goes back to the box after the reply only for a keyboard user who sent from it (Enter, or
@@ -20481,6 +20500,7 @@ async function sendCoachMessage(){
 
   var _um={role:'user',content:content,_preview:preview};
   if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
+  if(o && typeof o==='object' && o.seed) _um._seed=String(o.seed);
   _pushCoach(_um);
   saveCoachHistory();
   coachLoading=true;
@@ -20898,6 +20918,8 @@ function renderCoach(){
         if(displayText||imgHTML) bubbles+='<div class="kt-cmb">'+imgHTML+(_hasCoachBlocks(displayText)
           ? _coachBlocksHTML(displayText, m!==_lastAns||coachLoading)
           : '<div class="kt-cmb-eyebrow">COACH</div><div class="kt-cmb-para">'+md(displayText)+'</div>')+'</div>';
+      } else if(m._seed){
+        bubbles+='<div class="kt-chat-seed kt-turn"><span>'+_esc(m._seed)+'</span></div>';
       } else if(displayText||imgHTML){
         bubbles+='<div class="coach-bubble user kt-turn">'+imgHTML+(displayText?'<span class="kt-sr">You: </span>'+_esc(displayText):'')+'</div>';
       }
