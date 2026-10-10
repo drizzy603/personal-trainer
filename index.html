@@ -1946,6 +1946,13 @@ html[data-room="heavyweight"] .kt-eng-logall,html[data-room="heavyweight"] .kt-r
 html[data-room="heavyweight"] .kt-rlog-pill,html[data-room="heavyweight"] .kt-adhoc-pill{background:var(--card);border:1px solid var(--border);color:var(--lite);}
 html[data-room="heavyweight"] .kt-rest-pill.on,html[data-room="heavyweight"] .kt-r-pill.active,html[data-room="heavyweight"] .kt-rlog-pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
 html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:var(--on-accent);}
+/* The owner's photo. Sent with no words it is the bubble itself: it sat in a blue (Lime: grey) mat
+   of the bubble's 12/16px padding plus its own 6px foot, thicker at the bottom than the top. */
+.coach-photo{display:block;max-width:200px;max-height:150px;border-radius:10px;margin-bottom:6px;}
+.coach-photo-lbl{font-size:12px;margin-bottom:4px;}
+.coach-photo:last-child,.coach-photo-lbl:last-child{margin-bottom:0;}
+html[data-room] .coach-bubble.user.photo{padding:0;background:none;overflow:hidden;line-height:0;}
+html[data-room] .coach-bubble.user.photo .coach-photo{max-width:min(240px,100%);max-height:180px;border-radius:0;}
 html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
 html[data-room="heavyweight"] .kt-tool-pill{background:var(--card);}
 html[data-room="heavyweight"] .kt-md-code{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;}
@@ -20931,9 +20938,9 @@ function renderCoach(){
         text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
       }
       if(m._preview){
-        imgHTML='<img src="'+m._preview+'" alt="Photo you sent" style="max-width:200px;max-height:150px;border-radius:10px;display:block;margin-bottom:6px;">';
+        imgHTML='<img class="coach-photo" src="'+_esc(m._preview)+'" alt="Photo you sent">';
       }else if(m._hadImage){
-        imgHTML='<div style="font-size:12px;margin-bottom:4px;"><span aria-hidden="true">📷</span> Photo</div>';
+        imgHTML='<div class="coach-photo-lbl"><span aria-hidden="true">📷</span> Photo</div>';
       }
       var displayText=(typeof text==='string'?text:'').trim();
       if(m.role==='user' && m._auto) displayText='';   // a photo sent with no words: the default prompt is the API's, not the owner's
@@ -20946,7 +20953,7 @@ function renderCoach(){
       } else if(m._seed){
         bubbles+='<div class="kt-chat-seed kt-turn"><span>'+_esc(m._seed)+'</span></div>';
       } else if(displayText||imgHTML){
-        bubbles+='<div class="coach-bubble user kt-turn">'+imgHTML+(displayText?'<span class="kt-sr">You: </span>'+_esc(displayText):'')+'</div>';
+        bubbles+='<div class="coach-bubble user kt-turn'+(m._preview && !displayText?' photo':'')+'">'+imgHTML+(displayText?'<span class="kt-sr">You: </span>'+_esc(displayText):'')+'</div>';
       }
       // A failed turn ends in a dead end without this: the input was already
       // cleared, so the user had to retype. Retry re-runs the turn on the

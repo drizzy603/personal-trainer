@@ -880,25 +880,45 @@ serial('S3: coach replies have one presentation; notes, the owner\'s text, Think
   }
 });
 
-serial('S3: a photo sent with no words shows only the photo, also after a relaunch', async () => {
-  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
-  try {
-    await open(app.page);
-    const out = await app.page.evaluate(async (MOCK_FETCH) => {
-      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
-      eval(MOCK_FETCH)(20);
-      pendingImage = { data: 'R0lGODlhAQABAAAAACw=', mediaType: 'image/gif', previewUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }; render(); await wait(40);
-      await sendCoachMessage(); await wait(60);
-      const ub = () => document.querySelector('.coach-bubble.user');
-      r.sent = { img: !!ub().querySelector('img'), alt: (ub().querySelector('img') || {}).alt, text: ub().textContent.trim(), api: JSON.stringify(_toApiMsg(coachMessages[0])).indexOf('Please look at this image') >= 0 };
-      loadCoachHistory(); render(); await wait(60);
-      r.relaunch = { text: ub().textContent.trim(), img: !!ub().querySelector('img') };
-      return r;
-    }, MOCK_FETCH);
-    assert(out.sent.img && out.sent.alt === 'Photo you sent' && out.sent.text === '' && out.sent.api, 'the photo alone shows; the default prompt still goes to the API: ' + JSON.stringify(out.sent));
-    assert(out.relaunch.text.replace('\u{1F4F7}', '').trim() === 'Photo' && !out.relaunch.img, 'after a relaunch the label alone shows: ' + JSON.stringify(out.relaunch));
-    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
-  } finally { await app.close(); }
+// A photo sent with no words is the bubble itself: it sat in the bubble's mat (12/16px of blue, or
+// Lime's grey, plus the image's own 6px foot), thicker at the bottom than the top. With words the
+// bubble keeps its padding and the photo sits above the text.
+serial('S3: a photo sent with no words shows only the photo, with no mat around it, also after a relaunch', async () => {
+  const PHOTO = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#7a8fa6"/></svg>').toString('base64');
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async ({ MOCK_FETCH, PHOTO }) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        eval(MOCK_FETCH)(20);
+        pendingImage = { data: 'R0lGODlhAQABAAAAACw=', mediaType: 'image/gif', previewUrl: PHOTO }; render(); await wait(40);
+        await sendCoachMessage(); await wait(60);
+        const ub = () => document.querySelector('.coach-bubble.user');
+        r.sent = { img: !!ub().querySelector('img'), alt: (ub().querySelector('img') || {}).alt, text: ub().textContent.trim(), api: JSON.stringify(_toApiMsg(coachMessages[0])).indexOf('Please look at this image') >= 0 };
+        const bb = ub().getBoundingClientRect(), ib = ub().querySelector('img').getBoundingClientRect(), cs = getComputedStyle(ub());
+        r.mat = { top: ib.top - bb.top, bottom: bb.bottom - ib.bottom, left: ib.left - bb.left, right: bb.right - ib.right, bg: cs.backgroundColor, w: ib.width, h: ib.height };
+        // with words: the bubble keeps its padding, the photo above the text
+        coachMessages.push({ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/gif', data: 'x' } }, { type: 'text', text: 'And this one?' }], _preview: PHOTO });
+        render(); await wait(60);
+        const wb = [...document.querySelectorAll('.coach-bubble.user')].pop(), wcs = getComputedStyle(wb);
+        r.withWords = { photo: wb.classList.contains('photo'), pad: wcs.paddingTop, bg: wcs.backgroundColor, text: wb.textContent.trim(), imgAboveText: wb.querySelector('img').getBoundingClientRect().bottom <= wb.getBoundingClientRect().bottom - 16 };
+        coachMessages.pop();
+        loadCoachHistory(); render(); await wait(60);
+        const lb = ub().getBoundingClientRect(), lab = ub().querySelector('.coach-photo-lbl').getBoundingClientRect();
+        r.relaunch = { text: ub().textContent.trim(), img: !!ub().querySelector('img'), foot: Math.round(lb.bottom - lab.bottom), head: Math.round(lab.top - lb.top) };
+        return r;
+      }, { MOCK_FETCH, PHOTO });
+      assert(out.sent.img && out.sent.alt === 'Photo you sent' && out.sent.text === '' && out.sent.api, tag + 'the photo alone shows; the default prompt still goes to the API: ' + JSON.stringify(out.sent));
+      const M = out.mat;
+      assert([M.top, M.bottom, M.left, M.right].every((v) => Math.abs(v) <= 0.5) && M.bg === 'rgba(0, 0, 0, 0)', tag + 'the photo is the bubble, with no mat: ' + JSON.stringify(M));
+      assert(Math.abs(M.w - 240) <= 1 && Math.abs(M.h - 180) <= 1, tag + 'a 4:3 photo shows 240 x 180: ' + JSON.stringify(M));
+      assert(!out.withWords.photo && out.withWords.pad === '12px' && out.withWords.bg !== 'rgba(0, 0, 0, 0)' && /And this one\?/.test(out.withWords.text) && out.withWords.imgAboveText, tag + 'with words the bubble keeps its padding, the photo above the text: ' + JSON.stringify(out.withWords));
+      assert(out.relaunch.text.replace('\u{1F4F7}', '').trim() === 'Photo' && !out.relaunch.img && out.relaunch.foot === out.relaunch.head, tag + 'after a relaunch the label alone shows, as far from the foot as from the top: ' + JSON.stringify(out.relaunch));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
 
 // ── S4 ─────────────────────────────────────────────────────────────────────────
