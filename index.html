@@ -18567,10 +18567,12 @@ function _executeCoachToolRaw(name,input){
               // Its markers go with it (Use coach's on the lift a swap dropped it for brought it back
               // everywhere but this week), and an opener left before it is unpaired and named, as the
               // owner's removal does (it paired with the next lift).
+              // Each half is named as the coach wrote it, as _progDrop does: under an owner's swap kept
+              // over the coach's row, its own name was lost once Use coach's renamed the row back.
               var _ent={at:i, row:gone}, _pv=i>0?neu[i-1]:null;
-              if(_pv && _pv.ss){ _pv.ss=false; _ent.ss=_pv.name; } else if(e.ss) _ent.ss=e.ss;
+              if(_pv && _pv.ss){ _pv.ss=false; _ent.ss=(_pv.rec && _pv.rec.name) || _pv.name; } else if(e.ss) _ent.ss=e.ss;
               if(e.swap) _ent.swap=e.swap;
-              if(gone.ss) _ent.ssTo=neu[i]?neu[i].name:'';
+              if(gone.ss) _ent.ssTo=neu[i]?((neu[i].rec && neu[i].rec.name) || neu[i].name):'';
               weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(_ent);
               if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
             // not re-sent: it stays removed, and stays restorable
