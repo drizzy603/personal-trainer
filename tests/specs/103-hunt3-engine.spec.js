@@ -1313,8 +1313,15 @@ seq('U01: Make main stays the owner\'s through edits of the lift it replaced and
       await makeMain('Push', 'Overhead Press');
       openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
       r.A_prompt = line('Overhead Press');
+      const aState = localStorage.getItem('kt_routine');
       const a = rewrite('push', coachPush());
       r.A = { day: day('push'), kept: a.keptUserEdits, mains: mains('push'), stored: JSON.stringify(a.stored), prompt: [line('Bench Press'), line('Overhead Press')] };
+      // the same, regenerated week by week with the coach's Bench as main
+      lsSet('kt_routine', JSON.parse(aState));
+      const regen = [];
+      for (let w = currentWeek; w <= getTotalWeeks(); w++) regen.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: getCustomRoutine().weeks[w - 1].push.map(e => ({ name: e.name, sets: 4, reps: e.reps, weight: e.weight, isMain: e.name === 'Bench Press' })) });
+      executeCoachTool('update_routine_weeks', { weeks: regen });
+      r.A_regen = mains('push');
       // (B') the coach sets Bench's load: not the owner's edit; the rewrite keeps the owner's main
       lsSet('kt_routine', JSON.parse(orig));
       await makeMain('Push', 'Overhead Press');
@@ -1358,7 +1365,7 @@ seq('U01: Make main stays the owner\'s through edits of the lift it replaced and
     const rest = ' | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5';
     assert(/\(main\) \[main lift chosen by the user\]$/.test(out.A_prompt), 'the coach is told the main is the owner\'s pick after the edit: ' + out.A_prompt);
     assert(out.A.day === 'Bench Press 3x8@160* | Overhead Press 4x6@105!*' + rest && JSON.stringify(out.A.kept) === '["Bench Press","Overhead Press"]', 'the owner\'s Bench edit and their main both stand: ' + JSON.stringify(out.A));
-    assert(out.A.mains.every(x => x === 'Overhead Press'), 'every week keeps one main, the owner\'s: ' + JSON.stringify(out.A.mains));
+    assert(out.A.mains.every(x => x === 'Overhead Press') && out.A_regen.length > 1 && out.A_regen.every(x => x === 'Overhead Press'), 'every week keeps one main, the owner\'s, after a regeneration too: ' + JSON.stringify([out.A.mains, out.A_regen]));
     assert(/"Overhead Press 4×6 105 lb \(main lift: the user’s choice\)"/.test(out.A.stored) && /\[main lift chosen by the user\]$/.test(out.A.prompt[1]), 'the readback and the prompt say so: ' + JSON.stringify(out.A));
     assert(/^ {2}Bench Press: 4×8 @ 170 lb RPE\S* *$/.test(out.Bp_prompt), 'the coach\'s load is not called the owner\'s edit: ' + out.Bp_prompt);
     assert(out.Bp === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'after set_exercise_weight the rewrite keeps the owner\'s main: ' + out.Bp);
