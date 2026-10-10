@@ -484,7 +484,12 @@ select option{background:var(--bg);}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
 .coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
 .coach-bubble.assistant{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--accent);color:var(--text);border-bottom-left-radius:5px;font-weight:500;}
-.coach-msgs-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:0;}
+/* One rhythm: 8px between the parts of one reply (text, pills, PLAN CHANGES, chips), 20px around
+   the owner's turn. Every part takes the column's full width: one left edge. */
+.coach-msgs-wrap{display:flex;flex-direction:column;gap:8px;margin-bottom:0;}
+.coach-msgs-wrap>.coach-bubble.user:not(:first-child),.coach-msgs-wrap>.coach-bubble.user+*{margin-top:12px;}
+.kt-tool-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;}
+.kt-chat-retry{margin:0;}
 
 /* ── The chat: one column ──────────────────────────────────────────────────
    render() marks the chat view html.kt-chat. #screen becomes a column: the header stays put,
@@ -496,6 +501,7 @@ select option{background:var(--bg);}
    conversation's own 16px end, whatever it holds. */
 .coach-chat-stick{position:relative;flex:none;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
 .coach-chat-stick .screen-hd{padding:0 0 4px;}
+.coach-chat-stick .coach-head{border-bottom:none;}   /* the stick's full-width rule is the only one (two read as 2px) */
 @media (max-width:360px){.coach-chat-stick{margin:0 -16px;padding:0 16px;}}   /* #screen's gutter is 16px there: it overran by 4px */
 .coach-chat-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
 .coach-msgs-area{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;margin:0 -4px;padding:16px 4px 0;scrollbar-width:none;}
@@ -802,7 +808,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-coach-ask svg{width:13px;height:13px;}
 .kt-coach-input-wrap{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
 .kt-coach-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none;box-sizing:border-box;}
-.kt-ledger-card{margin:-4px 4px 12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
+.kt-ledger-card{margin:0;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
 .kt-ledger-card-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.12em;color:var(--accent-ink);margin-bottom:6px;}
 .kt-ledger-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
 .kt-ledger-row:last-of-type{border-bottom:none;}
@@ -864,7 +870,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
    bubbles: purple eyebrow → short paragraphs on the background → metric
    rows in one card → takeaway → max two action chips. Only the user's
    messages bubble. ─────────────────────────────────────────────────────── */
-.kt-cmb{margin-bottom:16px;max-width:100%;}
+.kt-cmb{margin-bottom:0;max-width:100%;}
 .kt-cmb-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--purple);margin-bottom:8px;text-transform:uppercase;}
 .kt-cmb-para{font-size:14px;line-height:1.55;color:var(--text);margin-bottom:12px;letter-spacing:-.1px;}
 .kt-cmb-metrics{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px;}
@@ -878,7 +884,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-cmb-take{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
 .kt-cmb-take-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);margin-bottom:5px;}
 .kt-cmb-take-body{font-size:13.5px;line-height:1.5;color:var(--text);}
-.kt-cmb-actions{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 4px;}
+.kt-cmb-actions{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 0;}
 .kt-cmb-chip{height:38px;padding:0 14px;border-radius:19px;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
 .kt-cmb-chip.primary{background:var(--card2);border-color:var(--accent-soft);color:var(--accent-ink);font-weight:700;}
 .kt-cmb-chip:active{opacity:.7;}
@@ -20718,7 +20724,7 @@ function renderCoach(){
       // cleared, so the user had to retype. Retry re-runs the turn on the
       // existing history. Chip only on the trailing error.
       if(m.role==='assistant' && m._error && m===coachMessages[coachMessages.length-1] && !coachLoading){
-        bubbles+='<div style="margin:-4px 0 12px;"><button class="kt-cmb-chip primary" onclick="coachRetryLast()">Try again →</button></div>';
+        bubbles+='<div class="kt-chat-retry"><button class="kt-cmb-chip primary" onclick="coachRetryLast()">Try again →</button></div>';
       }
       // Tool-call pills under the assistant bubble
       if(m.role==='assistant'&&Array.isArray(m._tools)&&m._tools.length){
@@ -20730,7 +20736,7 @@ function renderCoach(){
           var icon=ok?'✓':'✕';
           return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
         }).join(' ');
-        bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+pills+'</div>';
+        bubbles+='<div class="kt-tool-pills">'+pills+'</div>';
         if(!m._ledgerSeen && m===_ledMsg){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
       }
     });
@@ -20744,7 +20750,7 @@ function renderCoach(){
         var icon=ok?'✓':'✕';
         return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
       }).join(' ');
-      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+livePills+'</div>';
+      bubbles+='<div class="kt-tool-pills">'+livePills+'</div>';
     }
     // Pending pill for a tool whose JSON is still streaming in
     if(_streamingTool){
@@ -20756,7 +20762,7 @@ function renderCoach(){
       } else {
         pendLabel='Working…';
       }
-      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+
+      bubbles+='<div class="kt-tool-pills">'+
         '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+
           '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink .9s step-end infinite;"></span>'+
           pendLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;')+

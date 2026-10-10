@@ -13,7 +13,7 @@
 //   #app go; the touchmove guard exists only while kb-open is on.
 // - M3: on a touch screen the tab bar follows the keyboard, not focus; a reply never refocuses the
 //   box by script there; the hidden bar leaves the accessibility tree; reduced motion fades it.
-const { boot, assert, run } = require('../lib/harness');
+const { boot, assert, run, SEED } = require('../lib/harness');
 
 // A scriptable visualViewport standing in for WebKit's (iOS keeps the layout viewport and pans the
 // visual one over it), and a count of the non-passive touchmove listeners on the document.
@@ -512,5 +512,50 @@ run('M5: PLAN CHANGES tells the truth once Undo is gone; a later log-only reply 
       assert(out.beforeRestore && !out.afterRestore.card && out.afterRestore.seen, tag + 'Restore previous programme retires the card: ' + JSON.stringify([out.beforeRestore, out.afterRestore]));
       assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
+  }
+});
+
+// ── S1 ─────────────────────────────────────────────────────────────────────────
+// The owner's conversation: the swap reply with its pill and PLAN CHANGES, "How am i doing?", the
+// %% progress check; then an error with Try again.
+const OWNER = [
+  { role: 'user', content: 'Any plateaus I should deal with this week?' },
+  { role: 'assistant', content: LONG_REPLY, _tools: [SWAP], _undo: 'coach:t117' },
+  { role: 'user', content: 'How am i doing?' },
+  { role: 'assistant', content: PROGRESS },
+  { role: 'user', content: 'And my squat?' },
+  { role: 'assistant', content: 'Could not connect. Check your internet connection.', _error: true, _local: true },
+];
+run('S1: one left edge, one rhythm, one hairline under the header', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const size of [{ width: 390, height: 844 }, { width: 320, height: 700 }]) {
+      const tag = room + ' ' + size.width + ': ';
+      const app = await bootChat(room, size, { seed: { kt_coach_msgs: JSON.stringify(OWNER), kt_routine_backup: SEED.kt_routine, kt_routine_backup_scope: 'coach:t117' } });
+      try {
+        await open(app.page);
+        const out = await app.page.evaluate(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          const B = (el) => el.getBoundingClientRect();
+          const wrap = document.querySelector('.coach-msgs-wrap'), kids = [...wrap.children];
+          const kind = (el) => el.classList.contains('user') ? 'user' : el.classList.contains('kt-tool-pills') ? 'pills' : el.classList.contains('kt-ledger-card') ? 'ledger'
+            : el.classList.contains('kt-chat-retry') ? 'retry' : el.classList.contains('kt-cmb') ? 'block' : el.classList.contains('kt-cmb-note') ? 'note' : 'reply';
+          const items = kids.map((el) => ({ k: kind(el), top: B(el).top, bottom: B(el).bottom, left: B(el).left, right: B(el).right }));
+          const gaps = items.slice(1).map((it, i) => items[i].k + '>' + it.k + ':' + Math.round(it.top - items[i].bottom));
+          const edges = {};
+          ['.kt-tool-pills', '.kt-ledger-card', '.kt-cmb-metrics', '.kt-cmb-take', '.kt-cmb-actions', '.kt-chat-retry'].forEach((s) => { const el = document.querySelector(s); if (el) edges[s] = [Math.round(B(el).left), Math.round(B(el).right)]; });
+          const st = document.querySelector('.coach-chat-stick'), head = document.querySelector('.coach-head');
+          const s = document.getElementById('screen');
+          return { gaps, edges, stickRule: getComputedStyle(st).borderBottomWidth, headRule: getComputedStyle(head).borderBottomStyle, sw: s.scrollWidth, cw: s.clientWidth };
+        }).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        const L = size.width === 390 ? 20 : 16, R = size.width - L;
+        for (const k of Object.keys(out.edges)) assert(Math.abs(out.edges[k][0] - L) <= 1 && Math.abs(out.edges[k][1] - R) <= 1, tag + k + ' spans the column: ' + JSON.stringify(out.edges[k]));
+        const want = ['user>reply:20', 'reply>pills:8', 'pills>ledger:8', 'ledger>user:20', 'user>block:20', 'block>user:20'];
+        for (const w of want) assert(out.gaps.some((g) => Math.abs(parseFloat(g.split(':')[1]) - parseFloat(w.split(':')[1])) <= 1 && g.split(':')[0] === w.split(':')[0]), tag + 'gap ' + w + ' in ' + JSON.stringify(out.gaps));
+        assert(out.stickRule === '1px' && out.headRule === 'none', tag + 'one rule under the header: ' + JSON.stringify([out.stickRule, out.headRule]));
+        assert(out.sw <= out.cw, tag + 'no horizontal overflow: ' + JSON.stringify([out.sw, out.cw]));
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
   }
 });
