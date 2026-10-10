@@ -18269,6 +18269,13 @@ var COACH_TOOLS=[
 // two written weeks, and per-slot counts for the rest. The model once merged
 // chest and back into one day, dropped most of the chest work, and could not
 // see it because the tool only answered "Weeks 1-12 updated".
+// A row's load as the coach reads it: each set's when a top set and back-offs differ (the headline
+// weight alone read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
+function _rowLoadText(r, none){
+  var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
+  if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
+  return parseFloat(r.weight)>0?fmtW(r.weight):none;
+}
 function _routineReadback(written){
   var cr=getCustomRoutine(); if(!cr) return null;
   // No weekPlan means the default cadence, which is what the Log tab shows;
@@ -18279,7 +18286,7 @@ function _routineReadback(written){
     var w=(cr.weeks||[])[wk-1]; if(!w) return;
     if(i<2){
       var full={};
-      LIFT_KEYS.forEach(function(k, ki){ var a=w[k], ch=_progMainChosen(a); if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'')+(e===ch?' (main lift: the user\u2019s choice)':'') : e; }); });
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k], ch=_progMainChosen(a); if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+_rowLoadText(e, 'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'')+(e===ch?' (main lift: the user\u2019s choice)':'') : e; }); });
       if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
       out.weeks[wk]=full;
     } else {
@@ -18521,10 +18528,13 @@ function _executeCoachToolRaw(name,input){
           // replaced the coach's first row alone, so the second came back beside it (8 sets), and a
           // removal took the first alone (the lift came back). The coach's rows fold into one first,
           // as the runner folds them (Restore brings one row of a lift back, Use coach's all its sets).
+          // A mark that only moved the main tag (Make main, a handed-on tag) stands for nothing: the
+          // coach's rows of that lift stand as sent (they were folded into one, or a bodyweight row
+          // was dropped, with nothing of the owner's in their place).
           var _ro0=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [], _fold={};
           var _stand=function(nm){ return old.filter(function(x){ return x && (x.name===nm || (x.rec && x.rec.name===nm)); }).length
             + _ro0.filter(function(e){ return e && e.row && e.row.name===nm; }).length; };
-          old.forEach(function(x){ if(x && x.rec!==undefined) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
+          old.forEach(function(x){ if(x && x.rec!==undefined && !_progTagOnly(x)) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
           _ro0.forEach(function(e){ if(e && e.row && _stand(e.row.name)===1) _fold[e.row.name]=1; });
           Object.keys(_fold).forEach(function(nm){
             if(neu.filter(function(y){ return y && y.name===nm; }).length<2 || _progMergeLift(weekObj, k, nm)) return;
@@ -19871,13 +19881,8 @@ function buildSystemPrompt(){
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
     p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
-    // A row's load: each set's when a top set and back-offs differ (the headline weight alone
-    // read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
-    var _rowLoad=function(r, none){
-      var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
-      if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
-      return parseFloat(r.weight)>0?fmtW(r.weight):none;
-    };
+    // A row's load: each set's when a top set and back-offs differ, else the one load.
+    var _rowLoad=_rowLoadText;
     LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';

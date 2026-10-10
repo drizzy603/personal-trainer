@@ -1371,3 +1371,60 @@ seq('U01: Make main stays the owner\'s through edits of the lift it replaced and
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U20 + U03 (regression from T20): the coach merge folded the coach's repeated rows of a lift into
+// one when the stored day held that lift once with a mark that only moved the main tag (Make main,
+// a removed main's tag handed on), where nothing of the owner's stands for them: a loaded row plus
+// a bodyweight row lost the bodyweight row, a top set and its back-offs became one row at the top
+// set's RPE, a superset partner between them was unpaired, and the readback the coach checks read
+// every set at the top set's load. T20's own fold (an owner's row standing for the lift) still runs,
+// and the readback prints each set's load.
+seq('U20 + U03: a mark that only moved the main tag does not fold the coach\'s rows; the readback reads each set\'s load', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.rpe ? ' rpe' + e.rpe : '') + (e.isMain ? ' main' : '') + (e.ss ? ' ss' : '');
+      const day = (k) => (getCustomRoutine().weeks[c][k] || []).map(fmt);
+      const orig = localStorage.getItem('kt_routine');
+      const runner = async (slot) => { openDeckRunner(slot, true); await wait(20); const x = runnerSession.exercises.map(fmt); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      const makeMain = async (slot, n) => { openRoutines(); _rtOpenEdit(slot, n); _rtMakeMain(); await wait(10); closeRoutines(); };
+      const rewrite = (k, rows) => executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', [k]: rows }] });
+      // the coach's Pull: weighted Pull Up (main), Barbell Row, Face Pull; the owner makes Barbell Row main
+      const cr = getCustomRoutine();
+      cr.weeks.forEach(w => { w.pull = [{ name: 'Pull Up', sets: 3, reps: 5, weight: 30, isMain: true }, { name: 'Barbell Row', sets: 4, reps: 8, weight: 140 }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35 }]; });
+      setCustomRoutine(cr);
+      const pull = localStorage.getItem('kt_routine');
+      await makeMain('Pull', 'Barbell Row');
+      const a = rewrite('pull', [{ name: 'Pull Up', sets: 3, reps: 5, weight: 30, isMain: true }, { name: 'Barbell Row', sets: 4, reps: 8, weight: 140 }, { name: 'Pull Up', sets: 2, reps: 'AMRAP', weight: 0 }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35 }]);
+      r.made = { day: day('pull'), kept: a.keptUserEdits, runner: await runner('Pull') };
+      // the owner removed the coach's main (its tag went to Barbell Row); the coach writes Barbell Row twice around a superset
+      lsSet('kt_routine', JSON.parse(pull));
+      openRoutines(); _rtOpenEdit('Pull', 'Pull Up'); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const b = rewrite('pull', [{ name: 'Barbell Row', sets: 1, reps: 5, weight: 165, isMain: true }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35, ss: true }, { name: 'Barbell Row', sets: 3, reps: 8, weight: 135 }]);
+      r.handed = { day: day('pull'), kept: b.keptUserEdits };
+      // U03: Make main on Overhead Press; the coach writes Bench as a top single plus back-offs
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      const d = rewrite('push', [{ name: 'Bench Press', sets: 1, reps: 3, weight: 185, rpe: 9, isMain: true }, { name: 'Bench Press', sets: 3, reps: 6, weight: 155, rpe: 7 }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }]);
+      r.top = { day: day('push'), stored: d.stored.weeks[currentWeek]['Push [Push]'] };
+      // T20's own case: the runner's one row of five sets stands for the coach's two; the readback reads each set
+      lsSet('kt_routine', JSON.parse(orig));
+      const two = () => [{ name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 }, { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 }, { name: 'Bench Press', sets: 3, reps: 8, weight: 185, rpe: 7 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }];
+      const cr4 = getCustomRoutine(); cr4.weeks.forEach(w => { w.push = two(); }); setCustomRoutine(cr4);
+      _commitRoutine(x => { _progMergeLift(x.weeks[c], 'push', 'Bench Press'); return _progSetScheme(x, 'push', 'Bench Press', c, 'sets', 5, { markOwner: true }); }, { scope: 'runner:u20' });
+      const e = rewrite('push', two());
+      r.t20 = { day: day('push'), stored: e.stored.weeks[currentWeek]['Push [Push]'] };
+      return r;
+    });
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    assert(same(out.made.day, ['Pull Up 3x5@30', 'Barbell Row 4x8@140 main', 'Pull Up 2x"AMRAP"@0', 'Face Pull 3x15@35']) && same(out.made.kept, ['Barbell Row']), 'both of the coach\'s Pull Up rows are stored; the owner\'s main stands: ' + JSON.stringify(out.made));
+    assert(/^Pull Up 5x\[5,5,5,"AMRAP","AMRAP"\]@\[30,30,30,0,0\]/.test(out.made.runner[0]) && /^Barbell Row 4x8@140.* main$/.test(out.made.runner[1]), 'the runner trains all five Pull Up sets: ' + JSON.stringify(out.made.runner));
+    assert(same(out.handed.day, ['Barbell Row 1x5@165 main', 'Face Pull 3x15@35 ss', 'Barbell Row 3x8@135']), 'a handed-on tag leaves the coach\'s rows as sent, the superset paired: ' + JSON.stringify(out.handed));
+    assert(same(out.top.day.slice(0, 3), ['Bench Press 1x3@185 rpe9', 'Bench Press 3x6@155 rpe7', 'Overhead Press 4x6@105 main']), 'the top single and its back-offs stay two rows, each at its RPE: ' + JSON.stringify(out.top.day));
+    assert(same(out.top.stored.slice(0, 2), ['Bench Press 1×3 185 lb', 'Bench Press 3×6 155 lb']), 'the readback reads both rows: ' + JSON.stringify(out.top.stored));
+    assert(/^Bench Press 5x\[3,8,8,8\]@\[225,185,185,185\] rpe8 main$/.test(out.t20.day[0]) && out.t20.stored[0] === 'Bench Press 5×3,8,8,8 225/185/185/185 lb (user’s edit kept)', 'the owner\'s one row still stands for the coach\'s two, read set by set: ' + JSON.stringify(out.t20));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
