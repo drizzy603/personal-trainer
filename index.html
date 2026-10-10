@@ -11443,36 +11443,55 @@ function _e1(w, r){ var n=_repsNum(r); return n>0 ? w*(1+n/30) : w; }   // Epley
 // row.rec, for "Coach: 4×8 · 160 lb · Use coach's". rec:null = the owner added it.
 function _markRec(row){
   if(!row || row.rec!==undefined) return;
-  var c={}; Object.keys(row).forEach(function(k){ if(k!=='rec') c[k]=row[k]; });
+  var c={}; Object.keys(row).forEach(function(k){ if(k!=='rec' && k!=='mainBy') c[k]=row[k]; });
   row.rec=JSON.parse(JSON.stringify(c));
 }
 // A row that is again what the coach wrote loses its mark (main and superset read
-// false when absent).
+// false when absent), and the owner's main choice goes with the main tag.
 function _progUnmark(row){
-  if(!row || !row.rec) return;
-  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k==='rec' || ((k==='isMain' || k==='ss') && !o[k])) return; x[k]=o[k]; }); return JSON.stringify(x); };
-  if(norm(row)===norm(row.rec)) delete row.rec;
+  if(!row) return;
+  if(row.rec){
+    var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k==='rec' || k==='mainBy' || ((k==='isMain' || k==='ss') && !o[k])) return; x[k]=o[k]; }); return JSON.stringify(x); };
+    if(norm(row)===norm(row.rec)) delete row.rec;
+  }
+  if(row.mainBy && !_progMainMark(row)) delete row.mainBy;
 }
+// A main lift the coach's version does not have as main (the owner's Make main, a tag handed on).
+function _progMainMark(r){ return !!(r && r.isMain && (r.rec===null || (r.rec && !r.rec.isMain))); }
 // A mark that records only where the main tag or a superset went (a removed main hands its
 // tag on): the lift and its numbers are the coach's. Routines still shows it, but the coach
 // is not told the owner edited the lift and its rewrite of the row stands (the merge kept the
 // old numbers as "the user's own edits", and the prompt said they were).
 function _progTagOnly(row){
   if(!row || !row.rec) return false;
-  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss') x[k]=o[k]; }); return JSON.stringify(x); };
+  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss' && k!=='mainBy') x[k]=o[k]; }); return JSON.stringify(x); };
   return norm(row)===norm(row.rec);
 }
-// The lift the owner made main on a day (Make main): the coach's main is still on the day,
-// marked for its tag alone (the main lift may since be the coach's own edit of it). A tag handed
-// on when the main left the day is no choice of theirs.
+// The lift the owner made main on a day (Make main): row.mainBy='user', set by _progMainOf and
+// kept through edits, swaps and the coach's rewrites until Use coach's, Reset, a removal or
+// another Make main moves the tag. It was read off the coach's main still on the day, marked for
+// its tag alone: an edit of that lift, the coach's own change to it, or a day the coach wrote with
+// no main lost the choice to the next rewrite (the day could end with no main at all). A Make main
+// from before 20261010 has no flag and is still read that way. A tag handed on when the main left
+// the day is no choice of theirs.
 function _progMainChosen(list){
-  if(!Array.isArray(list) || !list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
+  if(!Array.isArray(list)) return null;
+  var f=list.filter(function(x){ return x && x.mainBy && _progMainMark(x); })[0];
+  if(f) return f;
+  if(!list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
   return list.filter(function(x){ return x && x.isMain && !(x.rec && x.rec.isMain); })[0] || null;
 }
-// The main tag on `name` alone in one day, each row it moves marked (Make main).
+// The main tag on `name` alone in one day, each row it moves marked (Make main). The lift that
+// takes it over the coach's main is flagged as the owner's choice; every other row loses a flag.
 function _progMainOf(list, name){
   var n=0;
-  (list||[]).forEach(function(r){ if(!r) return; var m=(r.name===name); if(!!r.isMain!==m){ _markRec(r); r.isMain=m; _progUnmark(r); n++; } });
+  (list||[]).forEach(function(r){
+    if(!r) return;
+    var m=(r.name===name);
+    if(!!r.isMain!==m){ _markRec(r); r.isMain=m; n++; }
+    if(m && _progMainMark(r)){ if(r.mainBy!=='user') n++; r.mainBy='user'; } else delete r.mainBy;
+    _progUnmark(r);
+  });
   return n;
 }
 // One main lift a day once `row` is back as the coach wrote it (Restore, Reset, Use
@@ -11797,7 +11816,7 @@ function _progDrop(w, slot, idx, o){
   var list=w[slot], r=list[idx], p=idx>0?list[idx-1]:null, unpair=!!(p && p.ss);
   if(r.rec!==null && !o.coach){
     var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
-    var ent={at:idx, row:keep}; if(unpair) ent.ss=p.name; if(o.swap) ent.swap=o.swap;
+    var ent={at:idx, row:keep}; if(unpair) ent.ss=(p.rec && p.rec.name) || p.name; if(o.swap) ent.swap=o.swap;   // the opener as the coach wrote it (Use coach's renames an owner's swap back)
     if(keep.ss) ent.ssTo=(r.ss && list[idx+1]) ? ((list[idx+1].rec && list[idx+1].rec.name) || list[idx+1].name) : '';   // the partner it comes back to (the coach's, under an owner's swap)
     w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push(ent);
   }
@@ -11862,6 +11881,7 @@ function _commitRoutine(mutate, o){
   if(!cr || !Array.isArray(cr.weeks)) return false;
   var res=mutate(cr);
   if(res===false || res===-1 || res===0) return res;
+  _progSsRec(cr);
   // o.keepBackup: no undo point (a units switch moved the plates under a coach reply's Undo and
   // Restore previous programme, which then gave back the switch, not the reply)
   if(!o.keepBackup && (!o.scope || o.scope!==_routineScope)){
@@ -11887,11 +11907,23 @@ function _commitRoutine(mutate, o){
 // By name, every slot that holds the lift, each on its own curve (keyless
 // progression, the plateau reset and the coach's set_exercise_weight).
 function _progCarryByName(cr, name, c, N, o){
-  var n=0, low=String(name).toLowerCase();
+  var n=0, low=String(name).toLowerCase(), was=[];
+  // o.recFollow (the coach's set_exercise_weight): the load is the programme's version, so a marked
+  // row's coach original takes it too. A mark that only moved the main tag read as the owner's edit
+  // ("[edited by the user; you had 4x8 @ 160 lb]") once the coach changed the load.
+  if(o && o.recFollow) (cr.weeks||[]).forEach(function(w, j){
+    if(j>=c && w) LIFT_KEYS.forEach(function(k){ ((w[k])||[]).forEach(function(e){ if(e && e.rec && e.rec.name===e.name && String(e.name).toLowerCase()===low) was.push([e, JSON.stringify([e.weight, e.weights||null])]); }); });
+  });
   LIFT_KEYS.forEach(function(k){
     ((cr.weeks[c]&&cr.weeks[c][k])||[]).forEach(function(e){
       if(e && String(e.name).toLowerCase()===low && parseFloat(e.weight)>0) n+=_progCarryLoad(cr, k, e.name, c, N, o);
     });
+  });
+  was.forEach(function(p){
+    var e=p[0]; if(!e.rec || JSON.stringify([e.weight, e.weights||null])===p[1]) return;
+    e.rec.weight=e.weight;
+    if(Array.isArray(e.weights)) e.rec.weights=e.weights.slice(); else delete e.rec.weights;
+    _progUnmark(e);
   });
   return n;
 }
@@ -12023,6 +12055,20 @@ function _bdAskCoach(){
   setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
 }
 
+// A superset opener whose partner the owner removed: the partner's entry names it (e.ss). It is
+// unpaired on the day while the partner is out, and its coach original says paired.
+function _progSsOut(w, slot, name){ return !!(w && w.recOut && Array.isArray(w.recOut[slot]) && w.recOut[slot].some(function(e){ return e && e.ss===name; })); }
+// An owner's edit or swap of such an opener took the unpaired state as the coach's original, so
+// Use coach's and Reset gave the pair back unpaired for good (Restore had paired the swap). Run on
+// every programme write (_commitRoutine): the original says paired again.
+function _progSsRec(cr){
+  (cr.weeks||[]).forEach(function(w){
+    if(w && w.recOut) LIFT_KEYS.forEach(function(k){
+      (Array.isArray(w[k])?w[k]:[]).forEach(function(x){ if(x && x.rec && !x.rec.ss && !x.ss && _progSsOut(w, k, x.rec.name)) x.rec.ss=true; });
+    });
+  });
+}
+
 // ── Resets: back to what the coach wrote ─────────────────────────────────────
 // A row the owner changed goes back to its rec (renames too); a row the owner
 // added goes away; where their swap onto it dropped a coach row (the week had the
@@ -12042,6 +12088,7 @@ function _progUseCoach(cr, slot, name, c){
         // twice, and the runner logged both cards as one lift and saved its sets twice.
         var dup=-1; list.forEach(function(x, d){ if(dup<0 && x && x!==r && x.name===back.name) dup=d; });
         if(dup>=0){ if(list[dup].rec!==null) return -1; list.splice(dup,1); i=list.indexOf(r); }
+        if(back.ss && _progSsOut(W[j], slot, back.name)) back.ss=false;   // its partner is still out: Restore pairs them
         list[i]=back; _progSettleMain(list, back);
       }
       n++;
@@ -12083,7 +12130,11 @@ function _progResetSlot(cr, slot, c){
     list.forEach(function(r){
       if(!r) return;
       if(r.rec===null){ n++; return; }
-      if(r.rec){ var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec; out.push(b); if(b.name!==r.name) swapped.push(b); n++; return; }
+      if(r.rec){
+        var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec;
+        if(b.ss && _progSsOut(w, slot, b.name)) b.ss=false;   // its removed partner comes back right after it, paired
+        out.push(b); if(b.name!==r.name) swapped.push(b); n++; return;
+      }
       out.push(r);
     });
     // A lift the owner swapped away that is on the day again (the coach added it back: the
@@ -18225,12 +18276,13 @@ var COACH_TOOLS=[
      },
      required:['dayA','dayB']}},
   {name:'edit_programme_exercise',
-   description:'Change ONE exercise on one lift day, from a week on (default: the current week), carried through every later week with the programme\'s own progression (deload weeks keep their share). Use this for single-exercise changes, including ones the user asks you to make to lifts they edited themselves; use update_routine_weeks only to rebuild whole weeks. action: change (sets/reps/rpe/weight), add, remove, or swap (rename_to, optional weight). Weight in {W}.',
+   description:'Change ONE exercise on one lift day, from a week on (default: the current week), carried through every later week with the programme\'s own progression (deload weeks keep their share). Use this for single-exercise changes, including ones the user asks you to make to lifts they edited themselves; use update_routine_weeks only to rebuild whole weeks. action: change (sets/reps/rpe/weight), add, remove, or swap (rename_to, optional weight). make_main:true makes the exercise the day\'s main lift (the only way to replace a main lift the user chose). Weight in {W}.',
    input_schema:{type:'object',properties:{
      day:{type:'string',description:'lift slot id (Push, Pull, Legs, Legs2, Arms, Day6, Day7) or the day\'s name'},
      exercise:{type:'string'}, action:{type:'string',enum:['change','add','remove','swap']},
      rename_to:{type:'string'}, weight:{type:'number',description:'in {W}; 0 = the user picks the load'},
      sets:{type:'integer'}, reps:{type:'integer'}, rpe:{type:'integer'},
+     make_main:{type:'boolean',description:'make this exercise the day\'s main lift (the other main loses the tag); only when the user asks for a different main lift, including over one they chose themselves'},
      from_week:{type:'integer'}, only_this_week:{type:'boolean'},
      every_week:{type:'boolean',description:'sets/reps change every later week, not only weeks with the same scheme'},
      after:{type:'string',description:'add: insert after this exercise'}},
@@ -18339,6 +18391,13 @@ var COACH_TOOLS=[
 // two written weeks, and per-slot counts for the rest. The model once merged
 // chest and back into one day, dropped most of the chest work, and could not
 // see it because the tool only answered "Weeks 1-12 updated".
+// A row's load as the coach reads it: each set's when a top set and back-offs differ (the headline
+// weight alone read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
+function _rowLoadText(r, none){
+  var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
+  if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
+  return parseFloat(r.weight)>0?fmtW(r.weight):none;
+}
 function _routineReadback(written){
   var cr=getCustomRoutine(); if(!cr) return null;
   // No weekPlan means the default cadence, which is what the Log tab shows;
@@ -18349,7 +18408,7 @@ function _routineReadback(written){
     var w=(cr.weeks||[])[wk-1]; if(!w) return;
     if(i<2){
       var full={};
-      LIFT_KEYS.forEach(function(k, ki){ var a=w[k], ch=_progMainChosen(a); if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+(parseFloat(e.weight)>0?fmtW(e.weight):'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'')+(e===ch?' (main lift: the user\u2019s choice)':'') : e; }); });
+      LIFT_KEYS.forEach(function(k, ki){ var a=w[k], ch=_progMainChosen(a); if(a&&a.length) full[_dayLabel(LIFT_TYPES[ki])+' ['+LIFT_TYPES[ki]+']']=a.map(function(e){ return e ? e.name+' '+e.sets+'\u00d7'+e.reps+' '+_rowLoadText(e, 'user load')+(e.rec!==undefined && !_progTagOnly(e)?' (user\u2019s edit kept)':'')+(e===ch?' (main lift: the user\u2019s choice)':'') : e; }); });
       if(Array.isArray(w.weekPlan)) full.cadenceOverride=w.weekPlan.join(', ');
       out.weeks[wk]=full;
     } else {
@@ -18467,7 +18526,7 @@ function _executeCoachToolRaw(name,input){
       var written=[];
       var skipped=[];
       var errored=null;
-      var _keptEdits=[];
+      var _keptEdits=[], _keptMain=[];
       // Ascending order so a single call carrying weeks 13-16 fills them in
       // sequence; a week beyond length+1 would otherwise be padded with bare
       // {wk} placeholders that render as 'undefined Block' with no lifts.
@@ -18500,7 +18559,7 @@ function _executeCoachToolRaw(name,input){
         var _prevW=cr.weeks[wk-1];
         if(_prevW) LIFT_KEYS.forEach(function(k){ if(w[k]===undefined && Array.isArray(_prevW[k]) && _prevW[k].length) weekObj[k]=JSON.parse(JSON.stringify(_prevW[k])); });
         // Marks are the app's, not the model's: drop any it echoed back.
-        LIFT_KEYS.forEach(function(k){ (Array.isArray(weekObj[k])?weekObj[k]:[]).forEach(function(e){ if(e && typeof e==='object' && w[k]!==undefined) delete e.rec; }); });
+        LIFT_KEYS.forEach(function(k){ (Array.isArray(weekObj[k])?weekObj[k]:[]).forEach(function(e){ if(e && typeof e==='object' && w[k]!==undefined){ delete e.rec; delete e.mainBy; } }); });
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
         LIFT_KEYS.forEach(function(sk){
@@ -18591,10 +18650,13 @@ function _executeCoachToolRaw(name,input){
           // replaced the coach's first row alone, so the second came back beside it (8 sets), and a
           // removal took the first alone (the lift came back). The coach's rows fold into one first,
           // as the runner folds them (Restore brings one row of a lift back, Use coach's all its sets).
+          // A mark that only moved the main tag (Make main, a handed-on tag) stands for nothing: the
+          // coach's rows of that lift stand as sent (they were folded into one, or a bodyweight row
+          // was dropped, with nothing of the owner's in their place).
           var _ro0=(_prevW.recOut && Array.isArray(_prevW.recOut[k])) ? _prevW.recOut[k] : [], _fold={};
           var _stand=function(nm){ return old.filter(function(x){ return x && (x.name===nm || (x.rec && x.rec.name===nm)); }).length
             + _ro0.filter(function(e){ return e && e.row && e.row.name===nm; }).length; };
-          old.forEach(function(x){ if(x && x.rec!==undefined) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
+          old.forEach(function(x){ if(x && x.rec!==undefined && !_progTagOnly(x)) [x.name, x.rec && x.rec.name].forEach(function(nm){ if(nm && _stand(nm)===1) _fold[nm]=1; }); });
           _ro0.forEach(function(e){ if(e && e.row && _stand(e.row.name)===1) _fold[e.row.name]=1; });
           Object.keys(_fold).forEach(function(nm){
             if(neu.filter(function(y){ return y && y.name===nm; }).length<2 || _progMergeLift(weekObj, k, nm)) return;
@@ -18613,7 +18675,14 @@ function _executeCoachToolRaw(name,input){
             neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.name) ni=i; });
             if(ni<0 && orow.rec && orow.rec.name) neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.rec.name) ni=i; });
             var keep=JSON.parse(JSON.stringify(orow));
-            if(ni>=0){ var coachRow=JSON.parse(JSON.stringify(neu[ni])); delete coachRow.rec; if(keep.rec!==null) keep.rec=coachRow; neu[ni]=keep; }
+            if(ni>=0){
+              var coachRow=JSON.parse(JSON.stringify(neu[ni])); delete coachRow.rec; if(keep.rec!==null) keep.rec=coachRow;
+              // The main tag on it is the coach's call, unless the owner chose it (Make main, applied
+              // below): the old tag kept a second main beside the coach's new one, or left the day with
+              // none when the coach made the owner's edited lift main.
+              if(!keep.mainBy){ if(coachRow.isMain) keep.isMain=true; else delete keep.isMain; }
+              neu[ni]=keep;
+            }
             else neu.splice(Math.min(oi, neu.length), 0, keep);
             if(_keptEdits.indexOf(orow.name)<0) _keptEdits.push(orow.name);
           });
@@ -18626,10 +18695,12 @@ function _executeCoachToolRaw(name,input){
               // Its markers go with it (Use coach's on the lift a swap dropped it for brought it back
               // everywhere but this week), and an opener left before it is unpaired and named, as the
               // owner's removal does (it paired with the next lift).
+              // Each half is named as the coach wrote it, as _progDrop does: under an owner's swap kept
+              // over the coach's row, its own name was lost once Use coach's renamed the row back.
               var _ent={at:i, row:gone}, _pv=i>0?neu[i-1]:null;
-              if(_pv && _pv.ss){ _pv.ss=false; _ent.ss=_pv.name; } else if(e.ss) _ent.ss=e.ss;
+              if(_pv && _pv.ss){ _pv.ss=false; _ent.ss=(_pv.rec && _pv.rec.name) || _pv.name; } else if(e.ss) _ent.ss=e.ss;
               if(e.swap) _ent.swap=e.swap;
-              if(gone.ss) _ent.ssTo=neu[i]?neu[i].name:'';
+              if(gone.ss) _ent.ssTo=neu[i]?((neu[i].rec && neu[i].rec.name) || neu[i].name):'';
               weekObj.recOut=weekObj.recOut||{}; (weekObj.recOut[k]=weekObj.recOut[k]||[]).push(_ent);
               if(_keptEdits.indexOf('-'+e.row.name)<0) _keptEdits.push('-'+e.row.name); break; } }
             // not re-sent: it stays removed, and stays restorable
@@ -18650,7 +18721,10 @@ function _executeCoachToolRaw(name,input){
           if(_ch){
             var _chIn=neu.some(function(x){ return x && x.name===_ch.name; });
             if(!_chIn) neu.splice(Math.min(old.indexOf(_ch), neu.length), 0, JSON.parse(JSON.stringify(_ch)));
-            if((_progMainOf(neu, _ch.name) || !_chIn) && _keptEdits.indexOf(_ch.name)<0) _keptEdits.push(_ch.name);
+            if(_progMainOf(neu, _ch.name) || !_chIn){
+              if(_keptEdits.indexOf(_ch.name)<0) _keptEdits.push(_ch.name);
+              if(_keptMain.indexOf(_ch.name)<0) _keptMain.push(_ch.name);
+            }
           }
           if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
         });
@@ -18689,7 +18763,8 @@ function _executeCoachToolRaw(name,input){
       }
       if(_keptEdits.length){
         var _kAdd=_keptEdits.filter(function(x){ return x.charAt(0)!=='-'; }), _kRem=_keptEdits.filter(function(x){ return x.charAt(0)==='-'; }).map(function(x){ return x.slice(1); });
-        label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked.';
+        label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked'+
+          (_keptMain.length?' ('+_keptMain.join(', ')+(_keptMain.length===1?' is the main lift':' are the main lifts')+' the user chose; if they ask for another main lift, call edit_programme_exercise with make_main:true on it)':'')+'.';
       }
       return _cad({ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
         check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'});
@@ -18791,18 +18866,47 @@ function _executeCoachToolRaw(name,input){
           if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
           if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
         }
+        // make_main: the user asked for this main lift, so it is the programme's version from the
+        // week on, over their own Make main too (its flag goes; each row's coach original says which
+        // lift is main). A rewrite kept the owner's main and this tool had no way to move it.
+        if(input.make_main===true || input.make_main==='true'){
+          var mm=0;
+          for(var jm=cE;jm<(o.onlyThisWeek?cE+1:cr.weeks.length);jm++){
+            var lm=cr.weeks[jm]&&cr.weeks[jm][keyE]; if(!Array.isArray(lm) || !_progRow(cr.weeks[jm], keyE, nmE)) continue;
+            lm.forEach(function(r){
+              if(!r) return;
+              var m=(r.name===nmE);
+              if(!!r.isMain!==m){ if(m) r.isMain=true; else delete r.isMain; mm++; }
+              if(r.mainBy){ delete r.mainBy; mm++; }
+              if(r.rec && !!r.rec.isMain!==m){ if(m) r.rec.isMain=true; else delete r.rec.isMain; mm++; }
+              _progUnmark(r);
+            });
+          }
+          if(!mm && !n){ whyE=nmE+' is already the main lift on '+_dayLabel(slotE); return false; }
+          n+=mm;
+        }
         // The coach changed it at the user's request: this is now the programme's version
-        // (in the weeks it changed: that week alone keeps the owner's marks on the rest).
-        for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
+        // (in the weeks it changed: that week alone keeps the owner's marks on the rest). Its main
+        // tag and superset stay the coach's as they were: the owner's Make main stays theirs, and
+        // the coach's main it moved keeps its mark (Use coach's and Reset left the day with no main).
+        for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){
+          var rr=_progRow(cr.weeks[j], keyE, nmE); if(!rr || rr.rec===undefined) continue;
+          var tg=rr.rec||{isMain:!!rr.isMain && !rr.mainBy, ss:!!rr.ss}, rv=JSON.parse(JSON.stringify(rr));
+          delete rv.rec; delete rv.mainBy;
+          if(tg.isMain) rv.isMain=true; else delete rv.isMain;
+          if(tg.ss) rv.ss=true; else delete rv.ss;
+          rr.rec=rv; _progUnmark(rr);
+        }
         return n;
       }, {scope:_coachScope()});
       if(!resE) return {ok:false,error:(whyE||'nothing to change')+'. Nothing was changed.'};
       var crR=getCustomRoutine(), series=[];
       for(var jj=cE;jj<crR.weeks.length;jj++){
         var q=_progRow(crR.weeks[jj], keyE, nmE);
-        if(q) series.push('wk'+(jj+1)+(_isDeloadWk(crR.weeks[jj])?' deload':'')+' '+q.sets+'\u00d7'+q.reps+' '+(parseFloat(q.weight)>0?fmtW(q.weight):'your load'));
+        if(q) series.push('wk'+(jj+1)+(_isDeloadWk(crR.weeks[jj])?' deload':'')+' '+q.sets+'\u00d7'+q.reps+' '+(parseFloat(q.weight)>0?fmtW(q.weight):'your load')+(q.isMain?' (main)':''));
       }
-      return {ok:true, message:_dayLabel(slotE)+': '+(actE==='remove'?exN+' removed':nmE+(actE==='add'?' added':' updated'))+' from week '+fw+(input.only_this_week?' (that week only)':' on'), series:series};
+      var mkE=actE!=='remove' && (input.make_main===true || input.make_main==='true');
+      return {ok:true, message:_dayLabel(slotE)+': '+(actE==='remove'?exN+' removed':nmE+(actE==='add'?' added':' updated')+(mkE?' as the main lift':''))+' from week '+fw+(input.only_this_week?' (that week only)':' on'), series:series};
     }
     if(name==='set_exercise_weight'){
       var weights=getWeights();
@@ -18830,7 +18934,7 @@ function _executeCoachToolRaw(name,input){
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:scW});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true, recFollow:true}); }, {noRender:true, scope:scW});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
@@ -18947,8 +19051,11 @@ function _executeCoachToolRaw(name,input){
         var gbad=(LIFT_TYPES.indexOf(gto.type)>=0 && gto.type!==gtype) ? 'is '+gtl+', not '+gtype
           : (/^\d{4}-\d{2}-\d{2}$/.test(String(input.date||'').trim()) && gdate!==gtd) ? 'is from '+gtd+', not '+gdate : '';
         if(gbad) return {ok:false,error:'session [id:'+gto.id+'] '+gbad+'. Nothing was saved. Pass the id of the session these lifts were part of, with its day as type.'};
+        // Judged against the saved session alone: a lift it lacks is added with every entry sent
+        // (a top set, then back-offs at another load), as a plain log_session saves them. Only the
+        // first entry went in, and the back-offs were reported as 'already in it, left as saved'.
         var ghave=gto.exercises.map(function(e){ return _coachLiftKey(e&&e.name); }), gadd=[], gkept=[];
-        gclean.forEach(function(e){ var k=_coachLiftKey(e.name); if(ghave.indexOf(k)>=0) gkept.push(e.name); else { ghave.push(k); gadd.push(e); } });
+        gclean.forEach(function(e){ if(ghave.indexOf(_coachLiftKey(e.name))<0) gadd.push(e); else if(gkept.indexOf(e.name)<0) gkept.push(e.name); });
         if(!gadd.length) return {ok:false,duplicate:gto.id,error:'Every lift you sent is already in [id:'+gto.id+'] '+gtl+' '+gtd+'. Nothing was saved. To correct a number in it, use edit_session with that id.'};
         if(gto.exercises.some(function(e){ return e && e.isMain; })) gadd.forEach(function(e){ e.isMain=false; });
         var gaPRs=_pendingPRs(gadd), gp0=Array.isArray(gto.prs)?gto.prs:[];
@@ -18959,7 +19066,7 @@ function _executeCoachToolRaw(name,input){
         invalidateCoachCard();
         checkMilestones({quiet:false, delayToast:600});
         render();
-        var gan=gadd.map(function(e){ return e.name; });
+        var gan=[]; gadd.forEach(function(e){ if(gan.indexOf(e.name)<0) gan.push(e.name); });
         return {ok:true, added:gan, into:gto.id, type:gto.type, date:gtd,
           message:'Added '+gan.join(', ')+' to the '+gtl+' session of '+gtd+' [id:'+gto.id+'], now '+gnew.exercises.length+' exercises'+(gaPRs.length?', '+gaPRs.length+' PR'+(gaPRs.length===1?'':'s'):'')+(gkept.length?'. Already in it, left as saved: '+gkept.join(', ')+' (to correct a number there, use edit_session)':'')};
       }
@@ -19499,6 +19606,7 @@ function _planChangeLedger(tools, idx){
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
+      if(i.action!=='remove' && (i.make_main===true || i.make_main==='true')) _act=(_act==='changed'?'':_act+' \u00b7 ')+'main lift';
       rows.push([_esc(i.exercise||'Exercise'), _act]);
     } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
@@ -19547,7 +19655,7 @@ function _toolCallLabel(tc){
   }
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
-  if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
+  if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'')+(i.action!=='remove'&&(i.make_main===true||i.make_main==='true')?' · main lift':'');
   if(n==='set_bench_goal') return 'Bench goal '+fmtW(wStore(i.weight));
   if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
   if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(paceStore(i.pace));
@@ -19941,14 +20049,9 @@ function buildSystemPrompt(){
     p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
-    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
-    // A row's load: each set's when a top set and back-offs differ (the headline weight alone
-    // read "3×3,8,8 @ 225 lb" for 225/185/185), else the one load.
-    var _rowLoad=function(r, none){
-      var ws=Array.isArray(r.weights)?r.weights.map(function(x){ return parseFloat(x)||0; }):[];
-      if(ws.length>1 && ws.every(function(v){ return v>0; }) && ws.some(function(v){ return Math.abs(v-ws[0])>=0.05; })) return ws.map(function(v){ return wDisp(v); }).join('/')+' '+_uW();
-      return parseFloat(r.weight)>0?fmtW(r.weight):none;
-    };
+    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise (make_main:true moves the main lift to it), and update_routine_weeks only to rebuild whole weeks):\n';
+    // A row's load: each set's when a top set and back-offs differ, else the one load.
+    var _rowLoad=_rowLoadText;
     LIFT_KEYS.forEach(function(sess){
       if(wd[sess]&&wd[sess].length){
         var done=doneTypes.indexOf(sess)!==-1?' ✓':'';

@@ -1289,3 +1289,248 @@ seq('T06: a kg programme put back while the owner reads lb goes onto lb plates',
   }, { A, B, OFF });
   assert(c.ok && c.off === 0 && c.offPoint === 0, 'a backup file in lb: on lb plates: ' + JSON.stringify(c));
 });
+
+// U01 (incomplete T01): the owner's Make main was read off the coach's main still on the day,
+// marked for its tag alone, so an edit of that lift (Routines, the coach's set_exercise_weight or
+// edit_programme_exercise) or a day the coach wrote with no main lost the choice to the next
+// rewrite, and the day could end with no main at all. The choice is now the row's own flag.
+seq('U01: Make main stays the owner\'s through edits of the lift it replaced and on a day with no coach main; a day keeps one main', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = (k, j) => (getCustomRoutine().weeks[j == null ? c : j][k] || []).map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const mains = (k) => getCustomRoutine().weeks.slice(c).map(w => (w[k] || []).filter(e => e.isMain).map(e => e.name).join('+') || '-');
+      const line = (n) => (buildSystemPrompt().match(new RegExp(' {2}' + n + ':[^\\n]*')) || [''])[0];
+      const orig = localStorage.getItem('kt_routine');
+      const coachPush = () => [{ name: 'Bench Press', sets: 4, reps: 6, weight: 165, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60 }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }];
+      const rewrite = (k, rows) => executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', [k]: rows }] });
+      const makeMain = async (slot, n) => { openRoutines(); _rtOpenEdit(slot, n); _rtMakeMain(); await wait(10); closeRoutines(); };
+      // (A) Make main on Overhead Press, then Bench down to 3 sets (the secondary lift now)
+      await makeMain('Push', 'Overhead Press');
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      r.A_prompt = line('Overhead Press');
+      const aState = localStorage.getItem('kt_routine');
+      const a = rewrite('push', coachPush());
+      r.A = { day: day('push'), kept: a.keptUserEdits, mains: mains('push'), stored: JSON.stringify(a.stored), prompt: [line('Bench Press'), line('Overhead Press')] };
+      // the same, regenerated week by week with the coach's Bench as main
+      lsSet('kt_routine', JSON.parse(aState));
+      const regen = [];
+      for (let w = currentWeek; w <= getTotalWeeks(); w++) regen.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: getCustomRoutine().weeks[w - 1].push.map(e => ({ name: e.name, sets: 4, reps: e.reps, weight: e.weight, isMain: e.name === 'Bench Press' })) });
+      executeCoachTool('update_routine_weeks', { weeks: regen });
+      r.A_regen = mains('push');
+      // (B') the coach sets Bench's load: not the owner's edit; the rewrite keeps the owner's main
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 170 });
+      r.Bp_prompt = line('Bench Press');
+      rewrite('push', coachPush());
+      r.Bp = day('push');
+      // (B) the coach changes Bench itself: Use coach's on the owner's main, and Reset, still leave one main
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'change', sets: 5, reps: 5 });
+      const edited = localStorage.getItem('kt_routine');
+      r.B_prompt = line('Overhead Press');
+      openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
+      r.B_useCoach = day('push');
+      lsSet('kt_routine', JSON.parse(edited));
+      openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      r.B_reset = day('push');
+      lsSet('kt_routine', JSON.parse(edited));
+      const b = rewrite('push', coachPush());
+      r.B = { day: day('push'), kept: b.keptUserEdits, next: day('push', c + 1) };
+      // (F) a Pull day the coach wrote with no main: the owner's Lat Pulldown stays main through a rewrite
+      lsSet('kt_routine', JSON.parse(orig));
+      const crF = getCustomRoutine(); crF.weeks.forEach(w => w.pull.forEach(e => { delete e.isMain; })); setCustomRoutine(crF);
+      await makeMain('Pull', 'Lat Pulldown');
+      const f = rewrite('pull', getCustomRoutine().weeks[c].pull.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight })));
+      r.F = { day: day('pull'), kept: f.keptUserEdits, prompt: line('Lat Pulldown') };
+      // Make main back on the coach's main: no marks are left
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press'); await makeMain('Push', 'Bench Press');
+      r.back = { day: day('push'), flags: getCustomRoutine().weeks.slice(c).some(w => w.push.some(e => e.mainBy)) };
+      // a Make main saved by an older page (no flag) still holds through a rewrite
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      const crL = getCustomRoutine(); crL.weeks.forEach(w => w.push.forEach(e => { delete e.mainBy; })); setCustomRoutine(crL);
+      r.L_prompt = line('Overhead Press');
+      rewrite('push', coachPush());
+      r.L = day('push');
+      // no Make main: the coach moves its main to Overhead Press over an owner's edit of either lift;
+      // the kept row takes the coach's tag (two mains, or none, before)
+      const ohpMain = () => coachPush().map(e => Object.assign(e, { isMain: e.name === 'Overhead Press' }));
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      rewrite('push', ohpMain()); r.G = day('push');
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      rewrite('push', ohpMain()); r.H = day('push');
+      return r;
+    });
+    const rest = ' | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5';
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.A_prompt), 'the coach is told the main is the owner\'s pick after the edit: ' + out.A_prompt);
+    assert(out.A.day === 'Bench Press 3x8@160* | Overhead Press 4x6@105!*' + rest && JSON.stringify(out.A.kept) === '["Bench Press","Overhead Press"]', 'the owner\'s Bench edit and their main both stand: ' + JSON.stringify(out.A));
+    assert(out.A.mains.every(x => x === 'Overhead Press') && out.A_regen.length > 1 && out.A_regen.every(x => x === 'Overhead Press'), 'every week keeps one main, the owner\'s, after a regeneration too: ' + JSON.stringify([out.A.mains, out.A_regen]));
+    assert(/"Overhead Press 4×6 105 lb \(main lift: the user’s choice\)"/.test(out.A.stored) && /\[main lift chosen by the user\]$/.test(out.A.prompt[1]), 'the readback and the prompt say so: ' + JSON.stringify(out.A));
+    assert(/^ {2}Bench Press: 4×8 @ 170 lb RPE\S* *$/.test(out.Bp_prompt), 'the coach\'s load is not called the owner\'s edit: ' + out.Bp_prompt);
+    assert(out.Bp === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'after set_exercise_weight the rewrite keeps the owner\'s main: ' + out.Bp);
+    assert(/\[main lift chosen by the user\]$/.test(out.B_prompt), 'the coach\'s change to Bench keeps the owner\'s main theirs: ' + out.B_prompt);
+    assert(out.B_useCoach === 'Bench Press 5x5@160! | Overhead Press 4x8@100' + rest && out.B_reset === out.B_useCoach, 'Use coach\'s and Reset give the day its main back: ' + JSON.stringify([out.B_useCoach, out.B_reset]));
+    assert(out.B.day === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest && JSON.stringify(out.B.kept) === '["Overhead Press"]' && /^Bench Press 5x5@162\.5\* \| Overhead Press 4x8@102\.5!\*/.test(out.B.next), 'the rewrite keeps the owner\'s main: ' + JSON.stringify(out.B));
+    assert(out.F.day === 'Barbell Row 4x8@150 | Lat Pulldown 4x10@135!* | Seated Cable Row 3x12@115 | Face Pull 3x15@35 | Barbell Curl 3x10@70' && JSON.stringify(out.F.kept) === '["Lat Pulldown"]' && /\[main lift chosen by the user\]$/.test(out.F.prompt), 'a day with no coach main keeps the owner\'s: ' + JSON.stringify(out.F));
+    assert(out.back.day === 'Bench Press 4x8@160! | Overhead Press 4x8@100' + rest && !out.back.flags, 'Make main back on the coach\'s main leaves no mark: ' + JSON.stringify(out.back));
+    assert(/\[main lift chosen by the user\]$/.test(out.L_prompt) && out.L === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'an older page\'s Make main still holds: ' + JSON.stringify([out.L_prompt, out.L]));
+    assert(out.G === 'Bench Press 3x8@160* | Overhead Press 4x6@105!' + rest && out.H === 'Bench Press 4x6@165 | Overhead Press 3x8@100!*' + rest, 'a coach that moves its main over the owner\'s edits leaves one main: ' + JSON.stringify([out.G, out.H]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U20 + U03 (regression from T20): the coach merge folded the coach's repeated rows of a lift into
+// one when the stored day held that lift once with a mark that only moved the main tag (Make main,
+// a removed main's tag handed on), where nothing of the owner's stands for them: a loaded row plus
+// a bodyweight row lost the bodyweight row, a top set and its back-offs became one row at the top
+// set's RPE, a superset partner between them was unpaired, and the readback the coach checks read
+// every set at the top set's load. T20's own fold (an owner's row standing for the lift) still runs,
+// and the readback prints each set's load.
+seq('U20 + U03: a mark that only moved the main tag does not fold the coach\'s rows; the readback reads each set\'s load', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const fmt = e => e.name + ' ' + e.sets + 'x' + JSON.stringify(e.reps) + '@' + JSON.stringify(e.weights || e.weight) + (e.rpe ? ' rpe' + e.rpe : '') + (e.isMain ? ' main' : '') + (e.ss ? ' ss' : '');
+      const day = (k) => (getCustomRoutine().weeks[c][k] || []).map(fmt);
+      const orig = localStorage.getItem('kt_routine');
+      const runner = async (slot) => { openDeckRunner(slot, true); await wait(20); const x = runnerSession.exercises.map(fmt); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      const makeMain = async (slot, n) => { openRoutines(); _rtOpenEdit(slot, n); _rtMakeMain(); await wait(10); closeRoutines(); };
+      const rewrite = (k, rows) => executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', [k]: rows }] });
+      // the coach's Pull: weighted Pull Up (main), Barbell Row, Face Pull; the owner makes Barbell Row main
+      const cr = getCustomRoutine();
+      cr.weeks.forEach(w => { w.pull = [{ name: 'Pull Up', sets: 3, reps: 5, weight: 30, isMain: true }, { name: 'Barbell Row', sets: 4, reps: 8, weight: 140 }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35 }]; });
+      setCustomRoutine(cr);
+      const pull = localStorage.getItem('kt_routine');
+      await makeMain('Pull', 'Barbell Row');
+      const a = rewrite('pull', [{ name: 'Pull Up', sets: 3, reps: 5, weight: 30, isMain: true }, { name: 'Barbell Row', sets: 4, reps: 8, weight: 140 }, { name: 'Pull Up', sets: 2, reps: 'AMRAP', weight: 0 }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35 }]);
+      r.made = { day: day('pull'), kept: a.keptUserEdits, runner: await runner('Pull') };
+      // the owner removed the coach's main (its tag went to Barbell Row); the coach writes Barbell Row twice around a superset
+      lsSet('kt_routine', JSON.parse(pull));
+      openRoutines(); _rtOpenEdit('Pull', 'Pull Up'); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      const b = rewrite('pull', [{ name: 'Barbell Row', sets: 1, reps: 5, weight: 165, isMain: true }, { name: 'Face Pull', sets: 3, reps: 15, weight: 35, ss: true }, { name: 'Barbell Row', sets: 3, reps: 8, weight: 135 }]);
+      r.handed = { day: day('pull'), kept: b.keptUserEdits };
+      // U03: Make main on Overhead Press; the coach writes Bench as a top single plus back-offs
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      const d = rewrite('push', [{ name: 'Bench Press', sets: 1, reps: 3, weight: 185, rpe: 9, isMain: true }, { name: 'Bench Press', sets: 3, reps: 6, weight: 155, rpe: 7 }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }]);
+      r.top = { day: day('push'), stored: d.stored.weeks[currentWeek]['Push [Push]'] };
+      // T20's own case: the runner's one row of five sets stands for the coach's two; the readback reads each set
+      lsSet('kt_routine', JSON.parse(orig));
+      const two = () => [{ name: 'Bench Press', sets: 1, reps: 3, weight: 225, isMain: true, rpe: 8 }, { name: 'Overhead Press', sets: 3, reps: 8, weight: 100, ss: true, rpe: 7 }, { name: 'Bench Press', sets: 3, reps: 8, weight: 185, rpe: 7 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }];
+      const cr4 = getCustomRoutine(); cr4.weeks.forEach(w => { w.push = two(); }); setCustomRoutine(cr4);
+      _commitRoutine(x => { _progMergeLift(x.weeks[c], 'push', 'Bench Press'); return _progSetScheme(x, 'push', 'Bench Press', c, 'sets', 5, { markOwner: true }); }, { scope: 'runner:u20' });
+      const e = rewrite('push', two());
+      r.t20 = { day: day('push'), stored: e.stored.weeks[currentWeek]['Push [Push]'] };
+      return r;
+    });
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    assert(same(out.made.day, ['Pull Up 3x5@30', 'Barbell Row 4x8@140 main', 'Pull Up 2x"AMRAP"@0', 'Face Pull 3x15@35']) && same(out.made.kept, ['Barbell Row']), 'both of the coach\'s Pull Up rows are stored; the owner\'s main stands: ' + JSON.stringify(out.made));
+    assert(/^Pull Up 5x\[5,5,5,"AMRAP","AMRAP"\]@\[30,30,30,0,0\]/.test(out.made.runner[0]) && /^Barbell Row 4x8@140.* main$/.test(out.made.runner[1]), 'the runner trains all five Pull Up sets: ' + JSON.stringify(out.made.runner));
+    assert(same(out.handed.day, ['Barbell Row 1x5@165 main', 'Face Pull 3x15@35 ss', 'Barbell Row 3x8@135']), 'a handed-on tag leaves the coach\'s rows as sent, the superset paired: ' + JSON.stringify(out.handed));
+    assert(same(out.top.day.slice(0, 3), ['Bench Press 1x3@185 rpe9', 'Bench Press 3x6@155 rpe7', 'Overhead Press 4x6@105 main']), 'the top single and its back-offs stay two rows, each at its RPE: ' + JSON.stringify(out.top.day));
+    assert(same(out.top.stored.slice(0, 2), ['Bench Press 1×3 185 lb', 'Bench Press 3×6 155 lb']), 'the readback reads both rows: ' + JSON.stringify(out.top.stored));
+    assert(/^Bench Press 5x\[3,8,8,8\]@\[225,185,185,185\] rpe8 main$/.test(out.t20.day[0]) && out.t20.stored[0] === 'Bench Press 5×3,8,8,8 225/185/185/185 lb (user’s edit kept)', 'the owner\'s one row still stands for the coach\'s two, read set by set: ' + JSON.stringify(out.t20));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U05 (incomplete T02): the coach merge re-recorded a removed opener's partner under the owner's
+// swap of it (ssTo 'Skull Crusher'), where the owner's removal records the coach's lift: once Use
+// coach's renamed the swap back, Restore and Reset brought the opener back unpaired. The coach
+// supersets Incline Dumbbell Press with Cable Triceps Pushdown.
+seq('U05: a coach rewrite keeps a removed opener\'s partner by the coach\'s name; Use coach\'s, Restore and Reset pair them again', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      // ! = main, ~ = superset opener, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const ssTo = () => (((getCustomRoutine().weeks[c].recOut || {}).push || []).find(e => e.row.name === 'Incline Dumbbell Press') || {}).ssTo;
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      // the owner swaps the partner, then removes the opener; the coach rewrites the week as it wrote it
+      openRoutines(); _rtOpenEdit('Push', 'Cable Triceps Pushdown'); _rtEdit.swapTo = 'Skull Crusher'; _rtSave(); await wait(10); closeRoutines();
+      await remove('Incline Dumbbell Press');
+      executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', push: [{ name: 'Bench Press', sets: 4, reps: 8, weight: 160, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 8, weight: 100 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60, ss: true }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }] }] });
+      const rewritten = localStorage.getItem('kt_routine');
+      r.kept = { day: day(), ssTo: ssTo() };
+      openRoutines(); _rtUseCoach('Push', 'Skull Crusher'); await wait(10); _rtRestoreRemoved('Push'); await wait(10); closeRoutines();
+      r.restored = [day(), day(last)];
+      lsSet('kt_routine', JSON.parse(rewritten));
+      openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      r.reset = [day(), day(last)];
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(out.kept.day === 'Bench Press! | Overhead Press | Skull Crusher* | Lateral Raise' && out.kept.ssTo === 'Cable Triceps Pushdown', 'the rewrite keeps the owner\'s swap and the coach\'s partner name: ' + JSON.stringify(out.kept));
+    assert(out.restored.every(x => x === C), 'Use coach\'s then Restore gives the coach\'s superset back in every week: ' + JSON.stringify(out.restored));
+    assert(out.reset.every(x => x === C), 'Reset gives it back too: ' + JSON.stringify(out.reset));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U06 (incomplete T02): removing a superset's partner unpairs the coach's opener, and the owner's
+// later swap or edit of that opener kept the unpaired state as the coach's original: Restore paired
+// the swap with the partner, but Use coach's (and Restore then Reset) gave the opener back unpaired
+// in every week. The original says paired; while the partner is still out, Use coach's and Reset
+// bring the opener back unpaired and the partner's entry pairs them when it returns.
+seq('U06: an opener swapped or edited while its partner is removed keeps the coach\'s superset for Use coach\'s and Reset', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const restore = async () => { openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines(); };
+      const reset = async () => { openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const useCoach = async (n) => { openRoutines(); _rtUseCoach('Push', n); await wait(10); closeRoutines(); };
+      const swap = async () => { openRoutines(); _rtOpenEdit('Push', 'Incline Dumbbell Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10); closeRoutines(); };
+      const runner = async () => { openDeckRunner('Push', true); await wait(20); const x = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | '); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      // the partner removed: nothing new on the opener (Routines offers Restore alone)
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); r.offered = [...document.querySelectorAll('#rt-card-Push .kt-rt-coach')].map(d => d.textContent); closeRoutines();
+      // then the opener swapped, Restore, Use coach's on the swap
+      await swap(); await restore(); r.restored = day();
+      await useCoach('Arnold Press'); r.useCoach = [day(), day(last)]; r.runner = await runner();
+      // swapped, then Reset; and Restore then Reset
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown'); await swap(); await reset(); r.reset = [day(), day(last)];
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown'); await swap(); await restore(); await reset(); r.restoreReset = [day(), day(last)];
+      // the opener's sets changed while its partner is out; Use coach's before Restore leaves it unpaired until then
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); _rtOpenEdit('Push', 'Incline Dumbbell Press'); _rtStep('sets', 1); _rtSave(); await wait(10); closeRoutines();
+      await useCoach('Incline Dumbbell Press'); r.editUse = day();
+      await restore(); r.editRestore = day();
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(JSON.stringify(out.offered) === '["1 coach lift removed · Restore"]', 'removing the partner marks nothing else: ' + JSON.stringify(out.offered));
+    assert(out.restored === 'Bench Press! | Overhead Press | Arnold Press~* | Cable Triceps Pushdown | Lateral Raise', 'Restore pairs the partner with the swap: ' + out.restored);
+    assert(out.useCoach.every(x => x === C) && out.runner === 'Bench Press | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise', 'Use coach\'s on the swap gives the coach\'s superset in every week, and the runner pairs it: ' + JSON.stringify([out.useCoach, out.runner]));
+    assert(out.reset.every(x => x === C) && out.restoreReset.every(x => x === C), 'Reset gives it back, before or after Restore: ' + JSON.stringify([out.reset, out.restoreReset]));
+    assert(out.editUse === 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise' && out.editRestore === C, 'with its partner still out the coach\'s opener waits unpaired, and pairs when it returns: ' + JSON.stringify([out.editUse, out.editRestore]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
