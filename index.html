@@ -9412,9 +9412,19 @@ var _shellBuild=null;
 function _shellBuildRead(){
   if(_shellBuild!==null) return _shellBuild;
   _shellBuild='';
-  try{ var OTA=_plug('TrovoOta'); if(OTA && OTA.status) Promise.resolve(OTA.status()).then(function(s){ _shellBuild=String((s&&s.bundleBuild)||''); }).catch(function(){}); }catch(e){}
+  try{ var OTA=_plug('TrovoOta'); if(OTA && OTA.status) Promise.resolve(OTA.status()).then(function(s){
+    _shellBuild=String((s&&s.bundleBuild)||'');
+    // A held round's day goes to the wrist only on a build 53+ shell (_watchClaimable): a plan pushed
+    // before the build was known went out as an older shell's, so push again now that it is.
+    try{ if(_shellBuild && _nextRoundSet()){ _lastWatchPlan=''; _scheduleNativeSync(); } }catch(e){}
+  }).catch(function(){}); }catch(e){}
   return _shellBuild;
 }
+// The shell, and the watch app it carries, is build 53 or later (it bundled 20260924-1): the wrist has
+// the week ahead and sends per-set RPE, so what it trains on a held round's day is claimed by the round
+// (_nrPreviewTrained). An older watch trains what it is sent and its session is filed under the old
+// round's clock for good; a build not known (yet, or a shell before build 41) reads as older.
+function _watchClaimable(){ var b=_shellBuildRead(); return !!b && !buildNewer('20260924-1', b); }
 try{ _shellBuildRead(); }catch(e){}
 function _trovoTimerStart(ex, nextSet){
   // Backgrounded-phone alert when the rest is over (Live Activity shows the
@@ -23046,8 +23056,9 @@ function _pushWatchPlan(){
     // queue): the wrist has shown its week 1 since midnight (the week ahead), and a session trained
     // there is the round's (_nrPreviewTrained). Sent the old round's parked week instead, the wrist
     // trained that and it was filed as the new round's week 1. Only while that claim holds (on time,
-    // set before its Monday): a round first opened after its start week claims nothing.
-    var _nrP=(!liveRun && hasCustomRoutine()) ? _nextRoundSet() : null;
+    // set before its Monday): a round first opened after its start week claims nothing, and neither
+    // does a watch from before build 53 (_watchClaimable), which keeps the old round's day as base did.
+    var _nrP=(!liveRun && hasCustomRoutine() && _watchClaimable()) ? _nextRoundSet() : null;
     var _nrOwn=!!(_nrP && _nrP.startsOn<=todayISO() && !(_nrP.startsOn<_mostRecentMonday()) && String(_nrP.at||'')<_nrP.startsOn);
     var plan=_nrOwn ? Object.assign(_watchPlanForDate(todayISO()), { theme:_watchThemeTokens(), unit:_uW() })
       : { week:currentWeek, date:todayISO(),
