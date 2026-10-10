@@ -8977,6 +8977,25 @@ function _wristWorkUnderway(){
   if(now-w.startedAt>=6*3600*1000 || (w.ended && now-w.ended>=10*60*1000) || _wristSessionFiled(w.slot, w.startedAt)){ _wristWork=null; return false; }
   return true;
 }
+// The days this phone ended a workout on (finished or discarded), for 6 h: {slot: endedAt}. Its
+// 'ended' closes the wrist's session of that day begun before it, and a wrist holding nothing beyond
+// the phone's log then sends nothing more, so the shell's live cache (getLiveState) kept its last
+// payload: read by a due round's drain wait or a reload, it held round 2 for up to 6 h behind LIVE ON
+// WATCH for a workout already finished or thrown away (a phone that joined the wrist's workout across
+// midnight files it on another day, so it never read as filed). On disk, never backed up: a web view
+// reloaded while the app lives on reads that cache again.
+function _wristClosedNote(slot){
+  var o=_wristClosedAll(); o[String(slot||'')]=Date.now();
+  try{ localStorage.setItem('kt_wrist_closed', JSON.stringify(o)); }catch(e){}
+}
+function _wristClosedAll(){
+  var o={}, now=Date.now(), r=null;
+  try{ r=JSON.parse(localStorage.getItem('kt_wrist_closed')||'null'); }catch(e){}
+  if(r && typeof r==='object') Object.keys(r).forEach(function(k){ var t=Number(r[k])||0; if(t>0 && t<=now && now-t<6*3600*1000) o[k]=t; });
+  return o;
+}
+// A wrist session of that day begun at or before the phone ended one there: closed on the wrist too.
+function _wristClosed(slot, startedMs){ var t=_wristClosedAll()[String(slot||'')]; return !!(t && startedMs>0 && startedMs<=t); }
 // then: run once the round has started (on the phone the swap waits for the watch queue), or at
 // once when it cannot (still held, or nothing is due).
 function _roundAfterWorkout(then){
@@ -9870,6 +9889,7 @@ function runnerFinishSession(){
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''), startedAt:runnerSession.startedAt||Date.now(),
     reps:_endReps, weights:{}, ended:true, endedAt:Date.now() };
   if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist ends that day's workout on it (its sets drain)
+  _wristClosedNote(runnerSession.dayName);   // and the shell's cached copy of it stops counting
   // PR moment — gold toast naming the lift(s), heavier buzz. One-shot; the
   // Today card and history keep the yellow PR pills as the durable record.
   if(newPRs.length){
@@ -22821,6 +22841,7 @@ function _watchSendDiscard(){
   _watchEndedPayload={ dayName:String(_dayLabel(runnerSession.dayName)||runnerSession.dayName||''), slot:String(runnerSession.dayName||''),
     startedAt:runnerSession.startedAt||Date.now(), reps:{}, weights:{}, ended:true, discarded:true, endedAt:Date.now() };
   if(_wristWork && _wristWork.slot===String(runnerSession.dayName||'')) _wristWork=null;   // the wrist drops that day's workout too
+  _wristClosedNote(runnerSession.dayName);   // and the shell's cached copy of it stops counting
   // Sent now, not on the debounce: START within 800 ms used to replace it
   // with the new session's state and the wrist kept the discarded sets.
   if(!runnerOpen){ try{ _pushWatchPlan(); }catch(e){} }
@@ -23214,11 +23235,13 @@ function _onWatchLive(json){
     // The wrist is missing sets we have — the debounced push carries them
     // back; its own merge adopts and the next exchange finds nothing to do.
     if(localAhead) _scheduleNativeSync();
-  } else if(_wristSessionFiled(wristSlot, s.startedAt)){
+  } else if(_wristSessionFiled(wristSlot, s.startedAt) || _wristClosed(wristSlot, _ws)){
     // Already filed (finished here, or its drain landed): watches before
     // build 51 re-announced it on every wrist raise and the LIVE ON WATCH
     // banner came back. Matched by session identity, so a manual entry or
     // an earlier session of the same slot never hides a genuine live one.
+    // Or ended here, finished or discarded (_wristClosed): the wrist closed
+    // it too, and this is the shell's cached copy of it or a late repeat.
     _watchLive=null;
   } else {
     _watchLive={ dayName:String(wristSlot), sets:n, at:Date.now() };   // a slot: the banner renders it through _dayLabel

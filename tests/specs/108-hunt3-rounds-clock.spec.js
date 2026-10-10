@@ -602,22 +602,38 @@ run('L56: the coach header counts the days of a week whose clocks change on a Fr
 });
 
 // Round 1's final week (12 of 12) with round 2 set for Monday; two squat days at 230 x 6 behind it.
-// The spec's clock sits on Sunday 23:20 (sessionStorage __mon is the Monday week 12 began).
-async function finalWeekSunday(app) {
+// The spec's clock sits on Sunday 23:20, or hm (sessionStorage __mon is the Monday week 12 began).
+async function finalWeekSunday(app, hm = '23:20') {
   await app.page.addInitScript(() => { const si = window.setInterval; window.__ticks = []; window.setInterval = function (fn, ms) { window.__ticks.push({ fn, ms }); return si.apply(this, arguments); }; });
   await withClock(app);
-  await app.page.evaluate((LOGS) => {
+  await app.page.evaluate(({ LOGS, hm }) => {
     eval(LOGS);
     const mon = _mostRecentMonday();
     sessionStorage.setItem('__mon', mon);
-    __setNow(addDays(mon, 6) + 'T23:20:00');
+    __setNow(addDays(mon, 6) + 'T' + hm + ':00');
     localStorage.setItem('kt_week_monday', mon); localStorage.setItem('kt_final_since', mon);
     lsSet('kt_routine_next', { startsOn: addDays(mon, 7), at: addDays(mon, 3), afterEnd: true });
     lsSet('kt_sessions', []);
     [[-7, 11], [2, 12]].forEach(([d, week]) => addSession({ id: at(addDays(mon, d), '18:00'), date: addDays(mon, d), type: 'Legs', week, startedAt: at(addDays(mon, d), '17:00'), exercises: [X('Back Squat', [6, 6, 6, 6], 230)] }));
-  }, LOGS);
+  }, { LOGS, hm });
   await coldBoot(app);
 }
+// The shell's watch hub as WatchSessionHub.swift keeps it: getLiveState returns the wrist's last live
+// payload that is not ended, and only an ended one, a finished session arriving or a
+// clearPendingSessions call (the page makes one only after draining a session) clears it. A wrist that
+// a phone finish or discard closes with nothing beyond the phone's log sends nothing (SuperoWatchApp
+// reset()), so its last copy stays. The hub lives in the app process: a web view reload keeps it
+// (sessionStorage here), a killed app loses it. __wristLive(obj): the wrist sends a live payload.
+const HUB = () => {
+  if (!window.__mock) return;
+  const TW = window.Capacitor.Plugins.TrovoWatch;
+  const keep = (v) => { if (v) sessionStorage.setItem('__hubLive', v); else sessionStorage.removeItem('__hubLive'); };
+  const fire = (name, data) => window.__mock.listeners.filter(l => l.name === name).forEach(l => { try { l.fn(data); } catch (e) {} });
+  window.__wristLive = (obj) => { const j = JSON.stringify(obj); keep(j.indexOf('"ended":true') >= 0 ? '' : j); fire('watchLive', { json: j }); };
+  window.__hubLive = () => sessionStorage.getItem('__hubLive') || '';
+  TW.getLiveState = () => Promise.resolve({ json: window.__hubLive() });
+  TW.clearPendingSessions = (a) => { const d = a && Array.isArray(a.sessions) ? a.sessions : null; window.__mock.pending = d ? window.__mock.pending.filter(x => d.indexOf(x) < 0) : []; keep(''); return Promise.resolve({}); };
+};
 // What the round and the workout came to (the 260 x 5 squats are the workout under way).
 const ROUND_STATE = `
   var roundState = () => {
@@ -636,6 +652,7 @@ run('R35: a round due at midnight waits for the workout under way and is built w
     const app = await boot({ native, seed: { kt_week: '12' } });
     const tag = (native ? 'native' : 'web') + ', ' + mode;
     try {
+      if (native) await app.page.addInitScript(HUB);   // the watch app mirrors the workout: the hub keeps its copy
       await finalWeekSunday(app);
       const bName = await app.page.evaluate(() => getCustomRoutine().weeks[11].bName);
       const during = await app.page.evaluate(async ({ LOGS, VIS, ROUND_STATE, mode }) => {
@@ -646,10 +663,11 @@ run('R35: a round due at midnight waits for the workout under way and is built w
         openDeckRunner('Legs'); await wait(20);
         runnerEngaged = true; runnerSetWeight(260);
         [5, 5, 5].forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+        if (window.__wristLive) __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: runnerSession.startedAt, reps: { 'Back Squat': [5, 5, 5] }, weights: { 'Back Squat': 260 }, ended: false });
         _flushRunnerDraft();
         if (mode === 'tick') { __setNow(next + 'T00:00:40'); window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn()); }
         if (mode === 'return') { leave(); __setNow(next + 'T00:02:00'); back(); }
-        if (mode === 'killed') __setNow(next + 'T00:10:00');
+        if (mode === 'killed') { __setNow(next + 'T00:10:00'); sessionStorage.removeItem('__hubLive'); }   // the app killed: its hub goes with it
         await wait(800);
         return Object.assign(roundState(), { open: runnerOpen });
       }, { LOGS, VIS, ROUND_STATE, mode });
@@ -708,16 +726,17 @@ run('R35: a workout discarded after midnight lets the round start; one LIVE ON W
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 
-  // The phone left on a stand, the workout on the wrist from 23:20 to 00:20.
+  // The phone left on a stand, the workout on the wrist from 23:20 to 00:20 (through the shell's hub).
   app = await boot({ native: true, seed: { kt_week: '12' } });
   try {
+    await app.page.addInitScript(HUB);
     await finalWeekSunday(app);
     const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
       eval(LOGS); eval(ROUND_STATE);
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
       const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), start = at(sun, '23:20');
-      const live = (reps, ended) => _onWatchLive(JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, ended }));
+      const live = (reps, ended) => __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, ended: !!ended });
       switchTab('log'); switchLogSub('workout'); await wait(30);
       __setNow(sun + 'T23:50:00'); live([5, 5]);
       __setNow(next + 'T00:00:40'); tick(); await wait(300);
@@ -996,8 +1015,12 @@ run('T26: a workout on the wrist holds the round at a cold launch, on a return a
 
 run('T26: the phone finishing the workout the wrist began lets the round start at once', async () => {
   // The wrist starts Legs at 23:30; after midnight the phone opens Legs and mirrors it, and finishes.
+  // U13: through the shell's hub, which keeps the wrist's last copy (the wrist holds nothing beyond
+  // the phone's log, so it closes without a word): the swap's drain wait read it, it never read as
+  // filed (the phone files the workout on Monday) and it held round 2 for 6 h behind LIVE ON WATCH.
   const app = await boot({ native: true, seed: { kt_week: '12' } });
   try {
+    await app.page.addInitScript(HUB);
     await finalWeekSunday(app);
     const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE }) => {
       eval(LOGS); eval(ROUND_STATE);
@@ -1005,7 +1028,7 @@ run('T26: the phone finishing the workout the wrist began lets the round start a
       const tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
       await wait(1500);
       const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), start = at(sun, '23:30');
-      const live = (reps) => _onWatchLive(JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, weights: { 'Back Squat': 260 } }));
+      const live = (reps) => __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': reps }, weights: { 'Back Squat': 260 }, ended: false });
       __setNow(sun + 'T23:40:00'); live([5]);
       __setNow(next + 'T00:00:40'); tick(); await wait(500);
       const r = { held: roundState() };
@@ -1017,13 +1040,146 @@ run('T26: the phone finishing the workout the wrist began lets the round start a
       runnerEngaged = true; runnerSetWeight(260); runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
       __setNow(next + 'T00:30:00');
       runnerFinishSession(); await wait(1500);
+      try { closeCompleteSheet(); } catch (e) {}
       r.after = roundState();
+      switchTab('log'); switchLogSub('workout'); render();
+      r.banner = /from your wrist/.test(txt()); r.cached = !!__hubLive();
+      __setNow(next + 'T00:31:00'); tick(); await wait(1200);
+      r.minute = roundState();
       return r;
     }, { LOGS, ROUND_STATE });
     assert(out.held.cycle === 1 && out.mirrored === 2, 'held by the wrist, then mirrored on the phone: ' + JSON.stringify(out));
     assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 227.5, 'the phone\'s finish ends it on the wrist too: round 2 starts, built with it: ' + JSON.stringify(out.after));
+    assert(out.cached && !out.banner && out.minute.cycle === 2, 'the hub\'s last copy of it holds nothing and brings back no LIVE ON WATCH: ' + JSON.stringify(out));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+run('U12/U13: the shell\'s cached copy of a workout the phone discarded holds no round and brings back no LIVE ON WATCH', async () => {
+  // discard: Sunday 23:20 Legs on the phone, mirrored on the wrist (one wrist raise), held at midnight
+  // by the runner, discarded at 00:10. locked/reload: begun 21:00, discarded 21:30, the phone locked
+  // and back at 00:30 with the app alive (the page resident, or its web view reloaded). replace: the
+  // web view reloaded at 00:10 restores Sunday's draft with the wrist's copy still cached, then
+  // "Discard and start Push" (T24 through the hub). later: a wrist workout begun after the phone's
+  // discard still holds the round until its copy is filed.
+  for (const mode of ['discard', 'locked', 'reload', 'replace', 'later']) {
+    const app = await boot({ native: true, seed: { kt_week: '12' } });
+    try {
+      await app.page.addInitScript(HUB);
+      await finalWeekSunday(app, (mode === 'locked' || mode === 'reload') ? '21:00' : '23:20');
+      const STATE = `
+        var wait = ms => new Promise(res => setTimeout(res, ms));
+        var tick = () => window.__ticks.filter(t => t.ms === 60000).forEach(t => t.fn());
+        var st = () => { switchTab('log'); switchLogSub('workout'); render();
+          return Object.assign(roundState(), { held: _nrHeld, banner: /from your wrist/.test(txt()), work: !!_wristWork, cached: !!__hubLive() }); };
+      `;
+      const first = await app.page.evaluate(async ({ LOGS, VIS, ROUND_STATE, STATE, mode }) => {
+        eval(LOGS); eval(VIS); eval(ROUND_STATE); eval(STATE);
+        await wait(1500);
+        const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), r = {};
+        const early = mode === 'locked' || mode === 'reload';
+        switchTab('log'); switchLogSub('workout'); await wait(30);
+        openDeckRunner('Legs'); await wait(20);
+        runnerEngaged = true; runnerSetWeight(260);
+        (mode === 'later' ? [5] : [5, 5]).forEach(rep => { runnerSetReps(rep); runnerCompleteSet(); runnerSkipRest(); runnerEngaged = true; });
+        _flushRunnerDraft();
+        // A wrist raise: the watch app sends back the phone's sets under the phone's start, and the hub keeps it.
+        const start = runnerSession.startedAt, sets = (runnerRepsLog['Back Squat'] || []).slice();
+        __setNow(sun + (early ? 'T21:10:00' : 'T23:25:00'));
+        __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: start, reps: { 'Back Squat': sets }, weights: { 'Back Squat': 260 }, ended: false });
+        await wait(50); _flushRunnerDraft();
+        const discard = async () => {
+          confirmCloseRunner(); await wait(30);
+          [...document.querySelectorAll('#kt-close-runner-sheet button')].find(b => /Discard/.test(b.textContent)).click();
+          await wait(1200);
+        };
+        if (mode === 'discard') {
+          __setNow(next + 'T00:00:40'); tick(); await wait(400);
+          r.held = st();
+          __setNow(next + 'T00:10:00'); await discard();
+          r.after = st();
+          __setNow(next + 'T00:11:00'); tick(); await wait(1200);
+          r.minute = st();
+        }
+        if (early) { __setNow(sun + 'T21:30:00'); await discard(); __setNow(sun + 'T21:31:00'); leave(); __setNow(next + 'T00:30:00'); if (mode === 'locked') { back(); await wait(1500); r.after = st(); } }
+        if (mode === 'replace') __setNow(next + 'T00:10:00');
+        if (mode === 'later') {
+          __setNow(sun + 'T23:30:00'); await discard();
+          // 23:40: a new Legs workout on the wrist, begun after the phone's discard.
+          __setNow(sun + 'T23:45:00');
+          __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: at(sun, '23:40'), reps: { 'Back Squat': [5, 5] }, weights: { 'Back Squat': 260 }, ended: false });
+          __setNow(next + 'T00:00:40'); tick(); await wait(400);
+          r.held = st();
+        }
+        return r;
+      }, { LOGS, VIS, ROUND_STATE, STATE, mode });
+      if (mode === 'reload' || mode === 'replace' || mode === 'later') await coldBoot(app);   // the web view reloaded, the app (and its hub) alive
+      const out = await app.page.evaluate(async ({ LOGS, ROUND_STATE, STATE, mode, first }) => {
+        eval(LOGS); eval(ROUND_STATE); eval(STATE);
+        const mon = sessionStorage.getItem('__mon'), sun = addDays(mon, 6), next = addDays(mon, 7), r = first;
+        if (mode === 'reload') { await wait(1500); r.after = st(); }
+        if (mode === 'replace') {
+          await wait(1500);
+          r.boot = Object.assign(st(), { resume: runnerResumePending });
+          const pill = [...document.querySelectorAll('.kt-adhoc-pill')].find(b => /^push$/i.test(b.textContent.trim()));
+          if (pill) pill.click(); else openDeckRunner('Push');
+          await wait(30);
+          const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); r.confirm = ok ? ok.textContent.trim() : null; if (ok) ok.click();
+          await wait(1500);
+          const cr = getCustomRoutine();
+          r.runner = { open: runnerOpen, day: runnerSession && runnerSession.dayName, week: runnerSession && runnerSession.week,
+            bench: runnerSession ? (runnerSession.exercises.find(e => e.name === 'Bench Press') || {}).weight : null,
+            planned: (cr.weeks[0].push.find(e => e.name === 'Bench Press') || {}).weight };
+          r.round = Object.assign(roundState(), { held: _nrHeld, work: !!_wristWork, cached: !!__hubLive() });
+          runnerEngaged = true; runnerSetReps(5); runnerCompleteSet(); runnerSkipRest();
+          __setNow(next + 'T00:50:00'); runnerFinishSession(); await wait(1200);
+          try { closeCompleteSheet(); } catch (e) {}
+          const s = getSessions().find(x => x.date === next && x.type === 'Push'), cr2 = getCustomRoutine();
+          r.saved = s ? { week: s.week, bName: s.bName || '', inRound: _roundTest(cr2)(s.date, _cmpT(s)), w1: cr2.weeks[0].bName } : null;
+          r.after = st();
+        }
+        if (mode === 'later') {
+          await wait(1500);
+          r.reloaded = st();
+          // 00:20: the wrist finishes; its copy arrives on the queue and drains, then the next minute.
+          __setNow(next + 'T00:20:00');
+          window.__mock.pending = [JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: new Date(at(sun, '23:40')).toISOString(), loggedAt: new Date().toISOString(),
+            exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: 260, weightLog: [260, 260, 260] }] })];
+          __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: at(sun, '23:40'), reps: { 'Back Squat': [5, 5, 5] }, weights: { 'Back Squat': 260 }, ended: true });
+          await wait(3500);
+          r.drained = st();
+          __setNow(next + 'T00:21:00'); tick(); await wait(1500);
+          r.after = st();
+        }
+        return r;
+      }, { LOGS, ROUND_STATE, STATE, mode, first });
+      const tag = mode + ': ';
+      if (mode === 'discard') {
+        assert(out.held.cycle === 1 && out.held.held, tag + 'held at midnight by the runner: ' + JSON.stringify(out.held));
+        assert(out.after.cached, tag + 'the hub still holds the wrist\'s last copy: ' + JSON.stringify(out.after));
+        assert(out.after.cycle === 2 && out.after.week === 1 && out.after.anchored && out.after.sq1 === 212.5 && !out.after.saved, tag + 'discarded: round 2 starts at once, without it: ' + JSON.stringify(out.after));
+        assert(!out.after.banner && !out.after.work && out.minute.cycle === 2 && !out.minute.banner, tag + 'and no LIVE ON WATCH for the workout thrown away: ' + JSON.stringify(out));
+      }
+      if (mode === 'locked' || mode === 'reload') {
+        assert(out.after.cached, tag + 'the hub still holds the wrist\'s last copy: ' + JSON.stringify(out.after));
+        assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 212.5 && !out.after.saved && !out.after.banner && !out.after.work, tag + 'back after midnight: round 2 has started, with no LIVE ON WATCH: ' + JSON.stringify(out.after));
+      }
+      if (mode === 'replace') {
+        assert(out.boot.cycle === 1 && out.boot.held && out.boot.resume && out.boot.cached, tag + 'the restored draft holds round 1, the wrist\'s copy cached: ' + JSON.stringify(out.boot));
+        assert(out.confirm === 'Discard and start Push', tag + 'the confirm: ' + out.confirm);
+        assert(out.round.cycle === 2 && out.round.week === 1 && out.round.anchored && !out.round.work, tag + 'the draft discarded, round 2 starts: ' + JSON.stringify(out.round));
+        assert(out.runner.open && out.runner.day === 'Push' && out.runner.week === 1 && out.runner.bench === out.runner.planned, tag + 'Push opens from round 2\'s week 1: ' + JSON.stringify(out.runner));
+        assert(out.saved && out.saved.week === 1 && out.saved.bName === out.saved.w1 && out.saved.inRound && !out.after.banner, tag + 'and is filed as round 2\'s week 1: ' + JSON.stringify(out));
+      }
+      if (mode === 'later') {
+        assert(out.held.cycle === 1 && out.held.held && out.held.banner && out.held.work, tag + 'the wrist\'s own workout, begun after the discard, holds round 1 with LIVE ON WATCH: ' + JSON.stringify(out.held));
+        assert(out.reloaded.cycle === 1 && out.reloaded.banner && out.reloaded.work, tag + 'and still does after a reload (the hub\'s copy): ' + JSON.stringify(out.reloaded));
+        assert(out.drained.cycle === 1 && out.drained.saved && out.drained.saved.sunday && out.drained.saved.week === 12, tag + 'its copy drains as Sunday\'s week 12: ' + JSON.stringify(out.drained));
+        assert(out.after.cycle === 2 && out.after.week === 1 && out.after.sq1 === 227.5, tag + 'then round 2 starts, built with it: ' + JSON.stringify(out.after));
+      }
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
 });
 
 run('T25: while a draft holds round 2 on its Monday the wrist is sent the round\'s own day, so a workout trained there is its week 1', async () => {
