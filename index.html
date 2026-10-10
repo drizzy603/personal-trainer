@@ -564,9 +564,12 @@ html.kb-open .coach-img-preview img{max-height:96px;}
 html.kb-open .coach-chat-stick>.screen-hd{display:none;}
 /* 16px text (the iOS focus-zoom floor) on a 22px line: one line is 44px, the row 58px. */
 .coach-textarea{flex:1;min-width:0;background:none;border:none;color:var(--text);font-size:16px;
-  resize:none;max-height:120px;min-height:44px;line-height:22px;padding:11px 8px;font-family:inherit;}
+  resize:none;overflow-x:hidden;max-height:120px;min-height:44px;line-height:22px;padding:11px 8px;font-family:inherit;}
 .coach-textarea:first-child{padding-left:14px;}   /* intake has no attach button */
-.coach-textarea::placeholder{color:var(--muted);}
+/* The placeholder keeps to the box's one line: at 320pt with Larger Text "Message Coach…" wrapped and
+   its second line was cut off inside the one-line box. The box never scrolls sideways (typed text
+   wraps), so a Mac's WebKit draws no scrollbar for the clipped placeholder. */
+.coach-textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* The box carries no ring and no surface of its own inside the composer: the row does. */
 html[data-room] .coach-input-row .coach-textarea{background:transparent;border-radius:0;}
 html[data-room] .coach-input-row .coach-textarea:focus,html[data-room] .coach-input-row .coach-textarea:focus-visible{outline:none;box-shadow:none;}
