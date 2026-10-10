@@ -1207,3 +1207,54 @@ run('U09: a log picked behind an older log and back takes the working weight ove
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U11 (hunt 6): T15's "written since" guard read a lighter workout filed afterwards for an earlier
+// day (it set nothing: a backdated log only raises) as Bench's newest log, so 'Flat Bench' 170 today
+// renamed to Bench Press (Edit sets, the coach's edit_session) kept last time's 160, and the coach
+// was told it. The guard passes over such a log; a load written since still stays.
+run('U11: a rename into a lift whose newest log is a lighter one filed afterwards sets it from the renamed log', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO();
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, name, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name, sets: 3, reps: 8, weight: w }] });
+      // Bench at 160 ten days ago, then a lighter 155 told later for eight days ago, then today's mis-named 170
+      const setup = (k) => {
+        lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs();
+        log(addDays(T, -10), 'Bench Press', 160); log(addDays(T, -8), 'Bench Press', 155);
+        if (k === 'written') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 175 });
+        log(T, 'Flat Bench', 170);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      let s = setup();
+      r.before = W();
+      // Edit sets on the day sheet: the name field, then Save changes
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+      [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Edit sets').click(); await wait(40);
+      document.getElementById('se_0_name').value = 'Bench Press';
+      [...document.querySelectorAll('#sessEditOverlay button')].find(b => /Save changes/.test(b.textContent)).click(); await wait(40);
+      closeCalDay(); await wait(10);
+      r.sheet = { w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      deleteSession(s.id); await wait(20); r.sheetDeleted = W()['Bench Press'];
+      // the coach's edit_session
+      s = setup();
+      r.coach = { res: executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' }).ok, w: W(), line: benchLine() };
+      // a load the coach wrote since the logs stays
+      s = setup('written');
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.written = W();
+      return r;
+    });
+    assert(out.before['Bench Press'] === 160 && out.before['Flat Bench'] === 170, 'set up: the lighter 155 set nothing: ' + JSON.stringify(out.before));
+    assert(out.sheet.w['Bench Press'] === 170 && !('Flat Bench' in out.sheet.w) && out.sheet.line === '  Bench Press: 170' && out.sheet.prescribed === 170, 'Edit sets: Bench takes the renamed log\'s 170: ' + JSON.stringify(out.sheet));
+    assert(out.sheetDeleted === 160, 'deleted again, Bench gives back its 160: ' + out.sheetDeleted);
+    assert(out.coach.res && out.coach.w['Bench Press'] === 170 && out.coach.line === '  Bench Press: 170', 'the coach\'s rename too: ' + JSON.stringify(out.coach));
+    assert(out.written['Bench Press'] === 175 && !('Flat Bench' in out.written), 'a load the coach wrote since stays: ' + JSON.stringify(out.written));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

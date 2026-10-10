@@ -14148,7 +14148,20 @@ function _afterSessionEdit(s, sessions, renamed, only){
       if(fixed[rn.to]) return;   // its corrected top set has moved the new name's working weight
       if(!had && carry!=null){ wts2[rn.to]=carry; wtsTouched=true; return; }
       if(newerOf(rn.to)) return;
-      if(had){ var pl=_newestLoad(rn.to, sessions.filter(function(o){ return o!==s; })); if(!(pl!=null && Math.abs(pl-parseFloat(wts2[rn.to]))<0.01)) return; }
+      // Written since: the working weight is not the load of that name's newest log that set it. A
+      // lighter one filed for an earlier day after the fact set nothing (a backdated log only raises
+      // it), so it is passed over: Bench's 155 filed for last week kept its 160 under the renamed 170.
+      if(had){
+        var cw=parseFloat(wts2[rn.to]), pl=null;
+        sessions.some(function(o){
+          if(!o || o===s) return false;
+          var v=0; (o.exercises||[]).forEach(function(e){ if(!(v>0) && e && e.name===rn.to) v=_exLoad(e); });
+          if(!(v>0)) return false;
+          if(o.wSet && typeof o.wSet==='object' && !o.wSet[rn.to] && !_loggedLive(o) && v<cw-0.01) return false;
+          pl=v; return true;
+        });
+        if(!(pl!=null && Math.abs(pl-cw)<0.01)) return;
+      }
       var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
       var rw=carry!=null ? carry : parseFloat(rx && rx.weight);
       if(!(rw>0)) return;
