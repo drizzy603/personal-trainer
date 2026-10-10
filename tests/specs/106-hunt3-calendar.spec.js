@@ -1195,6 +1195,13 @@ run('U09: a log picked behind an older log and back takes the working weight ove
         r[k].stampBack = JSON.stringify(getSessions().find(x => x.id === s.id).wSet);
         deleteSession(s.id); await wait(20); r[k].deleted = W();
       }
+      // nudged a day while it stays the newest log, it passes nothing: the coach's 145 set after it
+      // (the load its stamp names) stays
+      reset(); _writeLoadLocal('Bench Press', 145);
+      const s2 = await runToday(150);
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      await pick(T, addDays(T, -1));
+      r.nudged = { stamp: JSON.stringify(getSessions().find(x => x.id === s2.id).wSet), w: W() };
       return r;
     });
     ['deload', 'coach', 'plus5'].forEach(k => {
@@ -1204,6 +1211,7 @@ run('U09: a log picked behind an older log and back takes the working weight ove
       assert(x.stampBack === st && x.deleted === lo, k + ': its stamp still names ' + lo + ', which a delete gives back: ' + JSON.stringify(x));
     });
     assert(out.written.behind === 140 && out.written.back === 140 && out.written.deleted === 140, 'a load the coach wrote after both logs stays through the round trip: ' + JSON.stringify(out.written));
+    assert(out.nudged.stamp === '{"Bench Press":[145,150]}' && out.nudged.w === 145, 'nudged while it stays the newest, the coach\'s later 145 stays: ' + JSON.stringify(out.nudged));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

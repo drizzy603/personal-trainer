@@ -4319,10 +4319,10 @@ function _workingWeightsFollow(before, moved){
   var w=getWeights(), ss=getSessions(), prev={}, any=false, took=false;
   Object.keys(before||{}).forEach(function(n){
     var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
-    var front=!!(moved && nx && nx.s===moved), mm=(front && moved.wSet) ? moved.wSet[n] : null;
-    // Its own stamp says it replaced the working weight there now (a date mis-picked behind last
-    // week's log and fixed: the move behind gave the deload's 145 back), so moved back to the front
-    // it takes over again, though the log it passes is older than that load.
+    var front=!!(moved && nx && nx.s===moved), mm=(front && moved.wSet && x && x.s && x.s.id!==moved.id) ? moved.wSet[n] : null;
+    // Moved back in front of another log, its own stamp says it replaced the working weight there
+    // now (a date mis-picked behind last week's log and fixed: the move behind gave the deload's 145
+    // back), so it takes over again, though the log it passes is older than that load.
     var again=!!(Array.isArray(mm) && mm[0]!=null && cur>0 && Math.abs((parseFloat(mm[0])||0)-cur)<0.01);
     if(b==null || (!again && (a===b || Math.abs(cur-b)>0.01))) return;
     var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, to=a;
