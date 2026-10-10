@@ -4326,13 +4326,15 @@ function _workingWeightsFollow(before, moved){
     // and fixed, or a workout filed on the wrong day moved to today, left the passed log's load.
     if(!front){
       // Deleted or moved behind: what stands without the log is the load its stamp says it
-      // replaced, or the one it only met, while the programme does not say otherwise (a coach
-      // change or +5 since undone came back as the working weight, under a plan that no longer had
-      // it); a log from before the stamp set it unless the programme prescribed it. The lift's
-      // newest log left, saved after this one, had set it then (a backdated one only raising it):
-      // the deload's 145 came back over a 155 logged for yesterday after today's log.
+      // replaced, or the one it only met. A change undone since (the reply's Undo, Restore previous
+      // programme) rewrote the stamps of the logs that hold it (_noteStamps), so what a stamp says
+      // stands, under a plan that has moved on since: next week's climb, a carry or a Routines edit
+      // read as an undone change, and the delete gave back the log from before the deload, coach
+      // change or +5. A log from before the stamp set it unless the programme prescribed it. The
+      // lift's newest log left, saved after this one, had set it then (a backdated one only raising
+      // it): the deload's 145 came back over a 155 logged for yesterday after today's log.
       var set=!!(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01), k=set ? parseFloat(mine[0]) : cur;
-      if(st ? (k>0 && _planSays(n, k, ls.week)!==false) : _planHolds(n, cur, ls.week)){
+      if(st ? k>0 : _planHolds(n, cur, ls.week)){
         var nr=nx && nx.s, later=!!(nr && Number(nr.id)>Number(ls.id));
         to=(later && (_loggedLive(nr) || a>k)) ? a : k;
       }

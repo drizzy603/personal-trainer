@@ -1079,3 +1079,77 @@ run('T17: a deleted workout gives back only a load that still stands; a log save
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U07 (hunt 6): deleting a workout logged after the plan had moved on from a deload, the coach's
+// load or a +5 (next week's climb, Carry forward, a Routines edit) put the working weight back to
+// the log from before the change: a climbed, carried or edited row read as the change undone. A
+// stamp says what stands (Undo and Restore previous rewrite the stamps of the logs that hold a
+// change: T17's own cases above), so the deload's 145 comes back, the coach is told 145 and the
+// next deload is computed from the plan's 147.5, not from the 160 before the first.
+run('U07: a workout deleted after the plan moved on gives back the deload\'s load, not the log from before it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), cr0 = JSON.stringify(getCustomRoutine()), wk0 = currentWeek;
+      const W = () => getWeights()['Bench Press'];
+      const row = () => { const x = (getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press'); return x && x.weight; };
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: w }] });
+      const reset = () => { _setWeek(wk0); lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); log(addDays(T, -7), 160); };
+      const delOnSheet = async () => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      // today's Push through the runner, Bench at w (0: what it prescribes)
+      const runToday = async w => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; if (w) runnerWeights['Bench Press'] = w; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      // next week's climb: the deload's 145 (the coach's, a +5's 165), next week's Push at what it
+      // prescribes, deleted
+      for (const k of ['deload', 'coach', 'plus5']) {
+        reset();
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); else _writeLoadLocal('Bench Press', k === 'plus5' ? 165 : 145);
+        const set = W();
+        _setWeek(wk0 + 1); render();
+        const s = await runToday(0);
+        r[k] = { set, row: row(), load: s.exercises.find(e => e.name === 'Bench Press').weight, stamp: JSON.stringify(s.wSet) };
+        await delOnSheet();
+        r[k].deleted = { w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      }
+      // Carry forward: today's 150 over the deload's 145, carried, deleted
+      reset(); _writeLoadLocal('Bench Press', 145);
+      let s = await runToday(150);
+      r.carry = { stamp: JSON.stringify(s.wSet), cands: _carryCandidates(s).length };
+      _carryTap({ dataset: { s: 'Push', n: 'Bench Press', w: '150', c: String(currentWeek - 1) } }, s.id);
+      r.carry.row = row();
+      await delOnSheet(); r.carry.deleted = { w: W(), line: benchLine() };
+      // a Routines edit since: today's 150 (or a workout that only met the 145), Bench edited to 155
+      for (const k of ['set', 'met']) {
+        reset(); _writeLoadLocal('Bench Press', 145);
+        s = await runToday(k === 'met' ? 145 : 150);
+        openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtEdit.w = wDisp(155); _rtSave(); await wait(10); closeRoutines();
+        r['rt' + k] = { stamp: JSON.stringify(s.wSet), row: row() };
+        await delOnSheet(); r['rt' + k].deleted = W();
+      }
+      return r;
+    });
+    ['deload', 'coach', 'plus5'].forEach(k => {
+      const x = out[k], lo = k === 'plus5' ? 165 : 145;
+      assert(x.set === lo && x.row > lo && x.load === x.row && x.stamp === '{"Bench Press":[' + lo + ',' + x.row + ']}', k + ': set up, next week climbs past it: ' + JSON.stringify(x));
+      assert(x.deleted.w === lo && x.deleted.line === '  Bench Press: ' + lo && x.deleted.prescribed === x.row, k + ': deleted, the change\'s load comes back and the plan\'s is the prescription: ' + JSON.stringify(x));
+    });
+    assert(out.carry.stamp === '{"Bench Press":[145,150]}' && out.carry.cands === 1 && out.carry.row === 150, 'Carry forward set up: ' + JSON.stringify(out.carry));
+    assert(out.carry.deleted.w === 145 && out.carry.deleted.line === '  Bench Press: 145', 'Carry forward, then deleted: the deload\'s 145, not the 160 before it: ' + JSON.stringify(out.carry));
+    assert(out.rtset.stamp === '{"Bench Press":[145,150]}' && out.rtset.row === 155 && out.rtset.deleted === 145, 'a Routines edit since: 145: ' + JSON.stringify(out.rtset));
+    assert(out.rtmet.stamp === '{}' && out.rtmet.row === 155 && out.rtmet.deleted === 145, 'a met workout, then a Routines edit: the 145 it met stays: ' + JSON.stringify(out.rtmet));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
