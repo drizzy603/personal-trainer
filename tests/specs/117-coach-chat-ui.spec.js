@@ -799,3 +799,60 @@ run('S4: on screen, no blank line under a list, bullets 6px apart, a table scrol
     }
   }
 });
+
+// ── S5 ─────────────────────────────────────────────────────────────────────────
+const REPLY_FETCH = `(text, delay) => {
+  window.fetch = async (url) => {
+    if (!String(url).includes('anthropic')) return new Response('', { status: 404 });
+    await new Promise((r) => setTimeout(r, delay));
+    return new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+}`;
+const LONG_ANSWER = Array.from({ length: 30 }, (_, i) => '- **Point ' + (i + 1) + ':** a full sentence of advice that wraps onto a second line on a phone.').join('\n');
+run('S5: a long reply lands at its start; a short one at the end; a reader who scrolled up keeps their place', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async ({ REPLY_FETCH, LONG_ANSWER }) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        const L = () => document.querySelector('.coach-msgs-area');
+        const send = async (q) => { document.getElementById('coach-input').value = q; return sendCoachMessage(); };
+        // a long reply, sent from the end: sample every frame
+        eval(REPLY_FETCH)(LONG_ANSWER, 150);
+        const frames = []; let on = true;
+        (function loop() { const l = L(); if (l) frames.push({ top: l.scrollTop, max: l.scrollHeight - l.clientHeight, loading: coachLoading }); if (on) requestAnimationFrame(loop); })();
+        await send('Give me everything');
+        const atLand = { top: L().scrollTop, max: L().scrollHeight - L().clientHeight };
+        await wait(120); const at100 = L().scrollTop;
+        await wait(200); const at300 = L().scrollTop;
+        on = false;
+        const ts = L().querySelectorAll('.kt-turn'), u = ts[ts.length - 1];
+        r.long = { atLand, at100, at300, userOffset: u.getBoundingClientRect().top - L().getBoundingClientRect().top,
+          firstAfter: frames.slice(frames.findIndex((f) => f.loading)).filter((f) => !f.loading)[0], replyTop: u.nextElementSibling.getBoundingClientRect().top < L().getBoundingClientRect().bottom };
+        // a short reply lands at the end, 16px above the composer
+        eval(REPLY_FETCH)('Done.', 60);
+        await send('Short one?'); await wait(150);
+        const row = document.querySelector('.coach-input-row').getBoundingClientRect();
+        const kids = [...L().querySelectorAll('*')].filter((e) => e.getBoundingClientRect().height > 1);
+        r.short = { top: L().scrollTop, max: L().scrollHeight - L().clientHeight, gap: row.top - Math.max.apply(null, kids.map((e) => e.getBoundingClientRect().bottom)) };
+        // a reader who scrolls up while waiting keeps their place
+        eval(REPLY_FETCH)(LONG_ANSWER, 300);
+        const p = send('And again'); await wait(80);
+        L().scrollTop = 200; await wait(60);
+        await p; await wait(150);
+        r.kept = L().scrollTop;
+        return r;
+      }, { REPLY_FETCH, LONG_ANSWER }).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      const Lg = out.long;
+      assert(Math.abs(Lg.userOffset - 12) <= 2 && Lg.replyTop, tag + 'the question sits 12px under the header with the answer below it: ' + JSON.stringify(Lg));
+      assert(Lg.atLand.top < Lg.atLand.max - 100 && Math.abs(Lg.at100 - Lg.atLand.top) <= 1 && Math.abs(Lg.at300 - Lg.atLand.top) <= 1, tag + 'it stays there; the 80ms pin does not pull it to the end: ' + JSON.stringify(Lg));
+      assert(Lg.firstAfter && Math.abs(Lg.firstAfter.top - Lg.atLand.top) <= 1, tag + 'no frame shows the end first: ' + JSON.stringify(Lg.firstAfter));
+      assert(Math.abs(out.short.top - out.short.max) <= 1 && Math.abs(out.short.gap - 16) <= 1, tag + 'a reply that fits lands at the end: ' + JSON.stringify(out.short));
+      assert(Math.abs(out.kept - 200) <= 2, tag + 'a reader who scrolled up keeps their place: ' + out.kept);
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});

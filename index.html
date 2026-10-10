@@ -7071,8 +7071,9 @@ function handleCoachCardAsk(ev){
     if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
+    var _wasEnd = _chatAtEnd();
     render();
-    scrollChatBottom();
+    if(_wasEnd) scrollChatToReply();
   }).catch(function(err){
     // B8 — surface network / API errors instead of leaving the user staring at
     // an empty "Thinking…" forever.
@@ -7081,8 +7082,9 @@ function handleCoachCardAsk(ev){
     streamingContent = '';
     coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
     saveCoachHistory();
+    var _wasEnd = _chatAtEnd();
     render();
-    scrollChatBottom();
+    if(_wasEnd) scrollChatToReply();
   });
 }
 
@@ -18317,8 +18319,9 @@ async function startRoutineIntake(){
   }finally{
     coachLoading=false;
     streamingContent='';
+    var _wasEnd=_chatAtEnd();
     render();
-    scrollChatBottom();
+    if(_wasEnd) scrollChatToReply();
     if(!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);   // no keys for a scripted focus on a touch screen
   }
 }
@@ -20474,8 +20477,9 @@ async function sendCoachMessage(){
     if(myGen===_coachGen){
       coachLoading=false;
       streamingContent='';
+      var _wasEnd=_chatAtEnd();
       render();
-      scrollChatBottom();
+      if(_wasEnd) scrollChatToReply();
       if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
     }
   }
@@ -20532,7 +20536,8 @@ async function coachRetryLast(){
     if(myGen===_coachGen){
       coachLoading=false;
       streamingContent='';
-      render(); scrollChatBottom();
+      var _wasEnd=_chatAtEnd();
+      render(); if(_wasEnd) scrollChatToReply();
     }
   }
 }
@@ -20573,6 +20578,26 @@ function _chatAnchor(){
     if(l && l.isConnected) l.scrollTop=Math.max(0, l.scrollHeight-l.clientHeight-_chatBelow);
   });
   _chatRO.disconnect(); _chatRO.observe(list);
+}
+
+// A reply that lands while the reader is at the end opens at its start: the owner's question 12px
+// under the header, the answer below it (it landed on its last line, and a long one had to be
+// scrolled back up to be read). One that fits still ends 16px above the composer. A reader who
+// scrolled up while waiting keeps their place. Cancels the 80 ms pin, which would pull the view
+// back to the end. offsetTop is against the positioned scroller, in CSS px, so the Dynamic Type
+// zoom does not skew it.
+function _chatAtEnd(){
+  var l=document.querySelector('html.kt-chat .coach-msgs-area');
+  return !l || (l.scrollHeight-l.scrollTop-l.clientHeight<80);
+}
+function scrollChatToReply(){
+  var l=document.querySelector('html.kt-chat .coach-msgs-area');
+  if(!l || currentTab!=='coach') return;
+  clearTimeout(_chatPinT);
+  var ts=l.querySelectorAll('.kt-turn'), u=ts[ts.length-1];
+  if(!u){ scrollChatBottom(); return; }
+  l.scrollTop=Math.min(Math.max(0, u.offsetTop-12), l.scrollHeight-l.clientHeight);
+  _chatBelow=Math.max(0, l.scrollHeight-l.scrollTop-l.clientHeight);
 }
 
 function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
