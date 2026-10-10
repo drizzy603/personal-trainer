@@ -472,15 +472,22 @@ select option{background:var(--bg);}
 
 /* ── AI Coach ────────────────────────────────────────────────────────────── */
 .coach-head{padding:6px 0 14px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);margin-bottom:0;}
-.coach-head-l{display:flex;flex-direction:column;gap:4px;}
-.coach-head-eyebrow{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;}
+.coach-head-l{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.coach-head-eyebrow{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;white-space:nowrap;}
 .coach-head-eyebrow::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
-.coach-head-title{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);}
-.coach-head-r{display:flex;align-items:center;gap:8px;}
-.coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;}
+.coach-head-title{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.coach-head-r{display:flex;align-items:center;gap:8px;flex:none;}
+.coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;white-space:nowrap;}
+.coach-head-eyebrow.off::before{background:var(--muted);box-shadow:none;}   /* offline: the dot goes quiet */
+/* A control drawn smaller than 44pt still takes a 44pt press (the model pill, intake's Cancel). */
+.kt-hit{position:relative;}
+.kt-hit::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%);}
 /* The model switch reads "Sonnet 5.5"; on the narrowest screens (320 pt Display Zoom) the version
    drops so the header keeps its one-line title (the button's accessible name keeps it). */
-@media (max-width:345px){.kt-model-ver{display:none;}}
+@media (max-width:345px){.kt-model-ver,.coach-head-meta{display:none;}}
+/* Under Larger Text the header keeps one line too: the version (still in the switch's name) and
+   WK/DAY (on Today) stand down. */
+html:not([data-dyn-type="1"]) .kt-model-ver,html:not([data-dyn-type="1"]) .coach-head-meta{display:none;}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
 .coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:500;font-size:15px;line-height:1.4;white-space:pre-wrap;}
 /* One rhythm: 8px between the parts of one reply (text, pills, PLAN CHANGES, chips), 20px around
@@ -17952,7 +17959,7 @@ function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
 // two-line question was impossible on the phone. There, Return is a newline
 // and the send button sends; desktop keeps Enter-to-send.
 function _coarsePointer(){ try{ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }catch(e){ return false; } }
-function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();}
+function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();showToast('Coach model: '+_coachModelName(m));}
 
 function loadCoachHistory(){
   try{
@@ -20758,18 +20765,20 @@ function renderCoach(){
   var _dayMeta = hasCustomRoutine() && !_programmeStarted()
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
+  // The eyebrow says what the coach is doing: answering setup questions, replying, or unreachable.
+  var _offline=(typeof navigator!=='undefined' && navigator.onLine===false);
   var coachHead='<div class="coach-head">'+
     '<div class="coach-head-l">'+
-      '<div class="coach-head-eyebrow">COACH · '+(intakeMode?'INTAKE':'ONLINE')+'</div>'+
-      '<div class="coach-head-title">'+(intakeMode?'Build your plan':"Today's plan")+'</div>'+
+      '<div class="coach-head-eyebrow'+(_offline?' off':'')+'">COACH · '+(intakeMode?'INTAKE':coachLoading?'REPLYING':(_offline?'OFFLINE':'ONLINE'))+'</div>'+
+      '<div class="coach-head-title" role="heading" aria-level="1">'+(intakeMode?'Build your plan':"Today's plan")+'</div>'+
     '</div>'+
     '<div class="coach-head-r">'+
       (!intakeMode
         ?'<span class="coach-head-meta">'+_dayMeta+'</span>'
         :'')+
       (intakeMode
-        ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
-        :'<button onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
+        ?'<button class="kt-hit" onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        :'<button class="kt-hit" onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
       )+
     '</div>'+
   '</div>';
@@ -20891,10 +20900,11 @@ function renderCoach(){
   // the safe-area zone above the header.
   return '<div class="coach-chat-stick">'+
     '<div class="screen-hd" style="margin:0;">'+
-      '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
-      '</button>'+
-      '<div class="screen-avatar">'+_avCh+'</div>'+
+      // In setup Back did nothing (the hub waits for setup to end): Cancel is the way out there.
+      (intakeMode?'':'<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;gap:4px;">'+
+        '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
+      '</button>')+
+      '<div class="screen-avatar" aria-hidden="true" style="margin-left:auto;">'+_avCh+'</div>'+
     '</div>'+
     coachHead+
   '</div>'+
@@ -22647,6 +22657,9 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
     else _chatTyping(false);
   };
 })();
+
+// The chat header says OFFLINE while the phone has no connection, and ONLINE again when it returns.
+try{ window.addEventListener('online', function(){ if(currentTab==='coach') render(); }); window.addEventListener('offline', function(){ if(currentTab==='coach') render(); }); }catch(e){}
 
 // ── Chat on the visual viewport (the iOS keyboard) ───────────────────────────
 // There is no Keyboard plugin, so WKWebView keeps the LAYOUT viewport under the keyboard:

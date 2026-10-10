@@ -856,3 +856,59 @@ run('S5: a long reply lands at its start; a short one at the end; a reader who s
     } finally { await app.close(); }
   }
 });
+
+// ── S6 ─────────────────────────────────────────────────────────────────────────
+run('S6: the chat header fits on one line, its controls take a 44pt press, and its status is honest', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const [size, zoom] of [[{ width: 320, height: 700 }, 1], [{ width: 390, height: 844 }, 1.25], [{ width: 375, height: 667 }, 1.25]]) {
+      const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
+      const app = await bootChat(room, size);
+      try {
+        const out = await app.page.evaluate(async (zoom) => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+          if (zoom !== 1) applyDynamicType(zoom);
+          switchTab('coach'); coachView = 'chat'; render(); await wait(120);
+          const z = parseFloat(document.documentElement.style.zoom) || 1;
+          const B = (el) => el.getBoundingClientRect();
+          const title = document.querySelector('.coach-head-title'), eb = document.querySelector('.coach-head-eyebrow'), meta = document.querySelector('.coach-head-meta');
+          const lh = (el) => parseFloat(getComputedStyle(el).fontSize) * 1.4 * z;
+          r.lines = { title: B(title).height <= lh(title), eyebrow: B(eb).height <= lh(eb), meta: getComputedStyle(meta).display === 'none' || B(meta).height <= lh(meta), role: title.getAttribute('role') + ':' + title.getAttribute('aria-level') };
+          r.stickH = B(document.querySelector('.coach-chat-stick')).height / z;
+          const back = [...document.querySelectorAll('.coach-chat-stick .screen-hd button')].find((b) => /Back/.test(b.textContent));
+          r.backH = back ? B(back).height / z : 0;
+          r.avatarHidden = document.querySelector('.coach-chat-stick .screen-avatar').getAttribute('aria-hidden');
+          // the model pill takes a press 8px above and below its drawn edges
+          const pill = [...document.querySelectorAll('.coach-head button')].find((b) => /setCoachModel/.test(b.getAttribute('onclick') || ''));
+          const pb = B(pill), cx = pb.left + pb.width / 2;
+          const hit = (x, y, el) => { const e = document.elementFromPoint(x, y); return !!e && (e === el || el.contains(e)); };
+          r.pillHit = [hit(cx, pb.top - 8 * z, pill), hit(cx, pb.bottom + 8 * z, pill), Math.max(pb.height / z, 0)];
+          pill.click(); await wait(80);
+          r.toast = document.getElementById('toast').textContent;
+          // replying, offline
+          coachLoading = true; render(); await wait(40); r.replying = document.querySelector('.coach-head-eyebrow').textContent;
+          coachLoading = false;
+          Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); render(); await wait(40);
+          const off = document.querySelector('.coach-head-eyebrow'); r.offline = [off.textContent, off.classList.contains('off')];
+          delete navigator.onLine;
+          // intake: Cancel, no Back; Cancel takes a 44pt press
+          _setIntakeMode(true); render(); await wait(60);
+          const cancel = [...document.querySelectorAll('.coach-head button')].find((b) => b.textContent === 'Cancel');
+          const cb = B(cancel), ccx = cb.left + cb.width / 2, ccy = cb.top + cb.height / 2;
+          r.intake = { back: [...document.querySelectorAll('.coach-chat-stick button')].some((b) => /Back/.test(b.textContent)), cancel: !!cancel,
+            hit: [hit(ccx, ccy - 20 * z, cancel), hit(ccx, ccy + 20 * z, cancel)] };
+          _setIntakeMode(false); render();
+          return r;
+        }, zoom).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        assert(out.lines.title && out.lines.eyebrow && out.lines.meta && out.lines.role === 'heading:1', tag + 'title, eyebrow and meta take one line each; the title is a heading: ' + JSON.stringify(out.lines));
+        assert(out.stickH < 135, tag + 'the header is no taller than its one-line self: ' + out.stickH);
+        assert(out.backH >= 44 && out.avatarHidden === 'true', tag + 'Back is a 44pt target; the avatar is decoration: ' + JSON.stringify([out.backH, out.avatarHidden]));
+        assert(out.pillHit[0] && out.pillHit[1], tag + 'the model pill takes a press outside its drawn edges: ' + JSON.stringify(out.pillHit));
+        assert(/^Coach model: (Haiku|Sonnet) [\d.]+$/.test(out.toast), tag + 'the switch says which model now runs: ' + out.toast);
+        assert(out.replying === 'COACH · REPLYING' && out.offline[0] === 'COACH · OFFLINE' && out.offline[1], tag + 'the eyebrow says replying and offline: ' + JSON.stringify([out.replying, out.offline]));
+        assert(!out.intake.back && out.intake.cancel && out.intake.hit.every(Boolean), tag + 'setup shows Cancel (a 44pt press) and no Back: ' + JSON.stringify(out.intake));
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
+});
