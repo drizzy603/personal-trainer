@@ -235,10 +235,10 @@ serial('M1: a render keeps the reader\'s place; the end stays pinned; the hub op
       L().scrollTop = L().scrollHeight - L().clientHeight - 50; await wait(60);
       coachMessages.push({ role: 'user', content: 'One more question' }); render(); await wait(150);
       r.pinned = { top: L().scrollTop, max: L().scrollHeight - L().clientHeight };
-      // a toast in the chat shows under the status bar, never over the composer
-      showToast('Coach model: Sonnet 5.5'); await wait(400);
+      // a toast in the chat shows under the header, never over the composer
+      showToast('Coach model: Sonnet 5.5'); await wait(450);
       const t = document.getElementById('toast').getBoundingClientRect(), row = document.querySelector('.coach-input-row').getBoundingClientRect();
-      r.toast = { top: t.top, bottom: t.bottom, rowTop: row.top };
+      r.toast = { top: t.top, bottom: t.bottom, rowTop: row.top, head: document.querySelector('.coach-chat-stick').getBoundingClientRect().bottom };
       // back to the hub: #screen scrolls again
       coachView = 'home'; render(); await wait(60);
       r.hubAgain = { chat: document.documentElement.classList.contains('kt-chat'), overflow: getComputedStyle(document.getElementById('screen')).overflowY };
@@ -249,10 +249,55 @@ serial('M1: a render keeps the reader\'s place; the end stays pinned; the hub op
     assert(Math.abs(out.afterRender - 120) <= 2 && Math.abs(out.afterModel - 120) <= 2, 'a render and the model switch keep the place: ' + JSON.stringify([out.afterRender, out.afterModel]));
     assert(Math.abs(out.afterKeep.top - 120) <= 2 || Math.abs(out.afterKeep.top - out.afterKeep.max) <= 2, 'Keep changes keeps the place (or the new end): ' + JSON.stringify(out.afterKeep));
     assert(Math.abs(out.pinned.top - out.pinned.max) <= 1, 'near the end, a render stays at the end: ' + JSON.stringify(out.pinned));
-    assert(out.toast.top < 120 && out.toast.bottom < out.toast.rowTop, 'the toast shows under the status bar: ' + JSON.stringify(out.toast));
+    assert(Math.abs(out.toast.top - (out.toast.head + 8)) <= 1 && out.toast.bottom < out.toast.rowTop, 'the toast shows 8px under the header, clear of the composer: ' + JSON.stringify(out.toast));
     assert(!out.hubAgain.chat && out.hubAgain.overflow === 'auto', 'the hub scrolls #screen: ' + JSON.stringify(out.hubAgain));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// At the status bar the chat's toast covered the Back row, with the avatar poking out above it, and
+// the top of COACH · ONLINE; every model switch toasts. It shows 8pt under the header, in both rooms,
+// at Larger Text and with the keys up, and moves when the keys come or go (the Back row goes with them).
+serial('M1: a toast in the chat shows 8pt under the header, keys up or down, at any text size', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const size of [{ width: 390, height: 844 }, { width: 320, height: 700 }]) {
+      const tag = room + ' ' + size.width + ': ';
+      const app = await bootChat(room, size, { touch: true });
+      try {
+        await open(app.page);
+        const out = await app.page.evaluate(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {}, KB = 300;
+          const read = () => {
+            const t = document.getElementById('toast').getBoundingClientRect(), s = document.querySelector('.coach-chat-stick').getBoundingClientRect();
+            const av = document.querySelector('.coach-chat-stick .screen-avatar'), ab = av.getBoundingClientRect(), row = document.querySelector('.coach-input-row').getBoundingClientRect();
+            return { top: t.top, bottom: t.bottom, head: s.bottom, headH: s.height, avatar: ab.height ? ab.bottom : null, rowTop: row.top, z: parseFloat(document.documentElement.style.zoom) || 1 };
+          };
+          showToast('Coach model: Haiku 4.5'); await wait(450); r.idle = read();
+          // a toast shown on the hub moves under the header when the chat opens under it
+          coachView = 'home'; render(); await wait(60); showToast('Saved'); await wait(100);
+          openCoachChat(); await wait(450); r.entered = read();
+          // keys up (the Back row goes), then down again while a toast shows
+          document.getElementById('coach-input').focus(); __vv.set(innerHeight - KB, KB); await wait(300);
+          showToast('Coach model: Sonnet 5.5'); await wait(450); r.up = read();
+          __vv.reset(); await wait(450); r.down = read();
+          document.getElementById('coach-input').blur(); await wait(300);
+          // Larger Text
+          applyDynamicType(1.25); render(); await wait(200);
+          showToast('Coach model: Haiku 4.5'); await wait(450); r.zoom = read();
+          applyDynamicType(1); render(); await wait(100);
+          return r;
+        }).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        for (const k of ['idle', 'entered', 'up', 'down', 'zoom']) {
+          const T = out[k];
+          assert(Math.abs(T.top - (T.head + 8 * T.z)) <= 1.5 && T.bottom < T.rowTop, tag + k + ': the toast sits 8pt under the header, clear of the composer: ' + JSON.stringify(T));
+          assert(T.avatar === null || T.avatar <= T.top, tag + k + ': nothing of the header shows past the toast: ' + JSON.stringify(T));
+        }
+        assert(out.up.headH < out.down.headH - 30, tag + 'with the keys up the header is shorter (no Back row), and the toast follows it back down: ' + JSON.stringify([out.up.headH, out.down.headH]));
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
 });
 
 // ── M2 ─────────────────────────────────────────────────────────────────────────

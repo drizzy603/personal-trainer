@@ -2055,9 +2055,11 @@ html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom
 /* With a sheet open the bottom is the sheet's Save/Delete: the toast (an error, an Undo) moves up, as in Lime. */
 /* The run and sport dots keep a paper ring on the blue selected day (1.9:1 and 2.5:1 without it). */
 html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
-/* In the chat the bottom is the composer, as an open sheet's is its buttons: a toast shows under
-   the status bar (following the keys' pan while they are up), never over the box being typed in. */
-html.kt-chat body #toast{top:calc(var(--vv-top,0px) + max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
+/* In the chat the bottom is the composer, as an open sheet's is its buttons: a toast shows 8px under
+   the header (following the keys' pan while they are up), never over the box being typed in. At the
+   status bar it covered the Back row, the avatar poking out above it, and the top of the eyebrow.
+   --toast-head, set by _toastPlace, is where the header ends inside #app. */
+html.kt-chat body #toast{top:calc(var(--vv-top,0px) + var(--toast-head,max(env(safe-area-inset-top),16px)) + 8px);bottom:auto;}
 </style>
 </head>
 <body>
@@ -6130,7 +6132,7 @@ function render() {
     else if(routeChanged || _oEnd) scrollChatBottom();
     else { var _nl=screen.querySelector('.coach-msgs-area'); if(_nl) _nl.scrollTop=_oTop; }
     _chatAnchor(); _syncSend();
-    if(_wasChat!==_isChat && window._vvChatSync) _vvChatSync();
+    if(_wasChat!==_isChat){ if(window._vvChatSync) _vvChatSync(); _toastPlace(); }   // a toast already up moves under the header
     _a11yPass(); _scheduleNativeSync(); paintRunner(); return;
   }
   _tabEnterMotion(screen, routeChanged);
@@ -17942,6 +17944,16 @@ function _paintShareCard(m, P){
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 var _toastTimer=null;
+// In the chat a toast shows under the header: --toast-head is the header's foot inside #app, in CSS px
+// at the Dynamic Type zoom (boxes read zoomed); the CSS adds the keys' pan (--vv-top). Placed when a
+// toast shows, and again when the keys come or go (the Back row goes and comes back with them).
+function _toastPlace(){
+  var t=document.getElementById('toast'); if(!t) return;
+  var st=document.querySelector('html.kt-chat .coach-chat-stick'), app=document.getElementById('app');
+  if(!st || !app){ t.style.removeProperty('--toast-head'); return; }
+  var z=parseFloat(document.documentElement.style.zoom)||1;
+  t.style.setProperty('--toast-head', Math.round((st.getBoundingClientRect().bottom-app.getBoundingClientRect().top)/z)+'px');
+}
 // Toast with an Undo action — the row is already gone; the strip is the
 // safety net. One live undo at a time; a new toast retires the old one.
 var _toastUndoFn=null;
@@ -17952,7 +17964,7 @@ function showUndoToast(msg, onUndo){
   t.innerHTML=_esc(msg)+'<button class="kt-toast-undo" onclick="_toastUndo()">Undo</button>';
   t.style.background='var(--card2)'; t.style.color='var(--text)';
   t.setAttribute('aria-live','polite');
-  t.classList.add('show');
+  _toastPlace(); t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
   _toastTimer=setTimeout(function(){
     t.classList.remove('show'); _toastTimer=null; _toastUndoFn=null;
@@ -17975,7 +17987,7 @@ function showToast(msg, style){
   t.style.background=style==='pr'?'var(--toast-pr,var(--yellow))':(style==='err'?'var(--red)':'var(--toast-ok,var(--green))');
   t.style.color=style==='err'?'var(--on-accent)':'var(--toast-ink,var(--on-accent))';
   t.setAttribute('aria-live', style==='err'?'assertive':'polite');
-  t.classList.add('show');
+  _toastPlace(); t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
   _toastTimer=setTimeout(function(){
     t.classList.remove('show'); _toastTimer=null;
@@ -22850,12 +22862,14 @@ try{ window.addEventListener('online', function(){ if(currentTab==='coach') rend
         on=true; root.classList.add('kb-open');
         document.addEventListener('touchmove', guard, {passive:false});
         if(window._chatKb) _chatKb(true);
+        _toastPlace();   // the Back row went with the keys
       }
     } else if(on){
       on=false; root.classList.remove('kb-open');
       document.removeEventListener('touchmove', guard, {passive:false});
       root.style.removeProperty('--vv-h'); root.style.removeProperty('--vv-top');
       if(window._chatKb) _chatKb(false);
+      _toastPlace();
     }
   }
   function soon(){ if(!raf) raf=window.requestAnimationFrame ? requestAnimationFrame(apply) : setTimeout(apply,16); }
