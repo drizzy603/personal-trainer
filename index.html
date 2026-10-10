@@ -3512,18 +3512,25 @@ function archiveCurrentRoutine(){
 // Regenerate on such a page (archived nowhere) or a deleted entry, the next programme alone named
 // the old cards' blocks once it was archived (a BASE card read HYPERTROPHY; _sessBlock). A week
 // set back dates it later than it came in: its oldest cards then name no block, never a wrong one.
+// The weeks-away note (routine.away, _weekClockPut) stays out: it reads only on the clock it was
+// noted on, and a history restore or a new round starts week 1 afresh.
 function _archiveCopy(cr){
-  if(!cr || cr.inUseFrom) return cr;
+  if(!cr || (cr.inUseFrom && !('away' in cr))) return cr;
   var c=JSON.parse(JSON.stringify(cr)), s=_roundStartISO(), t=todayISO();
-  c.inUseFrom=(/^\d{4}-\d{2}-\d{2}$/.test(s) && s<t) ? s : t;
+  delete c.away;
+  if(!c.inUseFrom) c.inUseFrom=(/^\d{4}-\d{2}-\d{2}$/.test(s) && s<t) ? s : t;
   return c;
 }
 // Whether a Programme History entry already holds this programme, as _archiveCopy dated it or as
-// a page from before it wrote it (a retried swap adds nothing).
+// a page from before it wrote it (a retried swap adds nothing). The weeks-away note is clock, not
+// programme: a programme Restore Previous put back on a later Monday carries one, and was archived
+// a second time beside its own entry (a full history lost its oldest programme).
 function _archivedAlready(e, cr){
   var r=e && e.routine; if(!r || !cr) return false;
-  if(r.inUseFrom && !cr.inUseFrom){ r=JSON.parse(JSON.stringify(r)); delete r.inUseFrom; }
-  return JSON.stringify(r)===JSON.stringify(cr);
+  var a=JSON.parse(JSON.stringify(r)), b=JSON.parse(JSON.stringify(cr));
+  delete a.away; delete b.away;
+  if(a.inUseFrom && !b.inUseFrom) delete a.inUseFrom;
+  return JSON.stringify(a)===JSON.stringify(b);
 }
 function openRoutineArchiveModal(){
   closeRoutineArchiveModal();
@@ -12437,6 +12444,7 @@ function _nrDay(iso){
 function _nextRoundBuild(cr, until){
   var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, bestReps={}, rows=[], seen={};
   nr.cycle=(parseInt(cr.cycle,10)||1)+1;
+  delete nr.away;   // the last round's weeks-away note: the new round's week 1 is its own (_awayWeeks)
   // A new round is the programme's own version: no "edited by you" marks.
   W.forEach(function(w){
     if(!w) return; delete w.recOut;

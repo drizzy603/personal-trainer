@@ -44,11 +44,54 @@
 //   Programme History now dates such a programme from its own week 1, and a programme with no date
 //   can veto a block but never names one alone. R57's cases keep their blocks on the clock their
 //   logs were filed on (the seed's floating clock put every log before its week 1).
+// - U19 (hunt 6, T41 + the restore clock's routine.away): a programme Restore Previous put back on a
+//   later Monday carries its weeks-away note, and Programme History compared it with that note, so
+//   archiving it again (Start new, a history restore, round 2) added a second copy and a full history
+//   lost its oldest programme. The note is clock, not programme: Programme History ignores it and
+//   keeps it out, and the next round starts without it.
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
 let queue = Promise.resolve();
 const run = (name, fn) => { queue = queue.then(() => new Promise(done => run1(name, () => fn().finally(done)))); };
+
+// A wall clock a run can move (local 'YYYY-MM-DDTHH:MM:SS', always computed in the page from the
+// real today), and a cold boot that keeps the storage the app left (the harness re-seeds on every
+// load, so the storage is snapshotted and put back first). As spec 116.
+const CLOCK = () => {
+  try {
+    const snap = sessionStorage.getItem('__ls');
+    if (snap) { const o = JSON.parse(snap); localStorage.clear(); Object.keys(o).forEach(k => localStorage.setItem(k, o[k])); sessionStorage.removeItem('__ls'); }
+  } catch (e) {}
+  if (window.__setNow) return;
+  const RealDate = Date; let offset = 0;
+  const t = sessionStorage.getItem('__now'); if (t) offset = new RealDate(t).getTime() - RealDate.now();
+  function FakeDate(...a) {
+    if (!(this instanceof FakeDate)) return new RealDate(RealDate.now() + offset).toString();
+    if (a.length === 0) return new RealDate(RealDate.now() + offset);
+    return new RealDate(...a);
+  }
+  FakeDate.prototype = RealDate.prototype;
+  FakeDate.now = () => RealDate.now() + offset;
+  FakeDate.parse = RealDate.parse; FakeDate.UTC = RealDate.UTC;
+  window.Date = FakeDate;
+  window.__setNow = (iso) => { offset = new RealDate(iso).getTime() - RealDate.now(); sessionStorage.setItem('__now', iso); };
+};
+async function withClock(app) { await app.page.addInitScript(CLOCK); await app.page.evaluate(CLOCK); }
+async function coldBoot(app) {
+  await app.page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } sessionStorage.setItem('__ls', JSON.stringify(o)); });
+  await app.page.reload({ waitUntil: 'load' });
+  await app.page.waitForFunction(() => typeof window.render === 'function');
+}
+// In-page helpers: confirm a sheet, set the programme aside whole (Start new, then the starter
+// plan), Restore Previous, move the clock to a day (the app's own Monday roll).
+const H = `
+  var wait = ms => new Promise(res => setTimeout(res, ms));
+  var ok = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+  var swapOut = async () => { startNewProgramme(); ok(); await wait(20); applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 }); await wait(20); };
+  var restorePrev = async () => { restoreRoutineBackup(); await wait(10); ok(); await wait(30); };
+  var at = (d) => { __setNow(d + 'T10:00:00'); _lastSeenDay = todayISO(); autoAdvanceWeek(); };
+`;
 
 run('M56: the day sheet title names the year only for a day outside this year', async () => {
   const app = await boot({ native: true });
@@ -399,6 +442,53 @@ run('T41: Programme History dates an undated programme from its week 1 and still
     assert(out.again[0] && out.again[1] === 1 && out.again[2], 'archived again, it keeps the date it already has: ' + JSON.stringify(out.again));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// U19 (hunt 6): a programme Restore Previous put back on a later Monday carries its weeks-away note
+// (routine.away, the clock's). Programme History compared it with that note, so archiving it again
+// (Start new, a history restore of another entry, round 2) added a second copy beside its own entry,
+// and a full history lost its oldest programme. The note is clock, not programme, and stays out of
+// Programme History and the next round.
+run('U19: a programme put back by Restore Previous a Monday later is archived once, and a full history keeps its oldest', async () => {
+  const out = {};
+  for (const path of ['startNew', 'history', 'round']) {
+    const app = await boot({ native: true });
+    try {
+      await withClock(app);
+      out[path] = await app.page.evaluate(async ({ H, path }) => {
+        eval(H);
+        const M = _mostRecentMonday(); at(addDays(M, 4));
+        const cr0 = getCustomRoutine(), r = { name: cr0.name, want: addDays(M, -14) };
+        // four older programmes: with this one the history is full
+        const old = ['Spring Base', 'Summer Strength', 'Winter Bulk', 'Autumn Peak'].map((n, i) => ({ id: Date.now() - (10 - i) * 30 * 864e5, archivedAt: addDays(M, -(300 - i * 60)), routine: Object.assign(JSON.parse(JSON.stringify(cr0)), { name: n, inUseFrom: addDays(M, -(330 - i * 60)) }) }));
+        lsSet('kt_routine_archive', old.reverse());
+        // week 3 (its week 1 began two Mondays back), set aside whole on Friday
+        _setWeek(3, M);
+        await swapOut();
+        // the Saturday after next: Restore Previous puts it back on week 3 from that Monday, the week away noted
+        at(addDays(M, 12));
+        await restorePrev();
+        const cr = getCustomRoutine();
+        r.back = [cr.name === cr0.name, currentWeek, !!(cr.away && cr.away.gaps && cr.away.gaps.length)];
+        if (path === 'startNew') await swapOut();
+        else if (path === 'history') { const e = getRoutineArchive().find(x => x.routine.name === 'Winter Bulk'); restoreArchivedRoutine(e.id); ok(); await wait(30); }
+        else { lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() }); _applyNextRound(true); await wait(30); r.round = [parseInt(getCustomRoutine().cycle, 10) || 1, 'away' in getCustomRoutine()]; }
+        r.names = getRoutineArchive().map(e => e.routine.name);
+        r.entries = getRoutineArchive().filter(e => e.routine.name === cr0.name).map(e => ['away' in e.routine, e.routine.inUseFrom]);
+        return r;
+      }, { H, path });
+      out[path].errors = app.errors.join('|');
+    } finally { await app.close(); }
+  }
+  for (const p of Object.keys(out)) {
+    const o = out[p];
+    assert(o.back[0] && o.back[1] === 3 && o.back[2], p + ': Restore Previous put the programme back on week 3 with its week away noted: ' + JSON.stringify(o.back));
+    assert(o.entries.length === 1 && o.entries[0][0] === false && o.entries[0][1] === o.want, p + ': Programme History holds it once, dated from its week 1, without the note: ' + JSON.stringify(o));
+    const want = p === 'history' ? [o.name, 'Autumn Peak', 'Summer Strength', 'Spring Base'] : [o.name, 'Autumn Peak', 'Winter Bulk', 'Summer Strength', 'Spring Base'];
+    assert(JSON.stringify(o.names) === JSON.stringify(want), p + ': the oldest programme stays in a full history: ' + JSON.stringify(o.names));
+    assert(o.errors === '', p + ': no page errors: ' + o.errors);
+  }
+  assert(out.round.round[0] === 2 && out.round.round[1] === false, 'round 2 starts its own week 1 without the last round\'s note: ' + JSON.stringify(out.round.round));
 });
 
 run('L47: the share card rounds the minutes before it splits off the hours', async () => {
