@@ -1466,3 +1466,54 @@ seq('U05: a coach rewrite keeps a removed opener\'s partner by the coach\'s name
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U06 (incomplete T02): removing a superset's partner unpairs the coach's opener, and the owner's
+// later swap or edit of that opener kept the unpaired state as the coach's original: Restore paired
+// the swap with the partner, but Use coach's (and Restore then Reset) gave the opener back unpaired
+// in every week. The original says paired; while the partner is still out, Use coach's and Reset
+// bring the opener back unpaired and the partner's entry pairs them when it returns.
+seq('U06: an opener swapped or edited while its partner is removed keeps the coach\'s superset for Use coach\'s and Reset', async () => {
+  const r0 = JSON.parse(require('../lib/harness').SEED.kt_routine);
+  r0.weeks.forEach(w => { w.push.find(e => e.name === 'Incline Dumbbell Press').ss = true; });
+  const app = await boot({ native: true, seed: { kt_routine: JSON.stringify(r0) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1, last = getTotalWeeks() - 1;
+      const orig = localStorage.getItem('kt_routine');
+      // ! = main, ~ = superset opener, + = added by the owner, * = marked
+      const day = (j) => getCustomRoutine().weeks[j == null ? c : j].push.map(e => e.name + (e.isMain ? '!' : '') + (e.ss ? '~' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const remove = async (n) => { openRoutines(); _rtOpenEdit('Push', n); _rtRemove(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const restore = async () => { openRoutines(); _rtRestoreRemoved('Push'); await wait(10); closeRoutines(); };
+      const reset = async () => { openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines(); };
+      const useCoach = async (n) => { openRoutines(); _rtUseCoach('Push', n); await wait(10); closeRoutines(); };
+      const swap = async () => { openRoutines(); _rtOpenEdit('Push', 'Incline Dumbbell Press'); _rtEdit.swapTo = 'Arnold Press'; _rtSave(); await wait(10); closeRoutines(); };
+      const runner = async () => { openDeckRunner('Push', true); await wait(20); const x = runnerSession.exercises.map(e => e.name + (e.ss ? '~' : '')).join(' | '); closeDeckRunner(); runnerSession = null; localStorage.removeItem('kt_runner_draft'); return x; };
+      // the partner removed: nothing new on the opener (Routines offers Restore alone)
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); r.offered = [...document.querySelectorAll('#rt-card-Push .kt-rt-coach')].map(d => d.textContent); closeRoutines();
+      // then the opener swapped, Restore, Use coach's on the swap
+      await swap(); await restore(); r.restored = day();
+      await useCoach('Arnold Press'); r.useCoach = [day(), day(last)]; r.runner = await runner();
+      // swapped, then Reset; and Restore then Reset
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown'); await swap(); await reset(); r.reset = [day(), day(last)];
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown'); await swap(); await restore(); await reset(); r.restoreReset = [day(), day(last)];
+      // the opener's sets changed while its partner is out; Use coach's before Restore leaves it unpaired until then
+      lsSet('kt_routine', JSON.parse(orig));
+      await remove('Cable Triceps Pushdown');
+      openRoutines(); _rtOpenEdit('Push', 'Incline Dumbbell Press'); _rtStep('sets', 1); _rtSave(); await wait(10); closeRoutines();
+      await useCoach('Incline Dumbbell Press'); r.editUse = day();
+      await restore(); r.editRestore = day();
+      return r;
+    });
+    const C = 'Bench Press! | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise';
+    assert(JSON.stringify(out.offered) === '["1 coach lift removed · Restore"]', 'removing the partner marks nothing else: ' + JSON.stringify(out.offered));
+    assert(out.restored === 'Bench Press! | Overhead Press | Arnold Press~* | Cable Triceps Pushdown | Lateral Raise', 'Restore pairs the partner with the swap: ' + out.restored);
+    assert(out.useCoach.every(x => x === C) && out.runner === 'Bench Press | Overhead Press | Incline Dumbbell Press~ | Cable Triceps Pushdown | Lateral Raise', 'Use coach\'s on the swap gives the coach\'s superset in every week, and the runner pairs it: ' + JSON.stringify([out.useCoach, out.runner]));
+    assert(out.reset.every(x => x === C) && out.restoreReset.every(x => x === C), 'Reset gives it back, before or after Restore: ' + JSON.stringify([out.reset, out.restoreReset]));
+    assert(out.editUse === 'Bench Press! | Overhead Press | Incline Dumbbell Press | Lateral Raise' && out.editRestore === C, 'with its partner still out the coach\'s opener waits unpaired, and pairs when it returns: ' + JSON.stringify([out.editUse, out.editRestore]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

@@ -11735,7 +11735,7 @@ function _progDrop(w, slot, idx, o){
   var list=w[slot], r=list[idx], p=idx>0?list[idx-1]:null, unpair=!!(p && p.ss);
   if(r.rec!==null && !o.coach){
     var keep=r.rec||JSON.parse(JSON.stringify(r)); delete keep.rec;
-    var ent={at:idx, row:keep}; if(unpair) ent.ss=p.name; if(o.swap) ent.swap=o.swap;
+    var ent={at:idx, row:keep}; if(unpair) ent.ss=(p.rec && p.rec.name) || p.name; if(o.swap) ent.swap=o.swap;   // the opener as the coach wrote it (Use coach's renames an owner's swap back)
     if(keep.ss) ent.ssTo=(r.ss && list[idx+1]) ? ((list[idx+1].rec && list[idx+1].rec.name) || list[idx+1].name) : '';   // the partner it comes back to (the coach's, under an owner's swap)
     w.recOut=w.recOut||{}; (w.recOut[slot]=w.recOut[slot]||[]).push(ent);
   }
@@ -11800,6 +11800,7 @@ function _commitRoutine(mutate, o){
   if(!cr || !Array.isArray(cr.weeks)) return false;
   var res=mutate(cr);
   if(res===false || res===-1 || res===0) return res;
+  _progSsRec(cr);
   // o.keepBackup: no undo point (a units switch moved the plates under a coach reply's Undo and
   // Restore previous programme, which then gave back the switch, not the reply)
   if(!o.keepBackup && (!o.scope || o.scope!==_routineScope)){
@@ -11973,6 +11974,20 @@ function _bdAskCoach(){
   setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
 }
 
+// A superset opener whose partner the owner removed: the partner's entry names it (e.ss). It is
+// unpaired on the day while the partner is out, and its coach original says paired.
+function _progSsOut(w, slot, name){ return !!(w && w.recOut && Array.isArray(w.recOut[slot]) && w.recOut[slot].some(function(e){ return e && e.ss===name; })); }
+// An owner's edit or swap of such an opener took the unpaired state as the coach's original, so
+// Use coach's and Reset gave the pair back unpaired for good (Restore had paired the swap). Run on
+// every programme write (_commitRoutine): the original says paired again.
+function _progSsRec(cr){
+  (cr.weeks||[]).forEach(function(w){
+    if(w && w.recOut) LIFT_KEYS.forEach(function(k){
+      (Array.isArray(w[k])?w[k]:[]).forEach(function(x){ if(x && x.rec && !x.rec.ss && !x.ss && _progSsOut(w, k, x.rec.name)) x.rec.ss=true; });
+    });
+  });
+}
+
 // ── Resets: back to what the coach wrote ─────────────────────────────────────
 // A row the owner changed goes back to its rec (renames too); a row the owner
 // added goes away; where their swap onto it dropped a coach row (the week had the
@@ -11992,6 +12007,7 @@ function _progUseCoach(cr, slot, name, c){
         // twice, and the runner logged both cards as one lift and saved its sets twice.
         var dup=-1; list.forEach(function(x, d){ if(dup<0 && x && x!==r && x.name===back.name) dup=d; });
         if(dup>=0){ if(list[dup].rec!==null) return -1; list.splice(dup,1); i=list.indexOf(r); }
+        if(back.ss && _progSsOut(W[j], slot, back.name)) back.ss=false;   // its partner is still out: Restore pairs them
         list[i]=back; _progSettleMain(list, back);
       }
       n++;
@@ -12033,7 +12049,11 @@ function _progResetSlot(cr, slot, c){
     list.forEach(function(r){
       if(!r) return;
       if(r.rec===null){ n++; return; }
-      if(r.rec){ var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec; out.push(b); if(b.name!==r.name) swapped.push(b); n++; return; }
+      if(r.rec){
+        var b=JSON.parse(JSON.stringify(r.rec)); delete b.rec;
+        if(b.ss && _progSsOut(w, slot, b.name)) b.ss=false;   // its removed partner comes back right after it, paired
+        out.push(b); if(b.name!==r.name) swapped.push(b); n++; return;
+      }
       out.push(r);
     });
     // A lift the owner swapped away that is on the day again (the coach added it back: the
