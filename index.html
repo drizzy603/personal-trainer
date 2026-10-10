@@ -18574,7 +18574,14 @@ function _executeCoachToolRaw(name,input){
             neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.name) ni=i; });
             if(ni<0 && orow.rec && orow.rec.name) neu.forEach(function(e,i){ if(ni<0 && e && e.name===orow.rec.name) ni=i; });
             var keep=JSON.parse(JSON.stringify(orow));
-            if(ni>=0){ var coachRow=JSON.parse(JSON.stringify(neu[ni])); delete coachRow.rec; if(keep.rec!==null) keep.rec=coachRow; neu[ni]=keep; }
+            if(ni>=0){
+              var coachRow=JSON.parse(JSON.stringify(neu[ni])); delete coachRow.rec; if(keep.rec!==null) keep.rec=coachRow;
+              // The main tag on it is the coach's call, unless the owner chose it (Make main, applied
+              // below): the old tag kept a second main beside the coach's new one, or left the day with
+              // none when the coach made the owner's edited lift main.
+              if(!keep.mainBy){ if(coachRow.isMain) keep.isMain=true; else delete keep.isMain; }
+              neu[ni]=keep;
+            }
             else neu.splice(Math.min(oi, neu.length), 0, keep);
             if(_keptEdits.indexOf(orow.name)<0) _keptEdits.push(orow.name);
           });

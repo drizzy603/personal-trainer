@@ -1360,6 +1360,15 @@ seq('U01: Make main stays the owner\'s through edits of the lift it replaced and
       r.L_prompt = line('Overhead Press');
       rewrite('push', coachPush());
       r.L = day('push');
+      // no Make main: the coach moves its main to Overhead Press over an owner's edit of either lift;
+      // the kept row takes the coach's tag (two mains, or none, before)
+      const ohpMain = () => coachPush().map(e => Object.assign(e, { isMain: e.name === 'Overhead Press' }));
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      rewrite('push', ohpMain()); r.G = day('push');
+      lsSet('kt_routine', JSON.parse(orig));
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      rewrite('push', ohpMain()); r.H = day('push');
       return r;
     });
     const rest = ' | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5';
@@ -1375,6 +1384,7 @@ seq('U01: Make main stays the owner\'s through edits of the lift it replaced and
     assert(out.F.day === 'Barbell Row 4x8@150 | Lat Pulldown 4x10@135!* | Seated Cable Row 3x12@115 | Face Pull 3x15@35 | Barbell Curl 3x10@70' && JSON.stringify(out.F.kept) === '["Lat Pulldown"]' && /\[main lift chosen by the user\]$/.test(out.F.prompt), 'a day with no coach main keeps the owner\'s: ' + JSON.stringify(out.F));
     assert(out.back.day === 'Bench Press 4x8@160! | Overhead Press 4x8@100' + rest && !out.back.flags, 'Make main back on the coach\'s main leaves no mark: ' + JSON.stringify(out.back));
     assert(/\[main lift chosen by the user\]$/.test(out.L_prompt) && out.L === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'an older page\'s Make main still holds: ' + JSON.stringify([out.L_prompt, out.L]));
+    assert(out.G === 'Bench Press 3x8@160* | Overhead Press 4x6@105!' + rest && out.H === 'Bench Press 4x6@165 | Overhead Press 3x8@100!*' + rest, 'a coach that moves its main over the owner\'s edits leaves one main: ' + JSON.stringify([out.G, out.H]));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
