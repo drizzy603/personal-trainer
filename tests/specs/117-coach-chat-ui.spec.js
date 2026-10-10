@@ -559,3 +559,74 @@ run('S1: one left edge, one rhythm, one hairline under the header', async () => 
     }
   }
 });
+
+// ── S2 ─────────────────────────────────────────────────────────────────────────
+const LONG_METRIC = '%%type: Run check\n%%metric: Avg heart rate over the last six easy runs | 171 bpm | vs 150 cap | +21 | warn\n%%metric: Bench Press | 225 lb x 4 | vs 230 x 6 target | -5 lb | warn\n%%metric: Latest run | 12:39/mi @ 171bpm | vs 11:00 goal | +1:39 | warn\n%%metric: Pace | 8:07 | vs 8:15 | -8s | good\nShort note.\n%%action: Lower my run intensity | Lower it\n%%action: Log body weight | Log it';
+const LONG_SWAP = { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'DB Lateral Raise', action: 'swap', rename_to: 'Single-Arm Cable Lateral Raise (Behind the Back)' }, result: { ok: true }, units: { w: 'lb', d: 'mi' } };
+const BAD = { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'Bench Press', action: 'change', weight: 999 }, result: { ok: false, error: 'no' }, units: { w: 'lb', d: 'mi' } };
+run('S2: message parts wear the room\'s tokens; nothing runs off the column at 320pt or Larger Text', async () => {
+  const colours = {};
+  for (const room of ['heavyweight', 'dark']) {
+    for (const zoom of [1, 1.25]) {
+      const tag = room + ' 320 zoom ' + zoom + ': ';
+      const msgs = [{ role: 'user', content: 'Check my runs' }, { role: 'assistant', content: LONG_METRIC, _tools: [LONG_SWAP, BAD], _undo: 'coach:t117' }];
+      const app = await bootChat(room, { width: 320, height: 700 }, { seed: { kt_coach_msgs: JSON.stringify(msgs), kt_routine_backup: SEED.kt_routine, kt_routine_backup_scope: 'coach:t117' } });
+      try {
+        const out = await app.page.evaluate(async (zoom) => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+          if (zoom !== 1) applyDynamicType(zoom);
+          switchTab('coach'); coachView = 'chat'; render(); await wait(160);
+          const list = document.querySelector('.coach-msgs-area'), lr = list.getBoundingClientRect();
+          // nothing overflows its own box or the scroller
+          r.over = [...list.querySelectorAll('*')].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0).map((e) => e.className || e.tagName).slice(0, 5);
+          r.past = [...list.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > lr.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5);
+          // the long metric: label on its own line, the whole value under it, right-aligned
+          const row = document.querySelector('.kt-cmb-mrow'), lab = row.querySelector('.kt-cmb-mlabel'), val = row.querySelector('.kt-cmb-mval');
+          const rb = row.getBoundingClientRect(), lb = lab.getBoundingClientRect(), vb = val.getBoundingClientRect();
+          const z = parseFloat(document.documentElement.style.zoom) || 1;   // computed lengths are unzoomed, boxes are zoomed
+          r.metric = { under: vb.top >= lb.bottom - 1, right: Math.abs((rb.right - parseFloat(getComputedStyle(row).paddingRight) * z) - vb.right) <= 1.5, text: val.textContent };
+          // a delta never splits across lines
+          r.deltas = [...document.querySelectorAll('.kt-cmb-delta-warn,.kt-cmb-delta-good')].map((d) => { const rs = d.getClientRects(); return [d.textContent, rs.length]; });
+          // the long ledger row wraps inside the card
+          const card = document.querySelector('.kt-ledger-card').getBoundingClientRect(), b = document.querySelector('.kt-ledger-row b').getBoundingClientRect();
+          r.ledger = { inside: b.right <= card.right + 0.5 && b.left >= card.left - 0.5, lines: Math.round(b.height / 16) };
+          // chips are 44px+ targets
+          r.chips = [...document.querySelectorAll('.kt-cmb-chip')].map((c) => Math.round(c.getBoundingClientRect().height));
+          // colours
+          const cs = (sel, p) => { const el = document.querySelector(sel); return el ? getComputedStyle(el)[p || 'color'] : null; };
+          const bgOf = (sel) => cs(sel, 'backgroundColor');
+          r.c = {
+            okPill: cs('.kt-tool-pill:not(.bad)'), okPillBg: bgOf('.kt-tool-pill:not(.bad)'), tick: cs('.kt-tool-pill:not(.bad) .kt-tool-pill-ic'),
+            badPill: cs('.kt-tool-pill.bad'), badPillBg: bgOf('.kt-tool-pill.bad'), badText: (document.querySelector('.kt-tool-pill.bad') || {}).textContent,
+            good: cs('.kt-cmb-delta-good'), warn: cs('.kt-cmb-delta-warn'), ref: cs('.kt-cmb-mref'), refOpacity: cs('.kt-cmb-mref', 'opacity'), metricsBg: bgOf('.kt-cmb-metrics'),
+            primary: [bgOf('.kt-cmb-chip.primary'), cs('.kt-cmb-chip.primary'), cs('.kt-cmb-chip.primary', 'borderTopColor')],
+            secondary: [bgOf('.kt-cmb-chip:not(.primary)'), cs('.kt-cmb-chip:not(.primary)'), cs('.kt-cmb-chip:not(.primary)', 'borderTopColor')],
+          };
+          // a 60-character suggestion chip wraps inside the column
+          window.getCoachChips = () => ['Can you look at my last three weeks of squats and tell me why?'];
+          coachMessages = []; render(); await wait(100);
+          const seed = document.querySelector('.kt-chat-seeds .kt-cmb-chip'), sb = seed.getBoundingClientRect(), l2 = document.querySelector('.coach-msgs-area').getBoundingClientRect();
+          r.seed = { inside: sb.right <= l2.right + 0.5, h: sb.height, msg: seed.dataset.msg };
+          return r;
+        }, zoom).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        assert(!out.over.length && !out.past.length, tag + 'nothing overflows the column: ' + JSON.stringify([out.over, out.past]));
+        assert(out.metric.under && out.metric.right && /171 bpm/.test(out.metric.text) && /\+21/.test(out.metric.text), tag + 'a long metric shows its whole value under the label, right-aligned: ' + JSON.stringify(out.metric));
+        assert(out.deltas.length >= 3 && out.deltas.every((d) => d[1] === 1), tag + 'deltas never split: ' + JSON.stringify(out.deltas));
+        assert(out.ledger.inside && out.ledger.lines >= 2, tag + 'a long ledger row wraps inside its card: ' + JSON.stringify(out.ledger));
+        assert(out.chips.length >= 2 && out.chips.every((h) => h >= 44), tag + 'chips are 44px+: ' + JSON.stringify(out.chips));
+        assert(out.seed.inside && out.seed.h > 50 && out.seed.h >= 44, tag + 'a long suggestion wraps inside the column: ' + JSON.stringify(out.seed));
+        if (zoom === 1) colours[room] = out.c;
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
+  const H = colours.heavyweight, D = colours.dark;
+  assert(ratioOf(H.okPill, H.okPillBg) >= 4.5 && H.tick === 'rgb(79, 112, 0)', 'Heavyweight: the OK pill reads and its tick is earned ink: ' + JSON.stringify([H.okPill, H.okPillBg, H.tick, ratioOf(H.okPill, H.okPillBg).toFixed(2)]));
+  assert(/^✕ Not applied · /.test(H.badText) && ratioOf(H.badPill, H.badPillBg) >= 4.5, 'Heavyweight: a failed pill says Not applied and reads: ' + JSON.stringify([H.badText, ratioOf(H.badPill, H.badPillBg).toFixed(2)]));
+  assert(H.good === 'rgb(79, 112, 0)' && ratioOf(H.warn, H.metricsBg) >= 4.5 && ratioOf(H.ref, H.metricsBg) >= 4.5 && H.refOpacity === '1', 'Heavyweight: deltas and refs read: ' + JSON.stringify([H.good, H.warn, H.ref, H.refOpacity]));
+  assert(H.primary[0] === 'rgb(10, 67, 245)' && H.primary[1] === 'rgb(255, 255, 255)' && H.secondary[0] === 'rgb(255, 255, 255)' && H.secondary[2] === 'rgba(15, 15, 15, 0.1)', 'Heavyweight: the primary chip is the action, the other white on a hairline: ' + JSON.stringify([H.primary, H.secondary]));
+  // Lime keeps today's colours
+  assert(D.okPill === 'rgb(185, 185, 190)' && D.okPillBg === 'rgb(30, 30, 33)' && D.badPill === 'rgb(255, 93, 85)', 'Lime: pills unchanged: ' + JSON.stringify([D.okPill, D.okPillBg, D.badPill]));
+  assert(D.good === 'rgb(216, 255, 99)' && D.warn === 'rgb(255, 157, 92)' && D.primary[1] === 'rgb(244, 244, 241)', 'Lime: deltas and the neutral primary chip unchanged: ' + JSON.stringify([D.good, D.warn, D.primary]));
+});
