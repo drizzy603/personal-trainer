@@ -451,3 +451,66 @@ run('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', async
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── M5 ─────────────────────────────────────────────────────────────────────────
+run('M5: PLAN CHANGES tells the truth once Undo is gone; a later log-only reply keeps the card; Restore previous retires it', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async (SWAP) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        const card = () => {
+          const c = document.querySelector('.kt-ledger-card'); if (!c) return null;
+          const cb = c.getBoundingClientRect();
+          return { rows: c.querySelectorAll('.kt-ledger-row').length, text: c.textContent, note: (c.querySelector('.kt-ledger-card-note') || {}).textContent,
+            buttons: [...c.querySelectorAll('button')].map((b) => { const bb = b.getBoundingClientRect(); return { t: b.textContent, cls: b.className, h: bb.height, w: bb.width, rightGap: cb.right - bb.right }; }), cardW: cb.width };
+        };
+        const LOG = { name: 'log_bodyweight', input: { weight: 180 }, result: { ok: true }, units: { w: 'lb', d: 'mi' } };
+        // (a) a fresh swap: rows, Undo, Keep changes, the Undo note
+        _snapshotRoutineForUndo('coach:t117a');
+        coachMessages = [{ role: 'user', content: 'swap my laterals' }, { role: 'assistant', content: 'Swapped.', _tools: [SWAP], _undo: 'coach:t117a' }];
+        render(); await wait(60);
+        r.fresh = card();
+        // (d) a later reply that only logs body weight keeps the swap's card, with its Undo
+        coachMessages.push({ role: 'user', content: 'log 180' }, { role: 'assistant', content: 'Logged.', _tools: [LOG] });
+        render(); await wait(60);
+        r.afterLog = card();
+        // (b) a day rename takes the undo point: the rows stay, the note says so, Got it retires the card
+        setDayName('Push', 'Chest Day'); render(); await wait(60);
+        r.renamed = card();
+        r.renamedPrimary = !!document.querySelector('.kt-ledger-card .kt-coach-btn.primary');
+        const got = [...document.querySelectorAll('.kt-ledger-card button')].find((b) => b.textContent === 'Got it'); if (got) got.click(); await wait(60);
+        r.gotIt = { card: !!document.querySelector('.kt-ledger-card'), seen: !!coachMessages[1]._ledgerSeen };
+        // (c) a goal-only reply: its pill, no card
+        coachMessages = [{ role: 'user', content: 'goal 225' }, { role: 'assistant', content: 'Goal set.', _tools: [{ name: 'set_bench_goal', input: { weight: 225 }, result: { ok: true }, units: { w: 'lb', d: 'mi' } }] }];
+        render(); await wait(60);
+        r.goal = { card: !!document.querySelector('.kt-ledger-card'), pill: /Bench goal/.test(document.querySelector('.coach-msgs-area').textContent) };
+        // (e) Settings > Restore previous programme retires the card that said "Applied"
+        _routineScope = null; _snapshotRoutineForUndo('coach:t117e');
+        coachMessages = [{ role: 'user', content: 'swap' }, { role: 'assistant', content: 'Swapped.', _tools: [SWAP], _undo: 'coach:t117e' }];
+        render(); await wait(60);
+        r.beforeRestore = !!card();
+        restoreRoutineBackup(); await wait(30);
+        const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); if (ok) ok.click(); await wait(60);
+        switchTab('coach'); coachView = 'chat'; render(); await wait(60);
+        r.afterRestore = { card: !!document.querySelector('.kt-ledger-card'), seen: !!coachMessages[1]._ledgerSeen };
+        return r;
+      }, SWAP).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      const F = out.fresh;
+      assert(F && F.rows === 1 && F.buttons.map((b) => b.t).join('|') === 'Undo|Keep changes' && /Undo restores the previous version/.test(F.note), tag + 'a fresh change offers Undo and Keep changes: ' + JSON.stringify(F));
+      assert(F.buttons.every((b) => b.h >= 44), tag + 'the card\'s buttons are 44px+ tall: ' + JSON.stringify(F.buttons));
+      assert(out.afterLog && out.afterLog.buttons.some((b) => b.t === 'Undo') && /Cable Lateral Raise/.test(out.afterLog.text), tag + 'a later log-only reply leaves the swap its card and Undo: ' + JSON.stringify(out.afterLog));
+      const R = out.renamed;
+      assert(R && R.rows === 1 && R.note === 'Applied to your programme. It cannot be undone here any more.', tag + 'once Undo is gone the card says so: ' + JSON.stringify(R));
+      assert(R.buttons.length === 1 && R.buttons[0].t === 'Got it' && /neutral/.test(R.buttons[0].cls) && !out.renamedPrimary, tag + 'with one neutral Got it and no blue button: ' + JSON.stringify(R.buttons));
+      assert(R.buttons[0].h >= 44 && R.buttons[0].w < R.cardW / 2 && R.buttons[0].rightGap <= 16, tag + 'Got it is right-aligned, auto width, 44px+: ' + JSON.stringify([R.buttons[0], R.cardW]));
+      assert(!out.gotIt.card && out.gotIt.seen, tag + 'Got it retires the card: ' + JSON.stringify(out.gotIt));
+      assert(!out.goal.card && out.goal.pill, tag + 'a goal-only reply shows its pill and no card: ' + JSON.stringify(out.goal));
+      assert(out.beforeRestore && !out.afterRestore.card && out.afterRestore.seen, tag + 'Restore previous programme retires the card: ' + JSON.stringify([out.beforeRestore, out.afterRestore]));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});

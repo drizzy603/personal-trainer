@@ -808,6 +808,10 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-ledger-row:last-of-type{border-bottom:none;}
 .kt-ledger-row b{font-weight:700;white-space:nowrap;}
 .kt-ledger-card-actions{display:flex;gap:8px;margin-top:10px;}
+.kt-ledger-card .kt-coach-btn{min-height:44px;}
+/* Undo gone: one right-aligned neutral Got it under the note, not a full-width choice. */
+.kt-ledger-card-actions.end{justify-content:flex-end;}
+.kt-ledger-card-actions.end .kt-coach-btn{flex:0 0 auto;padding:11px 20px;}
 .kt-ledger-card-note{font-size:11px;color:var(--muted);margin-top:8px;}
 .kt-coach-empty{padding:14px 18px;border-radius:14px;background:color-mix(in srgb,var(--text) 4%,transparent);font-size:12px;color:var(--muted);text-align:center;}
 .kt-marquee{margin-top:28px;}
@@ -19615,11 +19619,21 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 // programme: what moved, from what, and one honest pair of buttons. The
 // edits are already applied (tools execute immediately); Undo is the
 // existing Restore Previous, Keep just retires the card.
-function _isLastToolMsg(m){
-  var last=null;
-  coachMessages.forEach(function(x){ if(x.role==='assistant'&&Array.isArray(x._tools)&&x._tools.length) last=x; });
-  return last===m;
+// The card belongs to the newest reply that changed the PROGRAMME: a later reply that only logged,
+// saved the profile or set a goal took the card away from a change whose Undo was still current.
+// A cheap kind test (no formatting, no storage read): it runs for every message on every paint.
+var _LEDGER_PLAN_TOOLS={set_exercise_weight:1, swap_cadence_days:1, update_routine_weeks:1, edit_programme_exercise:1};
+function _isPlanChange(tc){
+  if(!tc || !tc.result || !_LEDGER_PLAN_TOOLS[tc.name]) return false;
+  if(tc.name==='update_routine_weeks'){ var sv=_routineCallSaved(tc); return sv.weeks.length>0 || sv.plan; }
+  return tc.result.ok!==false;
 }
+function _lastPlanMsg(){
+  var last=null;
+  coachMessages.forEach(function(x){ if(x && x.role==='assistant' && Array.isArray(x._tools) && x._tools.some(_isPlanChange)) last=x; });
+  return last;
+}
+function _isLastToolMsg(m){ return !!m && _lastPlanMsg()===m; }
 function _backupWeightFor(name){
   var b=lsGet('kt_routine_backup'); if(!b||!b.weeks) return null;
   var wk=b.weeks[currentWeek-1]||b.weeks[b.weeks.length-1]; if(!wk) return null;
@@ -19645,40 +19659,55 @@ function _routineCallSaved(tc){
   var ws=Array.isArray(r.weeks)?r.weeks:Array.isArray(r.written)?r.written:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
   return {weeks:ws, plan:plan};
 }
-function _planChangeLedger(tools, idx){
+// The ledger's rows: [label, value, kind], kind 'goal' for a goal and 'plan' for a programme change.
+function _planChangeRows(tools){
   var rows=[];
   (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
     if(!tc || !tc.result || (tc.result.ok===false && !(tc.name==='update_routine_weeks' && Array.isArray(tc.result.written)))) return;
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
-      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight))]);
+      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight)), 'plan']);
     } else if(tc.name==='swap_cadence_days'){
-      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
+      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week', 'plan']);
     } else if(tc.name==='update_routine_weeks'){
       var sv=_routineCallSaved(tc), ws=sv.weeks;
-      if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
-      if(sv.plan) rows.push(['Weekly cadence', 'changed']);
+      if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten', 'plan']);
+      if(sv.plan) rows.push(['Weekly cadence', 'changed', 'plan']);
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
       if(i.action!=='remove' && (i.make_main===true || i.make_main==='true')) _act=(_act==='changed'?'':_act+' \u00b7 ')+'main lift';
-      rows.push([_esc(i.exercise||'Exercise'), _act]);
-    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
-    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
-    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||''))))]); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
-    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
+      rows.push([_esc(i.exercise||'Exercise'), _act, 'plan']);
+    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
+    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||'')))), 'goal']); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
+    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||'')), 'goal']); }
   }); });
+  return rows;
+}
+// While the reply's undo point is current: Undo (neutral) and Keep changes (the action). Once a
+// later edit has taken the undo point the card says so plainly and offers Got it, never a lone
+// blue Keep changes that reads as a choice still to make. A goal-only reply gets no card: its
+// pill already says what changed.
+function _planChangeLedger(tools, idx){
+  var rows=_planChangeRows(tools);
   if(!rows.length) return '';
   var _m=coachMessages[idx], canUndo=!!(_m && _backupScopeIs(_m._undo));
-  return '<div class="kt-ledger-card">'+
+  if(!canUndo && !rows.some(function(r){ return r[2]!=='goal'; })) return '';
+  var card='<div class="kt-ledger-card">'+
     '<div class="kt-ledger-card-hd">PLAN CHANGES \u00b7 WEEK '+currentWeek+'</div>'+
-    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('')+
+    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('');
+  if(canUndo) return card+
     '<div class="kt-ledger-card-actions">'+
-      (canUndo?'<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>':'')+
+      '<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>'+
       '<button class="kt-coach-btn primary" onclick="_ledgerKeep('+idx+')">Keep changes</button>'+
     '</div>'+
-    '<div class="kt-ledger-card-note">Applied to your programme'+(canUndo?' \u00b7 Undo restores the previous version':'')+'</div>'+
+    '<div class="kt-ledger-card-note">Applied to your programme \u00b7 Undo restores the previous version</div>'+
+  '</div>';
+  return card+
+    '<div class="kt-ledger-card-note">Applied to your programme. It cannot be undone here any more.</div>'+
+    '<div class="kt-ledger-card-actions end"><button class="kt-coach-btn neutral" onclick="_ledgerKeep('+idx+')">Got it</button></div>'+
   '</div>';
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
@@ -19934,6 +19963,7 @@ function restoreRoutineBackup(onDone){
     if(!cur) lsDel('kt_routine_backup');
     if(sw) _putNoteStamps(sw.stamps);   // a log that holds a lift now gives back the load from before the change
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
+    _retireLedgers();      // and no PLAN CHANGES card says "Applied" over a change it just took back
     _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
@@ -20663,7 +20693,7 @@ function renderCoach(){
     }).join('')+
     '</div>';
   }else{
-    var bubbles='';
+    var bubbles='', _ledMsg=_lastPlanMsg();
     coachMessages.forEach(function(m){
       if(m._toolResults) return; // never render tool_result payloads
       var text=m.content;
@@ -20701,7 +20731,7 @@ function renderCoach(){
           return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
         }).join(' ');
         bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+pills+'</div>';
-        if(!m._ledgerSeen && _isLastToolMsg(m)){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
+        if(!m._ledgerSeen && m===_ledMsg){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
       }
     });
     // Live pills for tools executed mid-turn (before the final message commits)

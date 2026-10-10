@@ -551,11 +551,13 @@ run('R09: a coach cadence change keeps its pill, its PLAN CHANGES card and Undo 
     await relaunch(app);
     const both = await chat();
     assert(both.pill === '✓ Week ' + s.wk + ' and the weekly cadence updated' && both.rows === 'Week ' + s.wk + 'rewritten|Weekly cadencechanged' && both.undo, 'a week with the cadence keeps both rows: ' + JSON.stringify(both));
-    // a call that saved nothing still says so
+    // a call that saved nothing still says so, and takes no card of its own: the change before it
+    // keeps its card and its Undo (its undo point is still current; since 20261010 only a reply
+    // that changed the programme takes the card)
     await turn({ weeks: [{ wk: s.wk, bName: '', bColor: '' }] });
     await relaunch(app);
     const none = await chat();
-    assert(none.pill === '✕ No weeks changed' && none.rows === '' && !none.undo, 'a call that saved nothing has no card: ' + JSON.stringify(none));
+    assert(none.pill === '✕ No weeks changed' && none.rows === both.rows && none.undo, 'a call that saved nothing has no card; the earlier change keeps its own: ' + JSON.stringify(none));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
