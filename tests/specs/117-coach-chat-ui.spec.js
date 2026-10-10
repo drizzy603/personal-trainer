@@ -857,6 +857,13 @@ serial('S3: coach replies have one presentation; notes, the owner\'s text, Think
           r.chipsLoading = document.querySelectorAll('.kt-cmb-actions .kt-cmb-chip').length;
           const tw = document.querySelector('.kt-thinking .typing-wrap'), tcs = getComputedStyle(tw);
           r.thinking = { bg: tcs.backgroundColor, border: tcs.borderTopStyle, eyebrow: (document.querySelector('.kt-thinking .kt-cmb-eyebrow') || {}).textContent };
+          // a change the coach made mid-turn: its pill sits under the COACH eyebrow, above Thinking, after the owner's turn
+          coachMessages.push({ role: 'user', content: 'Swap my laterals' }); _runningTools = [window.__SWAP]; render(); await wait(60);
+          const th = document.querySelector('.kt-thinking'), kids = [...th.children].map((c) => c.className);
+          const pb = th.querySelector('.kt-tool-pills').getBoundingClientRect(), eb = th.querySelector('.kt-cmb-eyebrow').getBoundingClientRect(), wb = th.querySelector('.typing-wrap').getBoundingClientRect();
+          r.live = { kids, prev: th.previousElementSibling && th.previousElementSibling.className, outside: document.querySelectorAll('.coach-msgs-wrap > .kt-tool-pills').length,
+            gaps: [Math.round((pb.top - eb.bottom) / z), Math.round((wb.top - pb.bottom) / z)] };
+          coachMessages.pop(); _runningTools = [];
           coachLoading = false; render();
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));
@@ -874,6 +881,8 @@ serial('S3: coach replies have one presentation; notes, the owner\'s text, Think
         assert(out.user.ws === 'pre-wrap' && out.user.lines >= 3 && out.user.sr === 'You: ', tag + 'a typed 3-line message keeps its lines and reads "You:": ' + JSON.stringify(out.user));
         assert(out.chipsNewest === 2 && out.chipsOlder === 0 && out.chipsLoading === 0, tag + 'chips act only on the newest reply, never mid-reply: ' + JSON.stringify([out.chipsNewest, out.chipsOlder, out.chipsLoading]));
         assert(out.thinking.bg === 'rgba(0, 0, 0, 0)' && out.thinking.border === 'none' && out.thinking.eyebrow === 'COACH', tag + 'Thinking has no box: ' + JSON.stringify(out.thinking));
+        assert(out.live.kids.join('|') === 'kt-cmb-eyebrow|kt-tool-pills|typing-wrap' && /coach-bubble user/.test(out.live.prev) && out.live.outside === 0, tag + 'a pill made mid-turn sits under COACH, above Thinking, never in the owner\'s turn: ' + JSON.stringify(out.live));
+        assert(out.live.gaps.every((g) => Math.abs(g - 8) <= 1), tag + '8px around the live pills: ' + JSON.stringify(out.live.gaps));
         assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
       } finally { await app.close(); }
     }
