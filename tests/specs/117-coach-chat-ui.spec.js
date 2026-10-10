@@ -1023,3 +1023,32 @@ run('C1: no dead ends after Stop or an error that retrying cannot fix', async ()
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── C4 ─────────────────────────────────────────────────────────────────────────
+run('C4: coming back to the Coach tab mid-reply shows the chat; once it has landed the tab opens on the hub', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 });
+  try {
+    await open(app.page);
+    const out = await app.page.evaluate(async (REPLY_FETCH) => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+      eval(REPLY_FETCH)('Here it is, <b>bold</b>.', 600);
+      document.getElementById('coach-input').value = 'A question';
+      const p = sendCoachMessage(); await wait(60);
+      switchTab('log'); await wait(40);
+      switchTab('coach'); await wait(60);
+      r.mid = { view: coachView, thinking: !!document.querySelector('.kt-thinking') };
+      coachView = 'home'; render(); await wait(40);
+      r.hubSub = (document.querySelector('.settings-row-sub') || {}).textContent;
+      await p; await wait(60);
+      switchTab('log'); await wait(40); switchTab('coach'); await wait(40);
+      r.after = coachView;
+      r.preview = { text: (document.querySelector('.settings-row-sub') || {}).textContent, injected: !!document.querySelector('.settings-row-sub b') };
+      return r;
+    }, REPLY_FETCH);
+    assert(out.mid.view === 'chat' && out.mid.thinking, 'mid-reply the Coach tab shows the chat and Thinking: ' + JSON.stringify(out.mid));
+    assert(out.hubSub === 'Coach is replying…', 'the hub says a reply is on its way: ' + out.hubSub);
+    assert(out.after === 'home', 'once the reply has landed the tab opens on the hub again: ' + out.after);
+    assert(!out.preview.injected, 'the hub preview reads message text as text: ' + JSON.stringify(out.preview));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

@@ -5865,7 +5865,9 @@ function switchTab(tab) {
   // (openRoutines): Restore previous programme undid two visits' schedule changes as one.
   if(tab==='settings' && currentTab!=='settings' && _routineScope==='cadence') _routineScope=null;
   currentTab = tab;
-  if(tab==='coach'&&!intakeMode) coachView='home';
+  // The Coach tab opens on the hub (342bfd9), except over a reply still in flight: coming back to
+  // it mid-reply showed the hub, with the answer out of sight.
+  if(tab==='coach'&&!intakeMode&&!coachLoading) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
     var _sel=t.getAttribute('data-tab')===tab;
     t.classList.toggle('active', _sel);
@@ -20756,7 +20758,7 @@ function renderCoach(){
           '</div>'+
           '<div class="settings-row-body">'+
             '<div class="settings-row-title">Open Chat</div>'+
-            '<div class="settings-row-sub">'+(msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+lastPreview:'No messages yet — tap to start')+'</div>'+
+            '<div class="settings-row-sub">'+(coachLoading?'Coach is replying…':msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+_esc(lastPreview):'No messages yet — tap to start')+'</div>'+
           '</div>'+
           '<span class="settings-row-chev">›</span>'+
         '</div>'+
