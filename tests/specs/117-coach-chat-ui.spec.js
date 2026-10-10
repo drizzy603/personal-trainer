@@ -524,7 +524,10 @@ serial('M4: the composer is one field with 44pt controls and an honest Send / St
         r.attColor = getComputedStyle(att).color; r.rowBg = rcs.backgroundColor;
         // Send: disabled on an empty box, enabled by one character or by a photo
         r.empty = { disabled: send().disabled, name: send().getAttribute('aria-label') };
-        i.value = 'x'; i.dispatchEvent(new Event('input', { bubbles: true })); r.typed = send().disabled;
+        // how Send looks at rest (disabled) and with something to send
+        const look = () => { const cs = getComputedStyle(send()), svg = send().querySelector('svg'); return { bg: cs.backgroundColor, color: svg ? getComputedStyle(svg).color : cs.color, opacity: cs.opacity }; };
+        r.restLook = look();
+        i.value = 'x'; i.dispatchEvent(new Event('input', { bubbles: true })); r.typed = send().disabled; r.readyLook = look();
         i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); r.cleared = send().disabled;
         pendingImage = { data: 'x', mediaType: 'image/gif', previewUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }; render(); await wait(60);
         r.photo = send().disabled; pendingImage = null; render(); await wait(60);
@@ -563,6 +566,15 @@ serial('M4: the composer is one field with 44pt controls and an honest Send / St
       assert(out.focus.padL >= 8, tag + 'the caret sits 8px+ inside the box: ' + out.focus.padL);
       if (room === 'heavyweight') assert(ratioOf(out.attColor, out.rowBg) >= 3, tag + 'the attach icon has 3:1 on the composer: ' + ratioOf(out.attColor, out.rowBg).toFixed(2));
       assert(out.empty.disabled && out.empty.name === 'Send message' && !out.typed && out.cleared && !out.photo, tag + 'Send is disabled only with nothing to send: ' + JSON.stringify([out.empty, out.typed, out.cleared, out.photo]));
+      // Lime's resting Send was lime at 30% over near-black, an olive disc on every visit: it rests
+      // neutral (the raised surface, a muted arrow) and turns lime with something to send.
+      if (room === 'dark') {
+        assert(out.restLook.opacity === '1' && out.restLook.bg === 'rgb(30, 30, 33)' && out.restLook.color === 'rgb(140, 140, 145)', tag + 'Send rests neutral, not dimmed lime: ' + JSON.stringify(out.restLook));
+        assert(ratioOf(out.restLook.color, out.restLook.bg) >= 3, tag + 'its arrow still reads: ' + ratioOf(out.restLook.color, out.restLook.bg).toFixed(2));
+        assert(out.readyLook.bg === 'rgb(216, 255, 99)' && out.readyLook.opacity === '1', tag + 'with something to send it is lime: ' + JSON.stringify(out.readyLook));
+      } else {
+        assert(out.restLook.bg === 'rgb(10, 67, 245)' && out.restLook.opacity === '0.3' && out.readyLook.opacity === '1', tag + 'Heavyweight keeps its pale blue rest: ' + JSON.stringify([out.restLook, out.readyLook]));
+      }
       assert(Math.abs(out.fourLine.gap - 7) <= 1 && out.fourLine.rowH > 100, tag + 'with a 4-line draft Send stays by the last line: ' + JSON.stringify(out.fourLine));
       assert(out.loading.name === 'Stop the reply' && !out.loading.disabled && /coachStop\(\)/.test(out.loading.onclick) && out.loading.thinkingButtons === 0, tag + 'in flight the slot is an enabled Stop: ' + JSON.stringify(out.loading));
       assert(!out.stopped.loading && /^Stopped\./.test(out.stopped.last) && out.stopped.name === 'Send message', tag + 'Stop stops the turn: ' + JSON.stringify(out.stopped));
