@@ -9554,7 +9554,7 @@ async function checkPendingShare(){
     if(r.comment){
       setTimeout(function(){
         var ta = document.getElementById('coach-input');
-        if(ta){ ta.value = r.comment; ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,100)+'px'; }
+        if(ta){ ta.value = r.comment; ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,120)+'px'; _syncSend(); }   // the composer's own cap
       }, 200);
     }
   } catch(e){}

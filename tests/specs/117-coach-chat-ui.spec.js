@@ -1139,3 +1139,20 @@ run('C3: prompts the app writes for the owner read as what they are; programme s
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── The share sheet's photo and comment land in the composer as typed ───────────
+run('a shared photo with a comment lands in the composer at the composer\'s own size, Send ready', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const comment = Array.from({ length: 9 }, (_, i) => 'Line ' + (i + 1) + ' of what I want to ask about this photo').join('\n');
+      Capacitor.Plugins.TrovoShare = { getPendingShare: () => Promise.resolve({ imageBase64: 'R0lGODlhAQABAAAAACw=', comment }) };
+      await checkPendingShare(); await wait(350);
+      const i = document.getElementById('coach-input'), b = document.getElementById('coach-send');
+      return { chat: document.documentElement.classList.contains('kt-chat'), value: i.value === comment, h: parseFloat(i.style.height), send: b && !b.disabled, preview: !!document.querySelector('.coach-img-preview img') };
+    });
+    assert(out.chat && out.value && out.preview && out.send && out.h <= 120 && out.h > 100, 'the comment fills the composer up to its 120px cap and Send is ready: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
