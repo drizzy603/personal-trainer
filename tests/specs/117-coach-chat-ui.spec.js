@@ -820,6 +820,8 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           const rb = row.getBoundingClientRect(), lb = lab.getBoundingClientRect(), vb = val.getBoundingClientRect();
           const z = parseFloat(document.documentElement.style.zoom) || 1;   // computed lengths are unzoomed, boxes are zoomed
           r.metric = { under: vb.top >= lb.bottom - 1, right: Math.abs((rb.right - parseFloat(getComputedStyle(row).paddingRight) * z) - vb.right) <= 1.5, text: val.textContent };
+          // once one row wraps, every row of its card puts its value under its label (Pace | 8:07 alone would fit on one line)
+          r.alike = [...document.querySelectorAll('.kt-cmb-mrow')].map((rw) => { const a = rw.querySelector('.kt-cmb-mlabel').getBoundingClientRect(), b = rw.querySelector('.kt-cmb-mval').getBoundingClientRect(); return b.top >= a.bottom - 1; });
           // a delta never splits across lines
           r.deltas = [...document.querySelectorAll('.kt-cmb-delta-warn,.kt-cmb-delta-good')].map((d) => { const rs = d.getClientRects(); return [d.textContent, rs.length]; });
           // the long ledger row wraps inside the card
@@ -856,6 +858,7 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
         assert(!out.over.length && !out.past.length, tag + 'nothing overflows the column: ' + JSON.stringify([out.over, out.past]));
         assert(out.ph.value === '' && out.ph.ws === 'nowrap' && out.ph.sh <= out.ph.ch + 1, tag + 'the placeholder keeps to the box\'s one line: ' + JSON.stringify(out.ph));
         assert(out.metric.under && out.metric.right && /171 bpm/.test(out.metric.text) && /\+21/.test(out.metric.text), tag + 'a long metric shows its whole value under the label, right-aligned: ' + JSON.stringify(out.metric));
+        assert(out.alike.length === 4 && out.alike.every(Boolean), tag + 'every row of that card wraps alike: ' + JSON.stringify(out.alike));
         assert(out.deltas.length >= 3 && out.deltas.every((d) => d[1] === 1), tag + 'deltas never split: ' + JSON.stringify(out.deltas));
         assert(out.ledger.inside && out.ledger.lines >= 2, tag + 'a long ledger row wraps inside its card: ' + JSON.stringify(out.ledger));
         assert(out.chips.length >= 2 && out.chips.every((h) => h >= 44), tag + 'chips are 44px+: ' + JSON.stringify(out.chips));
@@ -876,6 +879,40 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
   // Lime keeps today's colours
   assert(D.okPill === 'rgb(185, 185, 190)' && D.okPillBg === 'rgb(30, 30, 33)' && D.badPill === 'rgb(255, 93, 85)', 'Lime: pills unchanged: ' + JSON.stringify([D.okPill, D.okPillBg, D.badPill]));
   assert(D.good === 'rgb(216, 255, 99)' && D.warn === 'rgb(255, 157, 92)' && D.primary[1] === 'rgb(244, 244, 241)', 'Lime: deltas and the neutral primary chip unchanged: ' + JSON.stringify([D.good, D.warn, D.primary]));
+});
+
+// The owner's progress card mixed one-line and two-line rows in Lime at 390 (Bench Press and Latest
+// run dropped their values under the label, the other two did not). A card wraps all its rows alike,
+// and a card whose rows all fit keeps them on one line.
+serial('S2: a metric card\'s rows wrap alike: all on one line, or all with the value under the label', async () => {
+  const SHORTM = '%%metric: Pace | 8:07 | | |\n%%metric: Squat | 275 lb | | |\nShort.';
+  for (const room of ['heavyweight', 'dark']) {
+    for (const size of [{ width: 390, height: 844 }, { width: 320, height: 700 }]) {
+      const tag = room + ' ' + size.width + ': ';
+      const msgs = [{ role: 'user', content: 'How am i doing?' }, { role: 'assistant', content: PROGRESS }, { role: 'user', content: 'Quick?' }, { role: 'assistant', content: SHORTM }];
+      const app = await bootChat(room, size, { seed: { kt_coach_msgs: JSON.stringify(msgs) } });
+      try {
+        await open(app.page);
+        const out = await app.page.evaluate(async () => {
+          const rows = (card) => [...card.querySelectorAll('.kt-cmb-mrow')].map((rw) => { const a = rw.querySelector('.kt-cmb-mlabel').getBoundingClientRect(), b = rw.querySelector('.kt-cmb-mval').getBoundingClientRect(); return b.top >= a.bottom - 1; });
+          const cards = [...document.querySelectorAll('.kt-cmb-metrics')];
+          return { progress: rows(cards[0]), short: rows(cards[1]), stack: cards.map((c) => c.classList.contains('stack')) };
+        }).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        assert(out.progress.length === 3 && (out.progress.every(Boolean) || !out.progress.some(Boolean)), tag + 'the progress card\'s rows wrap alike: ' + JSON.stringify(out));
+        assert(out.short.length === 2 && !out.short.some(Boolean) && !out.stack[1], tag + 'a card whose rows fit keeps them on one line: ' + JSON.stringify(out));
+        if (room === 'heavyweight' && size.width === 320) {
+          // stacked at 320pt; turned wide (a resize, as on rotation) the rows fit and go back to one line each
+          assert(out.progress.every(Boolean) && out.stack[0], tag + 'at 320pt the progress card stacks: ' + JSON.stringify(out));
+          await app.page.setViewportSize({ width: 430, height: 932 });
+          await app.page.waitForTimeout(400);
+          const wide = await app.page.evaluate(() => { const c = document.querySelector('.kt-cmb-metrics'); return { stack: c.classList.contains('stack'), rows: [...c.querySelectorAll('.kt-cmb-mrow')].map((rw) => rw.querySelector('.kt-cmb-mval').getBoundingClientRect().top >= rw.querySelector('.kt-cmb-mlabel').getBoundingClientRect().bottom - 1) }; });
+          assert(!wide.stack && !wide.rows.some(Boolean), tag + 'turned wide, the rows fit on one line again: ' + JSON.stringify(wide));
+        }
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
 });
 
 // ── S3 ─────────────────────────────────────────────────────────────────────────

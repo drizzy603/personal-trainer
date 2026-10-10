@@ -924,6 +924,10 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-cmb-metrics{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px;}
 .kt-cmb-mrow{display:flex;flex-wrap:wrap;row-gap:2px;align-items:baseline;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:10px;}
 .kt-cmb-mrow:last-child{border-bottom:none;}
+/* A metric card wraps its rows alike: once one row's value has to go under its label (a long label or
+   value, a narrow phone, Larger Text), every row puts its value under its label, right-aligned
+   (_metricsFit), instead of mixing one-line and two-line rows. */
+.kt-cmb-metrics.stack .kt-cmb-mrow{flex-direction:column;align-items:stretch;row-gap:4px;}
 .kt-cmb-mlabel{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);flex:0 1 auto;min-width:0;overflow-wrap:anywhere;letter-spacing:.04em;}
 .kt-cmb-mval{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:var(--text);text-align:right;margin-left:auto;min-width:0;max-width:100%;font-variant-numeric:tabular-nums;}
 .kt-cmb-mval>span{white-space:nowrap;}
@@ -6147,6 +6151,7 @@ function render() {
     screen.innerHTML = renderCoach();
     var _isChat=!!screen.querySelector('.coach-chat-body'), _wasChat=document.documentElement.classList.contains('kt-chat');
     document.documentElement.classList.toggle('kt-chat', _isChat);
+    if(_isChat) _metricsFit(screen);
     _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route;
     if(!_isChat) screen.scrollTop = routeChanged ? 0 : prevScroll;
     else if(routeChanged || _oEnd) scrollChatBottom();
@@ -18121,6 +18126,27 @@ function md(text){
 function _hasCoachBlocks(text){
   return /^\s*%%(type|metric|takeaway|action):/m.test(String(text||''));
 }
+// Each metric card on screen: stacked (.stack) when any of its rows would not fit on one line, so the
+// rows wrap alike. Measured with .stack off; run after a chat paint, when the fonts arrive and on resize.
+function _metricsFit(root){
+  var cards=(root||document).querySelectorAll('.kt-cmb-metrics');
+  for(var i=0;i<cards.length;i++){
+    var c=cards[i], rows=c.querySelectorAll('.kt-cmb-mrow'), wrapped=false;
+    c.classList.remove('stack');
+    for(var j=0;j<rows.length && !wrapped;j++){
+      var lab=rows[j].querySelector('.kt-cmb-mlabel'), val=rows[j].querySelector('.kt-cmb-mval');
+      if(!lab || !val) continue;
+      var lb=lab.getBoundingClientRect(), vb=val.getBoundingClientRect();
+      if(lb.height && vb.height && vb.top>=lb.bottom-1) wrapped=true;
+    }
+    if(wrapped) c.classList.add('stack');
+  }
+}
+try{
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ var s=document.getElementById('screen'); if(s) _metricsFit(s); });
+  var _mfT=null;
+  window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')) _metricsFit(s); }, 120); });
+}catch(e){}
 function _coachBlocksHTML(text, quiet){
   var lines=String(text||'').split('\n');
   var typeTag='', buf=[], out='', metricBuf=[], actions=[], takeaways=[];
