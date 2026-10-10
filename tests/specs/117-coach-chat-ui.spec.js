@@ -227,7 +227,7 @@ run('M1: a render keeps the reader\'s place; the end stays pinned; the hub opens
 // ── M2 ─────────────────────────────────────────────────────────────────────────
 run('M2: with the keys up the chat is laid over the visual viewport; pinch zoom and small cuts never count', async () => {
   for (const room of ['heavyweight', 'dark']) {
-    for (const [size, kb] of [[{ width: 390, height: 844 }, 336], [{ width: 320, height: 700 }, 290]]) {
+    for (const [size, kb] of [[{ width: 430, height: 932 }, 347], [{ width: 390, height: 844 }, 336], [{ width: 320, height: 700 }, 290]]) {
       const tag = room + ' ' + size.width + ': ';
       const app = await bootChat(room, size, { touch: true });
       try {
