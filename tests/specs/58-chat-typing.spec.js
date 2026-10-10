@@ -10,7 +10,6 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
     const out = await app.page.evaluate(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const r = {};
-      const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]) || 0;
 
       coachView = 'chat'; currentTab = 'coach'; render();
       const input = document.getElementById('coach-input');
@@ -22,8 +21,8 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
 
       r.idle = {
         typing: document.documentElement.classList.contains('chat-typing'),
-        rowBottom: px(row, 'bottom'),
-        msgsPad: px(msgs, 'paddingBottom'),
+        rowBottom: innerHeight - row.getBoundingClientRect().bottom,
+        msgsH: msgs.getBoundingClientRect().height,
         tabsEvents: getComputedStyle(tabs).pointerEvents,
       };
 
@@ -31,8 +30,8 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
       await wait(260);          // let the dock's opacity transition settle before reading it
       r.typing = {
         typing: document.documentElement.classList.contains('chat-typing'),
-        rowBottom: px(row, 'bottom'),
-        msgsPad: px(msgs, 'paddingBottom'),
+        rowBottom: innerHeight - row.getBoundingClientRect().bottom,
+        msgsH: msgs.getBoundingClientRect().height,
         tabsEvents: getComputedStyle(tabs).pointerEvents,
         tabsOpacity: parseFloat(getComputedStyle(tabs).opacity),
       };
@@ -64,8 +63,8 @@ run('chat typing hides the dock, drops the pill, and restores on blur', async ()
     assert(out.typing.typing, 'focusing the input marks the page as typing');
     assert(out.typing.rowBottom < out.idle.rowBottom - 50,
       'the compose pill drops toward the keyboard: ' + out.idle.rowBottom + ' -> ' + out.typing.rowBottom);
-    assert(out.typing.msgsPad < out.idle.msgsPad - 50,
-      'the conversation reclaims the space: pad ' + out.idle.msgsPad + ' -> ' + out.typing.msgsPad);
+    assert(out.typing.msgsH > out.idle.msgsH + 50,
+      'the conversation reclaims the space: ' + out.idle.msgsH + ' -> ' + out.typing.msgsH);
     assert(out.typing.tabsEvents === 'none' && out.typing.tabsOpacity === 0,
       'the dock stands down: ' + JSON.stringify(out.typing));
     assert(out.immediatelyAfterBlur, 'the dock does not flash back on the blur that Send causes');

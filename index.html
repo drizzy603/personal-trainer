@@ -194,7 +194,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
   /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
      momentum scroll, which lets in-flow content slide visibly under the bar. */
   transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;
-  transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease;}
+  transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease,visibility 0s linear 0s;}
 
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:10px 4px;background:none;border:none;border-radius:18px;
@@ -484,35 +484,58 @@ select option{background:var(--bg);}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
 .coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
 .coach-bubble.assistant{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--accent);color:var(--text);border-bottom-left-radius:5px;font-weight:500;}
-.coach-msgs-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
+.coach-msgs-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:0;}
 
-.coach-chat-stick{position:sticky;top:0;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
+/* ── The chat: one column ──────────────────────────────────────────────────
+   render() marks the chat view html.kt-chat. #screen becomes a column: the header stays put,
+   the conversation (.coach-msgs-area) is the only thing that scrolls, and the composer sits in
+   flow 8px above the tab bar (Heavyweight) or the dock (Lime). The composer used to be
+   position:fixed over a #screen that kept scrolling under it: the conversation showed through
+   the band between the composer and the bar, a growing message covered the newest one, and the
+   gap above the composer swung from 14px to 140px with what the chat held. Now the gap is the
+   conversation's own 16px end, whatever it holds. */
+.coach-chat-stick{position:relative;flex:none;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
 .coach-chat-stick .screen-hd{padding:0 0 4px;}
-.coach-chat-body{display:flex;flex-direction:column;height:calc(100dvh - 160px);min-height:calc(100dvh - 160px);}
-/* Messages stack from the bottom up — newest message sits just above the
-   fixed input pill (chat-app convention). When few messages, they hug the
-   bottom rather than floating with empty space below. */
-.coach-msgs-area{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:16px 0 calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 60px);}
-/* Fixed pill above the floating tab bar — input persists during scroll so
-   the user never has to scroll back down to type. Backdrop-blurred to
-   match the tab bar's glass dock. */
-.coach-input-row{position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));
+@media (max-width:360px){.coach-chat-stick{margin:0 -16px;padding:0 16px;}}   /* #screen's gutter is 16px there: it overran by 4px */
+.coach-chat-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.coach-msgs-area{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;margin:0 -4px;padding:16px 4px 0;scrollbar-width:none;}
+.coach-msgs-area::-webkit-scrollbar{display:none;}
+/* A short chat hugs the composer (justify-content:flex-end would make its top unscrollable). */
+.coach-msgs-area>:first-child{margin-top:auto;}
+/* The 16px end gap is a spacer: WebKit drops a flex scroller's block-end padding from its overflow. */
+.coach-msgs-area::after{content:'';flex:none;height:16px;}
+.coach-msgs-wrap>:last-child,.kt-cmb>:last-child{margin-bottom:0;}
+.coach-input-row{position:relative;flex:none;
   display:flex;gap:8px;align-items:center;
-  background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  background:var(--card);
   border:1px solid var(--border);border-radius:24px;
-  padding:6px 6px 6px 18px;z-index:50;}
-/* Typing: give the keyboard the screen. iOS pins position:fixed to the LAYOUT
-   viewport and then scrolls the page so the focused input clears the keyboard,
-   which drags the tab dock up with it — leaving ~110px of dead band between the
-   compose pill and the keys while the conversation is squeezed to a few lines.
-   While the chat input holds focus the dock stands down and the pill drops to
-   the bottom edge; the reclaimed space goes to the messages. */
+  padding:6px 6px 6px 18px;}
+/* A photo waiting to be sent sits in flow above the composer, on the room's card. */
+.coach-img-preview{position:relative;flex:none;margin:0 0 8px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:8px;}
+.coach-img-preview img{display:block;width:100%;max-height:140px;object-fit:contain;border-radius:10px;}
+.coach-img-x{position:absolute;top:6px;right:6px;width:36px;height:36px;padding:0;border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 /* A cadence value this build cannot read: not dressed as rest. */
 .kt-wkstrip-chip.unknown{border-style:dashed;border-color:var(--accent);}
-html.chat-typing #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;}
-html.chat-typing .coach-input-row{bottom:var(--tab-gap);}
-html.chat-typing .coach-img-preview{bottom:calc(var(--tab-gap) + 58px) !important;}   /* inline style sets the idle value */
-html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
+/* The tab bar stands down while the keys are up (html.kb-open) or, without a keyboard signal,
+   while the box has focus (html.chat-typing). Hidden, it also leaves the VoiceOver tree and the
+   Tab order (visibility flips once the slide is done; it comes back at once). */
+html.chat-typing #tabs,html.kb-open #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;visibility:hidden;transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease,visibility 0s linear .22s;}
+/* The column's foot: 8px above the dock (whose top is 86px up), 8px above Heavyweight's flat
+   78px bar, the home-indicator line while typing with the bar down, and 8px above the keys. */
+html.kt-chat #screen{display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + var(--tab-gap));}
+html[data-room="heavyweight"].kt-chat #screen{padding-bottom:calc(var(--tab-h) + var(--tab-bottom-clear) + var(--tab-gap));}
+html.chat-typing.kt-chat #screen{padding-bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));}
+html.kb-open.kt-chat #screen{padding-bottom:var(--tab-gap);}
+/* Lime: the composer and the photo preview take the floating dock's edges. */
+html[data-room="dark"].kt-chat .coach-input-row,html[data-room="dark"].kt-chat .coach-img-preview{margin-left:-6px;margin-right:-6px;}
+/* Keys up: iOS keeps the layout viewport under the keyboard and pans the visual one over it,
+   which took the header and the status-bar mask off the top and ran the conversation under the
+   clock. #app is laid over the visual viewport instead (--vv-top/--vv-h, set by the binding by
+   the scroll-offset guard): the header stays, the composer sits on the keys. */
+html.kb-open #app{position:fixed;left:0;right:0;top:0;height:var(--vv-h,100%);transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
+html.kb-open body::before{transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
+html.kb-open .coach-img-preview img{max-height:96px;}
+html.kb-open .coach-chat-stick>.screen-hd{display:none;}
 .coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
   resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
 .coach-textarea::placeholder{color:var(--muted);}
@@ -941,6 +964,10 @@ button:active{transform:scale(.97);}
   .kt-rlog,.kt-rconfirm,.kt-act-saved,.kt-sport-confirm,.kt-r-flash{animation:none;}
   .typing-dot{animation:none;opacity:.6;}
   button:active{transform:none;opacity:.85;}
+  /* The tab bar fades out of the way of the keys instead of sliding. */
+  html.chat-typing #tabs,html.kb-open #tabs{transform:translateZ(0);-webkit-transform:translateZ(0);}
+  #tabs{transition:opacity .15s ease,visibility 0s linear 0s;}
+  html.chat-typing #tabs,html.kb-open #tabs{transition:opacity .15s ease,visibility 0s linear .15s;}
 }
 
 /* Deck Runner — fullscreen route. z-index sits BELOW the floating tab bar
@@ -1653,7 +1680,6 @@ html[data-room="dark"] .coach-chat-stick .screen-hd button[style*="color:var(--a
 html[data-room="dark"] .coach-input-row button[title="Attach photo"]{opacity:1!important;}
 html[data-room="dark"] .coach-input-row button[title="Attach photo"] svg{color:var(--muted)!important;}
 html[data-room="dark"] .coach-input-row button[title="Attach photo"][style*="opacity:1"] svg{color:var(--text)!important;}
-html[data-room="dark"] .coach-img-preview{background:var(--card)!important;}
 /* Settings, programme modal, sheets */
 html[data-room="dark"] .settings-row-ic svg{stroke:var(--lite);}
 html[data-room="dark"] .settings-row span[style*="color:var(--accent)"],html[data-room="dark"] .settings-row-val[style*="accent-ink"]{color:var(--text)!important;}
@@ -1946,6 +1972,9 @@ html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom
 /* With a sheet open the bottom is the sheet's Save/Delete: the toast (an error, an Undo) moves up, as in Lime. */
 /* The run and sport dots keep a paper ring on the blue selected day (1.9:1 and 2.5:1 without it). */
 html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
+/* In the chat the bottom is the composer, as an open sheet's is its buttons: a toast shows under
+   the status bar (following the keys' pan while they are up), never over the box being typed in. */
+html.kt-chat body #toast{top:calc(var(--vv-top,0px) + max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
 </style>
 </head>
 <body>
@@ -5966,6 +5995,8 @@ function _tabEnterMotion(screen, routeChanged){
 }
 function render() {
   _todayActMemo=null;
+  // Leaving the chat: #screen scrolls again, and the keyboard binding lets #app go.
+  if(currentTab!=='coach' && document.documentElement.classList.contains('kt-chat')){ document.documentElement.classList.remove('kt-chat'); if(window._vvChatSync) _vvChatSync(); }
   // Sync the inline run-log form into module state before rebuilding the
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
   // wipe what the user has typed.
@@ -5999,7 +6030,23 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); _scheduleNativeSync(); paintRunner(); return; }
+  else if (currentTab==='coach')     {
+    // The chat's conversation scrolls on its own (html.kt-chat) and every paint builds a new
+    // scroller, so the reader's place is carried across: near the end it stays at the end (the
+    // newest message above the composer), scrolled up it stays where it was. The hub and the
+    // key screen scroll #screen as every other tab does.
+    var _ol=screen.querySelector('.coach-msgs-area'), _oTop=_ol?_ol.scrollTop:0, _oEnd=!_ol||(_ol.scrollHeight-_ol.scrollTop-_ol.clientHeight<80);
+    screen.innerHTML = renderCoach();
+    var _isChat=!!screen.querySelector('.coach-chat-body'), _wasChat=document.documentElement.classList.contains('kt-chat');
+    document.documentElement.classList.toggle('kt-chat', _isChat);
+    _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route;
+    if(!_isChat) screen.scrollTop = routeChanged ? 0 : prevScroll;
+    else if(routeChanged || _oEnd) scrollChatBottom();
+    else { var _nl=screen.querySelector('.coach-msgs-area'); if(_nl) _nl.scrollTop=_oTop; }
+    _chatAnchor();
+    if(_wasChat!==_isChat && window._vvChatSync) _vvChatSync();
+    _a11yPass(); _scheduleNativeSync(); paintRunner(); return;
+  }
   _tabEnterMotion(screen, routeChanged);
   _m05Pass(screen);
   if(!routeChanged){
@@ -18187,7 +18234,7 @@ async function startRoutineIntake(){
     streamingContent='';
     render();
     scrollChatBottom();
-    setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
+    if(!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);   // no keys for a scripted focus on a touch screen
   }
 }
 
@@ -20256,6 +20303,11 @@ function clearPendingImage(){pendingImage=null;render();}
 async function sendCoachMessage(){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
+  // Focus goes back to the box after the reply only for a keyboard user who sent from it (Enter, or
+  // a click on Send). WKWebView raises no keyboard for a focus no tap asked for: the refocus left a
+  // touch screen with a focused box, no keys and no tab bar, and the composer on the home indicator.
+  // A chip send, or focus moved on to the model pill, stays where it is.
+  var _ae=document.activeElement, _hadFocus=_ae===inp||!!(_ae&&_ae.classList&&_ae.classList.contains('coach-send-btn'));
   var msg=inp.value.trim();
   if((!msg&&!pendingImage)||coachLoading)return;
   inp.value='';inp.style.height='';
@@ -20302,7 +20354,7 @@ async function sendCoachMessage(){
       streamingContent='';
       render();
       scrollChatBottom();
-      setTimeout(function(){var i=document.getElementById('coach-input');if(i&&!intakeMode)i.focus();},80);
+      if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
     }
   }
 }
@@ -20363,11 +20415,34 @@ async function coachRetryLast(){
   }
 }
 
+// Lands the conversation on its newest message: now (every render builds a new scroller, and
+// waiting would flash its top) and again at 80 ms, once late images have their height. Only the
+// chat's own scroller: the hub opens at its top like every other screen.
+var _chatPinT=null, _chatRO=null, _chatBelow=0;
 function scrollChatBottom(){
-  setTimeout(function(){
-    var screen=document.getElementById('screen');
-    if(screen&&currentTab==='coach')screen.scrollTop=screen.scrollHeight;
-  },80);
+  var go=function(){
+    if(currentTab!=='coach') return;
+    var sc=document.querySelector('html.kt-chat .coach-msgs-area');
+    if(sc){ sc.scrollTop=sc.scrollHeight; _chatBelow=0; }
+  };
+  clearTimeout(_chatPinT);
+  go(); _chatPinT=setTimeout(go,80);
+}
+// The conversation keeps its distance from the bottom whatever resizes it (the composer growing
+// with a long message, the tab bar standing down, the keys coming up): the message being read,
+// or the newest one, stays just above the composer. _chatBelow is set from the place the render
+// left the scroller in BEFORE observing, so the observer's first call changes nothing.
+function _chatAnchor(){
+  var list=document.querySelector('html.kt-chat .coach-msgs-area');
+  if(!list){ if(_chatRO) _chatRO.disconnect(); return; }
+  _chatBelow=Math.max(0, list.scrollHeight-list.scrollTop-list.clientHeight);
+  list.addEventListener('scroll', function(){ _chatBelow=Math.max(0, list.scrollHeight-list.scrollTop-list.clientHeight); }, {passive:true});
+  if(!window.ResizeObserver) return;
+  if(!_chatRO) _chatRO=new ResizeObserver(function(ents){
+    var l=ents[0] && ents[0].target;
+    if(l && l.isConnected) l.scrollTop=Math.max(0, l.scrollHeight-l.clientHeight-_chatBelow);
+  });
+  _chatRO.disconnect(); _chatRO.observe(list);
 }
 
 function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
@@ -20654,14 +20729,11 @@ function renderCoach(){
   }
 
   var inputPlaceholder=intakeMode?'Answer the Coach…':'Message Coach…';
+  // In flow above the composer (html.kt-chat), on the room's card.
   var imgPreview=pendingImage
-    ?'<div class="coach-img-preview" style="position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 58px);z-index:51;'+
-        'background:rgba(22,22,26,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);'+
-        'border:1px solid var(--border);border-radius:16px;padding:10px;">'+
-        '<button onclick="clearPendingImage()" style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;'+
-          'background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;'+
-          'cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;-webkit-tap-highlight-color:transparent;">✕</button>'+
-        '<img src="'+pendingImage.previewUrl+'" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px;display:block;">'+
+    ?'<div class="coach-img-preview">'+
+        '<img src="'+pendingImage.previewUrl+'" alt="Photo to send">'+
+        '<button class="coach-img-x" onclick="clearPendingImage()" aria-label="Remove photo"><span aria-hidden="true">✕</span></button>'+
       '</div>'
     :'';
   var inputRow='<div class="coach-input-row">'+
@@ -20682,9 +20754,9 @@ function renderCoach(){
   '</div>';
 
   var _avCh=_initialOf(getUserFirstName());
-  // Sticky chat header — back / avatar + editorial title stay pinned at the
-  // top of the scroll container so they're always reachable. The body::before
-  // mask covers the safe-area zone above this strip.
+  // The chat column (html.kt-chat): the header (back / avatar + editorial title) stays at the
+  // top, the conversation scrolls between it and the composer, and the body::before mask covers
+  // the safe-area zone above the header.
   return '<div class="coach-chat-stick">'+
     '<div class="screen-hd" style="margin:0;">'+
       '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
@@ -20695,7 +20767,7 @@ function renderCoach(){
     coachHead+
   '</div>'+
     '<div class="coach-chat-body">'+
-      '<div class="coach-msgs-area" style="'+(pendingImage?'padding-bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 300px)':'')+'">'+msgsHTML+'</div>'+
+      '<div class="coach-msgs-area">'+msgsHTML+'</div>'+
       imgPreview+
       inputRow+
     '</div>';
@@ -22373,23 +22445,39 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
 // dismisses the keyboard, which is how every other chat app behaves and the only
 // way back to the tabs without sending something.
 (function(){
-  var _ctTimer=null;
+  var _ctTimer=null, _waited=0;
+  // A touch screen with a visual viewport knows when the keyboard is really up (html.kb-open, set
+  // by the binding below). There the tab bar stands down for the KEYBOARD, not for focus: iOS raises
+  // no keyboard for a focus no tap asked for, and focus alone hid the tabs for a whole reply and
+  // left the composer on the home indicator with nothing to type on.
+  function _byKb(){ return !!window.visualViewport && _coarsePointer(); }
   function _chatTyping(on){
     if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; }
-    if(on){ document.documentElement.classList.add('chat-typing'); return; }
-    var _waited=0;
-    var _check=function(){
-      var ae=document.activeElement;
-      if(ae && ae.id==='coach-input' && document.getElementById('coach-input')) return;  // focus came back
-      // Sending blurs the box and the reply re-focuses it seconds later. Without
-      // this the dock slid back in and out again on every message. Hold while a
-      // reply is in flight, bounded so a stalled request cannot hide the tabs.
-      if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000 && document.getElementById('coach-input')){   // only while the box still exists
-        _waited+=400; _ctTimer=setTimeout(_check,400); return;
-      }
-      document.documentElement.classList.remove('chat-typing');
-    };
-    _ctTimer=setTimeout(_check,180);
+    if(on){
+      document.documentElement.classList.add('chat-typing');
+      if(_byKb()) _ctTimer=setTimeout(_check,1000);   // no keyboard by then (a hardware one): the tabs come back
+      return;
+    }
+    _waited=0; _ctTimer=setTimeout(_check, _byKb()?120:180);
+  }
+  function _check(){
+    _ctTimer=null;
+    var ae=document.activeElement, root=document.documentElement;
+    var focused=!!(ae && ae.id==='coach-input' && document.getElementById('coach-input'));
+    if(_byKb()){
+      // html.kb-open keeps the tabs down while the keys are up; once they are gone the tabs come back, focused or not.
+      if(!(focused && root.classList.contains('kb-open'))) root.classList.remove('chat-typing');
+      return;
+    }
+    if(focused){ _waited=0; return; }  // focus came back
+    // Sending blurs the box and the reply re-focuses it seconds later. Without
+    // this the dock slid back in and out again on every message. Hold while a
+    // reply is in flight, bounded so a stalled request cannot hide the tabs.
+    if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000 && document.getElementById('coach-input')){   // only while the box still exists
+      _waited+=400; _ctTimer=setTimeout(_check,400); return;
+    }
+    _waited=0;
+    root.classList.remove('chat-typing');
   }
   document.addEventListener('focusin',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(true);
@@ -22421,6 +22509,77 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
     }
   },{passive:true});
   window._chatTypingOff=function(){ _chatTyping(false); };
+  // From the binding below: the keys came up over the box (it may already have had focus), or went away.
+  window._chatKb=function(open){
+    if(open){ if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; } document.documentElement.classList.add('chat-typing'); }
+    else _chatTyping(false);
+  };
+})();
+
+// ── Chat on the visual viewport (the iOS keyboard) ───────────────────────────
+// There is no Keyboard plugin, so WKWebView keeps the LAYOUT viewport under the keyboard:
+// position:fixed, 100dvh and #screen keep the whole screen, and WebKit pans the visual viewport
+// over them by up to the keyboard's height so the focused box clears the keys. That took the
+// chat header off the top and ran the conversation under the status bar. While the keys are up
+// over the chat box, #app is laid over the visual viewport instead (html.kb-open + --vv-top and
+// --vv-h, in CSS px at the page's Dynamic Type zoom): the header stays, the composer sits on the
+// keys and the conversation fills the rest. It follows whatever pan WebKit chose, so it holds
+// whether WebKit pans the visual viewport or scrolls the layout one, and it never scrolls the
+// document (the scroll-offset guard below only acts once nothing is focused). Pinch zoom, a
+// hardware keyboard (no keyboard-sized cut) and a WebKit with no visualViewport keep the plain
+// chat-typing column.
+(function(){
+  var vv=window.visualViewport, root=document.documentElement;
+  if(!vv) return;
+  var raf=0, on=false, last='', full0=0;
+  // While the keys are up the page has the keyboard's height to pan by: a drag on the header or on
+  // a conversation too short to scroll is not handed to it (the conversation itself is
+  // overscroll-behavior: contain), so the column does not chase a pan it cannot lead. Attached
+  // only while html.kb-open is on, so scrolling anywhere else never waits on script.
+  function guard(e){
+    if(!e.cancelable) return;
+    var t=e.target, list=t && t.closest ? t.closest('.coach-msgs-area') : null;
+    if(list && list.scrollHeight>list.clientHeight+1) return;
+    if(t && t.closest && t.closest('.coach-input-row')) return;
+    e.preventDefault();
+  }
+  function apply(){
+    raf=0;
+    var z=parseFloat(root.style.zoom)||1, sc=vv.scale||1, ae=document.activeElement;
+    // The screen's height with no keyboard, remembered while nothing is being edited: a web view
+    // that resizes for the keyboard (a Keyboard plugin's native resize) shrinks innerHeight too.
+    var lh=Math.max(window.innerHeight||0, (root.clientHeight||0)*z);
+    var editing=!!(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable));
+    if(!editing || lh>full0) full0=lh;
+    var cut=sc<1.05 && full0-vv.height*sc>120;
+    // Comes on only for the chat box; stays on, following the pan, until the keys are gone.
+    var kb=cut && root.classList.contains('kt-chat') && (on || !!(ae && ae.id==='coach-input'));
+    var h=Math.round(vv.height/z), t=Math.round(Math.max(0, vv.offsetTop||0)/z);
+    var key=kb ? h+'|'+t : '';
+    if(key===last) return;
+    last=key;
+    if(kb){
+      root.style.setProperty('--vv-h', h+'px');
+      root.style.setProperty('--vv-top', t+'px');
+      if(!on){
+        on=true; root.classList.add('kb-open');
+        document.addEventListener('touchmove', guard, {passive:false});
+        if(window._chatKb) _chatKb(true);
+      }
+    } else if(on){
+      on=false; root.classList.remove('kb-open');
+      document.removeEventListener('touchmove', guard, {passive:false});
+      root.style.removeProperty('--vv-h'); root.style.removeProperty('--vv-top');
+      if(window._chatKb) _chatKb(false);
+    }
+  }
+  function soon(){ if(!raf) raf=window.requestAnimationFrame ? requestAnimationFrame(apply) : setTimeout(apply,16); }
+  vv.addEventListener('resize', soon);
+  vv.addEventListener('scroll', soon);
+  window.addEventListener('orientationchange', function(){ full0=0; soon(); });
+  document.addEventListener('focusin', soon);
+  document.addEventListener('focusout', function(){ setTimeout(soon,0); });
+  window._vvChatSync=soon;
 })();
 
 // ── iOS keyboard scroll-offset guard ──────────────────────────────────────────
@@ -22653,7 +22812,7 @@ function _restoreCoachDraft(){
     el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
   }
   if(_coachDraft.focus && document.activeElement!==el){
-    el.focus();
+    try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }   // the column keeps its place: no scroll into view
     try{ el.setSelectionRange(_coachDraft.s, _coachDraft.e); }catch(e){}
   }
 }
