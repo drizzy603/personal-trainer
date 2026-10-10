@@ -20490,6 +20490,7 @@ async function sendCoachMessage(o){
   var msg=inp.value.trim();
   if((!msg&&!pendingImage)||coachLoading)return;
   inp.value='';inp.style.height='';
+  window._coachKeyAt=0;   // what was typed is sent: a render mid-reply no longer counts as typing (_restoreCoachDraft)
 
   var content, preview=null;
   if(pendingImage){
@@ -22729,10 +22730,17 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
   }
   document.addEventListener('focusin',function(e){
     if(e.target && e.target.id==='coach-input'){
-      _chatTyping(true);
+      // A render giving focus back (_restoreCoachDraft) is not a new tap: on a touch screen the
+      // keyboard alone decides the bar there, so it no longer flickers on every render.
+      if(!(window._ctQuiet && _byKb())) _chatTyping(true);
       if(typeof _syncSend==='function') _syncSend();   // a box filled by script (no input event) still gets an honest Send
     }
   });
+  // Typing into the box (a hardware keyboard on a touch screen raises no keyboard-sized cut): a
+  // render gives it its focus back (_restoreCoachDraft). A send clears it.
+  document.addEventListener('keydown',function(e){
+    if(e.target && e.target.id==='coach-input') window._coachKeyAt=Date.now();
+  },true);
   document.addEventListener('focusout',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(false);
   });
@@ -23069,8 +23077,17 @@ function _restoreCoachDraft(){
     el.style.height=''; el.style.height=Math.min(el.scrollHeight,120)+'px';
     if(typeof _syncSend==='function') _syncSend();
   }
-  if(_coachDraft.focus && document.activeElement!==el){
+  // A touch screen raises no keyboard for a scripted focus. Given back after every render, focus
+  // kept a box with no keys focused (the tab bar went for a second each time, the reply landed
+  // with the box still focused and the scroll-offset guard waiting on a blur). There it comes back
+  // only while the keys are up (kb-open), on their way up after a tap (chat-typing), or while a
+  // hardware keyboard types into the box; and it comes back quietly, so the tab bar stays put.
+  var rc=document.documentElement.classList, touch=!!window.visualViewport && _coarsePointer();
+  var keep=!touch || rc.contains('kb-open') || rc.contains('chat-typing') || (Date.now()-(window._coachKeyAt||0)<4000);
+  if(_coachDraft.focus && document.activeElement!==el && keep){
+    window._ctQuiet=true;
     try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }   // the column keeps its place: no scroll into view
+    window._ctQuiet=false;
     try{ el.setSelectionRange(_coachDraft.s, _coachDraft.e); }catch(e){}
   }
 }

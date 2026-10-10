@@ -402,6 +402,62 @@ serial('M3: on a touch screen the tab bar follows the keyboard; a reply never re
   }
 });
 
+// Every render gave a focused box its focus back by script. On a touch screen that raises no keys:
+// with none up (a hardware keyboard's focus, or WebKit dropping the keys mid-reply) the tab bar went
+// for a second on every render and the reply landed on a focused box with no keyboard.
+serial('M3: on a touch screen a render gives focus back only while the keys are up or the box is being typed in, and never moves the bar', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 }, { touch: true });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async ({ GEO, MOCK_FETCH }) => {
+        const g = eval(GEO), wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {}, KB = 336;
+        const box = () => document.getElementById('coach-input');
+        // every class list <html> wore while fn ran (sampled every 20ms)
+        const watch = async (fn, tail) => { const seen = new Set(); const t = setInterval(() => seen.add(document.documentElement.className), 20); await fn(); await wait(tail); clearInterval(t); return [...seen]; };
+        // a focus with no keys; once the tabs are back, three renders
+        box().focus(); await wait(1300);
+        r.settled = g().cls;
+        r.renders = await watch(async () => { for (let k = 0; k < 3; k++) { render(); await wait(250); } }, 300);
+        r.afterRenders = g();
+        // keys up: a render keeps the box focused and the keys up
+        box().focus(); __vv.set(innerHeight - KB, KB); await wait(300);
+        render(); await wait(100); render(); await wait(200);
+        r.keysUp = g();
+        // a hardware keyboard (no keyboard-sized cut) typing into the box: a render keeps its focus, quietly
+        __vv.reset(); await wait(300); box().blur(); await wait(400);
+        box().focus(); await wait(1300);
+        box().dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+        r.typing = await watch(async () => { render(); await wait(100); render(); }, 300);
+        r.afterTyping = g();
+        // a reply sent with the keys up; the keys go but the box keeps focus; renders while it is in flight
+        box().blur(); await wait(300);
+        eval(MOCK_FETCH)(1200);
+        box().focus(); __vv.set(innerHeight - KB, KB); await wait(300);
+        box().value = 'And my squat?';
+        const sent = sendCoachMessage();
+        await wait(60);
+        __vv.reset(); await wait(300);
+        r.reply = await watch(async () => { render(); await wait(250); render(); await wait(250); }, 50);
+        r.midReply = g();
+        await sent; await wait(250);
+        r.landed = g();
+        return r;
+      }, { GEO, MOCK_FETCH }).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      const typing = (list) => list.some((c) => / chat-typing\b|^chat-typing\b/.test(c));
+      assert(out.settled.indexOf('chat-typing') < 0, tag + 'a focus with no keys gives the tabs back: ' + JSON.stringify(out.settled));
+      assert(!typing(out.renders) && out.afterRenders.active !== 'coach-input' && out.afterRenders.tabsCs.visibility === 'visible', tag + 'renders over a keyless focus neither hide the bar nor keep the focus: ' + JSON.stringify([out.renders, out.afterRenders.active]));
+      assert(out.keysUp.active === 'coach-input' && out.keysUp.cls.indexOf('kb-open') >= 0 && out.keysUp.cls.indexOf('chat-typing') >= 0, tag + 'with the keys up a render keeps the box focused: ' + JSON.stringify([out.keysUp.active, out.keysUp.cls]));
+      assert(!typing(out.typing) && out.afterTyping.active === 'coach-input' && out.afterTyping.tabsCs.visibility === 'visible', tag + 'a hardware keyboard keeps the box through a render, and the bar stays: ' + JSON.stringify([out.typing, out.afterTyping.active]));
+      assert(!typing(out.reply) && out.midReply.active !== 'coach-input' && out.midReply.tabsCs.visibility === 'visible', tag + 'keys gone mid-reply: renders let the box go and the bar stays: ' + JSON.stringify([out.reply, out.midReply.active]));
+      assert(out.landed.active !== 'coach-input' && out.landed.cls.indexOf('chat-typing') < 0 && out.landed.tabsCs.visibility === 'visible', tag + 'the reply lands on an unfocused box with the tabs up: ' + JSON.stringify([out.landed.active, out.landed.cls]));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
 serial('M3: reduced motion fades the bar without sliding it; a desktop send still refocuses the box', async () => {
   const app = await bootChat('heavyweight', { width: 390, height: 844 });
   try {
