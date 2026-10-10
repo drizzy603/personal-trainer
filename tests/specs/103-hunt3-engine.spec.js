@@ -1289,3 +1289,85 @@ seq('T06: a kg programme put back while the owner reads lb goes onto lb plates',
   }, { A, B, OFF });
   assert(c.ok && c.off === 0 && c.offPoint === 0, 'a backup file in lb: on lb plates: ' + JSON.stringify(c));
 });
+
+// U01 (incomplete T01): the owner's Make main was read off the coach's main still on the day,
+// marked for its tag alone, so an edit of that lift (Routines, the coach's set_exercise_weight or
+// edit_programme_exercise) or a day the coach wrote with no main lost the choice to the next
+// rewrite, and the day could end with no main at all. The choice is now the row's own flag.
+seq('U01: Make main stays the owner\'s through edits of the lift it replaced and on a day with no coach main; a day keeps one main', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      // ! = main, + = added by the owner, * = marked
+      const day = (k, j) => (getCustomRoutine().weeks[j == null ? c : j][k] || []).map(e => e.name + ' ' + e.sets + 'x' + e.reps + '@' + e.weight + (e.isMain ? '!' : '') + (e.rec === null ? '+' : e.rec ? '*' : '')).join(' | ');
+      const mains = (k) => getCustomRoutine().weeks.slice(c).map(w => (w[k] || []).filter(e => e.isMain).map(e => e.name).join('+') || '-');
+      const line = (n) => (buildSystemPrompt().match(new RegExp(' {2}' + n + ':[^\\n]*')) || [''])[0];
+      const orig = localStorage.getItem('kt_routine');
+      const coachPush = () => [{ name: 'Bench Press', sets: 4, reps: 6, weight: 165, isMain: true }, { name: 'Overhead Press', sets: 4, reps: 6, weight: 105 },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: 10, weight: 60 }, { name: 'Cable Triceps Pushdown', sets: 3, reps: 12, weight: 55 }, { name: 'Lateral Raise', sets: 3, reps: 15, weight: 17.5 }];
+      const rewrite = (k, rows) => executeCoachTool('update_routine_weeks', { weeks: [{ wk: currentWeek, bName: 'BUILD', bColor: '#0a43f5', [k]: rows }] });
+      const makeMain = async (slot, n) => { openRoutines(); _rtOpenEdit(slot, n); _rtMakeMain(); await wait(10); closeRoutines(); };
+      // (A) Make main on Overhead Press, then Bench down to 3 sets (the secondary lift now)
+      await makeMain('Push', 'Overhead Press');
+      openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtStep('sets', -1); _rtSave(); await wait(10); closeRoutines();
+      r.A_prompt = line('Overhead Press');
+      const a = rewrite('push', coachPush());
+      r.A = { day: day('push'), kept: a.keptUserEdits, mains: mains('push'), stored: JSON.stringify(a.stored), prompt: [line('Bench Press'), line('Overhead Press')] };
+      // (B') the coach sets Bench's load: not the owner's edit; the rewrite keeps the owner's main
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 170 });
+      r.Bp_prompt = line('Bench Press');
+      rewrite('push', coachPush());
+      r.Bp = day('push');
+      // (B) the coach changes Bench itself: Use coach's on the owner's main, and Reset, still leave one main
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      executeCoachTool('edit_programme_exercise', { day: 'Push', exercise: 'Bench Press', action: 'change', sets: 5, reps: 5 });
+      const edited = localStorage.getItem('kt_routine');
+      r.B_prompt = line('Overhead Press');
+      openRoutines(); _rtUseCoach('Push', 'Overhead Press'); await wait(10); closeRoutines();
+      r.B_useCoach = day('push');
+      lsSet('kt_routine', JSON.parse(edited));
+      openRoutines(); document.querySelector('#rt-card-Push .kt-rt-reset').click(); await wait(5); document.querySelector('.kt-close-sheet [id$="ok"]').click(); await wait(10); closeRoutines();
+      r.B_reset = day('push');
+      lsSet('kt_routine', JSON.parse(edited));
+      const b = rewrite('push', coachPush());
+      r.B = { day: day('push'), kept: b.keptUserEdits, next: day('push', c + 1) };
+      // (F) a Pull day the coach wrote with no main: the owner's Lat Pulldown stays main through a rewrite
+      lsSet('kt_routine', JSON.parse(orig));
+      const crF = getCustomRoutine(); crF.weeks.forEach(w => w.pull.forEach(e => { delete e.isMain; })); setCustomRoutine(crF);
+      await makeMain('Pull', 'Lat Pulldown');
+      const f = rewrite('pull', getCustomRoutine().weeks[c].pull.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight })));
+      r.F = { day: day('pull'), kept: f.keptUserEdits, prompt: line('Lat Pulldown') };
+      // Make main back on the coach's main: no marks are left
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press'); await makeMain('Push', 'Bench Press');
+      r.back = { day: day('push'), flags: getCustomRoutine().weeks.slice(c).some(w => w.push.some(e => e.mainBy)) };
+      // a Make main saved by an older page (no flag) still holds through a rewrite
+      lsSet('kt_routine', JSON.parse(orig));
+      await makeMain('Push', 'Overhead Press');
+      const crL = getCustomRoutine(); crL.weeks.forEach(w => w.push.forEach(e => { delete e.mainBy; })); setCustomRoutine(crL);
+      r.L_prompt = line('Overhead Press');
+      rewrite('push', coachPush());
+      r.L = day('push');
+      return r;
+    });
+    const rest = ' | Incline Dumbbell Press 3x10@60 | Cable Triceps Pushdown 3x12@55 | Lateral Raise 3x15@17.5';
+    assert(/\(main\) \[main lift chosen by the user\]$/.test(out.A_prompt), 'the coach is told the main is the owner\'s pick after the edit: ' + out.A_prompt);
+    assert(out.A.day === 'Bench Press 3x8@160* | Overhead Press 4x6@105!*' + rest && JSON.stringify(out.A.kept) === '["Bench Press","Overhead Press"]', 'the owner\'s Bench edit and their main both stand: ' + JSON.stringify(out.A));
+    assert(out.A.mains.every(x => x === 'Overhead Press'), 'every week keeps one main, the owner\'s: ' + JSON.stringify(out.A.mains));
+    assert(/"Overhead Press 4×6 105 lb \(main lift: the user’s choice\)"/.test(out.A.stored) && /\[main lift chosen by the user\]$/.test(out.A.prompt[1]), 'the readback and the prompt say so: ' + JSON.stringify(out.A));
+    assert(/^ {2}Bench Press: 4×8 @ 170 lb RPE\S* *$/.test(out.Bp_prompt), 'the coach\'s load is not called the owner\'s edit: ' + out.Bp_prompt);
+    assert(out.Bp === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'after set_exercise_weight the rewrite keeps the owner\'s main: ' + out.Bp);
+    assert(/\[main lift chosen by the user\]$/.test(out.B_prompt), 'the coach\'s change to Bench keeps the owner\'s main theirs: ' + out.B_prompt);
+    assert(out.B_useCoach === 'Bench Press 5x5@160! | Overhead Press 4x8@100' + rest && out.B_reset === out.B_useCoach, 'Use coach\'s and Reset give the day its main back: ' + JSON.stringify([out.B_useCoach, out.B_reset]));
+    assert(out.B.day === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest && JSON.stringify(out.B.kept) === '["Overhead Press"]' && /^Bench Press 5x5@162\.5\* \| Overhead Press 4x8@102\.5!\*/.test(out.B.next), 'the rewrite keeps the owner\'s main: ' + JSON.stringify(out.B));
+    assert(out.F.day === 'Barbell Row 4x8@150 | Lat Pulldown 4x10@135!* | Seated Cable Row 3x12@115 | Face Pull 3x15@35 | Barbell Curl 3x10@70' && JSON.stringify(out.F.kept) === '["Lat Pulldown"]' && /\[main lift chosen by the user\]$/.test(out.F.prompt), 'a day with no coach main keeps the owner\'s: ' + JSON.stringify(out.F));
+    assert(out.back.day === 'Bench Press 4x8@160! | Overhead Press 4x8@100' + rest && !out.back.flags, 'Make main back on the coach\'s main leaves no mark: ' + JSON.stringify(out.back));
+    assert(/\[main lift chosen by the user\]$/.test(out.L_prompt) && out.L === 'Bench Press 4x6@165* | Overhead Press 4x6@105!*' + rest, 'an older page\'s Make main still holds: ' + JSON.stringify([out.L_prompt, out.L]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

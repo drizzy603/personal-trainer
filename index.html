@@ -11362,36 +11362,55 @@ function _e1(w, r){ var n=_repsNum(r); return n>0 ? w*(1+n/30) : w; }   // Epley
 // row.rec, for "Coach: 4×8 · 160 lb · Use coach's". rec:null = the owner added it.
 function _markRec(row){
   if(!row || row.rec!==undefined) return;
-  var c={}; Object.keys(row).forEach(function(k){ if(k!=='rec') c[k]=row[k]; });
+  var c={}; Object.keys(row).forEach(function(k){ if(k!=='rec' && k!=='mainBy') c[k]=row[k]; });
   row.rec=JSON.parse(JSON.stringify(c));
 }
 // A row that is again what the coach wrote loses its mark (main and superset read
-// false when absent).
+// false when absent), and the owner's main choice goes with the main tag.
 function _progUnmark(row){
-  if(!row || !row.rec) return;
-  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k==='rec' || ((k==='isMain' || k==='ss') && !o[k])) return; x[k]=o[k]; }); return JSON.stringify(x); };
-  if(norm(row)===norm(row.rec)) delete row.rec;
+  if(!row) return;
+  if(row.rec){
+    var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k==='rec' || k==='mainBy' || ((k==='isMain' || k==='ss') && !o[k])) return; x[k]=o[k]; }); return JSON.stringify(x); };
+    if(norm(row)===norm(row.rec)) delete row.rec;
+  }
+  if(row.mainBy && !_progMainMark(row)) delete row.mainBy;
 }
+// A main lift the coach's version does not have as main (the owner's Make main, a tag handed on).
+function _progMainMark(r){ return !!(r && r.isMain && (r.rec===null || (r.rec && !r.rec.isMain))); }
 // A mark that records only where the main tag or a superset went (a removed main hands its
 // tag on): the lift and its numbers are the coach's. Routines still shows it, but the coach
 // is not told the owner edited the lift and its rewrite of the row stands (the merge kept the
 // old numbers as "the user's own edits", and the prompt said they were).
 function _progTagOnly(row){
   if(!row || !row.rec) return false;
-  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss') x[k]=o[k]; }); return JSON.stringify(x); };
+  var norm=function(o){ var x={}; Object.keys(o).sort().forEach(function(k){ if(k!=='rec' && k!=='isMain' && k!=='ss' && k!=='mainBy') x[k]=o[k]; }); return JSON.stringify(x); };
   return norm(row)===norm(row.rec);
 }
-// The lift the owner made main on a day (Make main): the coach's main is still on the day,
-// marked for its tag alone (the main lift may since be the coach's own edit of it). A tag handed
-// on when the main left the day is no choice of theirs.
+// The lift the owner made main on a day (Make main): row.mainBy='user', set by _progMainOf and
+// kept through edits, swaps and the coach's rewrites until Use coach's, Reset, a removal or
+// another Make main moves the tag. It was read off the coach's main still on the day, marked for
+// its tag alone: an edit of that lift, the coach's own change to it, or a day the coach wrote with
+// no main lost the choice to the next rewrite (the day could end with no main at all). A Make main
+// from before 20261010 has no flag and is still read that way. A tag handed on when the main left
+// the day is no choice of theirs.
 function _progMainChosen(list){
-  if(!Array.isArray(list) || !list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
+  if(!Array.isArray(list)) return null;
+  var f=list.filter(function(x){ return x && x.mainBy && _progMainMark(x); })[0];
+  if(f) return f;
+  if(!list.some(function(x){ return x && x.rec && x.rec.isMain && !x.isMain && _progTagOnly(x); })) return null;
   return list.filter(function(x){ return x && x.isMain && !(x.rec && x.rec.isMain); })[0] || null;
 }
-// The main tag on `name` alone in one day, each row it moves marked (Make main).
+// The main tag on `name` alone in one day, each row it moves marked (Make main). The lift that
+// takes it over the coach's main is flagged as the owner's choice; every other row loses a flag.
 function _progMainOf(list, name){
   var n=0;
-  (list||[]).forEach(function(r){ if(!r) return; var m=(r.name===name); if(!!r.isMain!==m){ _markRec(r); r.isMain=m; _progUnmark(r); n++; } });
+  (list||[]).forEach(function(r){
+    if(!r) return;
+    var m=(r.name===name);
+    if(!!r.isMain!==m){ _markRec(r); r.isMain=m; n++; }
+    if(m && _progMainMark(r)){ if(r.mainBy!=='user') n++; r.mainBy='user'; } else delete r.mainBy;
+    _progUnmark(r);
+  });
   return n;
 }
 // One main lift a day once `row` is back as the coach wrote it (Restore, Reset, Use
@@ -11806,11 +11825,23 @@ function _commitRoutine(mutate, o){
 // By name, every slot that holds the lift, each on its own curve (keyless
 // progression, the plateau reset and the coach's set_exercise_weight).
 function _progCarryByName(cr, name, c, N, o){
-  var n=0, low=String(name).toLowerCase();
+  var n=0, low=String(name).toLowerCase(), was=[];
+  // o.recFollow (the coach's set_exercise_weight): the load is the programme's version, so a marked
+  // row's coach original takes it too. A mark that only moved the main tag read as the owner's edit
+  // ("[edited by the user; you had 4x8 @ 160 lb]") once the coach changed the load.
+  if(o && o.recFollow) (cr.weeks||[]).forEach(function(w, j){
+    if(j>=c && w) LIFT_KEYS.forEach(function(k){ ((w[k])||[]).forEach(function(e){ if(e && e.rec && e.rec.name===e.name && String(e.name).toLowerCase()===low) was.push([e, JSON.stringify([e.weight, e.weights||null])]); }); });
+  });
   LIFT_KEYS.forEach(function(k){
     ((cr.weeks[c]&&cr.weeks[c][k])||[]).forEach(function(e){
       if(e && String(e.name).toLowerCase()===low && parseFloat(e.weight)>0) n+=_progCarryLoad(cr, k, e.name, c, N, o);
     });
+  });
+  was.forEach(function(p){
+    var e=p[0]; if(!e.rec || JSON.stringify([e.weight, e.weights||null])===p[1]) return;
+    e.rec.weight=e.weight;
+    if(Array.isArray(e.weights)) e.rec.weights=e.weights.slice(); else delete e.rec.weights;
+    _progUnmark(e);
   });
   return n;
 }
@@ -18399,7 +18430,7 @@ function _executeCoachToolRaw(name,input){
         var _prevW=cr.weeks[wk-1];
         if(_prevW) LIFT_KEYS.forEach(function(k){ if(w[k]===undefined && Array.isArray(_prevW[k]) && _prevW[k].length) weekObj[k]=JSON.parse(JSON.stringify(_prevW[k])); });
         // Marks are the app's, not the model's: drop any it echoed back.
-        LIFT_KEYS.forEach(function(k){ (Array.isArray(weekObj[k])?weekObj[k]:[]).forEach(function(e){ if(e && typeof e==='object' && w[k]!==undefined) delete e.rec; }); });
+        LIFT_KEYS.forEach(function(k){ (Array.isArray(weekObj[k])?weekObj[k]:[]).forEach(function(e){ if(e && typeof e==='object' && w[k]!==undefined){ delete e.rec; delete e.mainBy; } }); });
         // Model-written loads land on real plates: snap every prescribed
         // weight to 2.5 lb before it reaches storage.
         LIFT_KEYS.forEach(function(sk){
@@ -18691,8 +18722,17 @@ function _executeCoachToolRaw(name,input){
           if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
         }
         // The coach changed it at the user's request: this is now the programme's version
-        // (in the weeks it changed: that week alone keeps the owner's marks on the rest).
-        for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){ var rr=_progRow(cr.weeks[j], keyE, nmE); if(rr && rr.rec!==undefined) delete rr.rec; }
+        // (in the weeks it changed: that week alone keeps the owner's marks on the rest). Its main
+        // tag and superset stay the coach's as they were: the owner's Make main stays theirs, and
+        // the coach's main it moved keeps its mark (Use coach's and Reset left the day with no main).
+        for(var j=cE;j<(o.onlyThisWeek?cE+1:cr.weeks.length);j++){
+          var rr=_progRow(cr.weeks[j], keyE, nmE); if(!rr || rr.rec===undefined) continue;
+          var tg=rr.rec||{isMain:!!rr.isMain && !rr.mainBy, ss:!!rr.ss}, rv=JSON.parse(JSON.stringify(rr));
+          delete rv.rec; delete rv.mainBy;
+          if(tg.isMain) rv.isMain=true; else delete rv.isMain;
+          if(tg.ss) rv.ss=true; else delete rv.ss;
+          rr.rec=rv; _progUnmark(rr);
+        }
         return n;
       }, {scope:_coachScope()});
       if(!resE) return {ok:false,error:(whyE||'nothing to change')+'. Nothing was changed.'};
@@ -18729,7 +18769,7 @@ function _executeCoachToolRaw(name,input){
       // programmed progression; update_routine_weeks is the tool for those.
       // The programme's prescription wins on Today, so it moves too, from this
       // week on with the programme's own climb (it used to change this week only).
-      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true}); }, {noRender:true, scope:scW});
+      _commitRoutine(function(cr){ return _progCarryByName(cr, input.name, currentWeek-1, newW, {workScale:true, recFollow:true}); }, {noRender:true, scope:scW});
       return {ok:true,message:key+' = '+fmtW(newW)};
     }
     if(name==='set_bench_goal'){
