@@ -13,6 +13,8 @@
 //   #app go; the touchmove guard exists only while kb-open is on.
 // - M3: on a touch screen the tab bar follows the keyboard, not focus; a reply never refocuses the
 //   box by script there; the hidden bar leaves the accessibility tree; reduced motion fades it.
+// - Larger Text: #app stays one screen tall under the Dynamic Type root zoom (--dt-z), so the
+//   composer keeps its place above the bar or dock, and a focus with no keys is never a keyboard.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // One run at a time: several of these read timers and transitions (the tab bar back within 400ms,
@@ -287,6 +289,56 @@ serial('M2: with the keys up the chat is laid over the visual viewport; pinch zo
         assert(out.left.cls.indexOf('kb-open') < 0 && out.left.cls.indexOf('kt-chat') < 0 && out.left.pos === 'relative' && near(out.left.h, size.height) && out.left.tm === 0, tag + 'leaving the tab lets #app go: ' + JSON.stringify(out.left));
         assert(out.pinch.indexOf('kb-open') < 0 && out.small.indexOf('kb-open') < 0, tag + 'pinch zoom and a small cut are not a keyboard: ' + JSON.stringify([out.pinch, out.small]));
         assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
+});
+
+// ── Larger Text ────────────────────────────────────────────────────────────────
+// The Dynamic Type root zoom scales 100dvh too: #app came out a quarter screen too tall at 125%, the
+// in-flow composer sat under the bar (112%) or below the screen (125%), and the keyboard binding,
+// scaling the layout height by the zoom, read a 211px keyboard on a focus with no keys that never
+// went away (no tabs, no Back). #app divides its height by --dt-z; the binding compares CSS px.
+serial('Larger Text: the column is one screen tall, the composer sits 8pt above the bar or dock, and a focus with no keys is not a keyboard', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const [size, kb] of [[{ width: 390, height: 844 }, 336], [{ width: 320, height: 700 }, 290]]) {
+      const app = await bootChat(room, size, { touch: true });
+      try {
+        const out = await app.page.evaluate(async ({ GEO, kb }) => {
+          const g = eval(GEO), wait = (ms) => new Promise((r) => setTimeout(r, ms)), res = {};
+          const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          for (const zoom of [1.12, 1.25]) {
+            const r = res[zoom] = {};
+            applyDynamicType(zoom); switchTab('coach'); coachView = 'chat'; render(); await wait(160); await frames();
+            r.idle = g();
+            r.dtz = document.documentElement.style.getPropertyValue('--dt-z');
+            // a focus with no keys behind it (VoiceOver, a hardware keyboard, a scripted focus)
+            document.getElementById('coach-input').focus(); await wait(200);
+            r.focus = g();
+            // the keys come up, then go down while the box keeps focus, then the box lets go
+            __vv.set(innerHeight - kb, kb); await wait(300); r.up = g();
+            __vv.reset(); await wait(400); r.downFocused = g();
+            document.getElementById('coach-input').blur(); await wait(400); r.down = g();
+          }
+          applyDynamicType(1); render(); await wait(120);
+          res.back = { dtz: document.documentElement.style.getPropertyValue('--dt-z'), app: document.getElementById('app').getBoundingClientRect().height, ih: innerHeight };
+          return res;
+        }, { GEO, kb }).catch((e) => ({ err: String(e) }));
+        assert(!out.err, room + ' ' + size.width + ': ' + out.err);
+        for (const zoom of [1.12, 1.25]) {
+          const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ', r = out[zoom], I = r.idle;
+          assert(r.dtz === String(zoom) && near(I.app.top, 0) && near(I.app.h, I.ih), tag + '#app is one screen tall: ' + JSON.stringify([r.dtz, I.app, I.ih]));
+          assert(near(I.tabs.top - I.row.bottom, 8 * zoom, 1.5) && I.row.bottom <= I.ih, tag + 'the composer sits 8pt above the bar or dock: ' + JSON.stringify([I.row, I.tabs.top, I.ih]));
+          if (room === 'dark') assert(near(I.row.left, I.tabs.left, 1.5) && near(I.row.right, I.tabs.right, 1.5), tag + 'the composer takes the dock\'s edges: ' + JSON.stringify([I.row, I.tabs]));
+          assert(near(I.last, I.row.top - 16 * zoom, 1.5) && I.list.bottom <= I.row.top + 0.5, tag + 'the conversation ends 16pt above the composer: ' + JSON.stringify([I.last, I.row.top]));
+          assert(r.focus.cls.indexOf('kb-open') < 0 && r.focus.appPos === 'relative', tag + 'a focus with no keys is not a keyboard: ' + JSON.stringify([r.focus.cls, r.focus.appPos]));
+          assert(r.up.cls.indexOf('kb-open') >= 0 && near(r.up.app.top, r.up.vv.top, 1.5) && near(r.up.app.h, r.up.vv.h, 1.5) && near(r.up.row.bottom, r.up.vv.top + r.up.vv.h - 8 * zoom, 1.5), tag + 'keys up: #app covers the visual viewport, the composer on the keys: ' + JSON.stringify([r.up.cls, r.up.app, r.up.vv, r.up.row]));
+          const D = r.downFocused;
+          assert(D.cls.indexOf('kb-open') < 0 && D.cls.indexOf('chat-typing') < 0 && D.tabsCs.visibility === 'visible' && D.tabsCs.opacity === 1, tag + 'keys down with the box still focused: the tabs are back: ' + JSON.stringify([D.cls, D.tabsCs]));
+          assert(r.down.cls.join() === 'kt-chat' && near(r.down.tabs.top - r.down.row.bottom, 8 * zoom, 1.5), tag + 'and the composer is back above the bar: ' + JSON.stringify([r.down.cls, r.down.row, r.down.tabs]));
+        }
+        assert(out.back.dtz === '' && near(out.back.app, out.back.ih), room + ' ' + size.width + ': back at 100% the column is the screen: ' + JSON.stringify(out.back));
+        assert(app.errors.length === 0, room + ' ' + size.width + ': no page errors: ' + app.errors.join('|'));
       } finally { await app.close(); }
     }
   }

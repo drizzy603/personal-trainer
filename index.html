@@ -179,6 +179,12 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
+/* Larger Text: the root zoom (applyDynamicType) scales viewport units too, so 100dvh came out a
+   quarter screen too tall at 125% and the chat's composer sat under the tab bar or below the screen
+   (and every tab's last lines were out of reach). --dt-z, the zoom, divides it back to the screen.
+   The dvh line waits on @supports: a var() in it would void the height where dvh is unknown. */
+#app{height:calc(100vh / var(--dt-z,1));}
+@supports (height:100dvh){#app{height:calc(100dvh / var(--dt-z,1));}}
 #screen{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 /* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
@@ -22620,9 +22626,12 @@ function _dynTypeScale(force){
   return Math.max(1, Math.min(1.25, Math.round(px/17*100)/100));
 }
 function applyDynamicType(force){
-  var sc=_dynTypeScale(force);
-  document.documentElement.style.zoom = sc===1 ? '' : String(sc);
-  document.documentElement.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+  var sc=_dynTypeScale(force), root=document.documentElement;
+  root.style.zoom = sc===1 ? '' : String(sc);
+  root.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+  // The zoom scales 100dvh as well: #app divides its height by --dt-z to stay one screen tall.
+  if(sc===1) root.style.removeProperty('--dt-z'); else root.style.setProperty('--dt-z', String(sc));
+  if(window._vvChatSync) _vvChatSync();   // keys up: --vv-h and --vv-top are in CSS px at the zoom
   // A smaller text size lowers the root zoom: fields raised for the larger one go up again.
   if(typeof _fieldFloor==='function' && document.body) _fieldFloor(document.body);
 }
@@ -22781,7 +22790,10 @@ try{ window.addEventListener('online', function(){ if(currentTab==='coach') rend
     var z=parseFloat(root.style.zoom)||1, sc=vv.scale||1, ae=document.activeElement;
     // The screen's height with no keyboard, remembered while nothing is being edited: a web view
     // that resizes for the keyboard (a Keyboard plugin's native resize) shrinks innerHeight too.
-    var lh=Math.max(window.innerHeight||0, (root.clientHeight||0)*z);
+    // innerHeight and the root's clientHeight are the layout viewport in CSS px, which the Dynamic
+    // Type zoom leaves alone, as it does vv.height. Multiplied by the zoom, 844 read as 1055 at 125%:
+    // a 211px "keyboard" that came on with a focus and never went, hiding the tabs and Back.
+    var lh=Math.max(window.innerHeight||0, root.clientHeight||0);
     var editing=!!(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable));
     if(!editing || lh>full0) full0=lh;
     var cut=sc<1.05 && full0-vv.height*sc>120;
