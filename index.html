@@ -4362,20 +4362,27 @@ function _workingWeightsFollow(before, moved){
   var w=getWeights(), ss=getSessions(), prev={}, any=false, took=false;
   Object.keys(before||{}).forEach(function(n){
     var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
-    if(b==null || a===b || Math.abs(cur-b)>0.01) return;
-    var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved), to=a;
+    var front=!!(moved && nx && nx.s===moved), mm=(front && moved.wSet && x && x.s && x.s.id!==moved.id) ? moved.wSet[n] : null;
+    // Moved back in front of another log, its own stamp says it replaced the working weight there
+    // now (a date mis-picked behind last week's log and fixed: the move behind gave the deload's 145
+    // back), so it takes over again, though the log it passes is older than that load.
+    var again=!!(Array.isArray(mm) && mm[0]!=null && cur>0 && Math.abs((parseFloat(mm[0])||0)-cur)<0.01);
+    if(b==null || (!again && (a===b || Math.abs(cur-b)>0.01))) return;
+    var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, to=a;
     // Moved to the front, a log takes over whatever the log it passed set (a log that only met the
     // coach's or the deload's load, or one from before the stamp, set nothing): a date mis-picked
     // and fixed, or a workout filed on the wrong day moved to today, left the passed log's load.
     if(!front){
       // Deleted or moved behind: what stands without the log is the load its stamp says it
-      // replaced, or the one it only met, while the programme does not say otherwise (a coach
-      // change or +5 since undone came back as the working weight, under a plan that no longer had
-      // it); a log from before the stamp set it unless the programme prescribed it. The lift's
-      // newest log left, saved after this one, had set it then (a backdated one only raising it):
-      // the deload's 145 came back over a 155 logged for yesterday after today's log.
+      // replaced, or the one it only met. A change undone since (the reply's Undo, Restore previous
+      // programme) rewrote the stamps of the logs that hold it (_noteStamps), so what a stamp says
+      // stands, under a plan that has moved on since: next week's climb, a carry or a Routines edit
+      // read as an undone change, and the delete gave back the log from before the deload, coach
+      // change or +5. A log from before the stamp set it unless the programme prescribed it. The
+      // lift's newest log left, saved after this one, had set it then (a backdated one only raising
+      // it): the deload's 145 came back over a 155 logged for yesterday after today's log.
       var set=!!(mine && Math.abs((parseFloat(mine[1])||0)-cur)<0.01), k=set ? parseFloat(mine[0]) : cur;
-      if(st ? (k>0 && _planSays(n, k, ls.week)!==false) : _planHolds(n, cur, ls.week)){
+      if(st ? k>0 : _planHolds(n, cur, ls.week)){
         var nr=nx && nx.s, later=!!(nr && Number(nr.id)>Number(ls.id));
         to=(later && (_loggedLive(nr) || a>k)) ? a : k;
       }
@@ -4383,7 +4390,8 @@ function _workingWeightsFollow(before, moved){
     if(to!=null && Math.abs(to-cur)<0.01) return;
     prev[n]=w[n]; any=true;
     if(to!=null) w[n]=to; else delete w[n];
-    if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[null, to]; took=true; }
+    // the load it replaced, as _wwStamp writes it: none when the log it passed had set that one
+    if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[Math.abs(cur-b)<0.01 ? null : cur, to]; took=true; }
   });
   if(!any) return null;
   if(!lsSet('kt_weights', w)) return null;
@@ -14186,7 +14194,20 @@ function _afterSessionEdit(s, sessions, renamed, only){
       if(fixed[rn.to]) return;   // its corrected top set has moved the new name's working weight
       if(!had && carry!=null){ wts2[rn.to]=carry; wtsTouched=true; return; }
       if(newerOf(rn.to)) return;
-      if(had){ var pl=_newestLoad(rn.to, sessions.filter(function(o){ return o!==s; })); if(!(pl!=null && Math.abs(pl-parseFloat(wts2[rn.to]))<0.01)) return; }
+      // Written since: the working weight is not the load of that name's newest log that set it. A
+      // lighter one filed for an earlier day after the fact set nothing (a backdated log only raises
+      // it), so it is passed over: Bench's 155 filed for last week kept its 160 under the renamed 170.
+      if(had){
+        var cw=parseFloat(wts2[rn.to]), pl=null;
+        sessions.some(function(o){
+          if(!o || o===s) return false;
+          var v=0; (o.exercises||[]).forEach(function(e){ if(!(v>0) && e && e.name===rn.to) v=_exLoad(e); });
+          if(!(v>0)) return false;
+          if(o.wSet && typeof o.wSet==='object' && !o.wSet[rn.to] && !_loggedLive(o) && v<cw-0.01) return false;
+          pl=v; return true;
+        });
+        if(!(pl!=null && Math.abs(pl-cw)<0.01)) return;
+      }
       var rx=null; s.exercises.forEach(function(e){ if(!rx && e && e.name===rn.to) rx=e; });
       var rw=carry!=null ? carry : parseFloat(rx && rx.weight);
       if(!(rw>0)) return;
@@ -19581,12 +19602,15 @@ function _noteBackupWeight(sc, key, from, to){
   try{
     var b=JSON.parse(localStorage.getItem('kt_routine_backup')), w=(b._w&&typeof b._w==='object')?b._w:{}, p=w[key];
     var ids=(Array.isArray(p) && Array.isArray(p[2]) && p[2].length) ? p[2] : null, ss=ids ? getSessions() : null;
+    var two=Array.isArray(p) && p.length>=5 && Array.isArray(p[4]);
     // A log that holds the lift (logged between two changes of one reply) is newer than the scope's
     // first change: this one starts from the load that log set, and its stamp gives back the load
-    // from before the scope, as Undo would have (_dropNotedWeights). Else the first change in the
-    // scope keeps what was there before it.
-    if(ids && _noteHeld(key, ids, ss)){ _putNoteStamps(_noteStamps(key, p, ids, ss)); w[key]=[from, to]; }
-    else w[key]=[p?p[0]:from, to];
+    // from before the scope, as Undo would have (_dropNotedWeights). The note keeps that load and
+    // the log too ([from, to, holders, load before the scope, [the log]]): deleted, or moved behind
+    // an older log, the log no longer stands and Undo gives back the load from before the scope (it
+    // put back the deleted log's load). Else the first change in the scope keeps what was there.
+    if(ids && _noteHeld(key, ids, ss, two ? p[4] : null)){ _putNoteStamps(_noteStamps(key, p, ids, ss)); w[key]=[from, to, [], two ? p[3] : p[0], ids]; }
+    else w[key]=two ? [p[0], to, [], p[3], p[4]] : [p?p[0]:from, to];
     b._w=w;
     localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
   }catch(e){}
@@ -19612,7 +19636,7 @@ function _dropNotedWeights(names, rec){
       var hl=(rec && rec.id!=null) ? rec : (_newestLog(nm)||{}).s, id=hl ? hl.id : null;
       if(id==null || !Array.isArray(p)){ delete b._w[k]; n++; return; }
       var ids=Array.isArray(p[2]) ? p[2].slice() : [];
-      if(ids.indexOf(id)<0){ ids.push(id); b._w[k]=[p[0], p[1], ids]; n++; }
+      if(ids.indexOf(id)<0){ ids.push(id); b._w[k]=[p[0], p[1], ids].concat(p.slice(3)); n++; }
     });
     if(!n) return;
     if(!Object.keys(b._w).length) delete b._w;
@@ -19621,12 +19645,18 @@ function _dropNotedWeights(names, rec){
 }
 // A holder still holds the lift while it is on the lift's newest day (a log with a load), as a
 // log's working weight only ever follows the newest log: deleted, or moved behind an older log,
-// it holds nothing and the note puts the load back.
-function _noteHeld(k, ids, ss){
+// it holds nothing and the note puts the load back. A log saved after the first holder that holds
+// nothing set nothing (every log that sets the lift holds it: a lighter one filed for a later day,
+// a backdated log only raising it), so it never takes the holder's day: Undo or Restore previous
+// put the load from before the change back under the workout that held it. also: the note's other
+// holders (a log between two changes of one reply, or the ones after them), holders all the same.
+function _noteHeld(k, ids, ss, also){
   if(!Array.isArray(ids) || !ids.length) return false;
-  var lk=String(k).toLowerCase(), top=null, at=[];
+  var known=Array.isArray(also) ? ids.concat(also) : ids;
+  var lk=String(k).toLowerCase(), top=null, at=[], first=Math.min.apply(null, known.map(Number));
   (ss||[]).forEach(function(s){
     if(!s || !(s.exercises||[]).some(function(e){ return e && String(e.name||'').toLowerCase()===lk && _exLoad(e)>0; })) return;
+    if(known.indexOf(s.id)<0 && Number(s.id)>first && s.wSet && typeof s.wSet==='object' && !Object.keys(s.wSet).some(function(n){ return n.toLowerCase()===lk; })) return;
     var d=String(s.date||'');
     if(top===null || d>top){ top=d; at=[s]; } else if(d===top) at.push(s);
   });
@@ -19670,12 +19700,16 @@ function _swapNotedWeights(w){
   var weights=JSON.parse(JSON.stringify(getWeights())), back={}, ss=getSessions(), stamps=[];
   Object.keys(w).forEach(function(k){
     var p=w[k]; if(!Array.isArray(p) || p.length<2) return;
-    var ids=(Array.isArray(p[2]) && p[2].length) ? p[2] : null, held=_noteHeld(k, ids, ss);
+    var ids=(Array.isArray(p[2]) && p[2].length) ? p[2] : null, lids=(p.length>=5 && Array.isArray(p[4]) && p[4].length) ? p[4] : null;
+    var held=_noteHeld(k, ids, ss, lids);
+    // changed again after a log held it (one reply: set, log, set): the log's load while it stands,
+    // else the load from before the reply
+    var b0=(lids && !_noteHeld(k, lids, ss, ids)) ? p[3] : p[0];
     var now=Object.prototype.hasOwnProperty.call(weights,k)?weights[k]:null;
     var put=!held && (now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])));
-    if(put){ if(p[0]==null) delete weights[k]; else weights[k]=p[0]; }
-    var st=_noteStamps(k, p, ids, ss); stamps=stamps.concat(st);
-    if(put || held || st.length) back[k]=ids ? [p[1], p[0], ids] : [p[1], p[0]];
+    if(put){ if(b0==null) delete weights[k]; else weights[k]=b0; }
+    var st=_noteStamps(k, [b0, p[1]], ids, ss); stamps=stamps.concat(st);
+    if(put || held || st.length) back[k]=ids ? [p[1], b0, ids] : [p[1], b0];
   });
   return Object.keys(back).length ? {weights:weights, back:back, stamps:stamps} : null;
 }

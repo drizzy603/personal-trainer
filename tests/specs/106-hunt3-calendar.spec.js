@@ -1079,3 +1079,190 @@ run('T17: a deleted workout gives back only a load that still stands; a log save
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U07 (hunt 6): deleting a workout logged after the plan had moved on from a deload, the coach's
+// load or a +5 (next week's climb, Carry forward, a Routines edit) put the working weight back to
+// the log from before the change: a climbed, carried or edited row read as the change undone. A
+// stamp says what stands (Undo and Restore previous rewrite the stamps of the logs that hold a
+// change: T17's own cases above), so the deload's 145 comes back, the coach is told 145 and the
+// next deload is computed from the plan's 147.5, not from the 160 before the first.
+run('U07: a workout deleted after the plan moved on gives back the deload\'s load, not the log from before it', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), cr0 = JSON.stringify(getCustomRoutine()), wk0 = currentWeek;
+      const W = () => getWeights()['Bench Press'];
+      const row = () => { const x = (getCustomRoutine().weeks[currentWeek - 1].push || []).find(e => e.name === 'Bench Press'); return x && x.weight; };
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: w }] });
+      const reset = () => { _setWeek(wk0); lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs(); log(addDays(T, -7), 160); };
+      const delOnSheet = async () => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+        [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Delete').click(); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      // today's Push through the runner, Bench at w (0: what it prescribes)
+      const runToday = async w => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; if (w) runnerWeights['Bench Press'] = w; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      // next week's climb: the deload's 145 (the coach's, a +5's 165), next week's Push at what it
+      // prescribes, deleted
+      for (const k of ['deload', 'coach', 'plus5']) {
+        reset();
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); else _writeLoadLocal('Bench Press', k === 'plus5' ? 165 : 145);
+        const set = W();
+        _setWeek(wk0 + 1); render();
+        const s = await runToday(0);
+        r[k] = { set, row: row(), load: s.exercises.find(e => e.name === 'Bench Press').weight, stamp: JSON.stringify(s.wSet) };
+        await delOnSheet();
+        r[k].deleted = { w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      }
+      // Carry forward: today's 150 over the deload's 145, carried, deleted
+      reset(); _writeLoadLocal('Bench Press', 145);
+      let s = await runToday(150);
+      r.carry = { stamp: JSON.stringify(s.wSet), cands: _carryCandidates(s).length };
+      _carryTap({ dataset: { s: 'Push', n: 'Bench Press', w: '150', c: String(currentWeek - 1) } }, s.id);
+      r.carry.row = row();
+      await delOnSheet(); r.carry.deleted = { w: W(), line: benchLine() };
+      // a Routines edit since: today's 150 (or a workout that only met the 145), Bench edited to 155
+      for (const k of ['set', 'met']) {
+        reset(); _writeLoadLocal('Bench Press', 145);
+        s = await runToday(k === 'met' ? 145 : 150);
+        openRoutines(); _rtOpenEdit('Push', 'Bench Press'); _rtEdit.w = wDisp(155); _rtSave(); await wait(10); closeRoutines();
+        r['rt' + k] = { stamp: JSON.stringify(s.wSet), row: row() };
+        await delOnSheet(); r['rt' + k].deleted = W();
+      }
+      return r;
+    });
+    ['deload', 'coach', 'plus5'].forEach(k => {
+      const x = out[k], lo = k === 'plus5' ? 165 : 145;
+      assert(x.set === lo && x.row > lo && x.load === x.row && x.stamp === '{"Bench Press":[' + lo + ',' + x.row + ']}', k + ': set up, next week climbs past it: ' + JSON.stringify(x));
+      assert(x.deleted.w === lo && x.deleted.line === '  Bench Press: ' + lo && x.deleted.prescribed === x.row, k + ': deleted, the change\'s load comes back and the plan\'s is the prescription: ' + JSON.stringify(x));
+    });
+    assert(out.carry.stamp === '{"Bench Press":[145,150]}' && out.carry.cands === 1 && out.carry.row === 150, 'Carry forward set up: ' + JSON.stringify(out.carry));
+    assert(out.carry.deleted.w === 145 && out.carry.deleted.line === '  Bench Press: 145', 'Carry forward, then deleted: the deload\'s 145, not the 160 before it: ' + JSON.stringify(out.carry));
+    assert(out.rtset.stamp === '{"Bench Press":[145,150]}' && out.rtset.row === 155 && out.rtset.deleted === 145, 'a Routines edit since: 145: ' + JSON.stringify(out.rtset));
+    assert(out.rtmet.stamp === '{}' && out.rtmet.row === 155 && out.rtmet.deleted === 145, 'a met workout, then a Routines edit: the 145 it met stays: ' + JSON.stringify(out.rtmet));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U09 (hunt 6): T16 left out a log whose own stamp names the working weight: today's 150 over the
+// deload's 145 (the coach's, a +5's 165), its date picked behind last week's 160 and back, ended at
+// 145 under a newest log of 150, because the log it passed back over is older than the deload.
+// Its stamp says it replaced the load there now, so it takes over again, keeps that stamp (a delete
+// afterwards gives the deload's load back), and a load written after both still stays.
+run('U09: a log picked behind an older log and back takes the working weight over again when its stamp names that load', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), B = addDays(T, -14), cr0 = JSON.stringify(getCustomRoutine());
+      const W = () => getWeights()['Bench Press'];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs();
+        executeCoachTool('log_session', { type: 'Push', date: addDays(T, -7), exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 160 }] }); };
+      const pick = async (from, to) => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(from); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + from + '"]').click(); await wait(40);
+        const f = document.querySelector('#cdBody input[type=date]'); f.value = to; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const runToday = async w => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerWeights['Bench Press'] = w; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      for (const k of ['deload', 'coach', 'plus5', 'written']) {
+        reset();
+        const lo = k === 'plus5' ? 165 : 145;
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); else _writeLoadLocal('Bench Press', lo);
+        const s = await runToday(lo + 5);
+        r[k] = { stamp: JSON.stringify(s.wSet), w: W() };
+        if (k === 'written') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 140 });   // after both logs
+        await pick(T, B); r[k].behind = W();
+        await pick(B, T); r[k].back = W(); r[k].line = benchLine(); r[k].prescribed = _prescribedLb('Bench Press');
+        r[k].stampBack = JSON.stringify(getSessions().find(x => x.id === s.id).wSet);
+        deleteSession(s.id); await wait(20); r[k].deleted = W();
+      }
+      // nudged a day while it stays the newest log, it passes nothing: the coach's 145 set after it
+      // (the load its stamp names) stays
+      reset(); _writeLoadLocal('Bench Press', 145);
+      const s2 = await runToday(150);
+      executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 });
+      await pick(T, addDays(T, -1));
+      r.nudged = { stamp: JSON.stringify(getSessions().find(x => x.id === s2.id).wSet), w: W() };
+      return r;
+    });
+    ['deload', 'coach', 'plus5'].forEach(k => {
+      const x = out[k], lo = k === 'plus5' ? 165 : 145, hi = lo + 5, st = '{"Bench Press":[' + lo + ',' + hi + ']}';
+      assert(x.stamp === st && x.w === hi && x.behind === lo, k + ': set up, and the move behind gives ' + lo + ' back: ' + JSON.stringify(x));
+      assert(x.back === hi && x.line === '  Bench Press: ' + hi && x.prescribed === hi, k + ': picked back to today, it takes ' + hi + ' over again: ' + JSON.stringify(x));
+      assert(x.stampBack === st && x.deleted === lo, k + ': its stamp still names ' + lo + ', which a delete gives back: ' + JSON.stringify(x));
+    });
+    assert(out.written.behind === 140 && out.written.back === 140 && out.written.deleted === 140, 'a load the coach wrote after both logs stays through the round trip: ' + JSON.stringify(out.written));
+    assert(out.nudged.stamp === '{"Bench Press":[145,150]}' && out.nudged.w === 145, 'nudged while it stays the newest, the coach\'s later 145 stays: ' + JSON.stringify(out.nudged));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U11 (hunt 6): T15's "written since" guard read a lighter workout filed afterwards for an earlier
+// day (it set nothing: a backdated log only raises) as Bench's newest log, so 'Flat Bench' 170 today
+// renamed to Bench Press (Edit sets, the coach's edit_session) kept last time's 160, and the coach
+// was told it. The guard passes over such a log; a load written since still stays.
+run('U11: a rename into a lift whose newest log is a lighter one filed afterwards sets it from the renamed log', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO();
+      const W = () => Object.assign({}, getWeights());
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const log = (date, name, w) => executeCoachTool('log_session', { type: 'Push', date, exercises: [{ name, sets: 3, reps: 8, weight: w }] });
+      // Bench at 160 ten days ago, then a lighter 155 told later for eight days ago, then today's mis-named 170
+      const setup = (k) => {
+        lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs();
+        log(addDays(T, -10), 'Bench Press', 160); log(addDays(T, -8), 'Bench Press', 155);
+        if (k === 'written') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 175 });
+        log(T, 'Flat Bench', 170);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      let s = setup();
+      r.before = W();
+      // Edit sets on the day sheet: the name field, then Save changes
+      switchTab('progress'); progressTab = 'lifts'; _calNavToDate(T); calSelectedDate = null; render(); await wait(30);
+      document.querySelector('.cal-day[data-date="' + T + '"]').click(); await wait(40);
+      [...document.querySelectorAll('#cdBody .kt-cd-acts button')].find(b => b.textContent.trim() === 'Edit sets').click(); await wait(40);
+      document.getElementById('se_0_name').value = 'Bench Press';
+      [...document.querySelectorAll('#sessEditOverlay button')].find(b => /Save changes/.test(b.textContent)).click(); await wait(40);
+      closeCalDay(); await wait(10);
+      r.sheet = { w: W(), line: benchLine(), prescribed: _prescribedLb('Bench Press') };
+      deleteSession(s.id); await wait(20); r.sheetDeleted = W()['Bench Press'];
+      // the coach's edit_session
+      s = setup();
+      r.coach = { res: executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' }).ok, w: W(), line: benchLine() };
+      // a load the coach wrote since the logs stays
+      s = setup('written');
+      executeCoachTool('edit_session', { id: s.id, exercise: 'Flat Bench', rename_to: 'Bench Press' });
+      r.written = W();
+      return r;
+    });
+    assert(out.before['Bench Press'] === 160 && out.before['Flat Bench'] === 170, 'set up: the lighter 155 set nothing: ' + JSON.stringify(out.before));
+    assert(out.sheet.w['Bench Press'] === 170 && !('Flat Bench' in out.sheet.w) && out.sheet.line === '  Bench Press: 170' && out.sheet.prescribed === 170, 'Edit sets: Bench takes the renamed log\'s 170: ' + JSON.stringify(out.sheet));
+    assert(out.sheetDeleted === 160, 'deleted again, Bench gives back its 160: ' + out.sheetDeleted);
+    assert(out.coach.res && out.coach.w['Bench Press'] === 170 && out.coach.line === '  Bench Press: 170', 'the coach\'s rename too: ' + JSON.stringify(out.coach));
+    assert(out.written['Bench Press'] === 175 && !('Flat Bench' in out.written), 'a load the coach wrote since stays: ' + JSON.stringify(out.written));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

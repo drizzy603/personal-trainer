@@ -1229,3 +1229,133 @@ run('T13: Undo last restore, or a backup saved after a coach reply, keeps the re
     } finally { await app.close(); }
   }
 });
+
+// U08 (hunt 6): a workout logged at the changed load holds the change's note, but the note read
+// only the lift's newest day: a lighter workout filed afterwards for a later day (the runner's Log
+// date, the coach's "I did 185 yesterday") sets nothing (a backdated log only raises), yet it took
+// that day, so the reply's Undo or Restore previous programme put the load from before the change
+// back under both workouts (on a "your load" row Today prescribed it too). A log saved after the
+// holder that holds nothing set nothing, so it no longer takes the holder's place. A heavier one
+// sets the lift and keeps its own.
+run('U08: a lighter workout filed afterwards for a later day leaves the change\'s note held: Undo keeps the load the workout set', async () => {
+  for (const path of ['coach', 'keyless', 'yourload', 'heavier']) {
+    const lift = path === 'yourload' ? 'Lateral Raise' : 'Bench Press';
+    const w0 = path === 'keyless' ? 160 : path === 'yourload' ? 20 : 150;
+    const seed = { kt_coach_msgs: '[]', kt_weights: JSON.stringify({ [lift]: w0 }) };
+    if (path !== 'keyless') seed.kt_apikey = 'sk-test';
+    const app = await boot({ native: true, seed });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, path, lift, w0]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), lastWed = addDays(_mostRecentMonday(), -5);
+        if (path === 'yourload') {   // the programme's Lateral Raise rows take the working weight
+          const cr = getCustomRoutine();
+          cr.weeks.forEach(w => LIFT_KEYS.forEach(k => (w[k] || []).forEach(e => { if (e.name === lift) { delete e.weight; delete e.weights; } })));
+          setCustomRoutine(cr);
+        }
+        lsSet('kt_sessions', [{ id: 8800301, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: lift, isMain: lift === 'Bench Press', sets: 4, reps: [8, 8, 8, 8], weight: w0, weightLog: [w0, w0, w0, w0], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        recomputePRs();
+        const W = () => getWeights()[lift];
+        const line = () => ((buildSystemPrompt().split('CURRENT EXERCISE WEIGHTS')[1] || '').match(new RegExp('\\n  ' + lift + ': [0-9.]+')) || [''])[0].trim();
+        const hi = path === 'keyless' ? 165 : path === 'yourload' ? 25 : 190, lo = path === 'heavier' ? 195 : hi - (path === 'keyless' || path === 'yourload' ? 2.5 : 5);
+        // the change: a coach reply (the chat), or Today's keyless +5
+        if (path === 'keyless') startProgression();
+        else {
+          eval(MOCK)([{ content: [{ type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: lift, weight: hi } }], stop_reason: 'tool_use', usage: {} },
+            { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+          coachMessages.push({ role: 'user', content: 'set it to ' + hi }); saveCoachHistory();
+          await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        }
+        // Push through the runner, the lift at w (0: what it prescribes), filed on day d
+        const runner = async (w, d) => {
+          switchTab('log'); switchLogSub('workout'); await wait(20);
+          openDeckRunner('Push'); await wait(20);
+          runnerGoTo(runnerSession.exercises.findIndex(e => e.name === lift)); runnerEngaged = true; if (w) runnerWeights[lift] = w; runnerLogAllAtTarget(); await wait(20);
+          runnerSessionDate = d; const de = document.getElementById('runner-date'); if (de) de.value = d;
+          runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+          return getSessions().find(s => s.date === d);
+        };
+        const r = { changed: W() };
+        const h = await runner(0, addDays(T, -2));   // the workout two days ago at the changed load: it holds the note
+        r.held = { load: h && h.exercises.find(e => e.name === lift).weight, w: W(), note: JSON.stringify((lsGet('kt_routine_backup') || {})._w || {}) };
+        const b = await runner(lo, addDays(T, -1));  // yesterday's, filed after it
+        r.backfill = { load: b && b.exercises.find(e => e.name === lift).weight, w: W() };
+        // the change undone: the reply's PLAN CHANGES Undo, or Settings > Restore previous programme
+        if (path === 'keyless') {
+          switchTab('settings'); await wait(30);
+          const row = [...document.querySelectorAll('.settings-row')].find(x => /Restore previous programme/.test(x.textContent));
+          r.undo = !!row; if (row) row.click();
+        } else {
+          switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+          const u = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+          r.undo = !!u; if (u) u.click();
+        }
+        await wait(20); confirm(); await wait(30);
+        r.after = { w: W(), line: line(), today: (_todayLiftExercises('Push').find(e => e.name === lift) || {}).weight };
+        return r;
+      }, [MOCK, path, lift, w0]);
+      const hi = path === 'keyless' ? 165 : path === 'yourload' ? 25 : 190, lo = path === 'heavier' ? 195 : hi - (path === 'keyless' || path === 'yourload' ? 2.5 : 5);
+      const tag = path + ': ';
+      assert(out.changed === hi && out.held.load === hi && out.held.w === hi && /\[\d+\]\]/.test(out.held.note), tag + 'the change, and the workout logged at it holds the note: ' + JSON.stringify(out));
+      assert(out.backfill.load === lo && out.backfill.w === (path === 'heavier' ? lo : hi), tag + 'the workout filed for yesterday: ' + JSON.stringify(out.backfill));
+      const keep = path === 'heavier' ? lo : hi;
+      assert(out.undo && out.after.w === keep && out.after.line === lift + ': ' + keep, tag + 'undone, the working weight stays the one the workouts set: ' + JSON.stringify(out));
+      if (path === 'yourload') assert(out.after.today === keep, tag + 'and Today prescribes it: ' + JSON.stringify(out.after));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+// U10 (hunt 6): T11/T12 above fixed one order only. A reply that sets a lift, logs it and sets it
+// again noted [the log's load, the reply's]: deleting the log first (the reply standing, 190 stays)
+// and then the reply's Undo put back the deleted log's 187.5, a load no log and no plan stood behind
+// (the coach was told it). The note keeps the load from before the reply and the log as well: Undo
+// gives back the log's load while it stands (the delete's own Undo brings it back), else the load
+// from before the reply, also for a log moved behind an older one; Restore previous swaps back.
+run('U10: a reply that sets a lift, logs it and sets it again: the log deleted first, Undo gives back the load from before the reply', async () => {
+  for (const [load, step] of [[187.5, 'delete'], [185, 'delete'], [187.5, 'delete, its Undo'], [187.5, 'moved behind']]) {
+    const app = await boot({ native: true, seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]', kt_weights: JSON.stringify({ 'Bench Press': 150 }) } });
+    try {
+      const out = await app.page.evaluate(async ([MOCK, load, step]) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const confirm = () => { const b = document.querySelector('.kt-close-sheet [id$="ok"]'); if (b) b.click(); };
+        const T = todayISO(), lastWed = addDays(_mostRecentMonday(), -5);
+        lsSet('kt_sessions', [{ id: 8800401, date: lastWed, type: 'Push', label: 'Push', week: weekForDate(lastWed), prs: [],
+          exercises: [{ name: 'Bench Press', isMain: true, sets: 4, reps: [8, 8, 8, 8], weight: 150, weightLog: [150, 150, 150, 150], rpe: 7, rpeLog: [7, 7, 7, 7] }] }]);
+        recomputePRs();
+        const W = () => getWeights()['Bench Press'];
+        const line = () => ((buildSystemPrompt().split('CURRENT EXERCISE WEIGHTS')[1] || '').match(/\n  Bench Press: [0-9.]+/) || [''])[0].trim();
+        eval(MOCK)([{ content: [
+          { type: 'tool_use', id: 't0', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 185 } },
+          { type: 'tool_use', id: 't1', name: 'log_session', input: { type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: load }] } },
+          { type: 'tool_use', id: 't2', name: 'set_exercise_weight', input: { name: 'Bench Press', weight: 190 } }], stop_reason: 'tool_use', usage: {} },
+          { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn', usage: {} }]);
+        coachMessages.push({ role: 'user', content: 'bench' }); saveCoachHistory();
+        await runCoachTurn(buildSystemPrompt(), coachModel, 16384);
+        const id = getSessions().find(s => s.date === T && s.type === 'Push').id;
+        const r = { reply: W() };
+        if (step === 'moved behind') { moveSession(id, addDays(lastWed, -7), T); await wait(20); }   // its date picked behind last week's log
+        else {
+          deleteSession(id); await wait(20);
+          if (step === 'delete, its Undo') { const u = document.querySelector('#toast .kt-toast-undo'); if (u) u.click(); await wait(30); }
+        }
+        r.changed = { w: W(), kept: getSessions().some(s => s.id === id) };
+        switchTab('coach'); coachView = 'chat'; render(); await wait(30);
+        const b = [...document.querySelectorAll('.kt-ledger-card button')].find(x => /Undo/.test(x.textContent));
+        r.undoShown = !!b; if (b) { b.click(); await wait(20); confirm(); await wait(30); }
+        r.undone = W(); r.line = line();
+        restoreRoutineBackup(); await wait(20); confirm(); await wait(30);   // Restore previous programme: the reply again
+        r.redone = W();
+        return r;
+      }, [MOCK, load, step]);
+      const tag = 'logged ' + load + ', ' + step + ', then Undo: ';
+      assert(out.reply === 190 && out.changed.w === 190 && out.changed.kept === (step !== 'delete'), tag + 'the reply\'s 190 stands: ' + JSON.stringify(out));
+      const back = step === 'delete, its Undo' ? load : 150;
+      assert(out.undoShown && out.undone === back && out.line === 'Bench Press: ' + back, tag + 'Undo gives back ' + back + ': ' + JSON.stringify(out));
+      assert(out.redone === 190, tag + 'Restore previous again brings the reply\'s 190 back: ' + JSON.stringify(out));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
