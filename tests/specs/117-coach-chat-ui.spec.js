@@ -713,3 +713,89 @@ run('S3: a photo sent with no words shows only the photo, also after a relaunch'
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── S4 ─────────────────────────────────────────────────────────────────────────
+const PLATEAU = [
+  "Here's where each plateau stands:",
+  '',
+  '- **Bench plateau: watching.** Too early to judge.',
+  '- **DB Lateral Raise plateau: changed.** Swapped to **Cable Lateral Raise**.',
+  '',
+  'Pull Up and Hammer Curl plateaus are already being addressed.',
+].join('\n');
+run('S4: md() renders what the coach writes: one list per list, headings, numbered steps, tables, no blank line after a list', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(() => {
+      const count = (h, re) => (h.match(re) || []).length;
+      const r = {};
+      const a = md('- a\n- b\n\nNext');
+      r.list = { ul: count(a, /<ul>/g), li: count(a, /<li>/g), brAfter: /<\/ul>\s*<br>/.test(a), p: /<\/ul><p>Next<\/p>/.test(a) };
+      r.ol = /<ol start="1">/.test(md('1. x\n2. y')) && /<ol start="3">/.test(md('3) x\n4) y'));
+      r.h = /<div class="kt-md-h">Plan<\/div>/.test(md('### Plan'));
+      const t = md('| Lift | Load |\n|---|---|\n| Bench | 225 |');
+      r.table = { table: /<table class="kt-md-table">/.test(t), th: count(t, /<th>/g), sep: /---/.test(t), td: count(t, /<td>/g) };
+      r.star = { bullet: /<ul><li>item<\/li><\/ul>/.test(md('* item')), math: md('3*5') === '<p>3*5</p>', em: /<em>soft<\/em>/.test(md('a *soft* b')) };
+      r.link = md('[guide](https://x.y)');
+      // parsed, the output holds no element but md()'s own, and no attribute but its class names (and ol start)
+      r.xss = [md('<img src=x onerror=alert(1)>'), md('[x](javascript:alert(1))'), md('**<script>bad()</script>**'), md('`<b onclick=x>`')].map((h) => {
+        const d = document.createElement('div'); d.innerHTML = h;
+        const bad = [...d.querySelectorAll('*')].filter((e) => !/^(P|STRONG|EM|CODE|UL|OL|LI|BR|DIV|TABLE|TR|TH|TD|HR)$/.test(e.tagName) || [...e.attributes].some((a) => a.name !== 'class' && a.name !== 'start'));
+        return { h, bad: bad.map((e) => e.outerHTML) };
+      });
+      r.sub = /<li class="sub">two<\/li>/.test(md('- one\n  - two'));
+      r.gap = /<li>a<\/li><li>b<\/li>/.test(md('- a\n\n- b'));   // a blank line between items keeps one list
+      const blocks = _coachBlocksHTML('%%type: Plan\n- one\n- two\n- three\n- four');
+      r.blocks = { paras: count(blocks, /kt-cmb-para/g), ul: count(blocks, /<ul>/g) };
+      r.indented = _hasCoachBlocks('Text\n  %%metric: Pace | 8:07 | | |') && /kt-cmb-mrow/.test(_coachBlocksHTML('  %%metric: Pace | 8:07 | | |'));
+      r.take = /<strong>Keep<\/strong>/.test(_coachBlocksHTML('%%takeaway: **Keep** the plan'));
+      return r;
+    });
+    assert(out.list.ul === 1 && out.list.li === 2 && !out.list.brAfter && out.list.p, 'one list of two items, no break after it: ' + JSON.stringify(out.list));
+    assert(out.ol && out.h, 'numbered steps keep their start; headings render: ' + JSON.stringify([out.ol, out.h]));
+    assert(out.table.table && out.table.th === 2 && !out.table.sep && out.table.td === 2, 'a pipe table is a table with a head row and no separator: ' + JSON.stringify(out.table));
+    assert(out.star.bullet && out.star.math && out.star.em, '* is a bullet or emphasis, never in 3*5: ' + JSON.stringify(out.star));
+    assert(out.link === '<p>guide</p>', 'a link is its text alone: ' + out.link);
+    assert(out.xss.every((x) => !x.bad.length), 'model text never becomes a tag or an attribute: ' + JSON.stringify(out.xss));
+    assert(out.sub && out.gap, 'sub-items and loose lists: ' + JSON.stringify([out.sub, out.gap]));
+    assert(out.blocks.paras === 1 && out.blocks.ul === 1, 'four bullets in a block are one paragraph block with one list: ' + JSON.stringify(out.blocks));
+    assert(out.indented && out.take, 'an indented marker is still a marker; a takeaway reads markdown: ' + JSON.stringify([out.indented, out.take]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+run('S4: on screen, no blank line under a list, bullets 6px apart, a table scrolls inside its card', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const [size, zoom] of [[{ width: 390, height: 844 }, 1], [{ width: 320, height: 700 }, 1.25]]) {
+      const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
+      const msgs = [
+        { role: 'user', content: 'Plateaus?' },
+        { role: 'assistant', content: PLATEAU },
+        { role: 'user', content: 'Table?' },
+        { role: 'assistant', content: '| Week | Bench | Squat | Deadlift | Overhead press |\n|---|---|---|---|---|\n| 1 | 185 lb x 5 | 245 lb x 5 | 315 lb x 5 | 115 lb x 5 |\n| 2 | 190 lb x 5 | 250 lb x 5 | 320 lb x 5 | 117.5 lb x 5 |' },
+      ];
+      const app = await bootChat(room, size, { seed: { kt_coach_msgs: JSON.stringify(msgs) } });
+      try {
+        const out = await app.page.evaluate(async (zoom) => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+          if (zoom !== 1) applyDynamicType(zoom);
+          switchTab('coach'); coachView = 'chat'; render(); await wait(160);
+          const z = parseFloat(document.documentElement.style.zoom) || 1;
+          const para = document.querySelector('.kt-cmb-para'), ul = para.querySelector('ul'), ps = para.querySelectorAll('p');
+          const after = ps[ps.length - 1].getBoundingClientRect().top - ul.getBoundingClientRect().bottom;
+          const lis = ul.querySelectorAll('li');
+          r.gap = after / z; r.liGap = (lis[1].getBoundingClientRect().top - lis[0].getBoundingClientRect().bottom) / z;
+          const w = document.querySelector('.kt-md-tablewrap'), s = document.getElementById('screen');
+          r.table = { scrolls: w.scrollWidth > w.clientWidth, overflow: getComputedStyle(w).overflowX, sw: s.scrollWidth, cw: s.clientWidth,
+            inside: w.getBoundingClientRect().right <= document.querySelector('.coach-msgs-area').getBoundingClientRect().right + 0.5 };
+          return r;
+        }, zoom).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        assert(out.gap <= 12 && out.gap >= 6, tag + 'one paragraph gap under the list, no blank line: ' + out.gap);
+        assert(Math.abs(out.liGap - 6) <= 1, tag + 'bullets sit 6px apart: ' + out.liGap);
+        assert(out.table.overflow === 'auto' && out.table.scrolls && out.table.inside && out.table.sw <= out.table.cw, tag + 'a wide table scrolls inside its card: ' + JSON.stringify(out.table));
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
+});

@@ -873,6 +873,24 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-cmb{margin-bottom:0;max-width:100%;}
 .kt-cmb-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--purple);margin-bottom:8px;text-transform:uppercase;}
 .kt-cmb-para{font-size:15px;line-height:1.5;font-weight:400;color:var(--text);margin-bottom:12px;letter-spacing:-.1px;overflow-wrap:anywhere;}
+/* md() inside a reply: one paragraph gap, lists 6px apart, headings, rules, code, tables that
+   scroll inside their card. */
+.kt-cmb-para p{margin:0 0 10px;}
+.kt-cmb-para>:last-child,.kt-cmb-para p:last-child{margin-bottom:0;}
+.kt-cmb-para ul,.kt-cmb-para ol{margin:0 0 10px;padding-left:20px;}
+.kt-cmb-para li{padding-left:2px;}
+.kt-cmb-para li+li{margin-top:6px;}
+.kt-cmb-para li.sub{margin-left:18px;list-style-type:circle;}
+.kt-cmb-para li::marker{color:var(--muted);}
+.kt-md-h{font-size:16px;font-weight:700;line-height:1.3;margin:16px 0 6px;}
+.kt-md-h:first-child{margin-top:0;}
+.kt-md-hr{border:0;border-top:1px solid var(--border);margin:14px 0;}
+.kt-md-code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.9em;padding:1px 5px;border-radius:5px;background:var(--card2);}
+.kt-md-tablewrap{overflow-x:auto;margin:0 0 10px;border:1px solid var(--border);border-radius:14px;background:var(--card);}
+.kt-md-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;}
+.kt-md-table th,.kt-md-table td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+.kt-md-table tr:last-child td{border-bottom:0;}
+.kt-md-table th{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
 .kt-cmb-metrics{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px;}
 .kt-cmb-mrow{display:flex;flex-wrap:wrap;row-gap:2px;align-items:baseline;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:10px;}
 .kt-cmb-mrow:last-child{border-bottom:none;}
@@ -1909,6 +1927,7 @@ html[data-room="heavyweight"] .kt-rest-pill.on,html[data-room="heavyweight"] .kt
 html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:var(--on-accent);}
 html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
 html[data-room="heavyweight"] .kt-tool-pill{background:var(--card);}
+html[data-room="heavyweight"] .kt-md-code{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;}
 html[data-room="heavyweight"] .kt-tool-pill:not(.bad) .kt-tool-pill-ic{color:var(--earned-ink);}
 html[data-room="heavyweight"] .kt-cmb-chip{background:var(--card);border-color:var(--border);color:var(--text);}
 html[data-room="heavyweight"] .kt-cmb-chip.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
@@ -17956,32 +17975,62 @@ function _confirmCancelIntake(){
   _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){_setIntakeMode(false);clearCoachHistory();render();}});
 }
 
+// md(): the chat's markdown, block by block, on text escaped first (& < >), for what Sonnet writes:
+// paragraphs (a line break inside one is <br>), one list per list (a blank line between items keeps
+// it open; '-', '*', '+' and '•' bullets, an indent of 2+ is a sub-item; '1.' or '1)' keep their
+// start), '#' headings, rules, pipe tables (the separator row dropped, the first row heads it), and
+// '> ' quotes as plain text. It left a blank line after every list and split block bullets apart.
+// No attribute is ever built from model text, and a link is its text alone: nothing navigates out
+// of the shell.
+function _mdInline(s){   // s is already escaped
+  s=s.replace(/`([^`\n]+)`/g,'<code class="kt-md-code">$1</code>');
+  s=s.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g,'$1<em>$2</em>');   // never a bullet or 3*5
+  s=s.replace(/\[([^\]\n]+)\]\((?:https?:\/\/)[^\s)]*\)/g,'$1');
+  return s;
+}
 function md(text){
-  text=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  text=text.replace(/^###\s+(.+)$/gm,'<strong>$1</strong>');
-  text=text.replace(/^##\s+(.+)$/gm,'<strong style="font-size:15px;">$1</strong>');
-  text=text.replace(/^#\s+(.+)$/gm,'<strong style="font-size:16px;">$1</strong>');
-  text=text.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
-  text=text.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
-  text=text.replace(/`([^`\n]+)`/g,'<code style="background:color-mix(in srgb,currentColor 10%,transparent);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
-  var lines=text.split('\n');
-  var out=[];var inList=false;
-  lines.forEach(function(line){
-    if(/^[-•]\s/.test(line)){
-      if(!inList){out.push('<ul style="margin:5px 0 5px 14px;padding:0;">');inList=true;}
-      out.push('<li>'+line.replace(/^[-•]\s/,'')+'</li>');
-    }else{
-      if(inList){out.push('</ul>');inList=false;}
-      out.push(line);
+  var src=String(text||'').replace(/\r/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var lines=src.split('\n'), out='', para=[], list=null, tbl=null, i, m;
+  var BUL=/^(\s*)[-*+•]\s+(.*)$/, NUM=/^(\s*)(\d{1,3})[.)]\s+(.*)$/;
+  function flushPara(){ if(para.length){ out+='<p>'+para.map(_mdInline).join('<br>')+'</p>'; para=[]; } }
+  function closeList(){ if(list){ out+='</'+list+'>'; list=null; } }
+  function flushTbl(){
+    if(!tbl) return;
+    var rows=tbl.filter(function(r){ return !/^\|?\s*:?-{2,}/.test(r); }).map(function(r){
+      return r.replace(/^\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){ return _mdInline(c.trim()); });
+    });
+    out+='<div class="kt-md-tablewrap"><table class="kt-md-table">'+rows.map(function(cells, ri){
+      var tag=ri===0?'th':'td';
+      return '<tr>'+cells.map(function(c){ return '<'+tag+'>'+c+'</'+tag+'>'; }).join('')+'</tr>';
+    }).join('')+'</table></div>';
+    tbl=null;
+  }
+  function nextNonBlank(j){ for(; j<lines.length; j++) if(lines[j].trim()) return lines[j]; return ''; }
+  for(i=0; i<lines.length; i++){
+    var line=lines[i], t=line.trim();
+    if(tbl && t.charAt(0)!=='|') flushTbl();
+    if(!t){
+      flushPara();
+      if(list){ var nx=nextNonBlank(i+1); if(!((list==='ul' && BUL.test(nx)) || (list==='ol' && NUM.test(nx)))) closeList(); }
+      continue;
     }
-  });
-  if(inList)out.push('</ul>');
-  var result='';
-  out.forEach(function(item,i){
-    if(/^<[ul\/li]/.test(item)){result+=item;}
-    else{if(i>0&&!/^<[ul\/li]/.test(out[i-1]))result+='<br>';result+=item;}
-  });
-  return result;
+    if(t.charAt(0)==='|'){ flushPara(); closeList(); (tbl=tbl||[]).push(t); continue; }
+    if((m=/^#{1,6}\s+(.*)$/.exec(t))){ flushPara(); closeList(); out+='<div class="kt-md-h">'+_mdInline(m[1])+'</div>'; continue; }
+    if(/^(-{3,}|\*{3,}|_{3,})$/.test(t)){ flushPara(); closeList(); out+='<hr class="kt-md-hr">'; continue; }
+    if((m=BUL.exec(line))){
+      flushPara(); if(list!=='ul'){ closeList(); out+='<ul>'; list='ul'; }
+      out+='<li'+(m[1].length>=2?' class="sub"':'')+'>'+_mdInline(m[2])+'</li>'; continue;
+    }
+    if((m=NUM.exec(line))){
+      flushPara(); if(list!=='ol'){ closeList(); out+='<ol start="'+m[2]+'">'; list='ol'; }
+      out+='<li>'+_mdInline(m[3])+'</li>'; continue;
+    }
+    if((m=/^&gt;\s?(.*)$/.exec(t))) t=m[1];
+    closeList(); para.push(t);
+  }
+  flushTbl(); flushPara(); closeList();
+  return out;
 }
 
 // ── Coach message blocks (spec 07) ───────────────────────────────────────────
@@ -17990,16 +18039,19 @@ function md(text){
 // messages render full-width as blocks: purple eyebrow → paragraphs on the
 // background → metric rows in one card → takeaway → action chips (max 2,
 // first is primary and sends its message through the normal chat flow).
-// Messages without markers keep the classic bubble — history stays intact.
+// Messages without markers are one prose block under the same COACH eyebrow. A marker may be
+// indented: one was, and the whole reply printed as raw text.
 function _hasCoachBlocks(text){
-  return /^%%(type|metric|takeaway|action):/m.test(String(text||''));
+  return /^\s*%%(type|metric|takeaway|action):/m.test(String(text||''));
 }
 function _coachBlocksHTML(text, quiet){
   var lines=String(text||'').split('\n');
-  var typeTag='', paras=[], out='', metricBuf=[], actions=[], takeaways=[];
+  var typeTag='', buf=[], out='', metricBuf=[], actions=[], takeaways=[];
+  // Every plain line between two markers is ONE md() run, blank lines included: a list stays one
+  // list and a paragraph one paragraph (each line used to be its own block, each bullet its own list).
   function flushParas(){
-    paras.forEach(function(pl){ out+='<div class="kt-cmb-para">'+md(pl)+'</div>'; });
-    paras=[];
+    var s=buf.join('\n').trim(); buf=[];
+    if(s) out+='<div class="kt-cmb-para">'+md(s)+'</div>';
   }
   function flushMetrics(){
     if(!metricBuf.length) return;
@@ -18016,11 +18068,10 @@ function _coachBlocksHTML(text, quiet){
     metricBuf=[];
   }
   lines.forEach(function(line){
-    var mm=line.match(/^%%(type|metric|takeaway|action):\s*(.*)$/);
+    var mm=line.match(/^\s*%%(type|metric|takeaway|action):\s*(.*)$/);
     if(!mm){
-      flushMetrics();
-      var t=line.trim();
-      if(t) paras.push(t); else flushParas();
+      if(line.trim()) flushMetrics();   // a blank line between two metrics keeps them in one card
+      buf.push(line);
       return;
     }
     var kind=mm[1], body=mm[2];
@@ -18052,7 +18103,7 @@ function _coachBlocksHTML(text, quiet){
 function _cmbTakeHTML(t){
   return '<div class="kt-cmb-take">'+
     '<div class="kt-cmb-take-eyebrow">TAKEAWAY</div>'+
-    '<div class="kt-cmb-take-body">'+_esc(t)+'</div>'+
+    '<div class="kt-cmb-take-body">'+_mdInline(_esc(t))+'</div>'+
   '</div>';
 }
 function coachBlockAction(el){
