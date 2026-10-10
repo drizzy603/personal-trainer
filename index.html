@@ -19577,12 +19577,16 @@ function _dropNotedWeights(names, rec){
 }
 // A holder still holds the lift while it is on the lift's newest day (a log with a load), as a
 // log's working weight only ever follows the newest log: deleted, or moved behind an older log,
-// it holds nothing and the note puts the load back.
+// it holds nothing and the note puts the load back. A log saved after the first holder that holds
+// nothing set nothing (every log that sets the lift holds it: a lighter one filed for a later day,
+// a backdated log only raising it), so it never takes the holder's day: Undo or Restore previous
+// put the load from before the change back under the workout that held it.
 function _noteHeld(k, ids, ss){
   if(!Array.isArray(ids) || !ids.length) return false;
-  var lk=String(k).toLowerCase(), top=null, at=[];
+  var lk=String(k).toLowerCase(), top=null, at=[], first=Math.min.apply(null, ids.map(Number));
   (ss||[]).forEach(function(s){
     if(!s || !(s.exercises||[]).some(function(e){ return e && String(e.name||'').toLowerCase()===lk && _exLoad(e)>0; })) return;
+    if(ids.indexOf(s.id)<0 && Number(s.id)>first && s.wSet && typeof s.wSet==='object' && !Object.keys(s.wSet).some(function(n){ return n.toLowerCase()===lk; })) return;
     var d=String(s.date||'');
     if(top===null || d>top){ top=d; at=[s]; } else if(d===top) at.push(s);
   });
