@@ -49,6 +49,12 @@
 //   archiving it again (Start new, a history restore, round 2) added a second copy and a full history
 //   lost its oldest programme. The note is clock, not programme: Programme History ignores it and
 //   keeps it out, and the next round starts without it.
+// - U22 (hunt 6, T41 follow-up): an entry a page from before _archiveCopy wrote has no inUseFrom, so
+//   after the update every old card of a programme set aside there for round 2 or a new programme
+//   read no block. The first launch dates the newest such entry from the week clock it was set aside
+//   with (kt_routine_backup's _clock, while the backup is still that programme), and archiving the
+//   same programme again dates its entry as a new one would be. T41's case still names nothing, and a
+//   backup an edit has replaced dates nothing (no block, never a guessed one).
 const { boot, assert, run: run1 } = require('../lib/harness');
 
 // One browser at a time: each run starts when the one before it has finished.
@@ -489,6 +495,84 @@ run('U19: a programme put back by Restore Previous a Monday later is archived on
     assert(o.errors === '', p + ': no page errors: ' + o.errors);
   }
   assert(out.round.round[0] === 2 && out.round.round[1] === false, 'round 2 starts its own week 1 without the last round\'s note: ' + JSON.stringify(out.round.round));
+});
+
+// U22 (hunt 6): an entry a page from before _archiveCopy wrote (20261009-1 and older) has no
+// inUseFrom, so after the update it could veto a block but never name one (T41), and every old card
+// of a programme set aside there for round 2 or a new programme lost its block (WEEK 06, not
+// WEEK 06 · BUILD). The first launch dates the newest such entry from the week clock it was set aside
+// with (kt_routine_backup's _clock) while the backup is still that programme, and archiving the same
+// programme again here dates its entry as a new one would be. Never from what came after it: T41's
+// case (round 2 of a programme put in after those cards) still names none, and a backup an edit has
+// replaced dates nothing.
+run('U22: after the update, old cards keep their block when round 2 or Start new was made on an older page', async () => {
+  const out = {};
+  for (const path of ['round', 'startNew', 'again', 'oldArchive', 'edited']) {
+    const app = await boot({ native: true });
+    try {
+      await withClock(app);
+      out[path] = await app.page.evaluate(async ({ H, path }) => {
+        eval(H);
+        const cr0 = getCustomRoutine(), r = {};
+        // the seed's logs from before stamps, in weeks 2, 4 and 6: BASE, BASE, BUILD
+        const legacy = [2, 4, 6].map(w => getSessions().find(s => Number(s.week) === w && !s.bName && (s.exercises || []).length));
+        const phases = () => legacy.map(s => _shareCardModel(getSessions().find(x => x.id === s.id)).phase);
+        r.ids = legacy.map(s => s.id); r.newest = legacy.map(s => s.date).sort().pop();
+        // the seed's programme on the clock its logs were filed on, parked on its last week since (as R57)
+        const w6 = getSessions().filter(s => Number(s.week) === 6).map(s => s.date).sort()[0];
+        _setWeek(6, addDays(w6, -((new Date(w6 + 'T00:00:00').getDay() + 6) % 7))); autoAdvanceWeek();
+        r.start = _roundStartISO();
+        // the newest entry as a page from before _archiveCopy wrote it (no inUseFrom)
+        const older = () => { const a = getRoutineArchive(); delete a[0].routine.inUseFrom; lsSet('kt_routine_archive', a); };
+        const round2 = () => { lsSet('kt_routine_next', { startsOn: todayISO(), at: todayISO() }); _applyNextRound(true); };
+        if (path === 'round') { round2(); older(); }
+        else if (path === 'startNew') { await swapOut(); older(); }
+        else if (path === 'again') {
+          // Start new and Restore Previous on the older page: the logs' own programme is back, its entry undated
+          startNewProgramme(); ok(); await wait(20); older();
+          applyStarterRoutine({ goal: 'muscle', days: 3, runs: 0, equip: 'full', exp: 1 }); await wait(20);
+          await restorePrev();
+          // after the update it is archived again here, and the new programme edited before any relaunch
+          await swapOut(); setDayName('Push', 'Chest Day'); await wait(20);
+        } else if (path === 'oldArchive') {
+          // T41's case: Regenerate, then the coach's P1 (undated, as a page before inUseFrom saved it), its blocks
+          // named otherwise, trained ten weeks, then its round 2
+          resetCustomRoutine(); ok(); await wait(20);
+          const names = w => w <= 4 ? 'HYPERTROPHY' : w <= 8 ? 'STRENGTH' : w <= 11 ? 'POWER' : 'DELOAD';
+          executeCoachTool('update_routine_weeks', { weeks: cr0.weeks.map((w, i) => Object.assign(JSON.parse(JSON.stringify(w)), { wk: i + 1, bName: names(i + 1) })), weekPlan: cr0.weekPlan });
+          const p1 = getCustomRoutine(); delete p1.inUseFrom; lsSet('kt_routine', p1);
+          _setWeek(11, _mostRecentMonday()); r.start = _roundStartISO();
+          round2(); older();
+        } else {
+          // round 2 on the older page, then a day renamed there: its undo snapshot replaced the old programme's clock
+          round2(); older(); setDayName('Push', 'Chest Day'); await wait(20);
+        }
+        r.datedBefore = getRoutineArchive()[0].routine.inUseFrom || null;
+        r.pre = phases();
+        return r;
+      }, { H, path });
+      // the update: a cold launch on the same storage
+      await coldBoot(app);
+      Object.assign(out[path], await app.page.evaluate((ids) => {
+        const e = getRoutineArchive()[0];
+        return { after: ids.map(id => _shareCardModel(getSessions().find(s => s.id === id)).phase), dated: (e && e.routine.inUseFrom) || null, n: getRoutineArchive().length };
+      }, out[path].ids));
+      out[path].errors = app.errors.join('|');
+    } finally { await app.close(); }
+  }
+  const B = '["BASE","BASE","BUILD"]', NONE = '["","",""]';
+  for (const p of ['round', 'startNew']) {
+    const o = out[p];
+    assert(o.datedBefore === null, p + ': the older page left its entry undated: ' + JSON.stringify(o));
+    assert(o.dated === o.start && JSON.stringify(o.after) === B, p + ': after the update the entry is dated from its own week 1 and the old cards keep BASE/BASE/BUILD (read none): ' + JSON.stringify(o));
+  }
+  const g = out.again;
+  assert(g.n === 1 && g.datedBefore === g.start && JSON.stringify(g.pre) === B && JSON.stringify(g.after) === B, 'archived again here, the older page\'s entry is dated as a new one would be, before any relaunch: ' + JSON.stringify(g));
+  const t = out.oldArchive;
+  assert(t.start > t.newest && t.dated === t.start && JSON.stringify(t.after) === NONE, 'T41\'s case: P1 is dated from its own week 1, after the old cards, which name none of its blocks: ' + JSON.stringify(t));
+  const e = out.edited;
+  assert(e.dated === null && JSON.stringify(e.after) === NONE, 'edited since: nothing left to date it by, so no block (never a guess): ' + JSON.stringify(e));
+  for (const p of Object.keys(out)) assert(out[p].errors === '', p + ': no page errors: ' + out[p].errors);
 });
 
 run('L47: the share card rounds the minutes before it splits off the hours', async () => {
