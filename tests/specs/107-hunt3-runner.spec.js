@@ -66,6 +66,11 @@
 // - T23 a workout that ran past midnight, its Log date set to the finish day, still folds in the
 //   wrist copy of it filed on the day it began (one record, the wrist's sets once); a workout
 //   backdated before its start still leaves today's own wrist session alone (R32 kept).
+// Review of round three (2026-10-09):
+// - U16 a load edit with 'Also update my programme' on per-set reps at one load (a pyramid, an AMRAP
+//   last set, no per-set loads) moves every set from this week on, as on the card: T19's runs split
+//   the row on its reps, so only the sets with the reps on screen moved ([145,135,135]); a reps edit
+//   is still the run's, and a top set and back-offs (two loads) keep T19's rule.
 const { boot, assert, run } = require('../lib/harness');
 
 run('H05 a swap onto a lift already in the session is refused', async () => {
@@ -1096,11 +1101,14 @@ const t19 = async (edit) => {
       const cr = getCustomRoutine(), c = currentWeek - 1;
       cr.weeks.forEach((w, j) => {
         const dl = _isDeloadWk(w), k = (j - c) * 5, f = x => dl ? Math.round(x * 0.6 / 2.5) * 2.5 : x;
-        const bench = edit.oneRow
+        // flat (U16): per-set reps at one load, no per-set loads (the coach's reps array, weights left out)
+        const bench = edit.flat
+          ? [{ name: 'Bench Press', sets: edit.flat.length, reps: edit.flat.slice(), weight: f(edit.load + k), isMain: true, rpe: 8 }]
+          : edit.oneRow
           ? [{ name: 'Bench Press', sets: 4, reps: [3, 8, 8, 8], weights: [f(225 + k), f(185 + k), f(185 + k), f(185 + k)], weight: f(225 + k), isMain: true, rpe: 8 }]
           : [{ name: 'Bench Press', sets: 1, reps: 3, weight: f(225 + k), isMain: true, rpe: 8 }];
         w.push = bench.concat([{ name: 'Overhead Press', sets: 3, reps: 8, weight: 100, rpe: 7 }],
-          edit.oneRow ? [] : [{ name: 'Bench Press', sets: 3, reps: 8, weight: f(185 + k), rpe: 7 }],
+          (edit.oneRow || edit.flat) ? [] : [{ name: 'Bench Press', sets: 3, reps: 8, weight: f(185 + k), rpe: 7 }],
           [{ name: 'Lateral Raise', sets: 3, reps: 15, weight: 20, rpe: 7 }]);
       });
       setCustomRoutine(cr);
@@ -1168,6 +1176,44 @@ run('T19 a reps or load edit on a top set and back-offs reaches the sets the she
   assert(JSON.stringify(f.weeks[f.c]) === JSON.stringify(['Machine Chest Press 4x[3,8,8,8]@[122.5,100,100,100] main']) && early(f),
     'the typed load is the back-offs’: ' + JSON.stringify(f.weeks[f.c]));
   assert(![a, b, d, e, f].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e, f].map(o => o.errors.join('|')).join('|'));
+});
+
+// U16: T19's runs split a row on its reps as well as its load, so per-set reps at one load (a
+// pyramid, an AMRAP last set: the coach's reps array with no per-set loads) were a run per reps: a
+// load edit with Apply moved the sets with the reps on screen and left the others at the old load
+// every week ([12,10,8]@135 -> 145 became [145,135,135], then [150,140,140]).
+run('U16 a load edit on per-set reps at one load moves every set of the lift', async () => {
+  const head = reps => 'Bench Press ' + reps.length + 'x' + JSON.stringify(reps) + '@';
+  const row = (reps, w) => head(reps) + w + ' main';
+  // every working week from this one on reads row(reps, to + k), k the programme's own climb since
+  // this week; the weeks before keep the coach's reps and load (own); the deload keeps its reps and
+  // one load, moved up from its 60%
+  const check = (o, reps, from, to, own) => {
+    own = own || reps;
+    const working = o.weeks.slice(o.c).every((d, i) => o.dl[o.c + i] || JSON.stringify(d) === JSON.stringify([row(reps, to + i * 5)]));
+    const early = o.weeks.slice(0, o.c).every((d, j) => JSON.stringify(d) === JSON.stringify([row(own, from + (j - o.c) * 5)]));
+    const dl = o.dl.indexOf(true);
+    if (dl <= o.c) return working && early;
+    const was = Math.round((from + (dl - o.c) * 5) * 0.6 / 2.5) * 2.5, d = o.weeks[dl];
+    const m = d.length === 1 && d[0].indexOf(head(own)) === 0 ? d[0].slice(head(own).length).match(/^([\d.]+) main$/) : null;
+    return working && early && !!m && parseFloat(m[1]) > was;
+  };
+  // (a) before any set (the sheet shows 12 x 135), load 145: every set, from this week on
+  const a = await t19({ flat: [12, 10, 8], load: 135, weight: 145, useCoach: true });
+  assert(JSON.stringify(a.seed) === '["12","135"]' && check(a, [12, 10, 8], 135, 145), 'every set takes 145 and keeps the climb: ' + JSON.stringify([a.seed, a.weeks]));
+  assert(a.next === row([12, 10, 8], 145), 'the next session has every set at 145: ' + a.next);
+  assert(JSON.stringify(a.coach) === JSON.stringify([row([12, 10, 8], 135)]), 'Use coach’s gives the coach’s load back: ' + JSON.stringify(a.coach));
+  // (b) after the first set (the sheet shows set 2's 8 x 225), load 235: the 6-rep set moves too
+  const b = await t19({ flat: [8, 8, 6], load: 225, afterTop: true, weight: 235 });
+  assert(JSON.stringify(b.seed) === '["8","225"]' && check(b, [8, 8, 6], 225, 235) && b.next === row([8, 8, 6], 235), 'every set takes 235: ' + JSON.stringify([b.seed, b.weeks, b.next]));
+  // (c) an AMRAP last set at the same load: it moves with the others
+  const d = await t19({ flat: [5, 5, 'Max'], load: 220, weight: 230 });
+  assert(check(d, [5, 5, 'Max'], 220, 230) && d.next === row([5, 5, 'Max'], 230), 'the Max set takes 230 too: ' + JSON.stringify([d.weeks, d.next]));
+  // (d) reps and load in one edit: the reps are the run's (set 1's 12 -> 10), the load every set's;
+  // the deload keeps its own reps
+  const e = await t19({ flat: [12, 10, 8], load: 135, reps: 10, weight: 145 });
+  assert(check(e, [10, 10, 8], 135, 145, [12, 10, 8]) && e.next === row([10, 10, 8], 145), 'set 1 takes 10 reps, every set 145: ' + JSON.stringify([e.weeks, e.next]));
+  assert(![a, b, d, e].some(o => o.errors.length), 'no page errors: ' + [a, b, d, e].map(o => o.errors.join('|')).join('|'));
 });
 
 // T22: R31's gate (a set within the hour) also dropped a live workout that ran past midnight when

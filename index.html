@@ -12794,12 +12794,14 @@ function _runnerApplyToProgramme(op, p){
       var load=p.ex.name===p.oldName && t.weight && p.ex.weight>0;
       var g=(t.reps || load) ? _progRuns(st) : null, k=-1;
       if(g && g.runs.length>1) g.runs.forEach(function(x, i){ if(x.at.indexOf(ti(g))>=0) k=i; });
-      if(k>=0) n+=_progEditRun(cr, slot, name, c, k, {reps:t.reps?p.ex.reps:undefined, weight:load?p.ex.weight:0}, o);
-      else {
-        if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
-        if(load && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
-          n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
-      }
+      // Per-set reps at one load (a pyramid, an AMRAP last set) are runs by their reps alone: a load
+      // edit there is every set's, as on the card (it moved the sets with the reps on screen and left
+      // the rest at the old load every week). Its reps edit is still the run's.
+      var whole=load && !!g && g.w.every(function(x){ return Math.abs(x-g.w[0])<0.01; });
+      if(k>=0){ if(t.reps || !whole) n+=_progEditRun(cr, slot, name, c, k, {reps:t.reps?p.ex.reps:undefined, weight:(load && !whole)?p.ex.weight:0}, o); }
+      else if(t.reps && JSON.stringify(p.ex.reps)!==JSON.stringify(st.reps)) n+=_progSetScheme(cr, slot, name, c, 'reps', p.ex.reps, o);
+      if((k<0 || whole) && load && Math.abs(p.ex.weight-(parseFloat(st.weight)||0))>0.05)
+        n+=_progCarryLoad(cr, slot, name, c, p.ex.weight, {markOwner:true, repsOld:repsOld});
     } else if(op==='add'){
       var ex=p.ex, N=_knownLoadLb(ex.name, cr, c);
       var a=_progAdd(cr, slot, {name:ex.name, sets:ex.sets, reps:ex.reps, rpe:ex.rpe||7, weight:N}, c, p.after, {firstIsMain:false});
