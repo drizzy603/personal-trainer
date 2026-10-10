@@ -848,9 +848,9 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           const eb = document.querySelector('.kt-chat-prog .kt-cmb-eyebrow').getBoundingClientRect();
           r.prog = [...document.querySelectorAll('.kt-chat-prog button')].map((b) => {
             const cs = getComputedStyle(b), bb = b.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(b);
-            return { t: b.textContent, chip: b.classList.contains('kt-cmb-chip'), h: bb.height / z, bg: cs.backgroundColor, border: cs.borderTopStyle, color: cs.color, textLeft: rg.getBoundingClientRect().left, right: bb.right };
+            return { t: b.textContent, chip: b.classList.contains('kt-cmb-chip'), h: bb.height / z, bg: cs.backgroundColor, border: cs.borderTopStyle, color: cs.color, textLeft: rg.getBoundingClientRect().left, left: bb.left, right: bb.right };
           });
-          r.progEdge = { eyebrow: eb.left, col: l2.left, colRight: l2.right };
+          r.progEdge = { eyebrow: eb.left, col: l2.left, colRight: l2.right, ring: 4 * z };
           r.progBg = getComputedStyle(document.body).backgroundColor;
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));
@@ -865,6 +865,7 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
         assert(out.seed.inside && out.seed.h > 50 && out.seed.h >= 44, tag + 'a long suggestion wraps inside the column: ' + JSON.stringify(out.seed));
         assert(out.prog.map((b) => b.t).join('|') === 'Restore previous|Reset programme' && out.prog.every((b) => !b.chip && b.bg === 'rgba(0, 0, 0, 0)' && b.border === 'none' && b.h >= 44 && b.right <= out.progEdge.colRight + 0.5), tag + 'the programme actions are quiet 44pt text buttons, not starter pills: ' + JSON.stringify(out.prog));
         assert(Math.abs(out.prog[0].textLeft - out.progEdge.eyebrow) <= 1, tag + 'their text lines up with the status line: ' + JSON.stringify([out.prog[0].textLeft, out.progEdge]));
+        assert(out.prog.every((b) => b.left - out.progEdge.ring >= out.progEdge.col - 0.5), tag + 'and their focus ring stays inside the scroller (it clips sideways): ' + JSON.stringify([out.prog.map((b) => b.left), out.progEdge]));
         assert(out.prog.every((b) => ratioOf(b.color, out.progBg) >= 4.5), tag + 'and reads 4.5:1: ' + JSON.stringify(out.prog.map((b) => b.color)));
         if (zoom === 1) colours[room] = out.c;
         assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
