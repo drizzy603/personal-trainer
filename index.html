@@ -12525,6 +12525,10 @@ function _applyNextRound(now){
   var p=_nextRoundSet(); if(!p) return null;
   if(!now && todayISO()<p.startsOn) return null;
   var cr=getCustomRoutine(); if(!cr){ lsDel('kt_routine_next'); return null; }
+  // A wrist workout under way as the round comes in ("Start round 2 today" with LIVE ON WATCH up) keeps
+  // the week it began in and that week's block, as a phone finish does: its copy drained under the new
+  // clock as week 1 with that week's block, outside the round. Stamped while the old clock stands.
+  if(_wristWorkUnderway() && !(_wristWork.wk0>0)){ var _w0=weekForDate(_ymdLocal(new Date(_wristWork.startedAt))); _wristWork.wk0=_w0; _wristWork.b0=_weekBlock(cr, _w0); }
   var pv=_nrPreviewTrained(p, now);
   var nb=_nextRoundBuild(cr, pv ? p.startsOn : '');
   // First opened after its start week had gone (away, or the app never opened): the round starts
@@ -23394,10 +23398,16 @@ function drainWatchSessions(){
         if(!lsSet('kt_sessions', _all)){ saveFailed=true; return; }
         _wchLog('drain: merged '+_changed+' exercise(s) into '+localISO+' '+dayType);
       } else {
+        // The workout a round came in under keeps the week it began in and that week's block in the
+        // round it began in (stamped on it at the swap, _applyNextRound), as runnerFinishSession keeps a
+        // phone workout's: the new clock read it as week 1 with that week's block, outside the round.
+        var _w0=_wristWork, _wsMs=s.startedAt ? new Date(s.startedAt).getTime() : 0;
+        var _k0=!!(_w0 && _w0.wk0>0 && _w0.slot===dayType && _wsMs>0 && Math.abs(_w0.startedAt-_wsMs)<1500 && (Number((getCustomRoutine()||{}).startedAt)||0)>_wsMs);
         _rec={ id:Date.now()+added, date:localISO, type:dayType, label:_dayLabel(dayType),
-          week:weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:[],
+          week:_k0 ? _w0.wk0 : weekForDate(localISO), exercises:exsOut, note:'From Apple Watch', prs:[],
           wristStartedAt:s.startedAt||undefined };
         _stampBlock(_rec);
+        if(_k0){ delete _rec.bName; delete _rec.bWk; if(_w0.b0){ _rec.bName=_w0.b0; _rec.bWk=_w0.wk0; } }
         if(_draftExs.length){
           // The phone's draft is the base (its corrections stand), the wrist copy folds in.
           _rec.exercises=_draftExs; _rec.note='';

@@ -1378,6 +1378,58 @@ run('T46: a final-week draft resumed after "Start round 2 today" keeps its week 
   } finally { await app.close(); }
 });
 
+run('U15: a final-week workout under way on the wrist when "Start round 2 today" is tapped keeps its week and its block', async () => {
+  // T46 for the wrist: Thursday of the final week, Legs on the watch from 17:00 (LIVE ON WATCH), round 2
+  // started today at 17:20, the wrist's copy drained at 17:50. It was filed as round 2's week 1 BASE
+  // (and left out of round 2). A wrist workout begun after the swap is round 2's.
+  const app = await boot({ native: true, seed: { kt_week: '12' } });
+  try {
+    await app.page.addInitScript(HUB);
+    await withClock(app);
+    await app.page.evaluate(() => {
+      const mon = _mostRecentMonday();
+      sessionStorage.setItem('__mon', mon);
+      __setNow(addDays(mon, 3) + 'T16:50:00');
+      localStorage.setItem('kt_week_monday', mon); localStorage.setItem('kt_final_since', mon);
+    });
+    await coldBoot(app);
+    const out = await app.page.evaluate(async (LOGS) => {
+      eval(LOGS);
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      await wait(1500);
+      const day = todayISO(), r = { pre: { week: currentWeek, bName: getCustomRoutine().weeks[11].bName } };
+      const wrist = (start, reps, w, ended) => __wristLive({ dayName: 'Legs', slot: 'Legs', startedAt: at(day, start), reps: { 'Back Squat': reps }, weights: { 'Back Squat': w }, rlog: { 'Back Squat': reps.map(() => 8) }, ended: !!ended });
+      const finish = async (start, w) => {
+        window.__mock.pending = [JSON.stringify({ dayName: 'Legs', slot: 'Legs', startedAt: new Date(at(day, start)).toISOString(), loggedAt: new Date().toISOString(),
+          exercises: [{ name: 'Back Squat', reps: [5, 5, 5], weight: w, weightLog: [w, w, w], rpe: 8, rpeLog: [8, 8, 8] }] })];
+        wrist(start, [5, 5, 5], w, true); await wait(3500);
+      };
+      const filed = (w) => { const s = getSessions().find(x => x.date === day && x.exercises.some(e => e.name === 'Back Squat' && e.weight === w));
+        return s ? { week: s.week, bName: s.bName || '', inRound: _roundTest(getCustomRoutine())(s.date, _cmpT(s)) } : null; };
+      switchTab('log'); switchLogSub('workout');
+      __setNow(day + 'T17:10:00'); wrist('17:00', [5, 5], 260); await wait(50); render();
+      r.banner = /from your wrist/.test(document.getElementById('screen').textContent);
+      __setNow(day + 'T17:20:00');
+      r.started = setNextRound('today'); await wait(50);
+      // The coach renames round 2's last week before the wrist finishes.
+      const cr = getCustomRoutine(); cr.weeks[11].bName = 'PEAK'; setCustomRoutine(cr);
+      r.round = [getCustomRoutine().cycle, currentWeek, localStorage.getItem('kt_week_monday') === sessionStorage.getItem('__mon'), getCustomRoutine().weeks[0].bName];
+      __setNow(day + 'T17:50:00'); await finish('17:00', 260);
+      r.filed = filed(260);
+      // 18:30 a new Legs workout on the wrist, after the round came in.
+      __setNow(day + 'T18:40:00'); wrist('18:30', [5], 250); await wait(50);
+      __setNow(day + 'T19:00:00'); await finish('18:30', 250);
+      r.after = filed(250);
+      return r;
+    }, LOGS);
+    assert(out.pre.week === 12 && out.banner, 'the wrist workout is under way on week 12: ' + JSON.stringify(out));
+    assert(out.started && out.round[0] === 2 && out.round[1] === 1 && out.round[2], 'round 2 starts today, its week 1 anchored on this Monday: ' + JSON.stringify(out.round));
+    assert(out.filed && out.filed.week === 12 && out.filed.bName === out.pre.bName && !out.filed.inRound, 'its copy is round 1\'s week 12 (' + out.pre.bName + '), not round 2\'s week 1 or its renamed week 12: ' + JSON.stringify(out.filed));
+    assert(out.after && out.after.week === 1 && out.after.bName === out.round[3] && out.after.inRound, 'a wrist workout begun after the swap is round 2\'s week 1: ' + JSON.stringify(out.after));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 run('T49: a Carry forward offered before a held round swapped in is not written into the new round', async () => {
   const app = await boot({ native: true, seed: { kt_week: '12' } });
   try {
