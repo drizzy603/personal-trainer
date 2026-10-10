@@ -15,6 +15,8 @@
 //   box by script there; the hidden bar leaves the accessibility tree; reduced motion fades it.
 // - Larger Text: #app stays one screen tall under the Dynamic Type root zoom (--dt-z), so the
 //   composer keeps its place above the bar or dock, and a focus with no keys is never a keyboard.
+// Geometry is read once the column has settled (__settle: frames until two reads agree), not after
+// a fixed wait alone: on a loaded runner the re-anchoring observer can land a frame late.
 const { boot, assert, run, SEED } = require('../lib/harness');
 
 // One run at a time: several of these read timers and transitions (the tab bar back within 400ms,
@@ -44,6 +46,20 @@ const FAKE_VV = `(() => {
     reset(){ st.h = innerHeight; st.top = 0; st.scale = 1; et.dispatchEvent(new Event('resize')); et.dispatchEvent(new Event('scroll')); },
   };
   window.__tm = 0;
+  // Resolves once the boxes a probe reads stop moving: two frames, then until two reads agree. A
+  // starved renderer (a loaded CI runner) can run the ResizeObserver that re-anchors the
+  // conversation a frame or two after a fixed wait has already measured. Each wait is capped, so a
+  // page with no frames still goes on.
+  window.__settle = async (probe, max) => {
+    const frames = () => new Promise((r) => { let done = false; const fin = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(() => requestAnimationFrame(fin)); setTimeout(fin, 120); });
+    let prev = null;
+    for (let k = 0; k < (max || 12); k++) {
+      await frames();
+      const cur = JSON.stringify(probe());
+      if (cur === prev) return;
+      prev = cur;
+    }
+  };
   const add = Document.prototype.addEventListener, rem = Document.prototype.removeEventListener;
   const active = (o) => !(o && typeof o === 'object' && o.passive === true);
   Document.prototype.addEventListener = function (type, fn, o) { if (type === 'touchmove' && active(o)) window.__tm++; return add.apply(this, arguments); };
@@ -135,7 +151,9 @@ serial('M1: the chat is one column; the composer sits 8px above the bar or dock 
         await open(app.page);
         const out = await app.page.evaluate(async (GEO) => {
           const g = eval(GEO), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          const settle = () => window.__settle(g);   // after anything that resizes the column
           const r = {};
+          await settle();
           r.long = g();
           const gy = (r.long.row.bottom + r.long.tabs.top) / 2;
           r.gapHits = [24, r.long.iw / 2, r.long.iw - 24].map((x) => document.elementsFromPoint(x, gy).some((e) => e.closest && e.closest('.coach-msgs-area')));
@@ -143,21 +161,21 @@ serial('M1: the chat is one column; the composer sits 8px above the bar or dock 
           r.belowList = document.elementsFromPoint(r.long.iw / 2, r.long.row.top + 4).some((e) => e.closest && e.closest('.coach-msgs-wrap'));
           r.dock = { l: r.long.tabs.left, r: r.long.tabs.right, rowL: r.long.row.left, rowR: r.long.row.right };
           // a 2-message chat does not scroll and hugs the composer
-          coachMessages = JSON.parse(JSON.stringify(window.__SHORT)); render(); await wait(120);
+          coachMessages = JSON.parse(JSON.stringify(window.__SHORT)); render(); await wait(120); await settle();
           r.short = g();
           // the empty chat, an error with Try again, Thinking with live pills
-          coachMessages = []; render(); await wait(120); r.empty = g();
-          coachMessages = [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'Could not connect. Check your internet connection.', _error: true, _local: true }]; render(); await wait(120); r.error = g();
-          coachMessages = JSON.parse(JSON.stringify(window.__LONG)); coachLoading = true; _runningTools = [window.__SWAP]; render(); await wait(160); r.thinking = g();
+          coachMessages = []; render(); await wait(120); await settle(); r.empty = g();
+          coachMessages = [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'Could not connect. Check your internet connection.', _error: true, _local: true }]; render(); await wait(120); await settle(); r.error = g();
+          coachMessages = JSON.parse(JSON.stringify(window.__LONG)); coachLoading = true; _runningTools = [window.__SWAP]; render(); await wait(160); await settle(); r.thinking = g();
           coachLoading = false; _runningTools = []; render(); await wait(120);
           // a 6-line draft grows the composer: the newest message stays 16px above it
           const i = document.getElementById('coach-input');
-          i.value = 'one\ntwo\nthree\nfour\nfive\nsix'; i.dispatchEvent(new Event('input', { bubbles: true })); await wait(160);
+          i.value = 'one\ntwo\nthree\nfour\nfive\nsix'; i.dispatchEvent(new Event('input', { bubbles: true })); await wait(160); await settle();
           r.grown = g();
           i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); await wait(120);
           // a photo: the conversation ends 16px above the preview, the preview 8px above the composer
           pendingImage = { data: 'x', mediaType: 'image/png', previewUrl: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><rect width="40" height="30" fill="#7a8fa6"/></svg>') };
-          render(); await wait(200);
+          render(); await wait(200); await settle();
           r.photo = g();
           const pv = document.querySelector('.coach-img-preview');
           r.photoBg = pv && getComputedStyle(pv).backgroundColor;
@@ -165,7 +183,7 @@ serial('M1: the chat is one column; the composer sits 8px above the bar or dock 
           r.photoX = (() => { const b = document.querySelector('.coach-img-x'); return b && { name: b.getAttribute('aria-label'), alt: pv.querySelector('img').getAttribute('alt') }; })();
           pendingImage = null; render(); await wait(120);
           // intake
-          _setIntakeMode(true); coachMessages = [{ role: 'user', content: 'I want to generate my training programme.' }, { role: 'assistant', content: 'What is your main goal?' }]; render(); await wait(120);
+          _setIntakeMode(true); coachMessages = [{ role: 'user', content: 'I want to generate my training programme.' }, { role: 'assistant', content: 'What is your main goal?' }]; render(); await wait(120); await settle();
           r.intake = g();
           _setIntakeMode(false);
           return r;
@@ -250,14 +268,14 @@ serial('M2: with the keys up the chat is laid over the visual viewport; pinch zo
           r.tmIdle = window.__tm;
           document.getElementById('coach-input').focus(); await wait(80);
           for (const pan of [kb, Math.round(kb / 2), 0]) {
-            __vv.set(innerHeight - kb, pan); await wait(120);
+            __vv.set(innerHeight - kb, pan); await wait(120); await window.__settle(g);
             const x = g();
             const atTop = document.elementFromPoint(x.iw / 2, pan + 30);
             r.pans.push(Object.assign(x, { pan, maskTop: !(atTop && atTop.closest && atTop.closest('.coach-msgs-area')), tm: window.__tm,
               back: getComputedStyle(document.querySelector('.coach-chat-stick > .screen-hd')).display }));
           }
           // the Dynamic Type root zoom: #app still covers the visual viewport exactly
-          applyDynamicType(1.25); __vv.set(innerHeight - kb, kb - 1); await wait(140);
+          applyDynamicType(1.25); __vv.set(innerHeight - kb, kb - 1); await wait(140); await window.__settle(g);
           r.zoom = g();
           applyDynamicType(1); __vv.set(innerHeight - kb, kb); await wait(140);
           // leaving the tab with the keys up lets #app go
@@ -306,19 +324,19 @@ serial('Larger Text: the column is one screen tall, the composer sits 8pt above 
       try {
         const out = await app.page.evaluate(async ({ GEO, kb }) => {
           const g = eval(GEO), wait = (ms) => new Promise((r) => setTimeout(r, ms)), res = {};
-          const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const settle = () => window.__settle(g);
           for (const zoom of [1.12, 1.25]) {
             const r = res[zoom] = {};
-            applyDynamicType(zoom); switchTab('coach'); coachView = 'chat'; render(); await wait(160); await frames();
+            applyDynamicType(zoom); switchTab('coach'); coachView = 'chat'; render(); await wait(160); await settle();
             r.idle = g();
             r.dtz = document.documentElement.style.getPropertyValue('--dt-z');
             // a focus with no keys behind it (VoiceOver, a hardware keyboard, a scripted focus)
             document.getElementById('coach-input').focus(); await wait(200);
             r.focus = g();
             // the keys come up, then go down while the box keeps focus, then the box lets go
-            __vv.set(innerHeight - kb, kb); await wait(300); r.up = g();
+            __vv.set(innerHeight - kb, kb); await wait(300); await settle(); r.up = g();
             __vv.reset(); await wait(400); r.downFocused = g();
-            document.getElementById('coach-input').blur(); await wait(400); r.down = g();
+            document.getElementById('coach-input').blur(); await wait(400); await settle(); r.down = g();
           }
           applyDynamicType(1); render(); await wait(120);
           res.back = { dtz: document.documentElement.style.getPropertyValue('--dt-z'), app: document.getElementById('app').getBoundingClientRect().height, ih: innerHeight };
@@ -991,6 +1009,7 @@ serial('S5: a long reply lands at its start; a short one at the end; a reader wh
         // a short reply lands at the end, 16px above the composer
         eval(REPLY_FETCH)('Done.', 60);
         await send('Short one?'); await wait(150);
+        await window.__settle(() => [L().scrollTop, L().scrollHeight, document.querySelector('.coach-input-row').getBoundingClientRect().top]);
         const row = document.querySelector('.coach-input-row').getBoundingClientRect();
         const kids = [...L().querySelectorAll('*')].filter((e) => e.getBoundingClientRect().height > 1);
         r.short = { top: L().scrollTop, max: L().scrollHeight - L().clientHeight, gap: row.top - Math.max.apply(null, kids.map((e) => e.getBoundingClientRect().bottom)) };
