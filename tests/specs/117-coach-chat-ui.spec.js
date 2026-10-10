@@ -912,3 +912,56 @@ run('S6: the chat header fits on one line, its controls take a 44pt press, and i
     }
   }
 });
+
+// ── S7 ─────────────────────────────────────────────────────────────────────────
+run('S7: VoiceOver hears the coach, and every chat control has a name', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: JSON.stringify(OWNER.slice(0, 4)), kt_routine_backup: SEED.kt_routine, kt_routine_backup_scope: 'coach:t117' } });
+    try {
+      await open(app.page);
+      const live = await app.page.evaluate(async ({ REPLY_FETCH, PROGRESS }) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        const L = () => document.getElementById('coach-live').textContent;
+        r.outside = !document.getElementById('screen').contains(document.getElementById('coach-live'));
+        eval(REPLY_FETCH)(PROGRESS, 250);
+        document.getElementById('coach-input').value = 'How am i doing?';
+        const p = sendCoachMessage(); await wait(120);
+        r.thinking = L();
+        await p; await wait(120);
+        r.reply = L();
+        // Stop
+        eval(REPLY_FETCH)('late', 2000);
+        document.getElementById('coach-input').value = 'Another';
+        sendCoachMessage(); await wait(80);
+        coachStop(); await wait(120);
+        r.stopped = L();
+        r.unit = _coachSpeech({ role: 'assistant', content: '%%type: Check\n## Plan\n%%metric: Pace | 8:07 | vs 8:15 | -8s | good\n| a | b |\n%%takeaway: **Keep** it\n%%action: Go | go' });
+        return r;
+      }, { REPLY_FETCH, PROGRESS }).catch((e) => ({ err: String(e) }));
+      assert(!live.err, tag + live.err);
+      assert(live.outside && live.thinking === 'Coach is thinking', tag + 'a turn starts with "Coach is thinking", outside #screen: ' + JSON.stringify(live));
+      assert(/^Coach: Bench Press: 225 lb x 4 vs 230 x 6 target -5 lb\. /.test(live.reply) && !/%%|\*\*|\||warn/.test(live.reply) && live.reply.length <= 420, tag + 'the reply is read as speech, first line first: ' + live.reply);
+      assert(live.unit === 'Coach: Plan Pace: 8:07 vs 8:15 -8s. a b Takeaway: Keep it', tag + 'markers read as words; the type tag and the chips are not read: ' + live.unit);
+      assert(live.stopped === 'Stopped', tag + 'Stop says Stopped: ' + live.stopped);
+      // names, in the accessibility tree
+      await app.page.evaluate(async () => {
+        pendingImage = { data: 'x', mediaType: 'image/gif', previewUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' };
+        coachMessages.push({ role: 'user', content: [{ type: 'text', text: 'Look' }], _preview: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' });
+        render(); await new Promise((r) => setTimeout(r, 120));
+      });
+      const ax = await app.page.locator('#screen').ariaSnapshot();
+      assert(/button "Send message"/.test(ax) && /textbox "Message the coach"/.test(ax) && /button "Remove photo"/.test(ax) && /button "Attach photo"/.test(ax), tag + 'the composer\'s controls are named: ' + ax.slice(0, 400));
+      assert(/img "Photo to send"/.test(ax) && /img "Photo you sent"/.test(ax), tag + 'both images have alt text');
+      assert(/You: How am i doing\?/.test(ax), tag + 'the owner\'s bubbles read "You:"');
+      await app.page.evaluate(async () => { coachLoading = true; render(); await new Promise((r) => setTimeout(r, 60)); });
+      const axLoading = await app.page.locator('#screen').ariaSnapshot();
+      assert(/button "Stop the reply"/.test(axLoading), tag + 'Stop is named while a reply is in flight');
+      // the hidden tab bar is not in the tree while typing
+      await app.page.evaluate(async () => { coachLoading = false; pendingImage = null; render(); document.getElementById('coach-input').focus(); await new Promise((r) => setTimeout(r, 300)); });
+      const axTyping = await app.page.locator('body').ariaSnapshot();
+      assert(!/button "Log"/.test(axTyping) && !/button "Settings"/.test(axTyping), tag + 'the hidden tab bar leaves the tree while typing');
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});

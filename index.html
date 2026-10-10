@@ -2056,6 +2056,7 @@ html.kt-chat body #toast{top:calc(var(--vv-top,0px) + max(env(safe-area-inset-to
   </button>
 </nav>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="coach-live" class="kt-sr" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="runner-root" style="display:none;"></div>
 <div id="runner-seal" style="display:none;position:fixed;bottom:0;left:0;right:0;height:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:var(--bg);z-index:49;pointer-events:none;"></div>
 <script>
@@ -7073,6 +7074,7 @@ function handleCoachCardAsk(ev){
   streamingContent = '';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
   var myGen=_coachGen;
   runCoachTurn(buildSystemPrompt(), coachModel, 16384).then(function(){
     if(myGen!==_coachGen) return;
@@ -7081,6 +7083,7 @@ function handleCoachCardAsk(ev){
     var _wasEnd = _chatAtEnd();
     render();
     if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
   }).catch(function(err){
     // B8 — surface network / API errors instead of leaving the user staring at
     // an empty "Thinking…" forever.
@@ -7092,6 +7095,7 @@ function handleCoachCardAsk(ev){
     var _wasEnd = _chatAtEnd();
     render();
     if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
   });
 }
 
@@ -18103,7 +18107,7 @@ function _coachBlocksHTML(text, quiet){
   if(actions.length && !quiet){
     out+='<div class="kt-cmb-actions">'+actions.map(function(a,i){
       return '<button class="kt-cmb-chip'+(i===0?' primary':'')+'" data-msg="'+_esc(a.msg)+'" '+
-        'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
+        (i===0?'aria-label="'+_esc(a.label)+'" ':'')+'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
     }).join('')+'</div>';
   }
   var eyebrow='<div class="kt-cmb-eyebrow">COACH'+(typeTag?' · '+_esc(typeTag):'')+'</div>';
@@ -18315,6 +18319,7 @@ async function startRoutineIntake(){
   streamingContent='';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
   try{
     // 24K cap: Sonnet's adaptive thinking spends output tokens before the
     // programme JSON, and its tokenizer counts ~30% more — 16K risked
@@ -18329,6 +18334,7 @@ async function startRoutineIntake(){
     var _wasEnd=_chatAtEnd();
     render();
     if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
     if(!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);   // no keys for a scripted focus on a touch screen
   }
 }
@@ -20462,6 +20468,7 @@ async function sendCoachMessage(){
   streamingContent='';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
 
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?COACH_SONNET:coachModel;
@@ -20487,6 +20494,7 @@ async function sendCoachMessage(){
       var _wasEnd=_chatAtEnd();
       render();
       if(_wasEnd) scrollChatToReply();
+      _coachSayLast();
       if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
     }
   }
@@ -20516,6 +20524,7 @@ function coachStop(){
   _streamingTool=null;
   saveCoachHistory();
   render(); scrollChatBottom();
+  _coachSay('Stopped');
 }
 
 // Re-run the last turn after a failure: drop trailing local bubbles so the
@@ -20529,6 +20538,7 @@ async function coachRetryLast(){
   saveCoachHistory();
   coachLoading=true; streamingContent='';
   render(); scrollChatBottom();
+  _coachSay('Coach is thinking');
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?COACH_SONNET:coachModel;
   var maxTok=intakeMode?24576:16384;
@@ -20545,6 +20555,7 @@ async function coachRetryLast(){
       streamingContent='';
       var _wasEnd=_chatAtEnd();
       render(); if(_wasEnd) scrollChatToReply();
+      _coachSayLast();
     }
   }
 }
@@ -20605,6 +20616,38 @@ function scrollChatToReply(){
   if(!u){ scrollChatBottom(); return; }
   l.scrollTop=Math.min(Math.max(0, u.offsetTop-12), l.scrollHeight-l.clientHeight);
   _chatBelow=Math.max(0, l.scrollHeight-l.scrollTop-l.clientHeight);
+}
+
+// VoiceOver hears the coach: 'Coach is thinking' when a turn starts, then the reply as speech
+// (markers read as words, no '%%', '**' or '|', capped near 400 characters, the changes it made at
+// the end), an error in its own words, and 'Stopped'. Cleared first so the same words announce again.
+function _coachSay(t){
+  var el=document.getElementById('coach-live'); if(!el) return;
+  el.textContent='';
+  setTimeout(function(){ el.textContent=String(t||''); }, 50);
+}
+function _coachSpeech(m){
+  if(!m) return '';
+  var raw=m.content;
+  if(Array.isArray(raw)) raw=raw.filter(function(p){ return p && p.type==='text'; }).map(function(p){ return p.text; }).join(' ');
+  var out=[];
+  String(raw||'').split('\n').forEach(function(line){
+    var t=line.trim(), mm=t.match(/^%%(type|metric|takeaway|action):\s*(.*)$/);
+    if(mm){
+      if(mm[1]==='metric'){ var pp=mm[2].split('|').slice(0,4).map(function(x){ return x.trim(); }).filter(Boolean); if(pp.length) out.push(pp[0]+': '+pp.slice(1).join(' ')+'.'); }   // label: value ref delta (the tone is colour, not words)
+      else if(mm[1]==='takeaway' && mm[2].trim()) out.push('Takeaway: '+mm[2].trim().replace(/\*\*|`/g,''));
+      return;   // the type tag and the chips are not read
+    }
+    t=t.replace(/^#{1,6}\s+/,'').replace(/^[-*+•]\s+/,'').replace(/^\d{1,3}[.)]\s+/,'').replace(/^>\s?/,'').replace(/\*\*|`/g,'').replace(/\|/g,' ');
+    if(t && !/^[-:\s]+$/.test(t)) out.push(t);
+  });
+  var sp=out.join(' ').replace(/\s+/g,' ').trim();
+  if(sp.length>400) sp=sp.slice(0,397).replace(/\s+\S*$/,'')+'…';
+  if(Array.isArray(m._tools) && m._tools.length) sp+=' Changes: '+m._tools.map(function(tc){ return toolCallLabel(tc); }).join(', ')+'.';
+  return (m._local?'':'Coach: ')+sp;
+}
+function _coachSayLast(){
+  for(var i=coachMessages.length-1; i>=0; i--){ var m=coachMessages[i]; if(m && m.role==='assistant' && !m._toolResults){ _coachSay(_coachSpeech(m)); return; } }
 }
 
 function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
@@ -20840,7 +20883,7 @@ function renderCoach(){
       // cleared, so the user had to retype. Retry re-runs the turn on the
       // existing history. Chip only on the trailing error.
       if(m.role==='assistant' && m._error && m===coachMessages[coachMessages.length-1] && !coachLoading){
-        bubbles+='<div class="kt-chat-retry"><button class="kt-cmb-chip primary" onclick="coachRetryLast()">Try again →</button></div>';
+        bubbles+='<div class="kt-chat-retry"><button class="kt-cmb-chip primary" onclick="coachRetryLast()" aria-label="Try again">Try again →</button></div>';
       }
       // Tool-call pills under the assistant bubble
       if(m.role==='assistant'&&Array.isArray(m._tools)&&m._tools.length){
