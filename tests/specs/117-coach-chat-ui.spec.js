@@ -1057,15 +1057,20 @@ serial('S4: on screen, no blank line under a list, bullets 6px apart, a table sc
           const after = ps[ps.length - 1].getBoundingClientRect().top - ul.getBoundingClientRect().bottom;
           const lis = ul.querySelectorAll('li');
           r.gap = after / z; r.liGap = (lis[1].getBoundingClientRect().top - lis[0].getBoundingClientRect().bottom) / z;
-          const w = document.querySelector('.kt-md-tablewrap'), s = document.getElementById('screen');
-          r.table = { scrolls: w.scrollWidth > w.clientWidth, overflow: getComputedStyle(w).overflowX, sw: s.scrollWidth, cw: s.clientWidth,
-            inside: w.getBoundingClientRect().right <= document.querySelector('.coach-msgs-area').getBoundingClientRect().right + 0.5 };
+          const w = document.querySelector('.kt-md-tablewrap'), s = document.getElementById('screen'), wcs = getComputedStyle(w);
+          r.table = { scrolls: w.scrollWidth > w.clientWidth, overflow: wcs.overflowX, sw: s.scrollWidth, cw: s.clientWidth,
+            inside: w.getBoundingClientRect().right <= document.querySelector('.coach-msgs-area').getBoundingClientRect().right + 0.5,
+            // the edge shades: two covers that ride with the content over two shades fixed at the card's edges, on the room's card
+            att: wcs.backgroundAttachment, layers: (wcs.backgroundImage.match(/linear-gradient/g) || []).length, base: wcs.backgroundColor,
+            card: getComputedStyle(document.documentElement).getPropertyValue('--card').trim(), bar: wcs.scrollbarWidth };
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));
         assert(!out.err, tag + out.err);
         assert(out.gap <= 12 && out.gap >= 6, tag + 'one paragraph gap under the list, no blank line: ' + out.gap);
         assert(Math.abs(out.liGap - 6) <= 1, tag + 'bullets sit 6px apart: ' + out.liGap);
         assert(out.table.overflow === 'auto' && out.table.scrolls && out.table.inside && out.table.sw <= out.table.cw, tag + 'a wide table scrolls inside its card: ' + JSON.stringify(out.table));
+        assert(/^local, local, scroll, scroll\b/.test(out.table.att) && out.table.layers === 4 && out.table.bar === 'none', tag + 'a soft shade marks the edge with more beyond it; the scrollbar stands down: ' + JSON.stringify(out.table));
+        assert(out.table.base === (room === 'heavyweight' ? 'rgb(255, 255, 255)' : 'rgb(21, 21, 23)'), tag + 'on the room\'s card: ' + out.table.base);
         assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
       } finally { await app.close(); }
     }
