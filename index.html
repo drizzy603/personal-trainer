@@ -939,8 +939,15 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-tool-pill-ic{flex:none;}
 .kt-chat-day{align-self:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:6px 0 0;}
 /* The empty chat: the programme line and the suggestions as chips. */
-.kt-chat-prog{margin-bottom:16px;}
-.kt-chat-prog .kt-cmb-eyebrow{margin-bottom:8px;color:var(--muted);}   /* a status line, not the action */
+.kt-chat-prog{margin-bottom:8px;}
+.kt-chat-prog .kt-cmb-eyebrow{margin-bottom:2px;color:var(--muted);}   /* a status line, not the action */
+/* The programme's housekeeping is not a conversation starter: quiet text buttons (44pt presses whose
+   text lines up with the column) under their status line, not the starters' pills, which they
+   copied exactly. Both open a confirm sheet. */
+.kt-chat-prog-acts{display:flex;flex-wrap:wrap;column-gap:6px;margin-left:-10px;}
+.kt-chat-prog-btn{min-height:44px;padding:0 10px;background:none;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:var(--accent-ink);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-chat-prog-btn:active{opacity:.6;}
+html[data-room="dark"] .kt-chat-prog-btn{color:var(--lite);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--lite) 45%,transparent);text-underline-offset:3px;}
 .kt-chat-seeds{margin:0;}
 .kt-cmb-chip:active{opacity:.7;}
 .kt-marquee-name{font-size:16px;font-weight:600;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
@@ -20922,9 +20929,9 @@ function renderCoach(){
     (hasCustomRoutine()?
       '<div class="kt-chat-prog">'+
         '<div class="kt-cmb-eyebrow">Custom programme active</div>'+
-        '<div class="kt-cmb-actions">'+
-          (hasRoutineBackup()?'<button class="kt-cmb-chip" onclick="restoreRoutineBackup()">Restore previous</button>':'')+
-          '<button class="kt-cmb-chip" onclick="resetCustomRoutine()">Reset programme</button>'+
+        '<div class="kt-chat-prog-acts">'+
+          (hasRoutineBackup()?'<button class="kt-chat-prog-btn" onclick="restoreRoutineBackup()">Restore previous</button>':'')+
+          '<button class="kt-chat-prog-btn" onclick="resetCustomRoutine()">Reset programme</button>'+
         '</div>'+
       '</div>'
     :'')+
