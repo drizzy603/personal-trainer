@@ -18155,12 +18155,13 @@ var COACH_TOOLS=[
      },
      required:['dayA','dayB']}},
   {name:'edit_programme_exercise',
-   description:'Change ONE exercise on one lift day, from a week on (default: the current week), carried through every later week with the programme\'s own progression (deload weeks keep their share). Use this for single-exercise changes, including ones the user asks you to make to lifts they edited themselves; use update_routine_weeks only to rebuild whole weeks. action: change (sets/reps/rpe/weight), add, remove, or swap (rename_to, optional weight). Weight in {W}.',
+   description:'Change ONE exercise on one lift day, from a week on (default: the current week), carried through every later week with the programme\'s own progression (deload weeks keep their share). Use this for single-exercise changes, including ones the user asks you to make to lifts they edited themselves; use update_routine_weeks only to rebuild whole weeks. action: change (sets/reps/rpe/weight), add, remove, or swap (rename_to, optional weight). make_main:true makes the exercise the day\'s main lift (the only way to replace a main lift the user chose). Weight in {W}.',
    input_schema:{type:'object',properties:{
      day:{type:'string',description:'lift slot id (Push, Pull, Legs, Legs2, Arms, Day6, Day7) or the day\'s name'},
      exercise:{type:'string'}, action:{type:'string',enum:['change','add','remove','swap']},
      rename_to:{type:'string'}, weight:{type:'number',description:'in {W}; 0 = the user picks the load'},
      sets:{type:'integer'}, reps:{type:'integer'}, rpe:{type:'integer'},
+     make_main:{type:'boolean',description:'make this exercise the day\'s main lift (the other main loses the tag); only when the user asks for a different main lift, including over one they chose themselves'},
      from_week:{type:'integer'}, only_this_week:{type:'boolean'},
      every_week:{type:'boolean',description:'sets/reps change every later week, not only weeks with the same scheme'},
      after:{type:'string',description:'add: insert after this exercise'}},
@@ -18404,7 +18405,7 @@ function _executeCoachToolRaw(name,input){
       var written=[];
       var skipped=[];
       var errored=null;
-      var _keptEdits=[];
+      var _keptEdits=[], _keptMain=[];
       // Ascending order so a single call carrying weeks 13-16 fills them in
       // sequence; a week beyond length+1 would otherwise be padded with bare
       // {wk} placeholders that render as 'undefined Block' with no lifts.
@@ -18590,7 +18591,10 @@ function _executeCoachToolRaw(name,input){
           if(_ch){
             var _chIn=neu.some(function(x){ return x && x.name===_ch.name; });
             if(!_chIn) neu.splice(Math.min(old.indexOf(_ch), neu.length), 0, JSON.parse(JSON.stringify(_ch)));
-            if((_progMainOf(neu, _ch.name) || !_chIn) && _keptEdits.indexOf(_ch.name)<0) _keptEdits.push(_ch.name);
+            if(_progMainOf(neu, _ch.name) || !_chIn){
+              if(_keptEdits.indexOf(_ch.name)<0) _keptEdits.push(_ch.name);
+              if(_keptMain.indexOf(_ch.name)<0) _keptMain.push(_ch.name);
+            }
           }
           if(!neu.length && OPTIONAL_LIFT_KEYS.indexOf(k)>=0) delete weekObj[k];
         });
@@ -18629,7 +18633,8 @@ function _executeCoachToolRaw(name,input){
       }
       if(_keptEdits.length){
         var _kAdd=_keptEdits.filter(function(x){ return x.charAt(0)!=='-'; }), _kRem=_keptEdits.filter(function(x){ return x.charAt(0)==='-'; }).map(function(x){ return x.slice(1); });
-        label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked.';
+        label+='. Kept the user\u2019s own edits'+(_kAdd.length?' on '+_kAdd.join(', '):'')+(_kRem.length?(_kAdd.length?'; ':' ')+'and left out '+_kRem.join(', ')+' as they removed':'')+' (their version wins). To change one of those, use edit_programme_exercise, and only if the user asked'+
+          (_keptMain.length?' ('+_keptMain.join(', ')+(_keptMain.length===1?' is the main lift':' are the main lifts')+' the user chose; if they ask for another main lift, call edit_programme_exercise with make_main:true on it)':'')+'.';
       }
       return _cad({ok:true,message:label,weeks:written,skipped:skipped,stored:_routineReadback(written),keptUserEdits:_keptEdits,
         check:'Compare "stored" with what the user asked for. If a requested exercise is missing, an exercise landed in the wrong day, or a scheduled lift day has no exercises, fix it with another call BEFORE telling the user it is done.'});
@@ -18731,6 +18736,25 @@ function _executeCoachToolRaw(name,input){
           if(input.rpe!=null) n+=_progSetScheme(cr, keyE, nmE, cE, 'rpe', parseInt(input.rpe)||row.rpe, o);
           if(actE!=='swap' && wLbE!=null) n+=_progCarryLoad(cr, keyE, nmE, cE, wLbE, {onlyThisWeek:o.onlyThisWeek, repsOld:repsOld, workScale:!o.onlyThisWeek});
         }
+        // make_main: the user asked for this main lift, so it is the programme's version from the
+        // week on, over their own Make main too (its flag goes; each row's coach original says which
+        // lift is main). A rewrite kept the owner's main and this tool had no way to move it.
+        if(input.make_main===true || input.make_main==='true'){
+          var mm=0;
+          for(var jm=cE;jm<(o.onlyThisWeek?cE+1:cr.weeks.length);jm++){
+            var lm=cr.weeks[jm]&&cr.weeks[jm][keyE]; if(!Array.isArray(lm) || !_progRow(cr.weeks[jm], keyE, nmE)) continue;
+            lm.forEach(function(r){
+              if(!r) return;
+              var m=(r.name===nmE);
+              if(!!r.isMain!==m){ if(m) r.isMain=true; else delete r.isMain; mm++; }
+              if(r.mainBy){ delete r.mainBy; mm++; }
+              if(r.rec && !!r.rec.isMain!==m){ if(m) r.rec.isMain=true; else delete r.rec.isMain; mm++; }
+              _progUnmark(r);
+            });
+          }
+          if(!mm && !n){ whyE=nmE+' is already the main lift on '+_dayLabel(slotE); return false; }
+          n+=mm;
+        }
         // The coach changed it at the user's request: this is now the programme's version
         // (in the weeks it changed: that week alone keeps the owner's marks on the rest). Its main
         // tag and superset stay the coach's as they were: the owner's Make main stays theirs, and
@@ -18749,9 +18773,10 @@ function _executeCoachToolRaw(name,input){
       var crR=getCustomRoutine(), series=[];
       for(var jj=cE;jj<crR.weeks.length;jj++){
         var q=_progRow(crR.weeks[jj], keyE, nmE);
-        if(q) series.push('wk'+(jj+1)+(_isDeloadWk(crR.weeks[jj])?' deload':'')+' '+q.sets+'\u00d7'+q.reps+' '+(parseFloat(q.weight)>0?fmtW(q.weight):'your load'));
+        if(q) series.push('wk'+(jj+1)+(_isDeloadWk(crR.weeks[jj])?' deload':'')+' '+q.sets+'\u00d7'+q.reps+' '+(parseFloat(q.weight)>0?fmtW(q.weight):'your load')+(q.isMain?' (main)':''));
       }
-      return {ok:true, message:_dayLabel(slotE)+': '+(actE==='remove'?exN+' removed':nmE+(actE==='add'?' added':' updated'))+' from week '+fw+(input.only_this_week?' (that week only)':' on'), series:series};
+      var mkE=actE!=='remove' && (input.make_main===true || input.make_main==='true');
+      return {ok:true, message:_dayLabel(slotE)+': '+(actE==='remove'?exN+' removed':nmE+(actE==='add'?' added':' updated')+(mkE?' as the main lift':''))+' from week '+fw+(input.only_this_week?' (that week only)':' on'), series:series};
     }
     if(name==='set_exercise_weight'){
       var weights=getWeights();
@@ -19451,6 +19476,7 @@ function _planChangeLedger(tools, idx){
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
+      if(i.action!=='remove' && (i.make_main===true || i.make_main==='true')) _act=(_act==='changed'?'':_act+' \u00b7 ')+'main lift';
       rows.push([_esc(i.exercise||'Exercise'), _act]);
     } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
@@ -19499,7 +19525,7 @@ function _toolCallLabel(tc){
   }
   if(n==='save_profile') return 'Profile updated';
   if(n==='set_exercise_weight') return i.name+' → '+fmtW(_coachLoadIn(i.weight));
-  if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'');
+  if(n==='edit_programme_exercise') return (i.action==='add'?'Added ':i.action==='remove'?'Removed ':i.action==='swap'?'Swapped ':'Changed ')+(i.exercise||'exercise')+(i.action==='swap'&&i.rename_to?' → '+i.rename_to:'')+(i.weight>0&&i.action!=='remove'?' · '+fmtW(_coachLoadIn(i.weight)):'')+(i.action!=='remove'&&(i.make_main===true||i.make_main==='true')?' · main lift':'');
   if(n==='set_bench_goal') return 'Bench goal '+fmtW(wStore(i.weight));
   if(n==='set_squat_goal') return 'Squat goal '+fmtW(wStore(i.weight));
   if(n==='set_run_goal') return 'Pace goal '+fmtPaceStr(paceStore(i.pace));
@@ -19880,7 +19906,7 @@ function buildSystemPrompt(){
     p+='WEEKLY CADENCE: '+DOW_NAMES.map(function(n,i){return n+'='+getWeekPlan()[i].type;}).join(', ')+'\n\n';
     var thisWeekSessions=sessions.filter(_inThisCalWeek);
     var doneTypes=thisWeekSessions.map(function(s){return s.type.toLowerCase();});
-    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise, and update_routine_weeks only to rebuild whole weeks):\n';
+    p+='THIS WEEK\'S PLAN (lifts marked "edited by the user", "added by the user" or "main lift chosen by the user" are the user\'s deliberate choices: keep them unless the user asks; to change one exercise use edit_programme_exercise (make_main:true moves the main lift to it), and update_routine_weeks only to rebuild whole weeks):\n';
     // A row's load: each set's when a top set and back-offs differ, else the one load.
     var _rowLoad=_rowLoadText;
     LIFT_KEYS.forEach(function(sess){

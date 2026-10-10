@@ -50,6 +50,9 @@
 // Hunt 6 (2026-10-10), what the review of those fixes found:
 // - U02 (T08) add_to kept only the first entry of a lift sent as a top set plus back-offs: the
 //   back-offs were dropped and the coach told they were 'already in it, left as saved'.
+// - U04 (T01) after the owner's Make main the coach could not make another lift main when the user
+//   asked: a rewrite keeps the owner's main and edit_programme_exercise had no main control. It has
+//   make_main now, named where the coach is told the main is the user's choice.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -751,6 +754,50 @@ run('U02: add_to adds every entry of a lift the session lacks; only lifts it had
     assert(/^Push: Overhead Press added · /.test(out.add.pill), 'the pill names the lift once: ' + out.add.pill);
     assert(out.add2.res.ok && JSON.stringify(out.add2.res.added) === '["Lateral Raise"]' && /Already in it, left as saved: Bench Press \(/.test(out.add2.res.message), 'only the lift it had is left as saved: ' + out.add2.res.message);
     assert(out.saved2 === out.saved + ' | Lateral Raise 15/15@20 | Lateral Raise 20@15' && out.sessions === 0, 'into the saved session: ' + JSON.stringify([out.saved2, out.sessions]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// U04 (from T01): the owner made Overhead Press main, then asked the coach for Bench as main again.
+// The rewrite keeps the owner's main (it is their choice) and pointed the coach to
+// edit_programme_exercise, which had no main control: OHP stayed main while every call answered ok.
+run('U04: the coach can move the main lift when the user asks, over their own Make main', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const r = {}, c = currentWeek - 1;
+      const mains = () => getCustomRoutine().weeks.slice(c).map(w => w.push.filter(e => e.isMain).map(e => e.name).join('+') || '-');
+      const marks = () => getCustomRoutine().weeks.slice(c).some(w => w.push.some(e => e.rec !== undefined || e.mainBy));
+      const line = (n) => (buildSystemPrompt().match(new RegExp(' {2}' + n + ':[^\\n]*')) || [''])[0];
+      openRoutines(); _rtOpenEdit('Push', 'Overhead Press'); _rtMakeMain(); await wait(10); closeRoutines();
+      const made = localStorage.getItem('kt_routine');
+      r.planLine = (buildSystemPrompt().match(/THIS WEEK'S PLAN[^\n]*/) || [''])[0];
+      // "make bench my main lift again": a rewrite of every week with Bench main keeps the owner's main
+      const weeks = [];
+      for (let w = currentWeek; w <= getTotalWeeks(); w++) weeks.push({ wk: w, bName: 'BUILD', bColor: '#0a43f5', push: getCustomRoutine().weeks[w - 1].push.map(e => ({ name: e.name, sets: e.sets, reps: e.reps, weight: e.weight, isMain: e.name === 'Bench Press' })) });
+      const rw = executeCoachTool('update_routine_weeks', { weeks });
+      r.rewrite = { mains: mains(), message: rw.message };
+      // the tool it names moves the main: the programme's version, no owner marks left on the day
+      const input = { day: 'Push', exercise: 'Bench Press', action: 'change', make_main: true };
+      const mm = executeCoachTool('edit_programme_exercise', input);
+      r.make = { ok: mm.ok, message: mm.message, mains: mains(), marks: marks(), prompt: [line('Bench Press'), line('Overhead Press')], pill: toolCallLabel({ name: 'edit_programme_exercise', input, result: mm }) };
+      r.again = executeCoachTool('edit_programme_exercise', input);
+      // that week only
+      lsSet('kt_routine', JSON.parse(made));
+      executeCoachTool('edit_programme_exercise', Object.assign({ only_this_week: true }, input));
+      r.week = mains();
+      r.schema = !!(_cachedCoachTools().find(t => t.name === 'edit_programme_exercise') || { input_schema: { properties: {} } }).input_schema.properties.make_main;
+      return r;
+    });
+    assert(/edit_programme_exercise \(make_main:true moves the main lift to it\)/.test(out.planLine), 'the plan header names the main control: ' + out.planLine);
+    assert(out.rewrite.mains.every(x => x === 'Overhead Press') && /Overhead Press is the main lift the user chose; if they ask for another main lift, call edit_programme_exercise with make_main:true on it/.test(out.rewrite.message), 'a rewrite keeps the owner\'s main and says how to move it: ' + JSON.stringify(out.rewrite));
+    assert(out.make.ok && /Bench Press updated as the main lift from week /.test(out.make.message) && out.make.mains.every(x => x === 'Bench Press') && !out.make.marks, 'make_main moves the main in every week, as the programme\'s version: ' + JSON.stringify(out.make));
+    assert(/\(main\)$/.test(out.make.prompt[0]) && !/main lift chosen|\(main\)/.test(out.make.prompt[1]), 'the prompt reads the coach\'s main: ' + JSON.stringify(out.make.prompt));
+    assert(out.make.pill === 'Changed Bench Press · main lift', 'the pill says so: ' + out.make.pill);
+    assert(out.again.ok === false && /Bench Press is already the main lift on Push/.test(out.again.error), 'asked again it says so: ' + JSON.stringify(out.again));
+    assert(out.week[0] === 'Bench Press' && out.week.slice(1).every(x => x === 'Overhead Press'), 'that week only: ' + JSON.stringify(out.week));
+    assert(out.schema, 'the tool offers make_main');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
