@@ -20911,7 +20911,7 @@ function renderCoach(){
         ?'<span class="coach-head-meta">'+_dayMeta+'</span>'
         :'')+
       (intakeMode
-        ?'<button class="kt-hit" onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
+        ?''
         :'<button class="kt-hit" onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
       )+
     '</div>'+
@@ -21043,8 +21043,12 @@ function renderCoach(){
   // the safe-area zone above the header.
   return '<div class="coach-chat-stick">'+
     '<div class="screen-hd" style="margin:0;">'+
-      // In setup Back did nothing (the hub waits for setup to end): Cancel is the way out there.
-      (intakeMode?'':'<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;gap:4px;">'+
+      // In setup Back did nothing (the hub waits for setup to end): Cancel is the way out there, in
+      // Back's place and with its look. It was 12px muted text at the far right, read as a label, and
+      // left the avatar alone in this row. Like Back it stands down while the keys are up.
+      (intakeMode
+        ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;">Cancel</button>'
+        :'<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;gap:4px;">'+
         '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
       '</button>')+
       '<div class="screen-avatar" aria-hidden="true" style="margin-left:auto;">'+_avCh+'</div>'+

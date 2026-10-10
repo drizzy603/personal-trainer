@@ -1163,12 +1163,14 @@ serial('S6: the chat header fits on one line, its controls take a 44pt press, an
           Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); render(); await wait(40);
           const off = document.querySelector('.coach-head-eyebrow'); r.offline = [off.textContent, off.classList.contains('off')];
           delete navigator.onLine;
-          // intake: Cancel, no Back; Cancel takes a 44pt press
+          // intake: Cancel in Back's place and look (it was muted 12px text at the far right), no Back; a 44pt press
+          const backLook = (() => { const b = [...document.querySelectorAll('.coach-chat-stick .screen-hd button')].find((x) => /Back/.test(x.textContent)), cs = getComputedStyle(b); return { left: B(b).left, color: cs.color, size: cs.fontSize }; })();
           _setIntakeMode(true); render(); await wait(60);
-          const cancel = [...document.querySelectorAll('.coach-head button')].find((b) => b.textContent === 'Cancel');
-          const cb = B(cancel), ccx = cb.left + cb.width / 2, ccy = cb.top + cb.height / 2;
+          const cancel = [...document.querySelectorAll('.coach-chat-stick button')].find((b) => b.textContent === 'Cancel');
+          const cb = B(cancel), ccx = cb.left + cb.width / 2, ccy = cb.top + cb.height / 2, ccs = getComputedStyle(cancel);
           r.intake = { back: [...document.querySelectorAll('.coach-chat-stick button')].some((b) => /Back/.test(b.textContent)), cancel: !!cancel,
-            hit: [hit(ccx, ccy - 20 * z, cancel), hit(ccx, ccy + 20 * z, cancel)] };
+            hit: [hit(ccx, ccy - 20 * z, cancel), hit(ccx, ccy + 20 * z, cancel)], topRow: !!cancel.closest('.screen-hd'), inHead: !!cancel.closest('.coach-head'),
+            look: { left: cb.left, color: ccs.color, size: ccs.fontSize, h: cb.height / z }, backLook };
           _setIntakeMode(false); render();
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));
@@ -1180,6 +1182,8 @@ serial('S6: the chat header fits on one line, its controls take a 44pt press, an
         assert(/^Coach model: (Haiku|Sonnet) [\d.]+$/.test(out.toast), tag + 'the switch says which model now runs: ' + out.toast);
         assert(out.replying === 'COACH · REPLYING' && out.offline[0] === 'COACH · OFFLINE' && out.offline[1], tag + 'the eyebrow says replying and offline: ' + JSON.stringify([out.replying, out.offline]));
         assert(!out.intake.back && out.intake.cancel && out.intake.hit.every(Boolean), tag + 'setup shows Cancel (a 44pt press) and no Back: ' + JSON.stringify(out.intake));
+        const IL = out.intake.look, BL = out.intake.backLook;
+        assert(out.intake.topRow && !out.intake.inHead && Math.abs(IL.left - BL.left) <= 1 && IL.color === BL.color && IL.size === BL.size && IL.h >= 44, tag + 'Cancel takes Back\'s place and look in the top row: ' + JSON.stringify(out.intake));
         assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
       } finally { await app.close(); }
     }
