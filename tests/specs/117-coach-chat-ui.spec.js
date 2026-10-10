@@ -571,6 +571,44 @@ serial('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', as
   } finally { await app.close(); }
 });
 
+// Stop takes Send's place at once, and the page sets touch-action:manipulation (a double tap is two
+// clicks): the second tap of a double tap on Send, or a double-click, stopped the reply it had just
+// sent. The button ignores a press in a turn's first half second; after that Stop stops.
+serial('M4: a double tap or double-click on Send does not stop the reply it sent; Stop still stops after that', async () => {
+  for (const touch of [true, false]) {
+    const tag = (touch ? 'double tap' : 'double-click') + ': ';
+    const app = await bootChat('heavyweight', { width: 390, height: 844 }, { touch, seed: { kt_coach_msgs: JSON.stringify(SHORT) } });
+    try {
+      await open(app.page);
+      const typeIt = () => app.page.evaluate((MOCK_FETCH) => {
+        eval(MOCK_FETCH)(700);
+        const i = document.getElementById('coach-input'); i.value = 'And my squat?'; i.dispatchEvent(new Event('input', { bubbles: true }));
+      }, MOCK_FETCH);
+      // where the button is now (the composer drops to the home-indicator line while the box has focus)
+      const where = () => app.page.evaluate(() => { const b = document.getElementById('coach-send').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+      const press = async (at) => { if (touch) await app.page.touchscreen.tap(at.x, at.y); else await app.page.mouse.click(at.x, at.y); };
+      await typeIt();
+      // both presses land on the same spot, as a finger's or a mouse's do (Stop is where Send was)
+      const at = await where();
+      if (touch) { await press(at); await app.page.waitForTimeout(90); await press(at); }
+      else await app.page.mouse.dblclick(at.x, at.y);
+      await app.page.waitForTimeout(1100);
+      const first = await app.page.evaluate(() => ({ last: coachMessages[coachMessages.length - 1].content, stopped: coachMessages.some((m) => m._stopped), loading: coachLoading }));
+      // a press on Stop once the turn is under way stops it
+      await typeIt();
+      await press(await where());
+      await app.page.waitForTimeout(650);
+      const name = await app.page.evaluate(() => document.getElementById('coach-send').getAttribute('aria-label'));
+      await press(await where());
+      await app.page.waitForTimeout(150);
+      const second = await app.page.evaluate(() => ({ last: coachMessages[coachMessages.length - 1].content, loading: coachLoading }));
+      assert(first.last === 'Squat is moving well.' && !first.stopped && !first.loading, tag + 'the reply lands: ' + JSON.stringify(first));
+      assert(name === 'Stop the reply' && second.last === 'Stopped.' && !second.loading, tag + 'Stop stops a turn under way: ' + JSON.stringify([name, second]));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
 // ── M5 ─────────────────────────────────────────────────────────────────────────
 serial('M5: PLAN CHANGES tells the truth once Undo is gone; a later log-only reply keeps the card; Restore previous retires it', async () => {
   for (const room of ['heavyweight', 'dark']) {

@@ -7084,7 +7084,7 @@ function handleCoachCardAsk(ev){
   _pushCoach({role:'user', content:v});
   saveCoachHistory();
   coachCardAskOpen = false;
-  coachLoading = true;
+  coachLoading = true; _coachTurnAt = Date.now();
   streamingContent = '';
   render();
   scrollChatBottom();
@@ -18345,7 +18345,7 @@ async function _runRoutineIntake(){
   lsSet('kt_week',1);
   clearCoachHistory();
   _pushCoach({role:'user',content:'I want to generate my training programme.',_seed:'Programme setup'});
-  coachLoading=true;
+  coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
   render();
   scrollChatBottom();
@@ -20509,7 +20509,7 @@ async function sendCoachMessage(o){
   if(o && typeof o==='object' && o.seed) _um._seed=String(o.seed);
   _pushCoach(_um);
   saveCoachHistory();
-  coachLoading=true;
+  coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
   render();
   scrollChatBottom();
@@ -20554,6 +20554,12 @@ function sendCoachChip(txt){
 // Stop an in-flight coach turn: bump the generation so runCoachTurn abandons
 // at its next await checkpoint. Tool calls that already executed are real —
 // the note says so instead of pretending nothing happened.
+// Stop sits where Send was, and the page sets touch-action:manipulation, so the second tap of a
+// double tap on Send (or a double-click) landed on Stop and stopped the reply it had just sent
+// (the abandoned request still ran, and was billed). The button ignores a press in a turn's first
+// half second; coachStop() itself always stops.
+var _coachTurnAt=0;
+function _coachJustSent(){ return Date.now()-_coachTurnAt<500; }
 function coachStop(){
   if(!coachLoading) return;
   _coachGen++;
@@ -20581,7 +20587,7 @@ async function coachRetryLast(){
   }
   if(!coachMessages.length) return;
   saveCoachHistory();
-  coachLoading=true; streamingContent='';
+  coachLoading=true; streamingContent=''; _coachTurnAt=Date.now();
   render(); scrollChatBottom();
   _coachSay('Coach is thinking');
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
@@ -20992,7 +20998,7 @@ function renderCoach(){
       'onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229&&(event.metaKey||event.ctrlKey||(!event.shiftKey&&!_coarsePointer()))){event.preventDefault();sendCoachMessage();}" '+
       'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,120)+\'px\';_syncSend()"></textarea>'+
     (coachLoading
-      ?'<button id="coach-send" class="coach-send-btn stop" aria-label="Stop the reply" onclick="coachStop()"><span class="coach-stop-ic" aria-hidden="true"></span></button>'
+      ?'<button id="coach-send" class="coach-send-btn stop" aria-label="Stop the reply" onclick="if(!_coachJustSent())coachStop()"><span class="coach-stop-ic" aria-hidden="true"></span></button>'
       :'<button id="coach-send" class="coach-send-btn" aria-label="Send message" onclick="sendCoachMessage()">'+
           '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
         '</button>')+
