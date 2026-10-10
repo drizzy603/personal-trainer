@@ -567,8 +567,8 @@ html.kb-open .coach-chat-stick>.screen-hd{display:none;}
   resize:none;overflow-x:hidden;max-height:120px;min-height:44px;line-height:22px;padding:11px 8px;font-family:inherit;}
 .coach-textarea:first-child{padding-left:14px;}   /* intake has no attach button */
 /* The placeholder keeps to the box's one line: at 320pt with Larger Text "Message Coach…" wrapped and
-   its second line was cut off inside the one-line box. The box never scrolls sideways (typed text
-   wraps), so a Mac's WebKit draws no scrollbar for the clipped placeholder. */
+   its second line was cut off inside the one-line box (_fitPlaceholder now says "Message…" there).
+   The box never scrolls sideways (typed text wraps), so a Mac's WebKit draws no scrollbar for it. */
 .coach-textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* The box carries no ring and no surface of its own inside the composer: the row does. */
 html[data-room] .coach-input-row .coach-textarea{background:transparent;border-radius:0;}
@@ -6151,7 +6151,7 @@ function render() {
     screen.innerHTML = renderCoach();
     var _isChat=!!screen.querySelector('.coach-chat-body'), _wasChat=document.documentElement.classList.contains('kt-chat');
     document.documentElement.classList.toggle('kt-chat', _isChat);
-    if(_isChat) _metricsFit(screen);
+    if(_isChat){ _metricsFit(screen); _fitPlaceholder(); }
     _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route;
     if(!_isChat) screen.scrollTop = routeChanged ? 0 : prevScroll;
     else if(routeChanged || _oEnd) scrollChatBottom();
@@ -18145,7 +18145,7 @@ function _metricsFit(root){
 try{
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ var s=document.getElementById('screen'); if(s) _metricsFit(s); });
   var _mfT=null;
-  window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')) _metricsFit(s); }, 120); });
+  window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')){ _metricsFit(s); _fitPlaceholder(); } }, 120); });
 }catch(e){}
 function _coachBlocksHTML(text, quiet){
   var lines=String(text||'').split('\n');
@@ -20687,6 +20687,20 @@ function _syncSend(){
   var b=document.getElementById('coach-send'), i=document.getElementById('coach-input');
   if(!b || !i || coachLoading) return;
   b.disabled=!i.value.trim() && !pendingImage;
+}
+// The placeholder says the short "Message…" / "Answer…" where the whole one would be cut at the box's
+// edge (a narrow phone with Larger Text: "Message Coa"). Measured in the composer's own zoom with the
+// box's font; the CSS keeps either to one line. Run after each chat paint and on resize.
+function _fitPlaceholder(){
+  var ta=document.getElementById('coach-input'); if(!ta || !ta.parentNode) return;
+  var full=intakeMode?'Answer the Coach…':'Message Coach…', short=intakeMode?'Answer…':'Message…';
+  var cs=getComputedStyle(ta), z=parseFloat(document.documentElement.style.zoom)||1, sp=document.createElement('span');
+  sp.style.cssText='position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;';
+  sp.style.fontFamily=cs.fontFamily; sp.style.fontSize=cs.fontSize; sp.style.fontWeight=cs.fontWeight; sp.style.fontStyle=cs.fontStyle; sp.style.letterSpacing=cs.letterSpacing;
+  sp.textContent=full; ta.parentNode.appendChild(sp);
+  var room=ta.getBoundingClientRect().width-(parseFloat(cs.paddingLeft)+2)*z, need=sp.getBoundingClientRect().width;   // the box clips at its padding edge: the text may use its right padding but 2px
+  ta.parentNode.removeChild(sp);
+  if(room>0) ta.placeholder = need<=room ? full : short;
 }
 // A message the app drafts for the owner (a shared photo's comment, Build day's "Ask the coach")
 // lands as typing would leave it: sized to the box's own 120px cap, and Send ready. Writing .value
