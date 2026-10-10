@@ -926,6 +926,7 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-tool-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;font-size:12px;font-weight:600;line-height:1.35;padding:5px 10px;border-radius:12px;overflow-wrap:anywhere;background:var(--card2);color:var(--lite);box-shadow:inset 0 0 0 1px var(--border);}
 .kt-tool-pill.bad{color:var(--red);}
 .kt-tool-pill-ic{flex:none;}
+.kt-chat-day{align-self:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:6px 0 0;}
 /* The empty chat: the programme line and the suggestions as chips. */
 .kt-chat-prog{margin-bottom:16px;}
 .kt-chat-prog .kt-cmb-eyebrow{margin-bottom:8px;color:var(--muted);}   /* a status line, not the action */
@@ -1935,6 +1936,7 @@ html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:
 html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
 html[data-room="heavyweight"] .kt-tool-pill{background:var(--card);}
 html[data-room="heavyweight"] .kt-md-code{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;}
+html[data-room="heavyweight"] .kt-chat-day{font-family:'Archivo',sans-serif;}
 html[data-room="heavyweight"] .kt-tool-pill:not(.bad) .kt-tool-pill-ic{color:var(--earned-ink);}
 html[data-room="heavyweight"] .kt-cmb-chip{background:var(--card);border-color:var(--border);color:var(--text);}
 html[data-room="heavyweight"] .kt-cmb-chip.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
@@ -7069,7 +7071,7 @@ function handleCoachCardAsk(ev){
   // Pipe the question into the Coach tab as a fresh user message.
   switchTab('coach');
   coachView = 'chat';
-  coachMessages.push({role:'user', content:v});
+  _pushCoach({role:'user', content:v});
   saveCoachHistory();
   coachCardAskOpen = false;
   coachLoading = true;
@@ -7092,7 +7094,7 @@ function handleCoachCardAsk(ev){
     if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
-    coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
+    _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
     saveCoachHistory();
     var _wasEnd = _chatAtEnd();
     render();
@@ -17967,6 +17969,11 @@ function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
 function _coarsePointer(){ try{ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }catch(e){ return false; } }
 function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();showToast('Coach model: '+_coachModelName(m));}
 
+// Every message the chat adds is stamped with the moment it was said (at), for the day dividers.
+// History from before 20261010 has no stamp and shows none. _toApiMsg sends role and content only,
+// so the API never sees it.
+function _pushCoach(m){ if(m && !m.at) m.at=Date.now(); coachMessages.push(m); return m; }
+function _chatDayLabel(iso){ var t=todayISO(); return iso===t ? 'Today' : iso===addDays(t,-1) ? 'Yesterday' : _calDayName(iso); }
 function loadCoachHistory(){
   try{
     var s=localStorage.getItem('kt_coach_msgs');
@@ -18316,7 +18323,7 @@ async function startRoutineIntake(){
   currentWeek=1;
   lsSet('kt_week',1);
   clearCoachHistory();
-  coachMessages.push({role:'user',content:'I want to generate my training programme.'});
+  _pushCoach({role:'user',content:'I want to generate my training programme.'});
   coachLoading=true;
   streamingContent='';
   render();
@@ -18328,7 +18335,7 @@ async function startRoutineIntake(){
     // truncating long intakes.
     await runCoachTurn(buildIntakeSystemPrompt(),COACH_SONNET,24576);
   }catch(err){
-    coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
+    _pushCoach({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
     saveCoachHistory();
   }finally{
     coachLoading=false;
@@ -19665,7 +19672,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   // committing them with any partial text keeps programme edits visible
   // instead of hiding them behind a bare error bubble.
   if(totalText.trim() || allToolCalls.length){
-    coachMessages.push({
+    _pushCoach({
       role:'assistant',
       content:totalText.trim() || (hadError?'I made these changes before the connection dropped:':'Done — changes applied:'),
       _tools:allToolCalls.length?allToolCalls:null,
@@ -19677,14 +19684,14 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // API then rejected every later request ('non-empty content'). Say so
     // locally instead; the Try again chip picks it up. A decline (stop_reason
     // 'refusal', after any fallback) says so: asking the same again gets the same.
-    coachMessages.push({role:'assistant',content:stopReason==='refusal'
+    _pushCoach({role:'assistant',content:stopReason==='refusal'
       ?'The coach can\u2019t help with that request. Try asking it another way.'
       :'The coach returned no reply — tap Try again.',_error:true,_local:true});
   }
   if(errText){
     var _en={role:'assistant',content:errText,_error:true,_local:true};
     if(_errKind) _en._errKind=_errKind;
-    coachMessages.push(_en);
+    _pushCoach(_en);
   }
   // Auto-exit intake mode once the AI has shipped at least one fully-defined
   // week (every existing slot has bName). With variable-length programmes we
@@ -20157,6 +20164,7 @@ function saveCoachHistory(){
       if(m._local) out._local=true;
       if(m._error) out._error=true;
       if(m._stopped) out._stopped=true;
+      if(m.at) out.at=m.at;
       if(m._errKind) out._errKind=m._errKind;
       if(m._ledgerSeen) out._ledgerSeen=true;
       // The reply's undo point: PLAN CHANGES offered Undo only until the app was relaunched.
@@ -20473,7 +20481,7 @@ async function sendCoachMessage(){
 
   var _um={role:'user',content:content,_preview:preview};
   if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
-  coachMessages.push(_um);
+  _pushCoach(_um);
   saveCoachHistory();
   coachLoading=true;
   streamingContent='';
@@ -20496,7 +20504,7 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
+        _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
     saveCoachHistory();
   }finally{
     if(myGen===_coachGen){
@@ -20527,9 +20535,9 @@ function coachStop(){
   streamingContent='';
   var hadTools=_runningTools.length>0;
   if(hadTools){
-    coachMessages.push({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true,_undo:_backupScopeIs(_coachTurnScope)?_coachTurnScope:null});
+    _pushCoach({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true,_undo:_backupScopeIs(_coachTurnScope)?_coachTurnScope:null});
   } else {
-    coachMessages.push({role:'assistant',content:'Stopped.',_local:true,_stopped:true});
+    _pushCoach({role:'assistant',content:'Stopped.',_local:true,_stopped:true});
   }
   _runningTools=[];
   _streamingTool=null;
@@ -20558,7 +20566,7 @@ async function coachRetryLast(){
     await runCoachTurn(systemPrompt,model,maxTok);
   }catch(err){
     if(myGen!==_coachGen) return;
-    coachMessages.push({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
+    _pushCoach({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
     saveCoachHistory();
   }finally{
     if(myGen===_coachGen){
@@ -20867,8 +20875,11 @@ function renderCoach(){
     // reply, and none while a reply is in flight: an older reply's chips sent stale plan changes.
     var bubbles='', _ledMsg=_lastPlanMsg(), _lastAns=null;
     coachMessages.forEach(function(x){ if(x && x.role==='assistant' && !x._local && !x._toolResults) _lastAns=x; });
+    var _day='';
     coachMessages.forEach(function(m){
       if(m._toolResults) return; // never render tool_result payloads
+      // A day divider before the first message of each day, so Tuesday's advice does not read as today's.
+      if(m.at){ var _d=_ymdLocal(new Date(m.at)); if(_d!==_day){ _day=_d; bubbles+='<div class="kt-chat-day">'+_esc(_chatDayLabel(_d))+'</div>'; } }
       var text=m.content;
       var imgHTML='';
       if(Array.isArray(m.content)){

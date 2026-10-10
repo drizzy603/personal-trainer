@@ -1052,3 +1052,47 @@ run('C4: coming back to the Coach tab mid-reply shows the chat; once it has land
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── C2 ─────────────────────────────────────────────────────────────────────────
+run('C2: day dividers say when advice was given; unstamped history shows none; the API never sees the stamp', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async (REPLY_FETCH) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        const at = (iso, h) => new Date(iso + 'T' + (h || '10') + ':00:00').getTime();
+        const days = () => [...document.querySelectorAll('.kt-chat-day')].map((d) => d.textContent);
+        const t = todayISO(), y = addDays(t, -1), old = addDays(t, -400);
+        coachMessages = [
+          { role: 'user', content: 'An old question', at: at(old) }, { role: 'assistant', content: 'An old answer.', at: at(old, '11') },
+          { role: 'user', content: 'Yesterday', at: at(y) }, { role: 'assistant', content: 'Yesterday\'s answer.', at: at(y, '11') },
+          { role: 'user', content: 'Today', at: at(t, '08') }, { role: 'assistant', content: 'Today\'s answer.', at: at(t, '09') },
+        ];
+        render(); await wait(60);
+        r.days = days();
+        r.oldLabel = _calDayName(old);
+        r.upper = getComputedStyle(document.querySelector('.kt-chat-day')).textTransform;
+        coachMessages = [{ role: 'user', content: 'Unstamped' }, { role: 'assistant', content: 'From an older page.' }];
+        render(); await wait(40);
+        r.unstamped = days().length;
+        // a new message is stamped, the stamp is saved, and the API payload carries none
+        window.__bodies = [];
+        const real = window.fetch; eval(REPLY_FETCH)('Stamped.', 20); const f = window.fetch;
+        window.fetch = async (u, o) => { if (String(u).includes('anthropic')) window.__bodies.push(JSON.parse(o.body)); return f(u, o); };
+        document.getElementById('coach-input').value = 'New today'; await sendCoachMessage(); await wait(60);
+        r.stored = JSON.parse(localStorage.getItem('kt_coach_msgs')).slice(-2).map((m) => typeof m.at === 'number');
+        r.apiAt = JSON.stringify(window.__bodies.map((b) => b.messages)).indexOf('"at"') >= 0;
+        r.after = days();
+        window.fetch = real;
+        return r;
+      }, REPLY_FETCH).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      assert(JSON.stringify(out.days) === JSON.stringify([out.oldLabel, 'Yesterday', 'Today']) && /\d{4}/.test(out.oldLabel) && out.upper === 'uppercase', tag + 'dividers: an old date with its year, Yesterday, Today: ' + JSON.stringify([out.days, out.upper]));
+      assert(out.unstamped === 0, tag + 'unstamped history shows no divider');
+      assert(out.stored.every(Boolean) && !out.apiAt && JSON.stringify(out.after) === JSON.stringify(['Today']), tag + 'a new message is stamped and saved; the API never sees it: ' + JSON.stringify([out.stored, out.apiAt, out.after]));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
