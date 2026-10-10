@@ -3503,8 +3503,21 @@ function setRoutineArchive(a){ lsSet('kt_routine_archive',a); }
 function archiveCurrentRoutine(){
   var cr=getCustomRoutine(); if(!cr) return true;
   var arr=getRoutineArchive();
-  if(_archivedAlready(arr[0], cr)) return true;
+  if(_archivedAlready(arr[0], cr)){
+    var dt=_archiveDated(arr, cr);
+    if(dt!==arr){ try{ localStorage.setItem('kt_routine_archive', JSON.stringify(dt)); delete _lsCache['kt_routine_archive']; }catch(e){} }   // the programme is in Programme History either way
+    return true;
+  }
   return lsSet('kt_routine_archive', [{id:Date.now(),archivedAt:todayISO(),routine:_archiveCopy(cr)}].concat(arr).slice(0,5));
+}
+// The newest entry already holds this programme, as a page from before _archiveCopy left it (no
+// inUseFrom): it takes the date a new entry would get now, from the programme's own week clock.
+// Left undated, it named no block for good (Restore Previous on such a page, then Start new here).
+function _archiveDated(arr, cr){
+  var r=arr[0] && arr[0].routine, c=_archiveCopy(cr);
+  if(!r || r.inUseFrom || !c || !c.inUseFrom) return arr;
+  var cp=arr.slice(); cp[0]=JSON.parse(JSON.stringify(arr[0])); cp[0].routine.inUseFrom=c.inUseFrom;
+  return cp;
 }
 // The current programme as Programme History keeps it. One with no inUseFrom (put in by a page
 // from before it) is dated from the Monday its round's week 1 began on its own week clock, the
@@ -3512,18 +3525,48 @@ function archiveCurrentRoutine(){
 // Regenerate on such a page (archived nowhere) or a deleted entry, the next programme alone named
 // the old cards' blocks once it was archived (a BASE card read HYPERTROPHY; _sessBlock). A week
 // set back dates it later than it came in: its oldest cards then name no block, never a wrong one.
+// The weeks-away note (routine.away, _weekClockPut) stays out: it reads only on the clock it was
+// noted on, and a history restore or a new round starts week 1 afresh.
 function _archiveCopy(cr){
-  if(!cr || cr.inUseFrom) return cr;
+  if(!cr || (cr.inUseFrom && !('away' in cr))) return cr;
   var c=JSON.parse(JSON.stringify(cr)), s=_roundStartISO(), t=todayISO();
-  c.inUseFrom=(/^\d{4}-\d{2}-\d{2}$/.test(s) && s<t) ? s : t;
+  delete c.away;
+  if(!c.inUseFrom) c.inUseFrom=(/^\d{4}-\d{2}-\d{2}$/.test(s) && s<t) ? s : t;
   return c;
 }
 // Whether a Programme History entry already holds this programme, as _archiveCopy dated it or as
-// a page from before it wrote it (a retried swap adds nothing).
+// a page from before it wrote it (a retried swap adds nothing). The weeks-away note is clock, not
+// programme: a programme Restore Previous put back on a later Monday carries one, and was archived
+// a second time beside its own entry (a full history lost its oldest programme).
 function _archivedAlready(e, cr){
   var r=e && e.routine; if(!r || !cr) return false;
-  if(r.inUseFrom && !cr.inUseFrom){ r=JSON.parse(JSON.stringify(r)); delete r.inUseFrom; }
-  return JSON.stringify(r)===JSON.stringify(cr);
+  var a=JSON.parse(JSON.stringify(r)), b=JSON.parse(JSON.stringify(cr));
+  delete a.away; delete b.away;
+  if(a.inUseFrom && !b.inUseFrom) delete a.inUseFrom;
+  return JSON.stringify(a)===JSON.stringify(b);
+}
+// An entry a page from before _archiveCopy wrote (20261009-1 and older) has no inUseFrom, so it can
+// veto a block but never name one (_sessBlock): after the update, the old cards of a programme those
+// pages set aside for round 2 or a new programme read no block (WEEK 06, not WEEK 06 · BUILD). At
+// launch the newest is dated once, as _archiveCopy dates one, from the week clock it was set aside
+// with (kt_routine_backup's _clock, 20261006-1+) while that backup is still the same programme: its
+// own clock, never one read off what came after it (Regenerate leaves no trace, so a programme's
+// round 2 alone would name its blocks for cards trained on the one before). Changed since (an
+// edit took a new snapshot), the backup dates nothing and those cards stay without a block.
+function _dateOldArchive(){
+  try{
+    var arr=getRoutineArchive(), e=arr[0], r=e && e.routine, b=lsGet('kt_routine_backup'), c=b && b._clock, re=/^\d{4}-\d{2}-\d{2}$/;
+    if(!r || r.inUseFrom || !Array.isArray(r.weeks) || !r.weeks.length || !c || typeof c!=='object' || !re.test(String(e.archivedAt||''))) return;
+    var k=JSON.parse(JSON.stringify(b)); delete k._clock; delete k._w;
+    if(!_archivedAlready({routine:r}, k)) return;
+    // week 1 on that clock, as _weekClockPut reads it (from the final week's Monday on the last week)
+    var total=r.weeks.length, wk=Math.min(total, Math.max(1, parseInt(c.week,10)||1));
+    var fin=(wk>=total && re.test(String(c.finalSince||''))) ? String(c.finalSince) : '', m0=fin || (re.test(String(c.monday||'')) ? String(c.monday) : '');
+    if(!m0) return;
+    var w1=addDays(m0, -7*((fin ? total : wk)-1)), at=String(e.archivedAt), cp=JSON.parse(JSON.stringify(arr));
+    cp[0].routine.inUseFrom=(w1<at) ? w1 : at;
+    localStorage.setItem('kt_routine_archive', JSON.stringify(cp)); delete _lsCache['kt_routine_archive'];
+  }catch(x){}
 }
 function openRoutineArchiveModal(){
   closeRoutineArchiveModal();
@@ -3577,7 +3620,7 @@ function restoreArchivedRoutine(id){
     // goes in on top of every entry (six for a moment) and only the restored one leaves:
     // archiving first trimmed a full history to five, which cost it its oldest programme.
     var prevArr=getRoutineArchive().slice(), cur=getCustomRoutine();
-    var withCur=(cur && !_archivedAlready(prevArr[0], cur)) ? [{id:Date.now(),archivedAt:todayISO(),routine:_archiveCopy(cur)}].concat(prevArr) : prevArr;
+    var withCur=!cur ? prevArr : _archivedAlready(prevArr[0], cur) ? _archiveDated(prevArr, cur) : [{id:Date.now(),archivedAt:todayISO(),routine:_archiveCopy(cur)}].concat(prevArr);
     if(!lsSet('kt_routine_archive', withCur)){ showToast('Couldn\u2019t save your programme to Programme History \u2014 the phone is out of space. Nothing was changed. Export a backup and free some space.','err'); return; }
     if(!setCustomRoutine(entry.routine)){ lsSet('kt_routine_archive', prevArr); return; }
     _routineReplaced(cur, 'history:'+id);
@@ -12437,6 +12480,7 @@ function _nrDay(iso){
 function _nextRoundBuild(cr, until){
   var nr=JSON.parse(JSON.stringify(cr)), W=nr.weeks, pl=_plateLb(), inRound=_roundTest(cr), best={}, bestReps={}, rows=[], seen={};
   nr.cycle=(parseInt(cr.cycle,10)||1)+1;
+  delete nr.away;   // the last round's weeks-away note: the new round's week 1 is its own (_awayWeeks)
   // A new round is the programme's own version: no "edited by you" marks.
   W.forEach(function(w){
     if(!w) return; delete w.recOut;
@@ -22116,6 +22160,7 @@ function toggleDynType(){
 try{ applyDynamicType(); document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') applyDynamicType(); }); }catch(e){}
 currentWeek = getWeek();
 _streakUpgrade();   // before the week clock moves or a set round swaps in (its freeze reads these days)
+_dateOldArchive();   // an older page's Programme History entry, while the backup still holds its clock (a set round swapping in replaces it)
 // When this visit began, and the last time the owner was here before it (kt_last_open as the
 // visit found it, read before the visit stamps it): see _wristLive. _arrive() runs on a return.
 var _visitFrom=Date.now(), _awayFrom=parseFloat(localStorage.getItem('kt_last_open'))||0;
