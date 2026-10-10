@@ -1153,3 +1153,57 @@ run('U07: a workout deleted after the plan moved on gives back the deload\'s loa
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// U09 (hunt 6): T16 left out a log whose own stamp names the working weight: today's 150 over the
+// deload's 145 (the coach's, a +5's 165), its date picked behind last week's 160 and back, ended at
+// 145 under a newest log of 150, because the log it passed back over is older than the deload.
+// Its stamp says it replaced the load there now, so it takes over again, keeps that stamp (a delete
+// afterwards gives the deload's load back), and a load written after both still stays.
+run('U09: a log picked behind an older log and back takes the working weight over again when its stamp names that load', async () => {
+  const app = await boot({ native: true, seed: { kt_sessions: '[]', kt_prs: '{}', kt_weights: '{}' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const T = todayISO(), B = addDays(T, -14), cr0 = JSON.stringify(getCustomRoutine());
+      const W = () => getWeights()['Bench Press'];
+      const benchLine = () => (buildSystemPrompt().match(/CURRENT EXERCISE WEIGHTS[^\n]*\n(?:  [^\n]*\n)*/) || [''])[0].split('\n').filter(l => l.indexOf('  Bench Press:') === 0).join('|');
+      const reset = () => { lsSet('kt_routine', JSON.parse(cr0)); lsDel('kt_routine_backup'); lsSet('kt_sessions', []); lsSet('kt_weights', {}); recomputePRs();
+        executeCoachTool('log_session', { type: 'Push', date: addDays(T, -7), exercises: [{ name: 'Bench Press', sets: 3, reps: 8, weight: 160 }] }); };
+      const pick = async (from, to) => {
+        switchTab('progress'); progressTab = 'lifts'; _calNavToDate(from); calSelectedDate = null; render(); await wait(30);
+        document.querySelector('.cal-day[data-date="' + from + '"]').click(); await wait(40);
+        const f = document.querySelector('#cdBody input[type=date]'); f.value = to; f.dispatchEvent(new Event('change', { bubbles: true })); await wait(40);
+        closeCalDay(); await wait(10);
+      };
+      const runToday = async w => {
+        switchTab('log'); switchLogSub('workout'); await wait(20);
+        openDeckRunner('Push'); await wait(20);
+        runnerGoTo(runnerSession.exercises.findIndex(e => e.name === 'Bench Press')); runnerEngaged = true; runnerWeights['Bench Press'] = w; runnerLogAllAtTarget(); await wait(20);
+        runnerFinishSession(); await wait(250); if (typeof closeCompleteSheet === 'function') closeCompleteSheet(); await wait(20);
+        return getSessions().find(s => s.date === T);
+      };
+      const r = {};
+      for (const k of ['deload', 'coach', 'plus5', 'written']) {
+        reset();
+        const lo = k === 'plus5' ? 165 : 145;
+        if (k === 'coach') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 145 }); else _writeLoadLocal('Bench Press', lo);
+        const s = await runToday(lo + 5);
+        r[k] = { stamp: JSON.stringify(s.wSet), w: W() };
+        if (k === 'written') executeCoachTool('set_exercise_weight', { name: 'Bench Press', weight: 140 });   // after both logs
+        await pick(T, B); r[k].behind = W();
+        await pick(B, T); r[k].back = W(); r[k].line = benchLine(); r[k].prescribed = _prescribedLb('Bench Press');
+        r[k].stampBack = JSON.stringify(getSessions().find(x => x.id === s.id).wSet);
+        deleteSession(s.id); await wait(20); r[k].deleted = W();
+      }
+      return r;
+    });
+    ['deload', 'coach', 'plus5'].forEach(k => {
+      const x = out[k], lo = k === 'plus5' ? 165 : 145, hi = lo + 5, st = '{"Bench Press":[' + lo + ',' + hi + ']}';
+      assert(x.stamp === st && x.w === hi && x.behind === lo, k + ': set up, and the move behind gives ' + lo + ' back: ' + JSON.stringify(x));
+      assert(x.back === hi && x.line === '  Bench Press: ' + hi && x.prescribed === hi, k + ': picked back to today, it takes ' + hi + ' over again: ' + JSON.stringify(x));
+      assert(x.stampBack === st && x.deleted === lo, k + ': its stamp still names ' + lo + ', which a delete gives back: ' + JSON.stringify(x));
+    });
+    assert(out.written.behind === 140 && out.written.back === 140 && out.written.deleted === 140, 'a load the coach wrote after both logs stays through the round trip: ' + JSON.stringify(out.written));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

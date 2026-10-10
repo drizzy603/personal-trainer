@@ -4319,8 +4319,13 @@ function _workingWeightsFollow(before, moved){
   var w=getWeights(), ss=getSessions(), prev={}, any=false, took=false;
   Object.keys(before||{}).forEach(function(n){
     var x=before[n], b=x ? x.v : null, nx=_newestLog(n, ss), a=nx ? nx.v : null, cur=parseFloat(w[n])||0;
-    if(b==null || a===b || Math.abs(cur-b)>0.01) return;
-    var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, front=!!(moved && nx && nx.s===moved), to=a;
+    var front=!!(moved && nx && nx.s===moved), mm=(front && moved.wSet) ? moved.wSet[n] : null;
+    // Its own stamp says it replaced the working weight there now (a date mis-picked behind last
+    // week's log and fixed: the move behind gave the deload's 145 back), so moved back to the front
+    // it takes over again, though the log it passes is older than that load.
+    var again=!!(Array.isArray(mm) && mm[0]!=null && cur>0 && Math.abs((parseFloat(mm[0])||0)-cur)<0.01);
+    if(b==null || (!again && (a===b || Math.abs(cur-b)>0.01))) return;
+    var ls=x.s||{}, st=ls.wSet, mine=st ? st[n] : null, to=a;
     // Moved to the front, a log takes over whatever the log it passed set (a log that only met the
     // coach's or the deload's load, or one from before the stamp, set nothing): a date mis-picked
     // and fixed, or a workout filed on the wrong day moved to today, left the passed log's load.
@@ -4342,7 +4347,8 @@ function _workingWeightsFollow(before, moved){
     if(to!=null && Math.abs(to-cur)<0.01) return;
     prev[n]=w[n]; any=true;
     if(to!=null) w[n]=to; else delete w[n];
-    if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[null, to]; took=true; }
+    // the load it replaced, as _wwStamp writes it: none when the log it passed had set that one
+    if(front && moved.wSet){ moved.wSet=Object.assign({}, moved.wSet); moved.wSet[n]=[Math.abs(cur-b)<0.01 ? null : cur, to]; took=true; }
   });
   if(!any) return null;
   if(!lsSet('kt_weights', w)) return null;
