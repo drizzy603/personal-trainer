@@ -550,7 +550,7 @@ run('S1: one left edge, one rhythm, one hairline under the header', async () => 
         assert(!out.err, tag + out.err);
         const L = size.width === 390 ? 20 : 16, R = size.width - L;
         for (const k of Object.keys(out.edges)) assert(Math.abs(out.edges[k][0] - L) <= 1 && Math.abs(out.edges[k][1] - R) <= 1, tag + k + ' spans the column: ' + JSON.stringify(out.edges[k]));
-        const want = ['user>reply:20', 'reply>pills:8', 'pills>ledger:8', 'ledger>user:20', 'user>block:20', 'block>user:20'];
+        const want = ['user>block:20', 'block>pills:8', 'pills>ledger:8', 'ledger>user:20', 'block>user:20', 'user>note:20', 'note>retry:8'];
         for (const w of want) assert(out.gaps.some((g) => Math.abs(parseFloat(g.split(':')[1]) - parseFloat(w.split(':')[1])) <= 1 && g.split(':')[0] === w.split(':')[0]), tag + 'gap ' + w + ' in ' + JSON.stringify(out.gaps));
         assert(out.stickRule === '1px' && out.headRule === 'none', tag + 'one rule under the header: ' + JSON.stringify([out.stickRule, out.headRule]));
         assert(out.sw <= out.cw, tag + 'no horizontal overflow: ' + JSON.stringify([out.sw, out.cw]));
@@ -578,7 +578,7 @@ run('S2: message parts wear the room\'s tokens; nothing runs off the column at 3
           switchTab('coach'); coachView = 'chat'; render(); await wait(160);
           const list = document.querySelector('.coach-msgs-area'), lr = list.getBoundingClientRect();
           // nothing overflows its own box or the scroller
-          r.over = [...list.querySelectorAll('*')].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0).map((e) => e.className || e.tagName).slice(0, 5);
+          r.over = [...list.querySelectorAll('*')].filter((e) => !e.classList.contains('kt-sr') && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0).map((e) => e.className || e.tagName).slice(0, 5);
           r.past = [...list.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > lr.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5);
           // the long metric: label on its own line, the whole value under it, right-aligned
           const row = document.querySelector('.kt-cmb-mrow'), lab = row.querySelector('.kt-cmb-mlabel'), val = row.querySelector('.kt-cmb-mval');
@@ -629,4 +629,87 @@ run('S2: message parts wear the room\'s tokens; nothing runs off the column at 3
   // Lime keeps today's colours
   assert(D.okPill === 'rgb(185, 185, 190)' && D.okPillBg === 'rgb(30, 30, 33)' && D.badPill === 'rgb(255, 93, 85)', 'Lime: pills unchanged: ' + JSON.stringify([D.okPill, D.okPillBg, D.badPill]));
   assert(D.good === 'rgb(216, 255, 99)' && D.warn === 'rgb(255, 157, 92)' && D.primary[1] === 'rgb(244, 244, 241)', 'Lime: deltas and the neutral primary chip unchanged: ' + JSON.stringify([D.good, D.warn, D.primary]));
+});
+
+// ── S3 ─────────────────────────────────────────────────────────────────────────
+run('S3: coach replies have one presentation; notes, the owner\'s text, Thinking and stale chips follow it', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    for (const [size, zoom] of [[{ width: 390, height: 844 }, 1], [{ width: 320, height: 700 }, 1.25]]) {
+      const tag = room + ' ' + size.width + ' zoom ' + zoom + ': ';
+      const msgs = [
+        { role: 'user', content: 'Line one\nline two\nline three' },
+        { role: 'assistant', content: 'A plain reply. **Bold** works.' },
+        { role: 'user', content: 'How am i doing?' },
+        { role: 'assistant', content: PROGRESS },
+        { role: 'assistant', content: 'Stopped.', _local: true },
+        { role: 'assistant', content: 'Could not connect. Check your internet connection.', _error: true, _local: true },
+      ];
+      const app = await bootChat(room, size, { seed: { kt_coach_msgs: JSON.stringify(msgs) } });
+      try {
+        const out = await app.page.evaluate(async (zoom) => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+          if (zoom !== 1) applyDynamicType(zoom);
+          switchTab('coach'); coachView = 'chat'; render(); await wait(160);
+          const z = parseFloat(document.documentElement.style.zoom) || 1;
+          const blocks = [...document.querySelectorAll('.coach-msgs-wrap > .kt-cmb')];
+          r.blocks = blocks.map((b) => { const bb = b.getBoundingClientRect(), eb = b.querySelector('.kt-cmb-eyebrow'), cs = getComputedStyle(eb);
+            return { left: Math.round(bb.left), right: Math.round(bb.right), eyebrow: eb.textContent, color: cs.color, font: cs.fontFamily }; });
+          const para = getComputedStyle(document.querySelector('.kt-cmb-para'));
+          r.prose = [para.fontSize, para.lineHeight];
+          r.assistantBubbles = document.querySelectorAll('.coach-bubble.assistant').length;
+          const notes = [...document.querySelectorAll('.kt-cmb-note')];
+          r.notes = notes.map((n) => ({ text: n.textContent, eyebrow: !!n.querySelector('.kt-cmb-eyebrow'), dot: getComputedStyle(n, '::before').backgroundColor, err: n.classList.contains('err') }));
+          r.red = getComputedStyle(document.documentElement).getPropertyValue('--red').trim();
+          const ub = document.querySelector('.coach-bubble.user');
+          r.user = { lines: Math.round(ub.querySelector('.kt-sr').nextSibling ? ub.getBoundingClientRect().height / (parseFloat(getComputedStyle(ub).lineHeight) * z) : 0), ws: getComputedStyle(ub).whiteSpace, sr: ub.querySelector('.kt-sr').textContent };
+          // the newest real reply keeps its chips; once a newer one lands, the older loses them; none while one is in flight
+          r.chipsNewest = document.querySelectorAll('.kt-cmb-actions .kt-cmb-chip').length;
+          coachMessages.push({ role: 'user', content: 'ok' }, { role: 'assistant', content: 'Newer reply.' }); render(); await wait(60);
+          r.chipsOlder = document.querySelectorAll('.kt-cmb-actions .kt-cmb-chip').length;
+          coachMessages.splice(-2, 2); coachLoading = true; render(); await wait(60);
+          r.chipsLoading = document.querySelectorAll('.kt-cmb-actions .kt-cmb-chip').length;
+          const tw = document.querySelector('.kt-thinking .typing-wrap'), tcs = getComputedStyle(tw);
+          r.thinking = { bg: tcs.backgroundColor, border: tcs.borderTopStyle, eyebrow: (document.querySelector('.kt-thinking .kt-cmb-eyebrow') || {}).textContent };
+          coachLoading = false; render();
+          return r;
+        }, zoom).catch((e) => ({ err: String(e) }));
+        assert(!out.err, tag + out.err);
+        const L = (size.width === 390 ? 20 : 16) * zoom;   // the gutter, as boxes read it at the root zoom
+        assert(out.blocks.length === 2 && out.blocks.every((b) => Math.abs(b.left - L) <= 1 && Math.abs(b.right - (size.width - L)) <= 1), tag + 'a plain reply and a %% reply are both blocks at the column\'s width: ' + JSON.stringify(out.blocks));
+        assert(out.blocks[0].eyebrow === 'COACH' && /^COACH · /.test(out.blocks[1].eyebrow), tag + 'both carry a COACH eyebrow: ' + JSON.stringify(out.blocks.map((b) => b.eyebrow)));
+        if (room === 'heavyweight') assert(out.blocks.every((b) => b.color === 'rgb(10, 67, 245)' && /Archivo/.test(b.font)), tag + 'the eyebrow is blue Archivo caps: ' + JSON.stringify(out.blocks));
+        else assert(out.blocks.every((b) => b.color === 'rgb(140, 140, 145)' && /JetBrains/.test(b.font)), tag + 'the eyebrow is muted mono: ' + JSON.stringify(out.blocks));
+        assert(out.prose[0] === '15px' && out.prose[1] === '22.5px', tag + 'prose is 15px on 1.5: ' + JSON.stringify(out.prose));
+        assert(out.assistantBubbles === 0, tag + 'no coach reply is a bubble');
+        assert(out.notes.length === 2 && out.notes.every((n) => !n.eyebrow) && out.notes[0].text === 'Stopped.', tag + 'Stopped and the error are notes without an eyebrow: ' + JSON.stringify(out.notes));
+        const red = room === 'heavyweight' ? 'rgb(220, 38, 38)' : 'rgb(255, 93, 85)';
+        assert(out.notes[1].err && out.notes[1].dot === red && out.notes[0].dot !== red, tag + 'an error\'s dot is red: ' + JSON.stringify(out.notes));
+        assert(out.user.ws === 'pre-wrap' && out.user.lines >= 3 && out.user.sr === 'You: ', tag + 'a typed 3-line message keeps its lines and reads "You:": ' + JSON.stringify(out.user));
+        assert(out.chipsNewest === 2 && out.chipsOlder === 0 && out.chipsLoading === 0, tag + 'chips act only on the newest reply, never mid-reply: ' + JSON.stringify([out.chipsNewest, out.chipsOlder, out.chipsLoading]));
+        assert(out.thinking.bg === 'rgba(0, 0, 0, 0)' && out.thinking.border === 'none' && out.thinking.eyebrow === 'COACH', tag + 'Thinking has no box: ' + JSON.stringify(out.thinking));
+        assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+      } finally { await app.close(); }
+    }
+  }
+});
+
+run('S3: a photo sent with no words shows only the photo, also after a relaunch', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { seed: { kt_coach_msgs: '[]' } });
+  try {
+    await open(app.page);
+    const out = await app.page.evaluate(async (MOCK_FETCH) => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+      eval(MOCK_FETCH)(20);
+      pendingImage = { data: 'R0lGODlhAQABAAAAACw=', mediaType: 'image/gif', previewUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }; render(); await wait(40);
+      await sendCoachMessage(); await wait(60);
+      const ub = () => document.querySelector('.coach-bubble.user');
+      r.sent = { img: !!ub().querySelector('img'), alt: (ub().querySelector('img') || {}).alt, text: ub().textContent.trim(), api: JSON.stringify(_toApiMsg(coachMessages[0])).indexOf('Please look at this image') >= 0 };
+      loadCoachHistory(); render(); await wait(60);
+      r.relaunch = { text: ub().textContent.trim(), img: !!ub().querySelector('img') };
+      return r;
+    }, MOCK_FETCH);
+    assert(out.sent.img && out.sent.alt === 'Photo you sent' && out.sent.text === '' && out.sent.api, 'the photo alone shows; the default prompt still goes to the API: ' + JSON.stringify(out.sent));
+    assert(out.relaunch.text.replace('\u{1F4F7}', '').trim() === 'Photo' && !out.relaunch.img, 'after a relaunch the label alone shows: ' + JSON.stringify(out.relaunch));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
