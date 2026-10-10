@@ -361,3 +361,93 @@ run('M3: reduced motion fades the bar without sliding it; a desktop send still r
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// ── M4 ─────────────────────────────────────────────────────────────────────────
+const rgbOf = (s) => (String(s).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+const lumOf = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+const ratioOf = (fg, bg) => { const a = lumOf(rgbOf(fg)), b = lumOf(rgbOf(bg)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+
+run('M4: the composer is one field with 44pt controls and an honest Send / Stop', async () => {
+  for (const room of ['heavyweight', 'dark']) {
+    const tag = room + ': ';
+    const app = await bootChat(room, { width: 390, height: 844 });
+    try {
+      await open(app.page);
+      const out = await app.page.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        const B = (el) => el.getBoundingClientRect();
+        const i = document.getElementById('coach-input'), row = document.querySelector('.coach-input-row');
+        const att = document.querySelector('.coach-attach'), send = () => document.getElementById('coach-send');
+        r.rest = { rowH: B(row).height, att: [B(att).width, B(att).height], send: [B(send()).width, B(send()).height], font: getComputedStyle(i).fontSize,
+          attName: att.getAttribute('aria-label'), boxName: i.getAttribute('aria-label') };
+        // focused: no ring inside the composer; the row carries it
+        i.focus(); await wait(60);
+        const ics = getComputedStyle(i), rcs = getComputedStyle(row);
+        r.focus = { outline: ics.outlineStyle, shadow: ics.boxShadow, bg: ics.backgroundColor, border: rcs.borderTopColor, ring: rcs.boxShadow, padL: parseFloat(ics.paddingLeft) };
+        r.attColor = getComputedStyle(att).color; r.rowBg = rcs.backgroundColor;
+        // Send: disabled on an empty box, enabled by one character or by a photo
+        r.empty = { disabled: send().disabled, name: send().getAttribute('aria-label') };
+        i.value = 'x'; i.dispatchEvent(new Event('input', { bubbles: true })); r.typed = send().disabled;
+        i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); r.cleared = send().disabled;
+        pendingImage = { data: 'x', mediaType: 'image/gif', previewUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }; render(); await wait(60);
+        r.photo = send().disabled; pendingImage = null; render(); await wait(60);
+        // a 4-line draft: the buttons stay by the last line, 7px off the row's bottom
+        const i2 = document.getElementById('coach-input');
+        i2.value = 'one\ntwo\nthree\nfour'; i2.dispatchEvent(new Event('input', { bubbles: true })); await wait(60);
+        const rb = B(document.querySelector('.coach-input-row')), sb = B(send());
+        r.fourLine = { gap: rb.bottom - sb.bottom, rowH: rb.height };
+        i2.value = ''; i2.dispatchEvent(new Event('input', { bubbles: true }));
+        // in flight: Stop in Send's place and no button in the Thinking row; Stop stops
+        coachLoading = true; render(); await wait(60);
+        r.loading = { name: send().getAttribute('aria-label'), disabled: send().disabled, onclick: send().getAttribute('onclick'),
+          thinkingButtons: document.querySelectorAll('.typing-wrap button').length };
+        send().click(); await wait(60);
+        r.stopped = { loading: coachLoading, last: coachMessages[coachMessages.length - 1].content, name: send().getAttribute('aria-label') };
+        // keys: Enter mid-composition and Shift+Enter do not send; Enter, Cmd+Enter and Ctrl+Enter do
+        const real = window.sendCoachMessage; let calls = 0; window.sendCoachMessage = () => { calls++; };
+        const key = (o) => { const e = new KeyboardEvent('keydown', Object.assign({ key: 'Enter', bubbles: true, cancelable: true }, o)); document.getElementById('coach-input').dispatchEvent(e); return e.defaultPrevented; };
+        r.keys = { composing: key({ isComposing: true }), shift: key({ shiftKey: true }), afterNoSend: calls };
+        key({}); key({ metaKey: true }); key({ ctrlKey: true });
+        r.keys.sent = calls; window.sendCoachMessage = real;
+        // intake: no attach button, the text 14px+ inside the composer
+        _setIntakeMode(true); render(); await wait(60);
+        const ii = document.getElementById('coach-input'), ir = document.querySelector('.coach-input-row');
+        r.intake = { attach: !!document.querySelector('.coach-attach'), inset: B(ii).left + parseFloat(getComputedStyle(ii).paddingLeft) - B(ir).left - 1, name: ii.getAttribute('aria-label') };
+        _setIntakeMode(false); render();
+        return r;
+      }).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      assert(Math.abs(out.rest.rowH - 58) <= 1 && out.rest.att.every((v) => v === 44) && out.rest.send.every((v) => v === 44), tag + 'a one-line composer is 58px with 44pt attach and send: ' + JSON.stringify(out.rest));
+      assert(out.rest.font === '16px' && out.rest.attName === 'Attach photo' && out.rest.boxName === 'Message the coach', tag + 'the box is 16px and named, attach is named: ' + JSON.stringify(out.rest));
+      assert(out.focus.outline === 'none' && out.focus.shadow === 'none', tag + 'no ring is drawn inside the composer: ' + JSON.stringify(out.focus));
+      const want = room === 'heavyweight' ? 'rgb(10, 67, 245)' : 'rgb(185, 185, 190)';
+      assert(out.focus.border === want && /inset/.test(out.focus.ring) && /1px/.test(out.focus.ring), tag + 'the row carries the focus ring: ' + JSON.stringify([out.focus.border, out.focus.ring]));
+      assert(out.focus.bg === 'rgba(0, 0, 0, 0)', tag + 'the box has no surface of its own: ' + out.focus.bg);
+      assert(out.focus.padL >= 8, tag + 'the caret sits 8px+ inside the box: ' + out.focus.padL);
+      if (room === 'heavyweight') assert(ratioOf(out.attColor, out.rowBg) >= 3, tag + 'the attach icon has 3:1 on the composer: ' + ratioOf(out.attColor, out.rowBg).toFixed(2));
+      assert(out.empty.disabled && out.empty.name === 'Send message' && !out.typed && out.cleared && !out.photo, tag + 'Send is disabled only with nothing to send: ' + JSON.stringify([out.empty, out.typed, out.cleared, out.photo]));
+      assert(Math.abs(out.fourLine.gap - 7) <= 1 && out.fourLine.rowH > 100, tag + 'with a 4-line draft Send stays by the last line: ' + JSON.stringify(out.fourLine));
+      assert(out.loading.name === 'Stop the reply' && !out.loading.disabled && /coachStop\(\)/.test(out.loading.onclick) && out.loading.thinkingButtons === 0, tag + 'in flight the slot is an enabled Stop: ' + JSON.stringify(out.loading));
+      assert(!out.stopped.loading && /^Stopped\./.test(out.stopped.last) && out.stopped.name === 'Send message', tag + 'Stop stops the turn: ' + JSON.stringify(out.stopped));
+      assert(!out.keys.composing && !out.keys.shift && out.keys.afterNoSend === 0 && out.keys.sent === 3, tag + 'Enter sends, never mid-composition; Shift+Enter is a new line: ' + JSON.stringify(out.keys));
+      assert(!out.intake.attach && out.intake.inset >= 14 && out.intake.name === 'Answer the coach', tag + 'intake: the text sits 14px+ inside the composer: ' + JSON.stringify(out.intake));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
+
+run('M4: on a touch screen Return is a new line and Cmd/Ctrl+Enter sends', async () => {
+  const app = await bootChat('heavyweight', { width: 390, height: 844 }, { touch: true });
+  try {
+    await open(app.page);
+    const out = await app.page.evaluate(() => {
+      let calls = 0; const real = window.sendCoachMessage; window.sendCoachMessage = () => { calls++; };
+      const key = (o) => document.getElementById('coach-input').dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key: 'Enter', bubbles: true, cancelable: true }, o)));
+      key({}); const plain = calls; key({ metaKey: true }); key({ ctrlKey: true });
+      window.sendCoachMessage = real;
+      return { coarse: _coarsePointer(), plain, total: calls };
+    });
+    assert(out.coarse && out.plain === 0 && out.total === 2, 'Return is a new line on touch; Cmd/Ctrl+Enter sends: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});

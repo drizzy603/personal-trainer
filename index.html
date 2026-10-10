@@ -505,11 +505,15 @@ select option{background:var(--bg);}
 /* The 16px end gap is a spacer: WebKit drops a flex scroller's block-end padding from its overflow. */
 .coach-msgs-area::after{content:'';flex:none;height:16px;}
 .coach-msgs-wrap>:last-child,.kt-cmb>:last-child{margin-bottom:0;}
+/* The composer is one field: the row is the surface and carries the focus ring; the attach and
+   send buttons are 44pt targets that stay by the last line of a long draft. */
 .coach-input-row{position:relative;flex:none;
-  display:flex;gap:8px;align-items:center;
+  display:flex;gap:4px;align-items:flex-end;
   background:var(--card);
   border:1px solid var(--border);border-radius:24px;
-  padding:6px 6px 6px 18px;}
+  padding:6px;}
+.coach-attach{width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:none;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.coach-attach.on{color:var(--text);}
 /* A photo waiting to be sent sits in flow above the composer, on the room's card. */
 .coach-img-preview{position:relative;flex:none;margin:0 0 8px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:8px;}
 .coach-img-preview img{display:block;width:100%;max-height:140px;object-fit:contain;border-radius:10px;}
@@ -530,20 +534,28 @@ html.kb-open.kt-chat #screen{padding-bottom:var(--tab-gap);}
 html[data-room="dark"].kt-chat .coach-input-row,html[data-room="dark"].kt-chat .coach-img-preview{margin-left:-6px;margin-right:-6px;}
 /* Keys up: iOS keeps the layout viewport under the keyboard and pans the visual one over it,
    which took the header and the status-bar mask off the top and ran the conversation under the
-   clock. #app is laid over the visual viewport instead (--vv-top/--vv-h, set by the binding by
-   the scroll-offset guard): the header stays, the composer sits on the keys. */
+   clock. #app is laid over the visual viewport instead (--vv-top/--vv-h, set by the visual-
+   viewport binding next to the scroll-offset guard): the header stays, the composer sits on the keys. */
 html.kb-open #app{position:fixed;left:0;right:0;top:0;height:var(--vv-h,100%);transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
 html.kb-open body::before{transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
 html.kb-open .coach-img-preview img{max-height:96px;}
 html.kb-open .coach-chat-stick>.screen-hd{display:none;}
-.coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
-  resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
+/* 16px text (the iOS focus-zoom floor) on a 22px line: one line is 44px, the row 58px. */
+.coach-textarea{flex:1;min-width:0;background:none;border:none;color:var(--text);font-size:16px;
+  resize:none;max-height:120px;min-height:44px;line-height:22px;padding:11px 8px;font-family:inherit;}
+.coach-textarea:first-child{padding-left:14px;}   /* intake has no attach button */
 .coach-textarea::placeholder{color:var(--muted);}
+/* The box carries no ring and no surface of its own inside the composer: the row does. */
+html[data-room] .coach-input-row .coach-textarea{background:transparent;border-radius:0;}
+html[data-room] .coach-input-row .coach-textarea:focus,html[data-room] .coach-input-row .coach-textarea:focus-visible{outline:none;box-shadow:none;}
+html[data-room="heavyweight"] .coach-input-row:focus-within{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+html[data-room="dark"] .coach-input-row:focus-within{border-color:var(--lite);box-shadow:inset 0 0 0 1px var(--lite);}
 .coach-send-btn{background:var(--accent);border:none;border-radius:22px;color:var(--on-accent);
   width:44px;height:44px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .coach-send-btn:active{opacity:.7;}
-.coach-send-btn:disabled{opacity:.3;}
+.coach-send-btn:disabled{opacity:.3;}   /* an empty box: nothing to send */
+.coach-stop-ic{display:block;width:12px;height:12px;border-radius:3px;background:currentColor;}
 .typing-wrap{display:flex;gap:5px;align-items:center;padding:13px 16px;
   background:var(--card);border:1px solid var(--border);border-radius:20px;
   border-bottom-left-radius:5px;align-self:flex-start;}
@@ -1677,9 +1689,6 @@ html[data-room="dark"] .coach-msgs-wrap span[style*="animation:blink"]{backgroun
 html[data-room="dark"] .kt-cmb-chip.primary{border-color:var(--border);color:var(--text);}
 html[data-room="dark"] .kt-cmb-mref{opacity:1;}
 html[data-room="dark"] .coach-chat-stick .screen-hd button[style*="color:var(--accent)"]{color:var(--text)!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"]{opacity:1!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"] svg{color:var(--muted)!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"][style*="opacity:1"] svg{color:var(--text)!important;}
 /* Settings, programme modal, sheets */
 html[data-room="dark"] .settings-row-ic svg{stroke:var(--lite);}
 html[data-room="dark"] .settings-row span[style*="color:var(--accent)"],html[data-room="dark"] .settings-row-val[style*="accent-ink"]{color:var(--text)!important;}
@@ -6043,7 +6052,7 @@ function render() {
     if(!_isChat) screen.scrollTop = routeChanged ? 0 : prevScroll;
     else if(routeChanged || _oEnd) scrollChatBottom();
     else { var _nl=screen.querySelector('.coach-msgs-area'); if(_nl) _nl.scrollTop=_oTop; }
-    _chatAnchor();
+    _chatAnchor(); _syncSend();
     if(_wasChat!==_isChat && window._vvChatSync) _vvChatSync();
     _a11yPass(); _scheduleNativeSync(); paintRunner(); return;
   }
@@ -20415,6 +20424,14 @@ async function coachRetryLast(){
   }
 }
 
+// Send is honest: disabled while there is nothing to send (no text, no photo). Runs on every
+// keystroke and after every render (the button is rebuilt). While a reply is in flight the slot
+// is Stop, which stays enabled.
+function _syncSend(){
+  var b=document.getElementById('coach-send'), i=document.getElementById('coach-input');
+  if(!b || !i || coachLoading) return;
+  b.disabled=!i.value.trim() && !pendingImage;
+}
 // Lands the conversation on its newest message: now (every render builds a new scroller, and
 // waiting would flash its top) and again at 80 ms, once late images have their height. Only the
 // chat's own scroller: the hub opens at its top like every other screen.
@@ -20722,8 +20739,7 @@ function renderCoach(){
       bubbles+='<div class="typing-wrap">'+
         '<span style="font-size:12px;color:var(--lite);margin-right:8px;">Thinking…</span>'+
         '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
-        '<button onclick="coachStop()" style="margin-left:12px;background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:11px;font-weight:700;padding:6px 13px;border-radius:11px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Stop</button>'+
-      '</div>';
+      '</div>';   // Stop is the composer's Send slot while a reply is in flight
     }
     msgsHTML='<div class="coach-msgs-wrap">'+bubbles+'</div>';
   }
@@ -20736,21 +20752,26 @@ function renderCoach(){
         '<button class="coach-img-x" onclick="clearPendingImage()" aria-label="Remove photo"><span aria-hidden="true">✕</span></button>'+
       '</div>'
     :'';
+  // One field: attach (44pt), the box, and Send, which is Stop while a reply is in flight (a reply
+  // cannot be sent and stopped at once) and disabled while there is nothing to send (_syncSend).
+  // Enter sends on a desktop keyboard, never mid-composition (IME); Cmd/Ctrl+Enter sends anywhere.
   var inputRow='<div class="coach-input-row">'+
     (!intakeMode
-      ?'<button onclick="triggerImagePicker()" style="background:none;border:none;padding:6px;cursor:pointer;flex-shrink:0;opacity:'+(pendingImage?'1':'.45')+';-webkit-tap-highlight-color:transparent;" title="Attach photo">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" style="color:var(--accent)">'+
+      ?'<button class="coach-attach'+(pendingImage?' on':'')+'" onclick="triggerImagePicker()" aria-label="Attach photo" title="Attach photo">'+
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">'+
             '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'+
             '<polyline points="21 15 16 10 5 21"/>'+
           '</svg>'+
         '</button>'
       :'')+
-    '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" rows="1" '+
-      'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey&&!_coarsePointer()){event.preventDefault();sendCoachMessage();}" '+
-      'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>'+
-    '<button class="coach-send-btn" onclick="sendCoachMessage()" '+(coachLoading?'disabled':'')+'>'+
-      '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
-    '</button>'+
+    '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" aria-label="'+(intakeMode?'Answer the coach':'Message the coach')+'" rows="1" '+
+      'onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229&&(event.metaKey||event.ctrlKey||(!event.shiftKey&&!_coarsePointer()))){event.preventDefault();sendCoachMessage();}" '+
+      'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,120)+\'px\';_syncSend()"></textarea>'+
+    (coachLoading
+      ?'<button id="coach-send" class="coach-send-btn stop" aria-label="Stop the reply" onclick="coachStop()"><span class="coach-stop-ic" aria-hidden="true"></span></button>'
+      :'<button id="coach-send" class="coach-send-btn" aria-label="Send message" onclick="sendCoachMessage()">'+
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
+        '</button>')+
   '</div>';
 
   var _avCh=_initialOf(getUserFirstName());
@@ -22809,7 +22830,8 @@ function _restoreCoachDraft(){
   if(!el) return;
   if(_coachDraft.v && !el.value){
     el.value = _coachDraft.v;
-    el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
+    el.style.height=''; el.style.height=Math.min(el.scrollHeight,120)+'px';
+    if(typeof _syncSend==='function') _syncSend();
   }
   if(_coachDraft.focus && document.activeElement!==el){
     try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }   // the column keeps its place: no scroll into view
