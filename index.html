@@ -19543,12 +19543,15 @@ function _noteBackupWeight(sc, key, from, to){
   try{
     var b=JSON.parse(localStorage.getItem('kt_routine_backup')), w=(b._w&&typeof b._w==='object')?b._w:{}, p=w[key];
     var ids=(Array.isArray(p) && Array.isArray(p[2]) && p[2].length) ? p[2] : null, ss=ids ? getSessions() : null;
+    var two=Array.isArray(p) && p.length>=5 && Array.isArray(p[4]);
     // A log that holds the lift (logged between two changes of one reply) is newer than the scope's
     // first change: this one starts from the load that log set, and its stamp gives back the load
-    // from before the scope, as Undo would have (_dropNotedWeights). Else the first change in the
-    // scope keeps what was there before it.
-    if(ids && _noteHeld(key, ids, ss)){ _putNoteStamps(_noteStamps(key, p, ids, ss)); w[key]=[from, to]; }
-    else w[key]=[p?p[0]:from, to];
+    // from before the scope, as Undo would have (_dropNotedWeights). The note keeps that load and
+    // the log too ([from, to, holders, load before the scope, [the log]]): deleted, or moved behind
+    // an older log, the log no longer stands and Undo gives back the load from before the scope (it
+    // put back the deleted log's load). Else the first change in the scope keeps what was there.
+    if(ids && _noteHeld(key, ids, ss, two ? p[4] : null)){ _putNoteStamps(_noteStamps(key, p, ids, ss)); w[key]=[from, to, [], two ? p[3] : p[0], ids]; }
+    else w[key]=two ? [p[0], to, [], p[3], p[4]] : [p?p[0]:from, to];
     b._w=w;
     localStorage.setItem('kt_routine_backup', JSON.stringify(b)); delete _lsCache['kt_routine_backup'];   // no storage-full toast: the change itself was saved
   }catch(e){}
@@ -19574,7 +19577,7 @@ function _dropNotedWeights(names, rec){
       var hl=(rec && rec.id!=null) ? rec : (_newestLog(nm)||{}).s, id=hl ? hl.id : null;
       if(id==null || !Array.isArray(p)){ delete b._w[k]; n++; return; }
       var ids=Array.isArray(p[2]) ? p[2].slice() : [];
-      if(ids.indexOf(id)<0){ ids.push(id); b._w[k]=[p[0], p[1], ids]; n++; }
+      if(ids.indexOf(id)<0){ ids.push(id); b._w[k]=[p[0], p[1], ids].concat(p.slice(3)); n++; }
     });
     if(!n) return;
     if(!Object.keys(b._w).length) delete b._w;
@@ -19586,13 +19589,15 @@ function _dropNotedWeights(names, rec){
 // it holds nothing and the note puts the load back. A log saved after the first holder that holds
 // nothing set nothing (every log that sets the lift holds it: a lighter one filed for a later day,
 // a backdated log only raising it), so it never takes the holder's day: Undo or Restore previous
-// put the load from before the change back under the workout that held it.
-function _noteHeld(k, ids, ss){
+// put the load from before the change back under the workout that held it. also: the note's other
+// holders (a log between two changes of one reply, or the ones after them), holders all the same.
+function _noteHeld(k, ids, ss, also){
   if(!Array.isArray(ids) || !ids.length) return false;
-  var lk=String(k).toLowerCase(), top=null, at=[], first=Math.min.apply(null, ids.map(Number));
+  var known=Array.isArray(also) ? ids.concat(also) : ids;
+  var lk=String(k).toLowerCase(), top=null, at=[], first=Math.min.apply(null, known.map(Number));
   (ss||[]).forEach(function(s){
     if(!s || !(s.exercises||[]).some(function(e){ return e && String(e.name||'').toLowerCase()===lk && _exLoad(e)>0; })) return;
-    if(ids.indexOf(s.id)<0 && Number(s.id)>first && s.wSet && typeof s.wSet==='object' && !Object.keys(s.wSet).some(function(n){ return n.toLowerCase()===lk; })) return;
+    if(known.indexOf(s.id)<0 && Number(s.id)>first && s.wSet && typeof s.wSet==='object' && !Object.keys(s.wSet).some(function(n){ return n.toLowerCase()===lk; })) return;
     var d=String(s.date||'');
     if(top===null || d>top){ top=d; at=[s]; } else if(d===top) at.push(s);
   });
@@ -19636,12 +19641,16 @@ function _swapNotedWeights(w){
   var weights=JSON.parse(JSON.stringify(getWeights())), back={}, ss=getSessions(), stamps=[];
   Object.keys(w).forEach(function(k){
     var p=w[k]; if(!Array.isArray(p) || p.length<2) return;
-    var ids=(Array.isArray(p[2]) && p[2].length) ? p[2] : null, held=_noteHeld(k, ids, ss);
+    var ids=(Array.isArray(p[2]) && p[2].length) ? p[2] : null, lids=(p.length>=5 && Array.isArray(p[4]) && p[4].length) ? p[4] : null;
+    var held=_noteHeld(k, ids, ss, lids);
+    // changed again after a log held it (one reply: set, log, set): the log's load while it stands,
+    // else the load from before the reply
+    var b0=(lids && !_noteHeld(k, lids, ss, ids)) ? p[3] : p[0];
     var now=Object.prototype.hasOwnProperty.call(weights,k)?weights[k]:null;
     var put=!held && (now==null ? p[1]==null : (p[1]!=null && parseFloat(now)===parseFloat(p[1])));
-    if(put){ if(p[0]==null) delete weights[k]; else weights[k]=p[0]; }
-    var st=_noteStamps(k, p, ids, ss); stamps=stamps.concat(st);
-    if(put || held || st.length) back[k]=ids ? [p[1], p[0], ids] : [p[1], p[0]];
+    if(put){ if(b0==null) delete weights[k]; else weights[k]=b0; }
+    var st=_noteStamps(k, [b0, p[1]], ids, ss); stamps=stamps.concat(st);
+    if(put || held || st.length) back[k]=ids ? [p[1], b0, ids] : [p[1], b0];
   });
   return Object.keys(back).length ? {weights:weights, back:back, stamps:stamps} : null;
 }
