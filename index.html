@@ -20931,7 +20931,10 @@ function renderCoach(){
     coachMessages.forEach(function(m){
       if(m._toolResults) return; // never render tool_result payloads
       // A day divider before the first message of each day, so Tuesday's advice does not read as today's.
-      if(m.at){ var _d=_ymdLocal(new Date(m.at)); if(_d!==_day){ _day=_d; bubbles+='<div class="kt-chat-day">'+_esc(_chatDayLabel(_d))+'</div>'; } }
+      // A prompt the app wrote (a seed) that opens its day carries the day in its own label, TODAY ·
+      // PLATEAU CHECK: the two stacked caps lines, 40px apart, read as duplicated chrome.
+      var _dayLbl='', _seedHere=!!m._seed && m.role!=='assistant';
+      if(m.at){ var _d=_ymdLocal(new Date(m.at)); if(_d!==_day){ _day=_d; _dayLbl=_chatDayLabel(_d); if(!_seedHere) bubbles+='<div class="kt-chat-day">'+_esc(_dayLbl)+'</div>'; } }
       var text=m.content;
       var imgHTML='';
       if(Array.isArray(m.content)){
@@ -20950,8 +20953,8 @@ function renderCoach(){
         if(displayText||imgHTML) bubbles+='<div class="kt-cmb">'+imgHTML+(_hasCoachBlocks(displayText)
           ? _coachBlocksHTML(displayText, m!==_lastAns||coachLoading)
           : '<div class="kt-cmb-eyebrow">COACH</div><div class="kt-cmb-para">'+md(displayText)+'</div>')+'</div>';
-      } else if(m._seed){
-        bubbles+='<div class="kt-chat-seed kt-turn"><span>'+_esc(m._seed)+'</span></div>';
+      } else if(_seedHere){
+        bubbles+='<div class="kt-chat-seed kt-turn"><span>'+(_dayLbl?'<span class="kt-chat-seed-day">'+_esc(_dayLbl)+' · </span>':'')+_esc(m._seed)+'</span></div>';
       } else if(displayText||imgHTML){
         bubbles+='<div class="coach-bubble user kt-turn'+(m._preview && !displayText?' photo':'')+'">'+imgHTML+(displayText?'<span class="kt-sr">You: </span>'+_esc(displayText):'')+'</div>';
       }

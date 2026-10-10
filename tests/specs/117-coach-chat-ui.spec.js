@@ -1321,7 +1321,8 @@ serial('C3: prompts the app writes for the owner read as what they are; programm
       const seed = document.querySelector('.kt-chat-seed');
       const last = [...document.querySelectorAll('.coach-bubble.user')].pop();
       r.seed = { label: seed && seed.textContent, upper: seed && getComputedStyle(seed).textTransform, turn: seed && seed.classList.contains('kt-turn'),
-        bubble: last ? /plateaued/.test(last.textContent) : false, api: JSON.stringify(bodies.map((b) => b.messages)).indexOf('These lifts have plateaued') >= 0 };
+        bubble: last ? /plateaued/.test(last.textContent) : false, api: JSON.stringify(bodies.map((b) => b.messages)).indexOf('These lifts have plateaued') >= 0,
+        dayAbove: !!(seed && seed.previousElementSibling && seed.previousElementSibling.classList.contains('kt-chat-day')), days: document.querySelectorAll('.kt-chat-day').length };
       // S5 lands the reply under the label
       const L = document.querySelector('.coach-msgs-area');
       r.landed = seed.getBoundingClientRect().top - L.getBoundingClientRect().top;
@@ -1335,15 +1336,32 @@ serial('C3: prompts the app writes for the owner read as what they are; programm
       eval(REPLY_FETCH)('What is your main goal?', 1500);   // read setup before its first answer lands (with a programme already saved, setup ends after one turn)
       startRoutineIntake(); await wait(60);
       const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); if (ok) ok.click(); await wait(200);
-      r.started = { intake: intakeMode, first: coachMessages[0] && coachMessages[0]._seed, label: (document.querySelector('.kt-chat-seed') || {}).textContent };
+      r.started = { intake: intakeMode, first: coachMessages[0] && coachMessages[0]._seed, label: (document.querySelector('.kt-chat-seed') || {}).textContent, days: document.querySelectorAll('.kt-chat-day').length };
       _setIntakeMode(false);
+      // a seed later in its day keeps its own label under the day's divider; one that opens a new day carries the day
+      const at = (iso, h) => new Date(iso + 'T' + h + ':00:00').getTime(), t = todayISO(), y = addDays(t, -1);
+      coachMessages = [
+        { role: 'user', content: 'Morning question', at: at(t, '08') }, { role: 'assistant', content: 'Morning answer.', at: at(t, '08') },
+        { role: 'user', content: 'Review my week', _seed: 'Weekly review', at: at(t, '09') }, { role: 'assistant', content: 'Here it is.', at: at(t, '09') },
+      ];
+      render(); await wait(60);
+      r.later = { days: [...document.querySelectorAll('.kt-chat-day')].map((d) => d.textContent), seed: document.querySelector('.kt-chat-seed').textContent };
+      coachMessages = [
+        { role: 'user', content: 'Yesterday', at: at(y, '10') }, { role: 'assistant', content: 'Yesterday answer.', at: at(y, '10') },
+        { role: 'user', content: 'Review my week', _seed: 'Weekly review', at: at(t, '09') }, { role: 'assistant', content: 'Here it is.', at: at(t, '09') },
+      ];
+      render(); await wait(60);
+      r.newDay = { days: [...document.querySelectorAll('.kt-chat-day')].map((d) => d.textContent), seed: document.querySelector('.kt-chat-seed').textContent };
       return r;
     }, REPLY_FETCH).catch((e) => ({ err: String(e) }));
     assert(!out.err, out.err);
-    assert(out.seed.label === 'Plateau check' && out.seed.upper === 'uppercase' && out.seed.turn && !out.seed.bubble && out.seed.api, 'a plateau tap reads as PLATEAU CHECK; the API still gets the prompt: ' + JSON.stringify(out.seed));
+    assert(out.seed.label === 'Today · Plateau check' && out.seed.upper === 'uppercase' && out.seed.turn && !out.seed.bubble && out.seed.api, 'a plateau tap reads as TODAY · PLATEAU CHECK; the API still gets the prompt: ' + JSON.stringify(out.seed));
+    assert(!out.seed.dayAbove && out.seed.days === 0, 'the seed that opens its day carries the day; no TODAY line stacked over it: ' + JSON.stringify(out.seed));
     assert(Math.abs(out.landed - 12) <= 2 && out.saved, 'the reply lands under the label, and the label is saved: ' + JSON.stringify([out.landed, out.saved]));
     assert(out.asked.sheet && !out.asked.intake && out.kept.n && !out.kept.intake, 'setup over a chat asks first; Cancel keeps the chat: ' + JSON.stringify([out.asked, out.kept]));
-    assert(out.started.intake && out.started.first === 'Programme setup' && out.started.label === 'Programme setup', 'confirmed, setup starts under a PROGRAMME SETUP label: ' + JSON.stringify(out.started));
+    assert(out.started.intake && out.started.first === 'Programme setup' && out.started.label === 'Today · Programme setup' && out.started.days === 0, 'confirmed, setup starts under a TODAY · PROGRAMME SETUP label: ' + JSON.stringify(out.started));
+    assert(JSON.stringify(out.later.days) === JSON.stringify(['Today']) && out.later.seed === 'Weekly review', 'a seed later in its day keeps its own label under the day: ' + JSON.stringify(out.later));
+    assert(JSON.stringify(out.newDay.days) === JSON.stringify(['Yesterday']) && out.newDay.seed === 'Today · Weekly review', 'a seed that opens a new day carries it: ' + JSON.stringify(out.newDay));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
