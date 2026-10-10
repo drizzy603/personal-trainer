@@ -47,6 +47,9 @@
 // - T08 (R12) a session told again with a lift the saved one lacks was refused whole and the coach
 //   told to say it was already logged: the refusal names the lift as not saved (so does the pill),
 //   and log_session's add_to puts only the lifts a saved session lacks into it.
+// Hunt 6 (2026-10-10), what the review of those fixes found:
+// - U02 (T08) add_to kept only the first entry of a lift sent as a top set plus back-offs: the
+//   back-offs were dropped and the coach told they were 'already in it, left as saved'.
 const { boot, assert, run } = require('../lib/harness');
 
 const iso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -716,4 +719,38 @@ run('T08: a re-told session with a lift the saved one lacks names it; add_to put
       assert(app.errors.length === 0, unit + ': no page errors: ' + app.errors.join('|'));
     } finally { await app.close(); }
   }
+});
+
+// U02 (incomplete T08): log_session takes one weight per exercise, so a lift done at two loads
+// ("a top set of 5 at 135, then 3x8 at 115") goes in as two entries, as a plain log_session saves
+// them. add_to judged each entry against the session as it grew: the first went in, the back-offs
+// were left out and reported as already in it, and a retry with them alone was refused.
+run('U02: add_to adds every entry of a lift the session lacks; only lifts it had are left as saved', async () => {
+  const app = await boot({ native: true });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const T = todayISO(), r = {};
+      const fmt = s => s.exercises.map(e => e.name + ' ' + (Array.isArray(e.reps) ? e.reps.join('/') : e.reps) + '@' + e.weight).join(' | ');
+      const log = (input) => { const res = executeCoachTool('log_session', input); return { res, pill: toolCallLabel({ name: 'log_session', input, result: res }) }; };
+      log({ type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 5, weight: 185 }] });
+      const ohp = [{ name: 'Overhead Press', sets: 1, reps: 5, weight: 135 }, { name: 'Overhead Press', sets: 3, reps: 8, weight: 115 }];
+      const twin = log({ type: 'Push', date: T, exercises: [{ name: 'Bench Press', sets: 3, reps: 5, weight: 185 }].concat(ohp) }).res;
+      r.twin = { ok: twin.ok, missing: twin.missing };
+      const id = twin.duplicate, n0 = getSessions().length;
+      r.add = log({ type: 'Push', date: T, add_to: id, exercises: ohp });
+      r.saved = fmt(getSessions().find(s => s.id === id));
+      // a lift it has stays as saved; a new lift beside it goes in whole
+      r.add2 = log({ type: 'Push', date: T, add_to: id, exercises: [{ name: 'Bench Press', sets: 1, reps: 3, weight: 205 }, { name: 'Lateral Raise', sets: 2, reps: 15, weight: 20 }, { name: 'Lateral Raise', sets: 1, reps: 20, weight: 15 }] });
+      r.saved2 = fmt(getSessions().find(s => s.id === id));
+      r.sessions = getSessions().length - n0;
+      return r;
+    });
+    assert(out.twin.ok === false && JSON.stringify(out.twin.missing) === '["Overhead Press"]', 'the re-told session names the lift it lacks once: ' + JSON.stringify(out.twin));
+    assert(out.add.res.ok && JSON.stringify(out.add.res.added) === '["Overhead Press"]' && !/Already in it/.test(out.add.res.message) && /now 3 exercises/.test(out.add.res.message), 'add_to reports the lift added, nothing left out: ' + JSON.stringify(out.add.res));
+    assert(out.saved === 'Bench Press 5/5/5@185 | Overhead Press 5@135 | Overhead Press 8/8/8@115', 'the top set and the back-offs are both saved: ' + out.saved);
+    assert(/^Push: Overhead Press added · /.test(out.add.pill), 'the pill names the lift once: ' + out.add.pill);
+    assert(out.add2.res.ok && JSON.stringify(out.add2.res.added) === '["Lateral Raise"]' && /Already in it, left as saved: Bench Press \(/.test(out.add2.res.message), 'only the lift it had is left as saved: ' + out.add2.res.message);
+    assert(out.saved2 === out.saved + ' | Lateral Raise 15/15@20 | Lateral Raise 20@15' && out.sessions === 0, 'into the saved session: ' + JSON.stringify([out.saved2, out.sessions]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });

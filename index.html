@@ -18886,8 +18886,11 @@ function _executeCoachToolRaw(name,input){
         var gbad=(LIFT_TYPES.indexOf(gto.type)>=0 && gto.type!==gtype) ? 'is '+gtl+', not '+gtype
           : (/^\d{4}-\d{2}-\d{2}$/.test(String(input.date||'').trim()) && gdate!==gtd) ? 'is from '+gtd+', not '+gdate : '';
         if(gbad) return {ok:false,error:'session [id:'+gto.id+'] '+gbad+'. Nothing was saved. Pass the id of the session these lifts were part of, with its day as type.'};
+        // Judged against the saved session alone: a lift it lacks is added with every entry sent
+        // (a top set, then back-offs at another load), as a plain log_session saves them. Only the
+        // first entry went in, and the back-offs were reported as 'already in it, left as saved'.
         var ghave=gto.exercises.map(function(e){ return _coachLiftKey(e&&e.name); }), gadd=[], gkept=[];
-        gclean.forEach(function(e){ var k=_coachLiftKey(e.name); if(ghave.indexOf(k)>=0) gkept.push(e.name); else { ghave.push(k); gadd.push(e); } });
+        gclean.forEach(function(e){ if(ghave.indexOf(_coachLiftKey(e.name))<0) gadd.push(e); else if(gkept.indexOf(e.name)<0) gkept.push(e.name); });
         if(!gadd.length) return {ok:false,duplicate:gto.id,error:'Every lift you sent is already in [id:'+gto.id+'] '+gtl+' '+gtd+'. Nothing was saved. To correct a number in it, use edit_session with that id.'};
         if(gto.exercises.some(function(e){ return e && e.isMain; })) gadd.forEach(function(e){ e.isMain=false; });
         var gaPRs=_pendingPRs(gadd), gp0=Array.isArray(gto.prs)?gto.prs:[];
@@ -18898,7 +18901,7 @@ function _executeCoachToolRaw(name,input){
         invalidateCoachCard();
         checkMilestones({quiet:false, delayToast:600});
         render();
-        var gan=gadd.map(function(e){ return e.name; });
+        var gan=[]; gadd.forEach(function(e){ if(gan.indexOf(e.name)<0) gan.push(e.name); });
         return {ok:true, added:gan, into:gto.id, type:gto.type, date:gtd,
           message:'Added '+gan.join(', ')+' to the '+gtl+' session of '+gtd+' [id:'+gto.id+'], now '+gnew.exercises.length+' exercises'+(gaPRs.length?', '+gaPRs.length+' PR'+(gaPRs.length===1?'':'s'):'')+(gkept.length?'. Already in it, left as saved: '+gkept.join(', ')+' (to correct a number there, use edit_session)':'')};
       }
