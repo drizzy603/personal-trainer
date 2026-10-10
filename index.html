@@ -9558,10 +9558,7 @@ async function checkPendingShare(){
     coachView = 'chat';
     render();
     if(r.comment){
-      setTimeout(function(){
-        var ta = document.getElementById('coach-input');
-        if(ta){ ta.value = r.comment; ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,120)+'px'; _syncSend(); }   // the composer's own cap
-      }, 200);
+      setTimeout(function(){ _fillComposer(r.comment); }, 200);
     }
   } catch(e){}
 }
@@ -12182,7 +12179,9 @@ function _bdCommit(){
 function _bdAskCoach(){
   var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
   switchTab('coach'); coachView='chat'; render();
-  setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
+  // Drafted, not sent: the owner reads it and taps Send. Focus only for a desktop keyboard: on a
+  // touch screen a scripted focus raises no keyboard (the box sat focused with no keys).
+  setTimeout(function(){ var ta=_fillComposer('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
 }
 
 // A superset opener whose partner the owner removed: the partner's entry names it (e.ss). It is
@@ -20613,6 +20612,16 @@ function _syncSend(){
   if(!b || !i || coachLoading) return;
   b.disabled=!i.value.trim() && !pendingImage;
 }
+// A message the app drafts for the owner (a shared photo's comment, Build day's "Ask the coach")
+// lands as typing would leave it: sized to the box's own 120px cap, and Send ready. Writing .value
+// fires no input event, so Send stayed disabled next to a full box.
+function _fillComposer(text){
+  var ta=document.getElementById('coach-input');
+  if(!ta) return null;
+  ta.value=String(text||''); ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,120)+'px';
+  _syncSend();
+  return ta;
+}
 // Lands the conversation on its newest message: now (every render builds a new scroller, and
 // waiting would flash its top) and again at 80 ms, once late images have their height. Only the
 // chat's own scroller: the hub opens at its top like every other screen.
@@ -22719,7 +22728,10 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
     root.classList.remove('chat-typing');
   }
   document.addEventListener('focusin',function(e){
-    if(e.target && e.target.id==='coach-input') _chatTyping(true);
+    if(e.target && e.target.id==='coach-input'){
+      _chatTyping(true);
+      if(typeof _syncSend==='function') _syncSend();   // a box filled by script (no input event) still gets an honest Send
+    }
   });
   document.addEventListener('focusout',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(false);

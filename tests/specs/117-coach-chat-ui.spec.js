@@ -1219,3 +1219,34 @@ serial('a shared photo with a comment lands in the composer at the composer\'s o
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
+
+// Build day's "Ask the coach to build it" drafts its prompt in the composer. Writing .value fired no
+// input event, so Send stayed disabled (and greyed) next to the full box until the owner edited it.
+serial('Build day: "Ask the coach to build it" drafts the prompt with Send ready; a touch screen gets no scripted focus', async () => {
+  for (const touch of [false, true]) {
+    const tag = (touch ? 'touch' : 'desktop') + ': ';
+    const app = await bootChat('heavyweight', { width: 390, height: 844 }, { touch, seed: { kt_coach_msgs: '[]' } });
+    try {
+      const out = await app.page.evaluate(async (MOCK_FETCH) => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+        eval(MOCK_FETCH)(80);
+        switchTab('log'); await wait(60);
+        _bdSlot = 'Arms'; _bdAskCoach(); await wait(300);
+        const i = document.getElementById('coach-input'), b = document.getElementById('coach-send');
+        r.draft = { value: i.value, disabled: b.disabled, h: i.getBoundingClientRect().height, focused: document.activeElement === i, cls: document.documentElement.className };
+        const before = coachMessages.length;
+        b.click(); await wait(40);
+        r.sent = { added: coachMessages.length - before, text: String((coachMessages[before] || {}).content || '') };
+        await wait(400);
+        r.landed = String((coachMessages[coachMessages.length - 1] || {}).content || '');
+        return r;
+      }, MOCK_FETCH).catch((e) => ({ err: String(e) }));
+      assert(!out.err, tag + out.err);
+      assert(/^Build my .+ day: /.test(out.draft.value) && out.draft.disabled === false, tag + 'the drafted prompt has Send ready: ' + JSON.stringify(out.draft));
+      assert(out.draft.h > 44 && out.draft.h <= 120, tag + 'the box is sized to the draft: ' + out.draft.h);
+      assert(touch ? !out.draft.focused && out.draft.cls.indexOf('chat-typing') < 0 : out.draft.focused, tag + (touch ? 'no scripted focus (no keys would come), the tabs stay: ' : 'a desktop keyboard gets the box: ') + JSON.stringify(out.draft));
+      assert(out.sent.added >= 1 && /^Build my /.test(out.sent.text) && out.landed === 'Squat is moving well.', tag + 'a tap on Send sends it and the reply lands: ' + JSON.stringify([out.sent, out.landed]));
+      assert(app.errors.length === 0, tag + 'no page errors: ' + app.errors.join('|'));
+    } finally { await app.close(); }
+  }
+});
