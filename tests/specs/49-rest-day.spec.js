@@ -21,6 +21,10 @@ run('missed-session make-up, first-session pointer, tomorrow row, week-1 anchor'
       if (dow === 6) {
         const nextPlan = plan.slice(); nextPlan[0] = 'Pull';
         if (cr.weeks && cr.weeks[currentWeek]) cr.weeks[currentWeek].weekPlan = nextPlan;
+        // With nothing logged, a later week's days read this week's plan (_planWeekFor: Monday keeps
+        // the week, as autoAdvanceWeek does), so next Monday would show this week's Rest. A run logged
+        // yesterday lets it read week 2, where the Pull is; it is cleared before the week-1 anchor part.
+        lsSet('kt_runs', [{ id: 4901, date: addDays(todayISO(), -1), distance: 5, time: '25:00', type: 'easy', note: '' }]);
       }
       setCustomRoutine(cr);
       r.dow = dow;
@@ -36,6 +40,7 @@ run('missed-session make-up, first-session pointer, tomorrow row, week-1 anchor'
         txt = document.getElementById('screen').innerText;
         r.afterSkip = { missed: _missedThisWeek(), open: /still open/i.test(txt), skips: getSkips().length };
       }
+      lsSet('kt_runs', []);
       // week-1 anchor guard: two Mondays ago, nothing trained → stays on week 1, re-anchors
       const twoMondaysAgo = addDays(_mostRecentMonday(), -14);
       currentWeek = 1; lsSet('kt_week', 1); localStorage.setItem('kt_week_monday', twoMondaysAgo);
