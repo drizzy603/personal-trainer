@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261010-1"/>
+<meta name="build" content="20261010-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -179,6 +179,12 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 #app{position:relative;height:100vh;height:100dvh;overflow:hidden;}
+/* Larger Text: the root zoom (applyDynamicType) scales viewport units too, so 100dvh came out a
+   quarter screen too tall at 125% and the chat's composer sat under the tab bar or below the screen
+   (and every tab's last lines were out of reach). --dt-z, the zoom, divides it back to the screen.
+   The dvh line waits on @supports: a var() in it would void the height where dvh is unknown. */
+#app{height:calc(100vh / var(--dt-z,1));}
+@supports (height:100dvh){#app{height:calc(100dvh / var(--dt-z,1));}}
 #screen{height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:env(safe-area-inset-top) 20px calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));scrollbar-width:none;}
 #screen::-webkit-scrollbar{display:none;}
 /* Status-bar mask — opaque strip over the iOS safe-area-inset-top so scrolled
@@ -194,7 +200,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area
   /* Force a GPU layer — iOS PWAs are flaky pinning position:fixed during
      momentum scroll, which lets in-flow content slide visibly under the bar. */
   transform:translateZ(0);-webkit-transform:translateZ(0);will-change:transform;
-  transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease;}
+  transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease,visibility 0s linear 0s;}
 
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
   padding:10px 4px;background:none;border:none;border-radius:18px;
@@ -472,55 +478,109 @@ select option{background:var(--bg);}
 
 /* ── AI Coach ────────────────────────────────────────────────────────────── */
 .coach-head{padding:6px 0 14px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);margin-bottom:0;}
-.coach-head-l{display:flex;flex-direction:column;gap:4px;}
-.coach-head-eyebrow{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;}
+.coach-head-l{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.coach-head-eyebrow{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;white-space:nowrap;}
 .coach-head-eyebrow::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
-.coach-head-title{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);}
-.coach-head-r{display:flex;align-items:center;gap:8px;}
-.coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;}
+.coach-head-title{font-size:22px;font-weight:700;letter-spacing:-.6px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.coach-head-r{display:flex;align-items:center;gap:8px;flex:none;}
+.coach-head-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.10em;white-space:nowrap;}
+.coach-head-eyebrow.off::before{background:var(--muted);box-shadow:none;}   /* offline: the dot goes quiet */
+/* A control drawn smaller than 44pt still takes a 44pt press (the model pill, intake's Cancel). */
+.kt-hit{position:relative;}
+.kt-hit::after{content:'';position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%);}
 /* The model switch reads "Sonnet 5.5"; on the narrowest screens (320 pt Display Zoom) the version
    drops so the header keeps its one-line title (the button's accessible name keeps it). */
-@media (max-width:345px){.kt-model-ver{display:none;}}
+@media (max-width:345px){.kt-model-ver,.coach-head-meta{display:none;}}
+/* Under Larger Text the header keeps one line too: the version (still in the switch's name) and
+   WK/DAY (on Today) stand down. */
+html:not([data-dyn-type="1"]) .kt-model-ver,html:not([data-dyn-type="1"]) .coach-head-meta{display:none;}
 .coach-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.45;max-width:84%;word-break:break-word;letter-spacing:-.1px;}
-.coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:600;}
-.coach-bubble.assistant{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-left:2px solid var(--accent);color:var(--text);border-bottom-left-radius:5px;font-weight:500;}
-.coach-msgs-wrap{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
+.coach-bubble.user{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px;margin-left:auto;font-weight:500;font-size:15px;line-height:1.4;white-space:pre-wrap;}
+/* One rhythm: 8px between the parts of one reply (text, pills, PLAN CHANGES, chips), 20px around
+   the owner's turn. Every part takes the column's full width: one left edge. */
+.coach-msgs-wrap{display:flex;flex-direction:column;gap:8px;margin-bottom:0;}
+.coach-msgs-wrap>.coach-bubble.user:not(:first-child),.coach-msgs-wrap>.coach-bubble.user+*{margin-top:12px;}
+/* A prompt the app wrote for the owner (programme setup, a plateau check): a labelled rule, not their words. */
+.kt-chat-seed{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.kt-chat-seed::before,.kt-chat-seed::after{content:'';flex:1;height:1px;background:var(--border);}
+.coach-msgs-wrap>.kt-chat-seed:not(:first-child),.coach-msgs-wrap>.kt-chat-seed+*{margin-top:12px;}
+.kt-tool-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;}
+.kt-chat-retry{margin:0;}
 
-.coach-chat-stick{position:sticky;top:0;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
+/* ── The chat: one column ──────────────────────────────────────────────────
+   render() marks the chat view html.kt-chat. #screen becomes a column: the header stays put,
+   the conversation (.coach-msgs-area) is the only thing that scrolls, and the composer sits in
+   flow 8px above the tab bar (Heavyweight) or the dock (Lime). The composer used to be
+   position:fixed over a #screen that kept scrolling under it: the conversation showed through
+   the band between the composer and the bar, a growing message covered the newest one, and the
+   gap above the composer swung from 14px to 140px with what the chat held. Now the gap is the
+   conversation's own 16px end, whatever it holds. */
+.coach-chat-stick{position:relative;flex:none;z-index:6;background:var(--bg);margin:0 -20px;padding:0 20px;border-bottom:1px solid var(--border);}
 .coach-chat-stick .screen-hd{padding:0 0 4px;}
-.coach-chat-body{display:flex;flex-direction:column;height:calc(100dvh - 160px);min-height:calc(100dvh - 160px);}
-/* Messages stack from the bottom up — newest message sits just above the
-   fixed input pill (chat-app convention). When few messages, they hug the
-   bottom rather than floating with empty space below. */
-.coach-msgs-area{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding:16px 0 calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 60px);}
-/* Fixed pill above the floating tab bar — input persists during scroll so
-   the user never has to scroll back down to type. Backdrop-blurred to
-   match the tab bar's glass dock. */
-.coach-input-row{position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear));
-  display:flex;gap:8px;align-items:center;
-  background:rgba(22,22,26,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+.coach-chat-stick .coach-head{border-bottom:none;}   /* the stick's full-width rule is the only one (two read as 2px) */
+@media (max-width:360px){.coach-chat-stick{margin:0 -16px;padding:0 16px;}}   /* #screen's gutter is 16px there: it overran by 4px */
+.coach-chat-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.coach-msgs-area{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;margin:0 -4px;padding:16px 4px 0;scrollbar-width:none;}
+.coach-msgs-area::-webkit-scrollbar{display:none;}
+/* A short chat hugs the composer (justify-content:flex-end would make its top unscrollable). */
+.coach-msgs-area>:first-child{margin-top:auto;}
+/* The 16px end gap is a spacer: WebKit drops a flex scroller's block-end padding from its overflow. */
+.coach-msgs-area::after{content:'';flex:none;height:16px;}
+.coach-msgs-wrap>:last-child,.kt-cmb>:last-child{margin-bottom:0;}
+/* The composer is one field: the row is the surface and carries the focus ring; the attach and
+   send buttons are 44pt targets that stay by the last line of a long draft. */
+.coach-input-row{position:relative;flex:none;
+  display:flex;gap:4px;align-items:flex-end;
+  background:var(--card);
   border:1px solid var(--border);border-radius:24px;
-  padding:6px 6px 6px 18px;z-index:50;}
-/* Typing: give the keyboard the screen. iOS pins position:fixed to the LAYOUT
-   viewport and then scrolls the page so the focused input clears the keyboard,
-   which drags the tab dock up with it — leaving ~110px of dead band between the
-   compose pill and the keys while the conversation is squeezed to a few lines.
-   While the chat input holds focus the dock stands down and the pill drops to
-   the bottom edge; the reclaimed space goes to the messages. */
+  padding:6px;}
+.coach-attach{width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:none;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.coach-attach.on{color:var(--text);}
+/* A photo waiting to be sent sits in flow above the composer, on the room's card. */
+.coach-img-preview{position:relative;flex:none;margin:0 0 8px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:8px;}
+.coach-img-preview img{display:block;width:100%;max-height:140px;object-fit:contain;border-radius:10px;}
+.coach-img-x{position:absolute;top:6px;right:6px;width:36px;height:36px;padding:0;border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 /* A cadence value this build cannot read: not dressed as rest. */
 .kt-wkstrip-chip.unknown{border-style:dashed;border-color:var(--accent);}
-html.chat-typing #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;}
-html.chat-typing .coach-input-row{bottom:var(--tab-gap);}
-html.chat-typing .coach-img-preview{bottom:calc(var(--tab-gap) + 58px) !important;}   /* inline style sets the idle value */
-html.chat-typing .coach-msgs-area{padding:16px 0 calc(var(--tab-gap) + 76px);}
-.coach-textarea{flex:1;background:none;border:none;color:var(--text);font-size:16px;
-  resize:none;max-height:100px;min-height:36px;line-height:1.4;padding:6px 0;font-family:inherit;}
-.coach-textarea::placeholder{color:var(--muted);}
+/* The tab bar stands down while the keys are up (html.kb-open) or, without a keyboard signal,
+   while the box has focus (html.chat-typing). Hidden, it also leaves the VoiceOver tree and the
+   Tab order (visibility flips once the slide is done; it comes back at once). */
+html.chat-typing #tabs,html.kb-open #tabs{transform:translateY(160%) translateZ(0);-webkit-transform:translateY(160%) translateZ(0);opacity:0;pointer-events:none;visibility:hidden;transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .16s ease,visibility 0s linear .22s;}
+/* The column's foot: 8px above the dock (whose top is 86px up), 8px above Heavyweight's flat
+   78px bar, the home-indicator line while typing with the bar down, and 8px above the keys. */
+html.kt-chat #screen{display:flex;flex-direction:column;overflow:hidden;padding-bottom:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear) + var(--tab-gap));}
+html[data-room="heavyweight"].kt-chat #screen{padding-bottom:calc(var(--tab-h) + var(--tab-bottom-clear) + var(--tab-gap));}
+html.chat-typing.kt-chat #screen{padding-bottom:calc(var(--tab-gap) + var(--tab-bottom-clear));}
+html.kb-open.kt-chat #screen{padding-bottom:var(--tab-gap);}
+/* Lime: the composer and the photo preview take the floating dock's edges. */
+html[data-room="dark"].kt-chat .coach-input-row,html[data-room="dark"].kt-chat .coach-img-preview{margin-left:-6px;margin-right:-6px;}
+/* Keys up: iOS keeps the layout viewport under the keyboard and pans the visual one over it,
+   which took the header and the status-bar mask off the top and ran the conversation under the
+   clock. #app is laid over the visual viewport instead (--vv-top/--vv-h, set by the visual-
+   viewport binding next to the scroll-offset guard): the header stays, the composer sits on the keys. */
+html.kb-open #app{position:fixed;left:0;right:0;top:0;height:var(--vv-h,100%);transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
+html.kb-open body::before{transform:translateY(var(--vv-top,0px));-webkit-transform:translateY(var(--vv-top,0px));}
+html.kb-open .coach-img-preview img{max-height:96px;}
+html.kb-open .coach-chat-stick>.screen-hd{display:none;}
+/* 16px text (the iOS focus-zoom floor) on a 22px line: one line is 44px, the row 58px. */
+.coach-textarea{flex:1;min-width:0;background:none;border:none;color:var(--text);font-size:16px;
+  resize:none;overflow-x:hidden;max-height:120px;min-height:44px;line-height:22px;padding:11px 8px;font-family:inherit;}
+.coach-textarea:first-child{padding-left:14px;}   /* intake has no attach button */
+/* The placeholder keeps to the box's one line: at 320pt with Larger Text "Message Coach…" wrapped and
+   its second line was cut off inside the one-line box (_fitPlaceholder now says "Message…" there).
+   The box never scrolls sideways (typed text wraps), so a Mac's WebKit draws no scrollbar for it. */
+.coach-textarea::placeholder{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* The box carries no ring and no surface of its own inside the composer: the row does. */
+html[data-room] .coach-input-row .coach-textarea{background:transparent;border-radius:0;}
+html[data-room] .coach-input-row .coach-textarea:focus,html[data-room] .coach-input-row .coach-textarea:focus-visible{outline:none;box-shadow:none;}
+html[data-room="heavyweight"] .coach-input-row:focus-within{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+html[data-room="dark"] .coach-input-row:focus-within{border-color:var(--lite);box-shadow:inset 0 0 0 1px var(--lite);}
 .coach-send-btn{background:var(--accent);border:none;border-radius:22px;color:var(--on-accent);
   width:44px;height:44px;font-size:16px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .coach-send-btn:active{opacity:.7;}
-.coach-send-btn:disabled{opacity:.3;}
+.coach-send-btn:disabled{opacity:.3;}   /* an empty box: nothing to send */
+.coach-stop-ic{display:block;width:12px;height:12px;border-radius:3px;background:currentColor;}
 .typing-wrap{display:flex;gap:5px;align-items:center;padding:13px 16px;
   background:var(--card);border:1px solid var(--border);border-radius:20px;
   border-bottom-left-radius:5px;align-self:flex-start;}
@@ -767,12 +827,17 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
 .kt-coach-ask svg{width:13px;height:13px;}
 .kt-coach-input-wrap{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
 .kt-coach-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:16px;font-family:inherit;outline:none;box-sizing:border-box;}
-.kt-ledger-card{margin:-4px 4px 12px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
+.kt-ledger-card{margin:0;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
 .kt-ledger-card-hd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.12em;color:var(--accent-ink);margin-bottom:6px;}
-.kt-ledger-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.kt-ledger-row{display:flex;flex-wrap:wrap;row-gap:2px;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.kt-ledger-row span{min-width:0;overflow-wrap:anywhere;}
 .kt-ledger-row:last-of-type{border-bottom:none;}
-.kt-ledger-row b{font-weight:700;white-space:nowrap;}
+.kt-ledger-row b{font-weight:700;white-space:normal;margin-left:auto;text-align:right;overflow-wrap:anywhere;}
 .kt-ledger-card-actions{display:flex;gap:8px;margin-top:10px;}
+.kt-ledger-card .kt-coach-btn{min-height:44px;}
+/* Undo gone: one right-aligned neutral Got it under the note, not a full-width choice. */
+.kt-ledger-card-actions.end{justify-content:flex-end;}
+.kt-ledger-card-actions.end .kt-coach-btn{flex:0 0 auto;padding:11px 20px;}
 .kt-ledger-card-note{font-size:11px;color:var(--muted);margin-top:8px;}
 .kt-coach-empty{padding:14px 18px;border-radius:14px;background:color-mix(in srgb,var(--text) 4%,transparent);font-size:12px;color:var(--muted);text-align:center;}
 .kt-marquee{margin-top:28px;}
@@ -825,23 +890,82 @@ select.kt-sport-well-input{appearance:none;-webkit-appearance:none;}
    bubbles: purple eyebrow → short paragraphs on the background → metric
    rows in one card → takeaway → max two action chips. Only the user's
    messages bubble. ─────────────────────────────────────────────────────── */
-.kt-cmb{margin-bottom:16px;max-width:100%;}
+.kt-cmb{margin-bottom:0;max-width:100%;}
 .kt-cmb-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--purple);margin-bottom:8px;text-transform:uppercase;}
-.kt-cmb-para{font-size:14px;line-height:1.55;color:var(--text);margin-bottom:12px;letter-spacing:-.1px;}
+.kt-cmb-para{font-size:15px;line-height:1.5;font-weight:400;color:var(--text);margin-bottom:12px;letter-spacing:-.1px;overflow-wrap:anywhere;}
+/* md() inside a reply: one paragraph gap, lists 6px apart, headings, rules, code, tables that
+   scroll inside their card. */
+.kt-cmb-para p{margin:0 0 10px;}
+.kt-cmb-para>:last-child,.kt-cmb-para p:last-child{margin-bottom:0;}
+.kt-cmb-para ul,.kt-cmb-para ol{margin:0 0 10px;padding-left:20px;}
+.kt-cmb-para li{padding-left:2px;}
+.kt-cmb-para li+li{margin-top:6px;}
+.kt-cmb-para li.sub{margin-left:18px;list-style-type:circle;}
+.kt-cmb-para li::marker{color:var(--muted);}
+.kt-md-h{font-size:16px;font-weight:700;line-height:1.3;margin:16px 0 6px;}
+.kt-md-h:first-child{margin-top:0;}
+.kt-md-hr{border:0;border-top:1px solid var(--border);margin:14px 0;}
+.kt-md-code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.9em;padding:1px 5px;border-radius:5px;background:var(--card2);}
+/* A table wider than its card scrolls sideways. At 320pt its last column was cut at the card's edge
+   with nothing to say it scrolls: a soft shade now sits at each edge with more beyond it (scroll
+   shadows: the two covers ride with the content and hide the shade at its own end). Its scrollbar,
+   a 15px dark bar where WebKit draws one (a Mac), stands down for it. */
+.kt-md-tablewrap{overflow-x:auto;margin:0 0 10px;border:1px solid var(--border);border-radius:14px;scrollbar-width:none;
+  background:linear-gradient(to right,var(--card) 50%,transparent) left center/32px 100% no-repeat local,
+    linear-gradient(to left,var(--card) 50%,transparent) right center/32px 100% no-repeat local,
+    linear-gradient(to right,color-mix(in srgb,var(--text) 16%,transparent),transparent) left center/14px 100% no-repeat scroll,
+    linear-gradient(to left,color-mix(in srgb,var(--text) 16%,transparent),transparent) right center/14px 100% no-repeat scroll,
+    var(--card);}
+.kt-md-tablewrap::-webkit-scrollbar{display:none;}
+.kt-md-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;}
+.kt-md-table th,.kt-md-table td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+.kt-md-table tr:last-child td{border-bottom:0;}
+.kt-md-table th{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
 .kt-cmb-metrics{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px;}
-.kt-cmb-mrow{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:10px;}
+.kt-cmb-mrow{display:flex;flex-wrap:wrap;row-gap:2px;align-items:baseline;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);gap:10px;}
 .kt-cmb-mrow:last-child{border-bottom:none;}
-.kt-cmb-mlabel{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0;letter-spacing:.04em;}
-.kt-cmb-mval{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--text);text-align:right;}
-.kt-cmb-mref{color:var(--muted);opacity:.8;}
-.kt-cmb-delta-good{color:var(--accent-ink);font-weight:800;}
+/* A metric card wraps its rows alike: once one row's value has to go under its label (a long label or
+   value, a narrow phone, Larger Text), every row puts its value under its label, right-aligned
+   (_metricsFit), instead of mixing one-line and two-line rows. */
+.kt-cmb-metrics.stack .kt-cmb-mrow{flex-direction:column;align-items:stretch;row-gap:4px;}
+.kt-cmb-mlabel{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;color:var(--muted);flex:0 1 auto;min-width:0;overflow-wrap:anywhere;letter-spacing:.04em;}
+.kt-cmb-mval{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:var(--text);text-align:right;margin-left:auto;min-width:0;max-width:100%;font-variant-numeric:tabular-nums;}
+.kt-cmb-mval>span{white-space:nowrap;}
+.kt-cmb-mref{color:var(--muted);font-size:12px;}
+.kt-cmb-delta-good{color:var(--earned-ink);font-weight:800;}
 .kt-cmb-delta-warn{color:var(--orange);font-weight:800;}
 .kt-cmb-take{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
 .kt-cmb-take-eyebrow{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9px;font-weight:800;letter-spacing:.1em;color:var(--accent-ink);margin-bottom:5px;}
-.kt-cmb-take-body{font-size:13.5px;line-height:1.5;color:var(--text);}
-.kt-cmb-actions{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 4px;}
-.kt-cmb-chip{height:38px;padding:0 14px;border-radius:19px;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.kt-cmb-take-body{font-size:14px;line-height:1.5;color:var(--text);}
+/* What the app says itself (Stopped, an error): a muted note with a dot, no COACH eyebrow. */
+.kt-cmb-note{display:flex;gap:8px;align-items:baseline;font-size:13px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere;}
+.kt-cmb-note::before{content:'';flex:0 0 6px;height:6px;border-radius:50%;background:var(--muted);transform:translateY(-1px);}
+.kt-cmb-note.err{color:var(--text);}
+.kt-cmb-note.err::before{background:var(--red);}
+/* Thinking sits where the reply will land, unboxed. */
+.kt-thinking .typing-wrap{background:none;border:0;padding:2px 0;border-radius:0;}
+.kt-thinking .kt-tool-pills{margin-bottom:8px;}
+.kt-think-lbl{font-size:13px;color:var(--lite);margin-right:8px;}
+.kt-cmb-actions{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 0;}
+.kt-cmb-chip{height:auto;min-height:44px;padding:10px 16px;border-radius:22px;max-width:100%;text-align:left;line-height:1.3;white-space:normal;background:var(--card);border:1px solid var(--border);display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;}
 .kt-cmb-chip.primary{background:var(--card2);border-color:var(--accent-soft);color:var(--accent-ink);font-weight:700;}
+/* Tool pills: what a reply did, in the room's tokens (the hardcoded green and red washes read
+   1.9:1 on paper). */
+.kt-tool-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;font-size:12px;font-weight:600;line-height:1.35;padding:5px 10px;border-radius:12px;overflow-wrap:anywhere;background:var(--card2);color:var(--lite);box-shadow:inset 0 0 0 1px var(--border);}
+.kt-tool-pill.bad{color:var(--red);}
+.kt-tool-pill-ic{flex:none;}
+.kt-chat-day{align-self:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:6px 0 0;}
+/* The empty chat: the programme line and the suggestions as chips. */
+.kt-chat-prog{margin-bottom:8px;}
+.kt-chat-prog .kt-cmb-eyebrow{margin-bottom:2px;color:var(--muted);}   /* a status line, not the action */
+/* The programme's housekeeping is not a conversation starter: quiet text buttons (44pt tall, their
+   text on the column's edge, so the focus ring is not clipped by the scroller) under their status
+   line, not the starters' pills, which they copied exactly. Both open a confirm sheet. */
+.kt-chat-prog-acts{display:flex;flex-wrap:wrap;column-gap:20px;}
+.kt-chat-prog-btn{min-height:44px;padding:0;background:none;border:0;border-radius:6px;font-family:inherit;font-size:13px;font-weight:600;color:var(--accent-ink);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.kt-chat-prog-btn:active{opacity:.6;}
+html[data-room="dark"] .kt-chat-prog-btn{color:var(--lite);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--lite) 45%,transparent);text-underline-offset:3px;}
+.kt-chat-seeds{margin:0;}
 .kt-cmb-chip:active{opacity:.7;}
 .kt-marquee-name{font-size:16px;font-weight:600;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
 .kt-marquee-right{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:10px;}
@@ -941,6 +1065,10 @@ button:active{transform:scale(.97);}
   .kt-rlog,.kt-rconfirm,.kt-act-saved,.kt-sport-confirm,.kt-r-flash{animation:none;}
   .typing-dot{animation:none;opacity:.6;}
   button:active{transform:none;opacity:.85;}
+  /* The tab bar fades out of the way of the keys instead of sliding. */
+  html.chat-typing #tabs,html.kb-open #tabs{transform:translateZ(0);-webkit-transform:translateZ(0);}
+  #tabs{transition:opacity .15s ease,visibility 0s linear 0s;}
+  html.chat-typing #tabs,html.kb-open #tabs{transition:opacity .15s ease,visibility 0s linear .15s;}
 }
 
 /* Deck Runner — fullscreen route. z-index sits BELOW the floating tab bar
@@ -1443,7 +1571,6 @@ body{font-feature-settings:'cv02' 1,'cv03' 1,'cv04' 1;}
 
 /* Coach, runner and sheets share the same tactile finish. */
 .coach-input-row{background:color-mix(in srgb,var(--card) 92%,transparent);border-color:color-mix(in srgb,var(--text) 10%,transparent);border-radius:20px;box-shadow:0 18px 48px -22px rgba(0,0,0,.9);}
-.coach-bubble.assistant{background:linear-gradient(145deg,var(--card),var(--card2));border-left-width:3px;}
 .coach-bubble.user{background:var(--accent);color:var(--on-accent);}
 .kt-r-card{box-shadow:0 34px 72px -28px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.06);}
 .kt-r-card.lime{color:var(--on-accent);background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 72%,var(--text)),var(--accent));}
@@ -1478,7 +1605,6 @@ html[data-room="dark"] .profile-row,html[data-room="dark"] .kt-empty-contract,ht
 html[data-room="dark"] .kt-sheet,html[data-room="dark"] .ex-modal-sheet,html[data-room="dark"] .kt-close-sheet-inner{
   background:var(--card);border-color:var(--border);box-shadow:none;
 }
-html[data-room="dark"] .coach-bubble.assistant{background:var(--card);border:1px solid var(--border);border-left-width:1px;}
 html[data-room="dark"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;}
 html[data-room="dark"] .field input,html[data-room="dark"] .field select,html[data-room="dark"] .field textarea,
 html[data-room="dark"] .coach-textarea,html[data-room="dark"] .kt-coach-input{background:var(--card2);border-color:var(--border);}
@@ -1495,6 +1621,9 @@ html[data-room="dark"] .kt-cta{background:var(--accent);border:none;box-shadow:n
 html[data-room="dark"] .kt-cta-arrow{background:color-mix(in srgb,var(--on-accent) 10%,transparent);border-radius:50%;}
 html[data-room="dark"] .btn-primary,html[data-room="dark"] .btn-green,html[data-room="dark"] .coach-send-btn,
 html[data-room="dark"] .kt-coach-btn.primary,html[data-room="dark"] .kt-eng-done{box-shadow:none;}
+/* Send rests disabled on an empty box, so its resting look is the composer's on every visit: lime at
+   30% over near-black read as a muddy olive disc. Lime comes on only with something to send. */
+html[data-room="dark"] .coach-send-btn:disabled{opacity:1;background:var(--card2);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border);}
 /* Selection is neutral, never another lime fill */
 html[data-room="dark"] .log-subtabs,html[data-room="dark"] .kt-prog-toggle{background:var(--card);border-color:var(--border);box-shadow:none;}
 html[data-room="dark"] .log-subtab.active,html[data-room="dark"] .kt-prog-toggle button.on{background:var(--sel);color:var(--text);box-shadow:none;}
@@ -1642,18 +1771,9 @@ html[data-room="dark"] .kt-ex-pr{border-color:var(--border);}
 html[data-room="dark"] #exlibList .kt-mono[style*="opacity:.6"],html[data-room="dark"] #exlibList .kt-mono[style*="opacity:.45"]{opacity:1!important;}
 /* Coach */
 html[data-room="dark"] .coach-bubble.user{background:var(--sel);color:var(--text);}
-html[data-room="dark"] .coach-msgs-wrap span[style*="34,197,94"]{background:var(--card2)!important;color:var(--lite)!important;box-shadow:inset 0 0 0 1px var(--border);}
-html[data-room="dark"] .coach-msgs-wrap span[style*="239,68,68"]{background:var(--card2)!important;color:var(--red)!important;box-shadow:inset 0 0 0 1px var(--border);}
-html[data-room="dark"] .coach-msgs-area span[style*="color:var(--accent)"]{color:var(--text)!important;}
-html[data-room="dark"] .coach-msgs-wrap span[style*="accent-soft"]{background:var(--card2)!important;color:var(--lite)!important;box-shadow:inset 0 0 0 1px var(--border);}
-html[data-room="dark"] .coach-msgs-wrap span[style*="animation:blink"]{background:var(--lite)!important;}
 html[data-room="dark"] .kt-cmb-chip.primary{border-color:var(--border);color:var(--text);}
 html[data-room="dark"] .kt-cmb-mref{opacity:1;}
 html[data-room="dark"] .coach-chat-stick .screen-hd button[style*="color:var(--accent)"]{color:var(--text)!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"]{opacity:1!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"] svg{color:var(--muted)!important;}
-html[data-room="dark"] .coach-input-row button[title="Attach photo"][style*="opacity:1"] svg{color:var(--text)!important;}
-html[data-room="dark"] .coach-img-preview{background:var(--card)!important;}
 /* Settings, programme modal, sheets */
 html[data-room="dark"] .settings-row-ic svg{stroke:var(--lite);}
 html[data-room="dark"] .settings-row span[style*="color:var(--accent)"],html[data-room="dark"] .settings-row-val[style*="accent-ink"]{color:var(--text)!important;}
@@ -1850,9 +1970,22 @@ html[data-room="heavyweight"] .kt-rest-pill,html[data-room="heavyweight"] .kt-r-
 html[data-room="heavyweight"] .kt-eng-logall,html[data-room="heavyweight"] .kt-r-card.dark .kt-rest-adj,html[data-room="heavyweight"] .kt-sf-btn,
 html[data-room="heavyweight"] .kt-rlog-pill,html[data-room="heavyweight"] .kt-adhoc-pill{background:var(--card);border:1px solid var(--border);color:var(--lite);}
 html[data-room="heavyweight"] .kt-rest-pill.on,html[data-room="heavyweight"] .kt-r-pill.active,html[data-room="heavyweight"] .kt-rlog-pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
-html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:#fff;}
-html[data-room="heavyweight"] .coach-bubble.assistant{background:var(--card);border:1px solid var(--border);border-left-width:1px;}
+html[data-room="heavyweight"] .coach-bubble.user{background:var(--accent);color:var(--on-accent);}
+/* The owner's photo. Sent with no words it is the bubble itself: it sat in a blue (Lime: grey) mat
+   of the bubble's 12/16px padding plus its own 6px foot, thicker at the bottom than the top. */
+.coach-photo{display:block;max-width:200px;max-height:150px;border-radius:10px;margin-bottom:6px;}
+.coach-photo-lbl{font-size:12px;margin-bottom:4px;}
+.coach-photo:last-child,.coach-photo-lbl:last-child{margin-bottom:0;}
+html[data-room] .coach-bubble.user.photo{padding:0;background:none;overflow:hidden;line-height:0;}
+html[data-room] .coach-bubble.user.photo .coach-photo{max-width:min(240px,100%);max-height:180px;border-radius:0;}
 html[data-room="heavyweight"] .coach-input-row{background:var(--card);border-color:var(--border);box-shadow:none;border-radius:16px;}
+html[data-room="heavyweight"] .kt-tool-pill{background:var(--card);}
+html[data-room="heavyweight"] .kt-md-code{font-family:'Archivo',sans-serif;font-variant-numeric:tabular-nums;}
+html[data-room="heavyweight"] .kt-chat-day,html[data-room="heavyweight"] .kt-chat-seed{font-family:'Archivo',sans-serif;}
+html[data-room="heavyweight"] .kt-tool-pill:not(.bad) .kt-tool-pill-ic{color:var(--earned-ink);}
+html[data-room="heavyweight"] .kt-cmb-chip{background:var(--card);border-color:var(--border);color:var(--text);}
+html[data-room="heavyweight"] .kt-cmb-chip.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+html[data-room="heavyweight"] .kt-cmb-delta-warn{color:color-mix(in srgb,var(--orange) 80%,var(--text));}
 html[data-room="heavyweight"] .kt-meta-ava,html[data-room="heavyweight"] .screen-avatar,html[data-room="heavyweight"] .profile-ava{background:var(--accent);color:#fff;box-shadow:none;border:none;border-radius:50%;}
 html[data-room="heavyweight"] .kt-step-btn{border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--text);}
 html[data-room="heavyweight"] .kt-step-row .kt-step-btn:last-child{background:var(--accent);border-color:var(--accent);color:#fff;}
@@ -1946,6 +2079,11 @@ html[data-room="heavyweight"] #toast{bottom:calc(var(--tab-h) + var(--tab-bottom
 /* With a sheet open the bottom is the sheet's Save/Delete: the toast (an error, an Undo) moves up, as in Lime. */
 /* The run and sport dots keep a paper ring on the blue selected day (1.9:1 and 2.5:1 without it). */
 html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(env(safe-area-inset-top),16px) + 8px);bottom:auto;}
+/* In the chat the bottom is the composer, as an open sheet's is its buttons: a toast shows 8px under
+   the header (following the keys' pan while they are up), never over the box being typed in. At the
+   status bar it covered the Back row, the avatar poking out above it, and the top of the eyebrow.
+   --toast-head, set by _toastPlace, is where the header ends inside #app. */
+html.kt-chat body #toast{top:calc(var(--vv-top,0px) + var(--toast-head,max(env(safe-area-inset-top),16px)) + 8px);bottom:auto;}
 </style>
 </head>
 <body>
@@ -1967,6 +2105,7 @@ html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(en
   </button>
 </nav>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="coach-live" class="kt-sr" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="runner-root" style="display:none;"></div>
 <div id="runner-seal" style="display:none;position:fixed;bottom:0;left:0;right:0;height:calc(var(--tab-h) + var(--tab-gap) + var(--tab-bottom-clear));background:var(--bg);z-index:49;pointer-events:none;"></div>
 <script>
@@ -5775,7 +5914,9 @@ function switchTab(tab) {
   // (openRoutines): Restore previous programme undid two visits' schedule changes as one.
   if(tab==='settings' && currentTab!=='settings' && _routineScope==='cadence') _routineScope=null;
   currentTab = tab;
-  if(tab==='coach'&&!intakeMode) coachView='home';
+  // The Coach tab opens on the hub (342bfd9), except over a reply still in flight: coming back to
+  // it mid-reply showed the hub, with the answer out of sight.
+  if(tab==='coach'&&!intakeMode&&!coachLoading) coachView='home';
   document.querySelectorAll('.tab').forEach(function(t){
     var _sel=t.getAttribute('data-tab')===tab;
     t.classList.toggle('active', _sel);
@@ -5966,6 +6107,8 @@ function _tabEnterMotion(screen, routeChanged){
 }
 function render() {
   _todayActMemo=null;
+  // Leaving the chat: #screen scrolls again, and the keyboard binding lets #app go.
+  if(currentTab!=='coach' && document.documentElement.classList.contains('kt-chat')){ document.documentElement.classList.remove('kt-chat'); if(window._vvChatSync) _vvChatSync(); }
   // Sync the inline run-log form into module state before rebuilding the
   // screen — otherwise a re-render (pill tap, coach-card load, etc.) would
   // wipe what the user has typed.
@@ -5999,7 +6142,24 @@ function render() {
   if (currentTab==='log')        screen.innerHTML = renderLog();
   else if (currentTab==='progress')  screen.innerHTML = renderProgress();
   else if (currentTab==='settings')  screen.innerHTML = renderSettings();
-  else if (currentTab==='coach')     { screen.innerHTML = renderCoach(); _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route; scrollChatBottom(); _a11yPass(); _scheduleNativeSync(); paintRunner(); return; }
+  else if (currentTab==='coach')     {
+    // The chat's conversation scrolls on its own (html.kt-chat) and every paint builds a new
+    // scroller, so the reader's place is carried across: near the end it stays at the end (the
+    // newest message above the composer), scrolled up it stays where it was. The hub and the
+    // key screen scroll #screen as every other tab does.
+    var _ol=screen.querySelector('.coach-msgs-area'), _oTop=_ol?_ol.scrollTop:0, _oEnd=!_ol||(_ol.scrollHeight-_ol.scrollTop-_ol.clientHeight<80);
+    screen.innerHTML = renderCoach();
+    var _isChat=!!screen.querySelector('.coach-chat-body'), _wasChat=document.documentElement.classList.contains('kt-chat');
+    document.documentElement.classList.toggle('kt-chat', _isChat);
+    if(_isChat){ _metricsFit(screen); _fitPlaceholder(); }
+    _tabEnterMotion(screen, routeChanged); _restoreCoachDraft(); _lastRenderedRoute = route;
+    if(!_isChat) screen.scrollTop = routeChanged ? 0 : prevScroll;
+    else if(routeChanged || _oEnd) scrollChatBottom();
+    else { var _nl=screen.querySelector('.coach-msgs-area'); if(_nl) _nl.scrollTop=_oTop; }
+    _chatAnchor(); _syncSend();
+    if(_wasChat!==_isChat){ if(window._vvChatSync) _vvChatSync(); _toastPlace(); }   // a toast already up moves under the header
+    _a11yPass(); _scheduleNativeSync(); paintRunner(); return;
+  }
   _tabEnterMotion(screen, routeChanged);
   _m05Pass(screen);
   if(!routeChanged){
@@ -6959,30 +7119,35 @@ function handleCoachCardAsk(ev){
   // Pipe the question into the Coach tab as a fresh user message.
   switchTab('coach');
   coachView = 'chat';
-  coachMessages.push({role:'user', content:v});
+  _pushCoach({role:'user', content:v});
   saveCoachHistory();
   coachCardAskOpen = false;
-  coachLoading = true;
+  coachLoading = true; _coachTurnAt = Date.now();
   streamingContent = '';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
   var myGen=_coachGen;
   runCoachTurn(buildSystemPrompt(), coachModel, 16384).then(function(){
     if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
+    var _wasEnd = _chatAtEnd();
     render();
-    scrollChatBottom();
+    if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
   }).catch(function(err){
     // B8 — surface network / API errors instead of leaving the user staring at
     // an empty "Thinking…" forever.
     if(myGen!==_coachGen) return;
     coachLoading = false;
     streamingContent = '';
-    coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
+    _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
     saveCoachHistory();
+    var _wasEnd = _chatAtEnd();
     render();
-    scrollChatBottom();
+    if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
   });
 }
 
@@ -7643,6 +7808,7 @@ function _plateauFixDue(){
 }
 function dismissPlateauFix(){ lsSet('kt_last_plateau_week', currentWeek); render(); }
 function startPlateauFix(){
+  var _seedLabel='Plateau check';
   var pl=_plateauLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyPlateauFixLocal(); return; }
@@ -7656,7 +7822,7 @@ function startPlateauFix(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -7700,6 +7866,7 @@ function _progressionDue(){
 }
 function dismissProgression(){ lsSet('kt_last_prog_week', currentWeek); render(); }
 function startProgression(){
+  var _seedLabel='Progression check';
   var pl=_progressionLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyProgressionLocal(); return; }
@@ -7712,7 +7879,7 @@ function startProgression(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -7830,6 +7997,7 @@ function _recoveryDue(){
 }
 function dismissRecoveryAdjust(){ lsSet('kt_readiness_adj_seen', todayISO()); render(); }
 function startRecoveryAdjust(){
+  var _seedLabel='Recovery check';
   var r=lsGet('kt_readiness');
   if(!r) return;
   lsSet('kt_readiness_adj_seen', todayISO());
@@ -7845,7 +8013,7 @@ function startRecoveryAdjust(){
   openCoachChat();
   setTimeout(function(){
     var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage(); }
+    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
   }, 250);
 }
 
@@ -9428,10 +9596,7 @@ async function checkPendingShare(){
     coachView = 'chat';
     render();
     if(r.comment){
-      setTimeout(function(){
-        var ta = document.getElementById('coach-input');
-        if(ta){ ta.value = r.comment; ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,100)+'px'; }
-      }, 200);
+      setTimeout(function(){ _fillComposer(r.comment); }, 200);
     }
   } catch(e){}
 }
@@ -12052,7 +12217,9 @@ function _bdCommit(){
 function _bdAskCoach(){
   var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
   switchTab('coach'); coachView='chat'; render();
-  setTimeout(function(){ var ta=document.getElementById('coach-input'); if(ta){ ta.value='Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'; ta.focus(); } }, 150);
+  // Drafted, not sent: the owner reads it and taps Send. Focus only for a desktop keyboard: on a
+  // touch screen a scripted focus raises no keyboard (the box sat focused with no keys).
+  setTimeout(function(){ var ta=_fillComposer('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
 }
 
 // A superset opener whose partner the owner removed: the partner's entry names it (e.ss). It is
@@ -15840,7 +16007,7 @@ function startWeeklyReview(){
     var ta=document.getElementById('coach-input');
     if(!ta) return;
     ta.value=_buildWeekReviewMsg();
-    sendCoachMessage();
+    sendCoachMessage({seed:'Weekly review'});
   }, 250);
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
@@ -17802,6 +17969,16 @@ function _paintShareCard(m, P){
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 var _toastTimer=null;
+// In the chat a toast shows under the header: --toast-head is the header's foot inside #app, in CSS px
+// at the Dynamic Type zoom (boxes read zoomed); the CSS adds the keys' pan (--vv-top). Placed when a
+// toast shows, and again when the keys come or go (the Back row goes and comes back with them).
+function _toastPlace(){
+  var t=document.getElementById('toast'); if(!t) return;
+  var st=document.querySelector('html.kt-chat .coach-chat-stick'), app=document.getElementById('app');
+  if(!st || !app){ t.style.removeProperty('--toast-head'); return; }
+  var z=parseFloat(document.documentElement.style.zoom)||1;
+  t.style.setProperty('--toast-head', Math.round((st.getBoundingClientRect().bottom-app.getBoundingClientRect().top)/z)+'px');
+}
 // Toast with an Undo action — the row is already gone; the strip is the
 // safety net. One live undo at a time; a new toast retires the old one.
 var _toastUndoFn=null;
@@ -17812,7 +17989,7 @@ function showUndoToast(msg, onUndo){
   t.innerHTML=_esc(msg)+'<button class="kt-toast-undo" onclick="_toastUndo()">Undo</button>';
   t.style.background='var(--card2)'; t.style.color='var(--text)';
   t.setAttribute('aria-live','polite');
-  t.classList.add('show');
+  _toastPlace(); t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
   _toastTimer=setTimeout(function(){
     t.classList.remove('show'); _toastTimer=null; _toastUndoFn=null;
@@ -17835,7 +18012,7 @@ function showToast(msg, style){
   t.style.background=style==='pr'?'var(--toast-pr,var(--yellow))':(style==='err'?'var(--red)':'var(--toast-ok,var(--green))');
   t.style.color=style==='err'?'var(--on-accent)':'var(--toast-ink,var(--on-accent))';
   t.setAttribute('aria-live', style==='err'?'assertive':'polite');
-  t.classList.add('show');
+  _toastPlace(); t.classList.add('show');
   if(_toastTimer)clearTimeout(_toastTimer);
   _toastTimer=setTimeout(function(){
     t.classList.remove('show'); _toastTimer=null;
@@ -17850,8 +18027,13 @@ function getApiKey(){return localStorage.getItem('kt_apikey')||'';}
 // two-line question was impossible on the phone. There, Return is a newline
 // and the send button sends; desktop keeps Enter-to-send.
 function _coarsePointer(){ try{ return !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); }catch(e){ return false; } }
-function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();}
+function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);render();showToast('Coach model: '+_coachModelName(m));}
 
+// Every message the chat adds is stamped with the moment it was said (at), for the day dividers.
+// History from before 20261010 has no stamp and shows none. _toApiMsg sends role and content only,
+// so the API never sees it.
+function _pushCoach(m){ if(m && !m.at) m.at=Date.now(); coachMessages.push(m); return m; }
+function _chatDayLabel(iso){ var t=todayISO(); return iso===t ? 'Today' : iso===addDays(t,-1) ? 'Yesterday' : _calDayName(iso); }
 function loadCoachHistory(){
   try{
     var s=localStorage.getItem('kt_coach_msgs');
@@ -17875,32 +18057,62 @@ function _confirmCancelIntake(){
   _ktConfirm({title:'Stop programme setup?',body:'Your answers so far will be lost.',confirmLabel:'Stop setup',onConfirm:function(){_setIntakeMode(false);clearCoachHistory();render();}});
 }
 
+// md(): the chat's markdown, block by block, on text escaped first (& < >), for what Sonnet writes:
+// paragraphs (a line break inside one is <br>), one list per list (a blank line between items keeps
+// it open; '-', '*', '+' and '•' bullets, an indent of 2+ is a sub-item; '1.' or '1)' keep their
+// start), '#' headings, rules, pipe tables (the separator row dropped, the first row heads it), and
+// '> ' quotes as plain text. It left a blank line after every list and split block bullets apart.
+// No attribute is ever built from model text, and a link is its text alone: nothing navigates out
+// of the shell.
+function _mdInline(s){   // s is already escaped
+  s=s.replace(/`([^`\n]+)`/g,'<code class="kt-md-code">$1</code>');
+  s=s.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g,'$1<em>$2</em>');   // never a bullet or 3*5
+  s=s.replace(/\[([^\]\n]+)\]\((?:https?:\/\/)[^\s)]*\)/g,'$1');
+  return s;
+}
 function md(text){
-  text=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  text=text.replace(/^###\s+(.+)$/gm,'<strong>$1</strong>');
-  text=text.replace(/^##\s+(.+)$/gm,'<strong style="font-size:15px;">$1</strong>');
-  text=text.replace(/^#\s+(.+)$/gm,'<strong style="font-size:16px;">$1</strong>');
-  text=text.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
-  text=text.replace(/\*([^*\n]+)\*/g,'<em>$1</em>');
-  text=text.replace(/`([^`\n]+)`/g,'<code style="background:color-mix(in srgb,currentColor 10%,transparent);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
-  var lines=text.split('\n');
-  var out=[];var inList=false;
-  lines.forEach(function(line){
-    if(/^[-•]\s/.test(line)){
-      if(!inList){out.push('<ul style="margin:5px 0 5px 14px;padding:0;">');inList=true;}
-      out.push('<li>'+line.replace(/^[-•]\s/,'')+'</li>');
-    }else{
-      if(inList){out.push('</ul>');inList=false;}
-      out.push(line);
+  var src=String(text||'').replace(/\r/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var lines=src.split('\n'), out='', para=[], list=null, tbl=null, i, m;
+  var BUL=/^(\s*)[-*+•]\s+(.*)$/, NUM=/^(\s*)(\d{1,3})[.)]\s+(.*)$/;
+  function flushPara(){ if(para.length){ out+='<p>'+para.map(_mdInline).join('<br>')+'</p>'; para=[]; } }
+  function closeList(){ if(list){ out+='</'+list+'>'; list=null; } }
+  function flushTbl(){
+    if(!tbl) return;
+    var rows=tbl.filter(function(r){ return !/^\|?\s*:?-{2,}/.test(r); }).map(function(r){
+      return r.replace(/^\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){ return _mdInline(c.trim()); });
+    });
+    out+='<div class="kt-md-tablewrap"><table class="kt-md-table">'+rows.map(function(cells, ri){
+      var tag=ri===0?'th':'td';
+      return '<tr>'+cells.map(function(c){ return '<'+tag+'>'+c+'</'+tag+'>'; }).join('')+'</tr>';
+    }).join('')+'</table></div>';
+    tbl=null;
+  }
+  function nextNonBlank(j){ for(; j<lines.length; j++) if(lines[j].trim()) return lines[j]; return ''; }
+  for(i=0; i<lines.length; i++){
+    var line=lines[i], t=line.trim();
+    if(tbl && t.charAt(0)!=='|') flushTbl();
+    if(!t){
+      flushPara();
+      if(list){ var nx=nextNonBlank(i+1); if(!((list==='ul' && BUL.test(nx)) || (list==='ol' && NUM.test(nx)))) closeList(); }
+      continue;
     }
-  });
-  if(inList)out.push('</ul>');
-  var result='';
-  out.forEach(function(item,i){
-    if(/^<[ul\/li]/.test(item)){result+=item;}
-    else{if(i>0&&!/^<[ul\/li]/.test(out[i-1]))result+='<br>';result+=item;}
-  });
-  return result;
+    if(t.charAt(0)==='|'){ flushPara(); closeList(); (tbl=tbl||[]).push(t); continue; }
+    if((m=/^#{1,6}\s+(.*)$/.exec(t))){ flushPara(); closeList(); out+='<div class="kt-md-h">'+_mdInline(m[1])+'</div>'; continue; }
+    if(/^(-{3,}|\*{3,}|_{3,})$/.test(t)){ flushPara(); closeList(); out+='<hr class="kt-md-hr">'; continue; }
+    if((m=BUL.exec(line))){
+      flushPara(); if(list!=='ul'){ closeList(); out+='<ul>'; list='ul'; }
+      out+='<li'+(m[1].length>=2?' class="sub"':'')+'>'+_mdInline(m[2])+'</li>'; continue;
+    }
+    if((m=NUM.exec(line))){
+      flushPara(); if(list!=='ol'){ closeList(); out+='<ol start="'+m[2]+'">'; list='ol'; }
+      out+='<li>'+_mdInline(m[3])+'</li>'; continue;
+    }
+    if((m=/^&gt;\s?(.*)$/.exec(t))) t=m[1];
+    closeList(); para.push(t);
+  }
+  flushTbl(); flushPara(); closeList();
+  return out;
 }
 
 // ── Coach message blocks (spec 07) ───────────────────────────────────────────
@@ -17909,16 +18121,40 @@ function md(text){
 // messages render full-width as blocks: purple eyebrow → paragraphs on the
 // background → metric rows in one card → takeaway → action chips (max 2,
 // first is primary and sends its message through the normal chat flow).
-// Messages without markers keep the classic bubble — history stays intact.
+// Messages without markers are one prose block under the same COACH eyebrow. A marker may be
+// indented: one was, and the whole reply printed as raw text.
 function _hasCoachBlocks(text){
-  return /^%%(type|metric|takeaway|action):/m.test(String(text||''));
+  return /^\s*%%(type|metric|takeaway|action):/m.test(String(text||''));
 }
-function _coachBlocksHTML(text){
+// Each metric card on screen: stacked (.stack) when any of its rows would not fit on one line, so the
+// rows wrap alike. Measured with .stack off; run after a chat paint, when the fonts arrive and on resize.
+function _metricsFit(root){
+  var cards=(root||document).querySelectorAll('.kt-cmb-metrics');
+  for(var i=0;i<cards.length;i++){
+    var c=cards[i], rows=c.querySelectorAll('.kt-cmb-mrow'), wrapped=false;
+    c.classList.remove('stack');
+    for(var j=0;j<rows.length && !wrapped;j++){
+      var lab=rows[j].querySelector('.kt-cmb-mlabel'), val=rows[j].querySelector('.kt-cmb-mval');
+      if(!lab || !val) continue;
+      var lb=lab.getBoundingClientRect(), vb=val.getBoundingClientRect();
+      if(lb.height && vb.height && vb.top>=lb.bottom-1) wrapped=true;
+    }
+    if(wrapped) c.classList.add('stack');
+  }
+}
+try{
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ var s=document.getElementById('screen'); if(s) _metricsFit(s); if(document.documentElement.classList.contains('kt-chat')) _fitPlaceholder(); });   // a late face can change whether the whole placeholder fits
+  var _mfT=null;
+  window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')){ _metricsFit(s); _fitPlaceholder(); } }, 120); });
+}catch(e){}
+function _coachBlocksHTML(text, quiet){
   var lines=String(text||'').split('\n');
-  var typeTag='', paras=[], out='', metricBuf=[], actions=[], takeaways=[];
+  var typeTag='', buf=[], out='', metricBuf=[], actions=[], takeaways=[];
+  // Every plain line between two markers is ONE md() run, blank lines included: a list stays one
+  // list and a paragraph one paragraph (each line used to be its own block, each bullet its own list).
   function flushParas(){
-    paras.forEach(function(pl){ out+='<div class="kt-cmb-para">'+md(pl)+'</div>'; });
-    paras=[];
+    var s=buf.join('\n').trim(); buf=[];
+    if(s) out+='<div class="kt-cmb-para">'+md(s)+'</div>';
   }
   function flushMetrics(){
     if(!metricBuf.length) return;
@@ -17926,20 +18162,19 @@ function _coachBlocksHTML(text){
       var toneCls=m.tone==='good'?'kt-cmb-delta-good':m.tone==='warn'?'kt-cmb-delta-warn':'kt-cmb-mref';
       return '<div class="kt-cmb-mrow">'+
         '<span class="kt-cmb-mlabel">'+_esc(m.label.toUpperCase())+'</span>'+
-        '<span class="kt-cmb-mval">'+_esc(m.value)+
+        '<span class="kt-cmb-mval"><span class="kt-cmb-mv">'+_esc(m.value)+'</span>'+
           (m.ref?' <span class="kt-cmb-mref">'+_esc(m.ref)+'</span>':'')+
-          (m.delta?' · <span class="'+toneCls+'">'+_esc(m.delta)+'</span>':'')+
+          (m.delta?' <span class="'+toneCls+'">· '+_esc(m.delta)+'</span>':'')+
         '</span>'+
       '</div>';
     }).join('')+'</div>';
     metricBuf=[];
   }
   lines.forEach(function(line){
-    var mm=line.match(/^%%(type|metric|takeaway|action):\s*(.*)$/);
+    var mm=line.match(/^\s*%%(type|metric|takeaway|action):\s*(.*)$/);
     if(!mm){
-      flushMetrics();
-      var t=line.trim();
-      if(t) paras.push(t); else flushParas();
+      if(line.trim()) flushMetrics();   // a blank line between two metrics keeps them in one card
+      buf.push(line);
       return;
     }
     var kind=mm[1], body=mm[2];
@@ -17959,10 +18194,10 @@ function _coachBlocksHTML(text){
     }
   });
   flushParas(); flushMetrics();
-  if(actions.length){
+  if(actions.length && !quiet){
     out+='<div class="kt-cmb-actions">'+actions.map(function(a,i){
       return '<button class="kt-cmb-chip'+(i===0?' primary':'')+'" data-msg="'+_esc(a.msg)+'" '+
-        'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
+        (i===0?'aria-label="'+_esc(a.label)+'" ':'')+'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
     }).join('')+'</div>';
   }
   var eyebrow='<div class="kt-cmb-eyebrow">COACH'+(typeTag?' · '+_esc(typeTag):'')+'</div>';
@@ -17971,7 +18206,7 @@ function _coachBlocksHTML(text){
 function _cmbTakeHTML(t){
   return '<div class="kt-cmb-take">'+
     '<div class="kt-cmb-take-eyebrow">TAKEAWAY</div>'+
-    '<div class="kt-cmb-take-body">'+_esc(t)+'</div>'+
+    '<div class="kt-cmb-take-body">'+_mdInline(_esc(t))+'</div>'+
   '</div>';
 }
 function coachBlockAction(el){
@@ -18162,32 +18397,44 @@ _intakeKnownBlock()+
 'Start with the first question now.';
 }
 
-async function startRoutineIntake(){
+// Setup starts from an empty chat: over an existing conversation it asks first (it wiped the chat
+// with no word).
+function startRoutineIntake(){
+  if(coachMessages.length){
+    _ktConfirm({title:'Start programme setup?', body:'This clears your coach chat.', confirmLabel:'Start', confirmStyle:'var(--accent)', onConfirm:function(){ _runRoutineIntake(); }});
+    return;
+  }
+  return _runRoutineIntake();
+}
+async function _runRoutineIntake(){
   _setIntakeMode(true);
   // Reset to week 1 so the executor doesn't silently drop weeks before
   // currentWeek when the AI sends the freshly-generated 12.
   currentWeek=1;
   lsSet('kt_week',1);
   clearCoachHistory();
-  coachMessages.push({role:'user',content:'I want to generate my training programme.'});
-  coachLoading=true;
+  _pushCoach({role:'user',content:'I want to generate my training programme.',_seed:'Programme setup'});
+  coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
   try{
     // 24K cap: Sonnet's adaptive thinking spends output tokens before the
     // programme JSON, and its tokenizer counts ~30% more — 16K risked
     // truncating long intakes.
     await runCoachTurn(buildIntakeSystemPrompt(),COACH_SONNET,24576);
   }catch(err){
-    coachMessages.push({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
+    _pushCoach({role:'assistant', content:'Intake hit a snag ('+(err&&err.message||'network error')+'). Reply again or cancel from the top right.', _error:true, _local:true});
     saveCoachHistory();
   }finally{
     coachLoading=false;
     streamingContent='';
+    var _wasEnd=_chatAtEnd();
     render();
-    scrollChatBottom();
-    setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
+    if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
+    if(!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);   // no keys for a scripted focus on a touch screen
   }
 }
 
@@ -19324,7 +19571,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   var totalText='';
   var allToolCalls=[];
   _coachTurnScope='coach:'+Date.now();   // this reply's changes share one undo point
-  var hadError=false;
+  var hadError=false, _errKind='';
   // Error copy is deferred to after the loop so partial work (text + already
   // executed tool calls) can be committed FIRST — a dropped connection used
   // to hide programme edits that had actually happened.
@@ -19414,7 +19661,12 @@ async function runCoachTurn(systemPrompt,model,maxTok){
       // A 400 over the server-side fallback (its beta moved on, or this key can't use it): the
       // coach goes on without it for the session, and this request goes again at once.
       if(res.status===400 && _fb && /fallback|beta/i.test(String(ed&&ed.error&&ed.error.message||''))){ _coachNoFallback=true; continue; }
-      errText=(ed&&ed.error&&ed.error.message)?ed.error.message:'API error '+res.status;
+      // A rejected key and an empty balance are not fixed by trying again: say what fixes them.
+      var _apiMsg=(ed&&ed.error&&ed.error.message)||'';
+      _errKind=(res.status===401||res.status===403)?'key':(/credit balance/i.test(_apiMsg)?'billing':'');
+      errText=_errKind==='key'?'Anthropic did not accept your API key. Check it in Settings › AI Coach.'
+        :_errKind==='billing'?'Your Anthropic account is out of credit. Add credit at console.anthropic.com, then try again.'
+        :(_apiMsg||'API error '+res.status);
       hadError=true;
       break turnLoop;
     }
@@ -19510,7 +19762,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
   // committing them with any partial text keeps programme edits visible
   // instead of hiding them behind a bare error bubble.
   if(totalText.trim() || allToolCalls.length){
-    coachMessages.push({
+    _pushCoach({
       role:'assistant',
       content:totalText.trim() || (hadError?'I made these changes before the connection dropped:':'Done — changes applied:'),
       _tools:allToolCalls.length?allToolCalls:null,
@@ -19522,12 +19774,14 @@ async function runCoachTurn(systemPrompt,model,maxTok){
     // API then rejected every later request ('non-empty content'). Say so
     // locally instead; the Try again chip picks it up. A decline (stop_reason
     // 'refusal', after any fallback) says so: asking the same again gets the same.
-    coachMessages.push({role:'assistant',content:stopReason==='refusal'
+    _pushCoach({role:'assistant',content:stopReason==='refusal'
       ?'The coach can\u2019t help with that request. Try asking it another way.'
       :'The coach returned no reply — tap Try again.',_error:true,_local:true});
   }
   if(errText){
-    coachMessages.push({role:'assistant',content:errText,_error:true,_local:true});
+    var _en={role:'assistant',content:errText,_error:true,_local:true};
+    if(_errKind) _en._errKind=_errKind;
+    _pushCoach(_en);
   }
   // Auto-exit intake mode once the AI has shipped at least one fully-defined
   // week (every existing slot has bName). With variable-length programmes we
@@ -19559,11 +19813,21 @@ async function runCoachTurn(systemPrompt,model,maxTok){
 // programme: what moved, from what, and one honest pair of buttons. The
 // edits are already applied (tools execute immediately); Undo is the
 // existing Restore Previous, Keep just retires the card.
-function _isLastToolMsg(m){
-  var last=null;
-  coachMessages.forEach(function(x){ if(x.role==='assistant'&&Array.isArray(x._tools)&&x._tools.length) last=x; });
-  return last===m;
+// The card belongs to the newest reply that changed the PROGRAMME: a later reply that only logged,
+// saved the profile or set a goal took the card away from a change whose Undo was still current.
+// A cheap kind test (no formatting, no storage read): it runs for every message on every paint.
+var _LEDGER_PLAN_TOOLS={set_exercise_weight:1, swap_cadence_days:1, update_routine_weeks:1, edit_programme_exercise:1};
+function _isPlanChange(tc){
+  if(!tc || !tc.result || !_LEDGER_PLAN_TOOLS[tc.name]) return false;
+  if(tc.name==='update_routine_weeks'){ var sv=_routineCallSaved(tc); return sv.weeks.length>0 || sv.plan; }
+  return tc.result.ok!==false;
 }
+function _lastPlanMsg(){
+  var last=null;
+  coachMessages.forEach(function(x){ if(x && x.role==='assistant' && Array.isArray(x._tools) && x._tools.some(_isPlanChange)) last=x; });
+  return last;
+}
+function _isLastToolMsg(m){ return !!m && _lastPlanMsg()===m; }
 function _backupWeightFor(name){
   var b=lsGet('kt_routine_backup'); if(!b||!b.weeks) return null;
   var wk=b.weeks[currentWeek-1]||b.weeks[b.weeks.length-1]; if(!wk) return null;
@@ -19589,46 +19853,69 @@ function _routineCallSaved(tc){
   var ws=Array.isArray(r.weeks)?r.weeks:Array.isArray(r.written)?r.written:(Array.isArray(i.weeks)?i.weeks.map(function(w){return w&&w.wk;}).filter(Boolean):[]);
   return {weeks:ws, plan:plan};
 }
-function _planChangeLedger(tools, idx){
+// The ledger's rows: [label, value, kind], kind 'goal' for a goal and 'plan' for a programme change.
+function _planChangeRows(tools){
   var rows=[];
   (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
     if(!tc || !tc.result || (tc.result.ok===false && !(tc.name==='update_routine_weeks' && Array.isArray(tc.result.written)))) return;
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
-      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight))]);
+      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight)), 'plan']);
     } else if(tc.name==='swap_cadence_days'){
-      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week']);
+      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week', 'plan']);
     } else if(tc.name==='update_routine_weeks'){
       var sv=_routineCallSaved(tc), ws=sv.weeks;
-      if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten']);
-      if(sv.plan) rows.push(['Weekly cadence', 'changed']);
+      if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten', 'plan']);
+      if(sv.plan) rows.push(['Weekly cadence', 'changed', 'plan']);
     } else if(tc.name==='edit_programme_exercise'){
       var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
       if(i.action!=='remove' && (i.make_main===true || i.make_main==='true')) _act=(_act==='changed'?'':_act+' \u00b7 ')+'main lift';
-      rows.push([_esc(i.exercise||'Exercise'), _act]);
-    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight))]); }
-    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight))]); }
-    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||''))))]); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
-    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||''))]); }
+      rows.push([_esc(i.exercise||'Exercise'), _act, 'plan']);
+    } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
+    else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||'')))), 'goal']); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
+    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||'')), 'goal']); }
   }); });
+  return rows;
+}
+// While the reply's undo point is current: Undo (neutral) and Keep changes (the action). Once a
+// later edit has taken the undo point the card says so plainly and offers Got it, never a lone
+// blue Keep changes that reads as a choice still to make. A goal-only reply gets no card: its
+// pill already says what changed.
+function _planChangeLedger(tools, idx){
+  var rows=_planChangeRows(tools);
   if(!rows.length) return '';
   var _m=coachMessages[idx], canUndo=!!(_m && _backupScopeIs(_m._undo));
-  return '<div class="kt-ledger-card">'+
+  if(!canUndo && !rows.some(function(r){ return r[2]!=='goal'; })) return '';
+  var card='<div class="kt-ledger-card">'+
     '<div class="kt-ledger-card-hd">PLAN CHANGES \u00b7 WEEK '+currentWeek+'</div>'+
-    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('')+
+    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('');
+  if(canUndo) return card+
     '<div class="kt-ledger-card-actions">'+
-      (canUndo?'<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>':'')+
+      '<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>'+
       '<button class="kt-coach-btn primary" onclick="_ledgerKeep('+idx+')">Keep changes</button>'+
     '</div>'+
-    '<div class="kt-ledger-card-note">Applied to your programme'+(canUndo?' \u00b7 Undo restores the previous version':'')+'</div>'+
+    '<div class="kt-ledger-card-note">Applied to your programme \u00b7 Undo restores the previous version</div>'+
+  '</div>';
+  return card+
+    '<div class="kt-ledger-card-note">Applied to your programme. It cannot be undone here any more.</div>'+
+    '<div class="kt-ledger-card-actions end"><button class="kt-coach-btn neutral" onclick="_ledgerKeep('+idx+')">Got it</button></div>'+
   '</div>';
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
 // The card retires once the restore is done: Cancel (or a write that failed) hid it for good.
 function _ledgerUndo(i){ restoreRoutineBackup(function(){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
 function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
+// A tool pill in the room's tokens. A failure is said in words as well as in red: 'Not applied'
+// leads a label that does not already say what was not saved ('Week 6 updated · week 7 not saved',
+// 'No weeks changed' say it themselves). The icon is decoration; the text reads '✓ label'.
+function _toolPillHTML(tc){
+  var ok=!!(tc && tc.result && tc.result.ok!==false), label=toolCallLabel(tc);
+  var says=!ok && /not saved|^No weeks changed/i.test(label);
+  return '<span class="kt-tool-pill'+(ok?'':' bad')+'"><span class="kt-tool-pill-ic" aria-hidden="true">'+(ok?'✓':'✕')+'</span> '+(ok||says?'':'Not applied \u00b7 ')+_esc(label)+'</span>';
+}
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
   if(n==='update_routine_weeks'){
@@ -19878,6 +20165,7 @@ function restoreRoutineBackup(onDone){
     if(!cur) lsDel('kt_routine_backup');
     if(sw) _putNoteStamps(sw.stamps);   // a log that holds a lift now gives back the load from before the change
     _setBackupScope('');   // the swap is its own: no reply's Undo points at it now
+    _retireLedgers();      // and no PLAN CHANGES card says "Applied" over a change it just took back
     _routineScope=null;    // and the next edit, even in the same Routines visit, takes its own snapshot
     // The other round (Restore Previous after a round swap): ROUND N · WEEK 1 is not its card.
     if((parseInt(b.cycle,10)||1)!==(parseInt(cur&&cur.cycle,10)||1)) lsDel('kt_round_intro');
@@ -19951,6 +20239,8 @@ function saveCoachHistory(){
       if(m._toolResults) return null;
       var out={role:m.role};
       if(m._hadImage) out._hadImage=true;
+      if(m._auto) out._auto=true;
+      if(m._seed) out._seed=m._seed;
       if(m._tools) out._tools=m._tools.map(function(t){
         // The pill only needs name + result; a full update_routine_weeks
         // input is the whole programme JSON and bloated history by 10s of KB.
@@ -19964,6 +20254,9 @@ function saveCoachHistory(){
       // Stop notices re-enter the API history after the next boot.
       if(m._local) out._local=true;
       if(m._error) out._error=true;
+      if(m._stopped) out._stopped=true;
+      if(m.at) out.at=m.at;
+      if(m._errKind) out._errKind=m._errKind;
       if(m._ledgerSeen) out._ledgerSeen=true;
       // The reply's undo point: PLAN CHANGES offered Undo only until the app was relaunched.
       // It stays checked against the snapshot (_backupScopeIs), and a new round retires it.
@@ -20253,12 +20546,20 @@ function _cachedCoachTools(){
 }
 function clearPendingImage(){pendingImage=null;render();}
 
-async function sendCoachMessage(){
+// o.seed: a prompt the app wrote on the owner's behalf (a plateau check, a weekly review) shows
+// as that label, not as the owner's words; the API still gets the whole prompt.
+async function sendCoachMessage(o){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
+  // Focus goes back to the box after the reply only for a keyboard user who sent from it (Enter, or
+  // a click on Send). WKWebView raises no keyboard for a focus no tap asked for: the refocus left a
+  // touch screen with a focused box, no keys and no tab bar, and the composer on the home indicator.
+  // A chip send, or focus moved on to the model pill, stays where it is.
+  var _ae=document.activeElement, _hadFocus=_ae===inp||!!(_ae&&_ae.classList&&_ae.classList.contains('coach-send-btn'));
   var msg=inp.value.trim();
   if((!msg&&!pendingImage)||coachLoading)return;
   inp.value='';inp.style.height='';
+  window._coachKeyAt=0;   // what was typed is sent: a render mid-reply no longer counts as typing (_restoreCoachDraft)
 
   var content, preview=null;
   if(pendingImage){
@@ -20272,12 +20573,16 @@ async function sendCoachMessage(){
     content=msg;
   }
 
-  coachMessages.push({role:'user',content:content,_preview:preview});
+  var _um={role:'user',content:content,_preview:preview};
+  if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
+  if(o && typeof o==='object' && o.seed) _um._seed=String(o.seed);
+  _pushCoach(_um);
   saveCoachHistory();
-  coachLoading=true;
+  coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
   render();
   scrollChatBottom();
+  _coachSay('Coach is thinking');
 
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?COACH_SONNET:coachModel;
@@ -20294,15 +20599,17 @@ async function sendCoachMessage(){
     // B8 — push a synthetic assistant message on failure so the user can
     // see what went wrong (network, auth, schema mismatch). Otherwise the
     // typing dots disappear with no feedback.
-        coachMessages.push({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
+        _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
     saveCoachHistory();
   }finally{
     if(myGen===_coachGen){
       coachLoading=false;
       streamingContent='';
+      var _wasEnd=_chatAtEnd();
       render();
-      scrollChatBottom();
-      setTimeout(function(){var i=document.getElementById('coach-input');if(i&&!intakeMode)i.focus();},80);
+      if(_wasEnd) scrollChatToReply();
+      _coachSayLast();
+      if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
     }
   }
 }
@@ -20316,6 +20623,12 @@ function sendCoachChip(txt){
 // Stop an in-flight coach turn: bump the generation so runCoachTurn abandons
 // at its next await checkpoint. Tool calls that already executed are real —
 // the note says so instead of pretending nothing happened.
+// Stop sits where Send was, and the page sets touch-action:manipulation, so the second tap of a
+// double tap on Send (or a double-click) landed on Stop and stopped the reply it had just sent
+// (the abandoned request still ran, and was billed). The button ignores a press in a turn's first
+// half second; coachStop() itself always stops.
+var _coachTurnAt=0;
+function _coachJustSent(){ return Date.now()-_coachTurnAt<500; }
 function coachStop(){
   if(!coachLoading) return;
   _coachGen++;
@@ -20323,14 +20636,15 @@ function coachStop(){
   streamingContent='';
   var hadTools=_runningTools.length>0;
   if(hadTools){
-    coachMessages.push({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true,_undo:_backupScopeIs(_coachTurnScope)?_coachTurnScope:null});
+    _pushCoach({role:'assistant',content:'Stopped. Changes made before the stop are kept:',_tools:_runningTools.slice(),_local:true,_undo:_backupScopeIs(_coachTurnScope)?_coachTurnScope:null});
   } else {
-    coachMessages.push({role:'assistant',content:'Stopped.',_local:true});
+    _pushCoach({role:'assistant',content:'Stopped.',_local:true,_stopped:true});
   }
   _runningTools=[];
   _streamingTool=null;
   saveCoachHistory();
   render(); scrollChatBottom();
+  _coachSay('Stopped');
 }
 
 // Re-run the last turn after a failure: drop trailing local bubbles so the
@@ -20342,8 +20656,9 @@ async function coachRetryLast(){
   }
   if(!coachMessages.length) return;
   saveCoachHistory();
-  coachLoading=true; streamingContent='';
+  coachLoading=true; streamingContent=''; _coachTurnAt=Date.now();
   render(); scrollChatBottom();
+  _coachSay('Coach is thinking');
   var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
   var model=intakeMode?COACH_SONNET:coachModel;
   var maxTok=intakeMode?24576:16384;
@@ -20352,22 +20667,131 @@ async function coachRetryLast(){
     await runCoachTurn(systemPrompt,model,maxTok);
   }catch(err){
     if(myGen!==_coachGen) return;
-    coachMessages.push({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
+    _pushCoach({role:'assistant',content:'Still failing ('+(err&&err.message||'network error')+'). Check your connection and API key.',_error:true,_local:true});
     saveCoachHistory();
   }finally{
     if(myGen===_coachGen){
       coachLoading=false;
       streamingContent='';
-      render(); scrollChatBottom();
+      var _wasEnd=_chatAtEnd();
+      render(); if(_wasEnd) scrollChatToReply();
+      _coachSayLast();
     }
   }
 }
 
+// Send is honest: disabled while there is nothing to send (no text, no photo). Runs on every
+// keystroke and after every render (the button is rebuilt). While a reply is in flight the slot
+// is Stop, which stays enabled.
+function _syncSend(){
+  var b=document.getElementById('coach-send'), i=document.getElementById('coach-input');
+  if(!b || !i || coachLoading) return;
+  b.disabled=!i.value.trim() && !pendingImage;
+}
+// The placeholder says the short "Message…" / "Answer…" where the whole one would be cut at the box's
+// edge (a narrow phone with Larger Text: "Message Coa"). Measured in the composer's own zoom with the
+// box's font; the CSS keeps either to one line. Run after each chat paint and on resize.
+function _fitPlaceholder(){
+  var ta=document.getElementById('coach-input'); if(!ta || !ta.parentNode) return;
+  var full=intakeMode?'Answer the Coach…':'Message Coach…', short=intakeMode?'Answer…':'Message…';
+  var cs=getComputedStyle(ta), z=parseFloat(document.documentElement.style.zoom)||1, sp=document.createElement('span');
+  sp.style.cssText='position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;';
+  sp.style.fontFamily=cs.fontFamily; sp.style.fontSize=cs.fontSize; sp.style.fontWeight=cs.fontWeight; sp.style.fontStyle=cs.fontStyle; sp.style.letterSpacing=cs.letterSpacing;
+  sp.textContent=full; ta.parentNode.appendChild(sp);
+  var room=ta.getBoundingClientRect().width-(parseFloat(cs.paddingLeft)+2)*z, need=sp.getBoundingClientRect().width;   // the box clips at its padding edge: the text may use its right padding but 2px
+  ta.parentNode.removeChild(sp);
+  if(room>0) ta.placeholder = need<=room ? full : short;
+}
+// A message the app drafts for the owner (a shared photo's comment, Build day's "Ask the coach")
+// lands as typing would leave it: sized to the box's own 120px cap, and Send ready. Writing .value
+// fires no input event, so Send stayed disabled next to a full box.
+function _fillComposer(text){
+  var ta=document.getElementById('coach-input');
+  if(!ta) return null;
+  ta.value=String(text||''); ta.style.height=''; ta.style.height=Math.min(ta.scrollHeight,120)+'px';
+  _syncSend();
+  return ta;
+}
+// Lands the conversation on its newest message: now (every render builds a new scroller, and
+// waiting would flash its top) and again at 80 ms, once late images have their height. Only the
+// chat's own scroller: the hub opens at its top like every other screen.
+var _chatPinT=null, _chatRO=null, _chatBelow=0;
 function scrollChatBottom(){
-  setTimeout(function(){
-    var screen=document.getElementById('screen');
-    if(screen&&currentTab==='coach')screen.scrollTop=screen.scrollHeight;
-  },80);
+  var go=function(){
+    if(currentTab!=='coach') return;
+    var sc=document.querySelector('html.kt-chat .coach-msgs-area');
+    if(sc){ sc.scrollTop=sc.scrollHeight; _chatBelow=0; }
+  };
+  clearTimeout(_chatPinT);
+  go(); _chatPinT=setTimeout(go,80);
+}
+// The conversation keeps its distance from the bottom whatever resizes it (the composer growing
+// with a long message, the tab bar standing down, the keys coming up): the message being read,
+// or the newest one, stays just above the composer. _chatBelow is set from the place the render
+// left the scroller in BEFORE observing, so the observer's first call changes nothing.
+function _chatAnchor(){
+  var list=document.querySelector('html.kt-chat .coach-msgs-area');
+  if(!list){ if(_chatRO) _chatRO.disconnect(); return; }
+  _chatBelow=Math.max(0, list.scrollHeight-list.scrollTop-list.clientHeight);
+  list.addEventListener('scroll', function(){ _chatBelow=Math.max(0, list.scrollHeight-list.scrollTop-list.clientHeight); }, {passive:true});
+  if(!window.ResizeObserver) return;
+  if(!_chatRO) _chatRO=new ResizeObserver(function(ents){
+    var l=ents[0] && ents[0].target;
+    if(l && l.isConnected) l.scrollTop=Math.max(0, l.scrollHeight-l.clientHeight-_chatBelow);
+  });
+  _chatRO.disconnect(); _chatRO.observe(list);
+}
+
+// A reply that lands while the reader is at the end opens at its start: the owner's question 12px
+// under the header, the answer below it (it landed on its last line, and a long one had to be
+// scrolled back up to be read). One that fits still ends 16px above the composer. A reader who
+// scrolled up while waiting keeps their place. Cancels the 80 ms pin, which would pull the view
+// back to the end. offsetTop is against the positioned scroller, in CSS px, so the Dynamic Type
+// zoom does not skew it.
+function _chatAtEnd(){
+  var l=document.querySelector('html.kt-chat .coach-msgs-area');
+  return !l || (l.scrollHeight-l.scrollTop-l.clientHeight<80);
+}
+function scrollChatToReply(){
+  var l=document.querySelector('html.kt-chat .coach-msgs-area');
+  if(!l || currentTab!=='coach') return;
+  clearTimeout(_chatPinT);
+  var ts=l.querySelectorAll('.kt-turn'), u=ts[ts.length-1];
+  if(!u){ scrollChatBottom(); return; }
+  l.scrollTop=Math.min(Math.max(0, u.offsetTop-12), l.scrollHeight-l.clientHeight);
+  _chatBelow=Math.max(0, l.scrollHeight-l.scrollTop-l.clientHeight);
+}
+
+// VoiceOver hears the coach: 'Coach is thinking' when a turn starts, then the reply as speech
+// (markers read as words, no '%%', '**' or '|', capped near 400 characters, the changes it made at
+// the end), an error in its own words, and 'Stopped'. Cleared first so the same words announce again.
+function _coachSay(t){
+  var el=document.getElementById('coach-live'); if(!el) return;
+  el.textContent='';
+  setTimeout(function(){ el.textContent=String(t||''); }, 50);
+}
+function _coachSpeech(m){
+  if(!m) return '';
+  var raw=m.content;
+  if(Array.isArray(raw)) raw=raw.filter(function(p){ return p && p.type==='text'; }).map(function(p){ return p.text; }).join(' ');
+  var out=[];
+  String(raw||'').split('\n').forEach(function(line){
+    var t=line.trim(), mm=t.match(/^%%(type|metric|takeaway|action):\s*(.*)$/);
+    if(mm){
+      if(mm[1]==='metric'){ var pp=mm[2].split('|').slice(0,4).map(function(x){ return x.trim(); }).filter(Boolean); if(pp.length) out.push(pp[0]+': '+pp.slice(1).join(' ')+'.'); }   // label: value ref delta (the tone is colour, not words)
+      else if(mm[1]==='takeaway' && mm[2].trim()) out.push('Takeaway: '+mm[2].trim().replace(/\*\*|`/g,''));
+      return;   // the type tag and the chips are not read
+    }
+    t=t.replace(/^#{1,6}\s+/,'').replace(/^[-*+•]\s+/,'').replace(/^\d{1,3}[.)]\s+/,'').replace(/^>\s?/,'').replace(/\*\*|`/g,'').replace(/\|/g,' ');
+    if(t && !/^[-:\s]+$/.test(t)) out.push(t);
+  });
+  var sp=out.join(' ').replace(/\s+/g,' ').trim();
+  if(sp.length>400) sp=sp.slice(0,397).replace(/\s+\S*$/,'')+'…';
+  if(Array.isArray(m._tools) && m._tools.length) sp+=' Changes: '+m._tools.map(function(tc){ return toolCallLabel(tc); }).join(', ')+'.';
+  return (m._local?'':'Coach: ')+sp;
+}
+function _coachSayLast(){
+  for(var i=coachMessages.length-1; i>=0; i--){ var m=coachMessages[i]; if(m && m.role==='assistant' && !m._toolResults){ _coachSay(_coachSpeech(m)); return; } }
 }
 
 function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
@@ -20467,7 +20891,7 @@ function renderCoach(){
           '</div>'+
           '<div class="settings-row-body">'+
             '<div class="settings-row-title">Open Chat</div>'+
-            '<div class="settings-row-sub">'+(msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+lastPreview:'No messages yet — tap to start')+'</div>'+
+            '<div class="settings-row-sub">'+(coachLoading?'Coach is replying…':msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+_esc(lastPreview):'No messages yet — tap to start')+'</div>'+
           '</div>'+
           '<span class="settings-row-chev">›</span>'+
         '</div>'+
@@ -20528,18 +20952,20 @@ function renderCoach(){
   var _dayMeta = hasCustomRoutine() && !_programmeStarted()
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
+  // The eyebrow says what the coach is doing: answering setup questions, replying, or unreachable.
+  var _offline=(typeof navigator!=='undefined' && navigator.onLine===false);
   var coachHead='<div class="coach-head">'+
     '<div class="coach-head-l">'+
-      '<div class="coach-head-eyebrow">COACH · '+(intakeMode?'INTAKE':'ONLINE')+'</div>'+
-      '<div class="coach-head-title">'+(intakeMode?'Build your plan':"Today's plan")+'</div>'+
+      '<div class="coach-head-eyebrow'+(_offline?' off':'')+'">COACH · '+(intakeMode?'INTAKE':coachLoading?'REPLYING':(_offline?'OFFLINE':'ONLINE'))+'</div>'+
+      '<div class="coach-head-title" role="heading" aria-level="1">'+(intakeMode?'Build your plan':"Today's plan")+'</div>'+
     '</div>'+
     '<div class="coach-head-r">'+
       (!intakeMode
         ?'<span class="coach-head-meta">'+_dayMeta+'</span>'
         :'')+
       (intakeMode
-        ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;">Cancel</button>'
-        :'<button onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
+        ?''
+        :'<button class="kt-hit" onclick="setCoachModel(\''+modelNext+'\')" aria-label="'+_esc(modelSwitch)+'" title="'+_esc(modelSwitch)+'" style="background:var(--card2);border:1px solid var(--border);border-radius:999px;color:var(--lite);font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;font-family:inherit;white-space:nowrap;">'+_esc(modelLabel.replace(/ [\d.]+$/,''))+'<span class="kt-model-ver">'+_esc((modelLabel.match(/ [\d.]+$/)||[''])[0])+'</span></button>'
       )+
     '</div>'+
   '</div>';
@@ -20548,154 +20974,142 @@ function renderCoach(){
 
   // ── Build messages HTML ───────────────────────────────────────────────────
   var msgsHTML='';
-  if(!coachMessages.length&&!streamingContent&&!intakeMode){
+  if(!coachMessages.length&&!intakeMode){
     msgsHTML='<div style="padding:20px 0 12px;">'+
       '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.4px;">Ask anything</div>'+
       '<div style="font-size:14px;color:var(--lite);">Your training, recovery, and goals</div>'+
     '</div>'+
     (hasCustomRoutine()?
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'+
-        '<span style="font-size:13px;font-weight:600;color:var(--accent);">Custom Programme Active</span>'+
-        '<div style="display:flex;gap:6px;">'+
-          (hasRoutineBackup()?'<button onclick="restoreRoutineBackup()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Restore Previous</button>':'')+
-          '<button onclick="resetCustomRoutine()" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;cursor:pointer;padding:4px 10px;font-family:inherit;">Regenerate</button>'+
+      '<div class="kt-chat-prog">'+
+        '<div class="kt-cmb-eyebrow">Custom programme active</div>'+
+        '<div class="kt-chat-prog-acts">'+
+          (hasRoutineBackup()?'<button class="kt-chat-prog-btn" onclick="restoreRoutineBackup()">Restore previous</button>':'')+
+          '<button class="kt-chat-prog-btn" onclick="resetCustomRoutine()">Reset programme</button>'+
         '</div>'+
       '</div>'
     :'')+
-    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">'+
+    '<div class="kt-cmb-actions kt-chat-seeds">'+
     CHIPS.map(function(c){
-      return '<button data-msg="'+_esc(c)+'" onclick="sendCoachChip(this.dataset.msg)" '+
-        'style="background:transparent;border:1px solid var(--border);border-radius:999px;'+
-        'padding:8px 14px;font-size:13px;font-weight:500;color:var(--lite);cursor:pointer;font-family:inherit;'+
-        'white-space:nowrap;-webkit-tap-highlight-color:transparent;">'+_esc(c)+'</button>';
+      return '<button class="kt-cmb-chip" data-msg="'+_esc(c)+'" onclick="sendCoachChip(this.dataset.msg)">'+_esc(c)+'</button>';
     }).join('')+
     '</div>';
   }else{
-    var bubbles='';
+    // One presentation for the coach: every reply is a block at the column's width under a COACH
+    // eyebrow (plain prose and %% grammar alike); what the app says itself (Stopped, an error) is a
+    // muted note with no eyebrow; only the owner's words are a bubble. Chips act only on the newest
+    // reply, and none while a reply is in flight: an older reply's chips sent stale plan changes.
+    var bubbles='', _ledMsg=_lastPlanMsg(), _lastAns=null;
+    coachMessages.forEach(function(x){ if(x && x.role==='assistant' && !x._local && !x._toolResults) _lastAns=x; });
+    var _day='';
     coachMessages.forEach(function(m){
       if(m._toolResults) return; // never render tool_result payloads
+      // A day divider before the first message of each day, so Tuesday's advice does not read as today's.
+      // A prompt the app wrote (a seed) that opens its day carries the day in its own label, TODAY ·
+      // PLATEAU CHECK: the two stacked caps lines, 40px apart, read as duplicated chrome.
+      var _dayLbl='', _seedHere=!!m._seed && m.role!=='assistant';
+      if(m.at){ var _d=_ymdLocal(new Date(m.at)); if(_d!==_day){ _day=_d; _dayLbl=_chatDayLabel(_d); if(!_seedHere) bubbles+='<div class="kt-chat-day">'+_esc(_dayLbl)+'</div>'; } }
       var text=m.content;
       var imgHTML='';
       if(Array.isArray(m.content)){
         text=m.content.filter(function(p){return p.type==='text';}).map(function(p){return p.text;}).join('').trim();
       }
       if(m._preview){
-        imgHTML='<img src="'+m._preview+'" style="max-width:200px;max-height:150px;border-radius:10px;display:block;margin-bottom:6px;">';
+        imgHTML='<img class="coach-photo" src="'+_esc(m._preview)+'" alt="Photo you sent">';
       }else if(m._hadImage){
-        imgHTML='<div style="font-size:11px;color:color-mix(in srgb,currentColor 60%,transparent);margin-bottom:4px;">📷 Image</div>';
+        imgHTML='<div class="coach-photo-lbl"><span aria-hidden="true">📷</span> Photo</div>';
       }
       var displayText=(typeof text==='string'?text:'').trim();
-      if(m.role==='assistant' && _hasCoachBlocks(displayText)){
-        // Structured answer — full-width blocks, no bubble (spec 07).
-        bubbles+='<div class="kt-cmb">'+imgHTML+_coachBlocksHTML(displayText)+'</div>';
+      if(m.role==='user' && m._auto) displayText='';   // a photo sent with no words: the default prompt is the API's, not the owner's
+      if(m.role==='assistant' && m._local){
+        if(displayText) bubbles+='<div class="kt-cmb-note'+(m._error?' err':'')+'">'+_esc(displayText)+'</div>';
+      } else if(m.role==='assistant'){
+        if(displayText||imgHTML) bubbles+='<div class="kt-cmb">'+imgHTML+(_hasCoachBlocks(displayText)
+          ? _coachBlocksHTML(displayText, m!==_lastAns||coachLoading)
+          : '<div class="kt-cmb-eyebrow">COACH</div><div class="kt-cmb-para">'+md(displayText)+'</div>')+'</div>';
+      } else if(_seedHere){
+        bubbles+='<div class="kt-chat-seed kt-turn"><span>'+(_dayLbl?'<span class="kt-chat-seed-day">'+_esc(_dayLbl)+' · </span>':'')+_esc(m._seed)+'</span></div>';
       } else if(displayText||imgHTML){
-        var rendered=m.role==='assistant'?md(displayText):displayText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        bubbles+='<div class="coach-bubble '+m.role+'">'+imgHTML+rendered+'</div>';
+        bubbles+='<div class="coach-bubble user kt-turn'+(m._preview && !displayText?' photo':'')+'">'+imgHTML+(displayText?'<span class="kt-sr">You: </span>'+_esc(displayText):'')+'</div>';
       }
       // A failed turn ends in a dead end without this: the input was already
       // cleared, so the user had to retype. Retry re-runs the turn on the
       // existing history. Chip only on the trailing error.
-      if(m.role==='assistant' && m._error && m===coachMessages[coachMessages.length-1] && !coachLoading){
-        bubbles+='<div style="margin:-4px 0 12px;"><button class="kt-cmb-chip primary" onclick="coachRetryLast()">Try again →</button></div>';
+      if(m.role==='assistant' && (m._error || m._stopped) && m===coachMessages[coachMessages.length-1] && !coachLoading){
+        if(m._errKind==='key') bubbles+='<div class="kt-chat-retry"><button class="kt-cmb-chip primary" onclick="switchTab(\'settings\')" aria-label="Open Settings">Open Settings →</button></div>';
+        else if(m._errKind!=='billing') bubbles+='<div class="kt-chat-retry"><button class="kt-cmb-chip primary" onclick="coachRetryLast()" aria-label="Try again">Try again →</button></div>';
       }
       // Tool-call pills under the assistant bubble
       if(m.role==='assistant'&&Array.isArray(m._tools)&&m._tools.length){
-        var pills=m._tools.map(function(tc){
-          var label=toolCallLabel(tc);
-          var ok=tc.result&&tc.result.ok!==false;
-          var bg=ok?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';
-          var col=ok?'#22c55e':'#ef4444';
-          var icon=ok?'✓':'✕';
-          return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
-        }).join(' ');
-        bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+pills+'</div>';
-        if(!m._ledgerSeen && _isLastToolMsg(m)){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
+        var pills=m._tools.map(_toolPillHTML).join(' ');
+        bubbles+='<div class="kt-tool-pills">'+pills+'</div>';
+        if(!m._ledgerSeen && m===_ledMsg){ var _led=_planChangeLedger(m._tools, coachMessages.indexOf(m)); if(_led) bubbles+=_led; }
       }
     });
-    // Live pills for tools executed mid-turn (before the final message commits)
-    if(_runningTools.length){
-      var livePills=_runningTools.map(function(tc){
-        var label=toolCallLabel(tc);
-        var ok=tc.result&&tc.result.ok!==false;
-        var bg=ok?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)';
-        var col=ok?'#22c55e':'#ef4444';
-        var icon=ok?'✓':'✕';
-        return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+bg+';color:'+col+';font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+icon+' '+label.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>';
-      }).join(' ');
-      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+livePills+'</div>';
-    }
-    // Pending pill for a tool whose JSON is still streaming in
-    if(_streamingTool){
-      var pendLabel;
-      if(_streamingTool.name==='update_routine_weeks'){
-        pendLabel=_streamingTool.progress>0
-          ?'Building week '+_streamingTool.progress+'…'
-          :'Building plan…';
-      } else {
-        pendLabel='Working…';
-      }
-      bubbles+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;padding:0 4px;">'+
-        '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;">'+
-          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink .9s step-end infinite;"></span>'+
-          pendLabel.replace(/&/g,'&amp;').replace(/</g,'&lt;')+
-        '</span></div>';
-    }
-    // Streaming bubble — live text as it arrives
-    if(streamingContent){
-      bubbles+='<div class="coach-bubble assistant">'+md(streamingContent)+'<span style="display:inline-block;width:8px;height:14px;background:var(--accent);border-radius:2px;margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite;"></span></div>';
-    }else if(coachLoading){
-      bubbles+='<div class="typing-wrap">'+
-        '<span style="font-size:12px;color:var(--lite);margin-right:8px;">Thinking…</span>'+
+    // Live pills for tools executed mid-turn (before the final message commits) sit in the coach's
+    // place, under its COACH eyebrow and above Thinking: above the eyebrow they read as part of the
+    // owner's turn, then jumped below the reply when it landed.
+    var livePills=_runningTools.length ? '<div class="kt-tool-pills">'+_runningTools.map(_toolPillHTML).join(' ')+'</div>' : '';
+    if(livePills && !coachLoading) bubbles+=livePills;
+    // Thinking: the coach's own place, no box (Stop is the composer's Send slot meanwhile)
+    if(coachLoading){
+      bubbles+='<div class="kt-cmb kt-thinking"><div class="kt-cmb-eyebrow">COACH</div>'+livePills+'<div class="typing-wrap">'+
+        '<span class="kt-think-lbl">Thinking…</span>'+
         '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>'+
-        '<button onclick="coachStop()" style="margin-left:12px;background:var(--card2);border:1px solid var(--border);color:var(--lite);font-size:11px;font-weight:700;padding:6px 13px;border-radius:11px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">Stop</button>'+
-      '</div>';
+      '</div></div>';
     }
     msgsHTML='<div class="coach-msgs-wrap">'+bubbles+'</div>';
   }
 
   var inputPlaceholder=intakeMode?'Answer the Coach…':'Message Coach…';
+  // In flow above the composer (html.kt-chat), on the room's card.
   var imgPreview=pendingImage
-    ?'<div class="coach-img-preview" style="position:fixed;left:20px;right:20px;bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 58px);z-index:51;'+
-        'background:rgba(22,22,26,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);'+
-        'border:1px solid var(--border);border-radius:16px;padding:10px;">'+
-        '<button onclick="clearPendingImage()" style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;'+
-          'background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;'+
-          'cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;-webkit-tap-highlight-color:transparent;">✕</button>'+
-        '<img src="'+pendingImage.previewUrl+'" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px;display:block;">'+
+    ?'<div class="coach-img-preview">'+
+        '<img src="'+pendingImage.previewUrl+'" alt="Photo to send">'+
+        '<button class="coach-img-x" onclick="clearPendingImage()" aria-label="Remove photo"><span aria-hidden="true">✕</span></button>'+
       '</div>'
     :'';
+  // One field: attach (44pt), the box, and Send, which is Stop while a reply is in flight (a reply
+  // cannot be sent and stopped at once) and disabled while there is nothing to send (_syncSend).
+  // Enter sends on a desktop keyboard, never mid-composition (IME); Cmd/Ctrl+Enter sends anywhere.
   var inputRow='<div class="coach-input-row">'+
     (!intakeMode
-      ?'<button onclick="triggerImagePicker()" style="background:none;border:none;padding:6px;cursor:pointer;flex-shrink:0;opacity:'+(pendingImage?'1':'.45')+';-webkit-tap-highlight-color:transparent;" title="Attach photo">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" style="color:var(--accent)">'+
+      ?'<button class="coach-attach'+(pendingImage?' on':'')+'" onclick="triggerImagePicker()" aria-label="Attach photo" title="Attach photo">'+
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">'+
             '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'+
             '<polyline points="21 15 16 10 5 21"/>'+
           '</svg>'+
         '</button>'
       :'')+
-    '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" rows="1" '+
-      'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey&&!_coarsePointer()){event.preventDefault();sendCoachMessage();}" '+
-      'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>'+
-    '<button class="coach-send-btn" onclick="sendCoachMessage()" '+(coachLoading?'disabled':'')+'>'+
-      '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
-    '</button>'+
+    '<textarea id="coach-input" class="coach-textarea" placeholder="'+inputPlaceholder+'" aria-label="'+(intakeMode?'Answer the coach':'Message the coach')+'" rows="1" '+
+      'onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229&&(event.metaKey||event.ctrlKey||(!event.shiftKey&&!_coarsePointer()))){event.preventDefault();sendCoachMessage();}" '+
+      'oninput="this.style.height=\'\';this.style.height=Math.min(this.scrollHeight,120)+\'px\';_syncSend()"></textarea>'+
+    (coachLoading
+      ?'<button id="coach-send" class="coach-send-btn stop" aria-label="Stop the reply" onclick="if(!_coachJustSent())coachStop()"><span class="coach-stop-ic" aria-hidden="true"></span></button>'
+      :'<button id="coach-send" class="coach-send-btn" aria-label="Send message" onclick="sendCoachMessage()">'+
+          '<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>'+
+        '</button>')+
   '</div>';
 
   var _avCh=_initialOf(getUserFirstName());
-  // Sticky chat header — back / avatar + editorial title stay pinned at the
-  // top of the scroll container so they're always reachable. The body::before
-  // mask covers the safe-area zone above this strip.
+  // The chat column (html.kt-chat): the header (back / avatar + editorial title) stays at the
+  // top, the conversation scrolls between it and the composer, and the body::before mask covers
+  // the safe-area zone above the header.
   return '<div class="coach-chat-stick">'+
     '<div class="screen-hd" style="margin:0;">'+
-      '<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0;display:flex;align-items:center;gap:4px;">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
-      '</button>'+
-      '<div class="screen-avatar">'+_avCh+'</div>'+
+      // In setup Back did nothing (the hub waits for setup to end): Cancel is the way out there, in
+      // Back's place and with its look. It was 12px muted text at the far right, read as a label, and
+      // left the avatar alone in this row. Like Back it stands down while the keys are up.
+      (intakeMode
+        ?'<button onclick="_confirmCancelIntake()" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;">Cancel</button>'
+        :'<button onclick="coachView=\'home\';render();" style="background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;padding:0 12px 0 0;min-height:44px;display:flex;align-items:center;gap:4px;">'+
+        '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>Back'+
+      '</button>')+
+      '<div class="screen-avatar" aria-hidden="true" style="margin-left:auto;">'+_avCh+'</div>'+
     '</div>'+
     coachHead+
   '</div>'+
     '<div class="coach-chat-body">'+
-      '<div class="coach-msgs-area" style="'+(pendingImage?'padding-bottom:calc(var(--tab-h) + var(--tab-gap) * 4 + var(--tab-bottom-clear) + 300px)':'')+'">'+msgsHTML+'</div>'+
+      '<div class="coach-msgs-area">'+msgsHTML+'</div>'+
       imgPreview+
       inputRow+
     '</div>';
@@ -22318,9 +22732,12 @@ function _dynTypeScale(force){
   return Math.max(1, Math.min(1.25, Math.round(px/17*100)/100));
 }
 function applyDynamicType(force){
-  var sc=_dynTypeScale(force);
-  document.documentElement.style.zoom = sc===1 ? '' : String(sc);
-  document.documentElement.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+  var sc=_dynTypeScale(force), root=document.documentElement;
+  root.style.zoom = sc===1 ? '' : String(sc);
+  root.setAttribute('data-dyn-type', sc===1?'1':String(sc));
+  // The zoom scales 100dvh as well: #app divides its height by --dt-z to stay one screen tall.
+  if(sc===1) root.style.removeProperty('--dt-z'); else root.style.setProperty('--dt-z', String(sc));
+  if(window._vvChatSync) _vvChatSync();   // keys up: --vv-h and --vv-top are in CSS px at the zoom
   // A smaller text size lowers the root zoom: fields raised for the larger one go up again.
   if(typeof _fieldFloor==='function' && document.body) _fieldFloor(document.body);
 }
@@ -22373,27 +22790,53 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
 // dismisses the keyboard, which is how every other chat app behaves and the only
 // way back to the tabs without sending something.
 (function(){
-  var _ctTimer=null;
+  var _ctTimer=null, _waited=0;
+  // A touch screen with a visual viewport knows when the keyboard is really up (html.kb-open, set
+  // by the binding below). There the tab bar stands down for the KEYBOARD, not for focus: iOS raises
+  // no keyboard for a focus no tap asked for, and focus alone hid the tabs for a whole reply and
+  // left the composer on the home indicator with nothing to type on.
+  function _byKb(){ return !!window.visualViewport && _coarsePointer(); }
   function _chatTyping(on){
     if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; }
-    if(on){ document.documentElement.classList.add('chat-typing'); return; }
-    var _waited=0;
-    var _check=function(){
-      var ae=document.activeElement;
-      if(ae && ae.id==='coach-input' && document.getElementById('coach-input')) return;  // focus came back
-      // Sending blurs the box and the reply re-focuses it seconds later. Without
-      // this the dock slid back in and out again on every message. Hold while a
-      // reply is in flight, bounded so a stalled request cannot hide the tabs.
-      if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000 && document.getElementById('coach-input')){   // only while the box still exists
-        _waited+=400; _ctTimer=setTimeout(_check,400); return;
-      }
-      document.documentElement.classList.remove('chat-typing');
-    };
-    _ctTimer=setTimeout(_check,180);
+    if(on){
+      document.documentElement.classList.add('chat-typing');
+      if(_byKb()) _ctTimer=setTimeout(_check,1000);   // no keyboard by then (a hardware one): the tabs come back
+      return;
+    }
+    _waited=0; _ctTimer=setTimeout(_check, _byKb()?120:180);
+  }
+  function _check(){
+    _ctTimer=null;
+    var ae=document.activeElement, root=document.documentElement;
+    var focused=!!(ae && ae.id==='coach-input' && document.getElementById('coach-input'));
+    if(_byKb()){
+      // html.kb-open keeps the tabs down while the keys are up; once they are gone the tabs come back, focused or not.
+      if(!(focused && root.classList.contains('kb-open'))) root.classList.remove('chat-typing');
+      return;
+    }
+    if(focused){ _waited=0; return; }  // focus came back
+    // Sending blurs the box and the reply re-focuses it seconds later. Without
+    // this the dock slid back in and out again on every message. Hold while a
+    // reply is in flight, bounded so a stalled request cannot hide the tabs.
+    if(typeof coachLoading!=='undefined' && coachLoading && _waited<60000 && document.getElementById('coach-input')){   // only while the box still exists
+      _waited+=400; _ctTimer=setTimeout(_check,400); return;
+    }
+    _waited=0;
+    root.classList.remove('chat-typing');
   }
   document.addEventListener('focusin',function(e){
-    if(e.target && e.target.id==='coach-input') _chatTyping(true);
+    if(e.target && e.target.id==='coach-input'){
+      // A render giving focus back (_restoreCoachDraft) is not a new tap: on a touch screen the
+      // keyboard alone decides the bar there, so it no longer flickers on every render.
+      if(!(window._ctQuiet && _byKb())) _chatTyping(true);
+      if(typeof _syncSend==='function') _syncSend();   // a box filled by script (no input event) still gets an honest Send
+    }
   });
+  // Typing into the box (a hardware keyboard on a touch screen raises no keyboard-sized cut): a
+  // render gives it its focus back (_restoreCoachDraft). A send clears it.
+  document.addEventListener('keydown',function(e){
+    if(e.target && e.target.id==='coach-input') window._coachKeyAt=Date.now();
+  },true);
   document.addEventListener('focusout',function(e){
     if(e.target && e.target.id==='coach-input') _chatTyping(false);
   });
@@ -22421,6 +22864,85 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
     }
   },{passive:true});
   window._chatTypingOff=function(){ _chatTyping(false); };
+  // From the binding below: the keys came up over the box (it may already have had focus), or went away.
+  window._chatKb=function(open){
+    if(open){ if(_ctTimer){ clearTimeout(_ctTimer); _ctTimer=null; } document.documentElement.classList.add('chat-typing'); }
+    else _chatTyping(false);
+  };
+})();
+
+// The chat header says OFFLINE while the phone has no connection, and ONLINE again when it returns.
+try{ window.addEventListener('online', function(){ if(currentTab==='coach') render(); }); window.addEventListener('offline', function(){ if(currentTab==='coach') render(); }); }catch(e){}
+
+// ── Chat on the visual viewport (the iOS keyboard) ───────────────────────────
+// There is no Keyboard plugin, so WKWebView keeps the LAYOUT viewport under the keyboard:
+// position:fixed, 100dvh and #screen keep the whole screen, and WebKit pans the visual viewport
+// over them by up to the keyboard's height so the focused box clears the keys. That took the
+// chat header off the top and ran the conversation under the status bar. While the keys are up
+// over the chat box, #app is laid over the visual viewport instead (html.kb-open + --vv-top and
+// --vv-h, in CSS px at the page's Dynamic Type zoom): the header stays, the composer sits on the
+// keys and the conversation fills the rest. It follows whatever pan WebKit chose, so it holds
+// whether WebKit pans the visual viewport or scrolls the layout one, and it never scrolls the
+// document (the scroll-offset guard below only acts once nothing is focused). Pinch zoom, a
+// hardware keyboard (no keyboard-sized cut) and a WebKit with no visualViewport keep the plain
+// chat-typing column.
+(function(){
+  var vv=window.visualViewport, root=document.documentElement;
+  if(!vv) return;
+  var raf=0, on=false, last='', full0=0;
+  // While the keys are up the page has the keyboard's height to pan by: a drag on the header or on
+  // a conversation too short to scroll is not handed to it (the conversation itself is
+  // overscroll-behavior: contain), so the column does not chase a pan it cannot lead. Attached
+  // only while html.kb-open is on, so scrolling anywhere else never waits on script.
+  function guard(e){
+    if(!e.cancelable) return;
+    var t=e.target, list=t && t.closest ? t.closest('.coach-msgs-area') : null;
+    if(list && list.scrollHeight>list.clientHeight+1) return;
+    if(t && t.closest && t.closest('.coach-input-row')) return;
+    e.preventDefault();
+  }
+  function apply(){
+    raf=0;
+    var z=parseFloat(root.style.zoom)||1, sc=vv.scale||1, ae=document.activeElement;
+    // The screen's height with no keyboard, remembered while nothing is being edited: a web view
+    // that resizes for the keyboard (a Keyboard plugin's native resize) shrinks innerHeight too.
+    // innerHeight and the root's clientHeight are the layout viewport in CSS px, which the Dynamic
+    // Type zoom leaves alone, as it does vv.height. Multiplied by the zoom, 844 read as 1055 at 125%:
+    // a 211px "keyboard" that came on with a focus and never went, hiding the tabs and Back.
+    var lh=Math.max(window.innerHeight||0, root.clientHeight||0);
+    var editing=!!(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA' || ae.isContentEditable));
+    if(!editing || lh>full0) full0=lh;
+    var cut=sc<1.05 && full0-vv.height*sc>120;
+    // Comes on only for the chat box; stays on, following the pan, until the keys are gone.
+    var kb=cut && root.classList.contains('kt-chat') && (on || !!(ae && ae.id==='coach-input'));
+    var h=Math.round(vv.height/z), t=Math.round(Math.max(0, vv.offsetTop||0)/z);
+    var key=kb ? h+'|'+t : '';
+    if(key===last) return;
+    last=key;
+    if(kb){
+      root.style.setProperty('--vv-h', h+'px');
+      root.style.setProperty('--vv-top', t+'px');
+      if(!on){
+        on=true; root.classList.add('kb-open');
+        document.addEventListener('touchmove', guard, {passive:false});
+        if(window._chatKb) _chatKb(true);
+        _toastPlace();   // the Back row went with the keys
+      }
+    } else if(on){
+      on=false; root.classList.remove('kb-open');
+      document.removeEventListener('touchmove', guard, {passive:false});
+      root.style.removeProperty('--vv-h'); root.style.removeProperty('--vv-top');
+      if(window._chatKb) _chatKb(false);
+      _toastPlace();
+    }
+  }
+  function soon(){ if(!raf) raf=window.requestAnimationFrame ? requestAnimationFrame(apply) : setTimeout(apply,16); }
+  vv.addEventListener('resize', soon);
+  vv.addEventListener('scroll', soon);
+  window.addEventListener('orientationchange', function(){ full0=0; soon(); });
+  document.addEventListener('focusin', soon);
+  document.addEventListener('focusout', function(){ setTimeout(soon,0); });
+  window._vvChatSync=soon;
 })();
 
 // ── iOS keyboard scroll-offset guard ──────────────────────────────────────────
@@ -22650,10 +23172,20 @@ function _restoreCoachDraft(){
   if(!el) return;
   if(_coachDraft.v && !el.value){
     el.value = _coachDraft.v;
-    el.style.height=''; el.style.height=Math.min(el.scrollHeight,100)+'px';
+    el.style.height=''; el.style.height=Math.min(el.scrollHeight,120)+'px';
+    if(typeof _syncSend==='function') _syncSend();
   }
-  if(_coachDraft.focus && document.activeElement!==el){
-    el.focus();
+  // A touch screen raises no keyboard for a scripted focus. Given back after every render, focus
+  // kept a box with no keys focused (the tab bar went for a second each time, the reply landed
+  // with the box still focused and the scroll-offset guard waiting on a blur). There it comes back
+  // only while the keys are up (kb-open), on their way up after a tap (chat-typing), or while a
+  // hardware keyboard types into the box; and it comes back quietly, so the tab bar stays put.
+  var rc=document.documentElement.classList, touch=!!window.visualViewport && _coarsePointer();
+  var keep=!touch || rc.contains('kb-open') || rc.contains('chat-typing') || (Date.now()-(window._coachKeyAt||0)<4000);
+  if(_coachDraft.focus && document.activeElement!==el && keep){
+    window._ctQuiet=true;
+    try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }   // the column keeps its place: no scroll into view
+    window._ctQuiet=false;
     try{ el.setSelectionRange(_coachDraft.s, _coachDraft.e); }catch(e){}
   }
 }

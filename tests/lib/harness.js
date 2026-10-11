@@ -44,11 +44,13 @@ function startServer() {
 // opts.seed        — extra/override localStorage keys (values must be strings)
 // opts.native      — mock Capacitor so isNativeIOS() is true
 // opts.watchPending — array of JSON strings TrovoWatch.getPendingSessions returns
+// opts.page        — extra browser.newPage options (viewport, hasTouch, isMobile, deviceScaleFactor…)
+// opts.init        — a script (string or function) that runs before the page's own scripts
 async function boot(opts = {}) {
   const srv = await startServer();
   const port = srv.address().port;
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage(Object.assign({ viewport: { width: 390, height: 844 } }, opts.page || {}));
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -88,6 +90,7 @@ async function boot(opts = {}) {
       },
     };
   }, { seed, native: !!opts.native, watchPending: opts.watchPending || [] });
+  if (opts.init) await page.addInitScript(opts.init);
 
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });

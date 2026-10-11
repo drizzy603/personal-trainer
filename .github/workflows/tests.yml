@@ -39,4 +39,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run suites
-        run: ./tests/run.sh
+        run: |
+          set -o pipefail
+          ./tests/run.sh 2>&1 | tee suite.log
+
+      # Run logs need a GitHub login; annotations do not. Name each failing spec in the run summary.
+      - name: Name the failures
+        if: failure()
+        run: |
+          awk '/^── /{spec=$2} /  FAIL  /{line=$0; gsub(/%/,"%25",line); gsub(/\r/,"",line); print "::error title=" spec "::" substr(line,1,900)}' suite.log | head -20

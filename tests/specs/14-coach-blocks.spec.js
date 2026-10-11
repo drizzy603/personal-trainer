@@ -1,6 +1,7 @@
 // Coach message blocks (Premium spec 07): marked messages render as
 // structured blocks (eyebrow / paragraphs / metric card / takeaway / action
-// chips), unmarked messages keep the classic bubble, payloads are escaped,
+// chips), unmarked messages are a block with a COACH eyebrow (they kept the
+// classic bubble until 20261010), payloads are escaped,
 // and the caps hold — one takeaway, two actions, first action primary.
 const { boot, assert, run } = require('../lib/harness');
 
@@ -51,7 +52,9 @@ run('coach block grammar renders and caps hold', async () => {
   } finally { await app.close(); }
 });
 
-run('marked assistant messages skip the bubble in chat', async () => {
+// Since 20261010 every coach reply is a block (one presentation, a COACH eyebrow at the column's
+// width): the plain answer renders as .kt-cmb too, and only the owner's words bubble.
+run('coach replies render as blocks in chat; only the owner\'s words bubble', async () => {
   const app = await boot();
   try {
     const out = await app.page.evaluate(() => {
@@ -59,7 +62,7 @@ run('marked assistant messages skip the bubble in chat', async () => {
       coachMessages = [
         { role: 'user', content: 'How was my run?' },
         { role: 'assistant', content: '%%type: Run analysis\n%%metric: PACE | 8:07 | vs 8:15 | -8s | good\n%%takeaway: Solid.' },
-        { role: 'assistant', content: 'Plain answer stays a bubble.' },
+        { role: 'assistant', content: 'A plain answer is a block too.' },
       ];
       switchTab('coach'); coachView = 'chat'; render();
       const screen = document.getElementById('screen');
@@ -69,8 +72,8 @@ run('marked assistant messages skip the bubble in chat', async () => {
         userBubbles: screen.querySelectorAll('.coach-bubble.user').length,
       };
     });
-    assert(out.blocks === 1, 'one structured message renders as blocks, got ' + out.blocks);
-    assert(out.bubbles === 1, 'plain assistant message keeps its bubble, got ' + out.bubbles);
+    assert(out.blocks === 2, 'both coach replies render as blocks, got ' + out.blocks);
+    assert(out.bubbles === 0, 'no coach reply is a bubble, got ' + out.bubbles);
     assert(out.userBubbles === 1, 'user message still bubbles');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
