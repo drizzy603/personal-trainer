@@ -19,7 +19,8 @@
 # back; the SIGKILL sweep (24 kills 0-50 ms after a 100-write burst, then, when WebKit lost nothing in them, more kills
 # after a bigger burst until it loses something, so the would-repair path is shown every run); the 59 <-> 60 drill
 # (Reset programme with its Clear chat, Start new programme, a sparse restore, an iCloud-copy restore). Plus, over every
-# launch: facade boot under 50 ms, CapacitorHttp still patched, never an alert.
+# launch: facade boot under 50 ms (the facade's own work; WebKit's first storage read is timed just before it and
+# reported beside it), CapacitorHttp still patched (read under -fpOffline's fetch wrapper), never an alert.
 #
 # The simulators are named by UDID (never "booted"); the default for each runtime is the phone of its first paired
 # iPhone + Watch, as test-native.sh picks it. Each run reinstalls the app on that phone (its data container is

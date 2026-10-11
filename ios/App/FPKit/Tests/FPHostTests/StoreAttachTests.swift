@@ -60,6 +60,9 @@ final class StoreAttachTests: XCTestCase {
         XCTAssertTrue(all.clearVerdicts && all.breakProxy && all.ignoreBootDone && all.ignoreMarker)
         XCTAssertEqual(all.documentStartScripts.count, 3)
         XCTAssertTrue(all.documentStartScripts[0].contains("__fpRealLS"), "the probe's reference to WebKit comes first")
+        XCTAssertTrue(all.documentStartScripts[0].contains("__fpWkMs"), "with the time WebKit took to load the storage area")
+        XCTAssertTrue(all.documentStartScripts[1].contains("__fpCapFetch"),
+                      "-fpOffline keeps the fetch it wraps, so the runner still sees Capacitor's patch under it")
         XCTAssertEqual(DebugOptions(arguments: ["App", "-fpStoreSwitch", "on"]).deviceSwitchOff, false)
     }
 

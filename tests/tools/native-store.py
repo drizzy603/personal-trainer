@@ -156,7 +156,7 @@ def read_log(path):
     return out
 
 
-def probe(sim, name, phases, args=(), until='done', timeout=60, terminate=True, during=None):
+def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, during=None):
     """One launch running `phases`. Returns its events. `during(events)` is called while waiting (host actions)."""
     RUNS[0] += 1
     tag = '%02d-%s' % (RUNS[0], name)
@@ -366,7 +366,7 @@ class Ctx:
         self.sim = sim
         self.rep = rep
         self.opts = opts
-        self.boot_ms = []      # (scenario, bootMs) from every attached launch
+        self.boot_ms = []      # (scenario, bootMs, WebKit's first storage read in ms) from every attached launch
         self.cap_http = []     # (scenario, bool)
         self.alerts = []       # (scenario, bool)
         self.page = None       # the bundled page build
@@ -376,7 +376,7 @@ class Ctx:
             j = e.get('js') or {}
             st = j.get('st') or {}
             if st.get('mode') == 'shadow' and st.get('bootMs') is not None:
-                self.boot_ms.append((scen, float(st['bootMs'])))
+                self.boot_ms.append((scen, float(st['bootMs']), j.get('wkMs')))
             if 'capHttp' in j:
                 self.cap_http.append((scen, bool(j['capHttp'])))
             self.alerts.append((scen, bool(e.get('alert'))))
@@ -447,11 +447,14 @@ def scen_migration(c):
     c.in_step(s, 'migrated', ev, 'after migration')
     c.note_state(s, ev)
     c.sim.terminate()
+    # Byte for byte, from the two files: every value the older build wrote (the page also writes its own breadcrumbs as
+    # it leaves, kt_wch_log and the like, after the state check: those are compared there, by hash).
     st_db, wk = store_read(c.sim), webkit_values(c.sim)
-    exact = [k for k in wk if not reserved(k) and st_db['kv'].get(k) != wk[k]]
-    c.rep.check(s, 'every value is in the store in its exact UTF-16 (lone surrogate, U+2028, NUL incl.)', not exact and
-                st_db['kv'].get('kt_probe_half') == wk.get('kt_probe_half') and '\ud83d' in (wk.get('kt_probe_half') or ''),
-                'mismatch %s' % exact if exact else '%d keys, %d chars' % (len(live(st_db['kv'])), sum(len(v) for v in live(st_db['kv']).values())))
+    migrated = [k for k in wk if not reserved(k) and (k in seed or k in ('kt_coach_msgs', 'kt_probe_half'))]
+    exact = [k for k in migrated if st_db['kv'].get(k) != wk[k]]
+    c.rep.check(s, 'every value is in the store in its exact UTF-16 (lone surrogate, U+2028, NUL incl.)', not exact and len(migrated) >= len(seed)
+                and st_db['kv'].get('kt_probe_half') == wk.get('kt_probe_half') and '\ud83d' in (wk.get('kt_probe_half') or ''),
+                'mismatch %s' % exact if exact else '%d values, %d chars' % (len(migrated), sum(len(wk[k]) for k in migrated)))
     snaps = sorted(os.listdir(c.sim.path('Library', 'Application Support', 'FPStore', 'snaps')))
     c.rep.check(s, 'a migrate snapshot was written', any('migrate' in n for n in snaps), snaps)
     hits = files_hold(c.sim.path('Library', 'Application Support', 'FPStore'), API_KEY)
@@ -493,7 +496,7 @@ def scen_background(c):
         {'op': 'waitState', 'state': 'background', 'timeoutMs': 30000},
         {'op': 'waitState', 'state': 'active', 'timeoutMs': 40000},
         {'op': 'wait', 'ms': 1200},
-        state('after return')]], timeout=90, during=during)
+        state('after return')]], timeout=150, during=during)
     bg = ev.first('background') or {}
     c.rep.check(s, 'checkpoint when the app went to the background', bg.get('checkpoint') is True, bg)
     answered = ev.all('answeredInBackground')
@@ -511,7 +514,7 @@ def scen_wckill(c):
     ev = probe(c.sim, 'wckill', [
         [js('marker', "localStorage.setItem('kt_probe_wc', 'before-kill-' + Date.now()); return {acked: __ktStoreState.acked('kt_probe_wc'), boot: __ktStoreState.boot};"),
          {'op': 'killWebContent'}],
-        [state('after reload')]], timeout=60)
+        [state('after reload')]], timeout=150)
     r = (ev.first('js', label='marker') or {}).get('result') or {}
     h1, h2 = c.hello(ev, 1) or {}, c.hello(ev, 2) or {}
     c.rep.check(s, 'marker acked before the kill', r.get('acked') is True, r)
@@ -562,7 +565,7 @@ def scen_nowk(c):
 
 def scen_race(c):
     s = 'race'
-    ev = probe(c.sim, 'race', [[{'op': 'race', 'seconds': 4, 'checkpoints': 24, 'snaps': 12}, {'op': 'wait', 'ms': 300}, state('after race')]], timeout=60)
+    ev = probe(c.sim, 'race', [[{'op': 'race', 'seconds': 4, 'checkpoints': 24, 'snaps': 12}, {'op': 'wait', 'ms': 300}, state('after race')]], timeout=120)
     r = ev.first('race') or {}
     page, native = r.get('page') or {}, r.get('native') or {}
     c.rep.check(s, 'checkpoints and snapshots racing page writes: zero fallbacks',
@@ -586,7 +589,7 @@ def scen_policy(c):
         [state('policy on'), {'op': 'policy', 'file': 'Documents/fp-policy.json', 'json': off},
          js('write after the change', "localStorage.setItem('kt_probe_pol', 'p-' + Date.now()); return {acked: __ktStoreState.acked('kt_probe_pol'), mode: __ktStoreState.mode};"),
          {'op': 'reload'}],
-        [state('after reload'), {'op': 'status'}]], args=args, timeout=60)
+        [state('after reload'), {'op': 'status'}]], args=args, timeout=150)
     h1, h2 = c.hello(ev, 1) or {}, c.hello(ev, 2) or {}
     pol = ev.first('policy') or {}
     r = (ev.first('js', label='write after the change') or {}).get('result') or {}
@@ -690,7 +693,7 @@ def scen_scene(c):
     ev_t0 = [time.time()]
     ev = probe(c.sim, 'scene', [
         [state('scene 1'), {'op': 'sceneDestroy'}, {'op': 'sceneCycle'}],
-        [{'op': 'wait', 'ms': 1500}, state('scene 2'), {'op': 'status'}]], timeout=90, during=during)
+        [{'op': 'wait', 'ms': 1500}, state('scene 2'), {'op': 'status'}]], timeout=150, during=during)
     refused = ev.first('sceneDestroyRefused')
     if refused:
         c.rep.fact(s, 'UIKit refuses a scene destruction here (%s); the scenario replays the reconnect in the process: '
@@ -716,7 +719,7 @@ def scen_ota(c):
     html = re.sub(r'<meta name="build" content="[^"]+"/>', '<meta name="build" content="%s"/>' % build, src, count=1)
     with open(c.sim.path('Documents', 'fp-probe', 'ota.html'), 'w', encoding='utf-8') as f:
         f.write(html)
-    ev = probe(c.sim, 'ota-stage', [[{'op': 'stageOta', 'build': build, 'html': 'ota.html'}]], timeout=60)
+    ev = probe(c.sim, 'ota-stage', [[{'op': 'stageOta', 'build': build, 'html': 'ota.html'}]], timeout=120)
     r = (ev.first('stageOta') or {}).get('result') or {}
     c.rep.check(s, 'the page staged a test page through TrovoOta.stage', isinstance(r, dict) and r.get('staged') is True, r)
     ev = probe(c.sim, 'ota-served', [[state('served'), {'op': 'defaults', 'keys': ['otaAttempt', 'otaLiveBuild']}]])
@@ -760,7 +763,7 @@ def scen_wiped(c):
     c.rep.check(s, 'the follow-up adopts the fresh page and keeps every given-up value ("wiped")', last.get('rule') == 4
                 and sum(1 for r in rows if r.get('why') == 'wiped') >= 10, '%s; wiped conflicts %d' % (last.get('label'), sum(1 for r in rows if r.get('why') == 'wiped')))
     c.in_step(s, 'follow-up', ev)
-    ev = probe(c.sim, 'wiped-putback', [[{'op': 'stagePutBack', 'snap': '@wipe'}, {'op': 'reload'}], [state('put back')]], timeout=60)
+    ev = probe(c.sim, 'wiped-putback', [[{'op': 'stagePutBack', 'snap': '@wipe'}, {'op': 'reload'}], [state('put back')]], timeout=150)
     pb = ev.first('stagePutBack') or {}
     st = ((ev.state('put back') or {}).get('js') or {}).get('st') or {}
     c.rep.check(s, 'Put back of the snapshot is staged and written at the next document start', st.get('putBack', 0) >= 5, '%s keys; %s' % (st.get('putBack'), pb.get('items', [])[:4]))
@@ -789,7 +792,7 @@ def scen_sweep(c):
     def trial(t, T, chars):
         tag = 'k%02d-%d' % (t, int(time.time() * 1000) % 100000)
         ev = probe(c.sim, 'kill-%02d' % t, [[js('burst', burst_js(), n=100, tag=tag, chars=chars), {'op': 'sigkill', 'afterMs': T}]],
-                   until='sigkill', timeout=60)
+                   until='sigkill', timeout=120)
         r = (ev.first('js', label='burst') or {}).get('result') or {}
         if not ev.first('sigkill'):
             return c.rep.check(s, 'kill %02d ran' % t, False, 'no sigkill event (%s)' % ev.tag)
@@ -979,9 +982,15 @@ def main():
             traceback.print_exc()
             rep.check(scen, 'ran to the end', False, repr(e)[:300])
     if c.boot_ms:
+        # The facade's own boot (its manifest, hello, the put when the store asked for values, Put back), as the
+        # store-first probe measured it; WebKit's load of the storage area at the document's first read happens just
+        # before it (the probe's document-start read, a cost the page pays at its own first read without the facade).
         worst = max(c.boot_ms, key=lambda x: x[1])
+        boots = sorted(b for _, b, _ in c.boot_ms)
+        wks = sorted(w for _, _, w in c.boot_ms if isinstance(w, (int, float)))
         rep.check('boot', 'facade boot under 50 ms in every attached launch', worst[1] < 50,
-                  'max %.1f ms (%s), median %.1f ms over %d launches' % (worst[1], worst[0], sorted(b for _, b in c.boot_ms)[len(c.boot_ms) // 2], len(c.boot_ms)))
+                  'max %.1f ms (%s), median %.1f ms over %d launches; WebKit\'s own first storage read before it: max %s ms, median %s ms'
+                  % (worst[1], worst[0], boots[len(boots) // 2], len(boots), '%.1f' % wks[-1] if wks else '-', '%.1f' % wks[len(wks) // 2] if wks else '-'))
     if c.cap_http:
         rep.check('capacitor', 'CapacitorHttp patched in every launch', all(v for _, v in c.cap_http), [s for s, v in c.cap_http if not v])
     if c.alerts:

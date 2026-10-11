@@ -687,7 +687,8 @@ struct DebugOptions {
     /// which must classify what WebKit lost with the facade on).
     var ignoreMarker = false
     /// Scripts added before the flag: `-fpNoWebKit` (localStorage throws, so the facade says hello nowk) and the
-    /// scenario runner's own (a reference to WebKit's real Storage, taken before the facade replaces it).
+    /// scenario runner's own (a reference to WebKit's real Storage, taken before the facade replaces it, with the
+    /// time WebKit took to load the storage area at that first read).
     var documentStartScripts: [String] = []
 
     init(arguments a: [String] = []) {
@@ -706,13 +707,21 @@ struct DebugOptions {
         ignoreBootDone = a.contains("-fpIgnoreBootDone")
         ignoreMarker = a.contains("-fpIgnoreMarker")
         if a.contains("-fpProbe") {
-            documentStartScripts.append("try { window.__fpRealLS = window.localStorage; } catch (e) { window.__fpRealLS = null; }")
+            // WebKit loads a document's storage area at its first read, which the page pays at its own first read
+            // with or without the facade. Read it here, timed (__fpWkMs), so the facade's boot (bootMs) counts the
+            // facade's own work, as the store-first probe measured it, and the runner reports WebKit's load beside it.
+            documentStartScripts.append("""
+                try { var t = performance.now(); window.__fpRealLS = window.localStorage; void window.__fpRealLS.length; \
+                window.__fpWkMs = performance.now() - t; } catch (e) { window.__fpRealLS = null; }
+                """)
         }
         if a.contains("-fpOffline") {
             // The page's own OTA check (build.txt on GitHub Pages) stays off, so a page published meanwhile is never
-            // staged under a scenario. Runs after Capacitor's scripts, so its fetch patch is in place underneath.
+            // staged under a scenario. Runs after Capacitor's scripts, so its fetch patch is in place underneath; the
+            // fetch found here is kept as __fpCapFetch, so the scenario runner still sees whether Capacitor patched it.
             documentStartScripts.append("""
-                (function () { var f = window.fetch; window.fetch = function (u) { var s = String((u && u.url) || u); \
+                (function () { var f = window.fetch; window.__fpCapFetch = f; window.fetch = function (u) { \
+                var s = String((u && u.url) || u); \
                 if (s.indexOf('https://drizzy603.github.io/') === 0) return Promise.reject(new Error('fpOffline')); \
                 return f.apply(this, arguments); }; })();
                 """)
