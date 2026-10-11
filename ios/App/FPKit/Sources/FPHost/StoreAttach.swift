@@ -41,7 +41,9 @@ public final class StoreAttach: NSObject {
     /// Storage's Native copy switch (device only, never in a backup): true turns the facade off from the next
     /// document start.
     nonisolated public static let deviceSwitchKey = "fp.store.off"
-    /// The store piece's breaker record (BreakerBook: the store breaker and the store's crash verdicts).
+    /// The store piece's breaker record (BreakerBook: the store breaker and the store's crash verdicts): a file beside
+    /// the store, `FPStore/breakers.json`, with a copy in UserDefaults under `fp.store.breakers`.
+    nonisolated static let bookFileName = "breakers.json"
     nonisolated static let bookKey = "fp.store.breakers"
     nonisolated static let handlerName = "ktStore"
     nonisolated static let markerName = "store.marker"
@@ -134,14 +136,16 @@ public final class StoreAttach: NSObject {
     #endif
     private static var proxyKey: UInt8 = 0
 
-    init(defaults: UserDefaults = .standard) {
+    /// `directory`: the store's folder (tests pass their own; the app's is `Application Support/FPStore`).
+    init(defaults: UserDefaults = .standard, directory: URL? = nil) {
         self.defaults = defaults
         let info = Bundle.main.infoDictionary
         shellBuild = (info?["CFBundleVersion"] as? String) ?? "0"
         shellNumber = Int(shellBuild) ?? 0
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = support.appendingPathComponent("FPStore", isDirectory: true)
-        marker = StoreMarker(url: directory.appendingPathComponent(StoreAttach.markerName))
+        let folder = directory ?? support.appendingPathComponent("FPStore", isDirectory: true)
+        self.directory = folder
+        marker = StoreMarker(url: folder.appendingPathComponent(StoreAttach.markerName))
         super.init()
     }
 
@@ -158,7 +162,7 @@ public final class StoreAttach: NSObject {
         if let off = debug.deviceSwitchOff { defaults.set(off, forKey: Self.deviceSwitchKey) }
         #endif
         FPPolicy.shared.start()
-        book = Self.loadBook(defaults)
+        book = Self.loadBook(directory: directory, defaults: defaults)
         #if DEBUG
         if debug.clearVerdicts { book.clearDisabled(piece: CrashMarker.Piece.store.name) }
         if debug.clearBreaker { book.store = StoreBreaker() }
@@ -773,11 +777,41 @@ public final class StoreAttach: NSObject {
     }
 
     private func saveBook() {
-        defaults.set(book.encoded(), forKey: Self.bookKey)
+        if !Self.saveBook(book, directory: directory, defaults: defaults) {
+            Self.log.error("store: the breaker record could not be written beside the store (UserDefaults keeps a copy)")
+        }
     }
 
-    nonisolated static func loadBook(_ defaults: UserDefaults) -> BreakerBook {
-        BreakerBook.decoded(defaults.data(forKey: bookKey))
+    nonisolated static func bookURL(in directory: URL) -> URL {
+        directory.appendingPathComponent(bookFileName)
+    }
+
+    /// The breaker record (the store breaker and the store's crash verdicts): the file beside the store when it reads,
+    /// else the copy in UserDefaults. The file is what counts. UserDefaults reaches its disk through cfprefsd, later:
+    /// an app killed at once (a crash, a force quit) and installed again soon after came back to an older record
+    /// there, so a disarmed breaker read as armed (a launch without the facade for nothing) and an armed one could
+    /// read as disarmed (no breaker at all).
+    nonisolated static func loadBook(directory: URL, defaults: UserDefaults) -> BreakerBook {
+        if let data = try? Data(contentsOf: bookURL(in: directory)),
+           (try? JSONSerialization.jsonObject(with: data)) is [String: Any] {
+            return BreakerBook.decoded(data)
+        }
+        return BreakerBook.decoded(defaults.data(forKey: bookKey))
+    }
+
+    /// Writes the record: the file, atomically and before the page goes on (the kernel holds it once the call
+    /// returns, whatever happens to the process), and the UserDefaults copy. false when the file could not be written.
+    @discardableResult
+    nonisolated static func saveBook(_ book: BreakerBook, directory: URL, defaults: UserDefaults) -> Bool {
+        let data = book.encoded()
+        defaults.set(data, forKey: bookKey)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: bookURL(in: directory), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
+        } catch {
+            return false
+        }
     }
 
     nonisolated static func encodeBook(_ book: BreakerBook) -> String {
@@ -828,7 +862,8 @@ struct DebugOptions {
     /// which must classify what WebKit lost with the facade on).
     var ignoreMarker = false
     /// Scripts added before the flag: `-fpNoWebKit` (localStorage throws, so the facade says hello nowk) and the
-    /// scenario runner's own (a reference to WebKit's real Storage, taken before the facade replaces it).
+    /// scenario runner's own (a reference to WebKit's real Storage, taken before the facade replaces it, with the
+    /// time WebKit took to load the storage area at that first read).
     var documentStartScripts: [String] = []
 
     init(arguments a: [String] = []) {
@@ -847,13 +882,21 @@ struct DebugOptions {
         ignoreBootDone = a.contains("-fpIgnoreBootDone")
         ignoreMarker = a.contains("-fpIgnoreMarker")
         if a.contains("-fpProbe") {
-            documentStartScripts.append("try { window.__fpRealLS = window.localStorage; } catch (e) { window.__fpRealLS = null; }")
+            // WebKit loads a document's storage area at its first read, which the page pays at its own first read
+            // with or without the facade. Read it here, timed (__fpWkMs), so the facade's boot (bootMs) counts the
+            // facade's own work, as the store-first probe measured it, and the runner reports WebKit's load beside it.
+            documentStartScripts.append("""
+                try { var t = performance.now(); window.__fpRealLS = window.localStorage; void window.__fpRealLS.length; \
+                window.__fpWkMs = performance.now() - t; } catch (e) { window.__fpRealLS = null; }
+                """)
         }
         if a.contains("-fpOffline") {
             // The page's own OTA check (build.txt on GitHub Pages) stays off, so a page published meanwhile is never
-            // staged under a scenario. Runs after Capacitor's scripts, so its fetch patch is in place underneath.
+            // staged under a scenario. Runs after Capacitor's scripts, so its fetch patch is in place underneath; the
+            // fetch found here is kept as __fpCapFetch, so the scenario runner still sees whether Capacitor patched it.
             documentStartScripts.append("""
-                (function () { var f = window.fetch; window.fetch = function (u) { var s = String((u && u.url) || u); \
+                (function () { var f = window.fetch; window.__fpCapFetch = f; window.fetch = function (u) { \
+                var s = String((u && u.url) || u); \
                 if (s.indexOf('https://drizzy603.github.io/') === 0) return Promise.reject(new Error('fpOffline')); \
                 return f.apply(this, arguments); }; })();
                 """)

@@ -107,8 +107,9 @@ final class StoreProbe {
 
     private var bootWait = 0
 
-    /// A page that never confirms its first paint (WebKit unreadable breaks the page's boot) still gets its phase.
-    private func armBootFallback(seconds: Double = 10) {
+    /// A page that never confirms its first paint (WebKit unreadable breaks the page's boot) still gets its phase. Long
+    /// enough for a slow simulator: a WebContent restart on a loaded iOS 27 simulator took 11 s to its new bootDone.
+    private func armBootFallback(seconds: Double = 30) {
         bootWait += 1
         let gen = bootWait, phase = nextPhase
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
@@ -339,8 +340,12 @@ final class StoreProbe {
         try { routine = (typeof hasCustomRoutine === 'function') ? hasCustomRoutine() : null; } catch (e) { routine = 'error'; }
         try { sessions = (typeof getSessions === 'function') ? getSessions().length : -1; } catch (e) { sessions = 'error'; }
         try { tab = (typeof currentTab !== 'undefined') ? currentTab : null; } catch (e) {}
-        return { page: pg, webkit: wk, st: s, flag: typeof window.__ktStore,
-          capHttp: typeof window.CapacitorWebFetch === 'function' && window.fetch !== window.CapacitorWebFetch,
+        // Capacitor keeps the browser's fetch as CapacitorWebFetch and, when the CapacitorHttp check (its synchronous
+        // prompt, which KTUIProxy forwards) answers true, puts its own fetch in its place. -fpOffline's wrapper sits
+        // on top, so it keeps the fetch it found as __fpCapFetch.
+        var cf = window.__fpCapFetch || window.fetch;
+        return { page: pg, webkit: wk, st: s, flag: typeof window.__ktStore, wkMs: window.__fpWkMs,
+          capHttp: typeof window.CapacitorWebFetch === 'function' && cf !== window.CapacitorWebFetch,
           rendered: !!(scr && scr.firstElementChild), vis: document.visibilityState,
           routine: routine, sessions: sessions, tab: tab };
         """
