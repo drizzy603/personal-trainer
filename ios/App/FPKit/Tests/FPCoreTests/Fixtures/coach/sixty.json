@@ -1,0 +1,2487 @@
+{
+ "v": 1,
+ "rev": 300,
+ "boot": "b1760000500000-6060",
+ "intake": false,
+ "loading": false,
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#f7f5ef",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#0a43f5",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "sel": "rgba(10,67,245,.10)",
+   "eyebrow": "#0a43f5",
+   "headDot": "#0a43f5",
+   "userBubble": "#0a43f5",
+   "onUserBubble": "#ffffff",
+   "chipPrimary": "#0a43f5",
+   "chipPrimaryText": "#ffffff",
+   "chipPrimaryBorder": "#0a43f5",
+   "pill": "#ffffff",
+   "pillIcon": "#4f7000",
+   "takeEyebrow": "#0a43f5",
+   "ledgerHead": "#0a43f5",
+   "deltaGood": "#4f7000",
+   "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
+   "progAction": "#0a43f5",
+   "composerFocus": "#0a43f5"
+  },
+  "type": {
+   "title": 22,
+   "headEyebrow": 10,
+   "headMeta": 10,
+   "model": 11,
+   "body": 15,
+   "bubble": 15,
+   "heading": 16,
+   "eyebrow": 9,
+   "metricLabel": 10,
+   "metricValue": 13,
+   "metricRef": 12,
+   "take": 14,
+   "chip": 13,
+   "pill": 12,
+   "note": 13,
+   "day": 10,
+   "ledgerHead": 9,
+   "ledgerRow": 13,
+   "ledgerNote": 11,
+   "button": 13,
+   "table": 13,
+   "tableHead": 10,
+   "composer": 16,
+   "thinking": 13,
+   "emptyTitle": 22,
+   "emptySub": 14
+  },
+  "space": {
+   "gutter": 20,
+   "messageGap": 8,
+   "turnGap": 20,
+   "blockGap": 10,
+   "sectionGap": 12,
+   "paragraphGap": 10,
+   "listItemGap": 6,
+   "cardPadH": 14,
+   "cardPadV": 12,
+   "metricPadV": 10,
+   "bubblePadH": 16,
+   "bubblePadV": 12,
+   "chipPadH": 16,
+   "chipPadV": 10,
+   "chipGap": 8,
+   "pillGap": 6,
+   "pillPadH": 10,
+   "pillPadV": 5,
+   "composerPad": 6,
+   "hit": 44
+  },
+  "radius": {
+   "card": 14,
+   "bubble": 16,
+   "bubbleTail": 5,
+   "chip": 22,
+   "pill": 12,
+   "composer": 16,
+   "send": 12,
+   "button": 12,
+   "code": 5,
+   "photo": 10,
+   "table": 14
+  },
+  "font": {
+   "body": "Archivo",
+   "eyebrow": "Archivo",
+   "display": "Anton",
+   "mono": "Archivo"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · ONLINE",
+  "status": "online",
+  "title": "Today's plan",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": 1790841600000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 1 about run analysis",
+   "day": "Thu, Oct 1"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": 1790841660000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Run analysis",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Good session. Faster than planned, but your heart rate says it stayed easy."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "PACE",
+        "value": "8:07",
+        "ref": "vs 8:15 goal",
+        "delta": "-8s",
+        "tone": "good"
+       },
+       {
+        "label": "AVG HR",
+        "value": "168",
+        "ref": "vs cap 165",
+        "delta": "+3",
+        "tone": "warn"
+       },
+       {
+        "label": "DISTANCE",
+        "value": "5.01 km",
+        "ref": "",
+        "delta": "on plan",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Aerobic base is improving - same pace, 6 bpm lower."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m3",
+   "role": "user",
+   "at": 1790928060000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 2 about programme adjustment",
+   "day": null
+  },
+  {
+   "id": "m4",
+   "role": "assistant",
+   "at": 1790928120000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m5",
+   "role": "user",
+   "at": 1791014520000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 3 about metric runs",
+   "day": null
+  },
+  {
+   "id": "m6",
+   "role": "assistant",
+   "at": 1791014580000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "A",
+        "value": "1",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "line between"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "B",
+        "value": "2",
+        "ref": "ref",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "para one\npara two same block"
+        ]
+       },
+       {
+        "k": "p",
+        "r": [
+         "para three"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m7",
+   "role": "user",
+   "at": 1791100980000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 4 about markdown and markers",
+   "day": null
+  },
+  {
+   "id": "m8",
+   "role": "assistant",
+   "at": 1791101040000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Spaced type",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Intro ",
+         {
+          "t": "bold",
+          "s": "b"
+         },
+         " and ",
+         {
+          "t": "em",
+          "s": "i"
+         },
+         " and ",
+         {
+          "t": "code",
+          "s": "c"
+         }
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "bullet one"
+          ]
+         },
+         {
+          "r": [
+           "bullet two"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "<script>x</script> & \"q\""
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "INDENTED MARKER",
+        "value": "still a marker",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m9",
+   "role": "user",
+   "at": 1791187440000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 5 about lists",
+   "day": null
+  },
+  {
+   "id": "m10",
+   "role": "assistant",
+   "at": 1791187500000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Three things this week:"
+      ]
+     },
+     {
+      "k": "ul",
+      "items": [
+       {
+        "r": [
+         {
+          "t": "Bench",
+          "s": "b"
+         },
+         ": hold 160 lb and own the last rep"
+        ]
+       },
+       {
+        "r": [
+         {
+          "t": "Squat",
+          "s": "b"
+         },
+         ": depth first, then load"
+        ]
+       },
+       {
+        "r": [
+         "sub item under squat"
+        ],
+        "sub": true
+       },
+       {
+        "r": [
+         "still the same list after a blank line"
+        ]
+       },
+       {
+        "r": [
+         "star bullet"
+        ]
+       },
+       {
+        "r": [
+         "plus bullet"
+        ]
+       },
+       {
+        "r": [
+         "dot bullet"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Then the order:"
+      ]
+     },
+     {
+      "k": "ol",
+      "start": 3,
+      "items": [
+       {
+        "r": [
+         "warm up"
+        ]
+       },
+       {
+        "r": [
+         "work sets"
+        ]
+       },
+       {
+        "r": [
+         "a new list after a paragraph"
+        ]
+       },
+       {
+        "r": [
+         "second"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m11",
+   "role": "user",
+   "at": 1791273900000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 6 about headings rules",
+   "day": null
+  },
+  {
+   "id": "m12",
+   "role": "assistant",
+   "at": 1791273960000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "h",
+      "r": [
+       "Week 6 review"
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Two lines in one paragraph\nare joined by a line break."
+      ]
+     },
+     {
+      "k": "h",
+      "r": [
+       "What changed"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "A quoted line reads as plain text"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "Last line."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m13",
+   "role": "user",
+   "at": 1791360360000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 7 about table",
+   "day": "Thu, Oct 7"
+  },
+  {
+   "id": "m14",
+   "role": "assistant",
+   "at": 1791360420000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Your top sets:"
+      ]
+     },
+     {
+      "k": "table",
+      "rows": [
+       [
+        [
+         "Lift"
+        ],
+        [
+         "Top set"
+        ],
+        [
+         "Change"
+        ]
+       ],
+       [
+        [
+         {
+          "t": "Bench",
+          "s": "b"
+         }
+        ],
+        [
+         "170 lb x 5"
+        ],
+        [
+         "+10"
+        ]
+       ],
+       [
+        [
+         "Squat"
+        ],
+        [
+         {
+          "t": "225",
+          "s": "c"
+         },
+         " x 3"
+        ],
+        [
+         {
+          "t": "held",
+          "s": "i"
+         }
+        ]
+       ],
+       [
+        [
+         "Deadlift"
+        ],
+        [
+         "275 x 2"
+        ]
+       ]
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "After the table."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m15",
+   "role": "user",
+   "at": 1791446820000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 8 about inline edges",
+   "day": null
+  },
+  {
+   "id": "m16",
+   "role": "assistant",
+   "at": 1791446880000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "3*5*2 is not italic, ",
+       {
+        "t": "this is",
+        "s": "i"
+       },
+       " and ",
+       {
+        "t": "this is",
+        "s": "b"
+       },
+       ".\n**bold ",
+       {
+        "t": "em",
+        "s": "i"
+       },
+       " bold** keeps its stars\n",
+       {
+        "t": "em with ",
+        "s": "i"
+       },
+       {
+        "t": "bold",
+        "s": "bi"
+       },
+       {
+        "t": " inside",
+        "s": "i"
+       },
+       "\n",
+       {
+        "t": "code with ",
+        "s": "c"
+       },
+       {
+        "t": "bold",
+        "s": "bc"
+       },
+       {
+        "t": " inside",
+        "s": "c"
+       },
+       "\n",
+       {
+        "t": "a ",
+        "s": "b"
+       },
+       {
+        "t": "b",
+        "s": "bc"
+       },
+       {
+        "t": " c",
+        "s": "c"
+       },
+       " misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m17",
+   "role": "user",
+   "at": 1791533280000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 9 about cmb with markdown",
+   "day": null
+  },
+  {
+   "id": "m18",
+   "role": "assistant",
+   "at": 1791533340000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Week review",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "This week in short:"
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "4 sessions, ",
+           {
+            "t": "all",
+            "s": "b"
+           },
+           " done"
+          ]
+         },
+         {
+          "r": [
+           "2 runs"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "VOLUME",
+        "value": "12,400 lb",
+        "ref": "vs 11,900",
+        "delta": "+4%",
+        "tone": "good"
+       },
+       {
+        "label": "RUNS",
+        "value": "2",
+        "ref": "of 3",
+        "delta": "-1",
+        "tone": "warn"
+       },
+       {
+        "label": "SLEEP",
+        "value": "7.1 h",
+        "ref": "",
+        "delta": "flat",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Keep it going."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       {
+        "t": "Volume",
+        "s": "b"
+       },
+       " is up; keep ",
+       {
+        "t": "deload",
+        "s": "c"
+       },
+       " in week 8."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m19",
+   "role": "user",
+   "at": 1790842140000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 10 about plain prose",
+   "day": null
+  },
+  {
+   "id": "m20",
+   "role": "assistant",
+   "at": 1790842200000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Good question."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Your bench has moved from 150 to 170 lb in six weeks: that is steady progress."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Keep the runs easy."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m21",
+   "role": "user",
+   "at": 1790928600000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 11 about unicode",
+   "day": null
+  },
+  {
+   "id": "m22",
+   "role": "assistant",
+   "at": 1790928660000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Ünïcödé",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Great work 💪 on the 5×5.\n日本語のテキスト and עברית side by side.\nCombining: é and a flag 🇬🇧."
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "half an emoji at the end "
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "STRÖM",
+        "value": "5 km",
+        "ref": "",
+        "delta": "✓",
+        "tone": "good"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m23",
+   "role": "user",
+   "at": 1791015060000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 12 about blank markers",
+   "day": null
+  },
+  {
+   "id": "m24",
+   "role": "assistant",
+   "at": 1791015120000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "ONLY LABEL",
+        "value": "",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": []
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Text after an empty takeaway."
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m25",
+   "role": "user",
+   "at": 1791101520000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 13 about run analysis",
+   "day": "Thu, Oct 4"
+  },
+  {
+   "id": "m26",
+   "role": "assistant",
+   "at": 1791101580000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Run analysis",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Good session. Faster than planned, but your heart rate says it stayed easy."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "PACE",
+        "value": "8:07",
+        "ref": "vs 8:15 goal",
+        "delta": "-8s",
+        "tone": "good"
+       },
+       {
+        "label": "AVG HR",
+        "value": "168",
+        "ref": "vs cap 165",
+        "delta": "+3",
+        "tone": "warn"
+       },
+       {
+        "label": "DISTANCE",
+        "value": "5.01 km",
+        "ref": "",
+        "delta": "on plan",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Aerobic base is improving - same pace, 6 bpm lower."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m27",
+   "role": "user",
+   "at": 1791187980000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 14 about programme adjustment",
+   "day": null
+  },
+  {
+   "id": "m28",
+   "role": "assistant",
+   "at": 1791188040000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m29",
+   "role": "user",
+   "at": 1791274440000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 15 about metric runs",
+   "day": null
+  },
+  {
+   "id": "m30",
+   "role": "assistant",
+   "at": 1791274500000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "A",
+        "value": "1",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "line between"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "B",
+        "value": "2",
+        "ref": "ref",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "para one\npara two same block"
+        ]
+       },
+       {
+        "k": "p",
+        "r": [
+         "para three"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m31",
+   "role": "user",
+   "at": 1791360900000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 16 about markdown and markers",
+   "day": null
+  },
+  {
+   "id": "m32",
+   "role": "assistant",
+   "at": 1791360960000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Spaced type",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Intro ",
+         {
+          "t": "bold",
+          "s": "b"
+         },
+         " and ",
+         {
+          "t": "em",
+          "s": "i"
+         },
+         " and ",
+         {
+          "t": "code",
+          "s": "c"
+         }
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "bullet one"
+          ]
+         },
+         {
+          "r": [
+           "bullet two"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "<script>x</script> & \"q\""
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "INDENTED MARKER",
+        "value": "still a marker",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m33",
+   "role": "user",
+   "at": 1791447360000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 17 about lists",
+   "day": null
+  },
+  {
+   "id": "m34",
+   "role": "assistant",
+   "at": 1791447420000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Three things this week:"
+      ]
+     },
+     {
+      "k": "ul",
+      "items": [
+       {
+        "r": [
+         {
+          "t": "Bench",
+          "s": "b"
+         },
+         ": hold 160 lb and own the last rep"
+        ]
+       },
+       {
+        "r": [
+         {
+          "t": "Squat",
+          "s": "b"
+         },
+         ": depth first, then load"
+        ]
+       },
+       {
+        "r": [
+         "sub item under squat"
+        ],
+        "sub": true
+       },
+       {
+        "r": [
+         "still the same list after a blank line"
+        ]
+       },
+       {
+        "r": [
+         "star bullet"
+        ]
+       },
+       {
+        "r": [
+         "plus bullet"
+        ]
+       },
+       {
+        "r": [
+         "dot bullet"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Then the order:"
+      ]
+     },
+     {
+      "k": "ol",
+      "start": 3,
+      "items": [
+       {
+        "r": [
+         "warm up"
+        ]
+       },
+       {
+        "r": [
+         "work sets"
+        ]
+       },
+       {
+        "r": [
+         "a new list after a paragraph"
+        ]
+       },
+       {
+        "r": [
+         "second"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m35",
+   "role": "user",
+   "at": 1791533820000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 18 about headings rules",
+   "day": null
+  },
+  {
+   "id": "m36",
+   "role": "assistant",
+   "at": 1791533880000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "h",
+      "r": [
+       "Week 6 review"
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Two lines in one paragraph\nare joined by a line break."
+      ]
+     },
+     {
+      "k": "h",
+      "r": [
+       "What changed"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "A quoted line reads as plain text"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "Last line."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m37",
+   "role": "user",
+   "at": 1790842680000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 19 about table",
+   "day": "Thu, Oct 1"
+  },
+  {
+   "id": "m38",
+   "role": "assistant",
+   "at": 1790842740000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Your top sets:"
+      ]
+     },
+     {
+      "k": "table",
+      "rows": [
+       [
+        [
+         "Lift"
+        ],
+        [
+         "Top set"
+        ],
+        [
+         "Change"
+        ]
+       ],
+       [
+        [
+         {
+          "t": "Bench",
+          "s": "b"
+         }
+        ],
+        [
+         "170 lb x 5"
+        ],
+        [
+         "+10"
+        ]
+       ],
+       [
+        [
+         "Squat"
+        ],
+        [
+         {
+          "t": "225",
+          "s": "c"
+         },
+         " x 3"
+        ],
+        [
+         {
+          "t": "held",
+          "s": "i"
+         }
+        ]
+       ],
+       [
+        [
+         "Deadlift"
+        ],
+        [
+         "275 x 2"
+        ]
+       ]
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "After the table."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m39",
+   "role": "user",
+   "at": 1790929140000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 20 about inline edges",
+   "day": null
+  },
+  {
+   "id": "m40",
+   "role": "assistant",
+   "at": 1790929200000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "3*5*2 is not italic, ",
+       {
+        "t": "this is",
+        "s": "i"
+       },
+       " and ",
+       {
+        "t": "this is",
+        "s": "b"
+       },
+       ".\n**bold ",
+       {
+        "t": "em",
+        "s": "i"
+       },
+       " bold** keeps its stars\n",
+       {
+        "t": "em with ",
+        "s": "i"
+       },
+       {
+        "t": "bold",
+        "s": "bi"
+       },
+       {
+        "t": " inside",
+        "s": "i"
+       },
+       "\n",
+       {
+        "t": "code with ",
+        "s": "c"
+       },
+       {
+        "t": "bold",
+        "s": "bc"
+       },
+       {
+        "t": " inside",
+        "s": "c"
+       },
+       "\n",
+       {
+        "t": "a ",
+        "s": "b"
+       },
+       {
+        "t": "b",
+        "s": "bc"
+       },
+       {
+        "t": " c",
+        "s": "c"
+       },
+       " misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m41",
+   "role": "user",
+   "at": 1791015600000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 21 about cmb with markdown",
+   "day": null
+  },
+  {
+   "id": "m42",
+   "role": "assistant",
+   "at": 1791015660000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Week review",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "This week in short:"
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "4 sessions, ",
+           {
+            "t": "all",
+            "s": "b"
+           },
+           " done"
+          ]
+         },
+         {
+          "r": [
+           "2 runs"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "VOLUME",
+        "value": "12,400 lb",
+        "ref": "vs 11,900",
+        "delta": "+4%",
+        "tone": "good"
+       },
+       {
+        "label": "RUNS",
+        "value": "2",
+        "ref": "of 3",
+        "delta": "-1",
+        "tone": "warn"
+       },
+       {
+        "label": "SLEEP",
+        "value": "7.1 h",
+        "ref": "",
+        "delta": "flat",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Keep it going."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       {
+        "t": "Volume",
+        "s": "b"
+       },
+       " is up; keep ",
+       {
+        "t": "deload",
+        "s": "c"
+       },
+       " in week 8."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m43",
+   "role": "user",
+   "at": 1791102060000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 22 about plain prose",
+   "day": null
+  },
+  {
+   "id": "m44",
+   "role": "assistant",
+   "at": 1791102120000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Good question."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Your bench has moved from 150 to 170 lb in six weeks: that is steady progress."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Keep the runs easy."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m45",
+   "role": "user",
+   "at": 1791188520000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 23 about unicode",
+   "day": null
+  },
+  {
+   "id": "m46",
+   "role": "assistant",
+   "at": 1791188580000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Ünïcödé",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Great work 💪 on the 5×5.\n日本語のテキスト and עברית side by side.\nCombining: é and a flag 🇬🇧."
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "half an emoji at the end "
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "STRÖM",
+        "value": "5 km",
+        "ref": "",
+        "delta": "✓",
+        "tone": "good"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m47",
+   "role": "user",
+   "at": 1791274980000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 24 about blank markers",
+   "day": null
+  },
+  {
+   "id": "m48",
+   "role": "assistant",
+   "at": 1791275040000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "ONLY LABEL",
+        "value": "",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": []
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Text after an empty takeaway."
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m49",
+   "role": "user",
+   "at": 1791361440000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 25 about run analysis",
+   "day": "Thu, Oct 7"
+  },
+  {
+   "id": "m50",
+   "role": "assistant",
+   "at": 1791361500000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Run analysis",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Good session. Faster than planned, but your heart rate says it stayed easy."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "PACE",
+        "value": "8:07",
+        "ref": "vs 8:15 goal",
+        "delta": "-8s",
+        "tone": "good"
+       },
+       {
+        "label": "AVG HR",
+        "value": "168",
+        "ref": "vs cap 165",
+        "delta": "+3",
+        "tone": "warn"
+       },
+       {
+        "label": "DISTANCE",
+        "value": "5.01 km",
+        "ref": "",
+        "delta": "on plan",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Aerobic base is improving - same pace, 6 bpm lower."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m51",
+   "role": "user",
+   "at": 1791447900000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 26 about programme adjustment",
+   "day": null
+  },
+  {
+   "id": "m52",
+   "role": "assistant",
+   "at": 1791447960000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ]
+  },
+  {
+   "id": "m53",
+   "role": "user",
+   "at": 1791534360000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 27 about metric runs",
+   "day": null
+  },
+  {
+   "id": "m54",
+   "role": "assistant",
+   "at": 1791534420000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "A",
+        "value": "1",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "line between"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "B",
+        "value": "2",
+        "ref": "ref",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "para one\npara two same block"
+        ]
+       },
+       {
+        "k": "p",
+        "r": [
+         "para three"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m55",
+   "role": "user",
+   "at": 1790843220000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 28 about markdown and markers",
+   "day": null
+  },
+  {
+   "id": "m56",
+   "role": "assistant",
+   "at": 1790843280000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Spaced type",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Intro ",
+         {
+          "t": "bold",
+          "s": "b"
+         },
+         " and ",
+         {
+          "t": "em",
+          "s": "i"
+         },
+         " and ",
+         {
+          "t": "code",
+          "s": "c"
+         }
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "bullet one"
+          ]
+         },
+         {
+          "r": [
+           "bullet two"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "<script>x</script> & \"q\""
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "INDENTED MARKER",
+        "value": "still a marker",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m57",
+   "role": "user",
+   "at": 1790929680000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 29 about lists",
+   "day": null
+  },
+  {
+   "id": "m58",
+   "role": "assistant",
+   "at": 1790929740000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Three things this week:"
+      ]
+     },
+     {
+      "k": "ul",
+      "items": [
+       {
+        "r": [
+         {
+          "t": "Bench",
+          "s": "b"
+         },
+         ": hold 160 lb and own the last rep"
+        ]
+       },
+       {
+        "r": [
+         {
+          "t": "Squat",
+          "s": "b"
+         },
+         ": depth first, then load"
+        ]
+       },
+       {
+        "r": [
+         "sub item under squat"
+        ],
+        "sub": true
+       },
+       {
+        "r": [
+         "still the same list after a blank line"
+        ]
+       },
+       {
+        "r": [
+         "star bullet"
+        ]
+       },
+       {
+        "r": [
+         "plus bullet"
+        ]
+       },
+       {
+        "r": [
+         "dot bullet"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Then the order:"
+      ]
+     },
+     {
+      "k": "ol",
+      "start": 3,
+      "items": [
+       {
+        "r": [
+         "warm up"
+        ]
+       },
+       {
+        "r": [
+         "work sets"
+        ]
+       },
+       {
+        "r": [
+         "a new list after a paragraph"
+        ]
+       },
+       {
+        "r": [
+         "second"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": []
+  },
+  {
+   "id": "m59",
+   "role": "user",
+   "at": 1791016140000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Question 30 about headings rules",
+   "day": null
+  },
+  {
+   "id": "m60",
+   "role": "assistant",
+   "at": 1791016200000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "h",
+      "r": [
+       "Week 6 review"
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Two lines in one paragraph\nare joined by a line break."
+      ]
+     },
+     {
+      "k": "h",
+      "r": [
+       "What changed"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "A quoted line reads as plain text"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "Last line."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [],
+   "ledger": {
+    "head": "PLAN CHANGES · WEEK 6",
+    "rows": [
+     [
+      "Bench Press",
+      "→ 170 lb",
+      "plan"
+     ]
+    ],
+    "canUndo": true,
+    "note": "Applied to your programme · Undo restores the previous version",
+    "actions": [
+     {
+      "do": "undo",
+      "label": "Undo",
+      "tone": "neutral"
+     },
+     {
+      "do": "keep",
+      "label": "Keep changes",
+      "tone": "primary"
+     }
+    ]
+   }
+  }
+ ],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": null
+ },
+ "speech": null
+}

@@ -1,0 +1,175 @@
+{
+ "v": 1,
+ "rev": 2,
+ "boot": "b1760000700000-d83d",
+ "intake": false,
+ "loading": false,
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#f7f5ef",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#0a43f5",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "sel": "rgba(10,67,245,.10)",
+   "eyebrow": "#0a43f5",
+   "headDot": "#0a43f5",
+   "userBubble": "#0a43f5",
+   "onUserBubble": "#ffffff",
+   "chipPrimary": "#0a43f5",
+   "chipPrimaryText": "#ffffff",
+   "chipPrimaryBorder": "#0a43f5",
+   "pill": "#ffffff",
+   "pillIcon": "#4f7000",
+   "takeEyebrow": "#0a43f5",
+   "ledgerHead": "#0a43f5",
+   "deltaGood": "#4f7000",
+   "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
+   "progAction": "#0a43f5",
+   "composerFocus": "#0a43f5"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · ONLINE",
+  "status": "online",
+  "title": "Today's plan \ud83d",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": null,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Strong week \ud83d",
+   "day": "Today"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": null,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Great work \ude00\ud83don the bench."
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "m3",
+   "role": "assistant",
+   "at": null,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Undo that",
+      "msg": "Put my bench back",
+      "primary": true
+     }
+    ]
+   },
+   "pills": [
+    {
+     "label": "Bench \ud83d",
+     "ok": true
+    }
+   ]
+  }
+ ],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": {
+   "text": "half \ud83d",
+   "nonce": "d1"
+  }
+ },
+ "speech": {
+  "id": "s1",
+  "text": "Coach: Great work \ud83d"
+ },
+ "key\ud83d": "a key with half an emoji"
+}

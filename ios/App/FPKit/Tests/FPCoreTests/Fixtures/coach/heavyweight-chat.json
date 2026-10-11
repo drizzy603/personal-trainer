@@ -1,0 +1,569 @@
+{
+ "v": 1,
+ "rev": 42,
+ "boot": "b1760000000000-4f2a",
+ "intake": false,
+ "loading": false,
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#f7f5ef",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#0a43f5",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "sel": "rgba(10,67,245,.10)",
+   "eyebrow": "#0a43f5",
+   "headDot": "#0a43f5",
+   "userBubble": "#0a43f5",
+   "onUserBubble": "#ffffff",
+   "chipPrimary": "#0a43f5",
+   "chipPrimaryText": "#ffffff",
+   "chipPrimaryBorder": "#0a43f5",
+   "pill": "#ffffff",
+   "pillIcon": "#4f7000",
+   "takeEyebrow": "#0a43f5",
+   "ledgerHead": "#0a43f5",
+   "deltaGood": "#4f7000",
+   "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
+   "progAction": "#0a43f5",
+   "composerFocus": "#0a43f5"
+  },
+  "type": {
+   "title": 22,
+   "headEyebrow": 10,
+   "headMeta": 10,
+   "model": 11,
+   "body": 15,
+   "bubble": 15,
+   "heading": 16,
+   "eyebrow": 9,
+   "metricLabel": 10,
+   "metricValue": 13,
+   "metricRef": 12,
+   "take": 14,
+   "chip": 13,
+   "pill": 12,
+   "note": 13,
+   "day": 10,
+   "ledgerHead": 9,
+   "ledgerRow": 13,
+   "ledgerNote": 11,
+   "button": 13,
+   "table": 13,
+   "tableHead": 10,
+   "composer": 16,
+   "thinking": 13,
+   "emptyTitle": 22,
+   "emptySub": 14
+  },
+  "space": {
+   "gutter": 20,
+   "messageGap": 8,
+   "turnGap": 20,
+   "blockGap": 10,
+   "sectionGap": 12,
+   "paragraphGap": 10,
+   "listItemGap": 6,
+   "cardPadH": 14,
+   "cardPadV": 12,
+   "metricPadV": 10,
+   "bubblePadH": 16,
+   "bubblePadV": 12,
+   "chipPadH": 16,
+   "chipPadV": 10,
+   "chipGap": 8,
+   "pillGap": 6,
+   "pillPadH": 10,
+   "pillPadV": 5,
+   "composerPad": 6,
+   "hit": 44
+  },
+  "radius": {
+   "card": 14,
+   "bubble": 16,
+   "bubbleTail": 5,
+   "chip": 22,
+   "pill": 12,
+   "composer": 16,
+   "send": 12,
+   "button": 12,
+   "code": 5,
+   "photo": 10,
+   "table": 14
+  },
+  "font": {
+   "body": "Archivo",
+   "eyebrow": "Archivo",
+   "display": "Anton",
+   "mono": "Archivo"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · ONLINE",
+  "status": "online",
+  "title": "Today's plan",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": 1791482520000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "How did my run look yesterday?",
+   "day": "Yesterday"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": 1791482580000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Run analysis",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Good session. Faster than planned, but your heart rate says it stayed easy."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "PACE",
+        "value": "8:07",
+        "ref": "vs 8:15 goal",
+        "delta": "-8s",
+        "tone": "good"
+       },
+       {
+        "label": "AVG HR",
+        "value": "168",
+        "ref": "vs cap 165",
+        "delta": "+3",
+        "tone": "warn"
+       },
+       {
+        "label": "DISTANCE",
+        "value": "5.01 km",
+        "ref": "",
+        "delta": "on plan",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Aerobic base is improving - same pace, 6 bpm lower."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "a11y": "Coach: Good session. PACE: 8:07 vs 8:15 goal -8s. Takeaway: Aerobic base is improving."
+  },
+  {
+   "id": "m3",
+   "role": "user",
+   "at": 1791531000000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Plateau check",
+   "day": "Today",
+   "seed": "Plateau check"
+  },
+  {
+   "id": "m4",
+   "role": "assistant",
+   "at": 1791531060000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Three things this week:"
+      ]
+     },
+     {
+      "k": "ul",
+      "items": [
+       {
+        "r": [
+         {
+          "t": "Bench",
+          "s": "b"
+         },
+         ": hold 160 lb and own the last rep"
+        ]
+       },
+       {
+        "r": [
+         {
+          "t": "Squat",
+          "s": "b"
+         },
+         ": depth first, then load"
+        ]
+       },
+       {
+        "r": [
+         "sub item under squat"
+        ],
+        "sub": true
+       },
+       {
+        "r": [
+         "still the same list after a blank line"
+        ]
+       },
+       {
+        "r": [
+         "star bullet"
+        ]
+       },
+       {
+        "r": [
+         "plus bullet"
+        ]
+       },
+       {
+        "r": [
+         "dot bullet"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Then the order:"
+      ]
+     },
+     {
+      "k": "ol",
+      "start": 3,
+      "items": [
+       {
+        "r": [
+         "warm up"
+        ]
+       },
+       {
+        "r": [
+         "work sets"
+        ]
+       },
+       {
+        "r": [
+         "a new list after a paragraph"
+        ]
+       },
+       {
+        "r": [
+         "second"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "m5",
+   "role": "user",
+   "at": 1791531600000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "",
+   "image": {
+    "key": "m5"
+   }
+  },
+  {
+   "id": "m6",
+   "role": "assistant",
+   "at": 1791531660000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "That is a clean bar path. Keep the elbows tucked on the way down."
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "m7",
+   "role": "user",
+   "at": 1791531900000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Add 10 lb to my bench from this week"
+  },
+  {
+   "id": "m8",
+   "role": "assistant",
+   "at": 1791531960000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "pills": [
+    {
+     "label": "Changed Bench Press · 170 lb",
+     "ok": true
+    },
+    {
+     "label": "Not applied · Squat goal",
+     "ok": false
+    }
+   ],
+   "ledger": {
+    "head": "PLAN CHANGES · WEEK 6",
+    "rows": [
+     [
+      "Bench Press",
+      "→ 170 lb",
+      "plan"
+     ],
+     [
+      "Bench goal",
+      "→ 200 lb",
+      "goal"
+     ]
+    ],
+    "canUndo": true,
+    "note": "Applied to your programme · Undo restores the previous version",
+    "actions": [
+     {
+      "do": "undo",
+      "label": "Undo",
+      "tone": "neutral"
+     },
+     {
+      "do": "keep",
+      "label": "Keep changes",
+      "tone": "primary"
+     }
+    ]
+   }
+  },
+  {
+   "id": "m9",
+   "role": "user",
+   "at": 1791532200000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Show my top sets"
+  },
+  {
+   "id": "m10",
+   "role": "assistant",
+   "at": 1791532260000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Your top sets:"
+      ]
+     },
+     {
+      "k": "table",
+      "rows": [
+       [
+        [
+         "Lift"
+        ],
+        [
+         "Top set"
+        ],
+        [
+         "Change"
+        ]
+       ],
+       [
+        [
+         {
+          "t": "Bench",
+          "s": "b"
+         }
+        ],
+        [
+         "170 lb x 5"
+        ],
+        [
+         "+10"
+        ]
+       ],
+       [
+        [
+         "Squat"
+        ],
+        [
+         {
+          "t": "225",
+          "s": "c"
+         },
+         " x 3"
+        ],
+        [
+         {
+          "t": "held",
+          "s": "i"
+         }
+        ]
+       ],
+       [
+        [
+         "Deadlift"
+        ],
+        [
+         "275 x 2"
+        ]
+       ]
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "After the table."
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "m11",
+   "role": "user",
+   "at": 1791532500000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "and my squat?"
+  },
+  {
+   "id": "m12",
+   "role": "assistant",
+   "at": 1791532560000,
+   "local": true,
+   "error": true,
+   "stopped": false,
+   "body": "Could not connect. Check your internet connection.",
+   "chip": "retry"
+  }
+ ],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": null
+ },
+ "speech": {
+  "id": "m12",
+  "text": "Could not connect. Check your internet connection."
+ }
+}

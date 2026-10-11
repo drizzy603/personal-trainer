@@ -1,0 +1,190 @@
+{
+ "v": 1,
+ "rev": 9,
+ "boot": "b1760000300000-e1e1",
+ "intake": false,
+ "loading": false,
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#f7f5ef",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#0a43f5",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "sel": "rgba(10,67,245,.10)",
+   "eyebrow": "#0a43f5",
+   "headDot": "#0a43f5",
+   "userBubble": "#0a43f5",
+   "onUserBubble": "#ffffff",
+   "chipPrimary": "#0a43f5",
+   "chipPrimaryText": "#ffffff",
+   "chipPrimaryBorder": "#0a43f5",
+   "pill": "#ffffff",
+   "pillIcon": "#4f7000",
+   "takeEyebrow": "#0a43f5",
+   "ledgerHead": "#0a43f5",
+   "deltaGood": "#4f7000",
+   "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
+   "progAction": "#0a43f5",
+   "composerFocus": "#0a43f5"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · OFFLINE",
+  "status": "offline",
+  "title": "Today's plan",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": 1791540000000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Plan my week",
+   "day": "Today"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": 1791540000000,
+   "local": true,
+   "error": true,
+   "stopped": false,
+   "body": "Your Anthropic account is out of credit. Add credit at console.anthropic.com, then try again.",
+   "errKind": "billing"
+  },
+  {
+   "id": "m3",
+   "role": "user",
+   "at": 1791540300000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Plan my week"
+  },
+  {
+   "id": "m4",
+   "role": "assistant",
+   "at": 1791540300000,
+   "local": true,
+   "error": false,
+   "stopped": true,
+   "body": "Stopped."
+  },
+  {
+   "id": "m5",
+   "role": "user",
+   "at": 1791540360000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Plan my week"
+  },
+  {
+   "id": "m6",
+   "role": "assistant",
+   "at": 1791540420000,
+   "local": true,
+   "error": false,
+   "stopped": false,
+   "body": "Stopped. Changes made before the stop are kept:",
+   "pills": [
+    {
+     "label": "Weeks 7–8 updated",
+     "ok": true
+    }
+   ],
+   "ledger": {
+    "head": "PLAN CHANGES · WEEK 6",
+    "rows": [
+     [
+      "Weeks 7, 8",
+      "rewritten",
+      "plan"
+     ]
+    ],
+    "canUndo": true,
+    "note": "Applied to your programme · Undo restores the previous version",
+    "actions": [
+     {
+      "do": "undo",
+      "label": "Undo",
+      "tone": "neutral"
+     },
+     {
+      "do": "keep",
+      "label": "Keep changes",
+      "tone": "primary"
+     }
+    ]
+   }
+  },
+  {
+   "id": "m7",
+   "role": "user",
+   "at": 1791540480000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Plan my week"
+  },
+  {
+   "id": "m8",
+   "role": "assistant",
+   "at": 1791540540000,
+   "local": true,
+   "error": true,
+   "stopped": false,
+   "body": "Coach didn't respond (network error). Check your API key in Settings.",
+   "chip": "retry"
+  }
+ ],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": null
+ },
+ "speech": {
+  "id": "m8",
+  "text": "Coach didn't respond (network error). Check your API key in Settings."
+ }
+}

@@ -1,0 +1,162 @@
+{
+ "v": 1,
+ "rev": 5,
+ "boot": "b1760000600000-f0f0",
+ "intake": false,
+ "loading": false,
+ "room": "ocean",
+ "paper": false,
+ "dynTypeOn": true,
+ "newTopLevel": {
+  "anything": [
+   1,
+   2,
+   3
+  ]
+ },
+ "tokens": {
+  "color": {
+   "accent": "#ff7a00",
+   "bg": "var(--bg)",
+   "glow": "#ffffff"
+  },
+  "type": {
+   "body": 17,
+   "huge": 999
+  },
+  "motion": {
+   "fast": 0.15
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · ONLINE",
+  "status": "thinking",
+  "title": "Today's plan",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Opus 5",
+   "next": "claude-opus-5",
+   "a11y": "Coach model: Opus 5. Switch to Sonnet 5.5"
+  },
+  "back": true,
+  "cancel": false,
+  "extra": true
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": null,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "What is new?",
+   "day": "Today",
+   "mood": "curious"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "eyebrow": "COACH · Chart",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "chart",
+      "text": "Volume up 4% over four weeks",
+      "series": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "callout",
+        "tone": "warn",
+        "title": "Deload",
+        "items": [
+         "week 8"
+        ]
+       },
+       {
+        "k": "p",
+        "r": [
+         "Plain text still reads."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       {
+        "t": "Keep going",
+        "s": "bu"
+       }
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Show the chart",
+      "msg": "Show my volume chart",
+      "primary": true,
+      "icon": "chart"
+     }
+    ]
+   },
+   "chip": {
+    "do": "upgrade",
+    "label": "Upgrade",
+    "tone": "primary"
+   },
+   "ledger": {
+    "head": "PLAN CHANGES · WEEK 6",
+    "rows": [
+     {
+      "label": "Note",
+      "value": "kept",
+      "kind": "note"
+     }
+    ],
+    "canUndo": false,
+    "note": null
+   }
+  },
+  {
+   "id": "m3",
+   "role": "assistant",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "voice",
+    "text": "A voice reply (0:12)",
+    "url": "x"
+   }
+  },
+  "not a message",
+  {
+   "id": "m4",
+   "role": "system",
+   "local": true,
+   "body": "A role this build does not know",
+   "errKind": "quota",
+   "error": true
+  }
+ ],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": null,
+  "voice": true
+ },
+ "speech": "Coach: What is new?"
+}
