@@ -31,7 +31,7 @@ final class IntentTests: XCTestCase {
         .coachDraftTaken(nonce: "d3"),
         .confirm(id: "c1", yes: true),
         .toastUndo(id: "t1"),
-        .screensOff(screen: "coach", why: "breaker"),
+        .screensOff(screen: "coach", why: "failures"),
     ]
 
     /// The acceptance check of C4: intent names and arguments equal intents.json.

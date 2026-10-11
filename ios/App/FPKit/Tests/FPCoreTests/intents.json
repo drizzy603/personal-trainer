@@ -31,7 +31,7 @@
     {"name": "coach.draftTaken", "args": {"nonce": "string"}, "timeout": 2, "does": "The native composer took the page's draft with this nonce"},
     {"name": "confirm", "args": {"id": "string", "yes": "bool"}, "timeout": 2, "does": "The answer to a forwarded confirm; after a reload: {ok: false, error: 'stale'}"},
     {"name": "toast.undo", "args": {"id": "string"}, "timeout": 2, "does": "Undo on a forwarded toast"},
-    {"name": "screens.off", "args": {"screen": "string", "why": "string?"}, "timeout": 2, "does": "A native screen is off (breaker, crash marker, switch, policy): the page shows its own again"}
+    {"name": "screens.off", "args": {"screen": "string", "why": "string?"}, "timeout": 2, "does": "A native screen is off for the rest of the document: the page shows its own again. why: no-hello or failures (the native breaker, kept for the page build), withdrawn (the policy file or the device switch, until the next document)"}
   ],
   "answers": {
     "ok": "{ok: true, ...}",

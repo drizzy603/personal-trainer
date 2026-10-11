@@ -69,7 +69,8 @@ public enum Intent: Equatable, Sendable {
     case confirm(id: String, yes: Bool)
     /// Undo on a forwarded toast.
     case toastUndo(id: String)
-    /// A native screen is off (breaker, crash marker, switch, policy): the page shows its own again.
+    /// A native screen is off for the rest of the document: the page shows its own again. `why` is
+    /// LinkState's `ScreenOffReason.code`: no-hello, failures or withdrawn.
     case screensOff(screen: String, why: String?)
 
     /// The name `FPScreens.call` receives.
