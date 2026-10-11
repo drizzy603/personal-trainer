@@ -57,6 +57,8 @@ up, and never writes WebKit by itself. The facade's protocol (KT1) is written ou
 | `KTReconcile.swift` | The seven rules (below), a pure function of the hello and the store's state |
 | `KTSnaps.swift` | `snaps/` files written beside their name and renamed: daily (7 kept), `migrate`, `wiped`, `manual` (30 days) |
 | `KTPutBack.swift` | Put back's plan, and the record merge by id for the five log keys |
+| `Resources/ktstore.js` | The page facade the shell injects at document start (shadow only): WebKit first, then the synchronous mirror; on any answer but `ok` the gap note in WebKit and an async post with (boot, seq); the witness and the gap note in hello; `window.__ktStoreState` with `acked(key)` and `remirror(key)`; never a prompt without the flag; `kt_apikey` never crosses |
+| `KTFacade.swift` | The facade's source from `Bundle.module`, and the flag script StoreAttach injects before it (`window.__ktStore = {proto:1, shell}`) |
 
 On disk: `Application Support/FPStore/store.sqlite` (+ `-wal`, `-shm`) and `snaps/`. One connection on one
 serial queue, `busy_timeout` 2 s; WAL with `synchronous=NORMAL`, `FULL` for a transaction that writes
@@ -94,7 +96,11 @@ Tests (`Tests/FPStoreTests`): `WireTests` (the facade's literals, hashes, hello 
 `Vectors/vectors.json`, and the gap note op by op as the facade must write it, each missed op's stamp `s`
 and a missed clear's `c` included), `ReconcileTests` (every S2 reconcile row through the protocol on a fake
 device, and the classifier on its own), `StoreTests` (the file, answers, journal, snapshots, conflicts, Put
-back, timing) and `KillTests` (a writer SIGKILLed mid-burst keeps every acknowledged write). KillTests starts
+back, timing), `FacadeTests` (the shipped `ktstore.js` run by JavaScriptCore against this store: no prompt
+without the flag, migration, exact writes, native failures and the gap note, the repeated delete, the witness,
+WebKit wiped and unreadable, Put back) and `KillTests` (a writer SIGKILLed mid-burst keeps every acknowledged
+write). The Playwright store matrix runs the same `ktstore.js` in Chromium over `tests/lib/ktstore-mock.js`, a
+JavaScript reference of this module: `STORE=shadow ./tests/run.sh`, and specs 119 and 120. KillTests starts
 this test binary again through the `xctest` runner with `FPSTORE_KILL_DIR` set; in an ordinary run its child
 test is skipped. The vectors come from JavaScript itself (the facade, plan task S3, must write its gap notes
 as `noteAfter()` there does); after changing the facade's hash, literals or note:
