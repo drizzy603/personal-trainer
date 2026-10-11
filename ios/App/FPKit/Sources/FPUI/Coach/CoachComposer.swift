@@ -200,6 +200,10 @@ struct PendingPhotoView: View {
     let onRemove: () -> Void
     @Environment(\.roomTheme) private var t
 
+    /// How far Remove's press reaches past its drawn circle, in points at this size (a 44 pt circle
+    /// at every size: 36 + 2 × 4 at large, and both scale together).
+    static func removeReach(_ t: RoomTheme) -> CGFloat { t.px(4) }
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: t.px(16), style: .circular)
         ZStack(alignment: .topTrailing) {
@@ -220,14 +224,15 @@ struct PendingPhotoView: View {
                 }
             }
             .padding(t.px(8) + 1)   // + the CSS border
-            Button(action: onRemove) {
+            // drawn as the web's 36 px circle, pressed as a 44 pt one (the photo's 6 px margin and
+            // padding hold the reach)
+            let reach = Self.removeReach(t)
+            PressAreaButton(h: reach, v: reach, shape: Circle(), action: onRemove) {
                 PlainText(text: "\u{2715}", style: InlineStyle(size: 14, weight: 700, color: .text), lineLimit: 1)
                     .frame(width: t.px(36), height: t.px(36))
                     .background(Circle().fill(t.color(.card)))
                     .overlay(Circle().strokeBorder(t.color(.border), lineWidth: 1))
-                    .contentShape(Circle())
             }
-            .buttonStyle(PressDim())
             .padding(t.px(6))
             .accessibilityLabel("Remove photo")
         }

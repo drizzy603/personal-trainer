@@ -6,7 +6,8 @@ import XCTest
 import FPCore
 
 /// The chat's controls drawn smaller than 44 pt take a 44 pt press (plan task C6; the third UI
-/// review found the model switch and the toast's Undo pressed only where drawn).
+/// review found the model switch and the toast's Undo pressed only where drawn, and Remove photo
+/// a 36 pt circle).
 /// Each is a PressAreaButton, whose press shape sits inside the Button's label, where SwiftUI reads
 /// a button's hit area: a content shape wrapped around the finished Button widened only the frame
 /// VoiceOver reported.
@@ -56,6 +57,9 @@ final class PressAreaTests: XCTestCase {
         XCTAssertTrue(toggle.contains("PressAreaButton<"), "the model switch takes its press through PressAreaButton: \(toggle)")
         let toast = Self.bodyType(CoachToastView(toast: ToastRequest(text: "Bench Press removed", style: "ok", undo: "t-1"), onUndo: {}))
         XCTAssertTrue(toast.contains("PressAreaButton<"), "the toast's Undo takes its press through PressAreaButton: \(toast)")
+        let photo = Self.bodyType(PendingPhotoView(image: nil, onRemove: {}))
+        XCTAssertTrue(photo.contains("PressAreaButton<"), "Remove photo takes its press through PressAreaButton: \(photo)")
+        XCTAssertTrue(photo.contains("Circle>"), "Remove photo is pressed as a circle: \(photo)")
     }
 
     func testPressAreaButtonPutsItsPressShapeInsideTheButtonsLabel() throws {
@@ -85,6 +89,8 @@ final class PressAreaTests: XCTestCase {
                 // Undo: 12 px of text on its own line between 6 px paddings, plus the reach
                 let undoDrawn = theme.uiFont(.body, 12, 800).lineHeight + 2 * theme.px(6)
                 XCTAssertGreaterThanOrEqual(undoDrawn + 2 * CoachToastView.undoReach(theme).v, 44, "\(what): Undo is pressed 44 pt tall")
+                // Remove photo: the 36 px circle plus the reach all round, a 44 pt circle at least
+                XCTAssertGreaterThanOrEqual(theme.px(36) + 2 * PendingPhotoView.removeReach(theme), 44, "\(what): Remove is pressed as a 44 pt circle")
             }
         }
     }
