@@ -1,0 +1,51 @@
+{
+  "contract": 1,
+  "source": "decision.md section 6, Bridge API: Shell contract v1",
+  "types": {
+    "string": "a JSON string",
+    "bool": "true or false",
+    "int": "a whole number",
+    "[string]": "an array of strings",
+    "image": "{mediaType, data}: a photo, base64 without the data: prefix",
+    "?": "after a type: optional, left out when unset"
+  },
+  "intents": [
+    {"name": "ping", "args": {}, "timeout": 2, "answers": "{ok, v}", "does": "Is the page there, and on which contract (the -fpSmoke launch logs: fp: ping ok v1)"},
+    {"name": "shell.covered", "args": {"on": "bool"}, "timeout": 2, "does": "A native screen covers the page: skip programmatic focus while on"},
+    {"name": "coach.snapshot", "args": {}, "timeout": 5, "answers": "{ok, json}", "does": "The coach model now, as _nativeJSON(model)"},
+    {"name": "coach.send", "args": {"text": "string", "image": "image?", "usePending": "bool?", "nonce": "string"}, "timeout": 2, "does": "Send the owner's message through coachSend; idempotent by nonce (the page remembers 20); usePending sends the page's pending photo"},
+    {"name": "coach.chip", "args": {"text": "string", "nonce": "string"}, "timeout": 2, "does": "Send an empty-chat suggestion's words"},
+    {"name": "coach.action", "args": {"id": "string", "text": "string"}, "timeout": 2, "does": "A reply's action chip: send text if message id is still the newest reply and nothing is in flight"},
+    {"name": "coach.stop", "args": {}, "timeout": 2, "does": "coachStop"},
+    {"name": "coach.retry", "args": {}, "timeout": 2, "does": "coachRetryLast"},
+    {"name": "coach.keep", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Keep changes or Got it on message id (_ledgerKeep by id)"},
+    {"name": "coach.undo", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Undo on message id (_ledgerUndo by id; its confirm is forwarded)"},
+    {"name": "coach.model", "args": {"model": "string"}, "timeout": 2, "does": "setCoachModel(model): the header switch sends its next"},
+    {"name": "coach.back", "args": {}, "timeout": 2, "does": "Back to the Coach home"},
+    {"name": "coach.cancelIntake", "args": {}, "timeout": 2, "does": "_confirmCancelIntake (its confirm is forwarded)"},
+    {"name": "coach.restorePrevious", "args": {}, "timeout": 2, "does": "restoreRoutineBackup (its confirm is forwarded)"},
+    {"name": "coach.regenerate", "args": {}, "timeout": 2, "does": "resetCustomRoutine: the empty chat's Reset programme (its confirm is forwarded)"},
+    {"name": "coach.openSettings", "args": {}, "timeout": 2, "does": "switchTab('settings'): the key error's Open Settings"},
+    {"name": "coach.image", "args": {"key": "string"}, "timeout": 2, "answers": "{ok, mediaType, data}", "does": "The page's pending photo with this key (a shared image); stale key: {ok: false, error: 'gone'}"},
+    {"name": "coach.clearImage", "args": {}, "timeout": 2, "does": "clearPendingImage"},
+    {"name": "coach.draftTaken", "args": {"nonce": "string"}, "timeout": 2, "does": "The native composer took the page's draft with this nonce"},
+    {"name": "confirm", "args": {"id": "string", "yes": "bool"}, "timeout": 2, "does": "The answer to a forwarded confirm; after a reload: {ok: false, error: 'stale'}"},
+    {"name": "toast.undo", "args": {"id": "string"}, "timeout": 2, "does": "Undo on a forwarded toast"},
+    {"name": "screens.off", "args": {"screen": "string", "why": "string?"}, "timeout": 2, "does": "A native screen is off (breaker, crash marker, switch, policy): the page shows its own again"}
+  ],
+  "answers": {
+    "ok": "{ok: true, ...}",
+    "refused": "{ok: false, error}: the page's own reason (stale, busy, loading, gone): not a bridge failure",
+    "failed": "{ok: false, error: 'unknown-intent' | 'bad-args' | 'exception'}, a timeout, a script error or an answer without ok: counted by the 3-failure breaker"
+  },
+  "messages": [
+    {"name": "hello", "args": {"v": "int", "page": "string", "screens": "[string]", "boot": "string?"}, "answers": "{v, screens} (v 0 and why when refused)", "does": "The page speaks contract v and can hand these screens to Swift"},
+    {"name": "bootDone", "args": {"page": "string"}, "does": "The end of boot whatever painted: disarms the store breaker; the OTA confirm moves here"},
+    {"name": "present", "args": {"screen": "string"}, "does": "Show the native screen"},
+    {"name": "dismiss", "args": {"screen": "string"}, "does": "The page left the screen (another tab, the runner, the end of intake)"},
+    {"name": "model", "args": {"screen": "string", "rev": "int", "json": "string"}, "does": "The screen's model, json = _nativeJSON(model)"},
+    {"name": "toast", "args": {"text": "string", "style": "string", "undo": "string?"}, "does": "showToast or showUndoToast while a native screen covers the page; style ok, pr or err"},
+    {"name": "confirm", "args": {"id": "string", "title": "string", "body": "string", "confirm": "string", "cancel": "string", "tone": "string"}, "does": "_ktConfirm while a native screen covers the page; tone danger, accent or neutral"},
+    {"name": "log", "args": {"text": "string", "level": "string?"}, "does": "A line for the shell's log"}
+  ]
+}

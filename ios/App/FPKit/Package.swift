@@ -45,11 +45,12 @@ let package = Package(
         ),
 
         // FPCoreTests: run by `swift test` on the Mac. Fixtures/ (golden models, page-made block
-        // fixtures, shell messages, policy files) is copied as a resource.
+        // fixtures, shell messages, policy files) and intents.json (contract v1's intents and page
+        // messages) are copied as resources.
         .testTarget(
             name: "FPCoreTests",
             dependencies: ["FPCore"],
-            resources: [.copy("Fixtures")]
+            resources: [.copy("Fixtures"), .copy("intents.json")]
         ),
 
         // FPStoreTests: run by `swift test` on the Mac.
