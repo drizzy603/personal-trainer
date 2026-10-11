@@ -3,7 +3,15 @@
 //   every entry point uses it: with no #coach-input on screen (the native chat has none) each sends
 //   exactly one user message and one API call, and a card's week stamp is written only with its
 //   question. A nonce sends once (the last 20 are remembered). coachPrefill drafts for the composer.
+// - C2: messages carry ids in memory (never stored), and PLAN CHANGES Keep/Undo act by id, so a
+//   Keep after the 60-message cap shifted every index retires the right card; _planChangeRows is raw
+//   text and the HTML escapes it once; md() and _coachBlocksHTML() draw block models (_mdModel,
+//   _cmbModel), and the HTML they draw equals the page's before the rebuild on every golden case
+//   (tests/golden/coach-html.json), while the contract bodies equal FPCore's page-grammar fixtures.
+const fs = require('fs');
+const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
+const GOLDEN = require('../golden/coach-cases');
 
 // One browser at a time: the turns below wait on timers.
 let _chain = Promise.resolve();
@@ -143,6 +151,99 @@ serial('C1: coachSend is idempotent by nonce (the last 20), sends a photo and th
     assert(out.image.ok && out.image.auto && out.image.block && out.image.preview === 'data:image/jpeg;base64,QUJD' && out.image.sent, 'a picked photo goes with no words: ' + JSON.stringify(out.image));
     assert(out.keepPending.ok && out.keepPending.still && out.keepPending.text && out.usePending.ok && out.usePending.cleared && out.usePending.sent, 'the pending photo goes only when asked for: ' + JSON.stringify([out.keepPending, out.usePending]));
     assert(out.prefill.returned === null && out.prefill.draft === 'Build my Arms day' && out.prefill.sent >= 0 && out.prefill.box === 'Build my Arms day' && out.prefill.web, 'coachPrefill drafts, never sends: ' + JSON.stringify(out.prefill));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// ── C2 ─────────────────────────────────────────────────────────────────────────
+serial('C2: md(), the %% blocks, PLAN CHANGES, pills and whole chats draw the golden HTML; the contract bodies equal FPCore\'s fixtures', async () => {
+  const app = await boot({ page: { timezoneId: 'UTC' }, init: GOLDEN.CLOCK_INIT, seed: { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]' } });
+  try {
+    const want = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'golden', 'coach-html.json'), 'utf8')).cases;
+    const got = await app.page.evaluate(GOLDEN.capture, GOLDEN.asciiJSON({ TEXTS: GOLDEN.TEXTS, TOOLS: GOLDEN.TOOLS }));
+    const bad = [];
+    for (const g of Object.keys(want)) for (const n of Object.keys(want[g])) if (JSON.stringify(want[g][n]) !== JSON.stringify((got[g] || {})[n])) bad.push(g + '/' + n);
+    const total = Object.values(want).reduce((s, g) => s + Object.keys(g).length, 0);
+    assert(total >= 150 && bad.length === 0, 'the page draws the golden HTML (' + total + ' cases): differs for ' + bad.join(', '));
+    // the bodies the native chat reads are FPCore's page-grammar fixtures (the texts with their half emoji, as written)
+    const grammar = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'Fixtures', 'blocks', 'page-grammar.json'), 'utf8'));
+    const texts = Object.fromEntries(GOLDEN.TEXTS);
+    const bodies = await app.page.evaluate((json) => JSON.parse(json).map(([name, text]) => [name, _nativeJSON(_coachBodyV1(text, false))]),
+      GOLDEN.asciiJSON(grammar.cases.map((c) => [c.name, texts[c.name]])));
+    for (const [name, json] of bodies) {
+      const c = grammar.cases.find((x) => x.name === name);
+      assert(json === JSON.stringify({ eyebrow: c.eyebrow, body: c.body }), name + ': the contract body is FPCore\'s fixture: ' + json.slice(0, 400));
+    }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C2: ids live in memory only; Keep and Undo by id retire the right card after the 60-message cap; rows are raw text', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: JSON.stringify([{ role: 'user', content: 'Stored question' }, { role: 'assistant', content: 'Stored answer' }]) } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms)), r = {};
+      // history load gives ids; _pushCoach gives ids; a message added another way gets one when asked
+      r.loaded = coachMessages.map((m) => m._mid);
+      const pushed = _pushCoach({ role: 'user', content: 'Pushed' });
+      const loose = { role: 'assistant', content: 'Loose' }; coachMessages.push(loose);
+      r.pushed = pushed._mid; r.loose = _coachMid(loose); r.again = _coachMid(loose);
+      saveCoachHistory();
+      r.stored = localStorage.getItem('kt_coach_msgs').indexOf('_mid') < 0 && JSON.stringify(lsGet('kt_coach_msgs')).indexOf('_mid') < 0;
+      r.idx = _coachIdx(r.loose) === coachMessages.length - 1 && _coachIdx('m999.nope') === -1 && _coachIdx('') === -1;
+      // 60 messages, the newest a programme change with a current undo point: the card is on it
+      _snapshotRoutineForUndo('coach:t118');
+      const ex = getSessionExercises('Push')[0];
+      const fill = [];
+      for (let k = 0; k < 59; k++) fill.push(k % 2 ? { role: 'assistant', content: 'a' + k } : { role: 'user', content: 'q' + k });
+      fill.push({ role: 'assistant', content: 'Done.', _undo: 'coach:t118', _tools: [{ name: 'set_exercise_weight', input: { name: ex.name, weight: 100 }, result: { ok: true }, units: { w: 'lb', d: 'km' } }] });
+      coachMessages = _coachMids(fill); saveCoachHistory();
+      currentTab = 'coach'; coachView = 'chat'; render(); await wait(30);
+      const card = coachMessages[59], id = card._mid;
+      r.cardBefore = { at: _coachIdx(id), html: !!document.querySelector('.kt-ledger-card') };
+      // the next message lands while a model holding index 59 is on screen: the cap shifts every index
+      _pushCoach({ role: 'user', content: 'next question' }); saveCoachHistory();
+      r.shift = { length: coachMessages.length, at: _coachIdx(id) };
+      const wrong = coachMessages[59];   // what index 59 is now: the new question
+      _ledgerKeepId(id); await wait(30);
+      r.keep = { right: card._ledgerSeen === true, untouched: !wrong._ledgerSeen, html: !!document.querySelector('.kt-ledger-card'),
+        saved: (lsGet('kt_coach_msgs')[58] || {})._ledgerSeen === true, gone: _ledgerKeepId('m0.gone') === false };
+      // Undo by id after the cap: the confirm, then the restore retires the card on its own message
+      card._ledgerSeen = false; saveCoachHistory(); render(); await wait(20);
+      r.undoGone = _ledgerUndoId('m0.gone') === false && !document.querySelector('.kt-close-sheet');
+      _ledgerUndoId(id); await wait(20);
+      _pushCoach({ role: 'user', content: 'one more while the confirm is up' }); saveCoachHistory();   // shifts again
+      const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); if (ok) ok.click(); await wait(40);
+      r.undo = { sheet: !!ok, right: card._ledgerSeen === true, restored: getSessionExercises('Push')[0].weight === ex.weight };
+      // a reload: new ids (another boot's tag), so an id from before it finds nothing
+      r.before = coachMessages[coachMessages.length - 1]._mid;
+      // raw rows, escaped once in the HTML
+      const odd = 'Mike\'s "A" <Press> & Co';
+      const tools = [{ name: 'set_exercise_weight', input: { name: odd, weight: 100 }, result: { ok: true }, units: { w: 'lb', d: 'km' } },
+        { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'Dips', action: 'swap', rename_to: '<b>Ring</b> & dips' }, result: { ok: true }, units: { w: 'lb', d: 'km' } }];
+      const rows = _planChangeRows(tools);
+      _snapshotRoutineForUndo('coach:t118b');
+      coachMessages = _coachMids([{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y', _undo: 'coach:t118b', _tools: tools }]);
+      const html = _planChangeLedger(tools, 1), model = _planChangeModel(tools, 1);
+      r.rows = { raw: rows[0][0] === odd && rows[1][1] === '→ <b>Ring</b> & dips', once: html.indexOf('Mike&#39;s &quot;A&quot; &lt;Press&gt; &amp; Co') >= 0 && html.indexOf('&amp;amp;') < 0 && html.indexOf('&lt;b&gt;Ring&lt;/b&gt; &amp; dips') >= 0,
+        model: model && model.canUndo && model.rows.length === 2 && model.actions.map((a) => a.do).join() === 'undo,keep' && /^PLAN CHANGES/.test(model.head) };
+      r.pill = _toolPillModel({ name: 'set_exercise_weight', input: { name: odd, weight: 100 }, result: { ok: false } }).label;
+      return r;
+    });
+    const re = /^m\d+\.[a-z0-9]+$/;
+    assert(out.loaded.length === 2 && out.loaded.every((x) => re.test(x)) && out.loaded[0] !== out.loaded[1], 'history load gives each message an id: ' + JSON.stringify(out.loaded));
+    assert(re.test(out.pushed) && re.test(out.loose) && out.loose === out.again && out.pushed !== out.loose, '_pushCoach gives an id, a loose message gets one when asked, and keeps it: ' + JSON.stringify(out));
+    assert(out.stored && out.idx, 'ids are never stored, and find their message: ' + JSON.stringify([out.stored, out.idx]));
+    assert(out.cardBefore.at === 59 && out.cardBefore.html && out.shift.length === 60 && out.shift.at === 58, 'the cap shifts the card to index 58: ' + JSON.stringify([out.cardBefore, out.shift]));
+    assert(out.keep.right && out.keep.untouched && !out.keep.html && out.keep.saved && out.keep.gone, 'Keep by id after the cap retires the right card: ' + JSON.stringify(out.keep));
+    assert(out.undoGone && out.undo.sheet && out.undo.right && out.undo.restored, 'Undo by id asks, restores and retires the right card, though the cap shifted again under the confirm: ' + JSON.stringify([out.undoGone, out.undo]));
+    assert(out.rows.raw && out.rows.once && out.rows.model, 'PLAN CHANGES rows are raw text, escaped once in the HTML: ' + JSON.stringify(out.rows));
+    assert(out.pill === 'Not applied · Mike\'s "A" <Press> & Co → 100 lb', 'a pill\'s label is raw text as shown: ' + out.pill);
+    // a reload: the same history, other ids
+    await app.page.reload({ waitUntil: 'load' });
+    await app.page.waitForFunction(() => typeof window.render === 'function');
+    const after = await app.page.evaluate((before) => ({ ids: coachMessages.map((m) => m._mid), stale: _coachIdx(before) }), out.before);
+    assert(after.ids.length > 0 && after.ids.every((x) => re.test(x)) && after.stale === -1, 'after a reload the ids are new and an old one finds nothing: ' + JSON.stringify(after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

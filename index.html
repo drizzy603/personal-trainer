@@ -2230,7 +2230,10 @@ var cmpKind='lift';       // 'lift' | 'run'
 var cmpPicks=[];          // _cmpIdStr ids in tap order, max 2; [0] is the anchor
 var _cmpOpenT=null;       // pending auto-open timer
 var _cmpReturnFocus=null; // element focused when the sheet opened
-var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return s?JSON.parse(s):[];}catch(e){return [];}}());
+// Message ids (_mid, _coachMid): the native chat addresses a message by id, never by index (the
+// 60-message cap shifts every index by one). In memory only: saveCoachHistory keeps a whitelist.
+var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
+var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
 // runCoachTurn abandon at its next await checkpoint without committing.
@@ -17975,12 +17978,27 @@ function setCoachModel(m){coachModel=m;localStorage.setItem('kt_coach_model',m);
 // Every message the chat adds is stamped with the moment it was said (at), for the day dividers.
 // History from before 20261010 has no stamp and shows none. _toApiMsg sends role and content only,
 // so the API never sees it.
-function _pushCoach(m){ if(m && !m.at) m.at=Date.now(); coachMessages.push(m); return m; }
+function _pushCoach(m){ if(m && !m.at) m.at=Date.now(); _coachMid(m); coachMessages.push(m); return m; }
+// Every message has an id while it is in memory: given at history load and in _pushCoach, and to one
+// added some other way when it is first asked for. 'm<n>.<tag>': the tag differs every boot, so an id
+// from before a reload never finds a message after it. Never stored (saveCoachHistory's whitelist).
+function _coachMid(m){
+  if(!m || typeof m!=='object') return '';
+  if(!m._mid){ _midSeq=(_midSeq|0)+1; m._mid='m'+_midSeq+'.'+(_midTag||'m0'); }
+  return m._mid;
+}
+function _coachMids(list){ if(Array.isArray(list)) for(var i=0;i<list.length;i++) _coachMid(list[i]); return list; }
+// Where the message with this id is now (-1: gone, or never shown).
+function _coachIdx(id){
+  if(!id) return -1;
+  for(var i=0;i<coachMessages.length;i++){ var m=coachMessages[i]; if(m && m._mid===String(id)) return i; }
+  return -1;
+}
 function _chatDayLabel(iso){ var t=todayISO(); return iso===t ? 'Today' : iso===addDays(t,-1) ? 'Yesterday' : _calDayName(iso); }
 function loadCoachHistory(){
   try{
     var s=localStorage.getItem('kt_coach_msgs');
-    coachMessages = s ? JSON.parse(s) : [];
+    coachMessages = _coachMids(s ? JSON.parse(s) : []);
   }catch(e){ coachMessages=[]; }
 }
 function clearCoachHistory(){
@@ -18007,6 +18025,9 @@ function _confirmCancelIntake(){
 // '> ' quotes as plain text. It left a blank line after every list and split block bullets apart.
 // No attribute is ever built from model text, and a link is its text alone: nothing navigates out
 // of the shell.
+// One parser, two outputs (plan task C2): _mdModel() parses into blocks, md() draws them as HTML
+// (_mdHTML), and the native chat reads the same blocks as contract v1 (_mdBlocksV1), so the two
+// chats cannot disagree and Swift never parses markdown.
 function _mdInline(s){   // s is already escaped
   s=s.replace(/`([^`\n]+)`/g,'<code class="kt-md-code">$1</code>');
   s=s.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
@@ -18014,21 +18035,41 @@ function _mdInline(s){   // s is already escaped
   s=s.replace(/\[([^\]\n]+)\]\((?:https?:\/\/)[^\s)]*\)/g,'$1');
   return s;
 }
-function md(text){
-  var src=String(text||'').replace(/\r/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  var lines=src.split('\n'), out='', para=[], list=null, tbl=null, i, m;
+// _mdInline's result as tokens: the text between its tags, unescaped, and each tag ({t:'b'|'i'|'c'},
+// {t, end:true}), in its order. HTML drawn back from them is _mdInline's byte for byte, a misnested
+// pair (**a `b** c`) included, and the runs a native view draws read them the way a browser does.
+// q: the text was escaped with _esc (quotes too, as a takeaway is), not md()'s & < >.
+var _MD_TAGS={strong:'b', em:'i', code:'c'}, _MD_OPEN={b:'<strong>', i:'<em>', c:'<code class="kt-md-code">'}, _MD_CLOSE={b:'</strong>', i:'</em>', c:'</code>'};
+var _MD_ENT={'&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'"};
+function _mdEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _mdUnesc(s, q){ return s.replace(q ? /&(amp|lt|gt|quot|#39);/g : /&(amp|lt|gt);/g, function(e){ return _MD_ENT[e]; }); }
+function _mdTokens(escaped, q){
+  var h=_mdInline(escaped), out=[], re=/<(\/?)(strong|em|code)(?: class="kt-md-code")?>/g, last=0, m;
+  while((m=re.exec(h))){
+    if(m.index>last) out.push(_mdUnesc(h.slice(last, m.index), q));
+    out.push(m[1] ? {t:_MD_TAGS[m[2]], end:true} : {t:_MD_TAGS[m[2]]});
+    last=re.lastIndex;
+  }
+  if(last<h.length) out.push(_mdUnesc(h.slice(last), q));
+  return out;
+}
+function _mdTokHTML(x, q){
+  return x.map(function(k){ return typeof k==='string' ? (q ? _esc(k) : _mdEsc(k)) : (k.end ? _MD_CLOSE[k.t] : _MD_OPEN[k.t]); }).join('');
+}
+// The blocks: {k:'p', x:[line tokens]}, {k:'h', x}, {k:'hr'}, {k:'ul', items:[{x, sub}]},
+// {k:'ol', start:'3' (as written), items:[{x}]}, {k:'table', rows:[[cell tokens]]}.
+function _mdModel(text){
+  var src=_mdEsc(String(text||'').replace(/\r/g,''));
+  var lines=src.split('\n'), out=[], para=[], list=null, tbl=null, i, m;
   var BUL=/^(\s*)[-*+•]\s+(.*)$/, NUM=/^(\s*)(\d{1,3})[.)]\s+(.*)$/;
-  function flushPara(){ if(para.length){ out+='<p>'+para.map(_mdInline).join('<br>')+'</p>'; para=[]; } }
-  function closeList(){ if(list){ out+='</'+list+'>'; list=null; } }
+  function flushPara(){ if(para.length){ out.push({k:'p', x:para.map(function(l){ return _mdTokens(l); })}); para=[]; } }
+  function closeList(){ list=null; }
   function flushTbl(){
     if(!tbl) return;
     var rows=tbl.filter(function(r){ return !/^\|?\s*:?-{2,}/.test(r); }).map(function(r){
-      return r.replace(/^\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){ return _mdInline(c.trim()); });
+      return r.replace(/^\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){ return _mdTokens(c.trim()); });
     });
-    out+='<div class="kt-md-tablewrap"><table class="kt-md-table">'+rows.map(function(cells, ri){
-      var tag=ri===0?'th':'td';
-      return '<tr>'+cells.map(function(c){ return '<'+tag+'>'+c+'</'+tag+'>'; }).join('')+'</tr>';
-    }).join('')+'</table></div>';
+    out.push({k:'table', rows:rows});
     tbl=null;
   }
   function nextNonBlank(j){ for(; j<lines.length; j++) if(lines[j].trim()) return lines[j]; return ''; }
@@ -18037,25 +18078,66 @@ function md(text){
     if(tbl && t.charAt(0)!=='|') flushTbl();
     if(!t){
       flushPara();
-      if(list){ var nx=nextNonBlank(i+1); if(!((list==='ul' && BUL.test(nx)) || (list==='ol' && NUM.test(nx)))) closeList(); }
+      if(list){ var nx=nextNonBlank(i+1); if(!((list.k==='ul' && BUL.test(nx)) || (list.k==='ol' && NUM.test(nx)))) closeList(); }
       continue;
     }
     if(t.charAt(0)==='|'){ flushPara(); closeList(); (tbl=tbl||[]).push(t); continue; }
-    if((m=/^#{1,6}\s+(.*)$/.exec(t))){ flushPara(); closeList(); out+='<div class="kt-md-h">'+_mdInline(m[1])+'</div>'; continue; }
-    if(/^(-{3,}|\*{3,}|_{3,})$/.test(t)){ flushPara(); closeList(); out+='<hr class="kt-md-hr">'; continue; }
+    if((m=/^#{1,6}\s+(.*)$/.exec(t))){ flushPara(); closeList(); out.push({k:'h', x:_mdTokens(m[1])}); continue; }
+    if(/^(-{3,}|\*{3,}|_{3,})$/.test(t)){ flushPara(); closeList(); out.push({k:'hr'}); continue; }
     if((m=BUL.exec(line))){
-      flushPara(); if(list!=='ul'){ closeList(); out+='<ul>'; list='ul'; }
-      out+='<li'+(m[1].length>=2?' class="sub"':'')+'>'+_mdInline(m[2])+'</li>'; continue;
+      flushPara(); if(!list || list.k!=='ul'){ list={k:'ul', items:[]}; out.push(list); }
+      list.items.push({x:_mdTokens(m[2]), sub:m[1].length>=2}); continue;
     }
     if((m=NUM.exec(line))){
-      flushPara(); if(list!=='ol'){ closeList(); out+='<ol start="'+m[2]+'">'; list='ol'; }
-      out+='<li>'+_mdInline(m[3])+'</li>'; continue;
+      flushPara(); if(!list || list.k!=='ol'){ list={k:'ol', start:m[2], items:[]}; out.push(list); }
+      list.items.push({x:_mdTokens(m[3])}); continue;
     }
     if((m=/^&gt;\s?(.*)$/.exec(t))) t=m[1];
     closeList(); para.push(t);
   }
   flushTbl(); flushPara(); closeList();
   return out;
+}
+function _mdHTML(blocks){
+  return blocks.map(function(b){
+    if(b.k==='p') return '<p>'+b.x.map(function(l){ return _mdTokHTML(l); }).join('<br>')+'</p>';
+    if(b.k==='h') return '<div class="kt-md-h">'+_mdTokHTML(b.x)+'</div>';
+    if(b.k==='hr') return '<hr class="kt-md-hr">';
+    if(b.k==='ul') return '<ul>'+b.items.map(function(it){ return '<li'+(it.sub?' class="sub"':'')+'>'+_mdTokHTML(it.x)+'</li>'; }).join('')+'</ul>';
+    if(b.k==='ol') return '<ol start="'+b.start+'">'+b.items.map(function(it){ return '<li>'+_mdTokHTML(it.x)+'</li>'; }).join('')+'</ol>';
+    if(b.k==='table') return '<div class="kt-md-tablewrap"><table class="kt-md-table">'+b.rows.map(function(cells, ri){
+      var tag=ri===0?'th':'td';
+      return '<tr>'+cells.map(function(c){ return '<'+tag+'>'+_mdTokHTML(c)+'</'+tag+'>'; }).join('')+'</tr>';
+    }).join('')+'</table></div>';
+    return '';
+  }).join('');
+}
+function md(text){ return _mdHTML(_mdModel(text)); }
+// Contract v1 (FPCore Blocks.swift): a block's text as runs, ["plain", {t, s}] with s the styles on
+// (b, i, c, in that order) as a browser applies the tags, adjacent runs alike merged; lines join with
+// a "\n" run.
+function _mdRunsV1(lines){
+  var out=[];
+  function put(t, s){ var last=out[out.length-1]; if(last && last.s===s) last.t+=t; else out.push({t:t, s:s}); }
+  lines.forEach(function(x, li){
+    if(li) put('\n', '');
+    var d={b:0, i:0, c:0};
+    x.forEach(function(k){
+      if(typeof k!=='string'){ d[k.t]+=k.end?-1:1; return; }
+      if(k) put(k, (d.b>0?'b':'')+(d.i>0?'i':'')+(d.c>0?'c':''));
+    });
+  });
+  return out.map(function(r){ return r.s ? {t:r.t, s:r.s} : r.t; });
+}
+function _mdBlocksV1(blocks){
+  return blocks.map(function(b){
+    if(b.k==='p') return {k:'p', r:_mdRunsV1(b.x)};
+    if(b.k==='h') return {k:'h', r:_mdRunsV1([b.x])};
+    if(b.k==='ul') return {k:'ul', items:b.items.map(function(it){ var o={r:_mdRunsV1([it.x])}; if(it.sub) o.sub=true; return o; })};
+    if(b.k==='ol') return {k:'ol', start:parseInt(b.start, 10), items:b.items.map(function(it){ return {r:_mdRunsV1([it.x])}; })};
+    if(b.k==='table') return {k:'table', rows:b.rows.map(function(row){ return row.map(function(c){ return _mdRunsV1([c]); }); })};
+    return {k:b.k};
+  });
 }
 
 // ── Coach message blocks (spec 07) ───────────────────────────────────────────
@@ -18090,27 +18172,22 @@ try{
   var _mfT=null;
   window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')){ _metricsFit(s); _fitPlaceholder(); } }, 120); });
 }catch(e){}
-function _coachBlocksHTML(text, quiet){
+// A %% reply as data (plan task C2): {type, sections:[{k:'md', blocks} | {k:'metrics', rows:[{label
+// (upper-cased, as drawn), value, ref, delta, tone: good|warn|plain}]} | {k:'take', x}], actions:
+// [{label, msg}]}, at most one takeaway and two actions. _coachBlocksHTML draws it; the native chat
+// reads it as contract v1 (_cmbBodyV1).
+function _cmbModel(text){
   var lines=String(text||'').split('\n');
-  var typeTag='', buf=[], out='', metricBuf=[], actions=[], takeaways=[];
+  var typeTag='', buf=[], sections=[], metricBuf=[], actions=[], takeaways=0;
   // Every plain line between two markers is ONE md() run, blank lines included: a list stays one
   // list and a paragraph one paragraph (each line used to be its own block, each bullet its own list).
   function flushParas(){
     var s=buf.join('\n').trim(); buf=[];
-    if(s) out+='<div class="kt-cmb-para">'+md(s)+'</div>';
+    if(s) sections.push({k:'md', blocks:_mdModel(s)});
   }
   function flushMetrics(){
     if(!metricBuf.length) return;
-    out+='<div class="kt-cmb-metrics">'+metricBuf.map(function(m){
-      var toneCls=m.tone==='good'?'kt-cmb-delta-good':m.tone==='warn'?'kt-cmb-delta-warn':'kt-cmb-mref';
-      return '<div class="kt-cmb-mrow">'+
-        '<span class="kt-cmb-mlabel">'+_esc(m.label.toUpperCase())+'</span>'+
-        '<span class="kt-cmb-mval"><span class="kt-cmb-mv">'+_esc(m.value)+'</span>'+
-          (m.ref?' <span class="kt-cmb-mref">'+_esc(m.ref)+'</span>':'')+
-          (m.delta?' <span class="'+toneCls+'">· '+_esc(m.delta)+'</span>':'')+
-        '</span>'+
-      '</div>';
-    }).join('')+'</div>';
+    sections.push({k:'metrics', rows:metricBuf});
     metricBuf=[];
   }
   lines.forEach(function(line){
@@ -18124,33 +18201,67 @@ function _coachBlocksHTML(text, quiet){
     if(kind==='type'){ typeTag=body.trim(); return; }
     if(kind==='metric'){
       flushParas();
-      var parts=body.split('|').map(function(x){ return x.trim(); });
-      if(parts[0]) metricBuf.push({label:parts[0], value:parts[1]||'', ref:parts[2]||'', delta:parts[3]||'',
-        tone:(parts[4]||'').toLowerCase()});
+      var parts=body.split('|').map(function(x){ return x.trim(); }), tone=(parts[4]||'').toLowerCase();
+      if(parts[0]) metricBuf.push({label:parts[0].toUpperCase(), value:parts[1]||'', ref:parts[2]||'', delta:parts[3]||'',
+        tone:tone==='good'||tone==='warn' ? tone : 'plain'});
       return;
     }
     flushParas(); flushMetrics();
-    if(kind==='takeaway'){ if(takeaways.length<1){ takeaways.push(body.trim()); out+=_cmbTakeHTML(body.trim()); } return; }
+    if(kind==='takeaway'){ if(takeaways<1){ takeaways++; sections.push({k:'take', x:_mdTokens(_esc(body.trim()), 1)}); } return; }
     if(kind==='action' && actions.length<2){
       var ap=body.split('|').map(function(x){ return x.trim(); });
       if(ap[0]) actions.push({label:ap[0], msg:ap[1]||ap[0]});
     }
   });
   flushParas(); flushMetrics();
-  if(actions.length && !quiet){
-    out+='<div class="kt-cmb-actions">'+actions.map(function(a,i){
+  return {type:typeTag, sections:sections, actions:actions};
+}
+// quiet: no chips (an older reply's, or any while a reply is in flight).
+function _cmbHTML(c, quiet){
+  var out='';
+  c.sections.forEach(function(s){
+    if(s.k==='md') out+='<div class="kt-cmb-para">'+_mdHTML(s.blocks)+'</div>';
+    else if(s.k==='metrics') out+='<div class="kt-cmb-metrics">'+s.rows.map(function(m){
+      var toneCls=m.tone==='good'?'kt-cmb-delta-good':m.tone==='warn'?'kt-cmb-delta-warn':'kt-cmb-mref';
+      return '<div class="kt-cmb-mrow">'+
+        '<span class="kt-cmb-mlabel">'+_esc(m.label)+'</span>'+
+        '<span class="kt-cmb-mval"><span class="kt-cmb-mv">'+_esc(m.value)+'</span>'+
+          (m.ref?' <span class="kt-cmb-mref">'+_esc(m.ref)+'</span>':'')+
+          (m.delta?' <span class="'+toneCls+'">· '+_esc(m.delta)+'</span>':'')+
+        '</span>'+
+      '</div>';
+    }).join('')+'</div>';
+    else if(s.k==='take') out+=_cmbTakeTokHTML(s.x);
+  });
+  if(c.actions.length && !quiet){
+    out+='<div class="kt-cmb-actions">'+c.actions.map(function(a,i){
       return '<button class="kt-cmb-chip'+(i===0?' primary':'')+'" data-msg="'+_esc(a.msg)+'" '+
         (i===0?'aria-label="'+_esc(a.label)+'" ':'')+'onclick="coachBlockAction(this)">'+_esc(a.label)+(i===0?' →':'')+'</button>';
     }).join('')+'</div>';
   }
-  var eyebrow='<div class="kt-cmb-eyebrow">COACH'+(typeTag?' · '+_esc(typeTag):'')+'</div>';
-  return eyebrow+out;
+  return '<div class="kt-cmb-eyebrow">COACH'+(c.type?' · '+_esc(c.type):'')+'</div>'+out;
 }
-function _cmbTakeHTML(t){
+function _coachBlocksHTML(text, quiet){ return _cmbHTML(_cmbModel(text), quiet); }
+function _cmbTakeTokHTML(x){
   return '<div class="kt-cmb-take">'+
     '<div class="kt-cmb-take-eyebrow">TAKEAWAY</div>'+
-    '<div class="kt-cmb-take-body">'+_mdInline(_esc(t))+'</div>'+
+    '<div class="kt-cmb-take-body">'+_mdTokHTML(x, 1)+'</div>'+
   '</div>';
+}
+function _cmbTakeHTML(t){ return _cmbTakeTokHTML(_mdTokens(_esc(t), 1)); }
+// Contract v1 of a %% reply's body (its eyebrow is the message's: COACH · <type>).
+function _cmbBodyV1(c, quiet){
+  return {k:'cmb', sections:c.sections.map(function(s){
+    if(s.k==='md') return {k:'md', blocks:_mdBlocksV1(s.blocks)};
+    if(s.k==='metrics') return {k:'metrics', rows:s.rows.map(function(m){ return {label:m.label, value:m.value, ref:m.ref, delta:m.delta, tone:m.tone}; })};
+    return {k:'take', r:_mdRunsV1([s.x])};
+  }), actions:quiet ? [] : c.actions.map(function(a, i){ return {label:a.label, msg:a.msg, primary:i===0}; })};
+}
+// A reply's eyebrow and body as the native chat reads them: a %% reply as its block model, any other
+// as one markdown run under COACH (renderCoach draws them the same way).
+function _coachBodyV1(text, quiet){
+  if(_hasCoachBlocks(text)){ var c=_cmbModel(text); return {eyebrow:'COACH'+(c.type?' · '+c.type:''), body:_cmbBodyV1(c, quiet)}; }
+  return {eyebrow:'COACH', body:{k:'md', blocks:_mdBlocksV1(_mdModel(text))}};
 }
 // A %% action chip: its message goes as the chat's own buttons send (sendCoachChip): through the
 // composer while it is on screen, else straight to coachSend. It used to drop the message whenever
@@ -19797,6 +19908,8 @@ function _routineCallSaved(tc){
   return {weeks:ws, plan:plan};
 }
 // The ledger's rows: [label, value, kind], kind 'goal' for a goal and 'plan' for a programme change.
+// Raw text, the coach's words as it wrote them: the HTML builder escapes (_planChangeLedger), and the
+// native card draws the rows as they are (they read "&amp;" when this escaped them).
 function _planChangeRows(tools){
   var rows=[];
   (tools||[]).forEach(function(tc){ _inUnitsOf(tc, function(){
@@ -19804,22 +19917,22 @@ function _planChangeRows(tools){
     var i=tc.input||{};
     if(tc.name==='set_exercise_weight'){
       var old=_backupWeightFor(i.name);
-      rows.push([_esc(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight)), 'plan']);
+      rows.push([String(i.name||'Exercise'), (old!=null&&old!==_coachLoadIn(i.weight)?wDisp(old)+' \u2192 ':'\u2192 ')+fmtW(_coachLoadIn(i.weight)), 'plan']);
     } else if(tc.name==='swap_cadence_days'){
-      rows.push([_esc(i.dayA||'?')+' \u21c4 '+_esc(i.dayB||'?'), i.scope==='global'?'every week':'this week', 'plan']);
+      rows.push([String(i.dayA||'?')+' \u21c4 '+String(i.dayB||'?'), i.scope==='global'?'every week':'this week', 'plan']);
     } else if(tc.name==='update_routine_weeks'){
       var sv=_routineCallSaved(tc), ws=sv.weeks;
       if(ws.length) rows.push(['Week'+(ws.length>1?'s':'')+' '+ws.join(', '), 'rewritten', 'plan']);
       if(sv.plan) rows.push(['Weekly cadence', 'changed', 'plan']);
     } else if(tc.name==='edit_programme_exercise'){
-      var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+_esc(String(i.rename_to||''))):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
+      var _act=i.action==='add'?'added':i.action==='remove'?'removed':i.action==='swap'?('\u2192 '+String(i.rename_to||'')):(i.weight>0?'\u2192 '+fmtW(_coachLoadIn(i.weight)):'changed');
       if(i.action!=='remove' && i.action!=='swap' && i.weight>0 && i.action==='add') _act='added \u00b7 '+fmtW(_coachLoadIn(i.weight));
       if(i.action!=='remove' && (i.make_main===true || i.make_main==='true')) _act=(_act==='changed'?'':_act+' \u00b7 ')+'main lift';
-      rows.push([_esc(i.exercise||'Exercise'), _act, 'plan']);
+      rows.push([String(i.exercise||'Exercise'), _act, 'plan']);
     } else if(tc.name==='set_bench_goal'){ rows.push(['Bench goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
     else if(tc.name==='set_squat_goal'){ rows.push(['Squat goal','\u2192 '+fmtW(wStore(i.weight)), 'goal']); }
-    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+_esc(fmtPaceStr(paceStore(String(i.pace||'')))), 'goal']); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
-    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+_esc(String(i.time||'')), 'goal']); }
+    else if(tc.name==='set_run_goal'){ rows.push(['Run pace goal','\u2192 '+String(fmtPaceStr(paceStore(String(i.pace||'')))), 'goal']); }   // typed in the user's unit (9:00 /mi read 14:29 /mi)
+    else if(tc.name==='set_5k_goal'){ rows.push(['5k goal','\u2192 '+String(i.time||''), 'goal']); }
   }); });
   return rows;
 }
@@ -19827,37 +19940,58 @@ function _planChangeRows(tools){
 // later edit has taken the undo point the card says so plainly and offers Got it, never a lone
 // blue Keep changes that reads as a choice still to make. A goal-only reply gets no card: its
 // pill already says what changed.
-function _planChangeLedger(tools, idx){
+// The card as data, null when there is none: the native PLAN CHANGES card draws it, and
+// _planChangeLedger builds the web's HTML on it. idx: the message's place in coachMessages now.
+function _planChangeModel(tools, idx){
   var rows=_planChangeRows(tools);
-  if(!rows.length) return '';
+  if(!rows.length) return null;
   var _m=coachMessages[idx], canUndo=!!(_m && _backupScopeIs(_m._undo));
-  if(!canUndo && !rows.some(function(r){ return r[2]!=='goal'; })) return '';
+  if(!canUndo && !rows.some(function(r){ return r[2]!=='goal'; })) return null;
+  return {head:'PLAN CHANGES · WEEK '+currentWeek, rows:rows, canUndo:canUndo,
+    note:canUndo ? 'Applied to your programme · Undo restores the previous version' : 'Applied to your programme. It cannot be undone here any more.',
+    actions:canUndo ? [{'do':'undo', label:'Undo', tone:'neutral'}, {'do':'keep', label:'Keep changes', tone:'primary'}] : [{'do':'gotIt', label:'Got it', tone:'neutral'}]};
+}
+function _planChangeLedger(tools, idx){
+  var lm=_planChangeModel(tools, idx);
+  if(!lm) return '';
   var card='<div class="kt-ledger-card">'+
-    '<div class="kt-ledger-card-hd">PLAN CHANGES \u00b7 WEEK '+currentWeek+'</div>'+
-    rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>'; }).join('');
-  if(canUndo) return card+
+    '<div class="kt-ledger-card-hd">'+_esc(lm.head)+'</div>'+
+    lm.rows.map(function(r){ return '<div class="kt-ledger-row"><span>'+_esc(r[0])+'</span><b>'+_esc(r[1])+'</b></div>'; }).join('');
+  if(lm.canUndo) return card+
     '<div class="kt-ledger-card-actions">'+
       '<button class="kt-coach-btn neutral" onclick="_ledgerUndo('+idx+')">Undo</button>'+
       '<button class="kt-coach-btn primary" onclick="_ledgerKeep('+idx+')">Keep changes</button>'+
     '</div>'+
-    '<div class="kt-ledger-card-note">Applied to your programme \u00b7 Undo restores the previous version</div>'+
+    '<div class="kt-ledger-card-note">'+_esc(lm.note)+'</div>'+
   '</div>';
   return card+
-    '<div class="kt-ledger-card-note">Applied to your programme. It cannot be undone here any more.</div>'+
+    '<div class="kt-ledger-card-note">'+_esc(lm.note)+'</div>'+
     '<div class="kt-ledger-card-actions end"><button class="kt-coach-btn neutral" onclick="_ledgerKeep('+idx+')">Got it</button></div>'+
   '</div>';
 }
 function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } render(); }
-// The card retires once the restore is done: Cancel (or a write that failed) hid it for good.
-function _ledgerUndo(i){ restoreRoutineBackup(function(){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
+// The card retires once the restore is done: Cancel (or a write that failed) hid it for good. The
+// message is held, not its index: the 60-message cap can shift every index while the confirm is up.
+function _ledgerUndo(i){ var m=coachMessages[i]; restoreRoutineBackup(function(){ if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
+// Keep and Undo by message id (the native card: FPScreens coach.keep, coach.undo). An index taken
+// from a model goes stale when the cap drops the oldest message: Keep retired the wrong card. False
+// when no message has the id (a model from before a reload, or the message is gone).
+function _ledgerKeepId(id){ var i=_coachIdx(id); if(i<0) return false; _ledgerKeep(i); return true; }
+function _ledgerUndoId(id){ var i=_coachIdx(id); if(i<0) return false; _ledgerUndo(i); return true; }
 function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
 // A tool pill in the room's tokens. A failure is said in words as well as in red: 'Not applied'
 // leads a label that does not already say what was not saved ('Week 6 updated · week 7 not saved',
 // 'No weeks changed' say it themselves). The icon is decoration; the text reads '✓ label'.
-function _toolPillHTML(tc){
+// The pill as data, {label as shown, ok}: the native pills draw it, and _toolPillHTML builds on it.
+function _toolPillModel(tc){
   var ok=!!(tc && tc.result && tc.result.ok!==false), label=toolCallLabel(tc);
+  label=label==null?'':String(label);
   var says=!ok && /not saved|^No weeks changed/i.test(label);
-  return '<span class="kt-tool-pill'+(ok?'':' bad')+'"><span class="kt-tool-pill-ic" aria-hidden="true">'+(ok?'✓':'✕')+'</span> '+(ok||says?'':'Not applied \u00b7 ')+_esc(label)+'</span>';
+  return {label:(ok||says?'':'Not applied · ')+label, ok:ok};
+}
+function _toolPillHTML(tc){
+  var p=_toolPillModel(tc);
+  return '<span class="kt-tool-pill'+(p.ok?'':' bad')+'"><span class="kt-tool-pill-ic" aria-hidden="true">'+(p.ok?'✓':'✕')+'</span> '+_esc(p.label)+'</span>';
 }
 function _toolCallLabel(tc){
   var n=tc.name,i=tc.input||{};
