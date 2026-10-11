@@ -1,0 +1,112 @@
+{
+ "about": "One call of every TrovoShell method (page to Swift), contract v1",
+ "calls": [
+  {
+   "method": "hello",
+   "options": {
+    "v": 1,
+    "page": "20261012-1",
+    "screens": [
+     "coach"
+    ],
+    "boot": "b1760000000000-4f2a"
+   }
+  },
+  {
+   "method": "hello",
+   "options": {
+    "v": 2,
+    "page": "20261101-3",
+    "screens": [
+     "coach",
+     "settings"
+    ]
+   },
+   "note": "a newer page: no boot, a screen this binary lacks"
+  },
+  {
+   "method": "bootDone",
+   "options": {
+    "page": "20261012-1"
+   }
+  },
+  {
+   "method": "present",
+   "options": {
+    "screen": "coach"
+   }
+  },
+  {
+   "method": "dismiss",
+   "options": {
+    "screen": "coach"
+   }
+  },
+  {
+   "method": "model",
+   "options": {
+    "screen": "coach",
+    "rev": 7,
+    "json": "{\"v\":1,\"rev\":7,\"boot\":\"b1760000000000-4f2a\",\"room\":\"heavyweight\",\"paper\":true,\"messages\":[]}"
+   }
+  },
+  {
+   "method": "toast",
+   "options": {
+    "text": "Previous programme restored",
+    "style": "ok"
+   }
+  },
+  {
+   "method": "toast",
+   "options": {
+    "text": "New record: Bench Press 175 lb",
+    "style": "pr"
+   }
+  },
+  {
+   "method": "toast",
+   "options": {
+    "text": "Storage full: the change was not saved",
+    "style": "err"
+   }
+  },
+  {
+   "method": "toast",
+   "options": {
+    "text": "Bench Press removed",
+    "style": "ok",
+    "undo": "t-17"
+   }
+  },
+  {
+   "method": "confirm",
+   "options": {
+    "id": "c-3",
+    "title": "Restore previous programme?",
+    "body": "Your current one is set aside: restoring again brings it back.",
+    "confirm": "Restore",
+    "cancel": "Cancel",
+    "tone": "danger"
+   }
+  },
+  {
+   "method": "confirm",
+   "options": {
+    "id": "c-4",
+    "title": "Stop programme setup?",
+    "body": "Your answers so far will be lost.",
+    "confirm": "Stop setup",
+    "cancel": "Cancel",
+    "tone": "accent"
+   }
+  },
+  {
+   "method": "log",
+   "options": {
+    "text": "fp: hello v1 coach",
+    "level": "info"
+   }
+  }
+ ]
+}
