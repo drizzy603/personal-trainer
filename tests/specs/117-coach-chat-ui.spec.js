@@ -813,7 +813,9 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           const ta = document.getElementById('coach-input');
           r.ph = { text: ta.placeholder, value: ta.value, sh: ta.scrollHeight, ch: ta.clientHeight, ws: getComputedStyle(ta, '::placeholder').whiteSpace };
           { const cs = getComputedStyle(ta), sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-family:' + cs.fontFamily + ';font-size:' + cs.fontSize + ';font-weight:' + cs.fontWeight;
-            sp.textContent = ta.placeholder; ta.parentNode.appendChild(sp); r.ph.fits = sp.getBoundingClientRect().width <= ta.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * (parseFloat(document.documentElement.style.zoom) || 1) + 0.5; sp.remove(); }
+            const room = ta.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * (parseFloat(document.documentElement.style.zoom) || 1) + 0.5;
+            sp.textContent = ta.placeholder; ta.parentNode.appendChild(sp); r.ph.fits = sp.getBoundingClientRect().width <= room;
+            sp.textContent = 'Message Coach\u2026'; r.ph.wholeFits = sp.getBoundingClientRect().width <= room; sp.remove(); }
           // nothing overflows its own box or the scroller
           r.over = [...list.querySelectorAll('*')].filter((e) => !e.classList.contains('kt-sr') && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0).map((e) => e.className || e.tagName).slice(0, 5);
           r.past = [...list.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > lr.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5);
@@ -857,8 +859,10 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           // setup's placeholder: the whole "Answer the Coach…" where it fits (its box has no attach button)
           _setIntakeMode(true); render(); await wait(60);
           { const ti = document.getElementById('coach-input'), cs = getComputedStyle(ti), sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-family:' + cs.fontFamily + ';font-size:' + cs.fontSize + ';font-weight:' + cs.fontWeight;
+            const room = ti.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * z + 0.5;
             sp.textContent = ti.placeholder; ti.parentNode.appendChild(sp);
-            r.phIntake = { text: ti.placeholder, fits: sp.getBoundingClientRect().width <= ti.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * z + 0.5 }; sp.remove(); }
+            r.phIntake = { text: ti.placeholder, fits: sp.getBoundingClientRect().width <= room };
+            sp.textContent = 'Answer the Coach\u2026'; r.phIntake.wholeFits = sp.getBoundingClientRect().width <= room; sp.remove(); }
           _setIntakeMode(false); render();
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));
@@ -866,8 +870,9 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
         assert(!out.over.length && !out.past.length, tag + 'nothing overflows the column: ' + JSON.stringify([out.over, out.past]));
         assert(out.ph.value === '' && out.ph.ws === 'nowrap' && out.ph.sh <= out.ph.ch + 1, tag + 'the placeholder keeps to the box\'s one line: ' + JSON.stringify(out.ph));
         // where the whole placeholder would be cut at the box's edge it says the short one
-        assert(out.ph.text === (zoom === 1 ? 'Message Coach…' : 'Message…') && out.ph.fits, tag + 'the placeholder is whole: the full one where it fits, else the short one: ' + JSON.stringify(out.ph));
-        assert(out.phIntake.text === 'Answer the Coach…' && out.phIntake.fits, tag + 'setup\'s placeholder is whole too: ' + JSON.stringify(out.phIntake));
+        assert(out.ph.text === (out.ph.wholeFits ? 'Message Coach…' : 'Message…') && out.ph.fits, tag + 'the placeholder is whole: the full one where it fits, else the short one: ' + JSON.stringify(out.ph));
+        if (zoom === 1) assert(out.ph.wholeFits, tag + 'at the default text size the full placeholder fits even at 320pt: ' + JSON.stringify(out.ph));
+        assert(out.phIntake.text === (out.phIntake.wholeFits ? 'Answer the Coach…' : 'Answer…') && out.phIntake.fits, tag + 'setup\'s placeholder is whole too: the full one where it fits, else the short one: ' + JSON.stringify(out.phIntake));
         assert(out.metric.under && out.metric.right && /171 bpm/.test(out.metric.text) && /\+21/.test(out.metric.text), tag + 'a long metric shows its whole value under the label, right-aligned: ' + JSON.stringify(out.metric));
         assert(out.alike.length === 4 && out.alike.every(Boolean), tag + 'every row of that card wraps alike: ' + JSON.stringify(out.alike));
         assert(out.deltas.length >= 3 && out.deltas.every((d) => d[1] === 1), tag + 'deltas never split: ' + JSON.stringify(out.deltas));

@@ -47,4 +47,4 @@ jobs:
       - name: Name the failures
         if: failure()
         run: |
-          awk '/^── /{spec=$2} /FAIL/{line=$0; gsub(/%/,"%25",line); gsub(/\r/,"",line); print "::error title=" spec "::" substr(line,1,900)}' suite.log | head -20
+          awk '/^── /{spec=$2} /  FAIL  /{line=$0; gsub(/%/,"%25",line); gsub(/\r/,"",line); print "::error title=" spec "::" substr(line,1,900)}' suite.log | head -20
