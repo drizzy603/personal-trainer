@@ -23682,6 +23682,15 @@ function _fpCovered(){
   for(var k in _fp.shown) if(_fp.shown[k]) return true;
   return false;
 }
+// A native screen is down: the page dismissed it, the shell refused it or took it down (screens.off),
+// or its model could not be built. covered is the shell's word (shell.covered), but once nothing
+// native is up the page is uncovered whoever took the screen down: after its own dismiss it stayed
+// covered (toasts to a shell showing nothing, no refocus) until the shell spoke. The shell still sends
+// covered:false once its screen has gone, after every dismissal (the owner's and the page's).
+function _fpDown(s){
+  _fp.shown[s]=false;
+  if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
+}
 // What stands in #screen under a native screen: an element, so the resume check (a #screen with no
 // element child reloads the page) never fires while it is up.
 function _fpPlaceholder(s){ return '<div class="kt-fp-ph" data-fp-screen="'+s+'" aria-hidden="true"></div>'; }
@@ -23724,7 +23733,7 @@ function _fpSync(){
         _fp.shown[s]=true;
         try{ Promise.resolve(P.present({screen:s})).catch(function(e){ _fpRefused(s, e); }); }catch(e){ setTimeout(function(){ _fpRefused(s, e); }, 0); }
       } else if(!want && _fp.shown[s]){
-        _fp.shown[s]=false;
+        _fpDown(s);
         if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
       } else if(want) _fpPushSoon();
     });
@@ -23732,7 +23741,7 @@ function _fpSync(){
 }
 // The shell would not present it: the page draws its own for the rest of the document.
 function _fpRefused(s, e){
-  _fp.shown[s]=false; _fp.off[s]='present';
+  _fpDown(s); _fp.off[s]='present';
   _fpLog(s+' not presented: '+((e && e.message) || e), 'error');
   render();
 }
@@ -23750,10 +23759,9 @@ function _fpPushNow(s){
 function _fpBroken(s, e){
   _fpLog(s+' model failed: '+((e && e.message) || e), 'error');
   _fp.off[s]='model';
-  if(_fp.shown[s]){
-    _fp.shown[s]=false;
-    var P=_fpPlugin(); if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e2){} }
-  }
+  var was=!!_fp.shown[s];
+  _fpDown(s);
+  if(was){ var P=_fpPlugin(); if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e2){} } }
   setTimeout(render, 0);
 }
 function _fpPushSoon(){
@@ -23990,8 +23998,7 @@ var _FP_INTENTS={
   'screens.off':function(a){
     if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why))) return _FP_BAD;
     _fp.off[a.screen]=a.why || 'off';
-    _fp.shown[a.screen]=false;   // the shell has taken it down: no dismiss
-    if(!FP_SCREENS.some(function(s){ return _fp.shown[s]; })) _fp.covered=false;   // nothing native is up now
+    _fpDown(a.screen);   // the shell has taken it down: no dismiss; uncovered once nothing native is up
     _fpLog(a.screen+' off: '+(a.why || 'off'), 'error');
     render();   // the web screen again, for the rest of the document
     return {ok:true};

@@ -858,6 +858,62 @@ serial('C3: a reload is a new boot (a stale confirm answers stale, old ids find 
   } finally { await app.close(); }
 });
 
+// covered is the shell's word, but a page that takes its last native screen down itself (another tab,
+// Back, Open Settings, a model it cannot build, a present refused) is uncovered then, as screens.off
+// already did: it stayed covered (its toasts went to a shell showing nothing, no refocus) until the
+// shell said covered:false.
+serial('C3: once the page has taken its last native screen down it is no longer covered (its own dismiss, a broken model, a refused present), as after screens.off', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      const cover = async () => { await __open(); await FPScreens.call('shell.covered', { on: true }); return _fpCovered() && !!_fp.shown.coach; };
+      await __wait(30);
+      r.up = await cover();
+      // another tab: dismissed and uncovered; a toast is the web's, and render refocuses again
+      const d0 = __fpShell.of('dismiss').length;
+      switchTab('log'); switchLogSub('body'); await __wait(30);
+      const t0 = __fpShell.of('toast').length;
+      showToast('Saved');
+      const field = () => document.getElementById('bwVal'); field().focus(); render(); await __wait(20);
+      r.tab = { dismissed: __fpShell.of('dismiss').length - d0, covered: _fpCovered(), toShell: __fpShell.of('toast').length - t0,
+        web: document.getElementById('toast').classList.contains('show'), refocus: document.activeElement === field() };
+      // Back and Open Settings, as the native chat sends them
+      r.backUp = await cover(); await FPScreens.call('coach.back', {}); await __wait(20);
+      r.back = { covered: _fpCovered(), view: coachView };
+      r.settingsUp = await cover(); await FPScreens.call('coach.openSettings', {}); await __wait(20);
+      r.settings = { covered: _fpCovered(), tab: currentTab };
+      // a model the page cannot build takes the screen down
+      r.brokenUp = await cover();
+      const real = _coachModel; _coachModel = () => { throw new Error('boom'); };
+      render(); await __wait(30);
+      r.broken = { covered: _fpCovered(), shown: !!_fp.shown.coach, off: _fp.off.coach };
+      _coachModel = real;
+      return r;
+    }, IN_PAGE);
+    assert(out.up, 'the native chat is up and the shell says covered');
+    assert(out.tab.dismissed === 1 && !out.tab.covered && out.tab.toShell === 0 && out.tab.web && out.tab.refocus, 'another tab: dismissed, uncovered, the web\'s toast, refocus again: ' + JSON.stringify(out.tab));
+    assert(out.backUp && !out.back.covered && out.back.view === 'home', 'Back: uncovered: ' + JSON.stringify(out.back));
+    assert(out.settingsUp && !out.settings.covered && out.settings.tab === 'settings', 'Open Settings: uncovered: ' + JSON.stringify(out.settings));
+    assert(out.brokenUp && !out.broken.covered && !out.broken.shown && out.broken.off === 'model', 'a model that throws: down and uncovered: ' + JSON.stringify(out.broken));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+  // the shell said covered, then would not present
+  const refused = await shellBoot('coach');
+  try {
+    const out = await refused.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30); __fpShell.refuse.present = 'cannot present';
+      await FPScreens.call('shell.covered', { on: true });
+      await __open(); await __wait(40);
+      return { off: _fp.off.coach, covered: _fpCovered(), web: !!document.getElementById('coach-input') };
+    }, IN_PAGE);
+    assert(out.off === 'present' && !out.covered && out.web, 'a refused present: the web chat, uncovered: ' + JSON.stringify(out));
+    assert(refused.errors.length === 0, 'no page errors: ' + refused.errors.join('|'));
+  } finally { await refused.close(); }
+});
+
 serial('C3: every intent of contract v1 (FPCore intents.json) is known, and refuses missing arguments; no shell, no bridge', async () => {
   const intents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
   const app = await shellBoot('coach');
