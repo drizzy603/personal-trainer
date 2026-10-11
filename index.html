@@ -6954,11 +6954,7 @@ function coachCardAction(label){
     if(act && act.type==='lift' && act.dayName){ openDeckRunner(act.dayName); return; }
   }
   if(/pace|run/.test(low)){ switchTab('log'); switchLogSub('run'); return; }
-  coachView='chat'; currentTab='coach'; render();
-  setTimeout(function(){
-    var ta=document.getElementById('coach-input');
-    if(ta){ ta.value=l; sendCoachMessage(); }
-  }, 250);
+  _coachAsk(l);
 }
 // Local-only fallback that never blocks the screen.
 function fallbackCoachCard(activity){
@@ -7117,38 +7113,8 @@ function handleCoachCardAsk(ev){
   if(!v) return;
   if(coachLoading) return;   // never start a second concurrent turn
   // Pipe the question into the Coach tab as a fresh user message.
-  switchTab('coach');
-  coachView = 'chat';
-  _pushCoach({role:'user', content:v});
-  saveCoachHistory();
   coachCardAskOpen = false;
-  coachLoading = true; _coachTurnAt = Date.now();
-  streamingContent = '';
-  render();
-  scrollChatBottom();
-  _coachSay('Coach is thinking');
-  var myGen=_coachGen;
-  runCoachTurn(buildSystemPrompt(), coachModel, 16384).then(function(){
-    if(myGen!==_coachGen) return;
-    coachLoading = false;
-    streamingContent = '';
-    var _wasEnd = _chatAtEnd();
-    render();
-    if(_wasEnd) scrollChatToReply();
-    _coachSayLast();
-  }).catch(function(err){
-    // B8 — surface network / API errors instead of leaving the user staring at
-    // an empty "Thinking…" forever.
-    if(myGen!==_coachGen) return;
-    coachLoading = false;
-    streamingContent = '';
-    _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Tap a chip or send the message again.', _error:true, _local:true});
-    saveCoachHistory();
-    var _wasEnd = _chatAtEnd();
-    render();
-    if(_wasEnd) scrollChatToReply();
-    _coachSayLast();
-  });
+  _coachAsk(v, {errNote:function(em){ return 'Coach didn\'t respond ('+em+'). Tap a chip or send the message again.'; }});
 }
 
 // ── Exercise trend peek (Today marquee) ──────────────────────────────────────
@@ -7812,18 +7778,14 @@ function startPlateauFix(){
   var pl=_plateauLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyPlateauFixLocal(); return; }
-  lsSet('kt_last_plateau_week', currentWeek);
   var msg='These lifts have plateaued (no new estimated-1RM peak): '+
     pl.map(function(x){ return x.name+' at ~'+fmtW(x.e1rm)+' for '+x.days+' days'; }).join('; ')+
     '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
     '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
     'Briefly explain why, then make the edit.';
-  switchTab('coach');
-  openCoachChat();
-  setTimeout(function(){
-    var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
-  }, 250);
+  // The week's stamp goes with its question: one the coach could not take (a reply in flight) leaves
+  // the card for another tap.
+  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_plateau_week', currentWeek);
 }
 
 // ── Proactive coach: earned progression ──────────────────────────────────────
@@ -7870,17 +7832,11 @@ function startProgression(){
   var pl=_progressionLifts();
   if(!pl.length) return;
   if(!getApiKey()){ applyProgressionLocal(); return; }
-  lsSet('kt_last_prog_week', currentWeek);
   var msg='Last week these main lifts hit every set cleanly: '+
     pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
     '. Propose a +'+_plateBarDisp()+' '+_uW()+' progression on each from this week on and apply it to my routine with your tools. '+
     'Briefly note why, then make the edits.';
-  switchTab('coach');
-  openCoachChat();
-  setTimeout(function(){
-    var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
-  }, 250);
+  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_prog_week', currentWeek);   // the stamp goes with its question
 }
 
 // Keyless apply: the earned bump written on-device — the same write the
@@ -8000,7 +7956,6 @@ function startRecoveryAdjust(){
   var _seedLabel='Recovery check';
   var r=lsGet('kt_readiness');
   if(!r) return;
-  lsSet('kt_readiness_adj_seen', todayISO());
   var bits=[];
   if(r.parts && r.parts.sleep!=null) bits.push(r.parts.sleep+'h sleep');
   if(r.parts && r.parts.hrvDelta!=null) bits.push('HRV '+(r.parts.hrvDelta>=0?'+':'')+r.parts.hrvDelta+'%');
@@ -8009,12 +7964,7 @@ function startRecoveryAdjust(){
   var msg='My readiness today is '+r.score+'/100'+(bits.length?' ('+bits.join(', ')+')':'')+
     '. Today is '+(act.dayName||'a training day')+'. Propose ONE adjustment — lighter loads (about 10% off, cap RPE 7) '+
     'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
-  switchTab('coach');
-  openCoachChat();
-  setTimeout(function(){
-    var inp=document.getElementById('coach-input');
-    if(inp){ inp.value=msg; sendCoachMessage({seed:_seedLabel}); }
-  }, 250);
+  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_readiness_adj_seen', todayISO());   // the stamp goes with its question
 }
 
 // ── Monthly wrapped ──────────────────────────────────────────────────────────
@@ -9596,7 +9546,7 @@ async function checkPendingShare(){
     coachView = 'chat';
     render();
     if(r.comment){
-      setTimeout(function(){ _fillComposer(r.comment); }, 200);
+      setTimeout(function(){ coachPrefill(r.comment); }, 200);
     }
   } catch(e){}
 }
@@ -12219,7 +12169,7 @@ function _bdAskCoach(){
   switchTab('coach'); coachView='chat'; render();
   // Drafted, not sent: the owner reads it and taps Send. Focus only for a desktop keyboard: on a
   // touch screen a scripted focus raises no keyboard (the box sat focused with no keys).
-  setTimeout(function(){ var ta=_fillComposer('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
+  setTimeout(function(){ var ta=coachPrefill('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
 }
 
 // A superset opener whose partner the owner removed: the partner's entry names it (e.ss). It is
@@ -16001,14 +15951,7 @@ function _buildWeekReviewMsg(){
 }
 function startWeeklyReview(){
   if(!getApiKey()){ openLocalWeekReview(); return; }
-  lsSet('kt_last_review_week', currentWeek);
-  switchTab('coach'); openCoachChat();
-  setTimeout(function(){
-    var ta=document.getElementById('coach-input');
-    if(!ta) return;
-    ta.value=_buildWeekReviewMsg();
-    sendCoachMessage({seed:'Weekly review'});
-  }, 250);
+  if(_coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review'}).ok) lsSet('kt_last_review_week', currentWeek);   // the stamp goes with its question
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
 
@@ -18209,13 +18152,13 @@ function _cmbTakeHTML(t){
     '<div class="kt-cmb-take-body">'+_mdInline(_esc(t))+'</div>'+
   '</div>';
 }
+// A %% action chip: its message goes as the chat's own buttons send (sendCoachChip): through the
+// composer while it is on screen, else straight to coachSend. It used to drop the message whenever
+// there was no composer.
 function coachBlockAction(el){
   var m=el.getAttribute('data-msg')||'';
   if(!m || coachLoading) return;
-  var inp=document.getElementById('coach-input');
-  if(!inp) return;
-  inp.value=m;
-  sendCoachMessage();
+  sendCoachChip(m);
 }
 
 function getCoachChips(){
@@ -20546,8 +20489,92 @@ function _cachedCoachTools(){
 }
 function clearPendingImage(){pendingImage=null;render();}
 
-// o.seed: a prompt the app wrote on the owner's behalf (a plateau check, a weekly review) shows
-// as that label, not as the owner's words; the API still gets the whole prompt.
+// coachSend(text, o): the one way a message reaches the coach, and it needs no DOM. The web composer's
+// Send (sendCoachMessage), the chat's chips and %% actions, Today's card and Ask box, the plateau,
+// progression, recovery and weekly-review cards, and the native chat (FPScreens coach.send) all come
+// through here. Every entry point used to write #coach-input and call sendCoachMessage, so with no
+// composer on screen (the native chat has none) the question was dropped, after the card's week
+// stamp had already been written.
+// It answers at once: {ok:true, done} once the message is in the chat and its turn has started (done
+// resolves when the turn ends: true when it ended in its own generation, false when Stop or Clear chat
+// abandoned it), or {ok:false, error}: 'busy' (a reply is in flight: never a second turn at once) or
+// 'empty' (no words and no photo).
+//   o.seed: a prompt the app wrote on the owner's behalf (a plateau check, a weekly review) shows as
+//     that label, not as the owner's words; the API still gets the whole prompt.
+//   o.image {mediaType, data}: a photo the native composer picked (base64, no data: prefix).
+//   o.usePending: send with the page's pending photo, the one the composer shows (the web composer's
+//     Send always does).
+//   o.nonce: the native send's own id. A nonce sends once: the last 20 are remembered, and a send
+//     with one of them answers {ok:true, duplicate:true} and sends nothing.
+//   o.errNote(message): the chat's note when the turn itself throws (each entry point keeps its words).
+var _coachNonces=[];   // [{n, m}] newest last: the nonce and the message it sent
+function coachSend(text, o){
+  o=(o && typeof o==='object') ? o : {};
+  var nonce=o.nonce!=null && o.nonce!=='' ? String(o.nonce) : '';
+  if(nonce){ for(var ni=0; ni<_coachNonces.length; ni++) if(_coachNonces[ni].n===nonce) return {ok:true, duplicate:true}; }
+  if(coachLoading) return {ok:false, error:'busy'};
+  var msg=String(text==null?'':text).trim(), img=null;
+  if(o.image && typeof o.image==='object' && o.image.data) img={mediaType:String(o.image.mediaType||'image/jpeg'), data:String(o.image.data)};
+  else if(o.usePending && pendingImage) img=pendingImage;
+  if(!msg && !img) return {ok:false, error:'empty'};
+
+  var content, preview=null;
+  if(img){
+    content=[
+      {type:'image',source:{type:'base64',media_type:img.mediaType,data:img.data}},
+      {type:'text',text:msg||'Please look at this image and give me relevant training or nutrition feedback.'}
+    ];
+    preview=img.previewUrl||('data:'+img.mediaType+';base64,'+img.data);
+    if(img===pendingImage) pendingImage=null;
+  }else{
+    content=msg;
+  }
+
+  var _um={role:'user',content:content,_preview:preview};
+  if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
+  if(o.seed) _um._seed=String(o.seed);
+  _pushCoach(_um);
+  if(nonce){ _coachNonces.push({n:nonce, m:_um}); if(_coachNonces.length>20) _coachNonces.shift(); }
+  saveCoachHistory();
+  coachLoading=true; _coachTurnAt=Date.now();
+  streamingContent='';
+  render();
+  scrollChatBottom();
+  _coachSay('Coach is thinking');
+  return {ok:true, done:_coachTurnRun(o.errNote)};
+}
+// The turn a sent message starts: chat or intake prompt and model, the reply (or the failure) in the
+// chat, the chat repainted where the reader is. Resolves true when it ended in its own generation.
+function _coachTurnRun(errNote){
+  var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
+  var model=intakeMode?COACH_SONNET:coachModel;
+  // Intake gets extra headroom: adaptive thinking + programme JSON under the
+  // Sonnet tokenizer can overflow 16K.
+  var maxTok=intakeMode?24576:16384;
+  // A Stopped turn's pending await can resolve minutes later — its finally
+  // must not clear the loading state of a NEWER turn the user has started.
+  var myGen=_coachGen;
+  return runCoachTurn(systemPrompt,model,maxTok).then(function(){ return true; }, function(err){
+    if(myGen!==_coachGen) return false;
+    // B8 — push a synthetic assistant message on failure so the user can
+    // see what went wrong (network, auth, schema mismatch). Otherwise the
+    // typing dots disappear with no feedback.
+    var em=(err&&err.message)||'network error';
+    _pushCoach({role:'assistant', content:typeof errNote==='function' ? errNote(em) : 'Coach didn\'t respond ('+em+'). Check your API key in Settings.', _error:true, _local:true});
+    saveCoachHistory();
+    return true;
+  }).then(function(){
+    if(myGen!==_coachGen) return false;
+    coachLoading=false;
+    streamingContent='';
+    var _wasEnd=_chatAtEnd();
+    render();
+    if(_wasEnd) scrollChatToReply();
+    _coachSayLast();
+    return true;
+  });
+}
+// The web composer's Send: what the box holds (and the photo it shows), through coachSend.
 async function sendCoachMessage(o){
   var inp=document.getElementById('coach-input');
   if(!inp)return;
@@ -20560,64 +20587,39 @@ async function sendCoachMessage(o){
   if((!msg&&!pendingImage)||coachLoading)return;
   inp.value='';inp.style.height='';
   window._coachKeyAt=0;   // what was typed is sent: a render mid-reply no longer counts as typing (_restoreCoachDraft)
-
-  var content, preview=null;
-  if(pendingImage){
-    content=[
-      {type:'image',source:{type:'base64',media_type:pendingImage.mediaType,data:pendingImage.data}},
-      {type:'text',text:msg||'Please look at this image and give me relevant training or nutrition feedback.'}
-    ];
-    preview=pendingImage.previewUrl;
-    pendingImage=null;
-  }else{
-    content=msg;
-  }
-
-  var _um={role:'user',content:content,_preview:preview};
-  if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
-  if(o && typeof o==='object' && o.seed) _um._seed=String(o.seed);
-  _pushCoach(_um);
-  saveCoachHistory();
-  coachLoading=true; _coachTurnAt=Date.now();
-  streamingContent='';
-  render();
-  scrollChatBottom();
-  _coachSay('Coach is thinking');
-
-  var systemPrompt=intakeMode?buildIntakeSystemPrompt():buildSystemPrompt();
-  var model=intakeMode?COACH_SONNET:coachModel;
-  // Intake gets extra headroom: adaptive thinking + programme JSON under the
-  // Sonnet tokenizer can overflow 16K.
-  var maxTok=intakeMode?24576:16384;
-  // A Stopped turn's pending await can resolve minutes later — its finally
-  // must not clear the loading state of a NEWER turn the user has started.
-  var myGen=_coachGen;
-  try{
-    await runCoachTurn(systemPrompt,model,maxTok);
-  }catch(err){
-    if(myGen!==_coachGen) return;
-    // B8 — push a synthetic assistant message on failure so the user can
-    // see what went wrong (network, auth, schema mismatch). Otherwise the
-    // typing dots disappear with no feedback.
-        _pushCoach({role:'assistant', content:'Coach didn\'t respond ('+(err&&err.message||'network error')+'). Check your API key in Settings.', _error:true, _local:true});
-    saveCoachHistory();
-  }finally{
-    if(myGen===_coachGen){
-      coachLoading=false;
-      streamingContent='';
-      var _wasEnd=_chatAtEnd();
-      render();
-      if(_wasEnd) scrollChatToReply();
-      _coachSayLast();
-      if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
-    }
-  }
+  var r=coachSend(msg, {seed:(o && typeof o==='object') ? o.seed : null, usePending:true});
+  if(!r.ok || !(await r.done)) return;
+  if(_hadFocus&&!intakeMode&&!_coarsePointer()) setTimeout(function(){var i=document.getElementById('coach-input');if(i)i.focus();},80);
 }
 
+// The chat's own buttons (an empty chat's suggestions, a reply's %% actions) send their words as if
+// typed: through the composer while the web chat shows it (Send's path, the photo it shows included),
+// and with no composer on screen straight to coachSend, with that photo.
 function sendCoachChip(txt){
   var inp=document.getElementById('coach-input');
-  if(inp){inp.value=txt;}
-  sendCoachMessage();
+  if(inp){ inp.value=txt; sendCoachMessage(); return; }
+  coachSend(txt, {usePending:true});
+}
+// The app's own prompts (Today's card and Ask box, the plateau, progression, recovery and weekly
+// review cards) open the chat and send at once through coachSend: no composer in the way (a draft the
+// owner left in the web one stays theirs, and so does a photo waiting there). The answer is
+// coachSend's: a card writes its week's stamp only when its question went.
+function _coachAsk(text, o){
+  switchTab('coach'); coachView='chat';
+  var r=coachSend(text, o);
+  if(!r.ok){ render(); scrollChatBottom(); }   // busy: the chat, with the reply in flight
+  return r;
+}
+// A message the app drafts for the owner to read and send (Build day's "Ask the coach", a shared
+// photo's comment): into the web composer while it is on screen (_fillComposer), else kept as the
+// composer's draft for the chat's next paint. Returns the web box when it went there, so the caller
+// can focus it for a desktop keyboard.
+function coachPrefill(text){
+  var ta=_fillComposer(text);
+  if(ta) return ta;
+  var t=String(text==null?'':text);
+  _coachDraft={ v:t, s:t.length, e:t.length, focus:false };
+  return null;
 }
 
 // Stop an in-flight coach turn: bump the generation so runCoachTurn abandons
