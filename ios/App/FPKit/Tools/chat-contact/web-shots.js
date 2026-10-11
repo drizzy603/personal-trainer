@@ -12,7 +12,8 @@
 //   node ios/App/FPKit/Tools/chat-contact/web-shots.js <out dir> [fixture,fixture...]
 //
 // Writes <out>/web/<fixture>/<room>-z<zoom>.png (the screen) and <room>-full-z<zoom>.png (the whole
-// conversation). Needs Playwright (tests/node_modules) and tests/lib/harness.js.
+// conversation), for every fixture and every variant below (VARIANTS). Needs Playwright
+// (tests/node_modules) and tests/lib/harness.js.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -27,6 +28,15 @@ const only = onlyArg ? new Set(onlyArg.split(',')) : null;
 const ROOMS = [['heavyweight', 'heavyweight'], ['lime', 'dark']];
 const ZOOMS = [[1, 'z1'], [1.12, 'z112'], [1.25, 'z125']];
 const SAFE_TOP = 47;
+
+// States no fixture holds, drawn as fixtures of their own (FPUITests' CoachRenderTests.variants
+// draws the same natively): a fixture with a draft in the box of four lines and of six. The lines
+// are ComposerTests.lines.
+const DRAFT_LINES = ['Squats hurt.', 'Drop the load,', 'swap to box,', 'or rest a week?', 'And Legs 2?', 'Thanks!'];
+const withDraft = (n) => (fx) => Object.assign({}, fx, {
+  composer: Object.assign({}, fx.composer || {}, { draft: { text: DRAFT_LINES.slice(0, n).join('\n'), nonce: 'draft-' + n + '-lines' } }),
+});
+const VARIANTS = [['draft-4-lines', 'heavyweight-chat', withDraft(4)], ['draft-6-lines', 'heavyweight-chat', withDraft(6)]];
 
 // ── a fixture's bodies back to the text the coach wrote ─────────────────────────────────────────
 const GRAMMAR = JSON.parse(fs.readFileSync(path.join(FIX, 'blocks', 'page-grammar.json'), 'utf8')).cases;
@@ -229,9 +239,10 @@ async function shoot(name, fx, roomName, roomId, zoom, ztag, instead) {
 (async () => {
   const names = fs.readdirSync(path.join(FIX, 'coach')).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)).sort()
     .filter((n) => !only || only.has(n));
-  for (const name of names) {
-    const raw = fs.readFileSync(path.join(FIX, 'coach', name + '.json'), 'utf8');
-    const fx = JSON.parse(raw);
+  const fixture = (name) => JSON.parse(fs.readFileSync(path.join(FIX, 'coach', name + '.json'), 'utf8'));
+  const jobs = names.map((name) => [name, fixture(name)])
+    .concat(VARIANTS.filter(([name]) => !only || only.has(name)).map(([name, base, apply]) => [name, apply(fixture(base))]));
+  for (const [name, fx] of jobs) {
     for (const [roomName, roomId] of ROOMS) {
       for (const [zoom, ztag] of ZOOMS) {
         await shoot(name, fx, roomName, roomId, zoom, ztag);

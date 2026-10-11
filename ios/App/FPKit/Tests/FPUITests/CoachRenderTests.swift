@@ -5,9 +5,10 @@ import XCTest
 @testable import FPUI
 import FPCore
 
-/// Renders the native chat for every coach fixture (plan task C6's acceptance): both rooms × the
-/// phone's light and dark settings × the three text sizes the chat draws at (.large, .xLarge,
-/// .xxLarge), on a 390 × 844 pt screen with an iPhone's safe areas, at 2×. With FPUI_SHOTS set
+/// Renders the native chat for every coach fixture and the variants below (plan task C6's
+/// acceptance): both rooms × the phone's light and dark settings × the three text sizes the chat
+/// draws at (.large, .xLarge, .xxLarge), on a 390 × 844 pt screen with an iPhone's safe areas, at
+/// 2×. With FPUI_SHOTS set
 /// (xcodebuild passes TEST_RUNNER_FPUI_SHOTS), every render is written there as PNG, beside an
 /// unscrolled render of the whole conversation, for the contact sheets
 /// (ios/App/FPKit/Tools/chat-contact). Without it the same matrix renders for one size, so a crash
@@ -19,6 +20,25 @@ final class CoachRenderTests: XCTestCase {
     static let safeBottom: CGFloat = 34
     static let sizes: [(String, DynamicTypeSize)] = [("large", .large), ("xLarge", .xLarge), ("xxLarge", .xxLarge)]
     static let rooms: [(String, Room)] = [("heavyweight", .heavyweight), ("lime", .lime)]
+
+    /// States no fixture holds, drawn as fixtures of their own: a fixture with a draft in the box
+    /// of four lines (every one in view) and of six (four whole lines, the rest a scroll away).
+    /// Tools/chat-contact/web-shots.js draws the same variants on the web.
+    static let variants: [(name: String, base: String, apply: (inout CoachModel) -> Void)] = [
+        ("draft-4-lines", "heavyweight-chat", { $0.composer.draft = Draft(text: ComposerTests.draft(4), nonce: "draft-4-lines") }),
+        ("draft-6-lines", "heavyweight-chat", { $0.composer.draft = Draft(text: ComposerTests.draft(6), nonce: "draft-6-lines") }),
+    ]
+
+    /// Every fixture, then every variant, by name.
+    static func models() throws -> [(String, CoachModel)] {
+        var out = try CoachFixtures.names().map { ($0, try CoachFixtures.model($0)) }
+        for v in variants {
+            var m = try CoachFixtures.model(v.base)
+            v.apply(&m)
+            out.append((v.name, m))
+        }
+        return out
+    }
 
     private var shots: URL? {
         ProcessInfo.processInfo.environment["FPUI_SHOTS"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
@@ -148,16 +168,15 @@ final class CoachRenderTests: XCTestCase {
         try XCTUnwrap(image.pngData()).write(to: url)
     }
 
-    /// Every fixture, both rooms (and an unknown room's own look), light and dark phone settings,
-    /// three text sizes; every render inked, and the phone's setting never changing the chat.
+    /// Every fixture and variant, both rooms (and an unknown room's own look), light and dark phone
+    /// settings, three text sizes; every render inked, and the phone's setting never changing the chat.
     func testEveryFixtureRendersInBothRoomsAppearancesAndSizes() throws {
         FPFonts.register()
         let full = shots != nil
         // FPUI_ONLY=a,b renders only those fixtures (a quick look while iterating on the views)
         let only = ProcessInfo.processInfo.environment["FPUI_ONLY"].map { Set($0.split(separator: ",").map(String.init)) }
         var count = 0
-        for name in try CoachFixtures.names() where only?.contains(name) ?? true {
-            let base = try CoachFixtures.model(name)
+        for (name, base) in try Self.models() where only?.contains(name) ?? true {
             var rooms = Self.rooms.map { ($0.0, CoachFixtures.model(base, in: $0.1)) }
             if case .other(let id) = base.room { rooms.append((id, base)) }
             for (roomName, model) in rooms {

@@ -94,7 +94,22 @@ struct CoachComposer: View {
         }
     }
 
-    /// 16 px on a 22 px line: one line is 44 pt (the row 58), at most about five lines.
+    /// The most lines the box shows before it scrolls.
+    static let maxLines = 4
+
+    /// The height of `lines` whole lines of `font` laid out on a `line`-point pitch: the last line
+    /// ends at the face's own height (the pitch's extra is between lines), rounded up to the whole
+    /// point the text view rounds its content to.
+    static func textHeight(lines: Int, line: CGFloat, font: UIFont) -> CGFloat {
+        guard lines > 0 else { return 0 }
+        return (CGFloat(lines) * line - max(0, line - font.lineHeight)).rounded(.up)
+    }
+
+    /// 16 px on a 22 px line: one line is 44 pt (the row 58). The box grows with the draft to four
+    /// whole lines and then scrolls inside them, the newest line in view while typing (the web's
+    /// box grows to its 120 px cap). The cap is a frame of four 22 px lines: SwiftUI's own line
+    /// limit counts lines of the face's height (17.4 pt at 16 pt), not the 22 px pitch this field
+    /// lays them out on, and cut the fourth line of a four-line draft through its letters.
     private var field: some View {
         let font = t.uiFont(.body, 16, 400)
         let line = t.px(22)
@@ -113,8 +128,9 @@ struct CoachComposer: View {
                 .tracking(t.bodyTracking)
                 .foregroundStyle(t.color(.text))
                 .tint(t.color(.composerFocus))
-                .lineLimit(1...4)
+                .lineLimit(1...)
                 .lineSpacing(max(0, line - font.lineHeight))
+                .frame(maxHeight: Self.textHeight(lines: Self.maxLines, line: line, font: font))
                 .padding(.vertical, (t.px(44) - font.lineHeight) / 2)
                 .padding(.leading, lead)
                 .padding(.trailing, t.px(8))

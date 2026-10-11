@@ -59,17 +59,18 @@ link from model text: runs go in verbatim with explicit faces, never through
 | `Coach/CoachMessageViews.swift` | The column's parts in the web's order and rhythm: day dividers, seeds, the owner's bubble, replies, notes, Try again / Open Settings, tool pills, PLAN CHANGES, Thinking |
 | `Coach/CoachBlockViews.swift` | md()'s blocks (paragraphs, lists with sub-items and numbered starts, headings, rules, tables in a horizontal scroller) and the `%%` sections (metric cards, the takeaway, chips), with the web's collapsing margins |
 | `Coach/CoachInline.swift` | Runs to text: bold, italic and code to their faces, never a link |
-| `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field, 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
+| `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field that grows to four whole lines, then scrolls inside them; 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
 | `Coach/CoachEmptyState.swift`, `Coach/CoachOverlays.swift`, `Coach/CoachLayout.swift` | The empty chat; forwarded toasts and confirms; the flow and table layouts and the page's icons |
 
 FPUITests (`xcodebuild test` on an iOS simulator) read the coach fixtures from
-`Tests/FPCoreTests/Fixtures/coach` in the source tree. `CoachRenderTests` renders every fixture in
-both rooms, with the phone set to light and to dark (the two must be the same pixels: the chat wears
-its room, not the phone's setting), on a 390 × 844 pt screen with a phone's safe areas. With
+`Tests/FPCoreTests/Fixtures/coach` in the source tree. `CoachRenderTests` renders every fixture, and
+the variants it adds (`draft-4-lines`, `draft-6-lines`: a draft no fixture holds), in both rooms,
+with the phone set to light and to dark (the two must be the same pixels: the chat wears its room,
+not the phone's setting), on a 390 × 844 pt screen with a phone's safe areas. With
 `TEST_RUNNER_FPUI_SHOTS=<dir>` it renders `.large`, `.xLarge` and `.xxLarge` and writes the PNGs there,
 each whole conversation too (`TEST_RUNNER_FPUI_ONLY=a,b` limits it to some fixtures); without it,
 `.large` only. `Tools/chat-contact/run.sh <simulator UDID> <shots dir> <sheets dir>` adds the web
-chat drawn for the same fixtures by Playwright (`web-shots.js`, through `tests/lib/harness.js`, at
+chat drawn for the same fixtures and variants by Playwright (`web-shots.js`, through `tests/lib/harness.js`, at
 the web's zooms 1, 1.12 and 1.25) and builds one contact sheet per room, native beside web
 (`sheet.py`). Use a simulator of your own, never the paired iPhone + Watch.
 
