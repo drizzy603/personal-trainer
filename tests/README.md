@@ -51,3 +51,21 @@ load (a real relaunch does not), `next({wipe | restore | plant | unreadable})`
 changes WebKit behind the facade at the next document start, `fail({...})` makes
 the store answer full, busy, err or nothing, and `status()`, `values()`,
 `conflicts()`, `stagePutBack()` read and act as Settings › About › Storage will.
+
+## The native store on a simulator
+
+```sh
+./tests/native-store.sh               # build as build 60, every scenario on iOS 26.x and 27.0
+./tests/native-store.sh --downgrade   # also build 59 at its own commit: the 59 <-> 60 drill
+```
+
+runs the same facade in the real app: StoreAttach (FPHost) in the real Capacitor
+shell, the real page and FPStore, on the iPhone of each runtime's first paired
+iPhone + Watch. The app's Debug build takes each scenario's steps from launch
+arguments (`-fpProbe`), so nothing writes WebKit's file behind the facade, and
+`tools/native-store.py` reads WebKit's `localstorage.sqlite3` and the store's
+`store.sqlite` itself to decide (migration, writes while hidden and in the
+background, a WebContent kill, the SIGKILL sweep, WebKit unreadable or wiped and
+Put back, the policy file, the store breaker, a crash marker, a scene reconnect,
+an OTA page). It reinstalls the app on that phone and leaves it with the
+scenario seed.

@@ -11,7 +11,9 @@ the owner's data that follows WebKit and never writes it (FPStore, in shadow), a
 `app.kt.trainer` subsystem); later tasks add their files beside them. FPCore holds the shell contract,
 the coach model and the rest of C4, and the policy file's state (S7). FPStore holds the native store
 (plan task S2, see [FPStore](#fpstore-the-native-store) below). The App target links all four products
-(the rest of S1, see [In the app](#in-the-app)), but nothing in the app calls FPKit yet.
+(the rest of S1, see [In the app](#in-the-app)). FPHost attaches the store to the app's web view and fetches
+the policy file (S5, S7; see [FPHost](#fphost-the-store-in-the-app) below): the app calls it from
+`AppDelegate.swift`.
 
 ## Targets
 
@@ -22,8 +24,8 @@ the coach model and the rest of C4, and the policy file's state (S7). FPStore ho
 | FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7) |
 | FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
-Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac. FPHost and FPUI get theirs with
-the tasks that fill them, run by `xcodebuild test` on an iOS simulator.
+Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac; FPHostTests (iOS only), run by
+`xcodebuild test` on an iOS simulator. FPUI gets its own with the tasks that fill it.
 
 ## Rules
 
@@ -110,15 +112,53 @@ node tests/tools/ktstore-vectors.js           # rewrite Vectors/vectors.json
 node tests/tools/ktstore-vectors.js --check   # exit 1 if the committed file is stale
 ```
 
+## FPHost: the store in the app
+
+FPHost binds the store to the shell's web view (plan task S5) and fetches the policy file (S7, the shell half).
+Everything runs on the main thread, where WebKit calls the UI delegate and the message handler; store work the
+page does not wait on goes to a utility queue.
+
+| File | Holds |
+|---|---|
+| `StoreAttach.swift` | `StoreAttach.shared`: `install(webView:pageFolder:)` (from `capacitorDidLoad`) puts KTUIProxy in front of Capacitor's UI delegate and checks it is the delegate; only then does it add the facade's two document-start scripts (the flag, then `ktstore.js`, main frame only) and the async `ktStore` handler. At each document start (the facade's `hello`) the gate decides first: Storage's Native copy switch (`fp.store.off`), the policy file's `store.facade`, a store crash verdict for this (shell build, page build) pair, a launch after a document that never finished booting (`StoreGate`); off means hello is answered off without touching the store. Otherwise the store breaker is armed and the store answers; `bootDone` disarms it. Bound to the web view by weak reference: a newer web view takes over and the older one is detached (`sceneConnected`, `sceneDisconnected`). A checkpoint and the day's snapshot when the app goes to the background. `status()` is what Storage shows. |
+| `KTUIProxy.swift` | The UI delegate proxy: forwards alert, confirm, prompt and createWebViewWith (and, through `responds(to:)`/`forwardingTarget(for:)`, every other method) to Capacitor's handler, so Capacitor's own synchronous prompts (the CapacitorHttp check) still work; answers a `\u0001KT1 ` prompt only from the main frame of a `capacitor://` page, and never forwards one (Capacitor would show it as an alert) |
+| `StoreMarker.swift` | The store's crash marker, `FPStore/store.marker`: a state byte set around every store operation with `pwrite` on a descriptor kept open, so a process that dies inside one leaves it set; the next launch turns the facade off for that pair (and leaves the store closed) until a new shell or page build, or the owner clears it |
+| `PolicyFetch.swift` | `FPPolicy.shared`: `policy.json` from GitHub Pages (beside build.txt) at launch and on foreground, at most every 15 minutes, the last good copy kept in UserDefaults; posts `FPPolicy.changed` (native screens follow at once; the store reads `effective` at each document start) |
+| `StoreProbe.swift` | Debug builds only: the scenario runner's hands inside the app (`-fpProbe <steps>`), for tests/native-store.sh |
+
+The page's `bootDone` will reach StoreAttach through the TrovoShell plugin (plan tasks C5, S6). Until then the
+OTA confirm every page sends on its first paint stands in for it: `TrovoOtaPlugin.confirm` posts
+`.trovoOtaConfirmed` with its web view, and `AppDelegate.swift` hands it to `StoreAttach.bootDone`.
+
+A new store gets `minReader` 60, so a build numbered below 60 refuses its own store from its second launch
+(attach nothing, "minReader"). Release builds get 60 from release-ios.sh; tests/native-store.sh builds with
+`CURRENT_PROJECT_VERSION=60` while the project still says 59.
+
+Debug launch arguments (never read by a Release build): `-fpStoreSwitch on|off`, `-fpClearVerdicts`,
+`-fpClearBreaker`, `-fpBreakProxy`, `-fpIgnoreBootDone`, `-fpIgnoreMarker`, `-fpNoWebKit`, `-fpOffline`,
+`-fpProbe <steps file>` with `-fpProbeLog <name>`, `-fpPolicyFile <path>`, `-fpPolicyEvery <seconds>`.
+
+### tests/native-store.sh
+
+The store on the real App target and the real page, scenario by scenario, on the iOS 26.x and 27.0
+simulators (the phone of each runtime's first paired iPhone + Watch, by UDID): migration, a write while the
+web view is out of the window, background and back, a WebContent kill, a launch without the facade, WebKit
+unreadable, a checkpoint and snapshots racing page writes, the policy file, the store breaker, a planted
+crash marker, no flag without a verified proxy, a scene disconnect and reconnect, an OTA page staged and
+served, WebKit wiped and Put back, the SIGKILL sweep, and with `--downgrade` the 59 <-> 60 drill on build 59
+built at its own commit. `tests/tools/native-store.py` reads WebKit's and the store's SQLite files and
+decides. See the header of `tests/native-store.sh` for its options.
+
 ## In the app
 
 `App.xcodeproj` references this folder as a local package (an `XCLocalSwiftPackageReference` beside
 CapApp-SPM's), and the App target depends on FPCore, FPStore, FPHost and FPUI, linked statically into the
 app like CapApp-SPM. Only the App target's two configurations moved to iOS 17.0. The project level stays at
 15.0 because `cap sync` writes CapApp-SPM's `.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in
-`project.pbxproj`; the widget (16.2), the share extension (15.0) and the watch targets keep theirs. No
-App-target source imports FPKit yet: the tasks that use it add their imports to `AppDelegate.swift`
-(objectVersion 60 means no new App-target files).
+`project.pbxproj`; the widget (16.2), the share extension (15.0) and the watch targets keep theirs.
+`AppDelegate.swift` imports FPHost (objectVersion 60 means no new App-target files): `capacitorDidLoad`
+installs StoreAttach and forwards the OTA confirm as bootDone, and the SceneDelegate starts the policy fetch and
+rebinds the store when a scene connects or disconnects.
 
 Adding the package changed `originHash` in
 `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
@@ -160,8 +200,9 @@ The iOS build of every target, which compiles FPHost and FPUI (no simulator boot
 xcodebuild -scheme FPKit-Package -destination 'generic/platform=iOS Simulator' build
 ```
 
-Every test target on an iOS simulator (FPCoreTests and FPStoreTests today, less KillTests, which is macOS
-only; FPHost's and FPUI's join the scheme when their tasks add them):
+Every test target on an iOS simulator (FPCoreTests, FPStoreTests less KillTests, which is macOS only, and
+FPHostTests: KTUIProxy in a real WKWebView, the crash marker, the policy fetch; FPUI's joins the scheme when
+its tasks add it):
 
 ```sh
 xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>' \
