@@ -45,6 +45,7 @@ public final class StoreAttach: NSObject {
     nonisolated static let bookKey = "fp.store.breakers"
     nonisolated static let handlerName = "ktStore"
     nonisolated static let markerName = "store.marker"
+    nonisolated static let testQuitName = "testquit.json"
 
     // MARK: State
 
@@ -122,6 +123,11 @@ public final class StoreAttach: NSObject {
     public private(set) var document = DocumentState()
     public private(set) var counters = Counters()
     private var lastSnapCheck: Date?
+    /// Storage's "Test: quit after next save": what the armed test waits for (nil: not armed).
+    private var quitArm: StoreTestQuit.Arm?
+    /// The last test quit's record, read at launch; its `after` is filled in at this launch's first document start.
+    public private(set) var testQuit: StoreTestQuit?
+    private var quitFile: StoreTestQuitFile { StoreTestQuitFile(url: directory.appendingPathComponent(Self.testQuitName)) }
     private let work = DispatchQueue(label: "app.kt.trainer.fpstore.attach", qos: .utility)
     #if DEBUG
     var debug = DebugOptions()
@@ -173,6 +179,7 @@ public final class StoreAttach: NSObject {
             Self.log.error("store: the last document never finished booting: this launch runs without the facade")
         }
         saveBook()
+        testQuit = quitFile.read()
         marker.begin(shell: shellBuild, page: pageBuild ?? "unknown")
         if let verdict = book.disabled(piece: CrashMarker.Piece.store.name, shell: shellBuild, page: pageBuild) {
             // The crash may have been in the store's own code: leave it closed for the launch.
@@ -337,6 +344,7 @@ public final class StoreAttach: NSObject {
         if op == "hello" { return hello(head: head, payload: payload, binding: b) }
         guard document.attached, let store else { return nil }
         let answer = timed(op) { store.answer(head: head, payload: payload) }
+        if quitArm != nil, answer == KTProtocol.Answer.ok.rawValue { quitAfterSave(op: op, payload: payload) }
         #if DEBUG
         if let probe = StoreProbe.shared, UIApplication.shared.applicationState != .active, op == "w" || op == "d" {
             let key = KTWire.lines(payload).first.flatMap { KTWire.unquote($0) }.map { String(decoding: $0, as: UTF16.self) }
@@ -360,10 +368,12 @@ public final class StoreAttach: NSObject {
             #if DEBUG
             StoreProbe.shared?.event("hello", ["gate": off.code, "why": off.why, "document": b.documents])
             #endif
+            noteQuitAfter(StoreTestQuit.After(at: now, rule: -1, label: "off: " + off.why))
             return KTProtocol.offAnswer(off.code)
         }
         guard let store else {
             document.offWhy = "store: " + (storeClosedWhy ?? "not open")
+            noteQuitAfter(StoreTestQuit.After(at: now, rule: -1, label: "off: " + (document.offWhy ?? "")))
             return KTProtocol.offAnswer(storeClosedWhy == nil ? "not open" : "crash marker")
         }
         book.store.documentStart(pageBuild: page, at: now)
@@ -381,6 +391,16 @@ public final class StoreAttach: NSObject {
             document.offWhy = "store: " + (reply.why ?? String(answer.prefix(80)))
             book.store.bootDone()
             saveBook()
+        }
+        if testQuit != nil, testQuit?.after == nil {
+            // The first document start after a test quit: what the store found (its record of this hello, or the
+            // facade off when the store did not reconcile).
+            let msNow = Int64((now.timeIntervalSince1970 * 1000).rounded())
+            if let h = store.status().lastHello, h.at >= msNow - 5000 {
+                noteQuitAfter(StoreTestQuit.After(at: now, rule: h.rule, label: h.label, wouldRepair: h.wouldRepair, adopted: h.adopted))
+            } else {
+                noteQuitAfter(StoreTestQuit.After(at: now, rule: -1, label: "off: " + (document.offWhy ?? "no answer")))
+            }
         }
         #if DEBUG
         StoreProbe.shared?.event("hello", ["answer": answer, "ms": document.helloMs ?? 0,
@@ -553,7 +573,7 @@ public final class StoreAttach: NSObject {
         }
     }
 
-    // MARK: Switches for Storage (TrovoStore, plan task S6)
+    // MARK: Storage (Settings > About > Storage through the TrovoStore plugin, plan task S6)
 
     /// Storage's Native copy switch: off from the next document start, on again from the next one.
     public func setDeviceSwitch(on: Bool) {
@@ -567,6 +587,123 @@ public final class StoreAttach: NSObject {
     public func clearCrashVerdicts() {
         book.clearDisabled(piece: CrashMarker.Piece.store.name)
         saveBook()
+    }
+
+    /// The Native copy switch as Storage sets it: on also clears the store's crash verdicts, so a copy paused after a
+    /// crash comes back (from the next launch when the store stayed closed for this one).
+    public func setNativeCopy(on: Bool) {
+        setDeviceSwitch(on: on)
+        if on { clearCrashVerdicts() }
+    }
+
+    public enum StorageError: Error, CustomStringConvertible {
+        case off(String)
+        case failed(String)
+
+        public var description: String {
+            switch self {
+            case .off(let why): return "the native copy is off (\(why))"
+            case .failed(let why): return why
+            }
+        }
+    }
+
+    /// The store when it is open and readable.
+    private func readyStore() throws -> KTStore {
+        guard let store else { throw StorageError.off(storeClosedWhy ?? "not open") }
+        guard case .ready = store.state else { throw StorageError.off(Self.describe(store.state)) }
+        return store
+    }
+
+    /// The values the store gave up in the last 30 days, newest first, as JSON objects (id, at, key, why, h, hnew,
+    /// units); empty when the store is off.
+    public func conflictsJSON(limit: Int) -> [[String: Any]] {
+        guard let store = try? readyStore() else { return [] }
+        let rows = marker.around { store.conflicts(limit: max(1, min(limit, 500))) }
+        return rows.compactMap { Self.jsonObject($0) as? [String: Any] }
+    }
+
+    /// Put back for Storage: what it would do (`preview`), or staged for the next document start, when the facade
+    /// writes the values into WebKit before the page's first script (the plugin then reloads the page). Chosen
+    /// conflicts, a kept snapshot by name, or rule 3's snapshot (`wipe`). Log keys merge by record id; other keys go
+    /// back only while unchanged since (KTStore).
+    public func putBack(conflicts ids: [Int64], snap: String?, wipe: Bool, preview: Bool) throws -> (plan: KTPutBackPlan, staged: Bool) {
+        let store = try readyStore()
+        var name = snap
+        if wipe {
+            guard let offer = store.status().wipeOffer?.snap else {
+                return (KTPutBackPlan(items: [KTPutBackItem(key: "", outcome: .notFound, origin: "snap:wipe")]), false)
+            }
+            name = offer
+        }
+        let plan: KTPutBackPlan = marker.around {
+            if let name { return preview ? store.previewPutBack(snap: name) : store.stagePutBack(snap: name) }
+            return preview ? store.previewPutBack(conflicts: ids) : store.stagePutBack(conflicts: ids)
+        }
+        let staged = !preview && plan.count > 0
+        if staged { Self.log.info("store: Put back staged (\(plan.count) key(s)); the page reloads to write them") }
+        return (plan, staged)
+    }
+
+    /// `putBack` as JSON for the plugin: `{items: [{key, outcome, added?, origin}], count, staged}`.
+    public func putBackJSON(conflicts ids: [Int64], snap: String?, wipe: Bool, preview: Bool) throws -> [String: Any] {
+        let r = try putBack(conflicts: ids, snap: snap, wipe: wipe, preview: preview)
+        return ["items": Self.jsonObject(r.plan.items) ?? [Any](), "count": r.plan.count, "staged": r.staged]
+    }
+
+    /// The store as one JSON document for Storage's Export a copy (every live value; `kt_apikey` is never in it).
+    public func exportCopy() throws -> (data: Data, keys: Int) {
+        let store = try readyStore()
+        do {
+            let data = try marker.around { try store.exportJSON() }
+            return (data, store.status().keys)
+        } catch {
+            throw StorageError.failed("\(error)")
+        }
+    }
+
+    /// Arms "Test: quit after next save" (the TrovoStore plugin offers it on TestFlight and in Debug builds only): the
+    /// next page save of one of `keys` (any key when empty) that the store acknowledges ends the process right after
+    /// the page has its answer. Disarmed by itself after ten minutes, at the next launch, or by `disarmTestQuit()`.
+    /// false when the facade is not attached (no save would be acknowledged).
+    @discardableResult
+    public func armTestQuit(keys: [String]) -> Bool {
+        guard store != nil, document.attached else { return false }
+        quitArm = StoreTestQuit.Arm(at: Date(), keys: Set(keys.filter { !$0.isEmpty }))
+        Self.log.notice("store: test quit armed (\(keys.count) key(s))")
+        return true
+    }
+
+    public func disarmTestQuit() { quitArm = nil }
+
+    public var testQuitArmed: Bool {
+        guard let arm = quitArm else { return false }
+        return !arm.expired(at: Date())
+    }
+
+    /// A save the store acknowledged while the test is armed: when it is one the arm waits for, the record goes to its
+    /// file and the process ends at the next turn of the main queue (before the page's next save can reach the store,
+    /// so no store operation is in flight and no crash marker is left), inside WebKit's lost-write window.
+    private func quitAfterSave(op: String, payload: String?) {
+        guard let arm = quitArm else { return }
+        let now = Date()
+        if arm.expired(at: now) { quitArm = nil; return }
+        let key = KTWire.lines(payload).first.flatMap { KTWire.unquote($0) }.map { String(decoding: $0, as: UTF16.self) }
+        guard arm.fires(op: op, key: key, at: now), let key else { return }
+        quitArm = nil
+        let record = StoreTestQuit(armedAt: arm.at, firedAt: now, key: key, op: op, shell: shellBuild, page: binding?.pageBuild)
+        quitFile.write(record)
+        testQuit = record
+        Self.log.notice("store: test quit after saving \(key, privacy: .public)")
+        DispatchQueue.main.async { kill(getpid(), SIGKILL) }
+    }
+
+    /// The first document start after a test quit: what it found goes into the record.
+    private func noteQuitAfter(_ after: StoreTestQuit.After) {
+        guard var record = testQuit, record.after == nil else { return }
+        record.after = after
+        testQuit = record
+        quitFile.write(record)
     }
 
     // MARK: Status
@@ -595,6 +732,9 @@ public final class StoreAttach: NSObject {
         public var proxy: KTUIProxy.Counts?
         public var pagesAlive: Int
         public var store: KTStatus?
+        /// The last "Test: quit after next save" and what the next launch found.
+        public var testQuit: StoreTestQuit?
+        public var testQuitArmed: Bool
     }
 
     public func status() -> Status {
@@ -608,7 +748,8 @@ public final class StoreAttach: NSObject {
                       skippingThisLaunch: book.store.skipping,
                       crashVerdicts: book.disabled.filter { $0.piece == CrashMarker.Piece.store.name },
                       markerFoundAtLaunch: markerFound?.line, storeClosedWhy: storeClosedWhy, counters: counters,
-                      proxy: binding?.proxy.counts, pagesAlive: pagesAlive, store: store?.status())
+                      proxy: binding?.proxy.counts, pagesAlive: pagesAlive, store: store?.status(),
+                      testQuit: testQuit, testQuitArmed: testQuitArmed)
     }
 
     /// `status()` as a JSON object (for the TrovoStore plugin and the scenario runner).

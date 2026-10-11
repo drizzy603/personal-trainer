@@ -154,10 +154,16 @@ class SuperoViewController: CAPBridgeViewController {
     }
 
     override open func capacitorDidLoad() {
-        // FPKit's native copy of the owner's data (shadow, build 60): KTUIProxy in
-        // front of Capacitor's UI delegate, then the facade at document start.
-        // Bound to this web view; a scene that reconnects binds its own.
         if let webView {
+            // window.__FP_SHELL (shell contract v1) at document start: what this
+            // binary offers the page (no native screen yet) and, in Debug builds,
+            // the test tools' -devNav/-devTheme launch arguments.
+            webView.configuration.userContentController.addUserScript(WKUserScript(
+                source: ShellFlagScript.script(shell: StoreAttach.shared.shellBuild),
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            // FPKit's native copy of the owner's data (shadow, build 60): KTUIProxy in
+            // front of Capacitor's UI delegate, then the facade at document start.
+            // Bound to this web view; a scene that reconnects binds its own.
             StoreAttach.shared.install(webView: webView, pageFolder: bridge?.config.appLocation)
         }
         bootObserver = NotificationCenter.default.addObserver(forName: .trovoOtaConfirmed, object: nil, queue: .main) { [weak self] note in
@@ -176,6 +182,10 @@ class SuperoViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TrovoWidgetPlugin())
         bridge?.registerPluginInstance(TrovoWatchPlugin())
         bridge?.registerPluginInstance(TrovoIconPlugin())
+        // Settings > About > Storage reaches FPKit's native copy through its host.
+        let storePlugin = TrovoStorePlugin()
+        storePlugin.host = StoreHostAdapter()
+        bridge?.registerPluginInstance(storePlugin)
         hideKeyboardAccessoryBar()
         // WebKit can create its content view after this callback; try once more.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.hideKeyboardAccessoryBar() }
@@ -209,6 +219,36 @@ class SuperoViewController: CAPBridgeViewController {
 
 extension Notification.Name {
     static let trovoDeepLink = Notification.Name("TrovoDeepLink")
+}
+
+// ── Hosts for the thin plugins in CapApp-SPM ──────────────────────────────────
+// CapApp-SPM cannot depend on FPKit (the Capacitor CLI rewrites its
+// Package.swift), so each plugin there reaches FPKit through a host protocol
+// the App target implements here.
+
+/// TrovoStore's host: Settings > About > Storage reads and acts on FPKit's
+/// native copy (FPHost StoreAttach) through it.
+final class StoreHostAdapter: TrovoStoreHost {
+    func storeStatus() -> [String: Any] { StoreAttach.shared.statusJSON() }
+
+    func storeConflicts(limit: Int) -> [[String: Any]] { StoreAttach.shared.conflictsJSON(limit: limit) }
+
+    func storePutBack(conflicts: [Int64], snap: String?, wipe: Bool, preview: Bool) throws -> [String: Any] {
+        try StoreAttach.shared.putBackJSON(conflicts: conflicts, snap: snap, wipe: wipe, preview: preview)
+    }
+
+    func storeSetSwitch(on: Bool) -> [String: Any] {
+        StoreAttach.shared.setNativeCopy(on: on)
+        return ["on": StoreAttach.shared.deviceSwitchOn]
+    }
+
+    func storeExport() throws -> (data: Data, keys: Int) { try StoreAttach.shared.exportCopy() }
+
+    func storeArmTestQuit(_ on: Bool, keys: [String]) -> Bool {
+        if on { return StoreAttach.shared.armTestQuit(keys: keys) }
+        StoreAttach.shared.disarmTestQuit()
+        return false
+    }
 }
 
 // URL opens and user activities arrive on the scene under the UIScene
