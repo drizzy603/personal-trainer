@@ -813,9 +813,10 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           const ta = document.getElementById('coach-input');
           r.ph = { text: ta.placeholder, value: ta.value, sh: ta.scrollHeight, ch: ta.clientHeight, ws: getComputedStyle(ta, '::placeholder').whiteSpace };
           { const cs = getComputedStyle(ta), sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-family:' + cs.fontFamily + ';font-size:' + cs.fontSize + ';font-weight:' + cs.fontWeight;
-            const room = ta.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * (parseFloat(document.documentElement.style.zoom) || 1) + 0.5;
+            const zz = parseFloat(document.documentElement.style.zoom) || 1, room = ta.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * zz + 0.5;
+            const appRoom = ta.getBoundingClientRect().width - (parseFloat(cs.paddingLeft) + 2) * zz;   // _fitPlaceholder's own rule: the text may use the right padding but 2px
             sp.textContent = ta.placeholder; ta.parentNode.appendChild(sp); r.ph.fits = sp.getBoundingClientRect().width <= room;
-            sp.textContent = 'Message Coach\u2026'; r.ph.wholeFits = sp.getBoundingClientRect().width <= room; sp.remove(); }
+            sp.textContent = 'Message Coach\u2026'; r.ph.wholeFits = sp.getBoundingClientRect().width <= appRoom; sp.remove(); }
           // nothing overflows its own box or the scroller
           r.over = [...list.querySelectorAll('*')].filter((e) => !e.classList.contains('kt-sr') && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'auto' && e.clientWidth > 0).map((e) => e.className || e.tagName).slice(0, 5);
           r.past = [...list.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > lr.right + 1; }).map((e) => e.className || e.tagName).slice(0, 5);
@@ -859,10 +860,10 @@ serial('S2: message parts wear the room\'s tokens; nothing runs off the column a
           // setup's placeholder: the whole "Answer the Coach…" where it fits (its box has no attach button)
           _setIntakeMode(true); render(); await wait(60);
           { const ti = document.getElementById('coach-input'), cs = getComputedStyle(ti), sp = document.createElement('span'); sp.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-family:' + cs.fontFamily + ';font-size:' + cs.fontSize + ';font-weight:' + cs.fontWeight;
-            const room = ti.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * z + 0.5;
+            const room = ti.getBoundingClientRect().width - parseFloat(cs.paddingLeft) * z + 0.5, appRoom = ti.getBoundingClientRect().width - (parseFloat(cs.paddingLeft) + 2) * z;
             sp.textContent = ti.placeholder; ti.parentNode.appendChild(sp);
             r.phIntake = { text: ti.placeholder, fits: sp.getBoundingClientRect().width <= room };
-            sp.textContent = 'Answer the Coach\u2026'; r.phIntake.wholeFits = sp.getBoundingClientRect().width <= room; sp.remove(); }
+            sp.textContent = 'Answer the Coach\u2026'; r.phIntake.wholeFits = sp.getBoundingClientRect().width <= appRoom; sp.remove(); }
           _setIntakeMode(false); render();
           return r;
         }, zoom).catch((e) => ({ err: String(e) }));

@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#f7f5ef"/>
-<meta name="build" content="20261010-2"/>
+<meta name="build" content="20261010-3"/>
 <meta name="update-channel" content="https://drizzy603.github.io/personal-trainer/index.html"/>
 <script>
 // ── On-device error log ──────────────────────────────────────────────────────
@@ -18143,7 +18143,7 @@ function _metricsFit(root){
   }
 }
 try{
-  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ var s=document.getElementById('screen'); if(s) _metricsFit(s); });
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ var s=document.getElementById('screen'); if(s) _metricsFit(s); if(document.documentElement.classList.contains('kt-chat')) _fitPlaceholder(); });   // a late face can change whether the whole placeholder fits
   var _mfT=null;
   window.addEventListener('resize', function(){ clearTimeout(_mfT); _mfT=setTimeout(function(){ var s=document.getElementById('screen'); if(s && document.documentElement.classList.contains('kt-chat')){ _metricsFit(s); _fitPlaceholder(); } }, 120); });
 }catch(e){}
