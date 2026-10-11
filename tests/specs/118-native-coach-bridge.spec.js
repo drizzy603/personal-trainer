@@ -114,7 +114,7 @@ serial('C1: with no #coach-input each entry point sends one user message and one
   } finally { await app.close(); }
 });
 
-serial('C1: with the web chat on screen the app\'s prompts still go through its composer (Send\'s path), as on next; the stamp only when the question went', async () => {
+serial('C1: with the web chat on screen the app\'s prompts still go through its composer (Send\'s path), as on next; the stamp only when the question went (a prompt that waits for a reply in flight keeps its label and stamp for the owner\'s Send)', async () => {
   const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' } });
   try {
     const out = await app.page.evaluate(async (COACH_API) => {
@@ -138,12 +138,28 @@ serial('C1: with the web chat on screen the app\'s prompts still go through its 
       startPlateauFix(); await __wait(30);
       r.busy = { box: document.getElementById('coach-input').value, stamp: lsGet('kt_last_plateau_week'), users: coachMessages.filter((m) => m.role === 'user').length };
       coachLoading = false;
+      // the reply has landed: the owner's Send takes the prompt as the app wrote it, with its label and its card's stamp
+      window.__turns = [];
+      sendCoachMessage(); await __idle();
+      const u2 = coachMessages.filter((m) => m.role === 'user');
+      r.later = { users: u2.length, seed: u2[u2.length - 1]._seed || null, turns: __turns.length, stamp: lsGet('kt_last_plateau_week'), box: document.getElementById('coach-input').value, due: _plateauFixDue() };
+      // a waiting prompt the owner rewrites goes as their words: no label, no stamp, and the card stays
+      lsDel('kt_last_plateau_week'); switchTab('log'); coachLoading = true;
+      startPlateauFix(); await __wait(30);
+      coachLoading = false;
+      document.getElementById('coach-input').value += ' Keep it short.';
+      sendCoachMessage(); await __idle();
+      const u3 = coachMessages.filter((m) => m.role === 'user');
+      r.edited = { users: u3.length, seed: u3[u3.length - 1]._seed || null, stamp: lsGet('kt_last_plateau_week'), due: _plateauFixDue() };
       return r;
     }, COACH_API);
     assert(out.mocked.seen.length === 1 && /^These lifts have plateaued/.test(out.mocked.seen[0].box) && out.mocked.seen[0].seed === 'Plateau check' && out.mocked.stamp == null &&
       out.mocked.view === 'chat' && out.mocked.tab === 'coach', 'the prompt goes into the composer and Send; nothing sent, nothing stamped: ' + JSON.stringify(out.mocked));
     assert(out.sent.users === 1 && out.sent.seed === 'Plateau check' && out.sent.turns === 1 && out.sent.stamp === out.sent.week && out.sent.box === '', 'sent through Send: one message, one call, the stamp: ' + JSON.stringify(out.sent));
     assert(/^These lifts have plateaued/.test(out.busy.box) && out.busy.stamp == null && out.busy.users === 1, 'busy: the prompt waits in the box, no stamp: ' + JSON.stringify(out.busy));
+    assert(out.later.users === 2 && out.later.seed === 'Plateau check' && out.later.turns === 1 && out.later.stamp === out.sent.week && out.later.box === '' && out.later.due === false,
+      'the waiting prompt sent later keeps its label and writes its card\'s stamp: ' + JSON.stringify(out.later));
+    assert(out.edited.users === 3 && out.edited.seed === null && out.edited.stamp == null && out.edited.due === true, 'a rewritten prompt is the owner\'s message: no label, no stamp: ' + JSON.stringify(out.edited));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });
@@ -436,6 +452,38 @@ serial('C3: under the native chat one send per nonce; chips and actions by id; t
       const e = out.entries[name];
       assert(e.users === 1 && e.turns === 1 && !e.input && e.shown && e.ph, name + ': one message, one API call, the native chat up: ' + JSON.stringify(e));
     }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// A card tapped while a reply is in flight, under the native chat: coachSend answered busy and the
+// question was dropped (the owner landed in the chat and it was not there). It waits as the
+// composer's draft, the native chat's place for the web's box, with its label and its card's stamp.
+serial('C3: under the native chat a card tapped while a reply is in flight waits as the composer\'s draft, and keeps its label and stamp for the owner\'s Send', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30); await __open();
+      window._progressionLifts = () => [{ name: 'Bench Press', weight: 185, rpe: 7, sets: 3 }];
+      lsDel('kt_last_prog_week'); switchTab('log'); await __wait(20);
+      coachLoading = true;
+      startProgression(); await __wait(30);
+      const d = __model().composer.draft;
+      r.busy = { shown: !!_fp.shown.coach, draft: d && d.text, users: __users(), stamp: lsGet('kt_last_prog_week'), due: _progressionDue() };
+      coachLoading = false; render(); await __wait(20);
+      const t0 = __turns.length;
+      r.send = d ? await FPScreens.call('coach.send', { text: d.text, nonce: 'n-wait' }) : null; await __idle();
+      const users = coachMessages.filter((m) => m.role === 'user');
+      r.after = { users: users.length, seed: users.length ? users[users.length - 1]._seed || null : null, turns: __turns.length - t0, stamp: lsGet('kt_last_prog_week'), week: currentWeek,
+        due: _progressionDue(), draft: __model().composer.draft, label: (__model().messages.filter((m) => m.role === 'user').slice(-1)[0] || {}).seed };
+      return r;
+    }, IN_PAGE);
+    assert(out.busy.shown && /^Last week these main lifts/.test(out.busy.draft) && out.busy.users === 0 && out.busy.stamp == null && out.busy.due === true,
+      'busy: the chat opens with the prompt as its composer\'s draft, nothing sent or stamped: ' + JSON.stringify(out.busy));
+    assert(out.send && out.send.ok && out.after.users === 1 && out.after.seed === 'Progression check' && out.after.label === 'Progression check' && out.after.turns === 1 &&
+      out.after.stamp === out.after.week && out.after.due === false && out.after.draft === null, 'the owner sends it: its label, its stamp, the draft spent: ' + JSON.stringify(out.after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

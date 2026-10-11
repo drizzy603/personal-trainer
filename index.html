@@ -7800,9 +7800,9 @@ function startPlateauFix(){
     'Briefly explain why, then make the edit.';
   switchTab('coach');
   openCoachChat();
-  // The week's stamp goes with its question: one the coach could not take (a reply in flight) leaves
-  // the card for another tap.
-  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_plateau_week', currentWeek);
+  // The week's stamp goes with its question: one that waits for a reply in flight (in the composer)
+  // is stamped when the owner sends it, and the card stays until then.
+  _coachAsk(msg, {seed:_seedLabel, stamp:['kt_last_plateau_week', currentWeek]});
 }
 
 // ── Proactive coach: earned progression ──────────────────────────────────────
@@ -7855,7 +7855,7 @@ function startProgression(){
     'Briefly note why, then make the edits.';
   switchTab('coach');
   openCoachChat();
-  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_prog_week', currentWeek);   // the stamp goes with its question
+  _coachAsk(msg, {seed:_seedLabel, stamp:['kt_last_prog_week', currentWeek]});   // the stamp goes with its question
 }
 
 // Keyless apply: the earned bump written on-device — the same write the
@@ -7985,7 +7985,7 @@ function startRecoveryAdjust(){
     'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
   switchTab('coach');
   openCoachChat();
-  if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_readiness_adj_seen', todayISO());   // the stamp goes with its question
+  _coachAsk(msg, {seed:_seedLabel, stamp:['kt_readiness_adj_seen', todayISO()]});   // the stamp goes with its question
 }
 
 // ── Monthly wrapped ──────────────────────────────────────────────────────────
@@ -15975,7 +15975,7 @@ function _buildWeekReviewMsg(){
 function startWeeklyReview(){
   if(!getApiKey()){ openLocalWeekReview(); return; }
   switchTab('coach'); openCoachChat();
-  if(_coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review'}).ok) lsSet('kt_last_review_week', currentWeek);   // the stamp goes with its question
+  _coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review', stamp:['kt_last_review_week', currentWeek]});   // the stamp goes with its question
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
 
@@ -20691,6 +20691,10 @@ function coachSend(text, o){
   if(o.image && typeof o.image==='object' && o.image.data){ img={mediaType:String(o.image.mediaType||'image/jpeg'), data:String(o.image.data)}; if(nonce) imgKey='n:'+nonce; }
   else if(o.usePending && pendingImage){ img=pendingImage; imgKey=pendingImage.key||null; }
   if(!msg && !img) return {ok:false, error:'empty'};
+  // The app's prompt that waited for a reply in flight (_coachAsk), sent as the app wrote it: its label
+  // and its card's stamp go with it. Any send ends the wait.
+  var w=_coachWaiting; _coachWaiting=null;
+  if(w && msg!==w.text) w=null;
 
   var content, preview=null;
   if(img){
@@ -20706,9 +20710,10 @@ function coachSend(text, o){
 
   var _um={role:'user',content:content,_preview:preview};
   if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
-  if(o.seed) _um._seed=String(o.seed);
+  if(o.seed) _um._seed=String(o.seed); else if(w && w.seed) _um._seed=w.seed;
   if(imgKey) _um._imgKey=imgKey;
   _pushCoach(_um); _coachSentN++;
+  if(w && w.stamp) lsSet(w.stamp[0], w.stamp[1]);   // the card's stamp goes with its question, never before it
   if(nonce){ _coachNonces.push({n:nonce, m:_um}); if(_coachNonces.length>20) _coachNonces.shift(); }
   // The page's draft (coachPrefill) is spent once its words are sent, from either composer: the native
   // composer was offered it again, and the web composer would fill with it.
@@ -20790,12 +20795,19 @@ function sendCoachChip(txt){
 // once their caller has opened the chat: through the web composer while it is on screen, as they
 // always went (the words in the box, then Send), and with no composer (the native chat) straight to
 // coachSend. They used to wait 250 ms for the composer and drop the question when there was none.
-// {ok}: whether the question went; a card writes its week's stamp only then.
+// o.seed: the label the prompt shows as; o.stamp [key, value]: the card's stamp, written only when
+// its question goes. While a reply is in flight the prompt waits for the owner's Send: in the box (as
+// on next) or as the composer's draft (the native chat's, coachPrefill), and sent as written it keeps
+// its label and writes its stamp then (it went with neither, so the card asked again: a second +5).
+// {ok}: whether the question went now.
+var _coachWaiting=null;   // {text, seed, stamp}: the app's prompt the next send of exactly those words takes up
 function _coachAsk(text, o){
-  var inp=document.getElementById('coach-input');
-  if(!inp) return coachSend(text, o);
-  var n0=_coachSentN;
-  inp.value=text; sendCoachMessage(o);
+  o=(o && typeof o==='object') ? o : {};
+  var t=String(text==null?'':text), inp=document.getElementById('coach-input'), n0=_coachSentN;
+  _coachWaiting={text:t.trim(), seed:o.seed ? String(o.seed) : null, stamp:Array.isArray(o.stamp) ? o.stamp : null};
+  if(inp){ inp.value=t; sendCoachMessage(o); }
+  else if(!coachLoading) coachSend(t, o);
+  else coachPrefill(t);
   return {ok:_coachSentN>n0};
 }
 // A message the app drafts for the owner to read and send (Build day's "Ask the coach", a shared
