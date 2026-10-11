@@ -11,15 +11,15 @@
   },
   "intents": [
     {"name": "ping", "args": {}, "timeout": 2, "answers": "{ok, v}", "does": "Is the page there, and on which contract (the -fpSmoke launch logs: fp: ping ok v1)"},
-    {"name": "shell.covered", "args": {"on": "bool"}, "timeout": 2, "does": "A native screen covers the page: skip programmatic focus while on"},
+    {"name": "shell.covered", "args": {"on": "bool"}, "timeout": 2, "does": "A native screen covers the page: skip programmatic focus while on. The shell sends on:false once its screen is gone, after every dismissal (the owner's and the page's); the page also uncovers itself once it has taken its last native screen down (its own dismiss, a refused present, a model it could not build, screens.off)"},
     {"name": "coach.snapshot", "args": {}, "timeout": 5, "answers": "{ok, json}", "does": "The coach model now, as _nativeJSON(model)"},
     {"name": "coach.send", "args": {"text": "string", "image": "image?", "usePending": "bool?", "nonce": "string"}, "timeout": 2, "does": "Send the owner's message through coachSend; idempotent by nonce (the page remembers 20); usePending sends the page's pending photo"},
     {"name": "coach.chip", "args": {"text": "string", "nonce": "string"}, "timeout": 2, "does": "Send an empty-chat suggestion's words"},
     {"name": "coach.action", "args": {"id": "string", "text": "string"}, "timeout": 2, "does": "A reply's action chip: send text if message id is still the newest reply and nothing is in flight"},
-    {"name": "coach.stop", "args": {}, "timeout": 2, "does": "coachStop"},
-    {"name": "coach.retry", "args": {}, "timeout": 2, "does": "coachRetryLast"},
-    {"name": "coach.keep", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Keep changes or Got it on message id (_ledgerKeep by id)"},
-    {"name": "coach.undo", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Undo on message id (_ledgerUndo by id; its confirm is forwarded)"},
+    {"name": "coach.stop", "args": {}, "timeout": 2, "does": "coachStop; {ok: false, error: 'idle'} with nothing in flight, 'just-sent' in a turn's first half second (as the web Stop: the second tap of a double tap on Send)"},
+    {"name": "coach.retry", "args": {}, "timeout": 2, "does": "coachRetryLast, only where the chat offers Try again (the trailing message's chip is retry): else {ok: false, error: 'stale'}; 'busy' while a reply is in flight"},
+    {"name": "coach.keep", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Keep changes or Got it on message id (_ledgerKeep by id) while the page's card is up: else {ok: false, error: 'stale'}; 'gone' when no message has the id"},
+    {"name": "coach.undo", "args": {"id": "string"}, "timeout": 2, "does": "PLAN CHANGES Undo on message id (_ledgerUndo by id; its confirm is forwarded) only while the page's card offers Undo (its undo point is current): else {ok: false, error: 'stale'} and nothing is asked; 'gone' when no message has the id"},
     {"name": "coach.model", "args": {"model": "string"}, "timeout": 2, "does": "setCoachModel(model): the header switch sends its next"},
     {"name": "coach.back", "args": {}, "timeout": 2, "does": "Back to the Coach home"},
     {"name": "coach.cancelIntake", "args": {}, "timeout": 2, "does": "_confirmCancelIntake (its confirm is forwarded)"},
@@ -35,7 +35,7 @@
   ],
   "answers": {
     "ok": "{ok: true, ...}",
-    "refused": "{ok: false, error}: the page's own reason (stale, busy, loading, gone): not a bridge failure",
+    "refused": "{ok: false, error}: the page's own reason (stale, busy, idle, just-sent, gone, ...): not a bridge failure",
     "failed": "{ok: false, error: 'unknown-intent' | 'bad-args' | 'exception'}, a timeout, a script error or an answer without ok: counted by the 3-failure breaker"
   },
   "messages": [
