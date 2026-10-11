@@ -3,10 +3,12 @@ import Foundation
 // Breakers and crash markers: how a native piece turns itself off (plan task C4; decision.md
 // section 6, "Breakers and switches").
 //
-// - Native breaker, per screen and page build: no `hello` within 15 s of foreground time, or 3 failed
-//   intents in a row (an undecodable model counts as one), turns the screen off for that page build.
-//   A new page build starts clean. LinkState.swift runs it; the record lives here, in BreakerBook,
-//   which the host keeps (UserDefaults) so a trip holds across launches.
+// - Native breaker, per screen and page build: no `hello` within 15 s of foreground time, or 3
+//   failures in a row of one kind (intents into the page, or models from it that do not decode), turns
+//   the screen off for that page build. Each kind keeps its own run, so a bridge broken one way is
+//   caught even while the other way works. A new page build starts clean. LinkState.swift runs it; the
+//   record lives here, in BreakerBook, which the host keeps (UserDefaults) so a trip holds across
+//   launches.
 // - Crash markers: before presenting a native screen the shell writes `presenting <screen>@<page
 //   build> shell <shell build>`; before each synchronous store answer it sets a byte in an open
 //   marker file and clears it after. A marker found at launch means the process died with that piece
@@ -39,14 +41,27 @@ public struct Trip: Codable, Equatable, Sendable {
     }
 }
 
+/// What failed. Each kind counts its own run: a success of one kind restarts only its own count, so
+/// sends that keep failing trip the screen even while models still arrive, and the other way round.
+public enum FailureKind: String, Codable, Equatable, Sendable {
+    /// An intent (Swift to page): a timeout, a script error, a malformed answer, a failure code.
+    case intent
+    /// A model push (page to Swift) that did not decode.
+    case model
+}
+
 /// One screen's breaker for one page build.
 public struct ScreenBreaker: Codable, Equatable, Sendable {
     /// The page build the counts and the trip belong to.
     public var pageBuild: String?
-    /// Failures in a row (a success resets it).
+    /// Failed intents in a row (an intent that works resets it).
     public var failures: Int = 0
-    /// The failures behind the count, newest last (at most the limit).
+    /// The failed intents behind the count, newest last (at most the limit).
     public var recent: [String] = []
+    /// Undecodable models in a row (a model that decodes resets it).
+    public var modelFailures: Int = 0
+    /// The models behind that count, newest last (at most the limit).
+    public var recentModels: [String] = []
     public var trip: Trip?
 
     public init(pageBuild: String?) {
@@ -59,8 +74,13 @@ public struct ScreenBreaker: Codable, Equatable, Sendable {
         pageBuild = (try? c.decodeIfPresent(String.self, forKey: .pageBuild)) ?? nil
         failures = (try? c.decodeIfPresent(Int.self, forKey: .failures)) ?? 0
         recent = (try? c.decodeIfPresent([String].self, forKey: .recent)) ?? []
+        modelFailures = (try? c.decodeIfPresent(Int.self, forKey: .modelFailures)) ?? 0
+        recentModels = (try? c.decodeIfPresent([String].self, forKey: .recentModels)) ?? []
         trip = (try? c.decodeIfPresent(Trip.self, forKey: .trip)) ?? nil
     }
+
+    /// Whether anything would be lost by starting clean: a count of either kind, or a trip.
+    public var isDirty: Bool { failures > 0 || modelFailures > 0 || trip != nil }
 }
 
 /// A piece turned off by a crash marker, for one (shell build, page build) pair.
@@ -286,7 +306,7 @@ public struct BreakerBook: Codable, Equatable, Sendable {
     public mutating func resetIfNewBuild(screen: String, pageBuild: String?) -> Bool {
         guard let b = screens[screen], b.pageBuild != pageBuild else { return false }
         screens[screen] = nil
-        return b.failures > 0 || b.trip != nil
+        return b.isDirty
     }
 
     /// The screen's record for this page build (a fresh one when it has none for it).
@@ -295,28 +315,49 @@ public struct BreakerBook: Codable, Equatable, Sendable {
         return ScreenBreaker(pageBuild: pageBuild)
     }
 
-    /// A failure on the screen: the trip when this one reaches the limit (nil otherwise, and nil when
-    /// it had tripped already).
-    public mutating func recordFailure(screen: String, pageBuild: String?, detail: String, at now: Date, limit: Int) -> Trip? {
+    /// A failure on the screen: the trip when this one brings its kind's run to the limit (nil
+    /// otherwise, and nil when it had tripped already).
+    public mutating func recordFailure(screen: String, pageBuild: String?, kind: FailureKind = .intent, detail: String,
+                                       at now: Date, limit: Int) -> Trip? {
         var b = breaker(screen, pageBuild)
         guard b.trip == nil else { return nil }
-        b.failures += 1
-        b.recent = Array((b.recent + [detail]).suffix(max(limit, 1)))
+        let keep = max(limit, 1)
+        let run: [String]
+        switch kind {
+        case .intent:
+            b.failures += 1
+            b.recent = Array((b.recent + [detail]).suffix(keep))
+            run = b.recent
+        case .model:
+            b.modelFailures += 1
+            b.recentModels = Array((b.recentModels + [detail]).suffix(keep))
+            run = b.recentModels
+        }
+        let count = kind == .intent ? b.failures : b.modelFailures
         var tripped: Trip?
-        if b.failures >= limit {
-            tripped = Trip(reason: .failures, at: now, detail: "\(b.failures) in a row: " + b.recent.joined(separator: ", "))
+        if count >= limit {
+            tripped = Trip(reason: .failures, at: now, detail: "\(count) in a row: " + run.joined(separator: ", "))
             b.trip = tripped
         }
         screens[screen] = b
         return tripped
     }
 
-    /// A success on the screen: the count starts again (a trip stays). True if there was a count.
+    /// A success of this kind on the screen: that kind's count starts again (the other kind's and a
+    /// trip stay). True if there was a count.
     @discardableResult
-    public mutating func recordSuccess(screen: String, pageBuild: String?) -> Bool {
-        guard var b = screens[screen], b.pageBuild == pageBuild, b.failures > 0 else { return false }
-        b.failures = 0
-        b.recent = []
+    public mutating func recordSuccess(screen: String, pageBuild: String?, kind: FailureKind = .intent) -> Bool {
+        guard var b = screens[screen], b.pageBuild == pageBuild else { return false }
+        switch kind {
+        case .intent:
+            guard b.failures > 0 else { return false }
+            b.failures = 0
+            b.recent = []
+        case .model:
+            guard b.modelFailures > 0 else { return false }
+            b.modelFailures = 0
+            b.recentModels = []
+        }
         screens[screen] = b
         return true
     }

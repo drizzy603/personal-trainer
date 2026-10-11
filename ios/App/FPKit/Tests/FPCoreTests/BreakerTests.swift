@@ -98,6 +98,35 @@ final class BreakerTests: XCTestCase {
         XCTAssertEqual(book.screens["coach"]?.pageBuild, "P3")
     }
 
+    /// Intents and models each keep their own run: a success of one kind leaves the other's count.
+    func testEachFailureKindKeepsItsOwnRun() {
+        var book = BreakerBook()
+        _ = book.recordFailure(screen: "coach", pageBuild: "P1", kind: .intent, detail: "timeout", at: t0, limit: 3)
+        _ = book.recordFailure(screen: "coach", pageBuild: "P1", kind: .model, detail: "undecodable model rev 4", at: t0, limit: 3)
+        _ = book.recordFailure(screen: "coach", pageBuild: "P1", kind: .model, detail: "undecodable model rev 5", at: t0, limit: 3)
+        XCTAssertEqual(book.screens["coach"]?.failures, 1)
+        XCTAssertEqual(book.screens["coach"]?.modelFailures, 2)
+        XCTAssertTrue(book.recordSuccess(screen: "coach", pageBuild: "P1", kind: .intent))
+        XCTAssertFalse(book.recordSuccess(screen: "coach", pageBuild: "P1", kind: .intent))
+        XCTAssertEqual(book.screens["coach"]?.modelFailures, 2, "an intent's success leaves the models' run")
+        let trip = book.recordFailure(screen: "coach", pageBuild: "P1", kind: .model, detail: "undecodable model rev 6", at: t0, limit: 3)
+        XCTAssertEqual(trip?.detail, "3 in a row: undecodable model rev 4, undecodable model rev 5, undecodable model rev 6")
+        XCTAssertTrue(book.screens["coach"]?.isDirty ?? false)
+        // a model that decodes restarts the models' run only
+        var other = BreakerBook()
+        _ = other.recordFailure(screen: "coach", pageBuild: "P1", kind: .intent, detail: "timeout", at: t0, limit: 3)
+        _ = other.recordFailure(screen: "coach", pageBuild: "P1", kind: .model, detail: "undecodable model rev 1", at: t0, limit: 3)
+        XCTAssertTrue(other.recordSuccess(screen: "coach", pageBuild: "P1", kind: .model))
+        XCTAssertEqual(other.screens["coach"]?.failures, 1)
+        XCTAssertEqual(other.screens["coach"]?.modelFailures, 0)
+        XCTAssertTrue(other.resetIfNewBuild(screen: "coach", pageBuild: "P2"), "a count of either kind is cleared by a new build")
+        // a book from before the models' run reads with none
+        let older = BreakerBook.decoded(Data(#"{"screens":{"coach":{"pageBuild":"P1","failures":2,"recent":["timeout","timeout"]}}}"#.utf8))
+        XCTAssertEqual(older.screens["coach"]?.failures, 2)
+        XCTAssertEqual(older.screens["coach"]?.modelFailures, 0)
+        XCTAssertEqual(older.screens["coach"]?.recentModels, [])
+    }
+
     func testNoHelloTripsOnce() {
         var book = BreakerBook()
         let trip = book.trip(screen: "coach", pageBuild: "P1", reason: .noHello, detail: "no hello within 15 s", at: t0)
