@@ -151,6 +151,15 @@ serial('C1: with the web chat on screen the app\'s prompts still go through its 
       sendCoachMessage(); await __idle();
       const u3 = coachMessages.filter((m) => m.role === 'user');
       r.edited = { users: u3.length, seed: u3[u3.length - 1]._seed || null, stamp: lsGet('kt_last_plateau_week'), due: _plateauFixDue() };
+      // other words sent first (Today's Ask box) leave the prompt waiting in the box: sent later, it keeps its label and stamp
+      lsDel('kt_last_plateau_week'); switchTab('log'); coachLoading = true;
+      startPlateauFix(); await __wait(30);
+      coachLoading = false; switchTab('log'); await __wait(20);
+      handleCoachCardAsk({ key: 'Enter', target: { value: 'How was my week?' } }); await __idle();
+      const box = document.getElementById('coach-input').value, s0 = lsGet('kt_last_plateau_week');
+      sendCoachMessage(); await __idle();
+      const u4 = coachMessages.filter((m) => m.role === 'user');
+      r.otherFirst = { box: /^These lifts have plateaued/.test(box), stampBefore: s0, users: u4.length, other: u4[u4.length - 2].content, seed: u4[u4.length - 1]._seed || null, stamp: lsGet('kt_last_plateau_week'), due: _plateauFixDue() };
       return r;
     }, COACH_API);
     assert(out.mocked.seen.length === 1 && /^These lifts have plateaued/.test(out.mocked.seen[0].box) && out.mocked.seen[0].seed === 'Plateau check' && out.mocked.stamp == null &&
@@ -160,6 +169,8 @@ serial('C1: with the web chat on screen the app\'s prompts still go through its 
     assert(out.later.users === 2 && out.later.seed === 'Plateau check' && out.later.turns === 1 && out.later.stamp === out.sent.week && out.later.box === '' && out.later.due === false,
       'the waiting prompt sent later keeps its label and writes its card\'s stamp: ' + JSON.stringify(out.later));
     assert(out.edited.users === 3 && out.edited.seed === null && out.edited.stamp == null && out.edited.due === true, 'a rewritten prompt is the owner\'s message: no label, no stamp: ' + JSON.stringify(out.edited));
+    assert(out.otherFirst.box && out.otherFirst.stampBefore == null && out.otherFirst.users === 5 && out.otherFirst.other === 'How was my week?' && out.otherFirst.seed === 'Plateau check' &&
+      out.otherFirst.stamp === out.sent.week && out.otherFirst.due === false, 'other words sent first leave the prompt waiting; sent later it keeps its label and stamp: ' + JSON.stringify(out.otherFirst));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

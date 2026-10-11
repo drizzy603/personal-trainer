@@ -20695,9 +20695,9 @@ function coachSend(text, o){
   else if(o.usePending && pendingImage){ img=pendingImage; imgKey=pendingImage.key||null; }
   if(!msg && !img) return {ok:false, error:'empty'};
   // The app's prompt that waited for a reply in flight (_coachAsk), sent as the app wrote it: its label
-  // and its card's stamp go with it. Any send ends the wait.
-  var w=_coachWaiting; _coachWaiting=null;
-  if(w && msg!==w.text) w=null;
+  // and its card's stamp go with it. Other words leave it waiting (it may still be in the composer).
+  var w=(_coachWaiting && msg===_coachWaiting.text) ? _coachWaiting : null;
+  if(w) _coachWaiting=null;
 
   var content, preview=null;
   if(img){
