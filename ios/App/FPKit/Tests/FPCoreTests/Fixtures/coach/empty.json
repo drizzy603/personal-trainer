@@ -1,0 +1,178 @@
+{
+ "v": 1,
+ "rev": 1,
+ "boot": "b1760000200000-0c1d",
+ "intake": false,
+ "loading": false,
+ "room": "dark",
+ "paper": false,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#0b0b0c",
+   "card": "#151517",
+   "card2": "#1e1e21",
+   "border": "rgba(255,255,255,.08)",
+   "accent": "#d8ff63",
+   "accentSoft": "rgba(216,255,99,.12)",
+   "accentDim": "rgba(216,255,99,.06)",
+   "onAccent": "#0b0b0c",
+   "accentInk": "#d8ff63",
+   "green": "#d8ff63",
+   "yellow": "#ffd65a",
+   "red": "#ff5d55",
+   "orange": "#ff9d5c",
+   "cyan": "#69cfff",
+   "text": "#f4f4f1",
+   "muted": "#8c8c91",
+   "lite": "#b9b9be",
+   "purple": "#ad92ff",
+   "blkLift": "#4d7cff",
+   "blkRun": "#22a55a",
+   "blkSport": "#8b5cf6",
+   "earned": "#d8ff63",
+   "earnedInk": "#d8ff63",
+   "sel": "color-mix(in srgb, #f4f4f1 15%, #151517)",
+   "eyebrow": "#8c8c91",
+   "headDot": "#8c8c91",
+   "userBubble": "color-mix(in srgb, #f4f4f1 15%, #151517)",
+   "onUserBubble": "#f4f4f1",
+   "chipPrimary": "#1e1e21",
+   "chipPrimaryText": "#f4f4f1",
+   "chipPrimaryBorder": "rgba(255,255,255,.08)",
+   "pill": "#1e1e21",
+   "pillIcon": "#b9b9be",
+   "takeEyebrow": "#8c8c91",
+   "ledgerHead": "#8c8c91",
+   "deltaGood": "#d8ff63",
+   "deltaWarn": "#ff9d5c",
+   "progAction": "#b9b9be",
+   "composerFocus": "#b9b9be"
+  },
+  "type": {
+   "title": 22,
+   "headEyebrow": 10,
+   "headMeta": 10,
+   "model": 11,
+   "body": 15,
+   "bubble": 15,
+   "heading": 16,
+   "eyebrow": 9,
+   "metricLabel": 10,
+   "metricValue": 13,
+   "metricRef": 12,
+   "take": 14,
+   "chip": 13,
+   "pill": 12,
+   "note": 13,
+   "day": 10,
+   "ledgerHead": 9,
+   "ledgerRow": 13,
+   "ledgerNote": 11,
+   "button": 13,
+   "table": 13,
+   "tableHead": 10,
+   "composer": 16,
+   "thinking": 13,
+   "emptyTitle": 22,
+   "emptySub": 14
+  },
+  "space": {
+   "gutter": 20,
+   "messageGap": 8,
+   "turnGap": 20,
+   "blockGap": 10,
+   "sectionGap": 12,
+   "paragraphGap": 10,
+   "listItemGap": 6,
+   "cardPadH": 14,
+   "cardPadV": 12,
+   "metricPadV": 10,
+   "bubblePadH": 16,
+   "bubblePadV": 12,
+   "chipPadH": 16,
+   "chipPadV": 10,
+   "chipGap": 8,
+   "pillGap": 6,
+   "pillPadH": 10,
+   "pillPadV": 5,
+   "composerPad": 6,
+   "hit": 44
+  },
+  "radius": {
+   "card": 14,
+   "bubble": 16,
+   "bubbleTail": 5,
+   "chip": 22,
+   "pill": 12,
+   "composer": 20,
+   "send": 22,
+   "button": 12,
+   "code": 5,
+   "photo": 10,
+   "table": 14
+  },
+  "font": {
+   "body": "Inter",
+   "eyebrow": "JetBrains Mono",
+   "display": "Inter",
+   "mono": "JetBrains Mono"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · ONLINE",
+  "status": "online",
+  "title": "Today's plan",
+  "meta": "WK 01 · STARTS MON",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": {
+  "title": "Ask anything",
+  "sub": "Your training, recovery, and goals",
+  "programme": {
+   "label": "Custom programme active",
+   "actions": [
+    {
+     "do": "restorePrevious",
+     "label": "Restore previous",
+     "tone": "plain"
+    },
+    {
+     "do": "regenerate",
+     "label": "Reset programme",
+     "tone": "plain"
+    }
+   ]
+  },
+  "chips": [
+   "What should I focus on this week?",
+   "Am I progressing on track?",
+   "How is my recovery looking?",
+   "Any trends in my training data?"
+  ]
+ },
+ "messages": [],
+ "running": [],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": {
+   "key": "share-1760000200"
+  },
+  "draft": {
+   "text": "Build my Legs day around the trap bar",
+   "nonce": "d-1760000200-2"
+  }
+ },
+ "speech": null
+}

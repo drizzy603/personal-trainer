@@ -1,0 +1,128 @@
+{
+ "v": 1,
+ "rev": 3,
+ "boot": "b1760000100000-77aa",
+ "intake": true,
+ "loading": true,
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": false,
+ "tokens": {
+  "color": {
+   "bg": "#f7f5ef",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#0a43f5",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "sel": "rgba(10,67,245,.10)",
+   "eyebrow": "#0a43f5",
+   "headDot": "#0a43f5",
+   "userBubble": "#0a43f5",
+   "onUserBubble": "#ffffff",
+   "chipPrimary": "#0a43f5",
+   "chipPrimaryText": "#ffffff",
+   "chipPrimaryBorder": "#0a43f5",
+   "pill": "#ffffff",
+   "pillIcon": "#4f7000",
+   "takeEyebrow": "#0a43f5",
+   "ledgerHead": "#0a43f5",
+   "deltaGood": "#4f7000",
+   "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
+   "progAction": "#0a43f5",
+   "composerFocus": "#0a43f5"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · INTAKE",
+  "status": "intake",
+  "title": "Build your plan",
+  "meta": null,
+  "model": null,
+  "back": false,
+  "cancel": true
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": 1791536400000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "I want to generate my training programme.",
+   "day": "Today",
+   "seed": "Programme setup"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": 1791536400000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "How many days a week can you train, and for how long each time?"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "m3",
+   "role": "user",
+   "at": 1791536520000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "4 days, about an hour"
+  }
+ ],
+ "running": [
+  {
+   "label": "Weeks 1–12 updated",
+   "ok": true
+  },
+  {
+   "label": "Profile updated",
+   "ok": true
+  }
+ ],
+ "composer": {
+  "placeholder": "Answer the Coach…",
+  "short": null,
+  "a11y": "Answer the coach",
+  "attach": false,
+  "image": null,
+  "draft": null
+ },
+ "speech": {
+  "id": "s-thinking-3",
+  "text": "Coach is thinking"
+ }
+}

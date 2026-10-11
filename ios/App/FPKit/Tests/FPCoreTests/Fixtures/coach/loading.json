@@ -1,0 +1,207 @@
+{
+ "v": 1,
+ "rev": 17,
+ "boot": "b1760000400000-5a5a",
+ "intake": false,
+ "loading": true,
+ "room": "dark",
+ "paper": false,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#0b0b0c",
+   "card": "#151517",
+   "card2": "#1e1e21",
+   "border": "rgba(255,255,255,.08)",
+   "accent": "#d8ff63",
+   "accentSoft": "rgba(216,255,99,.12)",
+   "accentDim": "rgba(216,255,99,.06)",
+   "onAccent": "#0b0b0c",
+   "accentInk": "#d8ff63",
+   "green": "#d8ff63",
+   "yellow": "#ffd65a",
+   "red": "#ff5d55",
+   "orange": "#ff9d5c",
+   "cyan": "#69cfff",
+   "text": "#f4f4f1",
+   "muted": "#8c8c91",
+   "lite": "#b9b9be",
+   "purple": "#ad92ff",
+   "blkLift": "#4d7cff",
+   "blkRun": "#22a55a",
+   "blkSport": "#8b5cf6",
+   "earned": "#d8ff63",
+   "earnedInk": "#d8ff63",
+   "sel": "color-mix(in srgb, #f4f4f1 15%, #151517)",
+   "eyebrow": "#8c8c91",
+   "headDot": "#8c8c91",
+   "userBubble": "color-mix(in srgb, #f4f4f1 15%, #151517)",
+   "onUserBubble": "#f4f4f1",
+   "chipPrimary": "#1e1e21",
+   "chipPrimaryText": "#f4f4f1",
+   "chipPrimaryBorder": "rgba(255,255,255,.08)",
+   "pill": "#1e1e21",
+   "pillIcon": "#b9b9be",
+   "takeEyebrow": "#8c8c91",
+   "ledgerHead": "#8c8c91",
+   "deltaGood": "#d8ff63",
+   "deltaWarn": "#ff9d5c",
+   "progAction": "#b9b9be",
+   "composerFocus": "#b9b9be"
+  }
+ },
+ "header": {
+  "eyebrow": "COACH · REPLYING",
+  "status": "replying",
+  "title": "Today's plan",
+  "meta": "WK 06 · DAY 6",
+  "model": {
+   "label": "Sonnet 5.5",
+   "name": "Sonnet",
+   "version": "5.5",
+   "next": "claude-haiku-4-5-20251001",
+   "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
+  },
+  "back": true,
+  "cancel": false
+ },
+ "empty": null,
+ "messages": [
+  {
+   "id": "m1",
+   "role": "user",
+   "at": 1791543600000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Review my week",
+   "day": "Today",
+   "seed": "Weekly review"
+  },
+  {
+   "id": "m2",
+   "role": "assistant",
+   "at": 1791543660000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "eyebrow": "COACH · Week review",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "This week in short:"
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "4 sessions, ",
+           {
+            "t": "all",
+            "s": "b"
+           },
+           " done"
+          ]
+         },
+         {
+          "r": [
+           "2 runs"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "VOLUME",
+        "value": "12,400 lb",
+        "ref": "vs 11,900",
+        "delta": "+4%",
+        "tone": "good"
+       },
+       {
+        "label": "RUNS",
+        "value": "2",
+        "ref": "of 3",
+        "delta": "-1",
+        "tone": "warn"
+       },
+       {
+        "label": "SLEEP",
+        "value": "7.1 h",
+        "ref": "",
+        "delta": "flat",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Keep it going."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       {
+        "t": "Volume",
+        "s": "b"
+       },
+       " is up; keep ",
+       {
+        "t": "deload",
+        "s": "c"
+       },
+       " in week 8."
+      ]
+     }
+    ],
+    "actions": []
+   }
+  },
+  {
+   "id": "m3",
+   "role": "user",
+   "at": 1791543780000,
+   "local": false,
+   "error": false,
+   "stopped": false,
+   "body": "Move Friday to Saturday"
+  }
+ ],
+ "running": [
+  {
+   "label": "Friday ⇄ Saturday · this week",
+   "ok": true
+  }
+ ],
+ "composer": {
+  "placeholder": "Message Coach…",
+  "short": "Message…",
+  "a11y": "Message the coach",
+  "attach": true,
+  "image": null,
+  "draft": null
+ },
+ "speech": {
+  "id": "s-thinking-17",
+  "text": "Coach is thinking"
+ }
+}
