@@ -66,6 +66,41 @@ final class StoreAttachTests: XCTestCase {
         XCTAssertEqual(DebugOptions(arguments: ["App", "-fpStoreSwitch", "on"]).deviceSwitchOff, false)
     }
 
+    /// The breaker record lives in a file beside the store, written at once; UserDefaults keeps a copy that is read
+    /// only when the file does not read (it reaches its disk later, through cfprefsd: native-store.sh's 59 drill saw a
+    /// reinstall right after a quit bring back an armed breaker the page had disarmed).
+    func testTheBreakerRecordIsAFileBesideTheStore() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StoreAttachTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "StoreAttachTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertNil(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed, "nothing written: a fresh record")
+        var book = BreakerBook()
+        book.store.documentStart(pageBuild: "p", at: Date())
+        XCTAssertTrue(StoreAttach.saveBook(book, directory: dir, defaults: defaults))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: StoreAttach.bookURL(in: dir).path))
+        XCTAssertEqual(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed?.page, "p")
+
+        defaults.set(BreakerBook().encoded(), forKey: StoreAttach.bookKey)
+        XCTAssertEqual(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed?.page, "p",
+                       "an older copy in UserDefaults never wins over the file")
+
+        book.store.bootDone()
+        StoreAttach.saveBook(book, directory: dir, defaults: defaults)
+        XCTAssertNil(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed, "bootDone's disarm is read back")
+
+        var armed = BreakerBook()
+        armed.store.documentStart(pageBuild: "q", at: Date())
+        defaults.set(armed.encoded(), forKey: StoreAttach.bookKey)
+        try Data("not json".utf8).write(to: StoreAttach.bookURL(in: dir))
+        XCTAssertEqual(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed?.page, "q",
+                       "a file that does not read: the UserDefaults copy")
+        try FileManager.default.removeItem(at: StoreAttach.bookURL(in: dir))
+        XCTAssertEqual(StoreAttach.loadBook(directory: dir, defaults: defaults).store.armed?.page, "q", "no file: the copy")
+    }
+
     /// The facade the shell injects is in the app's FPStore bundle, and its flag is protocol 1 for this shell.
     func testTheFacadeAndItsFlag() throws {
         let src = try XCTUnwrap(KTFacade.source())

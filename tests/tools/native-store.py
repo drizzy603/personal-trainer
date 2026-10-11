@@ -463,16 +463,26 @@ def scen_migration(c):
 
 
 def scen_hidden(c):
+    """A write while the web view is out of the window (what a native screen in front of it will do), long enough for
+    WebKit to hide the document, as the store-first probe did. (Out and back within a few milliseconds, iOS 27's WebKit
+    can kill the WebContent process over a layer-tree commit it calls invalid; the page then reloads, which is the
+    WebContent kill scenario, not this one.)"""
     s = 'hidden'
     ev = probe(c.sim, 'hidden', [[
         {'op': 'hide'},
+        {'op': 'wait', 'ms': 1500},
         js('write', "localStorage.setItem('kt_probe_hidden', 'hidden-' + Date.now()); var st = __ktStoreState;"
                     " return {acked: st.acked('kt_probe_hidden'), fallbacks: st.fallbacks, vis: document.visibilityState};"),
-        {'op': 'show'}, state('after hidden write')]])
+        {'op': 'wait', 'ms': 2000},
+        {'op': 'show'},
+        {'op': 'wait', 'ms': 1500},
+        state('after hidden write')]])
     hide = ev.first('hide') or {}
     r = (ev.first('js', label='write') or {}).get('result') or {}
     c.rep.check(s, 'the web view was out of the window', hide.get('window') is False, hide)
     c.rep.check(s, 'a write while out of the window is mirrored (acked, no fallback)', r.get('acked') is True and r.get('fallbacks') == 0, r)
+    c.rep.check(s, 'the same document all along (no reload while out of the window)', len(ev.all('hello')) == 1, '%d hellos' % len(ev.all('hello')))
+    c.rep.fact(s, 'the document was "%s" during the write' % r.get('vis'))
     c.in_step(s, 'after hidden write', ev)
     c.note_state(s, ev)
 
