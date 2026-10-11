@@ -12,7 +12,8 @@
 // - C3: the screen bridge (shell contract v1), inert without the shell: hello negotiates v1; with the
 //   chat on screen the page presents it natively, leaves an element placeholder and no #coach-input,
 //   and pushes coach models (rev rising, no lone surrogate) whose labels and chips are the page's own;
-//   FPScreens intents send once per nonce, act on messages by id after the cap, forward the page's
+//   FPScreens intents send once per nonce, act on messages by id after the cap (keep and undo only
+//   while the page's own card offers them: a model older than the page answers stale), forward the page's
 //   confirms and toasts (and answer stale after a reload); the share photo and drafts reach the
 //   composer; setup shows Cancel and no Back; a tab switch dismisses; FP_NATIVE, kt_native_off (the
 //   About switch), screens.off, a refused present and a shell without the screen each bring back the
@@ -248,16 +249,16 @@ serial('C2: ids live in memory only; Keep and Undo by id retire the right card a
       _pushCoach({ role: 'user', content: 'next question' }); saveCoachHistory();
       r.shift = { length: coachMessages.length, at: _coachIdx(id) };
       const wrong = coachMessages[59];   // what index 59 is now: the new question
-      _ledgerKeepId(id); await wait(30);
-      r.keep = { right: card._ledgerSeen === true, untouched: !wrong._ledgerSeen, html: !!document.querySelector('.kt-ledger-card'),
-        saved: (lsGet('kt_coach_msgs')[58] || {})._ledgerSeen === true, gone: _ledgerKeepId('m0.gone') === false };
+      const kept = _ledgerKeepId(id); await wait(30);
+      r.keep = { kept, right: card._ledgerSeen === true, untouched: !wrong._ledgerSeen, html: !!document.querySelector('.kt-ledger-card'),
+        saved: (lsGet('kt_coach_msgs')[58] || {})._ledgerSeen === true, gone: _ledgerKeepId('m0.gone') === 'gone' };
       // Undo by id after the cap: the confirm, then the restore retires the card on its own message
       card._ledgerSeen = false; saveCoachHistory(); render(); await wait(20);
-      r.undoGone = _ledgerUndoId('m0.gone') === false && !document.querySelector('.kt-close-sheet');
-      _ledgerUndoId(id); await wait(20);
+      r.undoGone = _ledgerUndoId('m0.gone') === 'gone' && !document.querySelector('.kt-close-sheet');
+      const asked = _ledgerUndoId(id); await wait(20);
       _pushCoach({ role: 'user', content: 'one more while the confirm is up' }); saveCoachHistory();   // shifts again
       const ok = document.querySelector('.kt-close-sheet [id$="ok"]'); if (ok) ok.click(); await wait(40);
-      r.undo = { sheet: !!ok, right: card._ledgerSeen === true, restored: getSessionExercises('Push')[0].weight === ex.weight };
+      r.undo = { asked, sheet: !!ok, right: card._ledgerSeen === true, restored: getSessionExercises('Push')[0].weight === ex.weight };
       // a reload: new ids (another boot's tag), so an id from before it finds nothing
       r.before = coachMessages[coachMessages.length - 1]._mid;
       // raw rows, escaped once in the HTML
@@ -278,8 +279,8 @@ serial('C2: ids live in memory only; Keep and Undo by id retire the right card a
     assert(re.test(out.pushed) && re.test(out.loose) && out.loose === out.again && out.pushed !== out.loose, '_pushCoach gives an id, a loose message gets one when asked, and keeps it: ' + JSON.stringify(out));
     assert(out.stored && out.idx, 'ids are never stored, and find their message: ' + JSON.stringify([out.stored, out.idx]));
     assert(out.cardBefore.at === 59 && out.cardBefore.html && out.shift.length === 60 && out.shift.at === 58, 'the cap shifts the card to index 58: ' + JSON.stringify([out.cardBefore, out.shift]));
-    assert(out.keep.right && out.keep.untouched && !out.keep.html && out.keep.saved && out.keep.gone, 'Keep by id after the cap retires the right card: ' + JSON.stringify(out.keep));
-    assert(out.undoGone && out.undo.sheet && out.undo.right && out.undo.restored, 'Undo by id asks, restores and retires the right card, though the cap shifted again under the confirm: ' + JSON.stringify([out.undoGone, out.undo]));
+    assert(out.keep.kept === '' && out.keep.right && out.keep.untouched && !out.keep.html && out.keep.saved && out.keep.gone, 'Keep by id after the cap retires the right card: ' + JSON.stringify(out.keep));
+    assert(out.undoGone && out.undo.asked === '' && out.undo.sheet && out.undo.right && out.undo.restored, 'Undo by id asks, restores and retires the right card, though the cap shifted again under the confirm: ' + JSON.stringify([out.undoGone, out.undo]));
     assert(out.rows.raw && out.rows.once && out.rows.model, 'PLAN CHANGES rows are raw text, escaped once in the HTML: ' + JSON.stringify(out.rows));
     assert(out.pill === 'Not applied · Mike\'s "A" <Press> & Co → 100 lb', 'a pill\'s label is raw text as shown: ' + out.pill);
     // a reload: the same history, other ids
@@ -476,6 +477,84 @@ serial('C3: keep and undo by id after the cap; the restore confirm is forwarded,
     assert(out.reset.reset.title === 'Reset your programme?' && out.reset.reset.tone === 'danger' && out.reset.no.ok && out.reset.still, 'Reset asks in red; No keeps the programme: ' + JSON.stringify(out.reset));
     assert(out.undoToast.ut.undo && out.undoToast.first.ok && out.undoToast.second.error === 'stale' && out.undoToast.undone === 1, 'an Undo toast runs once through toast.undo: ' + JSON.stringify(out.undoToast));
     assert(out.model.answer.ok && out.model.now === 'claude-haiku-4-5-20251001' && /Haiku 4\.5/.test(out.model.toast.text) && out.model.header.label === 'Haiku 4.5' && out.model.odd.error === 'unknown-model', 'coach.model switches, says so, and refuses a model it does not know: ' + JSON.stringify(out.model));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+// The shell's model can be older than the page: an Undo tapped on a card the page has since changed
+// restored whatever backup was current (the owner's Routines edit undone, or the coach's next change
+// mid-reply undone with the old reply's kept). The web rebuilds its buttons on every paint.
+serial('C3: keep and undo act only while the page\'s own card offers them: after a Routines edit, after the coach\'s next change mid-reply, or on a message with no card they answer stale and ask nothing', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30);
+      const name = getSessionExercises('Push')[0].name, wNow = () => getCustomRoutine().weeks[currentWeek - 1].push.find((x) => x.name === name).weight;
+      const setW = (w, scope) => _commitRoutine((cr) => { cr.weeks[currentWeek - 1].push.find((x) => x.name === name).weight = w; }, { scope, noRender: true });
+      const plan = (w) => [{ name: 'set_exercise_weight', input: { name, weight: w }, result: { ok: true }, units: { w: 'lb', d: 'km' } }];
+      const card = () => { const c = __model().messages.find((m) => m.ledger); return c ? { id: c.id, canUndo: c.ledger.canUndo, actions: c.ledger.actions.map((a) => a.do) } : null; };
+      const asks = () => __fpShell.of('confirm').length;
+      // R1: the coach's reply set 170 under its own undo point; its card offers Undo
+      setW(170, 'coach:r1');
+      coachMessages = _coachMids([{ role: 'user', content: 'Bump it', at: Date.now() - 9000 }, { role: 'assistant', content: 'Done.', at: Date.now() - 8000, _undo: 'coach:r1', _tools: plan(170) }]);
+      saveCoachHistory(); await __open();
+      const r1 = card(); r.r1 = r1;
+      const userId = __model().messages[0].id;
+      // A: the owner edits the lift in Routines since (its own undo point): the page's card says Got it
+      setW(180, 'routines:1'); render(); await __wait(20);
+      let a0 = asks();
+      r.a = { card: card(), undo: await FPScreens.call('coach.undo', { id: r1.id }) }; await __wait(20);
+      r.a.asked = asks() - a0; r.a.sheet = !!document.querySelector('.kt-close-sheet'); r.a.weight = wNow(); r.a.scope = localStorage.getItem('kt_routine_backup_scope');
+      // a message with no card: nothing to keep or undo
+      r.a.userUndo = await FPScreens.call('coach.undo', { id: userId }); r.a.userKeep = await FPScreens.call('coach.keep', { id: userId }); await __wait(20);
+      r.a.askedAfter = asks() - a0;
+      // Got it still retires the card (it is up); once it is gone a second keep is stale
+      r.a.keep = await FPScreens.call('coach.keep', { id: r1.id }); await __wait(20);
+      r.a.keep2 = await FPScreens.call('coach.keep', { id: r1.id }); r.a.cardAfter = card();
+      // I: R2's card offers Undo; the owner sends again and the coach's first tool call commits mid-reply
+      setW(175, 'coach:r2');
+      _pushCoach({ role: 'assistant', content: 'Set to 175.', _undo: 'coach:r2', _tools: plan(175) }); saveCoachHistory(); render(); await __wait(20);
+      const r2 = card(); r.r2 = r2;
+      let release, chat = 0; const held = new Promise((res) => { release = res; });
+      const reply = (content, stop) => new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', content, stop_reason: stop, usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+      window.fetch = async (url, o) => {
+        const body = JSON.parse(o.body);
+        if (!body.tools) return reply([{ type: 'text', text: '{"message":"ok","actions":[]}' }], 'end_turn');
+        if (++chat === 1) return reply([{ type: 'tool_use', id: 'tu1', name: 'set_exercise_weight', input: { name, weight: 190 } }], 'tool_use');
+        await held;
+        return reply([{ type: 'text', text: 'Moved it to 190.' }], 'end_turn');
+      };
+      r.i = { send: await FPScreens.call('coach.send', { text: 'Make it 190', nonce: 'n-i' }) };
+      for (let k = 0; k < 150 && wNow() !== 190; k++) await __wait(20);
+      a0 = asks();
+      r.i.mid = { weight: wNow(), loading: coachLoading, scope: localStorage.getItem('kt_routine_backup_scope'), card: card() };
+      r.i.undo = await FPScreens.call('coach.undo', { id: r2.id }); await __wait(20);
+      r.i.asked = asks() - a0; r.i.weight = wNow();
+      release(); await __idle();
+      // the new reply's card is the one that offers Undo now, and its Undo still asks
+      const r3 = card(); r.r3 = r3;
+      a0 = asks();
+      r.r3.undo = await FPScreens.call('coach.undo', { id: r3.id }); await __wait(20);
+      const cf = __fpShell.of('confirm').slice(-1)[0];
+      r.r3.asked = asks() - a0; r.r3.title = cf && cf.title;
+      r.r3.no = cf ? await FPScreens.call('confirm', { id: cf.id, yes: false }) : null; await __wait(20);
+      r.r3.weight = wNow();
+      return r;
+    }, IN_PAGE);
+    assert(out.r1 && out.r1.canUndo && out.r1.actions.join() === 'undo,keep', 'R1\'s card offers Undo: ' + JSON.stringify(out.r1));
+    assert(out.a.card && out.a.card.id === out.r1.id && !out.a.card.canUndo && out.a.card.actions.join() === 'gotIt', 'after a Routines edit the page\'s card says Got it: ' + JSON.stringify(out.a.card));
+    assert(out.a.undo.ok === false && out.a.undo.error === 'stale' && out.a.asked === 0 && !out.a.sheet && out.a.weight === 180 && out.a.scope === 'routines:1',
+      'an Undo from an older model answers stale, asks nothing and keeps the owner\'s edit: ' + JSON.stringify(out.a));
+    assert(out.a.userUndo.error === 'stale' && out.a.userKeep.error === 'stale' && out.a.askedAfter === 0, 'a message with no card: keep and undo are stale: ' + JSON.stringify(out.a));
+    assert(out.a.keep.ok && out.a.keep2.error === 'stale' && out.a.cardAfter === null, 'Got it retires the card; a second keep is stale: ' + JSON.stringify(out.a));
+    assert(out.r2 && out.r2.canUndo && out.i.send.ok, 'R2\'s card offers Undo, and the owner\'s next message goes: ' + JSON.stringify([out.r2, out.i.send]));
+    assert(out.i.mid.weight === 190 && out.i.mid.loading && /^coach:\d+$/.test(out.i.mid.scope) && (!out.i.mid.card || !out.i.mid.card.canUndo),
+      'mid-reply the coach\'s first change is saved under the reply\'s own undo point: ' + JSON.stringify(out.i.mid));
+    assert(out.i.undo.ok === false && out.i.undo.error === 'stale' && out.i.asked === 0 && out.i.weight === 190, 'R2\'s Undo mid-reply answers stale and asks nothing: ' + JSON.stringify(out.i));
+    assert(out.r3 && out.r3.id !== out.r2.id && out.r3.canUndo && out.r3.undo.ok && out.r3.asked === 1 && out.r3.title === 'Restore previous programme?' && out.r3.no.ok && out.r3.weight === 190,
+      'the new reply\'s card offers Undo, and its Undo asks: ' + JSON.stringify(out.r3));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

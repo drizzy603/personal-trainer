@@ -19996,10 +19996,24 @@ function _ledgerKeep(i){ var m=coachMessages[i]; if(m){ m._ledgerSeen=true; save
 // message is held, not its index: the 60-message cap can shift every index while the confirm is up.
 function _ledgerUndo(i){ var m=coachMessages[i]; restoreRoutineBackup(function(){ if(m){ m._ledgerSeen=true; saveCoachHistory(); } }); }
 // Keep and Undo by message id (the native card: FPScreens coach.keep, coach.undo). An index taken
-// from a model goes stale when the cap drops the oldest message: Keep retired the wrong card. False
-// when no message has the id (a model from before a reload, or the message is gone).
-function _ledgerKeepId(id){ var i=_coachIdx(id); if(i<0) return false; _ledgerKeep(i); return true; }
-function _ledgerUndoId(id){ var i=_coachIdx(id); if(i<0) return false; _ledgerUndo(i); return true; }
+// from a model goes stale when the cap drops the oldest message: Keep retired the wrong card. And
+// the shell's model can be older than the page, so each acts only while the page's own card offers
+// it now: the card is up (the newest programme change, not yet kept) and, for Undo, its undo point
+// is still current. An Undo taken from an older model restored whatever backup was there: the
+// owner's Routines edit since, or the coach's next change mid-reply with this reply's kept. The web
+// card never had a stale button: it is rebuilt on every paint. '' when done, else why not: 'gone'
+// (no message has the id: a model from before a reload, or the message has left) or 'stale'.
+function _ledgerById(id, undo){
+  var i=_coachIdx(id); if(i<0) return 'gone';
+  var m=coachMessages[i];
+  if(!m || m._ledgerSeen || m!==_lastPlanMsg()) return 'stale';
+  var lm=_planChangeModel(m._tools, i);
+  if(!lm || (undo && !lm.canUndo)) return 'stale';
+  if(undo) _ledgerUndo(i); else _ledgerKeep(i);
+  return '';
+}
+function _ledgerKeepId(id){ return _ledgerById(id, false); }
+function _ledgerUndoId(id){ return _ledgerById(id, true); }
 function toolCallLabel(tc){ return _inUnitsOf(tc, function(){ return _toolCallLabel(tc); }); }
 // A tool pill in the room's tokens. A failure is said in words as well as in red: 'Not applied'
 // leads a label that does not already say what was not saved ('Week 6 updated · week 7 not saved',
@@ -23916,8 +23930,8 @@ var _FP_INTENTS={
   },
   'coach.stop':function(){ if(!coachLoading) return {ok:false, error:'idle'}; coachStop(); return {ok:true}; },
   'coach.retry':function(){ if(coachLoading) return {ok:false, error:'busy'}; coachRetryLast(); return {ok:true}; },
-  'coach.keep':function(a){ if(!_fpStr(a.id)) return _FP_BAD; return _ledgerKeepId(a.id) ? {ok:true} : {ok:false, error:'gone'}; },
-  'coach.undo':function(a){ if(!_fpStr(a.id)) return _FP_BAD; return _ledgerUndoId(a.id) ? {ok:true} : {ok:false, error:'gone'}; },
+  'coach.keep':function(a){ if(!_fpStr(a.id)) return _FP_BAD; var e=_ledgerKeepId(a.id); return e ? {ok:false, error:e} : {ok:true}; },
+  'coach.undo':function(a){ if(!_fpStr(a.id)) return _FP_BAD; var e=_ledgerUndoId(a.id); return e ? {ok:false, error:e} : {ok:true}; },   // stale: the card no longer offers it
   'coach.model':function(a){
     if(!_fpStr(a.model)) return _FP_BAD;
     if(a.model!==COACH_SONNET && a.model!=='claude-haiku-4-5-20251001') return {ok:false, error:'unknown-model'};
