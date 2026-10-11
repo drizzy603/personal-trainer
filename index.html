@@ -23685,9 +23685,12 @@ function _fpCovered(){
 // What stands in #screen under a native screen: an element, so the resume check (a #screen with no
 // element child reloads the page) never fires while it is up.
 function _fpPlaceholder(s){ return '<div class="kt-fp-ph" data-fp-screen="'+s+'" aria-hidden="true"></div>'; }
+// Every string the shell gets is cut in whole characters (_wellFormed), as for the watch and the
+// widget: models go through _nativeJSON, and toast, confirm and log text through this.
+function _fpText(s){ return _wellFormed(s==null ? '' : s); }
 function _fpLog(text, level){
   var P=_fpPlugin(); if(!P || !P.log) return;
-  try{ Promise.resolve(P.log({text:'fp: '+text, level:level||'info'})).catch(function(){}); }catch(e){}
+  try{ Promise.resolve(P.log({text:_fpText('fp: '+text), level:level||'info'})).catch(function(){}); }catch(e){}
 }
 // hello: the contract this page speaks and the screens it can hand over; the answer is what this
 // document may present. Sent once per document at boot; nothing is native before it answers. Only an
@@ -23762,7 +23765,7 @@ function _fpPushSoon(){
 function _fpToast(msg, style, onUndo){
   if(!_fpCovered()) return false;
   var P=_fpPlugin(); if(!P || !P.toast) return false;
-  var o={text:String(msg==null?'':msg), style:(style==='pr' || style==='err') ? style : 'ok'};
+  var o={text:_fpText(msg), style:(style==='pr' || style==='err') ? style : 'ok'};
   _fp.undos={};
   if(typeof onUndo==='function'){
     var id='t'+(++_fp.seq)+'.'+_fpBoot; _fp.undos[id]=onUndo; o.undo=id;
@@ -23776,7 +23779,7 @@ function _fpConfirm(opts){
   var P=_fpPlugin(); if(!P || !P.confirm) return false;
   var id='c'+(++_fp.seq)+'.'+_fpBoot, st=String(opts.confirmStyle||'');
   _fp.confirms[id]=opts;
-  var o={id:id, title:String(opts.title==null?'':opts.title), body:String(opts.body||''), confirm:String(opts.confirmLabel||'Confirm'), cancel:'Cancel',
+  var o={id:id, title:_fpText(opts.title), body:_fpText(opts.body||''), confirm:_fpText(opts.confirmLabel||'Confirm'), cancel:'Cancel',
     tone:(!st || /--red/.test(st)) ? 'danger' : /--accent/.test(st) ? 'accent' : 'neutral'};
   try{ Promise.resolve(P.confirm(o)).catch(function(){ delete _fp.confirms[id]; }); }catch(e){ delete _fp.confirms[id]; return false; }
   return true;

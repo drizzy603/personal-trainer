@@ -296,6 +296,14 @@ serial('C2: ids live in memory only; Keep and Undo by id retire the right card a
 // Every boot below runs under a shell contract (tests/lib/harness.js opts.shell): 'coach' is build 60
 // (the native Coach chat), 'inert' build 60's flag with no screen, 'none' every shell up to 59.
 const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(^|[^\ud800-\udbff])[\udc00-\udfff]/;
+// A lone half anywhere in a parsed value, keys included. The raw JSON text cannot show one:
+// JSON.stringify writes a lone half as the ASCII escape \udXXX, so LONE on the text always passed.
+const loneIn = (v) => {
+  if (typeof v === 'string') return LONE.test(v);
+  if (Array.isArray(v)) return v.some(loneIn);
+  if (v && typeof v === 'object') return Object.keys(v).some((k) => LONE.test(k) || loneIn(v[k]));
+  return false;
+};
 const shellBoot = (shell, extra = {}) => boot(Object.assign({ native: true, shell, init: COACH_API },
   extra, { seed: Object.assign({ kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' }, extra.seed || {}) }));
 // In the page: open the chat as the owner would, the last model the shell got, and its messages.
@@ -321,6 +329,7 @@ serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-
         body: !!document.querySelector('.coach-chat-body'), kt: document.documentElement.classList.contains('kt-chat'), models: __fpShell.of('model').length,
         firstBeforePresent: __fpShell.calls.findIndex((c) => c[0] === 'model') < __fpShell.calls.findIndex((c) => c[0] === 'present') };
       const m1 = __model();
+      r.raw = JSON.stringify(_coachModel());   // the model before _nativeJSON mends it: the seeded halves are in it
       r.m1 = { v: m1.v, boot: m1.boot, room: m1.room, paper: m1.paper, msgs: m1.messages.length, ids: m1.messages.map((m) => m.id), chips: m1.messages[1].body.actions, eyebrow: m1.messages[1].eyebrow };
       // three renders in one tick: one model, its rev higher
       const n = __fpShell.of('model').length;
@@ -338,6 +347,12 @@ serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-
       const snap = await FPScreens.call('coach.snapshot', {});
       r.snap = { ok: snap.ok, rev: JSON.parse(snap.json).rev, last: __model().rev, boot: JSON.parse(snap.json).boot };
       r.jsons = __fpShell.of('model').map((c) => c.json).concat([snap.json]);
+      // what else reaches the shell is cut in whole characters too: toast, confirm and log text
+      const half = String.fromCharCode(0xd83d);
+      showToast('Saved ' + half); showUndoToast('Removed ' + half, () => {});
+      _ktConfirm({ title: 'Delete ' + half + '?', body: 'Gone ' + half, confirmLabel: 'Delete ' + half, onConfirm() {} });
+      _fpLog('note ' + half);
+      r.forwarded = { toasts: __fpShell.of('toast').slice(-2), confirm: __fpShell.of('confirm').slice(-1)[0], log: __fpShell.of('log').slice(-1)[0] };
       // another tab: dismissed, the web screen back
       switchTab('log'); await __wait(20);
       r.left = { dismiss: __fpShell.of('dismiss'), shown: !!_fp.shown.coach, covered: _fpCovered() };
@@ -354,7 +369,11 @@ serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-
     assert(JSON.stringify(out.empty.chips) === JSON.stringify(out.empty.want) && out.empty.chips.length >= 3 && out.empty.prog && out.empty.prog.actions.some((a) => a.do === 'regenerate'), 'chips are getCoachChips(): ' + JSON.stringify(out.empty));
     assert(JSON.stringify(out.pills.got) === JSON.stringify(out.pills.want), 'pills are toolCallLabel() as shown: ' + JSON.stringify(out.pills));
     assert(out.snap.ok && out.snap.rev > out.coalesced.revs[out.coalesced.revs.length - 1] && out.snap.boot === out.boot, 'coach.snapshot: the model now: ' + JSON.stringify(out.snap));
-    assert(out.jsons.length >= 5 && out.jsons.every((j) => !LONE.test(j)) && out.jsons.every((j) => JSON.parse(j).v === 1), 'no lone surrogate in any model (' + out.jsons.length + ')');
+    assert(loneIn(JSON.parse(JSON.stringify({ t: 'a' + half }))) && !LONE.test(JSON.stringify({ t: 'a' + half })) && loneIn(JSON.parse(out.raw)), 'the check sees a lone half the raw JSON text hides, and the seeded ones reach the model before it is mended');
+    assert(out.jsons.length >= 5 && out.jsons.every((j) => !loneIn(JSON.parse(j))) && out.jsons.every((j) => JSON.parse(j).v === 1), 'no lone surrogate in any model (' + out.jsons.length + ')');
+    const fw = out.forwarded;
+    assert(fw.toasts.length === 2 && fw.confirm && fw.log && !loneIn(fw) && fw.toasts[0].text === 'Saved ' && fw.toasts[1].text === 'Removed ' && fw.toasts[1].undo && fw.confirm.title === 'Delete ?' && fw.confirm.body === 'Gone ' && fw.confirm.confirm === 'Delete ' && fw.log.text === 'fp: note ',
+      'toast, confirm and log text reach the shell in whole characters: ' + JSON.stringify(fw));
     assert(out.left.dismiss.length === 1 && out.left.dismiss[0].screen === 'coach' && !out.left.shown && !out.left.covered, 'switchTab(\'log\') dismisses: ' + JSON.stringify(out.left));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
