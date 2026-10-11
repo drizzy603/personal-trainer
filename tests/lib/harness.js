@@ -5,6 +5,14 @@
 // scripts run, and — when opts.native is set — installs a mock Capacitor
 // bridge so the watch/widget code paths run as they would inside the shell.
 //
+// Store matrix (plan task S4): with opts.store = 'shadow', or STORE=shadow in
+// the environment (./tests/run.sh passes it through), every document starts
+// as it does in a build 60 shell: the flag window.__ktStore, a JS reference of
+// the native store answering the KT1 prompt channel (lib/ktstore-mock.js), and
+// the shipped facade itself (ios/App/FPKit/Sources/FPStore/Resources/ktstore.js),
+// all before the seed and the page's own scripts. app.close() then checks for
+// drift: the store, WebKit and what the page reads must hold the same values.
+//
 // Usage in a spec:
 //   const { boot, assert, run } = require('../lib/harness');
 //   run('my suite', async () => {
@@ -19,6 +27,48 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const SEED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'seed-dump.json'), 'utf8'));
+const FACADE = path.join(ROOT, 'ios', 'App', 'FPKit', 'Sources', 'FPStore', 'Resources', 'ktstore.js');
+const MOCK = path.join(__dirname, 'ktstore-mock.js');
+
+// 'shadow', or null for the classic run (no shell, no facade).
+function storeMode(opts) {
+  const m = opts.store !== undefined ? opts.store : (process.env.STORE || '');
+  if (!m || m === 'classic') return null;
+  if (m !== 'shadow') throw new Error('unknown store mode "' + m + '" (shadow, or nothing for the classic run)');
+  return m;
+}
+let storeScripts = null;
+const storeReport = { pages: 0, skipped: 0, writes: 0, fallbacks: 0, drift: 0 };
+function loadStoreScripts() {
+  if (!storeScripts) {
+    storeScripts = { mock: fs.readFileSync(MOCK, 'utf8'), facade: fs.readFileSync(FACADE, 'utf8') };
+    process.on('exit', () => {
+      console.log('  store: shadow · ' + storeReport.pages + ' page(s) checked, ' + storeReport.skipped + ' without the facade · ' +
+        storeReport.writes + ' write(s) mirrored, ' + storeReport.fallbacks + ' fallback(s) · ' + storeReport.drift + ' drift');
+    });
+  }
+  return storeScripts;
+}
+// store == WebKit == page reads, at browser close (async posts delivered first; a gap the facade noted is
+// left to the next document start, which adopts it).
+async function storeCheck(page) {
+  let r = null;
+  for (let t = 0; t < 5; t++) {
+    try { r = await page.evaluate(() => (window.__ktMock ? window.__ktMock.check() : null)); } catch (e) { return; }   // the page is gone
+    if (!r || r.ok) break;
+    await new Promise((z) => setTimeout(z, 100));
+  }
+  if (!r) return;
+  storeReport.pages++;
+  if (r.skipped) storeReport.skipped++;
+  storeReport.writes += r.writes || 0;
+  storeReport.fallbacks += r.fallbacks || 0;
+  if (!r.ok) {
+    storeReport.drift++;
+    console.error('  FAIL  store drift: ' + r.bad.slice(0, 6).join(' | ') + (r.bad.length > 6 ? ' (+' + (r.bad.length - 6) + ' more)' : ''));
+    process.exitCode = 1;
+  }
+}
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
@@ -46,7 +96,11 @@ function startServer() {
 // opts.watchPending — array of JSON strings TrovoWatch.getPendingSessions returns
 // opts.page        — extra browser.newPage options (viewport, hasTouch, isMobile, deviceScaleFactor…)
 // opts.init        — a script (string or function) that runs before the page's own scripts
+// opts.store       — 'shadow': the build 60 shell's storage (flag, mock native store, shipped facade);
+//                    'classic' or false: none, whatever STORE says. Default: process.env.STORE.
+// opts.storeCheck  — false skips the drift check at close (a spec that leaves a difference on purpose)
 async function boot(opts = {}) {
+  const store = storeMode(opts);
   const srv = await startServer();
   const port = srv.address().port;
   const browser = await chromium.launch();
@@ -60,9 +114,19 @@ async function boot(opts = {}) {
     return route.abort();
   });
 
+  // The shell's document-start scripts come first, as StoreAttach injects them: everything after (the seed,
+  // opts.init, the page) reads and writes localStorage through the facade.
+  if (store) {
+    const s = loadStoreScripts();
+    await page.addInitScript({ content: s.mock });
+    await page.addInitScript({ content: s.facade });
+    await page.addInitScript({ content: 'window.__ktMock && window.__ktMock._afterFacade();' });
+  }
+
   const seed = Object.assign({}, SEED, opts.seed || {});
   await page.addInitScript(({ seed, native, watchPending }) => {
-    for (const k of Object.keys(seed)) localStorage.setItem(k, seed[k]);
+    // A store spec can stop the re-seed at each load (__ktMock.device({seed:false})): a real relaunch keeps WebKit.
+    if (!window.__ktSkipSeed) for (const k of Object.keys(seed)) localStorage.setItem(k, seed[k]);
     if (!native) return;
     window.__mock = { updateContext: [], pending: watchPending || [], listeners: [] };
     const resolved = (v) => () => Promise.resolve(v);
@@ -96,8 +160,16 @@ async function boot(opts = {}) {
   await page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });
 
   return {
-    page, errors,
-    close: async () => { await browser.close(); srv.close(); },
+    page, errors, store,
+    // A relaunch of the page in the same browser (sessionStorage, and so the store, survive it).
+    reload: async () => {
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });
+    },
+    close: async () => {
+      if (store && opts.storeCheck !== false) await storeCheck(page);
+      await browser.close(); srv.close();
+    },
   };
 }
 

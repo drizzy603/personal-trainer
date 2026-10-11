@@ -25,3 +25,29 @@ First run installs Playwright into `tests/node_modules` (gitignored). Suites:
 
 Run these before any commit that touches app logic in `index.html` (verify.sh
 covers syntax; these cover behavior).
+
+## The store matrix
+
+```sh
+STORE=shadow ./tests/run.sh
+```
+
+runs every spec as a build 60 shell runs the page: each document starts with the
+flag `window.__ktStore`, `lib/ktstore-mock.js` (a JavaScript reference of FPStore's
+native side, kept in sessionStorage so it survives a reload) answering the KT1
+prompt channel, and the shipped facade
+`ios/App/FPKit/Sources/FPStore/Resources/ktstore.js`, all before the seed and the
+page. Every write goes to WebKit first and is mirrored to the mock store; each
+`app.close()` checks that the store, WebKit and the page's reads hold the same
+values (a difference fails the spec as `store drift`). Per-spec results must equal
+the classic run's. CI runs both as separate jobs; `publish.sh` adds the shadow run
+when the facade, the mock or the harness changed.
+
+`boot({store: 'shadow'})` turns it on for one boot whatever STORE says
+(`store: 'classic'` turns it off). Specs 119 and 120 drive the mock through
+`window.__ktMock`: `device({shell:false})` is a store-less build from the next
+document on, `device({seed:false})` stops the harness re-seeding WebKit at each
+load (a real relaunch does not), `next({wipe | restore | plant | unreadable})`
+changes WebKit behind the facade at the next document start, `fail({...})` makes
+the store answer full, busy, err or nothing, and `status()`, `values()`,
+`conflicts()`, `stagePutBack()` read and act as Settings › About › Storage will.

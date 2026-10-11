@@ -12,6 +12,8 @@
 //
 //   node tests/tools/ktstore-vectors.js           write the file
 //   node tests/tools/ktstore-vectors.js --check   exit 1 if the committed file differs (CI drift check)
+//   require('../tools/ktstore-vectors')           H, noteAfter and NOTE_OPS, writing nothing (spec 120 replays the
+//                                                 note steps through the shipped facade and compares them byte for byte)
 //
 // H() is ktstore.js's hash. Keep it identical to the shipped facade's (FPStore/Resources/ktstore.js, plan task S3).
 // Source text stays ASCII: every other code unit is written as a \u{...} escape.
@@ -218,6 +220,9 @@ const text = JSON.stringify(doc, null, 1) + '\n';
 // holds one travels inside a literal, never raw. (JSON.stringify writes a valid pair as is, so any \u{5c}udXXX
 // escape left once escaped backslashes are gone is lone.)
 check(!/\\ud[89a-f][0-9a-f]{2}/i.test(text.replace(/\\\\/g, '')), 'a raw lone surrogate reached the vectors file');
+
+module.exports = { H: H, noteAfter: noteAfter, NOTE_OPS: NOTE_OPS, noteSteps: noteSteps };
+if (require.main !== module) return;
 
 if (process.argv.includes('--check')) {
   const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';

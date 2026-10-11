@@ -7,18 +7,27 @@ on:
       - 'index.html'
       - 'sw.js'
       - 'tests/**'
+      - 'ios/App/FPKit/Sources/FPStore/Resources/ktstore.js'
       - '.github/workflows/tests.yml'
   pull_request:
     paths:
       - 'index.html'
       - 'tests/**'
+      - 'ios/App/FPKit/Sources/FPStore/Resources/ktstore.js'
   workflow_dispatch:
 
 jobs:
+  # Two separate jobs, each inside its own 15 minutes: the classic run (the browser, the PWA and every shell
+  # before 60) and the store matrix (STORE=shadow: every document starts as in a build 60 shell, with the
+  # shipped facade over a mock native store, and each browser close checks for drift). Same specs, same results.
   playwright:
-    name: Playwright suites
+    name: Playwright suites (${{ matrix.store }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        store: [classic, shadow]
 
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +48,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run suites
+        env:
+          STORE: ${{ matrix.store }}
         run: |
           set -o pipefail
           ./tests/run.sh 2>&1 | tee suite.log
