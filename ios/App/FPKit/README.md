@@ -91,11 +91,13 @@ leaves kv equal to WebKit:
 | 7 | anything else | adopt; conflicts "unexplained"; counted |
 
 Tests (`Tests/FPStoreTests`): `WireTests` (the facade's literals, hashes, hello and gap notes from
-`Vectors/vectors.json`), `ReconcileTests` (every S2 reconcile row through the protocol on a fake device,
-and the classifier on its own), `StoreTests` (the file, answers, journal, snapshots, conflicts, Put back,
-timing) and `KillTests` (a writer SIGKILLed mid-burst keeps every acknowledged write). KillTests starts this
-test binary again through the `xctest` runner with `FPSTORE_KILL_DIR` set; in an ordinary run its child
-test is skipped. The vectors come from JavaScript itself; after changing the facade's hash or literals:
+`Vectors/vectors.json`, and the gap note op by op as the facade must write it, each missed op's stamp `s`
+and a missed clear's `c` included), `ReconcileTests` (every S2 reconcile row through the protocol on a fake
+device, and the classifier on its own), `StoreTests` (the file, answers, journal, snapshots, conflicts, Put
+back, timing) and `KillTests` (a writer SIGKILLed mid-burst keeps every acknowledged write). KillTests starts
+this test binary again through the `xctest` runner with `FPSTORE_KILL_DIR` set; in an ordinary run its child
+test is skipped. The vectors come from JavaScript itself (the facade, plan task S3, must write its gap notes
+as `noteAfter()` there does); after changing the facade's hash, literals or note:
 
 ```sh
 node tests/tools/ktstore-vectors.js           # rewrite Vectors/vectors.json

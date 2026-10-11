@@ -5,7 +5,9 @@
 //     store answers with (every surrogate half, control and U+2028/2029 escaped), checked here with JSON.parse;
 //   - formulas: long strings both sides rebuild from a formula (a 200k-character value), by hash and length;
 //   - hello: a whole hello payload as the facade builds it, gap note included, and the manifest it carries;
-//   - gapNotes: gap notes made by JSON.stringify, with the keys and hashes they name;
+//   - gapNotes: gap notes made by JSON.stringify, with the keys, hashes and stamps they name;
+//   - noteSteps: the gap note after each missed op of a script, built by noteAfter() exactly as the facade must
+//     write it (rule 5 needs both stamps: s per missed set or remove, c for a missed clear);
 //   - merges: Put back's record merge of a log key, ordered by index.html's own lsSet comparator.
 //
 //   node tests/tools/ktstore-vectors.js           write the file
@@ -101,7 +103,7 @@ const WK = {
   kt_apikey: 'sk-ant-not-a-key',
   kt_empty: ''
 };
-const GAP = JSON.stringify({ v: 1, at: 1760140000123, k: { kt_sessions: H(WK.kt_sessions), kt_theme: '-' } });
+const GAP = JSON.stringify({ v: 1, at: 1760140000123, k: { kt_sessions: H(WK.kt_sessions), kt_theme: '-' }, s: { kt_sessions: '3:7', kt_theme: '3:9' } });
 WK.kt__store_gap = GAP;
 const helloLines = [JSON.stringify(GAP)];
 Object.keys(WK).forEach(function (k) { helloLines.push(JSON.stringify(k), JSON.stringify(H(WK[k]))); });
@@ -110,21 +112,67 @@ const hello = {
   manifest: Object.keys(WK).filter(function (k) { return k !== LONE_KEY; }).map(function (k) { return [JSON.stringify(k), H(WK[k])]; }),
   skipped: 1,
   gap: [[JSON.stringify('kt_sessions'), H(WK.kt_sessions)], [JSON.stringify('kt_theme'), '-']],
+  gapStamps: [[JSON.stringify('kt_sessions'), '3:7'], [JSON.stringify('kt_theme'), '3:9']],
   gapAt: 1760140000123
 };
 check(hello.payload.indexOf('\r') < 0, 'raw CR in hello');
 
 // -- gap notes ------------------------------------------------------------------------------------------
+// stamps: what the store reads from s (a stamp that is not "B:S" with B >= 1, or names a key k lacks, is ignored);
+// clear: what it reads from c (only with all). Notes without them are read the old way (KTProtocol.GapNote).
 const gapNotes = [
-  { note: JSON.stringify({ v: 1, at: 5, k: {} }), valid: true, all: false, keys: [] },
-  { note: JSON.stringify({ v: 1, at: 5, k: { kt_last_open: H('1760140000999') } }), valid: true, all: false, keys: [[JSON.stringify('kt_last_open'), H('1760140000999')]] },
-  { note: JSON.stringify({ v: 1, at: 7, k: { 'quote"key': '3:a:b', '\u{e9}': '-' }, extra: [1, { x: '}' }] }), valid: true, all: false, keys: [[JSON.stringify('quote"key'), '3:a:b'], [JSON.stringify('\u{e9}'), '-']] },
-  { note: JSON.stringify({ v: 1, at: 9, k: { kt_a: '1:x:y' }, all: true }), valid: true, all: true, keys: [[JSON.stringify('kt_a'), '1:x:y']] },
-  { note: JSON.stringify({ v: 1, k: { ['lone ' + LOW]: '1:x:y', kt_b: '-' } }), valid: true, all: false, keys: [[JSON.stringify('kt_b'), '-']] },
+  { note: JSON.stringify({ v: 1, at: 5, k: {} }), valid: true, all: false, keys: [], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 5, k: { kt_last_open: H('1760140000999') } }), valid: true, all: false, keys: [[JSON.stringify('kt_last_open'), H('1760140000999')]], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 7, k: { 'quote"key': '3:a:b', '\u{e9}': '-' }, extra: [1, { x: '}' }] }), valid: true, all: false, keys: [[JSON.stringify('quote"key'), '3:a:b'], [JSON.stringify('\u{e9}'), '-']], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 9, k: { kt_a: '1:x:y' }, all: true }), valid: true, all: true, keys: [[JSON.stringify('kt_a'), '1:x:y']], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, k: { ['lone ' + LOW]: '1:x:y', kt_b: '-' } }), valid: true, all: false, keys: [[JSON.stringify('kt_b'), '-']], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 11, k: { kt_a: '1:x:y', '\u{e9}': '-' }, s: { kt_a: '4:2', '\u{e9}': '4:3' } }), valid: true, all: false, keys: [[JSON.stringify('kt_a'), '1:x:y'], [JSON.stringify('\u{e9}'), '-']], stamps: [[JSON.stringify('kt_a'), '4:2'], [JSON.stringify('\u{e9}'), '4:3']], clear: null },
+  { note: JSON.stringify({ v: 1, at: 12, k: { kt_a: '1:x:y', kt_b: '-' }, s: { kt_a: '4:x', kt_b: '0:3', kt_z: '4:5' } }), valid: true, all: false, keys: [[JSON.stringify('kt_a'), '1:x:y'], [JSON.stringify('kt_b'), '-']], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 13, k: {}, all: true, c: '4:7' }), valid: true, all: true, keys: [], stamps: [], clear: '4:7' },
+  { note: JSON.stringify({ v: 1, at: 14, k: { kt_a: '1:x:y' }, all: true, c: '4:7', s: { kt_a: '4:8' } }), valid: true, all: true, keys: [[JSON.stringify('kt_a'), '1:x:y']], stamps: [[JSON.stringify('kt_a'), '4:8']], clear: '4:7' },
+  { note: JSON.stringify({ v: 1, at: 15, k: {}, c: '4:7' }), valid: true, all: false, keys: [], stamps: [], clear: null },
+  { note: JSON.stringify({ v: 1, at: 16, k: {}, all: true, c: 'soon' }), valid: true, all: true, keys: [], stamps: [], clear: null },
   { note: JSON.stringify({ v: 2, k: {} }), valid: false },
   { note: '{"v":1,"k":', valid: false },
   { note: 'not json', valid: false }
 ];
+
+// -- the gap note op by op, as the facade must write it -------------------------------------------------
+// A mirror not answered ok: a set or remove adds its key's hash after the op (k) and the op's stamp (s); a clear
+// empties WebKit, the note with it, so a fresh note says so with the clear's stamp (all, c). Later misses merge
+// into it. An op answered ok leaves the note alone. Boot 7, seq counting the document's ops from 1.
+function noteAfter(prev, op, boot, seq, at) {
+  const stamp = boot + ':' + seq;
+  if (op[0] === 'c') return JSON.stringify({ v: 1, at: at, k: {}, all: true, c: stamp });
+  const n = prev == null ? { v: 1, at: at, k: {} } : JSON.parse(prev);
+  n.at = at;
+  n.k[op[1]] = op[0] === 'd' ? '-' : H(op[2]);
+  (n.s || (n.s = {}))[op[1]] = stamp;
+  return JSON.stringify(n);
+}
+const NOTE_OPS = [
+  ['w', 'kt_sessions', JSON.stringify([{ id: 2, date: '2026-10-10' }])],
+  ['d', 'kt_theme'],
+  ['w', 'kt_sessions', JSON.stringify([{ id: 3, date: '2026-10-10' }, { id: 2, date: '2026-10-10' }])],
+  ['c'],
+  ['w', 'kt_last_open', '1760140000999'],
+  ['w', 'kt_emoji ' + EMOJI, 'pair'],
+  ['d', 'kt_last_open']
+];
+let noteText = null;
+const noteSteps = NOTE_OPS.map(function (op, i) {
+  noteText = noteAfter(noteText, op, 7, i + 1, 1760140001000 + i);
+  const n = JSON.parse(noteText);
+  check((!n.all || typeof n.c === 'string') && Object.keys(n.k).every(function (k) { return n.s && n.s[k]; }), 'a note step without its stamps');
+  return {
+    op: op[0] + (op[1] ? ' ' + JSON.stringify(op[1]) : ''),
+    note: noteText,
+    all: !!n.all,
+    keys: Object.keys(n.k).map(function (k) { return [JSON.stringify(k), n.k[k]]; }),
+    stamps: Object.keys(n.s || {}).map(function (k) { return [JSON.stringify(k), n.s[k]]; }),
+    clear: n.all ? n.c : null
+  };
+});
 
 // -- merges (Put back of a log key) ---------------------------------------------------------------------
 // index.html lsSet's comparator, verbatim: newest date first, then the larger id.
@@ -164,7 +212,7 @@ const merges = MERGE_CASES.map(function (c) {
   return { name: c[0], base: base, extra: extra, expected: m.text, added: m.added };
 });
 
-const doc = { generatedBy: 'tests/tools/ktstore-vectors.js', values: values, formulas: formulas, hello: hello, gapNotes: gapNotes, merges: merges };
+const doc = { generatedBy: 'tests/tools/ktstore-vectors.js', values: values, formulas: formulas, hello: hello, gapNotes: gapNotes, noteSteps: noteSteps, merges: merges };
 const text = JSON.stringify(doc, null, 1) + '\n';
 // The Swift side reads this file with JSONSerialization, which rejects a lone-surrogate escape: every value that
 // holds one travels inside a literal, never raw. (JSON.stringify writes a valid pair as is, so any \u{5c}udXXX

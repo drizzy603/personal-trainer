@@ -159,7 +159,7 @@
   }
  ],
  "hello": {
-  "payload": "\"{\\\"v\\\":1,\\\"at\\\":1760140000123,\\\"k\\\":{\\\"kt_sessions\\\":\\\"59:93f8660c:7416481e\\\",\\\"kt_theme\\\":\\\"-\\\"}}\"\n\"kt_last_open\"\n\"13:e8b2ed3e:319246c8\"\n\"kt_sessions\"\n\"59:93f8660c:7416481e\"\n\"kt_theme\"\n\"11:7d30bf80:39f93a2a\"\n\"kt_odd \\\"key\\\"\\n\\\\\"\n\"3:ad409d5e:b88985c\"\n\"kt_emoji 💪\"\n\"4:7c445ab1:7c9c2491\"\n\"kt_lone \\ud83d\"\n\"21:ff5abc22:f5829946\"\n\"kt_apikey\"\n\"16:de87e18f:f1983435\"\n\"kt_empty\"\n\"0:811c9dc5:1505\"\n\"kt__store_gap\"\n\"84:aded58c7:db1c4e39\"",
+  "payload": "\"{\\\"v\\\":1,\\\"at\\\":1760140000123,\\\"k\\\":{\\\"kt_sessions\\\":\\\"59:93f8660c:7416481e\\\",\\\"kt_theme\\\":\\\"-\\\"},\\\"s\\\":{\\\"kt_sessions\\\":\\\"3:7\\\",\\\"kt_theme\\\":\\\"3:9\\\"}}\"\n\"kt_last_open\"\n\"13:e8b2ed3e:319246c8\"\n\"kt_sessions\"\n\"59:93f8660c:7416481e\"\n\"kt_theme\"\n\"11:7d30bf80:39f93a2a\"\n\"kt_odd \\\"key\\\"\\n\\\\\"\n\"3:ad409d5e:b88985c\"\n\"kt_emoji 💪\"\n\"4:7c445ab1:7c9c2491\"\n\"kt_lone \\ud83d\"\n\"21:ff5abc22:f5829946\"\n\"kt_apikey\"\n\"16:de87e18f:f1983435\"\n\"kt_empty\"\n\"0:811c9dc5:1505\"\n\"kt__store_gap\"\n\"127:1d288be:7c70022e\"",
   "manifest": [
    [
     "\"kt_last_open\"",
@@ -191,7 +191,7 @@
    ],
    [
     "\"kt__store_gap\"",
-    "84:aded58c7:db1c4e39"
+    "127:1d288be:7c70022e"
    ]
   ],
   "skipped": 1,
@@ -205,6 +205,16 @@
     "-"
    ]
   ],
+  "gapStamps": [
+   [
+    "\"kt_sessions\"",
+    "3:7"
+   ],
+   [
+    "\"kt_theme\"",
+    "3:9"
+   ]
+  ],
   "gapAt": 1760140000123
  },
  "gapNotes": [
@@ -212,7 +222,9 @@
    "note": "{\"v\":1,\"at\":5,\"k\":{}}",
    "valid": true,
    "all": false,
-   "keys": []
+   "keys": [],
+   "stamps": [],
+   "clear": null
   },
   {
    "note": "{\"v\":1,\"at\":5,\"k\":{\"kt_last_open\":\"13:e34dc6ab:31926e43\"}}",
@@ -223,7 +235,9 @@
      "\"kt_last_open\"",
      "13:e34dc6ab:31926e43"
     ]
-   ]
+   ],
+   "stamps": [],
+   "clear": null
   },
   {
    "note": "{\"v\":1,\"at\":7,\"k\":{\"quote\\\"key\":\"3:a:b\",\"é\":\"-\"},\"extra\":[1,{\"x\":\"}\"}]}",
@@ -238,7 +252,9 @@
      "\"é\"",
      "-"
     ]
-   ]
+   ],
+   "stamps": [],
+   "clear": null
   },
   {
    "note": "{\"v\":1,\"at\":9,\"k\":{\"kt_a\":\"1:x:y\"},\"all\":true}",
@@ -249,7 +265,9 @@
      "\"kt_a\"",
      "1:x:y"
     ]
-   ]
+   ],
+   "stamps": [],
+   "clear": null
   },
   {
    "note": "{\"v\":1,\"k\":{\"lone \\udc4d\":\"1:x:y\",\"kt_b\":\"-\"}}",
@@ -260,7 +278,94 @@
      "\"kt_b\"",
      "-"
     ]
-   ]
+   ],
+   "stamps": [],
+   "clear": null
+  },
+  {
+   "note": "{\"v\":1,\"at\":11,\"k\":{\"kt_a\":\"1:x:y\",\"é\":\"-\"},\"s\":{\"kt_a\":\"4:2\",\"é\":\"4:3\"}}",
+   "valid": true,
+   "all": false,
+   "keys": [
+    [
+     "\"kt_a\"",
+     "1:x:y"
+    ],
+    [
+     "\"é\"",
+     "-"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_a\"",
+     "4:2"
+    ],
+    [
+     "\"é\"",
+     "4:3"
+    ]
+   ],
+   "clear": null
+  },
+  {
+   "note": "{\"v\":1,\"at\":12,\"k\":{\"kt_a\":\"1:x:y\",\"kt_b\":\"-\"},\"s\":{\"kt_a\":\"4:x\",\"kt_b\":\"0:3\",\"kt_z\":\"4:5\"}}",
+   "valid": true,
+   "all": false,
+   "keys": [
+    [
+     "\"kt_a\"",
+     "1:x:y"
+    ],
+    [
+     "\"kt_b\"",
+     "-"
+    ]
+   ],
+   "stamps": [],
+   "clear": null
+  },
+  {
+   "note": "{\"v\":1,\"at\":13,\"k\":{},\"all\":true,\"c\":\"4:7\"}",
+   "valid": true,
+   "all": true,
+   "keys": [],
+   "stamps": [],
+   "clear": "4:7"
+  },
+  {
+   "note": "{\"v\":1,\"at\":14,\"k\":{\"kt_a\":\"1:x:y\"},\"all\":true,\"c\":\"4:7\",\"s\":{\"kt_a\":\"4:8\"}}",
+   "valid": true,
+   "all": true,
+   "keys": [
+    [
+     "\"kt_a\"",
+     "1:x:y"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_a\"",
+     "4:8"
+    ]
+   ],
+   "clear": "4:7"
+  },
+  {
+   "note": "{\"v\":1,\"at\":15,\"k\":{},\"c\":\"4:7\"}",
+   "valid": true,
+   "all": false,
+   "keys": [],
+   "stamps": [],
+   "clear": null
+  },
+  {
+   "note": "{\"v\":1,\"at\":16,\"k\":{},\"all\":true,\"c\":\"soon\"}",
+   "valid": true,
+   "all": true,
+   "keys": [],
+   "stamps": [],
+   "clear": null
   },
   {
    "note": "{\"v\":2,\"k\":{}}",
@@ -273,6 +378,156 @@
   {
    "note": "not json",
    "valid": false
+  }
+ ],
+ "noteSteps": [
+  {
+   "op": "w \"kt_sessions\"",
+   "note": "{\"v\":1,\"at\":1760140001000,\"k\":{\"kt_sessions\":\"30:77a62fc6:def84ea4\"},\"s\":{\"kt_sessions\":\"7:1\"}}",
+   "all": false,
+   "keys": [
+    [
+     "\"kt_sessions\"",
+     "30:77a62fc6:def84ea4"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_sessions\"",
+     "7:1"
+    ]
+   ],
+   "clear": null
+  },
+  {
+   "op": "d \"kt_theme\"",
+   "note": "{\"v\":1,\"at\":1760140001001,\"k\":{\"kt_sessions\":\"30:77a62fc6:def84ea4\",\"kt_theme\":\"-\"},\"s\":{\"kt_sessions\":\"7:1\",\"kt_theme\":\"7:2\"}}",
+   "all": false,
+   "keys": [
+    [
+     "\"kt_sessions\"",
+     "30:77a62fc6:def84ea4"
+    ],
+    [
+     "\"kt_theme\"",
+     "-"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_sessions\"",
+     "7:1"
+    ],
+    [
+     "\"kt_theme\"",
+     "7:2"
+    ]
+   ],
+   "clear": null
+  },
+  {
+   "op": "w \"kt_sessions\"",
+   "note": "{\"v\":1,\"at\":1760140001002,\"k\":{\"kt_sessions\":\"59:723fa2a:6fd98258\",\"kt_theme\":\"-\"},\"s\":{\"kt_sessions\":\"7:3\",\"kt_theme\":\"7:2\"}}",
+   "all": false,
+   "keys": [
+    [
+     "\"kt_sessions\"",
+     "59:723fa2a:6fd98258"
+    ],
+    [
+     "\"kt_theme\"",
+     "-"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_sessions\"",
+     "7:3"
+    ],
+    [
+     "\"kt_theme\"",
+     "7:2"
+    ]
+   ],
+   "clear": null
+  },
+  {
+   "op": "c",
+   "note": "{\"v\":1,\"at\":1760140001003,\"k\":{},\"all\":true,\"c\":\"7:4\"}",
+   "all": true,
+   "keys": [],
+   "stamps": [],
+   "clear": "7:4"
+  },
+  {
+   "op": "w \"kt_last_open\"",
+   "note": "{\"v\":1,\"at\":1760140001004,\"k\":{\"kt_last_open\":\"13:e34dc6ab:31926e43\"},\"all\":true,\"c\":\"7:4\",\"s\":{\"kt_last_open\":\"7:5\"}}",
+   "all": true,
+   "keys": [
+    [
+     "\"kt_last_open\"",
+     "13:e34dc6ab:31926e43"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_last_open\"",
+     "7:5"
+    ]
+   ],
+   "clear": "7:4"
+  },
+  {
+   "op": "w \"kt_emoji 💪\"",
+   "note": "{\"v\":1,\"at\":1760140001005,\"k\":{\"kt_last_open\":\"13:e34dc6ab:31926e43\",\"kt_emoji 💪\":\"4:7c445ab1:7c9c2491\"},\"all\":true,\"c\":\"7:4\",\"s\":{\"kt_last_open\":\"7:5\",\"kt_emoji 💪\":\"7:6\"}}",
+   "all": true,
+   "keys": [
+    [
+     "\"kt_last_open\"",
+     "13:e34dc6ab:31926e43"
+    ],
+    [
+     "\"kt_emoji 💪\"",
+     "4:7c445ab1:7c9c2491"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_last_open\"",
+     "7:5"
+    ],
+    [
+     "\"kt_emoji 💪\"",
+     "7:6"
+    ]
+   ],
+   "clear": "7:4"
+  },
+  {
+   "op": "d \"kt_last_open\"",
+   "note": "{\"v\":1,\"at\":1760140001006,\"k\":{\"kt_last_open\":\"-\",\"kt_emoji 💪\":\"4:7c445ab1:7c9c2491\"},\"all\":true,\"c\":\"7:4\",\"s\":{\"kt_last_open\":\"7:7\",\"kt_emoji 💪\":\"7:6\"}}",
+   "all": true,
+   "keys": [
+    [
+     "\"kt_last_open\"",
+     "-"
+    ],
+    [
+     "\"kt_emoji 💪\"",
+     "4:7c445ab1:7c9c2491"
+    ]
+   ],
+   "stamps": [
+    [
+     "\"kt_last_open\"",
+     "7:7"
+    ],
+    [
+     "\"kt_emoji 💪\"",
+     "7:6"
+    ]
+   ],
+   "clear": "7:4"
   }
  ],
  "merges": [

@@ -71,8 +71,24 @@ final class WireTests: XCTestCase {
             gap[try XCTUnwrap(KTKey(units: try Self.units(fromLiteral: pair[0])))] = pair[1]
         }
         XCTAssertEqual(hello.gap?.keys, gap)
+        XCTAssertEqual(try Self.stamps(hello.gap), try Self.keyed(try XCTUnwrap(h["gapStamps"] as? [[String]])),
+                       "the missed ops' stamps")
         XCTAssertEqual(hello.gap?.at, (h["gapAt"] as? NSNumber)?.int64Value)
         XCTAssertFalse(hello.badGap)
+    }
+
+    /// Pairs of [key literal, text] from the vectors file, by key.
+    static func keyed(_ pairs: [[String]], file: StaticString = #filePath, line: UInt = #line) throws -> [KTKey: String] {
+        var out: [KTKey: String] = [:]
+        for pair in pairs {
+            out[try XCTUnwrap(KTKey(units: try units(fromLiteral: pair[0])), file: file, line: line)] = pair[1]
+        }
+        return out
+    }
+
+    /// A note's stamps as the facade spells them ("B:S").
+    static func stamps(_ note: KTProtocol.GapNote?) throws -> [KTKey: String] {
+        try XCTUnwrap(note).stamps.mapValues(\.description)
     }
 
     func testGapNotesAsTheFacadeWritesThem() throws {
@@ -86,11 +102,9 @@ final class WireTests: XCTestCase {
             }
             let note = try XCTUnwrap(parsed, text)
             XCTAssertEqual(note.all, n["all"] as? Bool, text)
-            var keys: [KTKey: String] = [:]
-            for pair in try XCTUnwrap(n["keys"] as? [[String]]) {
-                keys[try XCTUnwrap(KTKey(units: try Self.units(fromLiteral: pair[0])))] = pair[1]
-            }
-            XCTAssertEqual(note.keys, keys, text)
+            XCTAssertEqual(note.keys, try Self.keyed(try XCTUnwrap(n["keys"] as? [[String]])), text)
+            XCTAssertEqual(try Self.stamps(note), try Self.keyed(try XCTUnwrap(n["stamps"] as? [[String]])), text)
+            XCTAssertEqual(note.clear?.description, n["clear"] as? String, text)
         }
         // The note the tests' fake facade writes reads back the same.
         let note = KTProtocol.GapNote(keys: ["kt_last_open": "13:1:2", "kt_sessions": "-"], all: false, at: 42)
@@ -104,6 +118,31 @@ final class WireTests: XCTestCase {
         let stray = KTProtocol.GapNote.parse(Array(#"{"v":1,"k":{},"c":"2:3"}"#.utf16))
         XCTAssertNotNil(stray)
         XCTAssertNil(stray?.clear)
+    }
+
+    /// The gap note op by op, as the facade must write it (tests/tools/ktstore-vectors.js `noteAfter`): each missed
+    /// set or remove adds its key's hash and the op's stamp; a missed clear starts a fresh note with `all` and its
+    /// own stamp, into which later misses merge. Rule 5 needs both stamps, so every step carries them.
+    func testGapNoteOpByOpAsTheFacadeMustWriteIt() throws {
+        let steps = try XCTUnwrap(Self.vectors()["noteSteps"] as? [[String: Any]],
+                                  "no noteSteps: run node tests/tools/ktstore-vectors.js")
+        XCTAssertGreaterThanOrEqual(steps.count, 5)
+        var sawClear = false
+        for step in steps {
+            let text = try XCTUnwrap(step["note"] as? String)
+            let what = (step["op"] as? String ?? "?") + ": " + text
+            let note = try XCTUnwrap(KTProtocol.GapNote.parse(Array(text.utf16)), what)
+            XCTAssertEqual(note.all, step["all"] as? Bool, what)
+            XCTAssertEqual(note.keys, try Self.keyed(try XCTUnwrap(step["keys"] as? [[String]])), what)
+            XCTAssertEqual(try Self.stamps(note), try Self.keyed(try XCTUnwrap(step["stamps"] as? [[String]])), what)
+            XCTAssertEqual(note.clear?.description, step["clear"] as? String, what)
+            XCTAssertEqual(Set(note.stamps.keys), Set(note.keys.keys), "every missed op carries its stamp: \(what)")
+            if note.all {
+                XCTAssertNotNil(note.clear, "a missed clear carries its stamp: \(what)")
+                sawClear = true
+            }
+        }
+        XCTAssertTrue(sawClear)
     }
 
     /// A `\uXXXX` escape as text (spelled with \u{5C} so source tools never turn it into the character).
