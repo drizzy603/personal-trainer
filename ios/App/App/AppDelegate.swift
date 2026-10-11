@@ -1,7 +1,9 @@
 import UIKit
+import WebKit
 import Capacitor
 import ActivityKit
 import CapApp_SPM
+import FPHost
 import ObjectiveC.runtime
 
 @UIApplicationMain
@@ -143,7 +145,25 @@ class SuperoViewController: CAPBridgeViewController {
         return descriptor
     }
 
+    // The page's first paint (TrovoOta.confirm) stands in for its bootDone until
+    // the TrovoShell plugin carries it: it disarms FPKit's store breaker.
+    private var bootObserver: NSObjectProtocol?
+
+    deinit {
+        if let bootObserver { NotificationCenter.default.removeObserver(bootObserver) }
+    }
+
     override open func capacitorDidLoad() {
+        // FPKit's native copy of the owner's data (shadow, build 60): KTUIProxy in
+        // front of Capacitor's UI delegate, then the facade at document start.
+        // Bound to this web view; a scene that reconnects binds its own.
+        if let webView {
+            StoreAttach.shared.install(webView: webView, pageFolder: bridge?.config.appLocation)
+        }
+        bootObserver = NotificationCenter.default.addObserver(forName: .trovoOtaConfirmed, object: nil, queue: .main) { [weak self] note in
+            let from = (note.object as? WKWebView) ?? self?.webView
+            MainActor.assumeIsolated { StoreAttach.shared.bootDone(page: nil, webView: from) }
+        }
         NotificationCenter.default.addObserver(forName: .trovoDeepLink, object: nil, queue: .main) { [weak self] note in
             guard let url = note.userInfo?["url"] as? String else { return }
             let safe = url.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "\\", with: "")
@@ -198,8 +218,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        // FPKit: the policy file at launch, and the store rebound to this scene
+        // (its web view binds when SuperoViewController loads it).
+        FPPolicy.shared.start()
+        StoreAttach.shared.sceneConnected()
         for ctx in connectionOptions.urlContexts { open(ctx.url) }
         if let activity = connectionOptions.userActivities.first { continueActivity(activity) }
+    }
+
+    func sceneDidDisconnect(_ scene: UIScene) {
+        // UIKit may disconnect a background scene and connect a new one in the
+        // same process: the old page lets go of the store now.
+        StoreAttach.shared.sceneDisconnected(webView: (window?.rootViewController as? CAPBridgeViewController)?.webView)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
