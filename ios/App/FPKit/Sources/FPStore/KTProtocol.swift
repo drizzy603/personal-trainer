@@ -31,9 +31,12 @@ import Foundation
 ///
 /// **The gap note** is the facade's own key in WebKit, `kt__store_gap`, written with the real Storage (never
 /// mirrored): `JSON.stringify({v:1, at:<ms>, k:{<key>: H(<WebKit's value after the op>) or '-'},
-/// s:{<key>: '<B>:<S>'}})`, merged on every op whose mirror was not answered `ok` (`s` holds that op's stamp);
-/// a failed clear writes `all:true`. The facade removes it after a hello answered `shadow` and its `put` (if
-/// any) answered `ok`.
+/// s:{<key>: '<B>:<S>'}})`, merged on every op whose mirror was not answered `ok` (`s` holds that op's stamp).
+/// A clear whose mirror was not answered `ok` empties WebKit, the note with it, so the facade then writes a fresh
+/// note `{v:1, at, k:{}, all:true, c:'<B>:<S>'}` (`c` holds the clear's stamp), into which later misses merge.
+/// The facade sends both stamps: rule 5 explains a key by the note only when the store took no write of it
+/// after the op (or the clear) it missed, and a note without them is read the old way, as explaining every key
+/// it names. The facade removes the note after a hello answered `shadow` and its `put` (if any) answered `ok`.
 ///
 /// Reserved keys never enter the store: `kt_apikey` (passthrough: it stays in WebKit; a Keychain copy comes
 /// later) and every key starting `kt__store` (the facade's bookkeeping).
@@ -174,20 +177,38 @@ public enum KTProtocol {
         public var stamps: [KTKey: BootSeq]
         /// A clear was not mirrored: every key counts as named.
         public var all: Bool
+        /// That clear's (boot, seq), where the note says (`c`; only with `all`). A key the store wrote after it is
+        /// not explained by the clear.
+        public var clear: BootSeq?
         /// When the last gap happened (ms), if the note says.
         public var at: Int64?
 
-        public init(keys: [KTKey: String], stamps: [KTKey: BootSeq] = [:], all: Bool = false, at: Int64? = nil) {
+        public init(keys: [KTKey: String], stamps: [KTKey: BootSeq] = [:], all: Bool = false, clear: BootSeq? = nil,
+                    at: Int64? = nil) {
             self.keys = keys
             self.stamps = stamps
             self.all = all
+            self.clear = all ? clear : nil
             self.at = at
         }
 
         public func names(_ key: KTKey) -> Bool { all || keys[key] != nil }
 
-        /// `{"v":1,"at":ms,"k":{key: hash},"s":{key: "B:S"},"all":true}`; unknown members are ignored, and so is
-        /// a stamp that is not "B:S". nil when unreadable.
+        /// Whether the note explains why the store's copy of `key` may differ from WebKit's: it names a missed op
+        /// on the key, or a missed clear, after which the store took no write of the key (`storeStamp` is the
+        /// key's last write in the store; nil when the store never wrote it). An op or clear without a stamp,
+        /// from a note that does not carry them, counts as explaining, as before stamps.
+        public func explains(_ key: KTKey, storeStamp: BootSeq?) -> Bool {
+            func noWriteAfter(_ missed: BootSeq?) -> Bool {
+                guard let missed, let storeStamp else { return true }
+                return storeStamp <= missed
+            }
+            if keys[key] != nil && noWriteAfter(stamps[key]) { return true }
+            return all && noWriteAfter(clear)
+        }
+
+        /// `{"v":1,"at":ms,"k":{key: hash},"s":{key: "B:S"},"all":true,"c":"B:S"}`; unknown members are ignored,
+        /// and so is a stamp that is not "B:S" (and `c` without `all`). nil when unreadable.
         public static func parse(_ u: U16) -> GapNote? {
             guard let members = KTJSON.objectMembers(u) else { return nil }
             var note = GapNote(keys: [:])
@@ -212,12 +233,15 @@ public enum KTProtocol {
                               let stamp = BootSeq(Substring(String(decoding: text, as: UTF16.self))) else { continue }
                         note.stamps[key] = stamp
                     }
+                case "c":
+                    note.clear = KTJSON.string(u, range).flatMap { BootSeq(Substring(String(decoding: $0, as: UTF16.self))) }
                 default:
                     continue
                 }
             }
             guard version == "1" else { return nil }
             note.stamps = note.stamps.filter { note.keys[$0.key] != nil }
+            if !note.all { note.clear = nil }
             return note
         }
 
@@ -235,6 +259,7 @@ public enum KTProtocol {
                 s += "}"
             }
             if all { s += ",\"all\":true" }
+            if all, let clear { s += ",\"c\":\"\(clear)\"" }
             s += "}"
             return Array(s.utf16)
         }

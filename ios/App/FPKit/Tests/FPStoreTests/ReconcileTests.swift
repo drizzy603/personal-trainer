@@ -680,4 +680,127 @@ final class ReconcileTests: XCTestCase {
                                      storeStamps: [k: KTProtocol.BootSeq(boot: 3, seq: 2)], witnessHistory: ["w"])
         XCTAssertEqual(KTReconcile.classify(fresh).changes[k]?.reason, .gap)
     }
+
+    // MARK: Rule 5 and a clear the store missed
+
+    /// `localStorage.clear()` whose mirror got no answer, then two writes the store took, then a hard kill that
+    /// loses the last of them in WebKit. The note's `all` explains the keys the clear removed (the store took no
+    /// write of them after it), but not the programme the store wrote after the clear: that is a lost suffix,
+    /// would-repair, and the newer value is kept for Put back.
+    func testFailedClearThenALostSuffixIsWouldRepair() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        dev.failClear = true
+        dev.clear()
+        dev.failClear = false
+        dev.posts.removeAll()  // the clear's async post never arrived
+        XCTAssertNotNil(dev.webkit[KTProtocol.gapKey], "the facade noted the missed clear")
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())  // the page stamps a visit after the clear (mirrored)
+        let r1 = #"{"name":"after the clear","weeks":[{"wk":1}]}"#
+        let r2 = #"{"name":"after the clear","weeks":[{"wk":1},{"wk":2}]}"#
+        dev.set("kt_routine", r1)
+        let saved = dev.webkit
+        dev.set("kt_routine", r2)
+        dev.webkit = saved  // WebKit loses the last write in a hard kill
+        dev.relaunch()
+        let answer = dev.launch(stamp: false)
+        XCTAssertEqual(answer["rule"] as? Int, 6, "\(answer)")
+        XCTAssertEqual(answer["label"] as? String, "lag")
+        let hello = try XCTUnwrap(dev.store.status().lastHello)
+        XCTAssertEqual(hello.wouldRepair, ["kt_routine"])
+        XCTAssertEqual(hello.adopted["lag"], ["kt_routine"])
+        let lag = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_routine" })
+        XCTAssertEqual(lag.why, "lag")
+        XCTAssertEqual(dev.store.conflictValue(id: lag.id), u(r2), "the newer value is kept for Put back")
+        XCTAssertEqual(dev.store.previewPutBack(conflicts: [lag.id]).items.map(\.outcome), [.putBack])
+        // What the clear removed is explained by the note: followed, and nothing of it kept.
+        let cleared = Set(Seed.values.keys).subtracting(["kt_apikey", "kt_routine", KTProtocol.witnessKey])
+        XCTAssertEqual(Set((hello.adopted["gap"] ?? []).map { KTKey($0) }), cleared)
+        XCTAssertEqual(dev.store.conflicts().map(\.key), ["kt_routine"])
+        XCTAssertNil(dev.store.value("kt_sessions"))
+        XCTAssertEqual(dev.store.values(), dev.pageView, "observe mode: WebKit is followed")
+        XCTAssertNil(dev.webkit[KTProtocol.gapKey], "the facade drops the note once adopted")
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+    }
+
+    /// The missed clear alone: every key it removed is a gap (followed, nothing kept), and a write after it that the
+    /// store missed too is explained by its own entry in the note.
+    func testFailedClearAloneIsAGap() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        dev.failClear = true
+        dev.clear()
+        dev.failClear = false
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())
+        dev.failMirror = ["kt_theme"]
+        dev.set("kt_theme", "dark")  // missed as well: merged into the clear's note
+        dev.failMirror = []
+        dev.posts.removeAll()
+        let note = try XCTUnwrap(dev.webkit[KTProtocol.gapKey].flatMap { KTProtocol.GapNote.parse($0) })
+        XCTAssertTrue(note.all)
+        XCTAssertNotNil(note.stamps["kt_theme"])
+        let kept = dev.store.conflicts().count
+        dev.relaunch()
+        let answer = dev.launch(stamp: false)
+        XCTAssertEqual(answer["rule"] as? Int, 5, "\(answer)")
+        XCTAssertEqual(dev.store.conflicts().count, kept, "a missed clear's removed values are not offered back")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        XCTAssertEqual(dev.store.value("kt_theme"), u("dark"))
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+    }
+
+    /// The clear's async post lands after all: the store tombstones what it held from before the clear, keeps
+    /// the writes it took after it, and the next document start is in step.
+    func testFailedClearWhosePostLandsIsInStep() {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        dev.failClear = true
+        dev.clear()
+        dev.failClear = false
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())
+        dev.set("kt_theme", "dark")
+        XCTAssertEqual(dev.deliverPosts(), [.applied])
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0, "the note names nothing the store does not hold")
+        XCTAssertNil(dev.webkit[KTProtocol.gapKey])
+    }
+
+    /// The probe at classifier level: after a clear the store missed (stamp 2:1), it took the witness (2:2) and
+    /// the programme twice (2:3, 2:4), and WebKit holds the first of those programme writes. The clear's stamp
+    /// tells the store's later write from what the clear removed.
+    func testAClearGapNoteExplainsOnlyKeysTheStoreDidNotWriteAfterIt() throws {
+        let h = { (s: String) in KTWire.hash(u(s)) }
+        let bs = { (b: Int64, s: Int64) in KTProtocol.BootSeq(boot: b, seq: s) }
+        var (m, _) = Model.base()  // seq 1-6, all written at boot 1
+        var stamps: [KTKey: KTProtocol.BootSeq] = [:]
+        for k in m.kv.keys { stamps[k] = bs(1, 0) }
+        m.w("kt_last_open", "1100"); stamps["kt_last_open"] = bs(2, 2)  // seq 7
+        m.w("kt_routine", "r1")  // seq 8
+        m.w("kt_routine", "r2"); stamps["kt_routine"] = bs(2, 4)  // seq 9
+        let W: [KTKey: String] = ["kt_last_open": h("1100"), "kt_routine": h("r1")]
+        var input = m.input(W)
+        input.storeStamps = stamps
+        input.gap = KTProtocol.GapNote.parse(u(#"{"v":1,"at":7,"k":{},"all":true,"c":"2:1"}"#))
+        var plan = KTReconcile.classify(input)
+        XCTAssertEqual(plan.rule, 6)
+        XCTAssertEqual(plan.wouldRepair, ["kt_routine"])
+        XCTAssertEqual(plan.lagSeq, 8)
+        var expected: [KTKey: KTChange] = ["kt_routine": KTChange(target: h("r1"), reason: .lag)]
+        for k: KTKey in ["kt_coach_msgs", "kt_sessions", "kt_weights", "kt_bw"] {
+            expected[k] = KTChange(target: KTWire.absent, reason: .gap)
+        }
+        XCTAssertEqual(plan.changes, expected)
+
+        // The store's programme from before the clear, and WebKit's from a write after it the store missed too
+        // (its own entry in the note): explained, a gap.
+        (m, _) = Model.base()
+        input = m.input(["kt_last_open": h("1000"), "kt_routine": h("r1")])
+        input.storeStamps = stamps.merging(["kt_last_open": bs(1, 0), "kt_routine": bs(1, 0)]) { $1 }
+        input.gap = KTProtocol.GapNote.parse(
+            u(#"{"v":1,"at":7,"k":{"kt_routine":""# + h("r1") + #""},"s":{"kt_routine":"2:3"},"all":true,"c":"2:1"}"#))
+        plan = KTReconcile.classify(input)
+        XCTAssertEqual(plan.rule, 5)
+        XCTAssertEqual(plan.changes["kt_routine"], KTChange(target: h("r1"), reason: .gap))
+        XCTAssertEqual(plan.changes.count, 5)
+    }
 }

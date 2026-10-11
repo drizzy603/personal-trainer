@@ -95,6 +95,15 @@ final class WireTests: XCTestCase {
         // The note the tests' fake facade writes reads back the same.
         let note = KTProtocol.GapNote(keys: ["kt_last_open": "13:1:2", "kt_sessions": "-"], all: false, at: 42)
         XCTAssertEqual(KTProtocol.GapNote.parse(note.json()), note)
+        // So does a missed clear's note with a miss merged after it, both stamps included; `c` counts only with
+        // `all`.
+        let cleared = KTProtocol.GapNote(keys: ["kt_theme": "4:1:2"], stamps: ["kt_theme": .init(boot: 2, seq: 5)],
+                                         all: true, clear: .init(boot: 2, seq: 3), at: 43)
+        XCTAssertEqual(KTProtocol.GapNote.parse(cleared.json()), cleared)
+        XCTAssertEqual(KTProtocol.GapNote.parse(cleared.json())?.clear, .init(boot: 2, seq: 3))
+        let stray = KTProtocol.GapNote.parse(Array(#"{"v":1,"k":{},"c":"2:3"}"#.utf16))
+        XCTAssertNotNil(stray)
+        XCTAssertNil(stray?.clear)
     }
 
     /// A `\uXXXX` escape as text (spelled with \u{5C} so source tools never turn it into the character).

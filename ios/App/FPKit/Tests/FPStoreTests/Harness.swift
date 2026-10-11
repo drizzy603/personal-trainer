@@ -80,6 +80,8 @@ final class FakeDevice {
     var attached = false
     /// Mirrors that get no answer (the prompt never reached the store), as in a hard kill or a crash marker.
     var failMirror: Set<KTKey> = []
+    /// The same for `localStorage.clear()`'s mirror.
+    var failClear = false
     /// Posts sent to the `ktStore` handler and not yet delivered.
     var posts: [(head: String, payload: String?)] = []
     private var stamps = 0
@@ -155,6 +157,21 @@ final class FakeDevice {
     func remove(_ key: KTKey) {
         webkit[key] = nil
         mirror("d", key, nil)
+    }
+
+    /// `localStorage.clear()` through the facade: WebKit drops every key, the facade's note with them, then the
+    /// mirror. A mirror not answered `ok` leaves a fresh note, written as the facade writes it
+    /// (`JSON.stringify({v:1, at, k:{}, all:true, c:'B:S'})`, the clear's own stamp in `c`), and posts the clear.
+    func clear() {
+        webkit.removeAll()
+        guard attached else { return }
+        seq += 1
+        let head = "c \(boot):\(seq)"
+        let answer = failClear ? nil : store.answer(head: head, payload: nil)
+        if answer != "ok" {
+            webkit[KTProtocol.gapKey] = u("{\"v\":1,\"at\":\(clock.ms),\"k\":{},\"all\":true,\"c\":\"\(boot):\(seq)\"}")
+            posts.append((head, nil))
+        }
     }
 
     private func mirror(_ op: String, _ key: KTKey, _ value: U16?) {

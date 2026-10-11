@@ -7,7 +7,8 @@ public enum KTReason: String, Codable, Sendable {
     case migrate
     /// Rule 4: the witness is unknown, so an older or facade-less build wrote WebKit.
     case olderBuild = "older build"
-    /// Rule 5: the facade's gap note names the key; the store missed that write. Its stale value is not kept.
+    /// Rule 5: the facade's gap note explains the key (a missed op on it, or a missed clear, with no store write of
+    /// the key after it); the store missed that write. Its stale value is not kept.
     case gap
     /// Rule 6: WebKit lost the store's newest writes (a hard kill right after a burst).
     case lag
@@ -118,8 +119,8 @@ public struct KTReconcilePlan: Equatable, Sendable {
 /// | 2 | WebKit unreadable (`hello nowk`) | facade off, reconcile nothing (KTStore, before this) |
 /// | 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back; the facade stays off for this document |
 /// | 4 | WebKit's witness is neither in the store's history of it nor in the gap note with that hash | adopt every difference, deletions included; replaced values to conflicts ("older build"); nothing refilled |
-/// | 5 | witness known; key named in the gap note, and the store took no write of it after the op it missed | adopt WebKit's value (the store missed that write) |
-/// | 6 | witness known; WebKit's whole manifest (less gap keys) equals the store's state at one journal seq | record would-repair; newer values to conflicts ("lag"); adopt WebKit |
+/// | 5 | witness known; the gap note names a missed op on the key (or a missed clear), and the store took no write of the key after it | adopt WebKit's value (the store missed that write) |
+/// | 6 | witness known; WebKit's whole manifest (less the keys the gap note explains) equals the store's state at one journal seq | record would-repair; newer values to conflicts ("lag"); adopt WebKit |
 /// | 7 | witness known; anything else | adopt WebKit; replaced values to conflicts ("unexplained"); counted |
 ///
 /// Keys only in the store follow the same rules (absence is a value) and are never refilled. Reserved keys
@@ -179,12 +180,12 @@ public enum KTReconcile {
             remaining.remove(k)
         }
 
-        // Rule 5: keys the gap note names, unless the store took a write of the key after the op it missed:
-        // then WebKit lost that later write, and the key is judged with the rest (lag or unexplained), so the
-        // store's newer value is kept for Put back instead of being given up as stale.
+        // Rule 5: keys the gap note explains: it names a missed op on the key, or a missed clear, and the store took
+        // no write of the key after it. A key the store wrote after every missed op on it (a clear included) is
+        // judged with the rest (lag or unexplained): WebKit lost that later write, so the store's newer value is
+        // kept for Put back instead of being given up as stale.
         if let gap = input.gap {
-            for k in remaining where gap.names(k) {
-                if let missed = gap.stamps[k], let last = input.storeStamps[k], last > missed, differs(k) { continue }
+            for k in remaining where gap.explains(k, storeStamp: input.storeStamps[k]) {
                 if differs(k) { changes[k] = KTChange(target: web(k), reason: .gap) }
                 remaining.remove(k)
             }
