@@ -11,9 +11,10 @@ the owner's data that follows WebKit and never writes it (FPStore, in shadow), a
 `app.kt.trainer` subsystem); later tasks add their files beside them. FPCore holds the shell contract,
 the coach model and the rest of C4, and the policy file's state (S7). FPStore holds the native store
 (plan task S2, see [FPStore](#fpstore-the-native-store) below). The App target links all four products
-(the rest of S1, see [In the app](#in-the-app)). FPHost attaches the store to the app's web view and fetches
-the policy file (S5, S7; see [FPHost](#fphost-the-store-in-the-app) below): the app calls it from
-`AppDelegate.swift`.
+(the rest of S1, see [In the app](#in-the-app)). FPHost attaches the store to the app's web view, fetches
+the policy file and serves Settings > About > Storage through the TrovoStore plugin (S5, S6, S7; see
+[FPHost](#fphost-the-store-in-the-app) below): the app calls it from `AppDelegate.swift`, which also injects
+`window.__FP_SHELL`.
 
 ## Targets
 
@@ -21,7 +22,7 @@ the policy file (S5, S7; see [FPHost](#fphost-the-store-in-the-app) below): the 
 |---|---|---|---|
 | FPCore | Foundation only | iOS, macOS | The shell contract and its negotiation, lone-surrogate mending, the coach model and its tokens, blocks, intents, the link state, breakers and crash-marker policy (C4); the policy file's state (S7) |
 | FPStore | FPCore, the system SQLite3 | iOS, macOS | KTStore: every `kt_*` value in exact UTF-16, the wire codec, the seven-rule reconcile (observe only in build 60), the journal, snaps and Put back (S2); the shadow facade `Resources/ktstore.js` (S3) |
-| FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7) |
+| FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7), what Settings > About > Storage does and the shell flag (S6) |
 | FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
 Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac; FPHostTests (iOS only), run by
@@ -125,9 +126,22 @@ page does not wait on goes to a utility queue.
 | `StoreMarker.swift` | The store's crash marker, `FPStore/store.marker`: a state byte set around every store operation with `pwrite` on a descriptor kept open, so a process that dies inside one leaves it set; the next launch turns the facade off for that pair (and leaves the store closed) until a new shell or page build, or the owner clears it |
 | `PolicyFetch.swift` | `FPPolicy.shared`: `policy.json` from GitHub Pages (beside build.txt) at launch and on foreground, at most every 15 minutes, the last good copy kept in UserDefaults; posts `FPPolicy.changed` (native screens follow at once; the store reads `effective` at each document start) |
 | `StoreProbe.swift` | Debug builds only: the scenario runner's hands inside the app (`-fpProbe <steps>`), for tests/native-store.sh |
+| `StoreTestQuit.swift` | Storage's "Test: quit after next save" (TestFlight and Debug builds): the arm (a write or remove of one of the keys the page names, within ten minutes) and the record kept beside the store across the quit (`FPStore/testquit.json`), which the next launch's first document start completes with what it found (in step, or the keys WebKit lost that the store kept) |
+| `ShellFlagScript.swift` | `window.__FP_SHELL` for this binary (FPCore `ShellFlag`): no native screen in the store half (`screens` stays empty until the native chat's ScreenGate fills it, task C5) and, in a Debug build, `dev` from the test tools' `-devNav <route>` and `-devTheme <room>` |
 
-The page's `bootDone` will reach StoreAttach through the TrovoShell plugin (plan tasks C5, S6). Until then the
-OTA confirm every page sends on its first paint stands in for it: `TrovoOtaPlugin.confirm` posts
+**Settings > About > Storage** (plan task S6). The page reads and acts on the store through the TrovoStore plugin
+(`ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoStorePlugin.swift`), which reaches StoreAttach through
+`StoreHostAdapter` in `AppDelegate.swift` (CapApp-SPM cannot depend on FPKit): `status()` (StoreAttach's status
+plus whether the test is offered), `conflicts({limit})`, `putBack({conflicts | snap | wipe, preview})` (staged Put
+back makes the plugin reload the page, so the facade writes the values into WebKit before the page's first script),
+`setSwitch({on})` (the Native copy switch; on also clears the store's crash verdicts), `exportCopy()` (the store as
+one JSON file, handed to the share sheet; never a `supero-backup-*` name) and, where `TrovoStorePlugin.testKillAllowed`
+(a Debug build, or a TestFlight install's sandbox receipt), `testKill({arm, keys})`. The page shows the row only with
+the shell's flag and the plugin.
+
+The page's `bootDone` (the end of its boot, whatever painted first; it also sends the OTA confirm when the first
+render was the coach route) reaches StoreAttach through the TrovoShell plugin once a shell carries it (plan task
+C5). Until then the OTA confirm every page sends stands in for it: `TrovoOtaPlugin.confirm` posts
 `.trovoOtaConfirmed` with its web view, and `AppDelegate.swift` hands it to `StoreAttach.bootDone`.
 
 A new store gets `minReader` 60, so a build numbered below 60 refuses its own store from its second launch
@@ -136,7 +150,9 @@ A new store gets `minReader` 60, so a build numbered below 60 refuses its own st
 
 Debug launch arguments (never read by a Release build): `-fpStoreSwitch on|off`, `-fpClearVerdicts`,
 `-fpClearBreaker`, `-fpBreakProxy`, `-fpIgnoreBootDone`, `-fpIgnoreMarker`, `-fpNoWebKit`, `-fpOffline`,
-`-fpProbe <steps file>` with `-fpProbeLog <name>`, `-fpPolicyFile <path>`, `-fpPolicyEvery <seconds>`.
+`-fpProbe <steps file>` with `-fpProbeLog <name>`, `-fpPolicyFile <path>`, `-fpPolicyEvery <seconds>`, and the
+tools' `-devNav <route>` / `-devTheme <room>` (into `window.__FP_SHELL.dev`: test-native.sh and
+screenshots/shoot.py drive the page's dev-nav hook with them instead of writing `kt_dev_nav` into WebKit's file).
 
 ### tests/native-store.sh
 
@@ -145,8 +161,9 @@ simulators (the phone of each runtime's first paired iPhone + Watch, by UDID): m
 web view is out of the window, background and back, a WebContent kill, a launch without the facade, WebKit
 unreadable, a checkpoint and snapshots racing page writes, the policy file, the store breaker, a planted
 crash marker, no flag without a verified proxy, a scene disconnect and reconnect, an OTA page staged and
-served, WebKit wiped and Put back, the SIGKILL sweep, and with `--downgrade` the 59 <-> 60 drill on build 59
-built at its own commit. `tests/tools/native-store.py` reads WebKit's and the store's SQLite files and
+served, WebKit wiped and Put back, Settings > About > Storage through the real TrovoStore plugin (Put back of a
+value an older build replaced, the test quit and its report, the Native copy switch across launches, the sheet and
+Export a copy), the SIGKILL sweep, and with `--downgrade` the 59 <-> 60 drill on build 59 built at its own commit. `tests/tools/native-store.py` reads WebKit's and the store's SQLite files and
 decides. See the header of `tests/native-store.sh` for its options.
 
 ## In the app

@@ -16,7 +16,9 @@
 # then adopt; WebKit unreadable; a checkpoint and snapshots racing page writes; the policy file (facade "off" at the
 # next document start, a bad file changes nothing); the store breaker; a planted crash marker; no flag without a
 # verified KTUIProxy; a scene disconnect and reconnect; an OTA page staged, served and confirmed; WebKit wiped and Put
-# back; the SIGKILL sweep (24 kills 0-50 ms after a 100-write burst, then, when WebKit lost nothing in them, more kills
+# back; Settings > About > Storage through the real TrovoStore plugin (plan task S6: Put back of a value an older build
+# replaced, "Test: quit after next save" and its report, the Native copy switch across launches, the sheet and Export
+# a copy, shots in screenshots/out/native-store/); the SIGKILL sweep (24 kills 0-50 ms after a 100-write burst, then, when WebKit lost nothing in them, more kills
 # after a bigger burst until it loses something, so the would-repair path is shown every run); the 59 <-> 60 drill
 # (Reset programme with its Clear chat, Start new programme, a sparse restore, an iCloud-copy restore). Plus, over every
 # launch: facade boot under 50 ms, CapacitorHttp still patched, never an alert.

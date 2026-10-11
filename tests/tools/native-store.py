@@ -777,6 +777,117 @@ def scen_wiped(c):
                 '%s; programme %s, %s sessions' % (back, j.get('routine'), j.get('sessions')))
 
 
+PAGE_H = ("var H = function (s) { var a = 0x811c9dc5, b = 5381, i, c; for (i = 0; i < s.length; i++) { c = s.charCodeAt(i);"
+          " a = Math.imul(a ^ c, 0x01000193) >>> 0; b = (Math.imul(b, 33) + c) >>> 0; } return s.length + ':' + a.toString(16) + ':' + b.toString(16); };")
+
+
+def scen_storage(c):
+    """Settings > About > Storage through the real TrovoStore plugin (plan task S6): the row, Put back of a value an older
+    build replaced (staged, the page reloaded, both copies hold it), "Test: quit after next save" (the process ends right
+    after the armed save, the next launch reports what its first start found), the Native copy switch across launches,
+    the sheet and Export a copy's share sheet."""
+    s = 'storage'
+    def res(ev, label):
+        e = ev.last('js', label=label)
+        return (e or {}).get('result')
+    # An older build changes a value behind the copy (rule 4 at the next start): WebKit's file written with the app closed.
+    mark = str(int(time.time()))
+    ev = probe(c.sim, 'storage-seed', [[js('seed', "localStorage.setItem('kt_probe_pb', 'A ' + args.mark); return localStorage.getItem('kt_probe_pb');", mark=mark)]])
+    c.rep.check(s, 'the page saved the value an older build will change', res(ev, 'seed') == 'A ' + mark, res(ev, 'seed'))
+    c.sim.terminate()
+    db = sqlite3.connect(webkit_file(c.sim))
+    for k, v in (('kt_probe_pb', 'B ' + mark), ('kt_last_open', str(1700000000000 + int(mark)))):
+        db.execute('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', (k, v.encode('utf-16-le')))
+    db.commit()
+    db.close()
+    ev = probe(c.sim, 'storage-putback', [
+        [
+            js('status', "var st = await Capacitor.Plugins.TrovoStore.status(); switchTab('settings'); await new Promise(function (r) { setTimeout(r, 800); });"
+                         " return {facade: st.facade, testKill: st.testKill, testKillFn: typeof Capacitor.Plugins.TrovoStore.testKill, line: _fpStoreLine(st),"
+                         " row: (document.getElementById('fp-store-sub') || {}).textContent || null, rule: st.store && st.store.lastHello && st.store.lastHello.rule};"),
+            js('putback', PAGE_H + " var r = await Capacitor.Plugins.TrovoStore.conflicts({limit: 400});"
+                          " var p = r.rows.filter(function (x) { return x.key === 'kt_probe_pb' && x.why === 'older build'; })[0];"
+                          " if (!p) return {error: 'no older-build conflict for kt_probe_pb'};"
+                          " var prev = await Capacitor.Plugins.TrovoStore.putBack({conflicts: [p.id], preview: true});"
+                          " sessionStorage.setItem('fp_pb_pick', JSON.stringify(p));"
+                          " var staged = await Capacitor.Plugins.TrovoStore.putBack({conflicts: [p.id]});"
+                          " return {pick: p, preview: prev, staged: staged};"),
+        ],
+        [
+            js('after', PAGE_H + " var p = JSON.parse(sessionStorage.getItem('fp_pb_pick') || 'null'); var st = await Capacitor.Plugins.TrovoStore.status();"
+                        " var v = localStorage.getItem('kt_probe_pb');"
+                        " return {pick: p, now: v == null ? null : H(v), value: v, lastPutBack: st.store.lastPutBack, line: _fpStoreLine(st)};"),
+            state('put back'),
+            js('arm', "return await Capacitor.Plugins.TrovoStore.testKill({arm: true, keys: ['kt_probe_quit']});"),
+            js('other', "localStorage.setItem('kt_probe_other', 'x' + Date.now()); return 'still here';"),
+            js('save', "localStorage.setItem('kt_probe_quit', 'quit ' + Date.now()); return 'saved';"),
+            {'op': 'wait', 'ms': 4000},
+        ],
+    ], timeout=25, terminate=False)
+    st0 = res(ev, 'status') or {}
+    c.rep.check(s, 'the row reads the plugin\'s status (the start took over the older build\'s change)', st0.get('facade') == 'attached'
+                and st0.get('rule') == 4 and str(st0.get('line', '')).startswith('In step') and st0.get('row') == st0.get('line'), st0)
+    c.rep.check(s, 'a Debug build offers "Test: quit after next save" (status and method)', st0.get('testKill') is True and st0.get('testKillFn') == 'function', st0)
+    pb = res(ev, 'putback') or {}
+    c.rep.check(s, 'Put back previews the value, then stages it', (pb.get('preview') or {}).get('count') == 1 and (pb.get('staged') or {}).get('staged') is True, pb)
+    af = res(ev, 'after') or {}
+    c.rep.check(s, 'the plugin reloaded the page and the facade wrote the kept value into WebKit', af.get('value') == 'A ' + mark
+                and (af.get('lastPutBack') or {}).get('items', [{}])[0].get('outcome') == 'put back', af)
+    c.in_step(s, 'put back', ev)
+    c.rep.check(s, 'the test arms; a save it does not wait for leaves the app running', res(ev, 'arm') == {'armed': True} and res(ev, 'other') == 'still here',
+                [res(ev, 'arm'), res(ev, 'other')])
+    dead = False
+    for _ in range(40):
+        if ev.pid and not Sim.alive(ev.pid):
+            dead = True
+            break
+        time.sleep(0.25)
+    c.rep.check(s, 'the armed save ends the app', dead, ev.pid)
+    ev = probe(c.sim, 'storage-reopen', [[
+        js('reopen', "var st = await Capacitor.Plugins.TrovoStore.status(); return {tq: st.testQuit, armed: st.testQuitArmed,"
+                     " text: st.testQuit ? _fpTestQuitLine(st.testQuit) : null};"),
+        js('off', "return await Capacitor.Plugins.TrovoStore.setSwitch({on: false});"),
+    ]])
+    ro = res(ev, 'reopen') or {}
+    tq = ro.get('tq') or {}
+    c.rep.check(s, 'the next launch reports the test quit and what its first start found', tq.get('key') == 'kt_probe_quit'
+                and isinstance(tq.get('after'), dict) and ro.get('armed') is False, ro)
+    c.rep.fact(s, ro.get('text') or '-')
+    c.rep.check(s, 'the Native copy switch goes off', res(ev, 'off') == {'on': False}, res(ev, 'off'))
+    ev = probe(c.sim, 'storage-off', [[
+        js('off', "var st = await Capacitor.Plugins.TrovoStore.status(); return {facade: st.facade, line: _fpStoreLine(st), mode: window.__ktStoreState && window.__ktStoreState.mode};"),
+        js('on', "return await Capacitor.Plugins.TrovoStore.setSwitch({on: true});"),
+    ]])
+    off = res(ev, 'off') or {}
+    c.rep.check(s, 'switched off: the next start runs without the facade and the row says why', off.get('facade') == 'off' and off.get('mode') == 'off'
+                and 'switched off' in str(off.get('line')), off)
+    shots = {}
+    out = c.opts.out or tempfile.gettempdir()
+
+    def during(evs):
+        for label, wait, name in (('sheet', 0.8, 'storage-sheet'), ('export', 3.0, 'storage-export')):
+            if label not in shots and evs.last('js', label=label):
+                time.sleep(wait)
+                shots[label] = os.path.join(out, '%s-%s.png' % (name, c.sim.runtime()[0]))
+                c.sim.screenshot(shots[label])
+    ev = probe(c.sim, 'storage-on', [[
+        js('on', "var st = await Capacitor.Plugins.TrovoStore.status(); return {facade: st.facade, line: _fpStoreLine(st), mode: window.__ktStoreState && window.__ktStoreState.mode};"),
+        js('sheet', "switchTab('settings'); openStorageSheet(); await new Promise(function (r) { setTimeout(r, 1500); });"
+                    " var sh = document.querySelector('#fpStoreOverlay .kt-sheet'); if (sh) sh.scrollTop = sh.scrollHeight;"
+                    " return document.getElementById('fpStoreBody').textContent.slice(-500);"),
+        {'op': 'wait', 'ms': 2500},
+        js('export', "Capacitor.Plugins.TrovoStore.exportCopy().then(function (r) { window.__exp = r; }, function (e) { window.__exp = {error: String(e && e.message || e)}; });"
+                     " return 'presented';"),
+        {'op': 'wait', 'ms': 6000},
+    ]], timeout=40, during=during)
+    on = res(ev, 'on') or {}
+    c.rep.check(s, 'switched on again: attached and in step at the next start', on.get('facade') == 'attached' and on.get('mode') == 'shadow'
+                and str(on.get('line', '')).startswith('In step'), on)
+    tail = str(res(ev, 'sheet'))
+    c.rep.check(s, 'the sheet offers Put back, the switch, Export a copy and the test', all(t in tail for t in ('Put back', 'Native copy', 'Export a copy', 'Test: quit after next save')), tail[-200:])
+    c.rep.fact(s, 'shots: %s' % ', '.join(sorted(shots.values())))
+
+
 def scen_sweep(c):
     """SIGKILLs 0-50 ms after a burst of 100 page writes: every acknowledged write is in the store, what WebKit lost is
     reported as would-repair with the right keys, and the store never writes WebKit. When none of the scheduled kills
@@ -935,7 +1046,7 @@ def scen_drill(c):
 # ── main ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ALL = ['fresh', 'migration', 'hidden', 'background', 'wckill', 'nofacade', 'nowk', 'race', 'policy', 'breaker', 'marker',
-       'proxy', 'scene', 'ota', 'wiped', 'sweep', 'drill']
+       'proxy', 'scene', 'ota', 'wiped', 'storage', 'sweep', 'drill']
 
 
 def main():

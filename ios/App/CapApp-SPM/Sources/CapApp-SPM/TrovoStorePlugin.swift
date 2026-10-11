@@ -130,9 +130,12 @@ public class TrovoStorePlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("could not write the copy: \(error.localizedDescription)")
                 return
             }
-            guard let vc = self?.bridge?.viewController else {
+            // Present from whatever is on top (a sheet, the native chat), never twice.
+            var top = self?.bridge?.viewController
+            while let shown = top?.presentedViewController { top = shown }
+            guard let vc = top, !(vc is UIActivityViewController) else {
                 try? FileManager.default.removeItem(at: url)
-                call.reject("no screen to share from")
+                call.reject(top == nil ? "no screen to share from" : "a share sheet is already open")
                 return
             }
             let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
@@ -143,8 +146,10 @@ public class TrovoStorePlugin: CAPPlugin, CAPBridgedPlugin {
                               "bytes": copy.data.count, "keys": copy.keys])
             }
             if let pop = sheet.popoverPresentationController {
+                // A popover needs a source (iPad), and iOS 26+ zooms the sheet out of it on an iPhone too: the bottom
+                // edge's middle, where the sheet rises from anyway (the button that asked is in the page).
                 pop.sourceView = vc.view
-                pop.sourceRect = CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
+                pop.sourceRect = CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.maxY - 1, width: 1, height: 1)
                 pop.permittedArrowDirections = []
             }
             vc.present(sheet, animated: true)
