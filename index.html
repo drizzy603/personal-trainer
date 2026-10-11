@@ -23690,12 +23690,15 @@ function _fpLog(text, level){
   try{ Promise.resolve(P.log({text:'fp: '+text, level:level||'info'})).catch(function(){}); }catch(e){}
 }
 // hello: the contract this page speaks and the screens it can hand over; the answer is what this
-// document may present. Sent once per document at boot; nothing is native before it answers.
+// document may present. Sent once per document at boot; nothing is native before it answers. Only an
+// answer the page speaks counts (1 to FP_CONTRACT; FPCore never answers above the page's v): any
+// other is v0, no native screen.
 function _fpHello(){
   var P=_fpPlugin(); if(!P || !P.hello) return;
   try{
     Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:FP_NATIVE ? FP_SCREENS.slice() : [], boot:_fpBoot})).then(function(r){
       var v=(r && typeof r==='object') ? (r.v|0) : 0;
+      if(v<0 || v>FP_CONTRACT){ _fpLog('hello v'+v+' is no contract this page speaks (v1 to v'+FP_CONTRACT+'): no native screens', 'error'); r={v:0, screens:[], why:'contract'}; v=0; }
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));

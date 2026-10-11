@@ -735,6 +735,29 @@ serial('C3: each switch brings back the web chat (FP_NATIVE, kt_native_off and t
     assert(out.off === 'model' && !out.shown && out.present === 0 && out.web && out.log && out.snap.error === 'exception', 'a model that throws keeps the web chat (and the shell hears why): ' + JSON.stringify(out));
     assert(broken.errors.length === 0, 'no page errors: ' + broken.errors.join('|'));
   } finally { await broken.close(); }
+  // a hello answer outside the contracts this page speaks (a shell that does not negotiate, FPCore's
+  // never answers above the page's v): no native screen, and the shell hears why
+  const odd = await shellBoot('coach');
+  try {
+    const out = await odd.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30);
+      const again = async (answer) => {
+        Capacitor.Plugins.TrovoShell.hello = (a) => { __fpShell.calls.push(['hello', a]); return Promise.resolve(answer); };
+        switchTab('log'); await __wait(20);
+        const l0 = __fpShell.of('log').length;
+        _fp.hello = null; _fp.v = 0; _fpHello(); await __wait(20);
+        const p0 = __fpShell.of('present').length;
+        await __open();
+        return { v: _fp.v, live: _fpLive('coach'), present: __fpShell.of('present').length - p0, web: !!document.getElementById('coach-input'), logs: __fpShell.of('log').slice(l0).map((l) => l.text) };
+      };
+      return { v2: await again({ v: 2, screens: ['coach'] }), v0: await again({ v: 0, screens: ['coach'], why: 'page-too-old' }), v1: await again({ v: 1, screens: ['coach'] }) };
+    }, IN_PAGE);
+    assert(out.v2.v === 0 && !out.v2.live && out.v2.present === 0 && out.v2.web && out.v2.logs.some((t) => /hello v2/.test(t) && /v1/.test(t)), 'a hello answer of v2 is no contract this page speaks: the web chat: ' + JSON.stringify(out.v2));
+    assert(out.v0.v === 0 && !out.v0.live && out.v0.present === 0 && out.v0.web, 'v0: the web chat: ' + JSON.stringify(out.v0));
+    assert(out.v1.v === 1 && out.v1.live && out.v1.present === 1 && !out.v1.web, 'v1: the native chat: ' + JSON.stringify(out.v1));
+    assert(odd.errors.length === 0, 'no page errors: ' + odd.errors.join('|'));
+  } finally { await odd.close(); }
   // a shell whose flag has no coach screen (its policy file, its breaker): hello answers none
   for (const variant of ['inert', { v: 1, min: 1, shell: '60', screens: ['settings'] }]) {
     const tag = (typeof variant === 'string' ? variant : 'no coach') + ': ';
