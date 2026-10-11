@@ -51,10 +51,9 @@ run('coach-card buttons route: acknowledge dismisses, See pace opens Runs, AI la
   const app = await boot();
   try {
     const out = await app.page.evaluate(async () => {
-      localStorage.setItem('kt_apikey', 'sk-ant-test-not-real');   // the chat only opens with a key
-      // An AI label goes straight to coachSend (web 20261011): count the questions it sends.
-      const asked = [];
-      window.fetch = async (u, o) => { if (String(u).includes('anthropic')) asked.push(JSON.parse(o.body).messages.slice(-1)[0].content); return new Response(JSON.stringify({ content: [{ type: 'text', text: 'On it.' }], stop_reason: 'end_turn', usage: {} }), { status: 200 }); };
+      window.__sent = null;
+      localStorage.setItem('kt_apikey', 'sk-ant-test-not-real');   // the chat composer only renders with a key
+      window.sendCoachMessage = function () { window.__sent = document.getElementById('coach-input').value; };
       switchTab('log'); switchLogSub('workout');
       coachCardAction('Got it');
       const afterAck = { tab: currentTab, dismissed: coachCardDismissed };
@@ -64,13 +63,11 @@ run('coach-card buttons route: acknowledge dismisses, See pace opens Runs, AI la
       coachCardDismissed = false;
       coachCardAction('Swap squats for leg press today');
       await new Promise(r => setTimeout(r, 500));
-      const users = coachMessages.filter(m => m.role === 'user').map(m => m.content);
-      return { afterAck, afterPace, chat: { tab: currentTab, view: coachView, sent: users, asked } };
+      return { afterAck, afterPace, chat: { tab: currentTab, view: coachView, sent: window.__sent } };
     });
     assert(out.afterAck.dismissed === true && out.afterAck.tab === 'log', 'Got it only dismisses');
     assert(out.afterPace.tab === 'log' && out.afterPace.sub === 'run', 'See pace lands on the Run tab');
-    assert(out.chat.tab === 'coach' && out.chat.view === 'chat' && JSON.stringify(out.chat.sent) === JSON.stringify(['Swap squats for leg press today']) &&
-      JSON.stringify(out.chat.asked) === JSON.stringify(['Swap squats for leg press today']), 'AI label is sent to the coach, once: ' + JSON.stringify(out.chat));
+    assert(out.chat.tab === 'coach' && out.chat.view === 'chat' && out.chat.sent === 'Swap squats for leg press today', 'AI label is sent to the coach: ' + JSON.stringify(out.chat));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

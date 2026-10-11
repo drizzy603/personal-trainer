@@ -2,7 +2,8 @@
 // - C1: coachSend(text, {seed, image, usePending, nonce}) is the one DOM-free way into the coach, and
 //   every entry point uses it: with no #coach-input on screen (the native chat has none) each sends
 //   exactly one user message and one API call, and a card's week stamp is written only with its
-//   question. A nonce sends once (the last 20 are remembered). coachPrefill drafts for the composer.
+//   question; with the web composer on screen they still go through it (Send's path), as on next.
+//   A nonce sends once (the last 20 are remembered). coachPrefill drafts for the composer.
 // - C2: messages carry ids in memory (never stored), and PLAN CHANGES Keep/Undo act by id, so a
 //   Keep after the 60-message cap shifted every index retires the right card; _planChangeRows is raw
 //   text and the HTML escapes it once; md() and _coachBlocksHTML() draw block models (_mdModel,
@@ -108,6 +109,40 @@ serial('C1: with no #coach-input each entry point sends one user message and one
     }
     assert(out.sends.startPlateauFix.stamp === out.week && out.sends.startProgression.stamp === out.week && out.sends.startWeeklyReview.stamp === out.week &&
       out.sends.startRecoveryAdjust.stamp === out.today, 'each card is stamped with its question: ' + JSON.stringify(out.sends));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C1: with the web chat on screen the app\'s prompts still go through its composer (Send\'s path), as on next; the stamp only when the question went', async () => {
+  const app = await boot({ native: true, seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async (COACH_API) => {
+      eval(COACH_API);
+      const r = {};
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 28 }];
+      // a Send that sends nothing (a spec's stand-in): the words reached the box and Send, and no stamp
+      const real = window.sendCoachMessage, seen = [];
+      window.sendCoachMessage = (o) => { seen.push({ box: document.getElementById('coach-input').value, seed: o && o.seed }); };
+      lsDel('kt_last_plateau_week'); switchTab('log');
+      startPlateauFix(); await __wait(30);
+      r.mocked = { seen, stamp: lsGet('kt_last_plateau_week'), view: coachView, tab: currentTab };
+      window.sendCoachMessage = real;
+      // the real Send: one seeded message, one API call, the stamp, and the box emptied
+      lsDel('kt_last_plateau_week'); switchTab('log'); window.__turns = [];
+      startPlateauFix(); await __idle();
+      const users = coachMessages.filter((m) => m.role === 'user');
+      r.sent = { users: users.length, seed: users[0] && users[0]._seed, turns: __turns.length, stamp: lsGet('kt_last_plateau_week'), week: currentWeek, box: document.getElementById('coach-input').value };
+      // a reply in flight: the prompt waits in the box (as on next) and the card is not stamped
+      lsDel('kt_last_plateau_week'); switchTab('log'); coachLoading = true;
+      startPlateauFix(); await __wait(30);
+      r.busy = { box: document.getElementById('coach-input').value, stamp: lsGet('kt_last_plateau_week'), users: coachMessages.filter((m) => m.role === 'user').length };
+      coachLoading = false;
+      return r;
+    }, COACH_API);
+    assert(out.mocked.seen.length === 1 && /^These lifts have plateaued/.test(out.mocked.seen[0].box) && out.mocked.seen[0].seed === 'Plateau check' && out.mocked.stamp == null &&
+      out.mocked.view === 'chat' && out.mocked.tab === 'coach', 'the prompt goes into the composer and Send; nothing sent, nothing stamped: ' + JSON.stringify(out.mocked));
+    assert(out.sent.users === 1 && out.sent.seed === 'Plateau check' && out.sent.turns === 1 && out.sent.stamp === out.sent.week && out.sent.box === '', 'sent through Send: one message, one call, the stamp: ' + JSON.stringify(out.sent));
+    assert(/^These lifts have plateaued/.test(out.busy.box) && out.busy.stamp == null && out.busy.users === 1, 'busy: the prompt waits in the box, no stamp: ' + JSON.stringify(out.busy));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

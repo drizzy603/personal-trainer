@@ -6964,6 +6964,7 @@ function coachCardAction(label){
     if(act && act.type==='lift' && act.dayName){ openDeckRunner(act.dayName); return; }
   }
   if(/pace|run/.test(low)){ switchTab('log'); switchLogSub('run'); return; }
+  coachView='chat'; currentTab='coach'; render();
   _coachAsk(l);
 }
 // Local-only fallback that never blocks the screen.
@@ -7122,9 +7123,12 @@ function handleCoachCardAsk(ev){
   var v = (ev.target.value || '').trim();
   if(!v) return;
   if(coachLoading) return;   // never start a second concurrent turn
-  // Pipe the question into the Coach tab as a fresh user message.
+  // Pipe the question into the Coach tab as a fresh user message (never through the composer: a
+  // draft there stays the owner's).
+  switchTab('coach');
+  coachView = 'chat';
   coachCardAskOpen = false;
-  _coachAsk(v, {errNote:function(em){ return 'Coach didn\'t respond ('+em+'). Tap a chip or send the message again.'; }});
+  coachSend(v, {errNote:function(em){ return 'Coach didn\'t respond ('+em+'). Tap a chip or send the message again.'; }});
 }
 
 // ── Exercise trend peek (Today marquee) ──────────────────────────────────────
@@ -7793,6 +7797,8 @@ function startPlateauFix(){
     '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
     '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
     'Briefly explain why, then make the edit.';
+  switchTab('coach');
+  openCoachChat();
   // The week's stamp goes with its question: one the coach could not take (a reply in flight) leaves
   // the card for another tap.
   if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_plateau_week', currentWeek);
@@ -7846,6 +7852,8 @@ function startProgression(){
     pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
     '. Propose a +'+_plateBarDisp()+' '+_uW()+' progression on each from this week on and apply it to my routine with your tools. '+
     'Briefly note why, then make the edits.';
+  switchTab('coach');
+  openCoachChat();
   if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_last_prog_week', currentWeek);   // the stamp goes with its question
 }
 
@@ -7974,6 +7982,8 @@ function startRecoveryAdjust(){
   var msg='My readiness today is '+r.score+'/100'+(bits.length?' ('+bits.join(', ')+')':'')+
     '. Today is '+(act.dayName||'a training day')+'. Propose ONE adjustment — lighter loads (about 10% off, cap RPE 7) '+
     'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
+  switchTab('coach');
+  openCoachChat();
   if(_coachAsk(msg, {seed:_seedLabel}).ok) lsSet('kt_readiness_adj_seen', todayISO());   // the stamp goes with its question
 }
 
@@ -15963,6 +15973,7 @@ function _buildWeekReviewMsg(){
 }
 function startWeeklyReview(){
   if(!getApiKey()){ openLocalWeekReview(); return; }
+  switchTab('coach'); openCoachChat();
   if(_coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review'}).ok) lsSet('kt_last_review_week', currentWeek);   // the stamp goes with its question
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
@@ -20653,6 +20664,7 @@ function clearPendingImage(){pendingImage=null;render();}
 //     with one of them answers {ok:true, duplicate:true} and sends nothing.
 //   o.errNote(message): the chat's note when the turn itself throws (each entry point keeps its words).
 var _coachNonces=[];   // [{n, m}] newest last: the nonce and the message it sent
+var _coachSentN=0;     // messages coachSend has taken (_coachAsk reads whether its question went)
 function coachSend(text, o){
   o=(o && typeof o==='object') ? o : {};
   var nonce=o.nonce!=null && o.nonce!=='' ? String(o.nonce) : '';
@@ -20681,7 +20693,7 @@ function coachSend(text, o){
   if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
   if(o.seed) _um._seed=String(o.seed);
   if(imgKey) _um._imgKey=imgKey;
-  _pushCoach(_um);
+  _pushCoach(_um); _coachSentN++;
   if(nonce){ _coachNonces.push({n:nonce, m:_um}); if(_coachNonces.length>20) _coachNonces.shift(); }
   saveCoachHistory();
   coachLoading=true; _coachTurnAt=Date.now();
@@ -20753,15 +20765,17 @@ function sendCoachChip(txt){
   if(inp){ inp.value=txt; sendCoachMessage(); return; }
   coachSend(txt, {usePending:true});
 }
-// The app's own prompts (Today's card and Ask box, the plateau, progression, recovery and weekly
-// review cards) open the chat and send at once through coachSend: no composer in the way (a draft the
-// owner left in the web one stays theirs, and so does a photo waiting there). The answer is
-// coachSend's: a card writes its week's stamp only when its question went.
+// The app's own prompts (Today's card, the plateau, progression, recovery and weekly-review cards),
+// once their caller has opened the chat: through the web composer while it is on screen, as they
+// always went (the words in the box, then Send), and with no composer (the native chat) straight to
+// coachSend. They used to wait 250 ms for the composer and drop the question when there was none.
+// {ok}: whether the question went; a card writes its week's stamp only then.
 function _coachAsk(text, o){
-  switchTab('coach'); coachView='chat';
-  var r=coachSend(text, o);
-  if(!r.ok){ render(); scrollChatBottom(); }   // busy: the chat, with the reply in flight
-  return r;
+  var inp=document.getElementById('coach-input');
+  if(!inp) return coachSend(text, o);
+  var n0=_coachSentN;
+  inp.value=text; sendCoachMessage(o);
+  return {ok:_coachSentN>n0};
 }
 // A message the app drafts for the owner to read and send (Build day's "Ask the coach", a shared
 // photo's comment): into the web composer while it is on screen (_fillComposer), else kept as the
