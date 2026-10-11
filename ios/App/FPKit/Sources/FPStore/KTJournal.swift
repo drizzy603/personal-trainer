@@ -12,6 +12,10 @@ public struct KTJournalRow: Equatable, Sendable {
     public var boot: Int64
     public var pseq: Int64
 
+    /// The page's (boot, seq) for the write; seq 0 is the store's own write at that boot's hello (an adoption, a
+    /// Put back that landed unconfirmed, the migration).
+    public var stamp: KTProtocol.BootSeq { KTProtocol.BootSeq(boot: boot, seq: pseq) }
+
     public init(seq: Int64, key: KTKey, h: String, hprev: String, at: Int64 = 0, src: String = "page",
                 boot: Int64 = 0, pseq: Int64 = 0) {
         self.seq = seq

@@ -522,15 +522,19 @@ final class ReconcileTests: XCTestCase {
 
     // MARK: The classifier on its own (the judge's model, scenarios A-G)
 
-    /// Store writes as the judge's model makes them: kv plus journal rows {seq, k, h, hprev}.
+    /// Store writes as the judge's model makes them: kv plus journal rows {seq, k, h, hprev}, each with the page's
+    /// (boot, seq) for the write (1:0 unless a test says, as for a migration).
     struct Model {
         var kv: [KTKey: String] = [:]
+        var stamps: [KTKey: KTProtocol.BootSeq] = [:]
         var journal: [KTJournalRow] = []
 
-        mutating func w(_ k: KTKey, _ v: String?) {
+        mutating func w(_ k: KTKey, _ v: String?, _ boot: Int64 = 1, _ seq: Int64 = 0) {
             let h = KTWire.hash(v.map(u))
-            journal.append(KTJournalRow(seq: Int64(journal.count + 1), key: k, h: h, hprev: kv[k] ?? KTWire.absent))
+            journal.append(KTJournalRow(seq: Int64(journal.count + 1), key: k, h: h, hprev: kv[k] ?? KTWire.absent,
+                                        boot: boot, pseq: seq))
             kv[k] = h
+            stamps[k] = KTProtocol.BootSeq(boot: boot, seq: seq)
         }
 
         func input(_ webkit: [KTKey: String], gap: [KTKey: String]? = nil) -> KTReconcileInput {
@@ -538,7 +542,7 @@ final class ReconcileTests: XCTestCase {
             if let h = kv[KTProtocol.witnessKey] { witness.insert(h) }
             witness.remove(KTWire.absent)
             return KTReconcileInput(manifest: webkit, gap: gap.map { KTProtocol.GapNote(keys: $0) }, store: kv,
-                                    witnessHistory: witness, journal: journal)
+                                    storeStamps: stamps, witnessHistory: witness, journal: journal)
         }
 
         static func base() -> (Model, [KTKey: String]) {
@@ -723,6 +727,35 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
     }
 
+    /// The same with the lost write the first one after the clear for a key the clear had removed: WebKit holds
+    /// nothing for it (the clear's doing), while the store's row for that write follows the value from before the
+    /// clear. The walk reads WebKit's side from the clear on, so this lost suffix is would-repair too.
+    func testFailedClearThenLostFirstWritesAfterItAreWouldRepair() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        dev.failClear = true
+        dev.clear()
+        dev.failClear = false
+        dev.posts.removeAll()
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())
+        dev.set("kt_routine", #"{"name":"after the clear","weeks":[]}"#)
+        let saved = dev.webkit
+        dev.set("kt_sessions", s1)  // the first workout logged after the clear
+        dev.set("kt_weights", #"{"Bench":95}"#)
+        dev.webkit = saved  // lost in a hard kill
+        dev.relaunch()
+        let answer = dev.launch(stamp: false)
+        XCTAssertEqual(answer["rule"] as? Int, 6, "\(answer)")
+        let hello = try XCTUnwrap(dev.store.status().lastHello)
+        XCTAssertEqual(hello.wouldRepair, ["kt_sessions", "kt_weights"])
+        let lag = dev.store.conflicts().filter { $0.why == "lag" }
+        XCTAssertEqual(Set(lag.map(\.key)), ["kt_sessions", "kt_weights"])
+        let sessions = try XCTUnwrap(lag.first { $0.key == "kt_sessions" })
+        XCTAssertEqual(dev.store.conflictValue(id: sessions.id), u(s1), "the lost workout is kept for Put back")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+    }
+
     /// The missed clear alone: every key it removed is a gap (followed, nothing kept), and a write after it that the
     /// store missed too is explained by its own entry in the note.
     func testFailedClearAloneIsAGap() throws {
@@ -770,16 +803,12 @@ final class ReconcileTests: XCTestCase {
     /// tells the store's later write from what the clear removed.
     func testAClearGapNoteExplainsOnlyKeysTheStoreDidNotWriteAfterIt() throws {
         let h = { (s: String) in KTWire.hash(u(s)) }
-        let bs = { (b: Int64, s: Int64) in KTProtocol.BootSeq(boot: b, seq: s) }
         var (m, _) = Model.base()  // seq 1-6, all written at boot 1
-        var stamps: [KTKey: KTProtocol.BootSeq] = [:]
-        for k in m.kv.keys { stamps[k] = bs(1, 0) }
-        m.w("kt_last_open", "1100"); stamps["kt_last_open"] = bs(2, 2)  // seq 7
-        m.w("kt_routine", "r1")  // seq 8
-        m.w("kt_routine", "r2"); stamps["kt_routine"] = bs(2, 4)  // seq 9
+        m.w("kt_last_open", "1100", 2, 2)  // seq 7
+        m.w("kt_routine", "r1", 2, 3)  // seq 8
+        m.w("kt_routine", "r2", 2, 4)  // seq 9
         let W: [KTKey: String] = ["kt_last_open": h("1100"), "kt_routine": h("r1")]
         var input = m.input(W)
-        input.storeStamps = stamps
         input.gap = KTProtocol.GapNote.parse(u(#"{"v":1,"at":7,"k":{},"all":true,"c":"2:1"}"#))
         var plan = KTReconcile.classify(input)
         XCTAssertEqual(plan.rule, 6)
@@ -795,12 +824,52 @@ final class ReconcileTests: XCTestCase {
         // (its own entry in the note): explained, a gap.
         (m, _) = Model.base()
         input = m.input(["kt_last_open": h("1000"), "kt_routine": h("r1")])
-        input.storeStamps = stamps.merging(["kt_last_open": bs(1, 0), "kt_routine": bs(1, 0)]) { $1 }
         input.gap = KTProtocol.GapNote.parse(
             u(#"{"v":1,"at":7,"k":{"kt_routine":""# + h("r1") + #""},"s":{"kt_routine":"2:3"},"all":true,"c":"2:1"}"#))
         plan = KTReconcile.classify(input)
         XCTAssertEqual(plan.rule, 5)
         XCTAssertEqual(plan.changes["kt_routine"], KTChange(target: h("r1"), reason: .gap))
         XCTAssertEqual(plan.changes.count, 5)
+    }
+
+    /// The lag walk reads a key the note names but does not explain from its last missed op on: rows at or before
+    /// that op say nothing about WebKit now, and undoing the key's first row after it leaves what WebKit held after
+    /// the op (the note's hash; nothing, for a clear), not the store's older value.
+    func testLagWalkReadsAKeyFromItsLastMissedOp() {
+        let h = { (s: String) in KTWire.hash(u(s)) }
+        // The store missed a workout (2:1, the note's entry), then took a weights change (2:2) and the next workout
+        // (2:3), both of which WebKit lost.
+        var (m, W) = Model.base()  // seq 1-6
+        m.w("kt_weights", "W2", 2, 2)  // seq 7
+        m.w("kt_sessions", "[s3,s2,s1]", 2, 3)  // seq 8: hprev is [s1], the store never had [s2,s1]
+        W["kt_sessions"] = h("[s2,s1]")
+        var input = m.input(W)
+        input.gap = KTProtocol.GapNote(keys: ["kt_sessions": h("[s2,s1]")],
+                                       stamps: ["kt_sessions": KTProtocol.BootSeq(boot: 2, seq: 1)])
+        var plan = KTReconcile.classify(input)
+        XCTAssertEqual(plan.rule, 6)
+        XCTAssertEqual(plan.wouldRepair, ["kt_sessions", "kt_weights"])
+        XCTAssertEqual(plan.lagSeq, 6)
+        XCTAssertEqual(plan.changes["kt_sessions"], KTChange(target: h("[s2,s1]"), reason: .lag))
+
+        // WebKit holding neither what the missed op left nor any later state is no lag.
+        W["kt_sessions"] = h("[s9]")
+        input.manifest = W
+        plan = KTReconcile.classify(input)
+        XCTAssertEqual(plan.rule, 7)
+
+        // A missed clear (2:1): the store then took the witness (2:2) and a first workout (2:3), and WebKit lost the
+        // workout. WebKit's side of the walk starts empty at the clear.
+        (m, _) = Model.base()
+        m.w("kt_last_open", "1100", 2, 2)  // seq 7
+        m.w("kt_sessions", "[s4]", 2, 3)  // seq 8: hprev is [s1], from before the clear
+        input = m.input(["kt_last_open": h("1100")])
+        input.gap = KTProtocol.GapNote(keys: [:], all: true, clear: KTProtocol.BootSeq(boot: 2, seq: 1))
+        plan = KTReconcile.classify(input)
+        XCTAssertEqual(plan.rule, 6)
+        XCTAssertEqual(plan.wouldRepair, ["kt_sessions"])
+        XCTAssertEqual(plan.lagSeq, 7)
+        XCTAssertEqual(plan.changes["kt_sessions"], KTChange(target: KTWire.absent, reason: .lag))
+        XCTAssertEqual(plan.changes["kt_routine"], KTChange(target: KTWire.absent, reason: .gap))
     }
 }

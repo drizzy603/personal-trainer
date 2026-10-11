@@ -120,7 +120,7 @@ public struct KTReconcilePlan: Equatable, Sendable {
 /// | 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back; the facade stays off for this document |
 /// | 4 | WebKit's witness is neither in the store's history of it nor in the gap note with that hash | adopt every difference, deletions included; replaced values to conflicts ("older build"); nothing refilled |
 /// | 5 | witness known; the gap note names a missed op on the key (or a missed clear), and the store took no write of the key after it | adopt WebKit's value (the store missed that write) |
-/// | 6 | witness known; WebKit's whole manifest (less the keys the gap note explains) equals the store's state at one journal seq | record would-repair; newer values to conflicts ("lag"); adopt WebKit |
+/// | 6 | witness known; WebKit's whole manifest (less the keys the gap note explains) equals the store's state at one journal seq, a key the store wrote after a missed op being read from that op on | record would-repair; newer values to conflicts ("lag"); adopt WebKit |
 /// | 7 | witness known; anything else | adopt WebKit; replaced values to conflicts ("unexplained"); counted |
 ///
 /// Keys only in the store follow the same rules (absence is a value) and are never refilled. Reserved keys
@@ -197,8 +197,21 @@ public enum KTReconcile {
             return KTReconcilePlan(rule: gapOnly ? 5 : 0, label: gapOnly ? "gap" : "in step", changes: changes)
         }
 
+        // Where WebKit's history of each key left the store's: the last op on it the store missed, by its stamp
+        // (a noted write, WebKit then holding the note's hash, or the clear, WebKit then holding nothing). Only a
+        // key the note names without explaining it has one: the store wrote it after that op.
+        var floors: [KTKey: KTFloor] = [:]
+        if let gap = input.gap {
+            for k in remaining {
+                if let s = gap.stamps[k], let h = gap.keys[k] { floors[k] = KTFloor(stamp: s, h: h) }
+                if gap.all, let c = gap.clear, floors[k].map({ $0.stamp < c }) ?? true {
+                    floors[k] = KTFloor(stamp: c, h: absent)
+                }
+            }
+        }
+
         // Rule 6: WebKit lost a suffix of the store's writes.
-        if let lag = lagPoint(webkit: W, store: S, keys: remaining, journal: input.journal) {
+        if let lag = lagPoint(webkit: W, store: S, keys: remaining, journal: input.journal, floors: floors) {
             for k in differing { changes[k] = KTChange(target: web(k), reason: reason(k, .lag)) }
             return KTReconcilePlan(rule: 6, label: "lag", changes: changes, wouldRepair: lag.wouldRepair,
                                    lagSeq: lag.seq)
@@ -213,20 +226,43 @@ public enum KTReconcile {
     /// first seq j at which the store's state over `keys` equals WebKit's manifest: WebKit lost the writes after
     /// j. One backward pass, tracking only how many keys still differ. Stops (nil) when a row does not lead to
     /// the state it should (an incomplete history) or when the retained journal runs out.
+    ///
+    /// A key with a floor took an op in WebKit that the store missed (a noted write, or a clear) before the store's
+    /// later writes of it. Its rows at or before that op say nothing about WebKit now and are passed over, and
+    /// undoing its first row after the op leaves the floor's hash (what WebKit held after the op), not the store's
+    /// older `hprev`.
     static func lagPoint(webkit W: [KTKey: String], store S: [KTKey: String], keys: Set<KTKey>,
-                         journal: [KTJournalRow]) -> (seq: Int64, wouldRepair: [KTKey])? {
+                         journal: [KTJournalRow], floors: [KTKey: KTFloor] = [:]) -> (seq: Int64, wouldRepair: [KTKey])? {
         let absent = KTWire.absent
         var state: [KTKey: String] = [:]
         for k in keys { state[k] = S[k] ?? absent }
         var differing = Set(keys.filter { (W[$0] ?? absent) != state[$0] })
         guard !differing.isEmpty else { return nil }
         let wouldRepair = differing.sorted()
+        // Each floored key's first row after its floor (a key's stamps rise with seq: a post older than the key's
+        // last write is never applied).
+        var first: [KTKey: Int64] = [:]
+        for row in journal where first[row.key] == nil {
+            if let floor = floors[row.key], keys.contains(row.key), row.stamp > floor.stamp { first[row.key] = row.seq }
+        }
         for row in journal.reversed() where keys.contains(row.key) {
+            var before = row.hprev
+            if let floor = floors[row.key] {
+                if row.stamp <= floor.stamp { continue }
+                if first[row.key] == row.seq { before = floor.h }
+            }
             guard state[row.key] == row.h else { return nil }
-            state[row.key] = row.hprev
-            if (W[row.key] ?? absent) == row.hprev { differing.remove(row.key) } else { differing.insert(row.key) }
+            state[row.key] = before
+            if (W[row.key] ?? absent) == before { differing.remove(row.key) } else { differing.insert(row.key) }
             if differing.isEmpty { return (row.seq - 1, wouldRepair) }
         }
         return nil
     }
+}
+
+/// The last op on a key that WebKit took and the store missed, for the lag walk: its stamp, and the hash WebKit
+/// held after it ("-" after a remove or a clear).
+struct KTFloor: Equatable, Sendable {
+    var stamp: KTProtocol.BootSeq
+    var h: String
 }
