@@ -39,9 +39,19 @@ let package = Package(
         ),
 
         // FPUI: iOS only (SwiftUI). ScreenHost, PageLink, theme tokens, fonts, the Coach views.
+        // Resources/Fonts: the chat's faces (screenshots/live-activity/mkfonts.py), registered at runtime.
         .target(
             name: "FPUI",
-            dependencies: ["FPCore"]
+            dependencies: ["FPCore"],
+            resources: [.copy("Resources/Fonts")]
+        ),
+
+        // FPUITests: iOS only, run by `xcodebuild test` on a simulator (every source in #if os(iOS)).
+        // The coach fixtures are read from FPCoreTests/Fixtures in the source tree (a simulator shares
+        // the Mac's disk), so there is one copy of them.
+        .testTarget(
+            name: "FPUITests",
+            dependencies: ["FPUI", "FPCore"]
         ),
 
         // FPCoreTests: run by `swift test` on the Mac. Fixtures/ (golden models, page-made block
