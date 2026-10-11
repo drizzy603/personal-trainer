@@ -30,9 +30,10 @@ import Foundation
 ///   `p B:S` with pairs (key, value or `null`) for the ones WebKit took; answer `ok` or `err`.
 ///
 /// **The gap note** is the facade's own key in WebKit, `kt__store_gap`, written with the real Storage (never
-/// mirrored): `JSON.stringify({v:1, at:<ms>, k:{<key>: H(<WebKit's value after the op>) or '-'}})`, merged on
-/// every op whose mirror was not answered `ok`; a failed clear writes `all:true`. The facade removes it after a
-/// hello answered `shadow` and its `put` (if any) answered `ok`.
+/// mirrored): `JSON.stringify({v:1, at:<ms>, k:{<key>: H(<WebKit's value after the op>) or '-'},
+/// s:{<key>: '<B>:<S>'}})`, merged on every op whose mirror was not answered `ok` (`s` holds that op's stamp);
+/// a failed clear writes `all:true`. The facade removes it after a hello answered `shadow` and its `put` (if
+/// any) answered `ok`.
 ///
 /// Reserved keys never enter the store: `kt_apikey` (passthrough: it stays in WebKit; a Keychain copy comes
 /// later) and every key starting `kt__store` (the facade's bookkeeping).
@@ -168,20 +169,25 @@ public enum KTProtocol {
     public struct GapNote: Equatable, Sendable {
         /// The hash WebKit held after each such op ("-" for a remove).
         public var keys: [KTKey: String]
+        /// Each such op's (boot, seq), where the note says. A key whose last write in the store is newer than
+        /// the op it missed is not explained by the note (the store holds a later write WebKit lost).
+        public var stamps: [KTKey: BootSeq]
         /// A clear was not mirrored: every key counts as named.
         public var all: Bool
         /// When the last gap happened (ms), if the note says.
         public var at: Int64?
 
-        public init(keys: [KTKey: String], all: Bool = false, at: Int64? = nil) {
+        public init(keys: [KTKey: String], stamps: [KTKey: BootSeq] = [:], all: Bool = false, at: Int64? = nil) {
             self.keys = keys
+            self.stamps = stamps
             self.all = all
             self.at = at
         }
 
         public func names(_ key: KTKey) -> Bool { all || keys[key] != nil }
 
-        /// `{"v":1,"at":ms,"k":{key: hash},"all":true}`; unknown members are ignored. nil when unreadable.
+        /// `{"v":1,"at":ms,"k":{key: hash},"s":{key: "B:S"},"all":true}`; unknown members are ignored, and so is
+        /// a stamp that is not "B:S". nil when unreadable.
         public static func parse(_ u: U16) -> GapNote? {
             guard let members = KTJSON.objectMembers(u) else { return nil }
             var note = GapNote(keys: [:])
@@ -200,11 +206,18 @@ public enum KTProtocol {
                         guard let key = KTKey(units: k), let h = KTJSON.string(u, hr) else { continue }
                         note.keys[key] = String(decoding: h, as: UTF16.self)
                     }
+                case "s":
+                    for (k, sr) in KTJSON.objectMembers(u, range) ?? [] {
+                        guard let key = KTKey(units: k), let text = KTJSON.string(u, sr),
+                              let stamp = BootSeq(Substring(String(decoding: text, as: UTF16.self))) else { continue }
+                        note.stamps[key] = stamp
+                    }
                 default:
                     continue
                 }
             }
             guard version == "1" else { return nil }
+            note.stamps = note.stamps.filter { note.keys[$0.key] != nil }
             return note
         }
 
@@ -216,6 +229,11 @@ public enum KTProtocol {
             s += keys.keys.sorted().map { KTWire.quote($0) + ":" + KTWire.quote(Array(keys[$0]!.utf16)) }
                 .joined(separator: ",")
             s += "}"
+            if !stamps.isEmpty {
+                s += ",\"s\":{"
+                s += stamps.keys.sorted().map { KTWire.quote($0) + ":\"\(stamps[$0]!)\"" }.joined(separator: ",")
+                s += "}"
+            }
             if all { s += ",\"all\":true" }
             s += "}"
             return Array(s.utf16)

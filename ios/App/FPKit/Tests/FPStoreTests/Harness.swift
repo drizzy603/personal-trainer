@@ -173,6 +173,7 @@ final class FakeDevice {
     private func noteGap(_ key: KTKey, _ value: U16?) {
         var note = webkit[KTProtocol.gapKey].flatMap { KTProtocol.GapNote.parse($0) } ?? KTProtocol.GapNote(keys: [:])
         note.keys[key] = KTWire.hash(value)
+        note.stamps[key] = KTProtocol.BootSeq(boot: boot, seq: seq)
         note.at = clock.ms
         webkit[KTProtocol.gapKey] = note.json()
     }

@@ -41,6 +41,9 @@ public struct KTReconcileInput: Sendable {
     public var gap: KTProtocol.GapNote?
     /// The store's hash per key ("-" for a tombstone), rows whose encoding this build reads.
     public var store: [KTKey: String]
+    /// The (boot, seq) of each key's last write in the store, so a gap note's entry can be told from a later
+    /// write the store took and WebKit lost.
+    public var storeStamps: [KTKey: KTProtocol.BootSeq]
     /// Every kv row, unknown encodings and tombstones included: 0 means a new store (migration).
     public var storeRows: Int
     /// Rows whose `enc` this build does not know: never adopted, repaired, counted or deleted.
@@ -59,12 +62,13 @@ public struct KTReconcileInput: Sendable {
     public var wipe: [KTKey: String]?
 
     public init(manifest: [KTKey: String], gap: KTProtocol.GapNote? = nil, store: [KTKey: String],
-                storeRows: Int? = nil, unknownEnc: Set<KTKey> = [], wkExcluded: Set<KTKey> = [],
-                witnessHistory: Set<String> = [], journal: [KTJournalRow] = [],
+                storeStamps: [KTKey: KTProtocol.BootSeq] = [:], storeRows: Int? = nil, unknownEnc: Set<KTKey> = [],
+                wkExcluded: Set<KTKey> = [], witnessHistory: Set<String> = [], journal: [KTJournalRow] = [],
                 putBack: [KTKey: (h: String, hbase: String)] = [:], wipe: [KTKey: String]? = nil) {
         self.manifest = manifest
         self.gap = gap
         self.store = store
+        self.storeStamps = storeStamps
         self.storeRows = storeRows ?? store.count + unknownEnc.count
         self.unknownEnc = unknownEnc
         self.wkExcluded = wkExcluded
@@ -114,7 +118,7 @@ public struct KTReconcilePlan: Equatable, Sendable {
 /// | 2 | WebKit unreadable (`hello nowk`) | facade off, reconcile nothing (KTStore, before this) |
 /// | 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back; the facade stays off for this document |
 /// | 4 | WebKit's witness is neither in the store's history of it nor in the gap note with that hash | adopt every difference, deletions included; replaced values to conflicts ("older build"); nothing refilled |
-/// | 5 | witness known; key named in the gap note | adopt WebKit's value (the store missed that write) |
+/// | 5 | witness known; key named in the gap note, and the store took no write of it after the op it missed | adopt WebKit's value (the store missed that write) |
 /// | 6 | witness known; WebKit's whole manifest (less gap keys) equals the store's state at one journal seq | record would-repair; newer values to conflicts ("lag"); adopt WebKit |
 /// | 7 | witness known; anything else | adopt WebKit; replaced values to conflicts ("unexplained"); counted |
 ///
@@ -175,9 +179,12 @@ public enum KTReconcile {
             remaining.remove(k)
         }
 
-        // Rule 5: keys the gap note names.
+        // Rule 5: keys the gap note names, unless the store took a write of the key after the op it missed:
+        // then WebKit lost that later write, and the key is judged with the rest (lag or unexplained), so the
+        // store's newer value is kept for Put back instead of being given up as stale.
         if let gap = input.gap {
             for k in remaining where gap.names(k) {
+                if let missed = gap.stamps[k], let last = input.storeStamps[k], last > missed, differs(k) { continue }
                 if differs(k) { changes[k] = KTChange(target: web(k), reason: .gap) }
                 remaining.remove(k)
             }

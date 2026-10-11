@@ -793,16 +793,22 @@ public final class KTStore: @unchecked Sendable {
 
     private func reconcileInput(_ s: KTSQLite, _ hello: KTProtocol.Hello) throws -> KTReconcileInput {
         var store: [KTKey: String] = [:]
+        var stamps: [KTKey: KTProtocol.BootSeq] = [:]
         var unknown = Set<KTKey>()
         var rows = 0
-        let st = try s.statement("SELECT k, h, enc FROM kv")
+        let st = try s.statement("SELECT k, h, enc, boot, pseq FROM kv")
         while try st.step() {
             rows += 1
             guard let key = st.key(0), let h = st.text(1), let enc = st.text(2) else {
                 st.reset()
                 throw KTStoreError.unreadable("a kv row with a missing column")
             }
-            if enc == "u16" { store[key] = h } else { unknown.insert(key) }
+            if enc == "u16" {
+                store[key] = h
+                stamps[key] = KTProtocol.BootSeq(boot: st.int64(3), seq: st.int64(4))
+            } else {
+                unknown.insert(key)
+            }
         }
         st.reset()
         var witness = try KTJournal.history(s, key: KTProtocol.witnessKey)
@@ -815,7 +821,7 @@ public final class KTStore: @unchecked Sendable {
         }
         pb.reset()
         let wipe = try wipeRecord(s)
-        return KTReconcileInput(manifest: hello.manifest, gap: hello.gap, store: store, storeRows: rows,
+        return KTReconcileInput(manifest: hello.manifest, gap: hello.gap, store: store, storeStamps: stamps, storeRows: rows,
                                 unknownEnc: unknown, wkExcluded: try wkExcluded(s), witnessHistory: witness,
                                 journal: [], putBack: putBack,
                                 wipe: (wipe?.followedUp ?? true) ? nil : wipe?.hashes)

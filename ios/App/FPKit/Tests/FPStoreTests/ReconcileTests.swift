@@ -661,4 +661,23 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(landed.rule, 0)
         XCTAssertEqual(landed.changes["kt_routine"]?.reason, .putback)
     }
+
+    /// A gap note entry older than the store's last write of that key does not explain the difference: WebKit
+    /// lost the later write, so the key is not adopted as a gap (rule 5) and the store's value is not given up.
+    func testGapNoteOlderThanTheStoresLastWriteIsNotAGap() {
+        let k: KTKey = "kt_sessions"
+        let old = KTWire.hash(Array(s1.utf16)), new = KTWire.hash(Array(s2s1.utf16))
+        var note = KTProtocol.GapNote(keys: [k: old], stamps: [k: KTProtocol.BootSeq(boot: 3, seq: 4)])
+        note.at = 1
+        let back = KTProtocol.GapNote.parse(note.json())
+        XCTAssertEqual(back, note)
+        let stale = KTReconcileInput(manifest: [k: old, KTProtocol.witnessKey: "w"], gap: note,
+                                     store: [k: new, KTProtocol.witnessKey: "w"],
+                                     storeStamps: [k: KTProtocol.BootSeq(boot: 3, seq: 9)], witnessHistory: ["w"])
+        XCTAssertNotEqual(KTReconcile.classify(stale).changes[k]?.reason, .gap)
+        let fresh = KTReconcileInput(manifest: [k: old, KTProtocol.witnessKey: "w"], gap: note,
+                                     store: [k: new, KTProtocol.witnessKey: "w"],
+                                     storeStamps: [k: KTProtocol.BootSeq(boot: 3, seq: 2)], witnessHistory: ["w"])
+        XCTAssertEqual(KTReconcile.classify(fresh).changes[k]?.reason, .gap)
+    }
 }
