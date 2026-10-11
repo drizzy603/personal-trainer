@@ -97,6 +97,29 @@ final class CoachPhotoTests: XCTestCase {
         XCTAssertNil(CoachPhoto.prepare(Data()))
     }
 
+    /// A pick either comes to a photo with its preview or is said (the third UI review: a photo the
+    /// picker could not load or decode did nothing, and nobody was told): nothing from the picker,
+    /// bytes CoachPhoto cannot prepare, and a prepared original no preview can be drawn from all
+    /// come to nil, which the composer reports and the chat shows as a failure toast.
+    @MainActor
+    func testAPickThatComesToNothingIsSaid() throws {
+        let photo = try XCTUnwrap(CoachComposer.picked(CoachPhoto.prepare(png(800, 600))), "a photo comes to a pick")
+        XCTAssertEqual(photo.prepared.mediaType, "image/jpeg")
+        XCTAssertEqual(photo.preview.size.width * photo.preview.scale, 800, "with its preview")
+        XCTAssertNil(CoachComposer.picked(nil), "nothing from the picker")
+        XCTAssertNil(CoachComposer.picked(CoachPhoto.prepare(Data("not an image".utf8))), "bytes no image")
+        var fakePNG = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        fakePNG.append(Data(repeating: 7, count: 64))
+        XCTAssertNotNil(CoachPhoto.prepare(fakePNG), "the original would go as it is (the page's fallback)")
+        XCTAssertNil(CoachComposer.picked(CoachPhoto.prepare(fakePNG)), "but nothing can show it, so it is said, not sent unseen")
+        // what the chat says, in the page's failure style (red, 3.5 s, announced at once)
+        let toast = CoachChatView.photoFailedToast
+        XCTAssertEqual(toast.text, "Couldn\u{2019}t load that photo")
+        XCTAssertEqual(toast.style, .err)
+        XCTAssertNil(toast.undo)
+        XCTAssertTrue(toast.assertive)
+    }
+
     func testConstants() {
         XCTAssertEqual(CoachPhoto.maxEdge, 1568)
         XCTAssertEqual(CoachPhoto.jpegQuality, 0.82, accuracy: 0.0001)

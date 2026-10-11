@@ -31,12 +31,23 @@ struct CoachComposer: View {
     let onSend: () -> Void
     let onStop: () -> Void
     let onRemovePagePhoto: () -> Void
+    /// A picked photo that cannot be used (the picker handed nothing over, or no image the app or
+    /// the coach can read): the chat says so.
+    var onPhotoFailed: () -> Void = {}
     @Environment(\.roomTheme) private var t
     @State private var item: PhotosPickerItem?
 
     /// Something to send: words, or a photo.
     static func canSend(text: String, hasPhoto: Bool) -> Bool {
         hasPhoto || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// What a pick comes to: the photo ready to send with its preview, or nil when there is nothing
+    /// to show and send (no bytes from the picker, bytes CoachPhoto cannot prepare, or a prepared
+    /// original no preview can be drawn from).
+    static func picked(_ prepared: CoachPhoto.Prepared?) -> PickedPhoto? {
+        guard let prepared, let preview = UIImage(data: prepared.data) else { return nil }
+        return PickedPhoto(prepared: prepared, preview: preview)
     }
 
     private var preview: UIImage? { picked?.preview ?? (composer.image != nil ? pagePhoto : nil) }
@@ -85,9 +96,8 @@ struct CoachComposer: View {
                 let data = try? await newItem.loadTransferable(type: Data.self)
                 let prepared = await Task.detached(priority: .userInitiated) { data.flatMap(CoachPhoto.prepare) }.value
                 await MainActor.run {
-                    if let prepared, let preview = UIImage(data: prepared.data) {
-                        picked = PickedPhoto(prepared: prepared, preview: preview)
-                    }
+                    // a pick that comes to nothing is said, never silently dropped
+                    if let photo = Self.picked(prepared) { picked = photo } else { onPhotoFailed() }
                     item = nil
                 }
             }

@@ -118,7 +118,8 @@ public struct CoachChatView: View {
                 .overlay(alignment: .top) { toastView(theme) }
             CoachComposer(composer: model.composer, loading: model.loading, text: $text, picked: $picked,
                           pagePhoto: model.composer.image.flatMap { host.image($0.key) }, focused: $focused,
-                          onSend: send, onStop: stop, onRemovePagePhoto: { host.send(.coachClearImage) })
+                          onSend: send, onStop: stop, onRemovePagePhoto: { host.send(.coachClearImage) },
+                          onPhotoFailed: { toast = Self.photoFailedToast })
                 .padding(.horizontal, theme.flavor == .studio ? gutter - theme.px(6) : gutter)
                 .padding(.bottom, theme.px(8))
         }
@@ -228,6 +229,11 @@ public struct CoachChatView: View {
     }
 
     // MARK: Toast and confirm
+
+    /// What the chat says when a picked photo comes to nothing (the picker handed nothing over, or
+    /// no image the app or the coach can read): a failure toast in the page's words and style, where
+    /// a pick that did nothing left the owner guessing.
+    static let photoFailedToast = ToastRequest(text: "Couldn\u{2019}t load that photo", style: "err", undo: nil)
 
     @ViewBuilder private func toastView(_ t: RoomTheme) -> some View {
         if let toast {

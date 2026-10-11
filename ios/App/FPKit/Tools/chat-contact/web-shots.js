@@ -134,8 +134,10 @@ const CLOCK = `(() => { const T = Date.UTC(2026, 9, 9, 9, 30); const D = Date; c
   F.prototype = D.prototype; F.now = () => D.now() + off; F.UTC = D.UTC; F.parse = D.parse; window.Date = F; })();`;
 
 // The forwarded toasts and the confirm, as the page draws them over the chat (heavyweight-chat).
+// The last is the native composer's own (a photo it cannot load), drawn in the page's failure style.
 const TOASTS = [['Previous programme restored', 'ok'], ['New record: Bench Press 175 lb', 'pr'],
-  ['Storage full: the change was not saved', 'err'], ['Bench Press removed', 'undo']];
+  ['Storage full: the change was not saved', 'err'], ['Bench Press removed', 'undo'],
+  ['Couldn’t load that photo', 'err']];
 const CONFIRM = { title: 'Restore previous programme?', body: 'Your current one is set aside: restoring again brings it back.', confirmLabel: 'Restore' };
 
 async function overlays(fx, roomName, roomId) {

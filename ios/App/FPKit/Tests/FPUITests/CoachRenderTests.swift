@@ -217,7 +217,8 @@ final class CoachRenderTests: XCTestCase {
         let toasts = [ToastRequest(text: "Previous programme restored", style: "ok", undo: nil),
                       ToastRequest(text: "New record: Bench Press 175 lb", style: "pr", undo: nil),
                       ToastRequest(text: "Storage full: the change was not saved", style: "err", undo: nil),
-                      ToastRequest(text: "Bench Press removed", style: "ok", undo: "t-17")]
+                      ToastRequest(text: "Bench Press removed", style: "ok", undo: "t-17"),
+                      CoachChatView.photoFailedToast]
         let confirm = ConfirmRequest(id: "c-3", title: "Restore previous programme?", body: "Your current one is set aside: restoring again brings it back.",
                                      confirm: "Restore", cancel: nil, tone: nil)
         for (roomName, room) in Self.rooms {
