@@ -250,15 +250,19 @@ serial('the row says how the copy stands now: a wipe this start, an offer waitin
   const switchedOff = inStep(); switchedOff.facade = 'off'; switchedOff.why = 'Storage\'s Native copy switch is off'; switchedOff.deviceSwitchOn = false;
   const closed = inStep(); delete closed.store; closed.facade = 'off'; closed.storeClosedWhy = 'crash marker: the app closed during a native copy save';
   const unreadable = inStep(); unreadable.store = { state: 'unreadable', why: 'file is not a database', counts: { counts: {} } };
+  // Wiped at an earlier start (the store's last record still says rule 3), then switched off: the switch is the news.
+  const offAfterWipe = JSON.parse(JSON.stringify(switchedOff)); offAfterWipe.store.wipeOffer = wipe;
+  offAfterWipe.store.lastHello = { at: NOW - 86400000, boot: 2, rule: 3, label: 'wiped', adopted: {}, wouldRepair: [] };
   const app = await boot({ native: true, init: init({ status: offerWaits, flag: FLAG }) });
   try {
-    const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [wipedNow, offerWaits, without, switchedOff, closed, unreadable]);
+    const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [wipedNow, offerWaits, without, switchedOff, closed, unreadable, offAfterWipe]);
     assert(lines[0] === 'This iPhone’s data was wiped · the copy kept 73 items', 'the wiped start: ' + lines[0]);
     assert(lines[1] === 'In step · 24 items · 176 KB', 'an offer waiting does not take the row over: ' + lines[1]);
     assert(lines[2] === 'In step · caught up with changes made without it · 24 items · 176 KB', 'rule 4: ' + lines[2]);
     assert(lines[3] === 'Off · switched off on this iPhone', 'the switch: ' + lines[3]);
     assert(lines[4] === 'Off this launch · paused after the app closed during a save', 'a crash verdict: ' + lines[4]);
     assert(/^Off · the copy can’t be read/.test(lines[5]), 'an unreadable store: ' + lines[5]);
+    assert(lines[6] === 'Off · switched off on this iPhone', 'an earlier wipe does not hide that the copy is off: ' + lines[6]);
     // The waiting offer: Put back of everything the copy kept, after a preview.
     await ev(app, () => { __ts.plan = { items: [{ key: 'kt_routine', outcome: 'put back', origin: 'snap:x' }, { key: 'kt_sessions', outcome: 'put back', added: 3, origin: 'snap:x' }], count: 2 }; switchTab('settings'); openStorageSheet(); });
     await app.page.waitForFunction(() => /Everything the copy kept/.test((document.getElementById('fpStoreBody') || {}).textContent || ''), null, { timeout: 3000 });

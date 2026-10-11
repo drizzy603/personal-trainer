@@ -21917,9 +21917,10 @@ function _fpStoreLine(st){
   if(s.state==='unreadable') return 'Off \u00b7 the copy can\u2019t be read (left as it is)';
   if(s.state==='refused') return 'Off \u00b7 a newer build looks after the copy';
   var size=_plural(s.keys, 'item')+' \u00b7 '+_fmtMB(s.bytes||0);
-  // This start found WebKit wiped (rule 3): the copy kept its set and stays off for this document. Once the copy
-  // follows the page again, the offer waits in the sheet's Put back list (30 days) and the row says how it stands.
-  if(st.facade==='off' && s.wipeOffer && ((h && h.rule===3) || /wiped/i.test(String(st.why||'')))) return 'This iPhone\u2019s data was wiped \u00b7 the copy kept '+_plural(s.wipeOffer.keys, 'item');
+  // This start found WebKit wiped (rule 3: the store's off answer says so): the copy kept its set and stays off for
+  // this document. Once the copy follows the page again, the offer waits in the sheet's Put back list (30 days) and
+  // the row says how it stands; a copy off for another reason (the switch, a crash) says that instead.
+  if(st.facade==='off' && s.wipeOffer && /wiped/i.test(String(st.why||''))) return 'This iPhone\u2019s data was wiped \u00b7 the copy kept '+_plural(s.wipeOffer.keys, 'item');
   if(st.facade==='off') return 'Off \u00b7 '+_fpStoreWhy(st.why);
   if(st.facade!=='attached') return 'Starting\u2026';
   if(h && h.rule===6) return 'Kept '+_plural((h.wouldRepair||[]).length, 'change')+' this iPhone lost \u00b7 Put back';
