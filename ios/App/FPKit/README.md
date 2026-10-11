@@ -8,10 +8,10 @@ the owner's data that follows WebKit and never writes it (FPStore, in shadow), a
 
 **Status.** The package skeleton (plan task S1, package part) gave each target a placeholder,
 `<Target>Module.swift`, naming the module (a ready category for its log lines under the app's
-`app.kt.trainer` subsystem); later tasks add their files beside them. FPStore holds the native store
-(plan task S2, see [FPStore](#fpstore-the-native-store) below). Not wired into the app yet: the package
-reference and product dependencies in `App.xcodeproj`, the App target's iOS 17 deployment target and the
-CI job are the rest of S1.
+`app.kt.trainer` subsystem); later tasks add their files beside them. FPCore holds the shell contract,
+the coach model and the rest of C4, and the policy file's state (S7). FPStore holds the native store
+(plan task S2, see [FPStore](#fpstore-the-native-store) below). The App target links all four products
+(the rest of S1, see [In the app](#in-the-app)), but nothing in the app calls FPKit yet.
 
 ## Targets
 
@@ -104,6 +104,22 @@ node tests/tools/ktstore-vectors.js           # rewrite Vectors/vectors.json
 node tests/tools/ktstore-vectors.js --check   # exit 1 if the committed file is stale
 ```
 
+## In the app
+
+`App.xcodeproj` references this folder as a local package (an `XCLocalSwiftPackageReference` beside
+CapApp-SPM's), and the App target depends on FPCore, FPStore, FPHost and FPUI, linked statically into the
+app like CapApp-SPM. Only the App target's two configurations moved to iOS 17.0. The project level stays at
+15.0 because `cap sync` writes CapApp-SPM's `.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in
+`project.pbxproj`; the widget (16.2), the share extension (15.0) and the watch targets keep theirs. No
+App-target source imports FPKit yet: the tasks that use it add their imports to `AppDelegate.swift`
+(objectVersion 60 means no new App-target files).
+
+Adding the package changed `originHash` in
+`App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
+pin, moving `ion-ios-filesystem` (the Filesystem plugin's library, `from: "1.1.1"`) from 1.1.2 to 1.1.4.
+The committed file keeps the pins as they were under the new hash. If a later change to the package graph
+rewrites the file again, keep the pins unless that change means to move them.
+
 ## Testing
 
 From the repo root:
@@ -138,4 +154,16 @@ The iOS build of every target, which compiles FPHost and FPUI (no simulator boot
 xcodebuild -scheme FPKit-Package -destination 'generic/platform=iOS Simulator' build
 ```
 
-`.build` (SwiftPM's build folder, or the link to it) is ignored by the root `.gitignore`.
+Every test target on an iOS simulator (FPCoreTests and FPStoreTests today, less KillTests, which is macOS
+only; FPHost's and FPUI's join the scheme when their tasks add them):
+
+```sh
+xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>' \
+  -parallel-testing-enabled NO test
+```
+
+CI (`.github/workflows/ios-build.yml`) runs `swift test` on macOS (job `fpkit-mac`) and both commands above
+on the newest iOS runtime's first iPhone (job `fpkit-ios`), beside the app build.
+
+`.build` (SwiftPM's build folder, or the link to it) is ignored by the root `.gitignore`. xcodebuild leaves
+an empty `.swiftpm/` folder here, which git does not see.

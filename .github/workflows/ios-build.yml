@@ -55,6 +55,84 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  # FPKit (ios/App/FPKit), the native half of the move to SwiftUI. FPCore and FPStore run on the Mac.
+  fpkit-mac:
+    name: FPKit tests on macOS (FPCore, FPStore)
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: swift test
+        run: swift test --package-path ios/App/FPKit
+
+  # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
+  # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
+  # simulator (FPHost's and FPUI's join the FPKit-Package scheme as their tasks add them).
+  fpkit-ios:
+    name: FPKit on an iOS simulator (FPHost, FPUI)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build every FPKit target for the iOS Simulator
+        working-directory: ios/App/FPKit
+        run: |
+          xcodebuild -version
+          xcodebuild \
+            -scheme FPKit-Package \
+            -destination 'generic/platform=iOS Simulator' \
+            build
+
+      # The newest iOS runtime's first available iPhone; device names change with every Xcode.
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/sims.json"
+          udid=$(python3 - "$RUNNER_TEMP/sims.json" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))["devices"]
+          best = None
+          for runtime, items in devices.items():
+              tail = runtime.rsplit(".", 1)[-1]          # iOS-26-5
+              if not tail.startswith("iOS-"):
+                  continue
+              version = tuple(int(p) for p in tail[4:].split("-"))
+              for d in items:
+                  if d.get("isAvailable", True) and d["name"].startswith("iPhone"):
+                      if best is None or version > best[0]:
+                          best = (version, d["udid"], d["name"])
+          if best is None:
+              sys.exit("no available iPhone simulator")
+          print("simulator: %s, iOS %s" % (best[2], ".".join(map(str, best[0]))), file=sys.stderr)
+          print(best[1])
+          PY
+          )
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Test on the simulator
+        working-directory: ios/App/FPKit
+        run: |
+          xcodebuild \
+            -scheme FPKit-Package \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -parallel-testing-enabled NO \
+            test
+
   release:
     name: Archive + TestFlight upload
     if: false
