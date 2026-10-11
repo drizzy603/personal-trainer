@@ -52,6 +52,13 @@ changes WebKit behind the facade at the next document start, `fail({...})` makes
 the store answer full, busy, err or nothing, and `status()`, `values()`,
 `conflicts()`, `stagePutBack()` read and act as Settings › About › Storage will.
 
+Spec 121 covers the page's side of Storage with a mocked TrovoStore plugin: the
+row only with the shell's flag (`window.__FP_SHELL`) and the plugin, the sheet's
+counts and actions (Put back after a preview, the Native copy switch, Export a
+copy, the TestFlight-only test quit), `bootDone` and the OTA confirm at the end
+of boot (also when the first render is the coach route), and the tools'
+`dev.nav`/`dev.theme` in the flag.
+
 ## The native store on a simulator
 
 ```sh
@@ -67,5 +74,10 @@ arguments (`-fpProbe`), so nothing writes WebKit's file behind the facade, and
 `store.sqlite` itself to decide (migration, writes while hidden and in the
 background, a WebContent kill, the SIGKILL sweep, WebKit unreadable or wiped and
 Put back, the policy file, the store breaker, a crash marker, a scene reconnect,
-an OTA page). It reinstalls the app on that phone and leaves it with the
-scenario seed.
+an OTA page, Settings › About › Storage through the real TrovoStore plugin). It
+reinstalls the app on that phone and leaves it with the scenario seed.
+
+`../test-native.sh` (the "test it" flow) drives its routes with launch arguments
+too (`-devNav <route>`, `-devTheme <room>`), builds as build 60 so the native copy
+stays attached, runs every route once per room on one app container, and checks
+the native copy against WebKit's file before the watch step.

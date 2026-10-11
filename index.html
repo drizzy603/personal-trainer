@@ -3613,6 +3613,13 @@ function lsSet(k,v) {
 // shell before 60 and whenever the facade is off (no window.__ktStore flag, or the store said no), so code
 // that asks it changes nothing there.
 function _ktStoreShadow(){ var s=window.__ktStoreState; return (s && s.mode==='shadow' && typeof s.acked==='function' && typeof s.remirror==='function') ? s : null; }
+// The shell's flag (window.__FP_SHELL, injected at document start by build 60+ shells: shell contract v1). Native
+// behaviour comes from this flag and the plugins it names, never from a build stamp (an older shell serves a newer
+// staged page). null in the browser, in the PWA and on every shell before 60, so nothing below changes there.
+function _fpShellFlag(){ var f=window.__FP_SHELL; return (f && typeof f==='object' && (f.v|0)>=1) ? f : null; }
+// The test tools' launch arguments, which the shell hands over in its flag (Debug builds): dev.nav (-devNav, a
+// dev-nav route) and dev.theme (-devTheme, the room for this launch).
+function _fpDev(key){ var f=_fpShellFlag(), d=f && f.dev, v=(d && typeof d==='object') ? d[key] : null; return (typeof v==='string' && v) ? v : null; }
 function getWeights() { return lsGet('kt_weights')||{}; }
 function getSessions() { return lsGet('kt_sessions')||[]; }
 function getRuns() { return lsGet('kt_runs')||[]; }
@@ -6083,6 +6090,15 @@ function getSessionExercises(type) {
 // ── Render ────────────────────────────────────────────────────────────────────
 var _lastRenderedRoute = '';
 var _otaConfirmed = false;
+// The page provably boots: disarms the OTA one-strike breaker (the shell's staged page, or the localStorage swap on
+// shells before build 41), once per document. Sent by the first paint off the coach route, as always, and by
+// _bootDone at the end of boot, which covers a first render on the coach route (it returns before the paint's call).
+function _otaConfirm(){
+  if(_otaConfirmed) return;
+  _otaConfirmed=true;
+  try{ localStorage.removeItem('kt_ota_attempt'); }catch(e){}
+  try{ var _o=_plug('TrovoOta'); if(_o&&_o.confirm) Promise.resolve(_o.confirm()).catch(function(){}); }catch(e){}
+}
 // M-05 number-tick: elements opt in with data-m05="stable-key"; after every
 // paint the pass compares each against the previous paint and pulses only a
 // real change — never the first mount, never an unchanged repaint. The map
@@ -6179,7 +6195,7 @@ function render() {
   }
   // First successful paint disarms the OTA one-strike breaker: this page
   // (bundled or swapped-in live) provably boots.
-  if(!_otaConfirmed){ _otaConfirmed=true; try{ localStorage.removeItem('kt_ota_attempt'); }catch(e){} try{ var _o=_plug('TrovoOta'); if(_o&&_o.confirm) Promise.resolve(_o.confirm()).catch(function(){}); }catch(e){} }
+  _otaConfirm();
   screen.scrollTop = routeChanged ? 0 : prevScroll;
   _lastRenderedRoute = route;
   // Lazily fetch today's coach card the first time the editorial Today is on
@@ -21723,6 +21739,7 @@ function renderSettings() {
         '<div class="settings-row-body"><div class="settings-row-title">App build '+APP_BUILD+'</div><div class="settings-row-sub">'+status+'</div></div>'+
       '</div>';
     })()+
+    _fpStoreRowHTML()+
     (function(){
       var n=0; try{ n=(JSON.parse(localStorage.getItem('kt_err_log')||'[]')).length; }catch(e){}
       return '<div class="settings-row" onclick="openErrorLogSheet()">'+
@@ -21844,6 +21861,300 @@ function saveApiKeyFromSettings(){
 // Same confirmation sheet as the Coach tab — one accidental tap must not
 // disconnect the Coach.
 function clearApiKeyFromSettings(){ clearApiKey(); }
+
+// ── Settings › About › Storage: the native copy (build 60+, plan task S6) ────
+// From build 60 the shell keeps a native copy of every kt_* value beside WebKit's (FPStore, in shadow: WebKit stays in
+// charge, the copy follows each save and never writes WebKit by itself) and reports on it through the TrovoStore
+// plugin. The row says how the copy stands ("In step · N items · X KB"); its sheet adds what the starts found
+// (changes made without the copy taken over, changes this iPhone lost that the copy kept, unexplained differences), the
+// facade's fallbacks and timings, breaker trips and crash markers, Put back of what the copy kept, the Native copy
+// switch, Export a copy and, on TestFlight, "Test: quit after next save". Inert without the shell's flag and the
+// plugin: no row, no call (the browser, the PWA and every shell before 60).
+var _fpStore={st:null, at:0, busy:false, cbs:[], rows:null, html:null};
+// The saves that end the app while "Test: quit after next save" is armed: a set (the workout in progress), a
+// finished workout, a run, an activity, a weigh-in or measurement, working weights, records, the programme, the
+// profile, the chat. Never the app's own bookkeeping (visits, logs, caches), which writes without the owner.
+var FP_QUIT_KEYS=['kt_runner_draft','kt_sessions','kt_runs','kt_sports','kt_bw','kt_measurements','kt_weights','kt_prs','kt_routine','kt_profile','kt_coach_msgs'];
+var _FP_KEY_NAMES={kt_sessions:'Workouts', kt_runs:'Runs', kt_sports:'Activities', kt_bw:'Body weight', kt_measurements:'Measurements',
+  kt_routine:'Programme', kt_routine_backup:'Previous programme', kt_coach_msgs:'Coach chat', kt_weights:'Working weights',
+  kt_runner_draft:'Workout in progress', kt_profile:'Athlete profile', kt_prs:'Records', kt_week:'Programme week',
+  kt_streak_days:'Streak days', kt_last_open:'Last visit', kt_err_log:'Error log', kt_wch_log:'Watch sync log'};
+function _fpKeyName(k){ return Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, k) ? _FP_KEY_NAMES[k] : String(k||'?'); }
+function _fpStorePlug(){ if(!_fpShellFlag()) return null; var P=_plug('TrovoStore'); return (P && typeof P.status==='function') ? P : null; }
+// Reads the status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
+function _fpStoreRefresh(force, then){
+  var P=_fpStorePlug(); if(!P){ if(then) then(null); return; }
+  if(then) _fpStore.cbs.push(then);
+  if(_fpStore.busy) return;
+  if(!force && _fpStore.st && Date.now()-_fpStore.at<1500){ _fpStoreDone(); return; }
+  _fpStore.busy=true;
+  var done=function(st){ _fpStore.busy=false; _fpStore.at=Date.now(); if(st && typeof st==='object') _fpStore.st=st; _fpStorePaint(); _fpStoreDone(); };
+  try{ Promise.resolve(P.status()).then(done, function(){ done(null); }); }catch(e){ done(null); }
+}
+function _fpStoreDone(){ var cbs=_fpStore.cbs; _fpStore.cbs=[]; cbs.forEach(function(f){ try{ f(_fpStore.st); }catch(e){} }); }
+function _fpStoreWhen(ms){
+  var d=new Date(Number(ms)||0); if(!(ms>0) || isNaN(d.getTime())) return '';
+  var t=d.toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit'});
+  return _ymdLocal(d)===todayISO() ? 'today '+t : d.toLocaleDateString('en-US',{month:'short', day:'numeric'})+', '+t;
+}
+// Why the copy is off, in the owner's words (the gate's reasons and the store's own answers, from StoreAttach).
+function _fpStoreWhy(w){
+  w=String(w||'');
+  if(/native copy switch/i.test(w)) return 'switched off on this iPhone';
+  if(/policy/i.test(w)) return 'paused for now by the app\u2019s remote switch';
+  if(/crash/i.test(w)) return 'paused after the app closed during a save';
+  if(/never finished booting/i.test(w)) return 'the last start didn\u2019t finish \u00b7 back at the next start';
+  if(/^no flag/i.test(w)) return 'couldn\u2019t attach to this page';
+  if(/nowk|webkit unreadable/i.test(w)) return 'the app\u2019s storage couldn\u2019t be read at this start';
+  if(/wiped/i.test(w)) return 'this iPhone\u2019s data was wiped';
+  return w.replace(/^store: /, '') || 'off';
+}
+// The row's line: how the copy stands now.
+function _fpStoreLine(st){
+  if(!st) return 'Checking the native copy\u2026';
+  var s=st.store, h=s && s.lastHello;
+  if(!s) return 'Off this launch \u00b7 '+_fpStoreWhy(st.storeClosedWhy || 'not open');
+  if(s.state==='unreadable') return 'Off \u00b7 the copy can\u2019t be read (left as it is)';
+  if(s.state==='refused') return 'Off \u00b7 a newer build looks after the copy';
+  var size=_plural(s.keys, 'item')+' \u00b7 '+_fmtMB(s.bytes||0);
+  // This start found WebKit wiped (rule 3): the copy kept its set and stays off for this document. Once the copy
+  // follows the page again, the offer waits in the sheet's Put back list (30 days) and the row says how it stands.
+  if(st.facade==='off' && s.wipeOffer && ((h && h.rule===3) || /wiped/i.test(String(st.why||'')))) return 'This iPhone\u2019s data was wiped \u00b7 the copy kept '+_plural(s.wipeOffer.keys, 'item');
+  if(st.facade==='off') return 'Off \u00b7 '+_fpStoreWhy(st.why);
+  if(st.facade!=='attached') return 'Starting\u2026';
+  if(h && h.rule===6) return 'Kept '+_plural((h.wouldRepair||[]).length, 'change')+' this iPhone lost \u00b7 Put back';
+  if(!h || s.inStep) return 'In step \u00b7 '+size;
+  if(h.rule===4 && ((h.adopted||{}).wiped||[]).length) return 'In step \u00b7 the copy kept what a wipe took \u00b7 Put back';
+  if(h.rule===4) return 'In step \u00b7 caught up with changes made without it \u00b7 '+size;
+  if(h.rule===7) return 'In step \u00b7 '+_plural(((h.adopted||{}).unexplained||[]).length, 'unexplained difference')+' \u00b7 '+size;
+  return 'In step \u00b7 '+size;
+}
+// What the last start found.
+function _fpStoreLast(h){
+  var when=_fpStoreWhen(h.at), a=h.adopted||{}, n=function(r){ return (a[r]||[]).length; }, what;
+  if(h.label==='migrate') what='the first copy was made';
+  else if(h.rule===0 || h.rule===5) what='in step';
+  else if(h.rule===4) what='caught up with '+_plural(n('older build')+n('wiped'), 'item')+' changed without the copy (an older build, or the copy off)';
+  else if(h.rule===6) what='this iPhone had lost '+_plural((h.wouldRepair||[]).length, 'change')+' (would repair: '+(h.wouldRepair||[]).map(_fpKeyName).join(', ')+'); the copy kept them';
+  else if(h.rule===7) what=_plural(n('unexplained'), 'unexplained difference')+'; the copy follows this iPhone and kept what it gave up';
+  else if(h.rule===3) what='this iPhone\u2019s data was wiped; the copy kept everything';
+  else if(h.rule===2) what='the app\u2019s storage couldn\u2019t be read';
+  else what=String(h.label||'');
+  return 'Last start'+(when ? ' '+when : '')+': '+what;
+}
+function _fpConflictWhy(r){
+  var when=_fpStoreWhen(r.at), bytes=(r.units|0)*2, size=(r.units==null) ? 'had no value' : (bytes<1024 ? 'under 1 KB' : _fmtMB(bytes));
+  var why={'lag':'This iPhone lost it, the copy kept it', 'older build':'Changed without the copy', 'unexplained':'Changed without an explanation',
+    'wiped':'Wiped from this iPhone', 'putback':'Replaced by a Put back'}[r.why] || String(r.why||'');
+  return why+' \u00b7 '+size+(when ? ' \u00b7 '+when : '');
+}
+function _fpStoreRowHTML(){
+  if(!_fpStorePlug()) return '';
+  setTimeout(function(){ _fpStoreRefresh(false); }, 0);
+  return '<div class="settings-row" id="fp-store-row" onclick="openStorageSheet()">'+
+    '<div class="settings-row-ic" style="background:#12201a;">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+        '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Storage</div><div class="settings-row-sub" id="fp-store-sub">'+_esc(_fpStoreLine(_fpStore.st))+'</div></div>'+
+    '<span class="settings-row-chev">›</span>'+
+  '</div>';
+}
+function _fpStorePaint(){
+  var sub=document.getElementById('fp-store-sub'); if(sub) sub.textContent=_fpStoreLine(_fpStore.st);
+  var body=document.getElementById('fpStoreBody'); if(!body) return;
+  var h=_fpStoreSheetHTML(); if(h===_fpStore.html) return;
+  _fpStore.html=h; body.innerHTML=h; _a11yPass();
+}
+function _fpStoreStat(label, value, note){
+  return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
+    '<div style="min-width:0;font-size:13px;color:var(--lite);line-height:1.4;">'+_esc(label)+(note ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+_esc(note)+'</div>' : '')+'</div>'+
+    '<div class="kt-mono" style="flex-shrink:0;font-size:12px;font-weight:700;color:var(--text);text-align:right;line-height:1.5;">'+_esc(value)+'</div>'+
+  '</div>';
+}
+function _fpStoreEyebrow(t){ return '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);padding:16px 20px 8px;">'+t+'</div>'; }
+function _fpMs(v){ v=Number(v); return (v>=0 && isFinite(v)) ? (v<10 ? Math.round(v*10)/10 : Math.round(v))+' ms' : '\u2014'; }
+function _fpStoreSheetHTML(){
+  var st=_fpStore.st;
+  if(!st) return '<div style="padding:4px 20px 20px;font-size:13px;color:var(--muted);">Checking the native copy\u2026</div>';
+  var s=st.store||null, c=(s && s.counts && s.counts.counts) || {}, h=s && s.lastHello, cn=st.counters||{}, doc=st.document||{};
+  var k=window.__ktStoreState; if(!k || typeof k!=='object') k=null;
+  var P=_fpStorePlug(), canPut=!!(s && s.state==='ready' && st.deviceSwitchOn!==false);
+  var btn='flex-shrink:0;min-height:40px;padding:8px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--accent);font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;';
+  var out='<div style="margin:0 20px 6px;padding:14px 16px;border-radius:14px;background:var(--card2);border:1px solid var(--border);">'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">NATIVE COPY</div>'+
+    '<div id="fpStoreHead" style="font-size:16px;font-weight:800;color:var(--text);line-height:1.3;">'+_esc(_fpStoreLine(st))+'</div>'+
+    (h ? '<div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">'+_esc(_fpStoreLast(h))+'</div>' : '')+
+  '</div>';
+
+  out+=_fpStoreEyebrow('FOUND AT STARTS');
+  out+=_fpStoreStat('Changes made without the copy', _plural(c.olderBuild||0, 'time'), 'An older build, or a start with the copy off: taken over, deletions included');
+  out+=_fpStoreStat('Changes this iPhone lost', _plural(c.lag||0, 'time')+' \u00b7 '+_plural(c.wouldRepairKeys||0, 'item'), 'Would repair: the copy kept them for Put back');
+  out+=_fpStoreStat('Unexplained differences', String(c.unexplained||0));
+  out+=_fpStoreEyebrow('SAVES');
+  out+=_fpStoreStat('Fallbacks', k ? String(k.fallbacks|0)+' this start' : '\u2014',
+    'Saves the copy missed, taken at the next start \u00b7 native answers: full '+(c.full|0)+', busy '+(c.busy|0)+', error '+(c.err|0));
+  out+=_fpStoreStat('Timings', 'save '+_fpMs(cn.prompts ? cn.promptMs/cn.prompts : null),
+    'Average save to the copy \u00b7 longest '+_fpMs(cn.promptMaxMs)+' \u00b7 facade start '+_fpMs(k && k.bootMs)+' \u00b7 start check '+_fpMs(doc.helloMs));
+  out+=_fpStoreEyebrow('SAFETY');
+  out+=_fpStoreStat('Breaker trips', String(st.breakerTrips|0)+(st.skippingThisLaunch ? ' \u00b7 off this launch' : ''),
+    st.breakerLastTrip ? 'Last: '+_fpStoreWhen(st.breakerLastTrip) : 'A start that never finished turns the copy off once');
+  out+=_fpStoreStat('Crash markers', String((st.crashVerdicts||[]).length)+(st.markerFoundAtLaunch ? ' \u00b7 found at this launch' : ''),
+    'The app closing during a save pauses the copy for that build');
+
+  out+=_fpStoreEyebrow('PUT BACK');
+  if(s && s.wipeOffer && s.wipeOffer.snap){
+    out+='<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
+      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);">Everything the copy kept</div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;">This iPhone\u2019s data was wiped '+_esc(_fpStoreWhen(s.wipeOffer.at))+' \u00b7 '+_plural(s.wipeOffer.keys, 'item')+'</div></div>'+
+      (canPut ? '<button type="button" onclick="_fpStorePutBackWipe()" style="'+btn+'">Put back</button>' : '')+
+    '</div>';
+  }
+  if(s && s.putBackStaged) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);">A Put back is waiting for the next start.</div>';
+  var rows=_fpStore.rows;
+  if(rows==null) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading what the copy kept\u2026</div>';
+  else if(!rows.length) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);line-height:1.5;">Nothing to put back: the copy has given nothing up in the last 30 days.</div>';
+  else rows.slice(0, 40).forEach(function(r){
+    out+='<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
+      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);overflow-wrap:anywhere;">'+_esc(_fpKeyName(r.key))+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;">'+_esc(_fpConflictWhy(r))+'</div></div>'+
+      (canPut ? '<button type="button" data-id="'+(Math.floor(Number(r.id))||0)+'" onclick="_fpStorePutBack(this)" style="'+btn+'" aria-label="Put back '+_esc(_fpKeyName(r.key))+'">Put back</button>' : '')+
+    '</div>';
+  });
+
+  var on=st.deviceSwitchOn!==false, pill=function(v){ return '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(v?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(v?'On':'Off')+'</span>'; };
+  out+='<div style="height:10px;"></div>'+
+    '<div class="settings-row" onclick="toggleNativeCopy()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Native copy</div><div class="settings-row-sub">'+
+        (on ? 'Follows every save \u00b7 changes nothing by itself' : 'Off from the next start \u00b7 the app runs on its own storage alone')+'</div></div>'+
+      pill(on)+
+    '</div>'+
+    ((st.crashVerdicts||[]).length && on ?
+    '<div class="settings-row" onclick="_fpStoreRetry()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Try the copy again</div><div class="settings-row-sub">Paused after the app closed during a save \u00b7 back from the next launch</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>' : '')+
+    '<div class="settings-row" onclick="_fpStoreExport()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Export a copy</div><div class="settings-row-sub">Every item as one file, to save or send \u00b7 never your API key</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>';
+  if(st.testKill && P && P.testKill){
+    var tq=st.testQuit, armed=!!st.testQuitArmed;
+    out+='<div class="settings-row" onclick="_fpStoreTestQuit()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Test: quit after next save</div><div class="settings-row-sub">'+
+        (armed ? 'Armed \u00b7 the app quits right after your next saved change (for 10 minutes) \u00b7 tap to cancel'
+               : 'TestFlight only \u00b7 the app quits right after your next saved change; open it again and come back here')+'</div></div>'+
+      '<span class="settings-row-chev">›</span>'+
+    '</div>'+
+    (tq ? '<div style="padding:8px 20px 4px;font-size:12px;color:var(--muted);line-height:1.5;">'+_esc(_fpTestQuitLine(tq))+'</div>' : '');
+  }
+  return out;
+}
+function _fpTestQuitLine(tq){
+  var a=tq.after, res;
+  if(!a) res='waiting for the next start';
+  else if(a.rule===0 || a.rule===5) res='this iPhone had kept the save (in step)';
+  else if(a.rule===6) res=((a.wouldRepair||[]).indexOf(tq.key)>=0 ? 'this iPhone had lost the save; the copy kept it' : 'this iPhone had lost '+_plural((a.wouldRepair||[]).length, 'change')+'; the copy kept them')+' (Put back above)';
+  else if(a.rule===-1) res='the copy was off ('+_fpStoreWhy(String(a.label||'').replace(/^off: /, ''))+')';
+  else res='the copy found: '+String(a.label||'');
+  return 'Last test '+_fpStoreWhen(tq.firedAt)+': quit after saving '+_fpKeyName(tq.key)+' \u00b7 on reopening, '+res+'.';
+}
+function openStorageSheet(){
+  if(!_fpStorePlug()) return;
+  var existing=document.getElementById('fpStoreOverlay'); if(existing) existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='fpStoreOverlay';
+  overlay.className='kt-sheet-overlay';
+  _fpStore.rows=null;
+  _fpStore.html=_fpStoreSheetHTML();
+  overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
+    '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
+      '<div class="kt-sheet-title" id="fpStoreTitle" tabindex="-1">Storage</div>'+
+      '<button class="kt-sheet-x" onclick="closeStorageSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">A native copy of your data, kept on this iPhone beside the app\u2019s own storage. It follows every save, never leaves the phone and never changes your data by itself.</div>'+
+    '<div id="fpStoreBody">'+_fpStore.html+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeStorageSheet);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeStorageSheet(); });
+  _a11yPass();
+  _fpStoreRefresh(true);
+  _fpStoreLoadRows();
+}
+function closeStorageSheet(){ var el=document.getElementById('fpStoreOverlay'); if(el) el.remove(); }
+function _fpStoreLoadRows(){
+  var P=_fpStorePlug(); if(!P || !P.conflicts) return;
+  try{ Promise.resolve(P.conflicts({limit:60})).then(function(r){ _fpStore.rows=(r && Array.isArray(r.rows)) ? r.rows : []; _fpStorePaint(); }, function(){ _fpStore.rows=[]; _fpStorePaint(); }); }catch(e){}
+}
+function toggleNativeCopy(){
+  var P=_fpStorePlug(); if(!P || !P.setSwitch) return;
+  var next=!(_fpStore.st && _fpStore.st.deviceSwitchOn!==false);
+  var go=function(){
+    try{ Promise.resolve(P.setSwitch({on:next})).then(function(){
+      showToast(next ? 'Native copy on from the next start' : 'Native copy off from the next start');
+      _fpStoreRefresh(true);
+    }, function(e){ showToast('Couldn\u2019t change it \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
+  };
+  if(next){ go(); return; }
+  _ktConfirm({title:'Turn the native copy off?', body:'From the next start the app runs on its own storage alone, as it did before. Nothing is deleted; turn it back on any time.', confirmLabel:'Turn off', onConfirm:go});
+}
+function _fpStoreRetry(){
+  var P=_fpStorePlug(); if(!P || !P.setSwitch) return;
+  try{ Promise.resolve(P.setSwitch({on:true})).then(function(){ showToast('The native copy is back from the next launch'); _fpStoreRefresh(true); }, function(){}); }catch(e){}
+}
+function _fpStoreExport(){
+  var P=_fpStorePlug(); if(!P || !P.exportCopy) return;
+  try{ Promise.resolve(P.exportCopy()).then(function(r){ if(r && r.shared) showToast('Native copy exported \u00b7 '+_plural(r.keys||0, 'item')); },
+    function(e){ showToast('Export failed \u2014 '+((e&&e.message)||'the native copy is off'), 'err'); }); }catch(e){}
+}
+function _fpStoreTestQuit(){
+  var P=_fpStorePlug(); if(!P || !P.testKill) return;
+  if(_fpStore.st && _fpStore.st.testQuitArmed){
+    try{ Promise.resolve(P.testKill({arm:false})).then(function(){ showToast('Test cancelled'); _fpStoreRefresh(true); }, function(){}); }catch(e){}
+    return;
+  }
+  _ktConfirm({title:'Quit after the next save?', body:'The app quits the moment your next change is saved: a set, a workout, a run, a weigh-in. Open it again and come back here to see whether this iPhone kept that save.',
+    confirmLabel:'Arm the test', confirmStyle:'var(--accent)', onConfirm:function(){
+      try{ Promise.resolve(P.testKill({arm:true, keys:FP_QUIT_KEYS.slice()})).then(function(r){
+        if(r && r.armed) showToast('Armed \u00b7 the app quits after your next save'); else showToast('Couldn\u2019t arm it \u2014 the native copy is off', 'err');
+        _fpStoreRefresh(true);
+      }, function(e){ showToast('Couldn\u2019t arm it \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
+    }});
+}
+function _fpStorePutBack(el){
+  var id=Math.floor(Number(el && el.dataset ? el.dataset.id : el)); if(!(id>0)) return;
+  var row=(_fpStore.rows||[]).filter(function(r){ return Math.floor(Number(r.id))===id; })[0];
+  _fpStorePutBackGo({conflicts:[id]}, row ? _fpKeyName(row.key) : 'it');
+}
+function _fpStorePutBackWipe(){ _fpStorePutBackGo({wipe:true}, 'everything the copy kept'); }
+function _fpPutBackNone(items){
+  var o=(items && items[0] && items[0].outcome) || '';
+  if(o==='changed since') return 'It changed since then, so it stays as it is';
+  if(o==='nothing to add') return 'Nothing to add \u2014 this iPhone already has it';
+  if(o==='not found') return 'That kept copy is gone';
+  if(o==='unmergeable') return 'Couldn\u2019t merge it \u2014 left as it is';
+  return 'Nothing to put back';
+}
+// Put back: a preview first (what would go back, and what stays because it changed since), then the owner's yes
+// stages it and the shell reloads the page, so the facade writes it into WebKit before the page's first script.
+function _fpStorePutBackGo(what, label){
+  var P=_fpStorePlug(); if(!P || !P.putBack) return;
+  try{ Promise.resolve(P.putBack(Object.assign({}, what, {preview:true}))).then(function(plan){
+    var items=(plan && plan.items) || [], back=items.filter(function(it){ return it && it.outcome==='put back'; });
+    if(!back.length){ showToast(_fpPutBackNone(items)); return; }
+    var names=back.map(function(it){ return _fpKeyName(it.key)+(it.added ? ' (+'+_plural(it.added, 'record')+')' : ''); });
+    _ktConfirm({title:'Put back '+(back.length===1 ? names[0] : label)+'?',
+      body:'The app reloads and writes the kept copy back'+(back.length>1 ? ': '+names.join(', ') : '')+'. Workouts, runs, activities and weigh-ins only gain the records they lost; nothing is removed. What it replaces is kept, so this can be put back too.',
+      confirmLabel:'Put back', confirmStyle:'var(--accent)', onConfirm:function(){
+        try{ Promise.resolve(P.putBack(what)).then(function(r){
+          if(r && r.staged){ closeStorageSheet(); showToast('Putting it back \u2014 the app reloads'); }
+          else showToast(_fpPutBackNone(r && r.items));
+        }, function(e){ showToast('Couldn\u2019t put it back \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
+      }});
+  }, function(e){ showToast('Couldn\u2019t read the copy \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
+}
 
 // ── Apple Health sheet (Settings → Data → Apple Health) ──────────────────────
 function _buildHealthRows(){
@@ -22716,7 +23027,11 @@ if('serviceWorker' in navigator && !(window.Capacitor && Capacitor.isNativePlatf
 // original green-and-black Studio). Every retired room — Auto, Midnight,
 // Carbon, Ember, Violet, Gold, Light — migrates to Heavyweight on boot.
 currentTheme = localStorage.getItem('kt_theme') || 'heavyweight';
-setTimeout(_syncAppIcon, 2500);   // after first paint: iOS refuses the switch while launching
+// The test tools' room for this launch (-devTheme, in the shell's flag): painted, never saved, and the Home Screen
+// icon left alone (iOS would put up its "You have changed the icon" alert over every shot).
+var _devTheme=_fpDev('theme');
+if(_devTheme && THEMES[_devTheme]) currentTheme=_devTheme; else _devTheme=null;
+if(!_devTheme) setTimeout(_syncAppIcon, 2500);   // after first paint: iOS refuses the switch while launching
 if(!THEMES[currentTheme]){
   currentTheme='heavyweight';
   localStorage.setItem('kt_theme','heavyweight');
@@ -24321,20 +24636,30 @@ window._trovoOpen=_handleDeepLink;
 
 // Dev-nav hook — reads kt_dev_nav at boot and routes to a target screen so
 // the screenshot helper can drive the sim without UI taps. The key is
-// consumed (deleted) on first read; absence is the no-op default. Routes:
+// consumed (deleted) on first read; absence is the no-op default. From build
+// 60 the tools pass the route as a launch argument instead (-devNav <route>)
+// and the shell hands it over in its flag (window.__FP_SHELL.dev.nav), so no
+// tool writes WebKit's file behind the native copy; it is taken once per
+// launch (a reload of the page does not route again). Routes:
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "progress/day" | "progress/calendar" | "settings"
+//   "settings/storage" (Settings at its About › Storage row) | "settings/storage-sheet" (the Storage sheet open)
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
 //   "runner/rest" (today's lift day, or the first with lifts: logs sets until a rest starts, so a
 //   real rest and its Live Activity run in the simulator for checking by hand; it leaves a
 //   workout under way, so a scripted run should use it last)
+function _devNavOnce(route){
+  try{ if(sessionStorage.getItem('fp_dev_nav_taken')===route) return false; sessionStorage.setItem('fp_dev_nav_taken', route); }catch(e){}
+  return true;
+}
 (function(){
   try {
     var nav = localStorage.getItem('kt_dev_nav');
+    if(nav) localStorage.removeItem('kt_dev_nav');
+    else { var _fdn=_fpDev('nav'); if(_fdn && _devNavOnce(_fdn)) nav=_fdn; }
     if(!nav) return;
-    localStorage.removeItem('kt_dev_nav');
     setTimeout(function(){
       try {
         var parts = String(nav).split('/');
@@ -24344,6 +24669,8 @@ window._trovoOpen=_handleDeepLink;
         }
         if(head==='log' && sub){ switchLogSub(sub); }
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
+        if(head==='settings' && sub==='storage'){ var _sr=document.getElementById('fp-store-row'); if(_sr) _sr.scrollIntoView({block:'center'}); }
+        if(head==='settings' && sub==='storage-sheet'){ openStorageSheet(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='progress' && sub==='calendar'){ var _cc=document.querySelector('.kt-cal-card'); if(_cc) _cc.scrollIntoView({block:'start'}); }
         if(head==='progress' && sub==='day'){ var _ad=_calActiveDays(); if(_ad.length){ _calNavToDate(_ad[_ad.length-1]); render(); openCalDay(_ad[_ad.length-1]); } }
@@ -24383,6 +24710,17 @@ window._trovoOpen=_handleDeepLink;
     }, 120);
   } catch(e) {}
 })();
+
+// ── End of boot ───────────────────────────────────────────────────────────────
+// Whatever painted first, the page has booted. The OTA confirm goes now if the first paint did not send it (a first
+// render on the coach route returns before that call), and a shell with the TrovoShell plugin hears bootDone (shell
+// contract v1), which disarms the native copy's breaker; until a shell carries it, the confirm stands in for it.
+function _bootDone(){
+  _otaConfirm();
+  var P=_fpShellFlag() ? _plug('TrovoShell') : null;
+  if(P && P.bootDone){ try{ Promise.resolve(P.bootDone({page:APP_BUILD})).catch(function(){}); }catch(e){} }
+}
+_bootDone();
 </script>
 
 <div class="wf-view" id="wf-view" style="display:none;" aria-hidden="true">
@@ -24563,7 +24901,7 @@ window._trovoOpen=_handleDeepLink;
   <div class="ed-hero">
     <div class="ed-hero-eyebrow">Legal</div>
     <h1>Privacy<br><span>Policy</span></h1>
-    <p class="ed-stamp">FITNESS PROGRAMMER · LAST UPDATED 15 SEP 2026</p>
+    <p class="ed-stamp">FITNESS PROGRAMMER · LAST UPDATED 11 OCT 2026</p>
   </div>
   <div class="content">
     <div class="ed-guarantees">
@@ -24578,7 +24916,7 @@ window._trovoOpen=_handleDeepLink;
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">01</span><h2>On-device storage</h2></div>
-      <p class="ed-body">Every workout, run, weigh-in, and chat lives in localStorage on your phone. We do not have a server — there is nothing to leak. Clearing browser data or uninstalling the app deletes everything; export a JSON backup from Settings to keep a copy.</p>
+      <p class="ed-body">Every workout, run, weigh-in, and chat lives on your phone, in the app's own storage (localStorage). Newer versions of the iPhone app also keep a second, native copy of the same data on the phone as a safety net; it never leaves the phone unless you export it. We do not have a server — there is nothing to leak. Uninstalling the app deletes everything, the native copy included (in a browser, clearing its data does the same); export a JSON backup from Settings to keep a copy.</p>
     </div>
     <div class="ed-section">
       <div class="ed-section-hd"><span class="ed-section-num">02</span><h2>No accounts</h2></div>
