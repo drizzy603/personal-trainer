@@ -2233,6 +2233,13 @@ var _cmpReturnFocus=null; // element focused when the sheet opened
 // Message ids (_mid, _coachMid): the native chat addresses a message by id, never by index (the
 // 60-message cap shifts every index by one). In memory only: saveCoachHistory keeps a whitelist.
 var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
+// Native screens (shell contract v1, plan task C3; the bridge is by _nativeJSON). FP_NATIVE is the
+// page's own off switch: false gives every shell the web screens again, by OTA. Nothing here acts
+// without the shell's flag (window.__FP_SHELL) and its TrovoShell plugin: the browser, the PWA and
+// every shell before 60 run the page exactly as before.
+var FP_NATIVE=true, FP_CONTRACT=1, FP_SCREENS=['coach'];
+var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
+var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null};
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
@@ -6170,7 +6177,7 @@ function render() {
       var el=document.getElementById(id);
       if(el && el.value==='') el.value=_formSnap[id];
     });
-    if(_formFocus){
+    if(_formFocus && !_fpCovered()){   // under a native screen the page moves no focus (the shell owns it)
       var fe=document.getElementById(_formFocus);
       if(fe){ fe.focus(); if(_formSel){ try{ fe.setSelectionRange(_formSel[0],_formSel[1]); }catch(e){} } }
     }
@@ -9386,6 +9393,7 @@ function resumeRunnerDraft(){
 // Generic bottom-sheet confirmation — replaces all native confirm() dialogs.
 // opts: { title, body?, confirmLabel?, confirmStyle?, onConfirm }
 function _ktConfirm(opts){
+  if(_fpConfirm(opts)) return;   // a native screen is up: the shell asks (FPScreens confirm answers)
   var sid='_ktcs_'+(Date.now()%99999);
   var el=document.createElement('div');
   el.id=sid; el.className='kt-close-sheet';
@@ -10293,6 +10301,7 @@ function closeCompleteSheet(){
 
 // Render the runner overlay into #runner-root.
 function paintRunner(){
+  _fpSync();   // first: every render, tab switch and runner paint ends here, and the native screens follow it
   var root = document.getElementById('runner-root');
   if(!root) return;
   var seal = document.getElementById('runner-seal');
@@ -17929,6 +17938,7 @@ function _toastPlace(){
 // safety net. One live undo at a time; a new toast retires the old one.
 var _toastUndoFn=null;
 function showUndoToast(msg, onUndo){
+  if(_fpToast(msg, 'ok', onUndo)) return;   // a native screen is up: the shell shows it (toast.undo answers)
   var t=document.getElementById('toast');
   if(!t)return;
   _toastUndoFn=onUndo;
@@ -17949,6 +17959,7 @@ function _toastUndo(){
   if(fn){ try{ fn(); }catch(e){} }
 }
 function showToast(msg, style){
+  if(_fpToast(msg, style, null)) return;   // a native screen is up: the shell shows it
   var t=document.getElementById('toast');
   if(!t)return;
   _toastUndoFn=null;
@@ -20647,9 +20658,11 @@ function coachSend(text, o){
   var nonce=o.nonce!=null && o.nonce!=='' ? String(o.nonce) : '';
   if(nonce){ for(var ni=0; ni<_coachNonces.length; ni++) if(_coachNonces[ni].n===nonce) return {ok:true, duplicate:true}; }
   if(coachLoading) return {ok:false, error:'busy'};
-  var msg=String(text==null?'':text).trim(), img=null;
-  if(o.image && typeof o.image==='object' && o.image.data) img={mediaType:String(o.image.mediaType||'image/jpeg'), data:String(o.image.data)};
-  else if(o.usePending && pendingImage) img=pendingImage;
+  var msg=String(text==null?'':text).trim(), img=null, imgKey=null;
+  // imgKey: the copy of the photo the native chat holds (the one it picked, by its nonce; the pending
+  // one, by its key), for the bubble to show; in memory only, like the preview.
+  if(o.image && typeof o.image==='object' && o.image.data){ img={mediaType:String(o.image.mediaType||'image/jpeg'), data:String(o.image.data)}; if(nonce) imgKey='n:'+nonce; }
+  else if(o.usePending && pendingImage){ img=pendingImage; imgKey=pendingImage.key||null; }
   if(!msg && !img) return {ok:false, error:'empty'};
 
   var content, preview=null;
@@ -20667,6 +20680,7 @@ function coachSend(text, o){
   var _um={role:'user',content:content,_preview:preview};
   if(!msg) _um._auto=true;   // a photo with no words: the bubble shows the photo, not the default prompt
   if(o.seed) _um._seed=String(o.seed);
+  if(imgKey) _um._imgKey=imgKey;
   _pushCoach(_um);
   if(nonce){ _coachNonces.push({n:nonce, m:_um}); if(_coachNonces.length>20) _coachNonces.shift(); }
   saveCoachHistory();
@@ -20676,6 +20690,11 @@ function coachSend(text, o){
   scrollChatBottom();
   _coachSay('Coach is thinking');
   return {ok:true, done:_coachTurnRun(o.errNote)};
+}
+// The message a remembered nonce sent (null once it has left the last 20).
+function _coachNonceMsg(n){
+  for(var i=0;i<_coachNonces.length;i++) if(_coachNonces[i].n===String(n)) return _coachNonces[i].m;
+  return null;
 }
 // The turn a sent message starts: chat or intake prompt and model, the reply (or the failure) in the
 // chat, the chat repainted where the reader is. Resolves true when it ended in its own generation.
@@ -20746,9 +20765,16 @@ function _coachAsk(text, o){
 }
 // A message the app drafts for the owner to read and send (Build day's "Ask the coach", a shared
 // photo's comment): into the web composer while it is on screen (_fillComposer), else kept as the
-// composer's draft for the chat's next paint. Returns the web box when it went there, so the caller
-// can focus it for a desktop keyboard.
+// composer's draft for the chat's next paint. Under the native chat it is the model's composer.draft
+// (with a nonce: the native composer takes it once, then coach.draftTaken). Returns the web box when it
+// went there, so the caller can focus it for a desktop keyboard.
 function coachPrefill(text){
+  var t0=String(text==null?'':text);
+  if(_fpWant('coach')){
+    _fp.draft={text:t0, nonce:'d'+(++_fp.seq)+'.'+_fpBoot}; _fpPushSoon();
+    _coachDraft={ v:t0, s:t0.length, e:t0.length, focus:false };   // the web composer has it too, if the web chat comes back first
+    return null;
+  }
   var ta=_fillComposer(text);
   if(ta) return ta;
   var t=String(text==null?'':text);
@@ -20902,6 +20928,7 @@ function scrollChatToReply(){
 // (markers read as words, no '%%', '**' or '|', capped near 400 characters, the changes it made at
 // the end), an error in its own words, and 'Stopped'. Cleared first so the same words announce again.
 function _coachSay(t){
+  _fpSpeak(t);   // the native chat announces it (once per id)
   var el=document.getElementById('coach-live'); if(!el) return;
   el.textContent='';
   setTimeout(function(){ el.textContent=String(t||''); }, 50);
@@ -20932,12 +20959,30 @@ function _coachSayLast(){
 
 function openCoachChat(){ coachView='chat'; render(); scrollChatBottom(); }
 
+// The chat header's model switch: what it shows, the model it switches to, and its accessible name
+// (spec 114). renderCoach() and the native chat's model read the same.
+function _coachModelSwitch(){
+  var isHaiku=coachModel.indexOf('haiku')!==-1, next=isHaiku?COACH_SONNET:'claude-haiku-4-5-20251001', label=_coachModelName(coachModel);
+  return {label:label, next:next, a11y:'Coach model: '+label+'. Switch to '+_coachModelName(next)};
+}
+// The chat header's week and day: day-of-programme, not day-of-calendar. Before the fix this was the
+// raw weekday, so a plan built on a Saturday opened on "WK 01 · DAY 6". Rounded: a week whose clocks
+// change on a weekday (Friday in Israel and Egypt) has a 23-hour day, and flooring read its Saturday
+// as DAY 5.
+function _coachDayMeta(){
+  var _dayAnchor = _weekAnchor();
+  var dayIdx = Math.max(1, Math.min(7,
+    Math.round((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
+  return hasCustomRoutine() && !_programmeStarted()
+    ? 'WK 01 · STARTS MON'
+    : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
+}
 function renderCoach(){
   var apiKey=getApiKey();
   var wd3=getWkData();
-  var isHaiku=coachModel.indexOf('haiku')!==-1;
-  var modelNext=isHaiku?COACH_SONNET:'claude-haiku-4-5-20251001';
-  var modelLabel=_coachModelName(coachModel), modelSwitch='Coach model: '+modelLabel+'. Switch to '+_coachModelName(modelNext);
+  var _msw=_coachModelSwitch();
+  var modelNext=_msw.next;
+  var modelLabel=_msw.label, modelSwitch=_msw.a11y;
   var firstNameC = getUserFirstName();
   var crC = getCustomRoutine();
   var avSeedC = firstNameC || '?';
@@ -21075,19 +21120,13 @@ function renderCoach(){
   }
 
   // ── Chat view ─────────────────────────────────────────────────────────────
+  // Drawn natively from the coach model when the shell has the native chat (FPScreens): an element
+  // stands in #screen under it, so the resume check never reloads the page.
+  if(_fpWant('coach')) return _fpPlaceholder('coach');
   // Editorial header: lime online dot + COACH · ONLINE eyebrow + "Today's
   // plan" title on the left; week / model controls on the right. Avatar
   // dropped — the green-dotted eyebrow already signals presence.
-  // Day-of-programme, not day-of-calendar: before the fix this was the raw
-  // weekday, so a plan built on a Saturday opened on "WK 01 · DAY 6".
-  // Rounded: a week whose clocks change on a weekday (Friday in Israel and Egypt) has a
-  // 23-hour day, and flooring read its Saturday as DAY 5.
-  var _dayAnchor = _weekAnchor();
-  var dayIdx = Math.max(1, Math.min(7,
-    Math.round((new Date(todayISO()+'T00:00:00') - new Date(_dayAnchor+'T00:00:00'))/86400000) + 1));
-  var _dayMeta = hasCustomRoutine() && !_programmeStarted()
-    ? 'WK 01 · STARTS MON'
-    : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
+  var _dayMeta = _coachDayMeta();
   // The eyebrow says what the coach is doing: answering setup questions, replying, or unreachable.
   var _offline=(typeof navigator!=='undefined' && navigator.onLine===false);
   var coachHead='<div class="coach-head">'+
@@ -21390,6 +21429,7 @@ if(window.MutationObserver) new MutationObserver(function(muts){
   if(!t || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
   var ovs=document.querySelectorAll(_SHEETS_SEL);
   if(ovs.length && !ovs[ovs.length-1].contains(t)) return;   // a sheet is still up, and the opener is not in it
+  if(_fpCovered()) return;   // under a native screen the page moves no focus (the shell owns it)
   try{ t.focus({preventScroll:true}); }catch(err){}
 }).observe(document.body, {childList:true});
 // Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
@@ -21834,6 +21874,7 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Privacy policy</div><div class="settings-row-sub">How your data is handled</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
+    _fpAboutRow()+
     (function(){
       var liveBuild=localStorage.getItem('kt_last_seen_build')||'';
       var cachedBuild=localStorage.getItem('kt_cached_build')||'';
@@ -23318,7 +23359,7 @@ function _restoreCoachDraft(){
   // hardware keyboard types into the box; and it comes back quietly, so the tab bar stays put.
   var rc=document.documentElement.classList, touch=!!window.visualViewport && _coarsePointer();
   var keep=!touch || rc.contains('kb-open') || rc.contains('chat-typing') || (Date.now()-(window._coachKeyAt||0)<4000);
-  if(_coachDraft.focus && document.activeElement!==el && keep){
+  if(_coachDraft.focus && document.activeElement!==el && keep && !_fpCovered()){
     window._ctQuiet=true;
     try{ el.focus({preventScroll:true}); }catch(e){ el.focus(); }   // the column keeps its place: no scroll into view
     window._ctQuiet=false;
@@ -23580,6 +23621,366 @@ function _nativeJSON(v){
     }
     return x;
   });
+}
+
+// ── Native screens: the page side of shell contract v1 (plan task C3) ─────────
+// From build 60 the shell can draw a screen natively (the Coach chat) from a JSON model the page
+// builds, and the page stays the engine: every label, row and chip comes from here, and every tap
+// comes back as a named intent (window.FPScreens.call) addressed by message id. Page to shell is the
+// TrovoShell plugin: hello, present / dismiss, model, toast, confirm, log.
+// Inert without both the injected flag (window.__FP_SHELL, document start) and the plugin: no hello,
+// no FPScreens, no forwarding, and renderCoach() draws the web chat. Never keyed on a build stamp: an
+// older shell serves a newer staged page. Off switches: FP_NATIVE (by OTA), kt_native_off (this
+// device: Settings > About, never in a backup), the shell's screens.off (its breaker, the policy file
+// or its own switch: for this document), and a present the shell refuses.
+function _fpFlag(){ var f=window.__FP_SHELL; return (f && typeof f==='object' && (f.v|0)>=1) ? f : null; }
+function _fpPlugin(){ return _fpFlag() ? _plug('TrovoShell') : null; }
+function _fpDeviceOff(){ try{ return localStorage.getItem('kt_native_off')==='1'; }catch(e){ return false; } }
+// The shell agreed to show this screen this document (hello), and nothing has turned it off since.
+function _fpNegotiated(s){ return !!(_fp.hello && _fp.v>=1 && _fp.hello.screens.indexOf(s)>=0); }
+function _fpLive(s){ return FP_NATIVE && _fpNegotiated(s) && !_fp.off[s] && !_fpDeviceOff() && !!_fpPlugin(); }
+// The page wants the screen drawn natively now: exactly when it would draw it itself.
+function _fpWant(s){
+  if(!_fpLive(s)) return false;
+  if(s==='coach') return currentTab==='coach' && !!getApiKey() && (coachView==='chat' || !!intakeMode);
+  return false;
+}
+function _fpWantAny(){ return FP_SCREENS.some(_fpWant); }
+// A native screen covers the page (the shell says so, or the page has one up): the page moves no
+// focus by script (render's refocus, the sheet observer, the chat's draft) and its toasts and
+// confirms show natively.
+function _fpCovered(){
+  if(_fp.covered) return true;
+  for(var k in _fp.shown) if(_fp.shown[k]) return true;
+  return false;
+}
+// What stands in #screen under a native screen: an element, so the resume check (a #screen with no
+// element child reloads the page) never fires while it is up.
+function _fpPlaceholder(s){ return '<div class="kt-fp-ph" data-fp-screen="'+s+'" aria-hidden="true"></div>'; }
+function _fpLog(text, level){
+  var P=_fpPlugin(); if(!P || !P.log) return;
+  try{ Promise.resolve(P.log({text:'fp: '+text, level:level||'info'})).catch(function(){}); }catch(e){}
+}
+// hello: the contract this page speaks and the screens it can hand over; the answer is what this
+// document may present. Sent once per document at boot; nothing is native before it answers.
+function _fpHello(){
+  var P=_fpPlugin(); if(!P || !P.hello) return;
+  try{
+    Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:FP_NATIVE ? FP_SCREENS.slice() : [], boot:_fpBoot})).then(function(r){
+      var v=(r && typeof r==='object') ? (r.v|0) : 0;
+      _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
+      _fp.v=v;
+      _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
+      if(_fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
+    }).catch(function(e){ _fp.hello={v:0, screens:[], why:'error'}; });
+  }catch(e){}
+}
+// The first statement of paintRunner, which ends every render(), every tab switch and the runner's
+// paint: each native screen presented or dismissed as the page's state wants it, and its model
+// pushed (one per tick, rev rising). Dismiss when the page leaves the screen (another tab, Back, the
+// end of setup, the key removed, a switch turned off).
+function _fpSync(){
+  if(!_fp.hello) return;
+  try{
+    var P=_fpPlugin();
+    FP_SCREENS.forEach(function(s){
+      var want=_fpWant(s);
+      if(want && !_fp.shown[s]){
+        if(!_fpPushNow(s)) return;   // the model first: the native screen opens on it (none: the web screen stays)
+        _fp.shown[s]=true;
+        try{ Promise.resolve(P.present({screen:s})).catch(function(e){ _fpRefused(s, e); }); }catch(e){ setTimeout(function(){ _fpRefused(s, e); }, 0); }
+      } else if(!want && _fp.shown[s]){
+        _fp.shown[s]=false;
+        if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
+      } else if(want) _fpPushSoon();
+    });
+  }catch(e){ _fpLog('sync: '+((e && e.message) || e), 'error'); }   // never in render's way
+}
+// The shell would not present it: the page draws its own for the rest of the document.
+function _fpRefused(s, e){
+  _fp.shown[s]=false; _fp.off[s]='present';
+  _fpLog(s+' not presented: '+((e && e.message) || e), 'error');
+  render();
+}
+function _fpModel(s){ return s==='coach' ? _coachModel() : null; }
+// Pushes the screen's model; false when the page could not build it (then the screen is off).
+function _fpPushNow(s){
+  var P=_fpPlugin(), m=null;
+  if(!P || !P.model) return true;
+  try{ m=_fpModel(s); }catch(e){ _fpBroken(s, e); return false; }
+  if(!m) return true;
+  try{ Promise.resolve(P.model({screen:s, rev:m.rev, json:_nativeJSON(m)})).catch(function(){}); }catch(e){}
+  return true;
+}
+// The page could not build a screen's model (a page bug): the web screen for the rest of the document.
+function _fpBroken(s, e){
+  _fpLog(s+' model failed: '+((e && e.message) || e), 'error');
+  _fp.off[s]='model';
+  if(_fp.shown[s]){
+    _fp.shown[s]=false;
+    var P=_fpPlugin(); if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e2){} }
+  }
+  setTimeout(render, 0);
+}
+function _fpPushSoon(){
+  if(_fp.pushT) return;
+  _fp.pushT=setTimeout(function(){ _fp.pushT=null; FP_SCREENS.forEach(function(s){ if(_fp.shown[s]) _fpPushNow(s); }); }, 0);
+}
+// Toasts and confirms while a native screen is up show natively: the web ones would be under it.
+// An Undo toast keeps its function for toast.undo; one at a time, as on the web.
+function _fpToast(msg, style, onUndo){
+  if(!_fpCovered()) return false;
+  var P=_fpPlugin(); if(!P || !P.toast) return false;
+  var o={text:String(msg==null?'':msg), style:(style==='pr' || style==='err') ? style : 'ok'};
+  _fp.undos={};
+  if(typeof onUndo==='function'){
+    var id='t'+(++_fp.seq)+'.'+_fpBoot; _fp.undos[id]=onUndo; o.undo=id;
+    setTimeout(function(){ delete _fp.undos[id]; }, 6500);
+  }
+  try{ Promise.resolve(P.toast(o)).catch(function(){}); }catch(e){ return false; }
+  return true;
+}
+function _fpConfirm(opts){
+  if(!opts || !_fpCovered()) return false;
+  var P=_fpPlugin(); if(!P || !P.confirm) return false;
+  var id='c'+(++_fp.seq)+'.'+_fpBoot, st=String(opts.confirmStyle||'');
+  _fp.confirms[id]=opts;
+  var o={id:id, title:String(opts.title==null?'':opts.title), body:String(opts.body||''), confirm:String(opts.confirmLabel||'Confirm'), cancel:'Cancel',
+    tone:(!st || /--red/.test(st)) ? 'danger' : /--accent/.test(st) ? 'accent' : 'neutral'};
+  try{ Promise.resolve(P.confirm(o)).catch(function(){ delete _fp.confirms[id]; }); }catch(e){ delete _fp.confirms[id]; return false; }
+  return true;
+}
+// What VoiceOver hears, for the native chat to announce once per id.
+function _fpSpeak(t){
+  if(!_fp.hello) return;
+  _fp.speech={id:'s'+(++_fp.seq), text:String(t==null?'':t)};
+  if(_fp.shown.coach) _fpPushSoon();
+}
+// The page's pending photo (a shared image) by key: the native composer fetches it with coach.image.
+function _fpImgKey(){
+  if(!pendingImage) return null;
+  if(!pendingImage.key) pendingImage.key='p'+(++_fp.seq)+'.'+_fpBoot;
+  return pendingImage.key;
+}
+
+// ── The coach model (contract v1; FPCore CoachModel.swift reads it) ──
+// The chat's palette and scale: THEMES and the chat's room CSS, so most polish ships by OTA. FPCore
+// compiles the same values as defaults (Tokens.swift); spec 118 and FPCoreTests hold the two together.
+var _COACH_TOKENS={
+  roles:{
+    heavyweight:{sel:'rgba(10,67,245,.10)', eyebrow:'#0a43f5', headDot:'#0a43f5', userBubble:'#0a43f5', onUserBubble:'#ffffff',
+      chipPrimary:'#0a43f5', chipPrimaryText:'#ffffff', chipPrimaryBorder:'#0a43f5', pill:'#ffffff', pillIcon:'#4f7000',
+      takeEyebrow:'#0a43f5', ledgerHead:'#0a43f5', deltaGood:'#4f7000', deltaWarn:'color-mix(in srgb, #ea580c 80%, #0f0f0f)',
+      progAction:'#0a43f5', composerFocus:'#0a43f5'},
+    dark:{sel:'color-mix(in srgb, #f4f4f1 15%, #151517)', eyebrow:'#8c8c91', headDot:'#8c8c91',
+      userBubble:'color-mix(in srgb, #f4f4f1 15%, #151517)', onUserBubble:'#f4f4f1',
+      chipPrimary:'#1e1e21', chipPrimaryText:'#f4f4f1', chipPrimaryBorder:'rgba(255,255,255,.08)', pill:'#1e1e21', pillIcon:'#b9b9be',
+      takeEyebrow:'#8c8c91', ledgerHead:'#8c8c91', deltaGood:'#d8ff63', deltaWarn:'#ff9d5c', progAction:'#b9b9be', composerFocus:'#b9b9be'}
+  },
+  type:{title:22, headEyebrow:10, headMeta:10, model:11, body:15, bubble:15, heading:16, eyebrow:9, metricLabel:10,
+    metricValue:13, metricRef:12, take:14, chip:13, pill:12, note:13, day:10, ledgerHead:9, ledgerRow:13, ledgerNote:11,
+    button:13, table:13, tableHead:10, composer:16, thinking:13, emptyTitle:22, emptySub:14},
+  space:{gutter:20, messageGap:8, turnGap:20, blockGap:10, sectionGap:12, paragraphGap:10, listItemGap:6, cardPadH:14,
+    cardPadV:12, metricPadV:10, bubblePadH:16, bubblePadV:12, chipPadH:16, chipPadV:10, chipGap:8, pillGap:6, pillPadH:10,
+    pillPadV:5, composerPad:6, hit:44},
+  radius:{
+    heavyweight:{card:14, bubble:16, bubbleTail:5, chip:22, pill:12, composer:16, send:12, button:12, code:5, photo:10, table:14},
+    dark:{card:14, bubble:16, bubbleTail:5, chip:22, pill:12, composer:20, send:22, button:12, code:5, photo:10, table:14}
+  },
+  font:{
+    heavyweight:{body:'Archivo', eyebrow:'Archivo', display:'Anton', mono:'Archivo'},
+    dark:{body:'Inter', eyebrow:'JetBrains Mono', display:'Inter', mono:'JetBrains Mono'}
+  }
+};
+function _coachTokens(room){
+  var t=THEMES[room]||THEMES.heavyweight, color={}, k;
+  Object.keys(t).forEach(function(key){
+    if(key==='name' || key==='room' || key==='paper' || key==='textColor') return;
+    color[key.replace(/-([a-z])/g, function(_, c){ return c.toUpperCase(); })]=t[key];
+  });
+  color.earned=t.earned||t.accent; color.earnedInk=t['earned-ink']||t['accent-ink'];
+  var roles=_COACH_TOKENS.roles[room]||_COACH_TOKENS.roles.heavyweight;
+  for(k in roles) color[k]=roles[k];
+  return {color:color, type:_COACH_TOKENS.type, space:_COACH_TOKENS.space,
+    radius:_COACH_TOKENS.radius[room]||_COACH_TOKENS.radius.heavyweight, font:_COACH_TOKENS.font[room]||_COACH_TOKENS.font.heavyweight};
+}
+// The header, as renderCoach() draws it.
+function _coachHeadModel(){
+  var off=(typeof navigator!=='undefined' && navigator.onLine===false), sw=_coachModelSwitch();
+  var st=intakeMode ? 'intake' : coachLoading ? 'replying' : off ? 'offline' : 'online';
+  var ver=(sw.label.match(/ [\d.]+$/)||[''])[0].trim();
+  return {eyebrow:'COACH · '+st.toUpperCase(), status:st, title:intakeMode ? 'Build your plan' : "Today's plan", meta:intakeMode ? null : _coachDayMeta(),
+    model:intakeMode ? null : {label:sw.label, name:sw.label.replace(/ [\d.]+$/,''), version:ver||null, next:sw.next, a11y:sw.a11y},
+    back:!intakeMode, cancel:!!intakeMode};
+}
+// The newest reply the coach wrote (its chips are the only live ones).
+function _coachLastAnswer(){
+  var a=null;
+  coachMessages.forEach(function(x){ if(x && x.role==='assistant' && !x._local && !x._toolResults) a=x; });
+  return a;
+}
+// Every message as renderCoach() draws it, addressed by id.
+function _coachMessagesModel(){
+  var out=[], led=_lastPlanMsg(), lastAns=_coachLastAnswer(), last=coachMessages[coachMessages.length-1], day='';
+  coachMessages.forEach(function(m, idx){
+    if(!m || m._toolResults) return;
+    var o={id:_coachMid(m), role:String(m.role||'assistant'), at:m.at||null, day:null, seed:null, local:!!m._local, error:!!m._error,
+      stopped:!!m._stopped, errKind:m._errKind||null, image:null, eyebrow:null, body:'', chip:null, pills:[], ledger:null};
+    if(m.at){ var d=_ymdLocal(new Date(m.at)); if(d!==day){ day=d; o.day=_chatDayLabel(d); } }
+    var text=m.content;
+    if(Array.isArray(m.content)) text=m.content.filter(function(p){ return p.type==='text'; }).map(function(p){ return p.text; }).join('').trim();
+    var shown=(typeof text==='string' ? text : '').trim();
+    if(m.role==='user' && m._auto) shown='';   // a photo with no words
+    if(m._preview || m._hadImage) o.image={key:m._imgKey||null};
+    if(m.role==='assistant' && !m._local){ var b=_coachBodyV1(shown, m!==lastAns || coachLoading); o.eyebrow=b.eyebrow; o.body=b.body; }
+    else if(m._seed && m.role!=='assistant'){ o.seed=String(m._seed); o.body=o.seed; }   // the app's prompt reads as its label
+    else o.body=shown;
+    if(m.role==='assistant' && (m._error || m._stopped) && m===last && !coachLoading) o.chip=m._errKind==='key' ? 'settings' : m._errKind==='billing' ? null : 'retry';
+    if(m.role==='assistant' && Array.isArray(m._tools) && m._tools.length){
+      o.pills=m._tools.map(_toolPillModel);
+      if(!m._ledgerSeen && m===led) o.ledger=_planChangeModel(m._tools, idx);
+    }
+    out.push(o);
+  });
+  return out;
+}
+// Coach model v1: everything the native chat draws. rev rises with every model of this boot.
+function _coachModel(){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', empty=null;
+  if(!coachMessages.length && !intakeMode){
+    empty={title:'Ask anything', sub:'Your training, recovery, and goals',
+      programme:hasCustomRoutine() ? {label:'Custom programme active', actions:(hasRoutineBackup() ? [{'do':'restorePrevious', label:'Restore previous', tone:'plain'}] : []).concat([{'do':'regenerate', label:'Reset programme', tone:'plain'}])} : null,
+      chips:getCoachChips()};
+  }
+  var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}
+  _fp.rev++;
+  return {v:FP_CONTRACT, rev:_fp.rev, boot:_fpBoot, intake:!!intakeMode, loading:!!coachLoading, room:room, paper:!!THEMES[room].paper,
+    dynTypeOn:dyn, tokens:_coachTokens(room), header:_coachHeadModel(), empty:empty, messages:_coachMessagesModel(),
+    running:_runningTools.map(_toolPillModel),
+    composer:{placeholder:intakeMode ? 'Answer the Coach…' : 'Message Coach…', 'short':intakeMode ? 'Answer…' : 'Message…',
+      a11y:intakeMode ? 'Answer the coach' : 'Message the coach', attach:!intakeMode, image:pendingImage ? {key:_fpImgKey()} : null,
+      draft:_fp.draft ? {text:_fp.draft.text, nonce:_fp.draft.nonce} : null},
+    speech:_fp.speech};
+}
+
+// ── Intents: the shell calls window.FPScreens.call(name, args) ──
+// Answers {ok:true, ...} or {ok:false, error}: the page's own reasons (busy, stale, gone, idle, intake,
+// not-intake, unknown-model, empty) are answers; unknown-intent, bad-args and exception are what the
+// shell's breaker counts. Never resent by the shell; coach.send is idempotent by nonce anyway.
+function _fpStr(v){ return typeof v==='string'; }
+function _fpImage(v){ return !!v && typeof v==='object' && _fpStr(v.mediaType) && _fpStr(v.data); }
+var _FP_BAD={ok:false, error:'bad-args'};
+var _FP_INTENTS={
+  'ping':function(){ return {ok:true, v:FP_CONTRACT}; },
+  'shell.covered':function(a){
+    if(typeof a.on!=='boolean') return _FP_BAD;
+    _fp.covered=a.on;
+    if(a.on){ var ae=document.activeElement; if(ae && ae!==document.body && ae.blur) ae.blur(); }   // the shell ends editing too
+    return {ok:true};
+  },
+  'coach.snapshot':function(){ return {ok:true, json:_nativeJSON(_coachModel())}; },
+  'coach.send':function(a){
+    if(!_fpStr(a.text) || !_fpStr(a.nonce) || !a.nonce || (a.image!=null && !_fpImage(a.image)) || (a.usePending!=null && typeof a.usePending!=='boolean')) return _FP_BAD;
+    var r=coachSend(a.text, {image:a.image||null, usePending:a.usePending===true, nonce:a.nonce});
+    if(!r.ok) return {ok:false, error:r.error};
+    var m=_coachNonceMsg(a.nonce);
+    return {ok:true, id:m ? _coachMid(m) : null, duplicate:!!r.duplicate};
+  },
+  'coach.chip':function(a){
+    if(!_fpStr(a.text) || !_fpStr(a.nonce) || !a.nonce) return _FP_BAD;
+    var r=coachSend(a.text, {usePending:true, nonce:a.nonce});   // as the web chip: the photo the composer shows goes too
+    if(!r.ok) return {ok:false, error:r.error};
+    var m=_coachNonceMsg(a.nonce);
+    return {ok:true, id:m ? _coachMid(m) : null, duplicate:!!r.duplicate};
+  },
+  'coach.action':function(a){
+    if(!_fpStr(a.id) || !_fpStr(a.text)) return _FP_BAD;
+    var la=_coachLastAnswer();
+    if(!la || _coachMid(la)!==a.id) return {ok:false, error:'stale'};   // only the newest reply's chips act
+    var r=coachSend(a.text, {usePending:true});
+    return r.ok ? {ok:true} : {ok:false, error:r.error};
+  },
+  'coach.stop':function(){ if(!coachLoading) return {ok:false, error:'idle'}; coachStop(); return {ok:true}; },
+  'coach.retry':function(){ if(coachLoading) return {ok:false, error:'busy'}; coachRetryLast(); return {ok:true}; },
+  'coach.keep':function(a){ if(!_fpStr(a.id)) return _FP_BAD; return _ledgerKeepId(a.id) ? {ok:true} : {ok:false, error:'gone'}; },
+  'coach.undo':function(a){ if(!_fpStr(a.id)) return _FP_BAD; return _ledgerUndoId(a.id) ? {ok:true} : {ok:false, error:'gone'}; },
+  'coach.model':function(a){
+    if(!_fpStr(a.model)) return _FP_BAD;
+    if(a.model!==COACH_SONNET && a.model!=='claude-haiku-4-5-20251001') return {ok:false, error:'unknown-model'};
+    setCoachModel(a.model); return {ok:true};
+  },
+  'coach.back':function(){ if(intakeMode) return {ok:false, error:'intake'}; coachView='home'; render(); return {ok:true}; },
+  'coach.cancelIntake':function(){ if(!intakeMode) return {ok:false, error:'not-intake'}; _confirmCancelIntake(); return {ok:true}; },
+  'coach.restorePrevious':function(){ restoreRoutineBackup(); return {ok:true}; },
+  'coach.regenerate':function(){ resetCustomRoutine(); return {ok:true}; },
+  'coach.openSettings':function(){ switchTab('settings'); return {ok:true}; },
+  'coach.image':function(a){
+    if(!_fpStr(a.key)) return _FP_BAD;
+    if(!pendingImage || _fpImgKey()!==a.key) return {ok:false, error:'gone'};
+    return {ok:true, mediaType:String(pendingImage.mediaType||'image/jpeg'), data:String(pendingImage.data||'')};
+  },
+  'coach.clearImage':function(){ clearPendingImage(); return {ok:true}; },
+  'coach.draftTaken':function(a){
+    if(!_fpStr(a.nonce)) return _FP_BAD;
+    if(!_fp.draft || _fp.draft.nonce!==a.nonce) return {ok:false, error:'stale'};
+    if(_coachDraft && _coachDraft.v===_fp.draft.text) _coachDraft={ v:'', s:0, e:0, focus:false };   // taken: not the web composer's any more
+    _fp.draft=null; _fpPushSoon(); return {ok:true};
+  },
+  'confirm':function(a){
+    if(!_fpStr(a.id) || typeof a.yes!=='boolean') return _FP_BAD;
+    var c=_fp.confirms[a.id];
+    if(!c) return {ok:false, error:'stale'};   // answered already, or asked before a reload
+    delete _fp.confirms[a.id];
+    if(a.yes && typeof c.onConfirm==='function') c.onConfirm();
+    return {ok:true};
+  },
+  'toast.undo':function(a){
+    if(!_fpStr(a.id)) return _FP_BAD;
+    var f=_fp.undos[a.id];
+    if(!f) return {ok:false, error:'stale'};
+    delete _fp.undos[a.id];
+    f(); return {ok:true};
+  },
+  'screens.off':function(a){
+    if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why))) return _FP_BAD;
+    _fp.off[a.screen]=a.why || 'off';
+    _fp.shown[a.screen]=false;   // the shell has taken it down: no dismiss
+    if(!FP_SCREENS.some(function(s){ return _fp.shown[s]; })) _fp.covered=false;   // nothing native is up now
+    _fpLog(a.screen+' off: '+(a.why || 'off'), 'error');
+    render();   // the web screen again, for the rest of the document
+    return {ok:true};
+  }
+};
+if(_fpFlag()){
+  window.FPScreens={v:FP_CONTRACT, call:function(name, args){
+    return Promise.resolve().then(function(){
+      var f=Object.prototype.hasOwnProperty.call(_FP_INTENTS, name) ? _FP_INTENTS[name] : null;
+      if(!f) return {ok:false, error:'unknown-intent'};
+      return f((args && typeof args==='object') ? args : {});
+    }).catch(function(e){ _fpLog('intent '+name+' threw: '+((e && e.message) || e), 'error'); return {ok:false, error:'exception'}; });
+  }};
+  _fpHello();
+}
+
+// Settings > About: the native chat's switch (this device), shown on a shell that has the native chat.
+function _fpAboutRow(){
+  if(!FP_NATIVE || !_fpPlugin() || !(_fpNegotiated('coach') || _fpDeviceOff())) return '';
+  var off=_fpDeviceOff(), on=!off && _fpLive('coach');
+  var sub=off ? 'Off · the app shows its web chat' : on ? "The iPhone's own chat screen" : 'Not available now · the app shows its web chat';
+  return '<div class="settings-row" onclick="toggleNativeChat()">'+
+    '<div class="settings-row-ic" style="background:var(--card2);">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
+        '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
+      '</svg>'+
+    '</div>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Native Coach chat</div><div class="settings-row-sub">'+_esc(sub)+'</div></div>'+
+    '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(off?'background:var(--card2);color:var(--lite);border:1px solid var(--border);':'background:var(--accent);color:var(--on-accent);')+'">'+(off?'Off':'On')+'</span>'+
+  '</div>';
+}
+function toggleNativeChat(){
+  try{ if(_fpDeviceOff()) localStorage.removeItem('kt_native_off'); else localStorage.setItem('kt_native_off', '1'); }catch(e){}
+  render();
+  showToast(_fpDeviceOff() ? 'Native Coach chat off' : 'Native Coach chat on');
 }
 // 7-day plan summary — widget + reminders share this.
 // kind: what the day is ('lift' | 'run' | 'sport' | 'rest'), so the widget can tell an empty lift

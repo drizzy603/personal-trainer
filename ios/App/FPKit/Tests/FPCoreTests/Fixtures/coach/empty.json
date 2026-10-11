@@ -1,7 +1,7 @@
 {
  "v": 1,
  "rev": 1,
- "boot": "b1760000200000-0c1d",
+ "boot": "b1791561600000-c3",
  "intake": false,
  "loading": false,
  "room": "dark",
@@ -123,7 +123,7 @@
   "eyebrow": "COACH · ONLINE",
   "status": "online",
   "title": "Today's plan",
-  "meta": "WK 01 · STARTS MON",
+  "meta": "WK 06 · DAY 5",
   "model": {
    "label": "Sonnet 5.5",
    "name": "Sonnet",
@@ -167,11 +167,11 @@
   "a11y": "Message the coach",
   "attach": true,
   "image": {
-   "key": "share-1760000200"
+   "key": "p1.b1791561600000-c3"
   },
   "draft": {
    "text": "Build my Legs day around the trap bar",
-   "nonce": "d-1760000200-2"
+   "nonce": "d2.b1791561600000-c3"
   }
  },
  "speech": null

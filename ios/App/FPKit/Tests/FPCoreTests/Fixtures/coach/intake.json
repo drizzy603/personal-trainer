@@ -1,7 +1,7 @@
 {
  "v": 1,
  "rev": 3,
- "boot": "b1760000100000-77aa",
+ "boot": "b1791561600000-c3",
  "intake": true,
  "loading": true,
  "room": "heavyweight",
@@ -49,6 +49,75 @@
    "deltaWarn": "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
    "progAction": "#0a43f5",
    "composerFocus": "#0a43f5"
+  },
+  "type": {
+   "title": 22,
+   "headEyebrow": 10,
+   "headMeta": 10,
+   "model": 11,
+   "body": 15,
+   "bubble": 15,
+   "heading": 16,
+   "eyebrow": 9,
+   "metricLabel": 10,
+   "metricValue": 13,
+   "metricRef": 12,
+   "take": 14,
+   "chip": 13,
+   "pill": 12,
+   "note": 13,
+   "day": 10,
+   "ledgerHead": 9,
+   "ledgerRow": 13,
+   "ledgerNote": 11,
+   "button": 13,
+   "table": 13,
+   "tableHead": 10,
+   "composer": 16,
+   "thinking": 13,
+   "emptyTitle": 22,
+   "emptySub": 14
+  },
+  "space": {
+   "gutter": 20,
+   "messageGap": 8,
+   "turnGap": 20,
+   "blockGap": 10,
+   "sectionGap": 12,
+   "paragraphGap": 10,
+   "listItemGap": 6,
+   "cardPadH": 14,
+   "cardPadV": 12,
+   "metricPadV": 10,
+   "bubblePadH": 16,
+   "bubblePadV": 12,
+   "chipPadH": 16,
+   "chipPadV": 10,
+   "chipGap": 8,
+   "pillGap": 6,
+   "pillPadH": 10,
+   "pillPadV": 5,
+   "composerPad": 6,
+   "hit": 44
+  },
+  "radius": {
+   "card": 14,
+   "bubble": 16,
+   "bubbleTail": 5,
+   "chip": 22,
+   "pill": 12,
+   "composer": 16,
+   "send": 12,
+   "button": 12,
+   "code": 5,
+   "photo": 10,
+   "table": 14
+  },
+  "font": {
+   "body": "Archivo",
+   "eyebrow": "Archivo",
+   "display": "Anton",
+   "mono": "Archivo"
   }
  },
  "header": {
@@ -63,23 +132,33 @@
  "empty": null,
  "messages": [
   {
-   "id": "m1",
+   "id": "m1.g",
    "role": "user",
    "at": 1791536400000,
+   "day": "Today",
+   "seed": "Programme setup",
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "I want to generate my training programme.",
-   "day": "Today",
-   "seed": "Programme setup"
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
+   "body": "Programme setup",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m2",
+   "id": "m2.g",
    "role": "assistant",
    "at": 1791536400000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -91,21 +170,32 @@
       ]
      }
     ]
-   }
+   },
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m3",
+   "id": "m3.g",
    "role": "user",
    "at": 1791536520000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "4 days, about an hour"
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
+   "body": "4 days, about an hour",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   }
  ],
  "running": [
   {
-   "label": "Weeks 1–12 updated",
+   "label": "Weeks 7–8 updated",
    "ok": true
   },
   {
@@ -115,14 +205,14 @@
  ],
  "composer": {
   "placeholder": "Answer the Coach…",
-  "short": null,
+  "short": "Answer…",
   "a11y": "Answer the coach",
   "attach": false,
   "image": null,
   "draft": null
  },
  "speech": {
-  "id": "s-thinking-3",
+  "id": "s3",
   "text": "Coach is thinking"
  }
 }

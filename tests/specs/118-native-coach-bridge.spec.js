@@ -8,6 +8,14 @@
 //   text and the HTML escapes it once; md() and _coachBlocksHTML() draw block models (_mdModel,
 //   _cmbModel), and the HTML they draw equals the page's before the rebuild on every golden case
 //   (tests/golden/coach-html.json), while the contract bodies equal FPCore's page-grammar fixtures.
+// - C3: the screen bridge (shell contract v1), inert without the shell: hello negotiates v1; with the
+//   chat on screen the page presents it natively, leaves an element placeholder and no #coach-input,
+//   and pushes coach models (rev rising, no lone surrogate) whose labels and chips are the page's own;
+//   FPScreens intents send once per nonce, act on messages by id after the cap, forward the page's
+//   confirms and toasts (and answer stale after a reload); the share photo and drafts reach the
+//   composer; setup shows Cancel and no Back; a tab switch dismisses; FP_NATIVE, kt_native_off (the
+//   About switch), screens.off, a refused present and a shell without the screen each bring back the
+//   web chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -246,4 +254,442 @@ serial('C2: ids live in memory only; Keep and Undo by id retire the right card a
     assert(after.ids.length > 0 && after.ids.every((x) => re.test(x)) && after.stale === -1, 'after a reload the ids are new and an old one finds nothing: ' + JSON.stringify(after));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
+});
+
+// ── C3 ─────────────────────────────────────────────────────────────────────────
+// Every boot below runs under a shell contract (tests/lib/harness.js opts.shell): 'coach' is build 60
+// (the native Coach chat), 'inert' build 60's flag with no screen, 'none' every shell up to 59.
+const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(^|[^\ud800-\udbff])[\udc00-\udfff]/;
+const shellBoot = (shell, extra = {}) => boot(Object.assign({ native: true, shell, init: COACH_API },
+  extra, { seed: Object.assign({ kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' }, extra.seed || {}) }));
+// In the page: open the chat as the owner would, the last model the shell got, and its messages.
+const IN_PAGE = `(() => {
+  window.__open = async () => { switchTab('coach'); openCoachChat(); await __wait(30); };
+  window.__model = () => { const ms = __fpShell.models(); return ms[ms.length - 1]; };
+  window.__users = () => coachMessages.filter((m) => m.role === 'user').length;
+})()`;
+
+serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-input); the model carries the page\'s labels and chips; a tab switch dismisses', async () => {
+  const half = String.fromCharCode(0xd83d);
+  const app = await shellBoot('coach', { seed: { kt_coach_msgs: JSON.stringify([{ role: 'user', content: 'Strong week ' + half, at: Date.now() - 90000 }, { role: 'assistant', content: '%%type: Week ' + half + '\nGood **work** ' + half + '\n%%action: Plan ' + half + ' | Plan my week', at: Date.now() - 80000 }]) } });
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30);
+      r.hello = __fpShell.of('hello'); r.boot = _fpBoot; r.build = APP_BUILD; r.v = _fp.v; r.ping = await FPScreens.call('ping', {});
+      switchTab('coach'); await __wait(20);
+      r.hub = { present: __fpShell.of('present').length, open: /Open Chat/.test(document.getElementById('screen').innerText) };
+      openCoachChat(); await __wait(30);
+      r.chat = { present: __fpShell.of('present'), ph: !!document.querySelector('#screen > .kt-fp-ph[data-fp-screen="coach"]'), input: !!document.getElementById('coach-input'),
+        body: !!document.querySelector('.coach-chat-body'), kt: document.documentElement.classList.contains('kt-chat'), models: __fpShell.of('model').length,
+        firstBeforePresent: __fpShell.calls.findIndex((c) => c[0] === 'model') < __fpShell.calls.findIndex((c) => c[0] === 'present') };
+      const m1 = __model();
+      r.m1 = { v: m1.v, boot: m1.boot, room: m1.room, paper: m1.paper, msgs: m1.messages.length, ids: m1.messages.map((m) => m.id), chips: m1.messages[1].body.actions, eyebrow: m1.messages[1].eyebrow };
+      // three renders in one tick: one model, its rev higher
+      const n = __fpShell.of('model').length;
+      render(); render(); render(); await __wait(30);
+      const ms = __fpShell.models();
+      r.coalesced = { added: ms.length - n, revs: ms.map((m) => m.rev) };
+      // the empty chat: the page's suggestions and programme actions; tool pills as toolCallLabel says
+      coachMessages = []; render(); await __wait(20);
+      r.empty = { chips: __model().empty.chips, want: getCoachChips(), prog: __model().empty.programme };
+      const ok = { name: 'edit_programme_exercise', input: { day: 'Push', exercise: 'DB Lateral Raise', action: 'swap', rename_to: 'Cable <Lateral> & Raise' }, result: { ok: true }, units: { w: 'lb', d: 'km' } };
+      const bad = { name: 'set_exercise_weight', input: { name: 'Deadlift', weight: 315 }, result: { ok: false }, units: { w: 'lb', d: 'km' } };
+      coachMessages = _coachMids([{ role: 'user', content: 'Swap it' }, { role: 'assistant', content: 'Done.', _tools: [ok, bad] }]); render(); await __wait(20);
+      r.pills = { got: __model().messages[1].pills, want: [{ label: toolCallLabel(ok), ok: true }, { label: 'Not applied · ' + toolCallLabel(bad), ok: false }] };
+      // a snapshot: the model now, a higher rev, this boot
+      const snap = await FPScreens.call('coach.snapshot', {});
+      r.snap = { ok: snap.ok, rev: JSON.parse(snap.json).rev, last: __model().rev, boot: JSON.parse(snap.json).boot };
+      r.jsons = __fpShell.of('model').map((c) => c.json).concat([snap.json]);
+      // another tab: dismissed, the web screen back
+      switchTab('log'); await __wait(20);
+      r.left = { dismiss: __fpShell.of('dismiss'), shown: !!_fp.shown.coach, covered: _fpCovered() };
+      return r;
+    }, IN_PAGE);
+    assert(out.hello.length === 1 && out.hello[0].v === 1 && out.hello[0].page === out.build && JSON.stringify(out.hello[0].screens) === '["coach"]' && out.hello[0].boot === out.boot, 'hello: v1, the page build, the coach screen, the boot: ' + JSON.stringify(out.hello));
+    assert(out.v === 1 && out.ping.ok && out.ping.v === 1, 'negotiated v1; ping answers: ' + JSON.stringify([out.v, out.ping]));
+    assert(out.hub.present === 0 && out.hub.open, 'the Coach home stays web: ' + JSON.stringify(out.hub));
+    assert(out.chat.present.length === 1 && out.chat.present[0].screen === 'coach' && out.chat.ph && !out.chat.input && !out.chat.body && !out.chat.kt && out.chat.firstBeforePresent,
+      'present leaves an element placeholder and no web chat; the model goes first: ' + JSON.stringify(out.chat));
+    assert(out.m1.v === 1 && out.m1.boot === out.boot && out.m1.room === 'heavyweight' && out.m1.paper === true && out.m1.msgs === 2 && out.m1.ids.every((x) => /^m\d+\./.test(x)) &&
+      out.m1.chips.length === 1 && out.m1.chips[0].msg === 'Plan my week', 'the model: v1, this boot, the room, ids, the newest reply\'s chip: ' + JSON.stringify(out.m1));
+    assert(out.coalesced.added === 1 && out.coalesced.revs.every((v, i, a) => i === 0 || v > a[i - 1]), 'renders in one tick push one model; revs rise: ' + JSON.stringify(out.coalesced));
+    assert(JSON.stringify(out.empty.chips) === JSON.stringify(out.empty.want) && out.empty.chips.length >= 3 && out.empty.prog && out.empty.prog.actions.some((a) => a.do === 'regenerate'), 'chips are getCoachChips(): ' + JSON.stringify(out.empty));
+    assert(JSON.stringify(out.pills.got) === JSON.stringify(out.pills.want), 'pills are toolCallLabel() as shown: ' + JSON.stringify(out.pills));
+    assert(out.snap.ok && out.snap.rev > out.coalesced.revs[out.coalesced.revs.length - 1] && out.snap.boot === out.boot, 'coach.snapshot: the model now: ' + JSON.stringify(out.snap));
+    assert(out.jsons.length >= 5 && out.jsons.every((j) => !LONE.test(j)) && out.jsons.every((j) => JSON.parse(j).v === 1), 'no lone surrogate in any model (' + out.jsons.length + ')');
+    assert(out.left.dismiss.length === 1 && out.left.dismiss[0].screen === 'coach' && !out.left.shown && !out.left.covered, 'switchTab(\'log\') dismisses: ' + JSON.stringify(out.left));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C3: under the native chat one send per nonce; chips and actions by id; the entry points each send one message and one API call', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30); await __open();
+      const a = await FPScreens.call('coach.send', { text: 'Hello coach', nonce: 'n-1' }); await __idle();
+      const b = await FPScreens.call('coach.send', { text: 'Hello coach', nonce: 'n-1' }); await __idle();
+      r.nonce = { a, b, users: __users(), turns: __turns.length, model: __model().messages.filter((m) => m.role === 'user').map((m) => m.id) };
+      r.speech = __model().speech;
+      const c = await FPScreens.call('coach.chip', { text: 'How is my recovery looking?', nonce: 'n-2' }); await __idle();
+      r.chip = { c, users: __users(), turns: __turns.length };
+      // a reply with chips: only the newest reply's id sends
+      coachMessages.push({ role: 'assistant', content: '%%type: Plan\nDo it.\n%%action: Plan week 7 | Plan my week 7', at: Date.now() }); saveCoachHistory(); render(); await __wait(20);
+      const newest = __model().messages.slice(-1)[0];
+      const old = __model().messages.find((m) => m.role === 'assistant' && m.id !== newest.id);
+      r.action = { stale: await FPScreens.call('coach.action', { id: old.id, text: 'x' }), chips: newest.body.actions, ok: await FPScreens.call('coach.action', { id: newest.id, text: newest.body.actions[0].msg }) };
+      await __idle();
+      r.action.turns = __turns.length; r.action.last = __turns[__turns.length - 1];
+      r.badArgs = [await FPScreens.call('coach.send', { text: 5, nonce: 'x' }), await FPScreens.call('coach.send', { text: 'x' }), await FPScreens.call('coach.keep', {}), await FPScreens.call('confirm', { id: 'c', yes: 'yes' })].map((x) => x.error);
+      r.unknown = (await FPScreens.call('coach.dance', {})).error;
+      // the entry points, the native chat up: each one message, one API call, no web composer
+      window._plateauLifts = () => [{ name: 'Bench Press', e1rm: 200, days: 28 }];
+      window._progressionLifts = () => [{ name: 'Bench Press', weight: 185, rpe: 7, sets: 3 }];
+      lsSet('kt_readiness', { date: todayISO(), score: 40, parts: { sleep: 5 } });
+      const chipEl = document.createElement('button'); chipEl.setAttribute('data-msg', 'Plan my week 8');
+      const entries = [
+        ['sendCoachChip', () => sendCoachChip('Am I progressing on track?'), 'chat'],
+        ['coachBlockAction', () => coachBlockAction(chipEl), 'chat'],
+        ['coachCardAction', () => coachCardAction('Swap squats for leg press today'), 'log'],
+        ['startPlateauFix', () => startPlateauFix(), 'log'],
+        ['startProgression', () => startProgression(), 'log'],
+        ['startRecoveryAdjust', () => startRecoveryAdjust(), 'log'],
+        ['startWeeklyReview', () => startWeeklyReview(), 'log'],
+        ['handleCoachCardAsk', () => handleCoachCardAsk({ key: 'Enter', target: { value: 'How was my week?' } }), 'log'],
+      ];
+      r.entries = {};
+      for (const [name, fn, where] of entries) {
+        ['kt_last_plateau_week', 'kt_last_prog_week', 'kt_readiness_adj_seen', 'kt_last_review_week'].forEach((k) => lsDel(k));
+        if (where === 'chat') { await __open(); } else { switchTab('log'); await __wait(20); }
+        const u0 = __users(), t0 = __turns.length;
+        fn(); await __idle();
+        r.entries[name] = { users: __users() - u0, turns: __turns.length - t0, input: !!document.getElementById('coach-input'), shown: !!_fp.shown.coach, ph: !!document.querySelector('.kt-fp-ph') };
+      }
+      return r;
+    }, IN_PAGE);
+    assert(out.nonce.a.ok && !out.nonce.a.duplicate && out.nonce.b.ok && out.nonce.b.duplicate && out.nonce.a.id === out.nonce.b.id && out.nonce.users === 1 && out.nonce.turns === 1 &&
+      out.nonce.model.indexOf(out.nonce.a.id) >= 0, 'one send per nonce, its message id in the answer and the model: ' + JSON.stringify(out.nonce));
+    assert(out.speech && out.speech.id && /^Coach: On it\./.test(out.speech.text), 'the model says what VoiceOver hears: ' + JSON.stringify(out.speech));
+    assert(out.chip.c.ok && out.chip.users === 2 && out.chip.turns === 2, 'coach.chip sends the chip: ' + JSON.stringify(out.chip));
+    assert(out.action.stale.ok === false && out.action.stale.error === 'stale' && out.action.ok.ok && out.action.turns === 3 && out.action.last === 'Plan my week 7', 'coach.action: only the newest reply\'s chip sends: ' + JSON.stringify(out.action));
+    assert(JSON.stringify(out.badArgs) === JSON.stringify(['bad-args', 'bad-args', 'bad-args', 'bad-args']) && out.unknown === 'unknown-intent', 'bad arguments and unknown intents are named: ' + JSON.stringify([out.badArgs, out.unknown]));
+    for (const name of Object.keys(out.entries)) {
+      const e = out.entries[name];
+      assert(e.users === 1 && e.turns === 1 && !e.input && e.shown && e.ph, name + ': one message, one API call, the native chat up: ' + JSON.stringify(e));
+    }
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C3: keep and undo by id after the cap; the restore confirm is forwarded, then the toast; Undo toasts and stale answers', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30);
+      _snapshotRoutineForUndo('coach:t118c');
+      const ex = getSessionExercises('Push')[0];
+      const fill = [];
+      for (let k = 0; k < 59; k++) fill.push(k % 2 ? { role: 'assistant', content: 'a' + k } : { role: 'user', content: 'q' + k });
+      fill.push({ role: 'assistant', content: 'Done.', _undo: 'coach:t118c', _tools: [{ name: 'set_exercise_weight', input: { name: ex.name, weight: 100 }, result: { ok: true }, units: { w: 'lb', d: 'km' } }] });
+      coachMessages = _coachMids(fill); saveCoachHistory();
+      await __open();
+      const card = __model().messages.find((m) => m.ledger);
+      r.card = { id: card.id, canUndo: card.ledger.canUndo, actions: card.ledger.actions.map((a) => a.do) };
+      // the next message lands (the cap drops the oldest): Keep by id still finds the card
+      _pushCoach({ role: 'user', content: 'next' }); saveCoachHistory(); render(); await __wait(20);
+      r.keep = await FPScreens.call('coach.keep', { id: card.id }); await __wait(20);
+      r.keepModel = { ledger: (__model().messages.find((m) => m.id === card.id) || {}).ledger || null, any: __model().messages.some((m) => m.ledger), gone: await FPScreens.call('coach.keep', { id: 'm0.gone' }) };
+      // Undo by id: the page's confirm goes to the shell, no web sheet; yes restores, the toast goes too
+      coachMessages[_coachIdx(card.id)]._ledgerSeen = false; saveCoachHistory(); render(); await __wait(20);
+      r.undo = await FPScreens.call('coach.undo', { id: card.id }); await __wait(20);
+      const cf = __fpShell.of('confirm').slice(-1)[0];
+      r.confirm = { cf, sheet: !!document.querySelector('.kt-close-sheet') };
+      const t0 = __fpShell.of('toast').length;
+      r.yes = await FPScreens.call('confirm', { id: cf.id, yes: true }); await __wait(30);
+      r.after = { toasts: __fpShell.of('toast').slice(t0), web: document.getElementById('toast').classList.contains('show'), ledger: __model().messages.some((m) => m.ledger),
+        weight: getSessionExercises('Push')[0].weight === ex.weight, again: await FPScreens.call('confirm', { id: cf.id, yes: true }) };
+      // no previous programme: its toast goes to the shell; Reset asks (red), and No changes nothing
+      lsDel('kt_routine_backup');
+      const t1 = __fpShell.of('toast').length;
+      r.noBackup = { answer: await FPScreens.call('coach.restorePrevious', {}), toasts: __fpShell.of('toast').slice(t1) };
+      await FPScreens.call('coach.regenerate', {}); await __wait(10);
+      const reset = __fpShell.of('confirm').slice(-1)[0];
+      r.reset = { reset, no: await FPScreens.call('confirm', { id: reset.id, yes: false }), still: hasCustomRoutine() };
+      // an Undo toast while the native chat is up: the shell shows it, toast.undo runs its function once
+      let undone = 0;
+      showUndoToast('Bench Press removed', () => { undone++; });
+      const ut = __fpShell.of('toast').slice(-1)[0];
+      r.undoToast = { ut, first: await FPScreens.call('toast.undo', { id: ut.undo }), second: await FPScreens.call('toast.undo', { id: ut.undo }), undone };
+      // the model switch: the toast too
+      const switched = await FPScreens.call('coach.model', { model: 'claude-haiku-4-5-20251001' }); await __wait(20);   // the model is pushed at the next tick
+      r.model = { answer: switched, now: coachModel, toast: __fpShell.of('toast').slice(-1)[0], header: __model().header.model, odd: await FPScreens.call('coach.model', { model: 'gpt-9' }) };
+      return r;
+    }, IN_PAGE);
+    assert(out.card.canUndo && out.card.actions.join() === 'undo,keep', 'the card on the newest programme change, with Undo: ' + JSON.stringify(out.card));
+    assert(out.keep.ok && out.keepModel.ledger === null && !out.keepModel.any && out.keepModel.gone.error === 'gone', 'Keep by id after the cap retires that card: ' + JSON.stringify([out.keep, out.keepModel]));
+    assert(out.undo.ok && out.confirm.cf && out.confirm.cf.title === 'Restore previous programme?' && out.confirm.cf.confirm === 'Restore' && out.confirm.cf.cancel === 'Cancel' && out.confirm.cf.tone === 'accent' &&
+      /set aside/.test(out.confirm.cf.body) && !out.confirm.sheet, 'Undo forwards the page\'s confirm, no web sheet: ' + JSON.stringify(out.confirm));
+    assert(out.yes.ok && out.after.toasts.length === 1 && out.after.toasts[0].text === 'Previous programme restored' && out.after.toasts[0].style === 'ok' && !out.after.web && !out.after.ledger && out.after.weight &&
+      out.after.again.error === 'stale', 'yes restores, its toast is forwarded, the card retires, a second answer is stale: ' + JSON.stringify(out.after));
+    assert(out.noBackup.answer.ok && out.noBackup.toasts.length === 1 && out.noBackup.toasts[0].text === 'No previous programme saved', 'with nothing to restore the toast says so natively: ' + JSON.stringify(out.noBackup));
+    assert(out.reset.reset.title === 'Reset your programme?' && out.reset.reset.tone === 'danger' && out.reset.no.ok && out.reset.still, 'Reset asks in red; No keeps the programme: ' + JSON.stringify(out.reset));
+    assert(out.undoToast.ut.undo && out.undoToast.first.ok && out.undoToast.second.error === 'stale' && out.undoToast.undone === 1, 'an Undo toast runs once through toast.undo: ' + JSON.stringify(out.undoToast));
+    assert(out.model.answer.ok && out.model.now === 'claude-haiku-4-5-20251001' && /Haiku 4\.5/.test(out.model.toast.text) && out.model.header.label === 'Haiku 4.5' && out.model.odd.error === 'unknown-model', 'coach.model switches, says so, and refuses a model it does not know: ' + JSON.stringify(out.model));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C3: a shared photo and its comment reach the native composer; Build day drafts; setup shows Cancel and no Back', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30);
+      Capacitor.Plugins.TrovoShare = { getPendingShare: () => Promise.resolve({ imageBase64: 'UEhPVE8=', comment: 'Form check on this one?' }) };
+      await checkPendingShare(); await __wait(300);
+      const c = __model().composer;
+      r.share = { shown: !!_fp.shown.coach, image: c.image, draft: c.draft, input: !!document.getElementById('coach-input') };
+      r.img = await FPScreens.call('coach.image', { key: c.image.key });
+      r.gone = await FPScreens.call('coach.image', { key: 'p0.nope' });
+      r.taken = await FPScreens.call('coach.draftTaken', { nonce: c.draft.nonce }); await __wait(20);
+      r.takenModel = __model().composer.draft; r.takenWeb = _coachDraft.v; r.takenAgain = await FPScreens.call('coach.draftTaken', { nonce: c.draft.nonce });
+      const sent = await FPScreens.call('coach.send', { text: 'Form check on this one?', usePending: true, nonce: 'n-photo' }); await __idle();
+      const msg = __model().messages.find((m) => m.id === sent.id);
+      r.sent = { ok: sent.ok, image: msg && msg.image, pending: __model().composer.image, api: JSON.stringify(__turns[0]).indexOf('UEhPVE8=') >= 0 };
+      // a photo the native composer picked: its bubble keys the native copy by nonce
+      const pic = await FPScreens.call('coach.send', { text: '', image: { mediaType: 'image/jpeg', data: 'TkFUSVZF' }, nonce: 'n-pic' }); await __idle();
+      r.pic = (__model().messages.find((m) => m.id === pic.id) || {}).image;
+      // Build day's Ask: a draft for the native composer, nothing sent
+      const u = __users(); switchTab('log'); _bdSlot = 'Arms'; _bdAskCoach(); await __wait(300);
+      r.build = { draft: __model().composer.draft, sent: __users() - u, shown: !!_fp.shown.coach };
+      // setup: Cancel, no Back, no photo button; Back refused; Cancel asks first (forwarded)
+      _setIntakeMode(true); coachMessages = []; _pushCoach({ role: 'user', content: 'I want to generate my training programme.', _seed: 'Programme setup' }); render(); await __wait(30);
+      const im = __model();
+      r.intake = { header: im.header, composer: im.composer, empty: im.empty, seed: im.messages[0].seed, back: await FPScreens.call('coach.back', {}) };
+      await FPScreens.call('coach.cancelIntake', {}); await __wait(10);
+      const cf = __fpShell.of('confirm').slice(-1)[0];
+      r.cancel = { title: cf.title, label: cf.confirm, tone: cf.tone, yes: await FPScreens.call('confirm', { id: cf.id, yes: true }), intake: intakeMode, msgs: coachMessages.length };
+      r.notIntake = await FPScreens.call('coach.cancelIntake', {});
+      // Back leaves the chat (dismiss), Open Settings goes to Settings
+      await __open(); const d0 = __fpShell.of('dismiss').length;
+      r.back = { answer: await FPScreens.call('coach.back', {}), view: coachView, dismissed: __fpShell.of('dismiss').length - d0 };
+      await __open(); r.settings = { answer: await FPScreens.call('coach.openSettings', {}), tab: currentTab, shown: !!_fp.shown.coach };
+      return r;
+    }, IN_PAGE);
+    assert(out.share.shown && !out.share.input && out.share.image && /^p\d+\./.test(out.share.image.key) && out.share.draft && out.share.draft.text === 'Form check on this one?' && out.share.draft.nonce,
+      'the shared photo and its comment are in the native composer\'s model: ' + JSON.stringify(out.share));
+    assert(out.img.ok && out.img.data === 'UEhPVE8=' && out.img.mediaType === 'image/jpeg' && out.gone.error === 'gone', 'coach.image gives the pending photo by key: ' + JSON.stringify([out.img.ok, out.gone]));
+    assert(out.taken.ok && out.takenModel === null && out.takenWeb === '' && out.takenAgain.error === 'stale', 'the draft is taken once (and is not the web composer\'s any more): ' + JSON.stringify([out.taken, out.takenModel, out.takenWeb, out.takenAgain]));
+    assert(out.sent.ok && out.sent.image && out.sent.image.key === out.share.image.key && out.sent.pending === null && out.sent.api, 'sent with the pending photo, keyed: ' + JSON.stringify(out.sent));
+    assert(out.pic && out.pic.key === 'n:n-pic', 'a picked photo is keyed by its nonce: ' + JSON.stringify(out.pic));
+    assert(out.build.draft && /^Build my .+ day: /.test(out.build.draft.text) && out.build.sent === 0 && out.build.shown, 'Build day drafts for the native composer: ' + JSON.stringify(out.build));
+    assert(out.intake.header.back === false && out.intake.header.cancel === true && out.intake.header.model === null && out.intake.header.title === 'Build your plan' &&
+      out.intake.composer.attach === false && out.intake.composer.placeholder === 'Answer the Coach…' && out.intake.empty === null && out.intake.seed === 'Programme setup' &&
+      out.intake.back.error === 'intake', 'setup: Cancel and no Back: ' + JSON.stringify(out.intake));
+    assert(out.cancel.title === 'Stop programme setup?' && out.cancel.label === 'Stop setup' && out.cancel.yes.ok && !out.cancel.intake && out.cancel.msgs === 0 && out.notIntake.error === 'not-intake', 'Cancel asks, then ends setup: ' + JSON.stringify([out.cancel, out.notIntake]));
+    assert(out.back.answer.ok && out.back.view === 'home' && out.back.dismissed === 1 && out.settings.answer.ok && out.settings.tab === 'settings' && !out.settings.shown, 'Back and Open Settings leave the chat: ' + JSON.stringify([out.back, out.settings]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C3: each switch brings back the web chat (FP_NATIVE, kt_native_off and the About switch, screens.off, a refused present, a shell without the screen)', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      const web = () => !!document.getElementById('coach-input') && !document.querySelector('.kt-fp-ph');
+      await __wait(30); await __open();
+      r.start = { shown: !!_fp.shown.coach, web: web() };
+      // the page constant
+      FP_NATIVE = false; render(); await __wait(20);
+      r.constant = { shown: !!_fp.shown.coach, web: web(), dismissed: __fpShell.of('dismiss').length };
+      FP_NATIVE = true; render(); await __wait(20);
+      r.constantBack = { shown: !!_fp.shown.coach, web: web() };
+      // a draft the native composer has not taken yet goes with the switch to the web composer
+      coachPrefill('Draft for later'); await __wait(20);
+      r.nativeDraft = __model().composer.draft && __model().composer.draft.text;
+      // this device's switch, and its row in Settings > About
+      switchTab('settings'); await __wait(20);
+      r.rowOn = (document.getElementById('screen').innerText.match(/Native Coach chat[\s\S]{0,80}/) || [''])[0];
+      toggleNativeChat(); await __wait(20);
+      r.rowOff = (document.getElementById('screen').innerText.match(/Native Coach chat[\s\S]{0,80}/) || [''])[0];
+      r.key = localStorage.getItem('kt_native_off');
+      await __open();
+      r.device = { shown: !!_fp.shown.coach, web: web(), draft: (document.getElementById('coach-input') || {}).value };
+      document.getElementById('coach-input').value = ''; _coachDraft = { v: '', s: 0, e: 0, focus: false };
+      switchTab('settings'); toggleNativeChat(); await __open();
+      r.deviceBack = { shown: !!_fp.shown.coach, web: web(), key: localStorage.getItem('kt_native_off') };
+      // the shell's screens.off: the web chat for the rest of the document
+      FPScreens.call('shell.covered', { on: true });
+      const off = await FPScreens.call('screens.off', { screen: 'coach', why: 'failures' }); await __wait(20);
+      r.off = { off, shown: !!_fp.shown.coach, web: web(), covered: _fpCovered() };
+      switchTab('log'); await __open();
+      r.offStays = { shown: !!_fp.shown.coach, web: web() };
+      return r;
+    }, IN_PAGE);
+    assert(out.start.shown && !out.start.web, 'the native chat is up: ' + JSON.stringify(out.start));
+    assert(!out.constant.shown && out.constant.web && out.constant.dismissed === 1 && out.constantBack.shown && !out.constantBack.web, 'FP_NATIVE off brings the web chat back, on brings the native one: ' + JSON.stringify([out.constant, out.constantBack]));
+    assert(/Native Coach chat[\s\S]*On/.test(out.rowOn) && /Off/.test(out.rowOff) && out.key === '1' && !out.device.shown && out.device.web, 'the About switch (kt_native_off) brings the web chat back: ' + JSON.stringify([out.rowOn, out.rowOff, out.device]));
+    assert(out.nativeDraft === 'Draft for later' && out.device.draft === 'Draft for later', 'a draft the native composer had not taken is in the web composer: ' + JSON.stringify([out.nativeDraft, out.device]));
+    assert(out.deviceBack.shown && !out.deviceBack.web && out.deviceBack.key === null, 'and turns the native chat on again: ' + JSON.stringify(out.deviceBack));
+    assert(out.off.off.ok && !out.off.shown && out.off.web && !out.off.covered && !out.offStays.shown && out.offStays.web, 'screens.off: the web chat for the rest of the document: ' + JSON.stringify([out.off, out.offStays]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+  // the shell refuses to present: the web chat
+  const refused = await shellBoot('coach');
+  try {
+    const out = await refused.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30); __fpShell.refuse.present = 'cannot present';
+      await __open(); await __wait(40);
+      return { off: _fp.off.coach, shown: !!_fp.shown.coach, web: !!document.getElementById('coach-input') };
+    }, IN_PAGE);
+    assert(out.off === 'present' && !out.shown && out.web, 'a present the shell refuses gives the web chat back: ' + JSON.stringify(out));
+    assert(refused.errors.length === 0, 'no page errors: ' + refused.errors.join('|'));
+  } finally { await refused.close(); }
+  // a model the page cannot build (a page bug): never presented, the web chat, and the page goes on
+  const broken = await shellBoot('coach');
+  try {
+    const out = await broken.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30);
+      const real = _coachModel; _coachModel = () => { throw new Error('boom'); };
+      await __open(); await __wait(40);
+      const r = { off: _fp.off.coach, shown: !!_fp.shown.coach, present: __fpShell.of('present').length, web: !!document.getElementById('coach-input'),
+        log: __fpShell.of('log').some((l) => /model failed: boom/.test(l.text)), snap: await FPScreens.call('coach.snapshot', {}) };
+      _coachModel = real;
+      return r;
+    }, IN_PAGE);
+    assert(out.off === 'model' && !out.shown && out.present === 0 && out.web && out.log && out.snap.error === 'exception', 'a model that throws keeps the web chat (and the shell hears why): ' + JSON.stringify(out));
+    assert(broken.errors.length === 0, 'no page errors: ' + broken.errors.join('|'));
+  } finally { await broken.close(); }
+  // a shell whose flag has no coach screen (its policy file, its breaker): hello answers none
+  for (const variant of ['inert', { v: 1, min: 1, shell: '60', screens: ['settings'] }]) {
+    const tag = (typeof variant === 'string' ? variant : 'no coach') + ': ';
+    const app2 = await shellBoot(variant);
+    try {
+      const out = await app2.page.evaluate(async (IN_PAGE) => {
+        eval(IN_PAGE);
+        await __wait(30); await __open();
+        const toastBefore = __fpShell.of('toast').length; showToast('Saved');
+        switchTab('settings'); await __wait(20);
+        return { hello: __fpShell.of('hello'), v: _fp.v, live: _fpLive('coach'), present: __fpShell.of('present').length, models: __fpShell.of('model').length,
+          toasts: __fpShell.of('toast').length - toastBefore, row: /Native Coach chat/.test(document.getElementById('screen').innerText) };
+      }, IN_PAGE);
+      assert(out.hello.length === 1 && out.v === 1 && !out.live && out.present === 0 && out.models === 0 && out.toasts === 0 && !out.row, tag + 'hello answers no screen: the web chat, nothing forwarded, no switch: ' + JSON.stringify(out));
+      assert(app2.errors.length === 0, tag + 'no page errors: ' + app2.errors.join('|'));
+    } finally { await app2.close(); }
+  }
+});
+
+serial('C3: a reload is a new boot (a stale confirm answers stale, old ids find nothing); no programmatic focus while covered', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const before = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30);
+      lsSet('kt_routine_backup', getCustomRoutine());
+      coachMessages = _coachMids([{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }]); saveCoachHistory();
+      await __open();
+      await FPScreens.call('coach.restorePrevious', {}); await __wait(10);
+      return { boot: _fpBoot, confirm: __fpShell.of('confirm').slice(-1)[0], id: __model().messages[1].id };
+    }, IN_PAGE);
+    await app.page.reload({ waitUntil: 'load' });
+    await app.page.waitForFunction(() => typeof window.render === 'function');
+    const after = await app.page.evaluate(async ({ IN_PAGE, before }) => {
+      eval(IN_PAGE);
+      await __wait(40);
+      return { hello: __fpShell.of('hello'), boot: _fpBoot, stale: await FPScreens.call('confirm', { id: before.confirm.id, yes: true }), keep: await FPScreens.call('coach.keep', { id: before.id }), restored: hasRoutineBackup() };
+    }, { IN_PAGE, before });
+    assert(before.confirm && before.confirm.id.indexOf(before.boot) > 0, 'the confirm id names its boot: ' + JSON.stringify(before.confirm));
+    assert(after.hello.length === 1 && after.hello[0].boot === after.boot && after.boot !== before.boot, 'a reload says hello again with a new boot: ' + JSON.stringify([after.hello, before.boot]));
+    assert(after.stale.ok === false && after.stale.error === 'stale' && after.keep.error === 'gone', 'a confirm from before the reload answers stale; an old id finds nothing: ' + JSON.stringify(after));
+    // covered: render, the sheet observer and the chat's draft move no focus; the shell's cover blurs
+    const focus = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      switchTab('log'); switchLogSub('body'); await __wait(30);
+      const field = () => document.getElementById('bwVal');   // Log > Body's weight: render keeps a field by its id
+      const f0 = field(); f0.focus();
+      await FPScreens.call('shell.covered', { on: true });
+      r.blurred = document.activeElement !== f0;
+      field().focus(); render(); await __wait(20);
+      r.render = { covered: _fpCovered(), focused: document.activeElement === field() };
+      await FPScreens.call('shell.covered', { on: false });
+      field().focus(); render(); await __wait(20);
+      r.renderUncovered = document.activeElement === field();
+      // the sheet observer gives focus back when a sheet closes, but not while covered
+      const btn = document.querySelector('#screen button'); btn.id = btn.id || 't118-opener';
+      const sheet = () => { btn.focus(); const el = document.createElement('div'); el.className = 'kt-sheet-overlay'; document.body.appendChild(el); return el; };
+      await FPScreens.call('shell.covered', { on: true });
+      let s = sheet(); await __wait(10); document.activeElement.blur(); s.remove(); await __wait(30);
+      r.sheetCovered = document.activeElement === btn;
+      await FPScreens.call('shell.covered', { on: false });
+      s = sheet(); await __wait(10); document.activeElement.blur(); s.remove(); await __wait(30);
+      r.sheetUncovered = document.activeElement === btn;
+      // the web chat's draft refocus: not while covered (the native chat off for this check)
+      FP_NATIVE = false; await __open();
+      const box = document.getElementById('coach-input'); box.value = 'draft'; box.focus();
+      await FPScreens.call('shell.covered', { on: true });
+      box.focus(); render(); await __wait(20);
+      r.draft = { value: document.getElementById('coach-input').value, focused: document.activeElement === document.getElementById('coach-input') };
+      await FPScreens.call('shell.covered', { on: false }); FP_NATIVE = true;
+      return r;
+    }, IN_PAGE);
+    assert(focus.blurred, 'the shell\'s cover blurs the page\'s field');
+    assert(focus.render.covered && !focus.render.focused && focus.renderUncovered, 'render() refocuses a field only when uncovered: ' + JSON.stringify(focus));
+    assert(!focus.sheetCovered && focus.sheetUncovered, 'the sheet observer gives focus back only when uncovered: ' + JSON.stringify(focus));
+    assert(focus.draft.value === 'draft' && !focus.draft.focused, 'the chat keeps its draft but moves no focus while covered: ' + JSON.stringify(focus.draft));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('C3: every intent of contract v1 (FPCore intents.json) is known, and refuses missing arguments; no shell, no bridge', async () => {
+  const intents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async ({ IN_PAGE, intents }) => {
+      eval(IN_PAGE);
+      await __wait(30); await __open();
+      const r = [];
+      for (const it of intents) {
+        const required = Object.keys(it.args).filter((k) => !/\?$/.test(it.args[k]));
+        const a = await FPScreens.call(it.name, {});
+        r.push({ name: it.name, required, ok: a.ok, error: a.error || null });
+        await __wait(5);
+      }
+      return r;
+    }, { IN_PAGE, intents });
+    for (const x of out) {
+      assert(x.error !== 'unknown-intent', x.name + ': the page knows it');
+      if (x.required.length) assert(x.ok === false && x.error === 'bad-args', x.name + ': missing ' + x.required.join(', ') + ' is bad-args: ' + JSON.stringify(x));
+      else assert(x.error === null || ['idle', 'busy', 'not-intake', 'intake', 'stale', 'gone'].indexOf(x.error) >= 0, x.name + ': answers ok or with the page\'s reason: ' + JSON.stringify(x));
+    }
+    assert(out.length === intents.length && intents.length >= 22, 'every intent was called: ' + out.length);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+  // no shell (every shell up to 59, the PWA): no flag, no plugin, no bridge, the web chat
+  const none = await shellBoot('none');
+  try {
+    const out = await none.page.evaluate(async (IN_PAGE) => {
+      await new Promise((r) => setTimeout(r, 30));
+      switchTab('coach'); openCoachChat(); await new Promise((r) => setTimeout(r, 30));
+      return { flag: typeof window.__FP_SHELL, bridge: typeof window.FPScreens, mock: typeof window.__fpShell, hello: _fp.hello, web: !!document.getElementById('coach-input'), ph: !!document.querySelector('.kt-fp-ph') };
+    }, IN_PAGE);
+    assert(out.flag === 'undefined' && out.bridge === 'undefined' && out.mock === 'undefined' && out.hello === null && out.web && !out.ph, 'without the shell nothing is native: ' + JSON.stringify(out));
+    assert(none.errors.length === 0, 'no page errors: ' + none.errors.join('|'));
+  } finally { await none.close(); }
+});
+
+serial('C3: the coach models the page builds are FPCore\'s fixtures (tests/golden/dump-coach.js)', async () => {
+  const bad = await require('../golden/dump-coach').drift();
+  assert(bad.length === 0, 'the page builds different coach models for ' + bad.join(', ') + ': run node tests/golden/dump-coach.js, then swift test');
 });

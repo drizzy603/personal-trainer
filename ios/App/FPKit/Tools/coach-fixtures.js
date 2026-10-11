@@ -1,19 +1,17 @@
 #!/usr/bin/env node
-// coach-fixtures.js: golden coach models (contract v1) for FPCore, until the page builds its own.
+// coach-fixtures.js: the coach models (contract v1) for FPCore that the page cannot build.
 //
-//   git show chatui/ui:index.html > /tmp/page.html
-//   node ios/App/FPKit/Tools/coach-fixtures.js /tmp/page.html ios/App/FPKit/Tests/FPCoreTests/Fixtures
+//   node ios/App/FPKit/Tools/coach-fixtures.js index.html ios/App/FPKit/Tests/FPCoreTests/Fixtures
 //
-// Plan task C3 makes the page build these models (_coachModel) and tests/golden/dump-coach.js write
-// them here; until then this script writes the models the contract describes (CoachModel.swift) from
-// what the page has today:
-//   - message bodies from Fixtures/blocks/page-grammar.json (made by the page's own md() and
-//     _coachBlocksHTML(): blocks-fixtures.js);
-//   - the room palette from the page's THEMES (as _paintTheme reads it: earned falls back to the accent);
-//   - the chat's strings as chatui writes them (header, empty chat, chips, PLAN CHANGES, notes, chips
-//     under errors, the composer).
-// Every string goes through the page's _wellFormed, as _nativeJSON does, except lone-surrogates.json,
-// which keeps its half emoji on purpose (an older page that skipped _nativeJSON).
+// The page builds its own coach models since plan task C3 (_coachModel), and tests/golden/dump-coach.js
+// writes them into Fixtures/coach (both rooms, setup, the empty chat, errors, a reply in flight, 60
+// messages). This script writes the three no page sends, by hand from what the contract describes
+// (CoachModel.swift):
+//   - forward-compat.json: what a newer page could add (unknown blocks, actions, tones, fields);
+//   - lone-surrogates.json: an older page that skipped _nativeJSON (it keeps its half emoji);
+//   - minimal.json: {v:1}, every default.
+// Message bodies come from Fixtures/blocks/page-grammar.json (the page's own md() and
+// _coachBlocksHTML(): blocks-fixtures.js), the palette from the page's THEMES.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -79,18 +77,10 @@ const tokens = (room, full) => full
   : { color: Object.assign(palette(room), ROLES[room]) };
 
 // ── the chat's strings (chatui) ─────────────────────────────────────────────────────────────────
-const at = (day, hh, mm) => Date.UTC(2026, 9, day, hh, mm);   // October 2026
 const header = (o) => Object.assign({ eyebrow: 'COACH · ONLINE', status: 'online', title: "Today's plan", meta: 'WK 06 · DAY 6',
   model: { label: 'Sonnet 5.5', name: 'Sonnet', version: '5.5', next: 'claude-haiku-4-5-20251001', a11y: 'Coach model: Sonnet 5.5. Switch to Haiku 4.5' },
   back: true, cancel: false }, o || {});
 const composer = (o) => Object.assign({ placeholder: 'Message Coach…', short: 'Message…', a11y: 'Message the coach', attach: true, image: null, draft: null }, o || {});
-const chips = ['What should I focus on this week?', 'Am I progressing on track?', 'How is my recovery looking?', 'Any trends in my training data?'];
-const ledgerUndo = rows => ({ head: 'PLAN CHANGES · WEEK 6', rows, canUndo: true,
-  note: 'Applied to your programme · Undo restores the previous version',
-  actions: [{ do: 'undo', label: 'Undo', tone: 'neutral' }, { do: 'keep', label: 'Keep changes', tone: 'primary' }] });
-const ledgerDone = rows => ({ head: 'PLAN CHANGES · WEEK 6', rows, canUndo: false,
-  note: 'Applied to your programme. It cannot be undone here any more.', actions: [{ do: 'gotIt', label: 'Got it', tone: 'neutral' }] });
-const quiet = c => Object.assign({}, c.body, { actions: [] });   // older replies show no chips
 let nid = 0;
 const id = () => 'm' + (++nid);
 const user = (text, o) => Object.assign({ id: id(), role: 'user', at: null, local: false, error: false, stopped: false, body: text }, o || {});
@@ -98,122 +88,7 @@ const reply = (c, o) => Object.assign({ id: id(), role: 'assistant', at: null, l
   eyebrow: c.eyebrow, body: c.body }, o || {});
 const prose = (text, o) => Object.assign({ id: id(), role: 'assistant', at: null, local: false, error: false, stopped: false,
   eyebrow: 'COACH', body: { k: 'md', blocks: [{ k: 'p', r: [text] }] } }, o || {});
-const note = (text, o) => Object.assign({ id: id(), role: 'assistant', at: null, local: true, error: false, stopped: false, body: text }, o || {});
 
-function chat(room) {
-  nid = 0;
-  const run = body('run-analysis'), lists = body('lists'), adj = body('programme-adjustment'), table = body('table');
-  const messages = [
-    user('How did my run look yesterday?', { at: at(8, 18, 2), day: 'Yesterday' }),
-    reply(run, { at: at(8, 18, 3), body: quiet(run), a11y: 'Coach: Good session. PACE: 8:07 vs 8:15 goal -8s. Takeaway: Aerobic base is improving.' }),
-    user('Plateau check', { at: at(9, 7, 30), day: 'Today', seed: 'Plateau check' }),
-    reply(lists, { at: at(9, 7, 31) }),
-    user('', { at: at(9, 7, 40), image: { key: 'm5' } }),
-    prose('That is a clean bar path. Keep the elbows tucked on the way down.', { at: at(9, 7, 41) }),
-    user('Add 10 lb to my bench from this week', { at: at(9, 7, 45) }),
-    reply(adj, { at: at(9, 7, 46), body: quiet(adj), pills: [{ label: 'Changed Bench Press · 170 lb', ok: true }, { label: 'Not applied · Squat goal', ok: false }],
-      ledger: (room === 'heavyweight' ? ledgerUndo : ledgerDone)([['Bench Press', '→ 170 lb', 'plan'], ['Bench goal', '→ 200 lb', 'goal']]) }),
-    user('Show my top sets', { at: at(9, 7, 50) }),
-    reply(table, { at: at(9, 7, 51) }),
-    user('and my squat?', { at: at(9, 7, 55) }),
-    room === 'heavyweight'
-      ? note('Could not connect. Check your internet connection.', { at: at(9, 7, 56), error: true, chip: 'retry' })
-      : note('Anthropic did not accept your API key. Check it in Settings › AI Coach.', { at: at(9, 7, 56), error: true, errKind: 'key', chip: 'settings' }),
-  ];
-  return {
-    v: 1, rev: 42, boot: 'b1760000000000-4f2a', intake: false, loading: false,
-    room, paper: !!page.THEMES[room].paper, dynTypeOn: true,
-    tokens: tokens(room, room === 'heavyweight'),
-    header: header(), empty: null, messages, running: [], composer: composer(),
-    speech: { id: messages[messages.length - 1].id, text: messages[messages.length - 1].body },
-  };
-}
-
-function intake() {
-  nid = 0;
-  return {
-    v: 1, rev: 3, boot: 'b1760000100000-77aa', intake: true, loading: true, room: 'heavyweight', paper: true, dynTypeOn: false,
-    tokens: tokens('heavyweight', false),
-    header: header({ eyebrow: 'COACH · INTAKE', status: 'intake', title: 'Build your plan', meta: null, model: null, back: false, cancel: true }),
-    empty: null,
-    messages: [
-      user('I want to generate my training programme.', { at: at(9, 9, 0), day: 'Today', seed: 'Programme setup' }),
-      prose('How many days a week can you train, and for how long each time?', { at: at(9, 9, 0) }),
-      user('4 days, about an hour', { at: at(9, 9, 2) }),
-    ],
-    running: [{ label: 'Weeks 1–12 updated', ok: true }, { label: 'Profile updated', ok: true }],
-    composer: composer({ placeholder: 'Answer the Coach…', short: null, a11y: 'Answer the coach', attach: false }),
-    speech: { id: 's-thinking-3', text: 'Coach is thinking' },
-  };
-}
-
-function empty() {
-  nid = 0;
-  return {
-    v: 1, rev: 1, boot: 'b1760000200000-0c1d', intake: false, loading: false, room: 'dark', paper: false, dynTypeOn: true,
-    tokens: tokens('dark', true),
-    header: header({ meta: 'WK 01 · STARTS MON' }),
-    empty: { title: 'Ask anything', sub: 'Your training, recovery, and goals',
-      programme: { label: 'Custom programme active', actions: [{ do: 'restorePrevious', label: 'Restore previous', tone: 'plain' }, { do: 'regenerate', label: 'Reset programme', tone: 'plain' }] },
-      chips },
-    messages: [], running: [],
-    composer: composer({ image: { key: 'share-1760000200' }, draft: { text: 'Build my Legs day around the trap bar', nonce: 'd-1760000200-2' } }),
-    speech: null,
-  };
-}
-
-function errors() {
-  nid = 0;
-  return {
-    v: 1, rev: 9, boot: 'b1760000300000-e1e1', intake: false, loading: false, room: 'heavyweight', paper: true, dynTypeOn: true,
-    tokens: tokens('heavyweight', false), header: header({ eyebrow: 'COACH · OFFLINE', status: 'offline' }), empty: null,
-    messages: [
-      user('Plan my week', { at: at(9, 10, 0), day: 'Today' }),
-      note('Your Anthropic account is out of credit. Add credit at console.anthropic.com, then try again.', { at: at(9, 10, 0), error: true, errKind: 'billing' }),
-      user('Plan my week', { at: at(9, 10, 5) }),
-      note('Stopped.', { at: at(9, 10, 5), stopped: true }),
-      user('Plan my week', { at: at(9, 10, 6) }),
-      note('Stopped. Changes made before the stop are kept:', { at: at(9, 10, 7), pills: [{ label: 'Weeks 7–8 updated', ok: true }],
-        ledger: ledgerUndo([['Weeks 7, 8', 'rewritten', 'plan']]) }),
-      user('Plan my week', { at: at(9, 10, 8) }),
-      note("Coach didn't respond (network error). Check your API key in Settings.", { at: at(9, 10, 9), error: true, chip: 'retry' }),
-    ],
-    running: [], composer: composer(), speech: { id: 'm8', text: "Coach didn't respond (network error). Check your API key in Settings." },
-  };
-}
-
-function loading() {
-  nid = 0;
-  const c = body('cmb-with-markdown');
-  return {
-    v: 1, rev: 17, boot: 'b1760000400000-5a5a', intake: false, loading: true, room: 'dark', paper: false, dynTypeOn: true,
-    tokens: tokens('dark', false), header: header({ eyebrow: 'COACH · REPLYING', status: 'replying' }), empty: null,
-    messages: [
-      user('Review my week', { at: at(9, 11, 0), day: 'Today', seed: 'Weekly review' }),
-      reply(c, { at: at(9, 11, 1), body: quiet(c) }),
-      user('Move Friday to Saturday', { at: at(9, 11, 3) }),
-    ],
-    running: [{ label: 'Friday ⇄ Saturday · this week', ok: true }],
-    composer: composer(), speech: { id: 's-thinking-17', text: 'Coach is thinking' },
-  };
-}
-
-// 60 messages, the cap: one of every body, over and over, with pills and one ledger.
-function sixty() {
-  nid = 0;
-  const cases = grammar.cases;
-  const messages = [];
-  for (let i = 0; messages.length < 60; i++) {
-    const c = cases[i % cases.length];
-    messages.push(user('Question ' + (i + 1) + ' about ' + c.name.replace(/-/g, ' '), { at: at(1 + (i % 9), 8, i % 60), day: i % 6 === 0 ? 'Thu, Oct ' + (1 + (i % 9)) : null }));
-    messages.push(reply(c, { at: at(1 + (i % 9), 8, (i + 1) % 60), body: quiet(c), pills: i % 5 === 0 ? [{ label: 'Bench Press → 170 lb', ok: true }] : [] }));
-  }
-  messages[59].ledger = ledgerUndo([['Bench Press', '→ 170 lb', 'plan']]);
-  return { v: 1, rev: 300, boot: 'b1760000500000-6060', intake: false, loading: false, room: 'heavyweight', paper: true, dynTypeOn: true,
-    tokens: tokens('heavyweight', true), header: header(), empty: null, messages, running: [], composer: composer(), speech: null };
-}
-
-// What a newer page could send to this build: every addition must decode, and draw as text when unknown.
 function forwardCompat() {
   nid = 0;
   return {
@@ -261,13 +136,6 @@ const write = (name, model, keepHalves) => {
   fs.mkdirSync(path.join(outDir, 'coach'), { recursive: true });
   fs.writeFileSync(path.join(outDir, 'coach', name + '.json'), text + '\n');
 };
-write('heavyweight-chat', chat('heavyweight'));
-write('lime-chat', chat('dark'));
-write('intake', intake());
-write('empty', empty());
-write('errors', errors());
-write('loading', loading());
-write('sixty', sixty());
 write('forward-compat', forwardCompat());
 write('lone-surrogates', lonely(), true);
 write('minimal', minimal());
