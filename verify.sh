@@ -134,6 +134,40 @@ if (bad.length) {
 console.log('✓ localStorage only through getItem/setItem/removeItem/key/length (' + uses + ' uses)');
 EOF
 
+# policy.json sits beside build.txt on GitHub Pages (publish.sh's push puts it there). Native shells from build 60
+# fetch it at launch and on foreground and keep the last good copy, so a file they cannot read changes nothing: a
+# broken edit would silently leave the switches where they were. Checked here exactly as FPCore's Policy.parse reads
+# it: at most 64 KB, a JSON object with "v": 1, store.facade / store.repair and every screen "on", "off", a boolean
+# or null.
+node - <<'EOF'
+var fs = require('fs');
+function fail(why) { console.error('FAIL: policy.json: ' + why); process.exit(1); }
+var raw;
+try { raw = fs.readFileSync('policy.json'); } catch (e) { fail('missing (native shells keep their last good copy, or the defaults)'); }
+if (raw.length > 64 * 1024) fail(raw.length + ' bytes (the shell reads at most 65536)');
+var p;
+try { p = JSON.parse(raw.toString('utf8')); } catch (e) { fail('not JSON (' + e.message + ')'); }
+if (!p || typeof p !== 'object' || Array.isArray(p)) fail('not a JSON object');
+if (p.v !== 1) fail('"v" must be 1 (shells read version 1 only), found ' + JSON.stringify(p.v));
+function sw(path, v) {
+  if (v === null || v === undefined || v === true || v === false || v === 'on' || v === 'off') return;
+  fail(path + ' must be "on", "off", true, false or null, found ' + JSON.stringify(v));
+}
+function on(v, dflt) { return v === null || v === undefined ? dflt : (v === true || v === 'on'); }
+if (p.store != null) {
+  if (typeof p.store !== 'object' || Array.isArray(p.store)) fail('"store" must be an object');
+  sw('store.facade', p.store.facade); sw('store.repair', p.store.repair);
+}
+var off = [];
+if (p.screens != null) {
+  if (typeof p.screens !== 'object' || Array.isArray(p.screens)) fail('"screens" must be an object');
+  Object.keys(p.screens).forEach(function (k) { sw('screens.' + k, p.screens[k]); if (!on(p.screens[k], true)) off.push(k); });
+}
+var s = p.store || {};
+console.log('✓ policy.json: facade ' + (on(s.facade, true) ? 'on' : 'off') + ', repair ' + (on(s.repair, false) ? 'on' : 'off') +
+            ', screens off: ' + (off.length ? off.join(', ') : 'none'));
+EOF
+
 # The native shell's OTA loader only applies the live page when its build
 # stamp is strictly newer than the bundled one — an index.html change without
 # a <meta build> bump is invisible to installed native apps forever.
