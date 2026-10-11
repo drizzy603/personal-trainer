@@ -211,6 +211,21 @@ final class FakeDevice {
     var pageView: [KTKey: U16] {
         webkit.filter { !KTProtocol.isReserved($0.key) }
     }
+
+    /// Makes snapshots impossible to write (a file where `snaps/` was, which stops root too) until the returned
+    /// closure puts the folder back.
+    func blockSnaps() throws -> () throws -> Void {
+        let fm = FileManager.default
+        let snaps = dir.appendingPathComponent("snaps", isDirectory: true)
+        let away = dir.appendingPathComponent("snaps.away", isDirectory: true)
+        _ = store.snapNames()  // snapshots already queued are written first
+        try fm.moveItem(at: snaps, to: away)
+        try Data("not a folder".utf8).write(to: dir.appendingPathComponent("snaps"))
+        return {
+            try fm.removeItem(at: self.dir.appendingPathComponent("snaps"))
+            try fm.moveItem(at: away, to: snaps)
+        }
+    }
 }
 
 /// A realistic WebKit copy: logs, a programme, a chat with half an emoji, Health ledgers, raw-string keys.

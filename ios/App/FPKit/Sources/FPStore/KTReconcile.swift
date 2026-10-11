@@ -117,7 +117,7 @@ public struct KTReconcilePlan: Equatable, Sendable {
 /// |---|---|---|
 /// | 1 | store unreadable, or `meta.minReader` above this build | attach nothing (KTStore, before this) |
 /// | 2 | WebKit unreadable (`hello nowk`) | facade off, reconcile nothing (KTStore, before this) |
-/// | 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back; the facade stays off for this document |
+/// | 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back; the facade stays off for this document, and its follow-up gives nothing up until a snapshot exists (KTStore) |
 /// | 4 | WebKit's witness is neither in the store's history of it nor in the gap note with that hash | adopt every difference, deletions included; replaced values to conflicts ("older build"); nothing refilled |
 /// | 5 | witness known; the gap note names a missed op on the key (or a missed clear), and the store took no write of the key after it | adopt WebKit's value (the store missed that write) |
 /// | 6 | witness known; WebKit's whole manifest (less the keys the gap note explains) equals the store's state at one journal seq, a key the store wrote after a missed op being read from that op on | record would-repair; newer values to conflicts ("lag"); adopt WebKit |

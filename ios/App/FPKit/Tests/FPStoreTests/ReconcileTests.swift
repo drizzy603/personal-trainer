@@ -195,6 +195,62 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
     }
 
+    /// Rule 3 is snapshot first. When the snapshot cannot be written the store still adopts nothing, and the
+    /// follow-up waits with the facade off until a snapshot of the set exists, so the set is never given up with
+    /// only the 30-day conflict rows to bring it back.
+    func testWipedStoreGivesNothingUpUntilASnapshotOfItExists() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        let kept = dev.store.values()
+        let unblock = try dev.blockSnaps()
+        dev.webkit = [:]
+        XCTAssertEqual(dev.launch(stamp: false)["why"] as? String, "wiped")
+        XCTAssertNotNil(dev.store.status().wipeOffer)
+        XCTAssertNil(dev.store.status().wipeOffer?.snap, "no snapshot could be written")
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())  // the page boots fresh, without the facade
+        dev.set("kt_streak_days", "{}")
+
+        // The follow-up cannot write one either: it gives nothing up and keeps the facade off.
+        let held = dev.launch()
+        XCTAssertEqual(held["mode"] as? String, "off", "\(held)")
+        XCTAssertEqual(held["why"] as? String, "wiped: no snapshot")
+        XCTAssertFalse(dev.attached)
+        XCTAssertEqual(dev.store.values(), kept, "the store keeps its set")
+        XCTAssertTrue(dev.store.conflicts().isEmpty)
+        XCTAssertEqual(dev.store.status().lastHello?.label, "wiped: no snapshot")
+
+        // Room again: the snapshot first, then the follow-up gives the set up, every value kept.
+        try unblock()
+        let follow = dev.launch()
+        XCTAssertEqual(follow["rule"] as? Int, 4, "\(follow)")
+        let snap = try XCTUnwrap(dev.store.status().wipeOffer?.snap)
+        XCTAssertTrue(snap.hasSuffix("-wiped.json"), snap)
+        XCTAssertEqual(try dev.store.readSnap(snap), kept, "the snapshot holds the whole set")
+        XCTAssertEqual(reasons(dev)["kt_routine"], "wiped")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        XCTAssertGreaterThan(dev.store.previewPutBack(snap: snap).count, 5)
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+    }
+
+    /// WebKit still empty at the next start is rule 3 again; a snapshot that cannot be written then leaves the first
+    /// wipe's snapshot in the offer (the store adopted nothing in between, so it holds the same set).
+    func testASecondWipeKeepsTheFirstSnapshotWhenItCannotWriteItsOwn() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        let kept = dev.store.values()
+        dev.webkit = [:]
+        XCTAssertEqual(dev.launch(stamp: false)["why"] as? String, "wiped")
+        let first = try XCTUnwrap(dev.store.status().wipeOffer?.snap)
+        let unblock = try dev.blockSnaps()
+        XCTAssertEqual(dev.launch(stamp: false)["why"] as? String, "wiped", "still empty: rule 3 again")
+        XCTAssertEqual(dev.store.status().wipeOffer?.snap, first)
+        try unblock()
+        XCTAssertEqual(try dev.store.readSnap(first), kept)
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 4, "the follow-up runs on the first snapshot")
+        XCTAssertEqual(dev.store.status().wipeOffer?.snap, first)
+    }
+
     // MARK: Rule 5: the gap note
 
     func testMissedMirrorABAWithAGapNoteIsAdopted() {

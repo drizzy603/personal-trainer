@@ -42,6 +42,8 @@ public struct KTHelloRecord: Codable, Equatable, Sendable {
 /// Rule 3's offer: the store kept its set when WebKit came back empty; Put back of `snap` restores it.
 public struct KTWipeOffer: Codable, Equatable, Sendable {
     public var at: Int64
+    /// The snapshot of the kept set. nil: none could be written yet, and the follow-up gives nothing up (the
+    /// facade stays off) until one is.
     public var snap: String?
     public var keys: Int
     public var seq: Int64
@@ -737,6 +739,17 @@ public final class KTStore: @unchecked Sendable {
                 plan = KTReconcile.classify(input)
             }
             if plan.rule == 3 { return try wiped(s, input) }
+            // Rule 3's follow-up gives the wiped set up only once a snapshot of it exists. Until one can be written
+            // the store keeps the set as it is and the facade stays off; the record's 30 days bound the wait.
+            if input.wipe != nil, !plan.changes.isEmpty, var record = try wipeRecord(s), record.snap == nil {
+                guard let info = try? writeSnapLocked(kind: "wiped") else {
+                    lastHello = KTHelloRecord(at: nowMs(), boot: boot, rule: 3, label: "wiped: no snapshot", adopted: [:],
+                                              wouldRepair: [])
+                    return KTProtocol.offAnswer("wiped: no snapshot")
+                }
+                record.snap = info.name
+                try write(full: false) { try setMeta($0, "wipe", record.json()) }
+            }
 
             let newBoot = boot + 1
             let full = plan.changes.keys.contains { KTProtocol.logKeys.contains($0) }
@@ -938,12 +951,17 @@ public final class KTStore: @unchecked Sendable {
     /// first, adopt nothing, and keep the facade off for this document, so kv keeps the set exactly; the next
     /// document start sees the fresh page's stamp as unknown (rule 4) and labels each value it replaces
     /// "wiped", and Put back of the snapshot can restore every one of them.
+    ///
+    /// When the snapshot cannot be written, an earlier wipe whose follow-up has not run keeps its own (nothing was
+    /// adopted since, so it holds this same set); with none at all, the follow-up waits for one (`hello`).
     private func wiped(_ s: KTSQLite, _ input: KTReconcileInput) throws -> String {
+        let head = try KTJournal.head(s)
+        let earlier = try wipeRecord(s)
         let info = try? writeSnapLocked(kind: "wiped")
+        let snap = info?.name ?? earlier.flatMap { !$0.followedUp && $0.seq == head ? $0.snap : nil }
         var hashes: [KTKey: String] = [:]
         for (k, h) in input.store where h != KTWire.absent && !KTProtocol.isReserved(k) { hashes[k] = h }
-        let record = WipeRecord(at: nowMs(), snap: info?.name, seq: try KTJournal.head(s), followedUp: false,
-                                hashes: hashes)
+        let record = WipeRecord(at: nowMs(), snap: snap, seq: head, followedUp: false, hashes: hashes)
         try write(full: false) { try setMeta($0, "wipe", record.json()) }
         diag.bump(.wiped)
         lastHello = KTHelloRecord(at: nowMs(), boot: boot, rule: 3, label: "wiped", adopted: [:], wouldRepair: [])

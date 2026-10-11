@@ -84,7 +84,7 @@ leaves kv equal to WebKit:
 |---|---|---|
 | 1 | store unreadable, or `minReader` above this build | attaches nothing |
 | 2 | WebKit unreadable (`hello nowk`) | facade off; reconciles nothing |
-| 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back of the snapshot |
+| 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back of the snapshot; the follow-up gives nothing up (facade off) until a snapshot exists |
 | 4 | witness neither in the store's history nor vouched for by the gap note | an older or facade-less build ran: adopt every difference, deletions included (conflicts "older build"); nothing refilled |
 | 5 | witness known; the gap note names a missed op on the key (or a missed clear), and the store took no write of the key after it | the store missed that write: adopt |
 | 6 | witness known; WebKit's whole manifest equals the store's state at one journal seq (a key the store wrote after an op it missed is read from that op on) | WebKit lost a suffix: would-repair counted, newer values to conflicts ("lag"), adopt |
