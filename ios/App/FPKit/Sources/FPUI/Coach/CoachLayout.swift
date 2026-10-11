@@ -159,16 +159,50 @@ enum ChatGlyph {
     }
 }
 
-extension View {
-    /// A press area that reaches `h` and `v` points past the control on each side, without
-    /// changing its layout: a control drawn smaller than 44 pt still takes a 44 pt press (the web's
-    /// .kt-hit on the model switch).
-    func pressArea(h: CGFloat, v: CGFloat) -> some View {
-        padding(.horizontal, h).padding(.vertical, v)
-            .contentShape(Rectangle())
-            .padding(.horizontal, -h).padding(.vertical, -v)
+/// A button drawn smaller than it is pressed (the web's .kt-hit on the model switch): the press
+/// reaches `h` and `v` points past the drawn label on each side, so a control drawn smaller than
+/// 44 pt still takes a 44 pt press, and the layout gives the padding back, so the control sits
+/// where it is drawn.
+///
+/// The padding and the press shape go inside the Button's label: a Button is pressed where its
+/// label is, and a content shape wrapped around the finished Button widens only the frame
+/// VoiceOver reports, never what a finger can press (clicked on this same source, the wrapped one
+/// took presses only on the drawn pill; PressAreaTests holds the structure).
+struct PressAreaButton<Label: View, PressShape: Shape>: View {
+    let h: CGFloat
+    let v: CGFloat
+    let shape: PressShape
+    let action: () -> Void
+    let label: Label
+
+    init(h: CGFloat, v: CGFloat, shape: PressShape, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
+        self.h = h
+        self.v = v
+        self.shape = shape
+        self.action = action
+        self.label = label()
     }
 
+    var body: some View {
+        Button(action: action) {
+            label
+                .padding(.horizontal, h)
+                .padding(.vertical, v)
+                .contentShape(shape)
+        }
+        .buttonStyle(PressDim())
+        .padding(.horizontal, -h)
+        .padding(.vertical, -v)
+    }
+}
+
+extension PressAreaButton where PressShape == Rectangle {
+    init(h: CGFloat, v: CGFloat, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
+        self.init(h: h, v: v, shape: Rectangle(), action: action, label: label)
+    }
+}
+
+extension View {
     /// One CSS hairline along an edge of the view (the header's rule, a ledger row's border).
     func hairline(_ color: Color, edge: Alignment = .bottom, width: CGFloat = 1) -> some View {
         overlay(alignment: edge) { Rectangle().fill(color).frame(height: width) }

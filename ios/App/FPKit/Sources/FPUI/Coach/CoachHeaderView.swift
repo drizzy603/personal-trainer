@@ -119,15 +119,20 @@ struct CoachHeaderView: View {
 }
 
 /// The header's model switch: a pill reading the model running; its accessible name names the
-/// model it switches to; it takes a 44 pt press though drawn smaller.
+/// model it switches to; it takes a 44 pt press though drawn smaller (4 px past the pill at each
+/// side, 11 px above and below, as the web's .kt-hit).
 struct ModelSwitchButton: View {
     let model: ModelSwitch
     let short: Bool
     let send: (Intent) -> Void
     @Environment(\.roomTheme) private var t
 
+    /// How far the press reaches past the drawn pill, in points at this size.
+    static func pressReach(_ t: RoomTheme) -> (h: CGFloat, v: CGFloat) { (t.px(4), t.px(11)) }
+
     var body: some View {
-        Button { send(model.intent) } label: {
+        let reach = Self.pressReach(t)
+        PressAreaButton(h: reach.h, v: reach.v, action: { send(model.intent) }) {
             PlainText(text: ModelSwitchText.title(model, short: short),
                       style: InlineStyle(size: 11, weight: 500, color: .lite), lineLimit: 1)
                 .fixedSize()
@@ -136,8 +141,6 @@ struct ModelSwitchButton: View {
                 .background(RoundedRectangle(cornerRadius: 999, style: .circular).fill(t.color(t.flavor == .paper ? .card : .card2)))
                 .overlay(RoundedRectangle(cornerRadius: 999, style: .circular).strokeBorder(t.color(.border), lineWidth: 1))
         }
-        .buttonStyle(PressDim())
-        .pressArea(h: t.px(4), v: t.px(11))
         .accessibilityLabel(ModelSwitchText.accessibilityLabel(model))
     }
 }

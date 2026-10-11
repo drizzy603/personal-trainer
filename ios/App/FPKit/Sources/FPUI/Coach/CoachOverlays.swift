@@ -21,6 +21,9 @@ public struct CoachToastView: View {
         self.onUndo = onUndo
     }
 
+    /// How far Undo's press reaches past its drawn button, in points at this size.
+    static func undoReach(_ t: RoomTheme) -> (h: CGFloat, v: CGFloat) { (0, t.px(10)) }
+
     /// The toast's surface and ink in this room.
     static func colors(_ toast: ToastRequest, flavor: RoomFlavor) -> (fill: ColorToken, ink: ColorToken) {
         if toast.undo != nil { return (.card2, .text) }
@@ -37,16 +40,16 @@ public struct CoachToastView: View {
         HStack(spacing: t.px(12)) {
             PlainText(text: toast.text, style: InlineStyle(size: 13, weight: 700, color: c.ink), lineHeight: 1.4, alignment: .center)
             if toast.undo != nil {
-                Button(action: onUndo) {
+                // drawn about 25 pt tall (the web's 6/12 px padding), pressed 45: the toast's own
+                // 15 pt above and below holds the reach
+                let reach = Self.undoReach(t)
+                PressAreaButton(h: reach.h, v: reach.v, action: onUndo) {
                     PlainText(text: "Undo", style: InlineStyle(size: 12, weight: 800, color: .onAccent, tracking: 0.24), lineLimit: 1)
                         .fixedSize()
                         .padding(.vertical, t.px(6))
                         .padding(.horizontal, t.px(12))
                         .background(RoundedRectangle(cornerRadius: t.px(9), style: .circular).fill(t.color(.accent)))
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(PressDim())
-                .pressArea(h: 0, v: t.px(8))
             }
         }
         .frame(maxWidth: .infinity)
