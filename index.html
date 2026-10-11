@@ -18271,6 +18271,9 @@ function _cmbTakeTokHTML(x){
     '<div class="kt-cmb-take-body">'+_mdTokHTML(x, 1)+'</div>'+
   '</div>';
 }
+// A takeaway's HTML from its raw text. The page draws takeaways from tokens (_cmbTakeTokHTML) now, but
+// FPKit's Tools/blocks-fixtures.js loads this by name from every page it reads (older pages drew
+// with it), so it stays.
 function _cmbTakeHTML(t){ return _cmbTakeTokHTML(_mdTokens(_esc(t), 1)); }
 // Contract v1 of a %% reply's body (its eyebrow is the message's: COACH · <type>).
 function _cmbBodyV1(c, quiet){
