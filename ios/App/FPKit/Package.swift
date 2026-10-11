@@ -25,10 +25,12 @@ let package = Package(
             name: "FPCore"
         ),
 
-        // FPStore: FPCore plus the system SQLite3 (the SDK's module; linked as libsqlite3).
+        // FPStore: FPCore plus the system SQLite3 (the SDK's module; linked as libsqlite3). Resources/ktstore.js
+        // is the shadow facade the shell injects at document start (plan task S3), read through Bundle.module.
         .target(
             name: "FPStore",
             dependencies: ["FPCore"],
+            resources: [.copy("Resources/ktstore.js")],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
 
