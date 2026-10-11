@@ -22,8 +22,8 @@ CI job are the rest of S1.
 | FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7) |
 | FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
-Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac. FPUITests (C6) and FPHost's
-(with the task that fills it) run by `xcodebuild test` on an iOS simulator.
+Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac. FPHost and FPUI get theirs with
+the tasks that fill them, run by `xcodebuild test` on an iOS simulator.
 
 ## Rules
 
