@@ -48,6 +48,43 @@ final class ComposerTests: XCTestCase {
         try body(try XCTUnwrap(find(host.view), "the composer's box"))
     }
 
+    /// The box is as tall as its draft and never taller: empty or one line, the row is 58 pt and
+    /// its text sits on the row's one line; with more, the box grows up to four lines. Wherever the
+    /// draft stands, the text ends on the row's last line, the composer's padding and the line's
+    /// own padding over the composer's foot. (A frame with the four-line max height grew to it
+    /// whatever the draft: the empty box and every shorter draft sat in a four-line box, the text
+    /// floating in its middle. The text view itself kept its own height, so the test above missed it.)
+    func testTheBoxIsAsTallAsItsDraftAndNoTaller() throws {
+        FPFonts.register()
+        let base = try CoachFixtures.model("heavyweight-chat")
+        var report: [String] = []
+        for (roomName, room) in CoachRenderTests.rooms {
+            for (sizeName, size) in CoachRenderTests.sizes {
+                let theme = RoomTheme(model: CoachFixtures.model(base, in: room), system: size)
+                let font = theme.uiFont(.body, 16, 400)
+                let linePad = (theme.px(44) - font.lineHeight) / 2
+                // the composer's foot: the screen less the home indicator's area and the 8 px under it
+                let foot = CoachRenderTests.screen.height - CoachRenderTests.safeBottom - theme.px(8)
+                let lastLineEnds = foot - (theme.space(.composerPad) + 1) - linePad
+                for n in 0...6 {
+                    var m = CoachFixtures.model(base, in: room)
+                    m.composer.draft = n == 0 ? nil : Draft(text: Self.draft(n), nonce: "fit-\(n)")
+                    let what = "\(roomName) \(sizeName), " + (n == 0 ? "no draft" : "a \(n)-line draft")
+                    try Self.withTextView(m, size: size) { tv in
+                        let frame = tv.convert(tv.bounds, to: nil)
+                        report.append(String(format: "%@ %@ lines=%d text %.1f...%.1f, the last line ends at %.1f", roomName, sizeName, n, frame.minY, frame.maxY, lastLineEnds))
+                        XCTAssertEqual(frame.maxY, lastLineEnds, accuracy: 1, "\(what): the text ends on the row's last line (the box no taller than its text)")
+                    }
+                }
+            }
+        }
+        if let dir = ProcessInfo.processInfo.environment["FPUI_SHOTS"], !dir.isEmpty {
+            let url = URL(fileURLWithPath: dir, isDirectory: true).appendingPathComponent("composer-fit.txt")
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try report.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     func testTheBoxShowsEveryLineUpToFourThenScrollsInsideFourWholeLines() throws {
         FPFonts.register()
         let base = try CoachFixtures.model("heavyweight-chat")

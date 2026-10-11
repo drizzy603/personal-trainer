@@ -105,11 +105,13 @@ struct CoachComposer: View {
         return (CGFloat(lines) * line - max(0, line - font.lineHeight)).rounded(.up)
     }
 
-    /// 16 px on a 22 px line: one line is 44 pt (the row 58). The box grows with the draft to four
-    /// whole lines and then scrolls inside them, the newest line in view while typing (the web's
-    /// box grows to its 120 px cap). The cap is a frame of four 22 px lines: SwiftUI's own line
-    /// limit counts lines of the face's height (17.4 pt at 16 pt), not the 22 px pitch this field
-    /// lays them out on, and cut the fourth line of a four-line draft through its letters.
+    /// 16 px on a 22 px line: one line is 44 pt (the row 58). The box is as tall as the draft up to
+    /// four whole lines, then holds there and scrolls inside them, the newest line in view while
+    /// typing (the web's box grows to its 120 px cap). The cap is four 22 px lines held by
+    /// HeightCap: SwiftUI's own line limit counts lines of the face's height (17.4 pt at 16 pt), not
+    /// the 22 px pitch this field lays them out on, and cut the fourth line of a four-line draft
+    /// through its letters; a frame with that max height grew to it and sat every shorter draft
+    /// (and the empty box) in a four-line box.
     private var field: some View {
         let font = t.uiFont(.body, 16, 400)
         let line = t.px(22)
@@ -123,19 +125,20 @@ struct CoachComposer: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
-            TextField("", text: $text, axis: .vertical)
-                .font(Font(font))
-                .tracking(t.bodyTracking)
-                .foregroundStyle(t.color(.text))
-                .tint(t.color(.composerFocus))
-                .lineLimit(1...)
-                .lineSpacing(max(0, line - font.lineHeight))
-                .frame(maxHeight: Self.textHeight(lines: Self.maxLines, line: line, font: font))
-                .padding(.vertical, (t.px(44) - font.lineHeight) / 2)
-                .padding(.leading, lead)
-                .padding(.trailing, t.px(8))
-                .focused(focused)
-                .accessibilityLabel(composer.a11y)
+            HeightCap(max: Self.textHeight(lines: Self.maxLines, line: line, font: font)) {
+                TextField("", text: $text, axis: .vertical)
+                    .font(Font(font))
+                    .tracking(t.bodyTracking)
+                    .foregroundStyle(t.color(.text))
+                    .tint(t.color(.composerFocus))
+                    .lineLimit(1...)
+                    .lineSpacing(max(0, line - font.lineHeight))
+                    .focused(focused)
+                    .accessibilityLabel(composer.a11y)
+            }
+            .padding(.vertical, (t.px(44) - font.lineHeight) / 2)
+            .padding(.leading, lead)
+            .padding(.trailing, t.px(8))
         }
         .frame(maxWidth: .infinity, minHeight: t.px(44), alignment: .topLeading)
     }

@@ -60,7 +60,7 @@ link from model text: runs go in verbatim with explicit faces, never through
 | `Coach/CoachBlockViews.swift` | md()'s blocks (paragraphs, lists with sub-items and numbered starts, headings, rules, tables in a horizontal scroller) and the `%%` sections (metric cards, the takeaway, chips), with the web's collapsing margins |
 | `Coach/CoachInline.swift` | Runs to text: bold, italic and code to their faces, never a link |
 | `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field that grows to four whole lines, then scrolls inside them; 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
-| `Coach/CoachEmptyState.swift`, `Coach/CoachOverlays.swift`, `Coach/CoachLayout.swift` | The empty chat; forwarded toasts and confirms; the flow and table layouts, the page's icons, and `PressAreaButton` (a control drawn smaller than 44 pt, pressed as 44: the press shape goes inside the Button's label, never around the finished Button) |
+| `Coach/CoachEmptyState.swift`, `Coach/CoachOverlays.swift`, `Coach/CoachLayout.swift` | The empty chat; forwarded toasts and confirms; the flow and table layouts, `HeightCap` (the composer box: as tall as its draft up to four lines, never taller, where a frame with a max height grows to it), the page's icons, and `PressAreaButton` (a control drawn smaller than 44 pt, pressed as 44: the press shape goes inside the Button's label, never around the finished Button) |
 
 FPUITests (`xcodebuild test` on an iOS simulator) read the coach fixtures from
 `Tests/FPCoreTests/Fixtures/coach` in the source tree. `CoachRenderTests` renders every fixture, and

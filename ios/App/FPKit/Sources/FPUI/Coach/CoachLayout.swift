@@ -113,6 +113,25 @@ struct TableLayout: Layout {
     }
 }
 
+/// A view as tall as it asks to be, up to `max`, and never taller (the composer's box). Offered more
+/// than `max`, the child is offered `max` and keeps its own height below it; offered less, it takes
+/// what it is offered (a text view then scrolls inside it). A frame with `maxHeight` is not this: it
+/// grows to the height it is offered, which sat a one-line draft in a four-line box.
+struct HeightCap: Layout {
+    var max: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let offered = Swift.min(proposal.height ?? max, max)
+        let size = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: offered))
+        return CGSize(width: size.width, height: Swift.min(size.height, max))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
 /// The page's SVG icons, drawn from their own path data in a 24-unit box.
 enum ChatGlyph {
     /// The send arrow (Material "send"): M2.01 21L23 12 2.01 3 2 10l15 2-15 2z.
