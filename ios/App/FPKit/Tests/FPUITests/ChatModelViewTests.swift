@@ -6,7 +6,26 @@ import FPCore
 
 /// What the views take from the model: the model switch's words (spec 114), the parts of the
 /// conversation in the web's order and rhythm, the intents the controls send.
+///
+/// Message ids come from the fixture, never spelled out: the page names its messages ("m8" in a
+/// hand-made fixture, "m8.g" in one tests/golden/dump-coach.js builds from the page), and only
+/// the conversation's shape is what these tests hold.
 final class ChatModelViewTests: XCTestCase {
+    private struct FixtureShape: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    /// The fixture's messages, checked against the shape the tests read (a fixture rebuilt with
+    /// another shape fails here, by name, rather than on a missing part further down).
+    private func messages(_ m: CoachModel, count: Int, _ fixture: String) throws -> [Message] {
+        guard m.messages.count == count else {
+            throw FixtureShape(description: "\(fixture) holds \(m.messages.count) messages; these tests read a conversation of \(count)")
+        }
+        XCTAssertEqual(Set(m.messages.map(\.id)).count, count, "\(fixture): every message has its own id")
+        XCTAssertFalse(m.messages.contains { $0.id.isEmpty }, "\(fixture): every message has an id")
+        return m.messages
+    }
+
     func testModelSwitchSaysWhatSpec114Says() throws {
         let m = try XCTUnwrap(CoachFixtures.model("heavyweight-chat").header.model)
         XCTAssertEqual(ModelSwitchText.title(m, short: false), "Sonnet 5.5")
@@ -24,16 +43,17 @@ final class ChatModelViewTests: XCTestCase {
 
     func testPartsFollowTheWebOrder() throws {
         let m = try CoachFixtures.model("heavyweight-chat")
+        let id = try messages(m, count: 12, "heavyweight-chat").map(\.id)
         let ids = ChatPart.parts(m).map(\.id)
         XCTAssertEqual(ids, [
-            "day-m1", "turn-m1", "reply-m2",
-            "turn-m3",                       // the seed carries its day: TODAY · PLATEAU CHECK, no divider
-            "reply-m4", "turn-m5", "reply-m6", "turn-m7",
-            "reply-m8", "pills-m8", "ledger-m8",
-            "turn-m9", "reply-m10", "turn-m11",
-            "note-m12", "chip-m12",
+            "day-" + id[0], "turn-" + id[0], "reply-" + id[1],
+            "turn-" + id[2],                 // the seed carries its day: TODAY · PLATEAU CHECK, no divider
+            "reply-" + id[3], "turn-" + id[4], "reply-" + id[5], "turn-" + id[6],
+            "reply-" + id[7], "pills-" + id[7], "ledger-" + id[7],
+            "turn-" + id[8], "reply-" + id[9], "turn-" + id[10],
+            "note-" + id[11], "chip-" + id[11],
         ])
-        if case .seed(_, let day) = ChatPart.parts(m)[3].kind { XCTAssertEqual(day, "Today") } else { XCTFail("m3 is a seed") }
+        if case .seed(_, let day) = ChatPart.parts(m)[3].kind { XCTAssertEqual(day, "Today") } else { XCTFail("\(id[2]) is a seed") }
     }
 
     func testRhythmIs8Between20AroundTheOwnersTurn() throws {
@@ -50,13 +70,20 @@ final class ChatModelViewTests: XCTestCase {
 
     func testChipsHideWhileAReplyIsInFlightAndUnknownOnesNeverShow() throws {
         var m = try CoachFixtures.model("errors")
-        XCTAssertTrue(ChatPart.parts(m).contains { $0.id == "chip-m8" })
-        XCTAssertFalse(ChatPart.parts(m).contains { $0.id == "chip-m2" }, "billing: no chip")
+        let msgs = try messages(m, count: 8, "errors")
+        // the trailing failure offers Try again; the billing one (out of credit) offers nothing
+        let failed = try XCTUnwrap(msgs.last, "errors ends on a failure")
+        XCTAssertEqual(failed.chip?.kind, .retry)
+        let billing = try XCTUnwrap(msgs.first { $0.errorKind == .billing }, "errors holds an out-of-credit reply")
+        XCTAssertTrue(ChatPart.parts(m).contains { $0.id == "chip-" + failed.id })
+        XCTAssertFalse(ChatPart.parts(m).contains { $0.id == "chip-" + billing.id }, "billing: no chip")
         m.loading = true
-        XCTAssertFalse(ChatPart.parts(m).contains { $0.id == "chip-m8" })
+        XCTAssertFalse(ChatPart.parts(m).contains { $0.id == "chip-" + failed.id })
         let fc = try CoachFixtures.model("forward-compat")
         XCTAssertFalse(ChatPart.parts(fc).contains { $0.id.hasPrefix("chip-") }, "an action this build does not know is left out")
-        XCTAssertTrue(ChatPart.parts(fc).contains { $0.id == "note-m4" }, "an unknown role's local message is a note")
+        let unknownRole = try XCTUnwrap(fc.messages.first { if case .other = $0.role { return $0.local } else { return false } },
+                                        "forward-compat holds a local message of a role this build does not know")
+        XCTAssertTrue(ChatPart.parts(fc).contains { $0.id == "note-" + unknownRole.id }, "an unknown role's local message is a note")
     }
 
     func testPartIdsStayUniqueWhateverTheIdsThePageSends() throws {
@@ -77,13 +104,18 @@ final class ChatModelViewTests: XCTestCase {
 
     func testControlsSendTheirIntents() throws {
         let m = try CoachFixtures.model("heavyweight-chat")
-        let ledger = try XCTUnwrap(m.message(id: "m8")?.ledger)
-        XCTAssertEqual(ledger.actions.compactMap { $0.intent(messageID: "m8") }, [.coachUndo(id: "m8"), .coachKeep(id: "m8")])
+        // PLAN CHANGES belongs to the reply that changed the programme; Undo and Keep name it by id
+        let changed = try XCTUnwrap(try messages(m, count: 12, "heavyweight-chat").first { $0.ledger != nil }, "heavyweight-chat has a PLAN CHANGES card")
+        XCTAssertEqual(m.message(id: changed.id)?.ledger, changed.ledger, "the model finds a message by the id the page gave it")
+        let ledger = try XCTUnwrap(changed.ledger)
+        XCTAssertEqual(ledger.actions.compactMap { $0.intent(messageID: changed.id) }, [.coachUndo(id: changed.id), .coachKeep(id: changed.id)])
         let lime = try CoachFixtures.model("lime-chat")
-        let done = try XCTUnwrap(lime.message(id: "m8")?.ledger)
+        let limeMessages = try messages(lime, count: 12, "lime-chat")
+        let done = try XCTUnwrap(limeMessages.first { $0.ledger != nil }?.ledger, "lime-chat has a PLAN CHANGES card")
         XCTAssertFalse(done.canUndo)
         XCTAssertEqual(done.actions.map(\.label), ["Got it"])
-        XCTAssertEqual(lime.message(id: "m12")?.chip?.intent(messageID: "m12"), .coachOpenSettings)
+        let keyError = try XCTUnwrap(limeMessages.last, "lime-chat ends on a key error")
+        XCTAssertEqual(lime.message(id: keyError.id)?.chip?.intent(messageID: keyError.id), .coachOpenSettings)
         let empty = try CoachFixtures.model("empty")
         XCTAssertEqual(empty.empty?.programme?.actions.compactMap { $0.intent(messageID: nil) }, [.coachRestorePrevious, .coachRegenerate])
         XCTAssertTrue(CoachComposer.canSend(text: " hi ", hasPhoto: false))
