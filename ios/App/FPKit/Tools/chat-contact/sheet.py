@@ -92,16 +92,20 @@ for room in ROOMS:
     stack(half, 'Coach chat · %s · web (blue labels) beside native (black labels)' % room).save(os.path.join(OUT, 'contact-%s.png' % room))
     print('sheet', room, len(fixtures), 'fixtures')
 
-# the forwarded toasts and confirm, both rooms
+# the forwarded toasts and confirm, both rooms: the web's (top row) over the native ones
 ov = os.path.join(SHOTS, 'native', 'overlays')
 if os.path.isdir(ov):
     names = sorted(f for f in os.listdir(ov) if f.endswith('.png'))
-    ims = [Image.open(os.path.join(ov, n)).convert('RGB').resize((CELL_W // 2 * 2 // 2, CELL_H // 2), Image.LANCZOS) for n in names]
-    canvas = Image.new('RGB', (len(ims) * (CELL_W // 2 + GAP) + GAP, CELL_H // 2 + LABEL + GAP), (255, 255, 255))
+    w, h = CELL_W // 2, CELL_H // 2
+    canvas = Image.new('RGB', (len(names) * (w + GAP) + GAP, 2 * (h + LABEL) + GAP), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
-    for i, (n, im) in enumerate(zip(names, ims)):
-        x = GAP + i * (CELL_W // 2 + GAP)
-        d.text((x, 8), n[:-4], fill=(0, 0, 0), font=font(12))
-        canvas.paste(im, (x, LABEL))
+    for i, n in enumerate(names):
+        x = GAP + i * (w + GAP)
+        for r, (kind, colour) in enumerate((('web', (10, 67, 245)), ('native', (30, 30, 30)))):
+            p = os.path.join(SHOTS, kind, 'overlays', n)
+            y = r * (h + LABEL)
+            d.text((x, y + 8), '%s %s' % (kind, n[:-4]), fill=colour, font=font(12))
+            im = Image.open(p).convert('RGB').resize((w, h), Image.LANCZOS) if os.path.exists(p) else placeholder(w, 100, 'not rendered')
+            canvas.paste(im, (x, y + LABEL))
     canvas.save(os.path.join(OUT, 'overlays.png'))
     print('sheet overlays', len(names))
