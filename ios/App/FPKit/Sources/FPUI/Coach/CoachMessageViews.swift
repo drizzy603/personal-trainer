@@ -174,6 +174,7 @@ struct SeedLine: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -233,6 +234,59 @@ struct UserBubble: View {
     }
 }
 
+/// What VoiceOver reads for a coach reply, one stop per reply: "Coach", its type ("Coach, Run
+/// analysis: …"), then its blocks as words, as the page's _coachSpeech reads a reply: a table's
+/// cells joined by commas and its rows by full stops (never its pipes), a metric as "PACE: 8:07 vs
+/// 8:15 goal -8s.", the takeaway as "Takeaway: …"; paragraphs and list items one after another,
+/// a rule and the chips (their own buttons) not read. A label the page sends wins.
+enum ReplySpeech {
+    static func label(_ m: Message) -> String {
+        if let a = m.a11y, !a.isEmpty { return a }
+        let head = replyType(m.eyebrow).map { "Coach, " + $0 } ?? "Coach"
+        let words = body(m.body)
+        return words.isEmpty ? head : head + ": " + words
+    }
+
+    /// The reply's type from its eyebrow ("COACH · Run analysis" -> "Run analysis"), if it has one.
+    static func replyType(_ eyebrow: String?) -> String? {
+        guard let e = eyebrow, let dot = e.range(of: "\u{00B7}") else { return nil }
+        let type = e[dot.upperBound...].trimmingCharacters(in: .whitespaces)
+        return type.isEmpty ? nil : type
+    }
+
+    static func body(_ b: MessageBody) -> String {
+        switch b {
+        case .text(let s): return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .markdown(let blocks): return lines(blocks.map(block))
+        case .coach(let sections, _): return lines(sections.map(section))
+        case .unknown(let u): return u.text
+        }
+    }
+
+    static func block(_ b: MarkdownBlock) -> String {
+        switch b {
+        case .table(let rows): return MarkdownTableView.speech(rows)
+        case .rule: return ""
+        default: return b.plainText
+        }
+    }
+
+    static func section(_ s: CoachSection) -> String {
+        switch s {
+        case .markdown(let blocks): return lines(blocks.map(block))
+        case .metrics(let rows): return rows.map { MetricsCardView.speech($0) + "." }.joined(separator: " ")
+        case .takeaway(let r):
+            let take = r.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return take.isEmpty ? "" : "Takeaway: " + take
+        case .unknown(let u): return u.text
+        }
+    }
+
+    private static func lines(_ parts: [String]) -> String {
+        parts.filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+}
+
 /// A coach reply: COACH (and its type) over the body; a %% reply's chips after it.
 struct ReplyView: View {
     let message: Message
@@ -246,9 +300,17 @@ struct ReplyView: View {
                     .padding(.bottom, t.px(8))
                 content
             }
-            .accessibilityElement(children: .ignore)
             .textSelection(.enabled)   // as the web page lets text be copied
-            .accessibilityLabel(message.a11y ?? ("Coach: " + message.body.plainText))
+            // one VoiceOver stop, read from an element laid over the reply's own frame: an element
+            // made on the text-selection container took that container's frame, 16 pt out past the
+            // column's left edge and over the eyebrow
+            .accessibilityHidden(true)
+            .overlay {
+                Color.clear
+                    .accessibilityElement()
+                    .accessibilityLabel(ReplySpeech.label(message))
+                    .accessibilityAddTraits(.isStaticText)
+            }
             let actions = message.body.actions
             if !actions.isEmpty {
                 // .kt-cmb-actions: 2 px over the chips, collapsed with the section before (10/12 px)

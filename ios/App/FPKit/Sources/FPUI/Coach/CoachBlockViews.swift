@@ -163,7 +163,12 @@ struct MarkdownTableView: View {
         .clipShape(shape)
         .overlay(shape.strokeBorder(t.color(.border), lineWidth: 1))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(rows.map { $0.map(\.plainText).joined(separator: ", ") }.joined(separator: ". "))
+        .accessibilityLabel(Self.speech(rows))
+    }
+
+    /// The table as VoiceOver reads it: cells joined by commas, rows by full stops.
+    static func speech(_ rows: [[Inline]]) -> String {
+        rows.map { $0.map(\.plainText).joined(separator: ", ") }.joined(separator: ". ")
     }
 
     private var grid: some View {

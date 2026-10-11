@@ -111,7 +111,10 @@ public struct CoachConfirmSheet: View {
             .frame(maxWidth: .infinity)
             .background(shape.fill(t.color(.card)).ignoresSafeArea(edges: .bottom))
             .overlay(shape.strokeBorder(t.color(.border), lineWidth: 1).ignoresSafeArea(edges: .bottom))
+            .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
+            // VoiceOver's escape (a two-finger scrub) cancels, as a tap outside does
+            .accessibilityAction(.escape) { answer(false) }
         }
     }
 
