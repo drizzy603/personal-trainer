@@ -40,11 +40,11 @@ public final class StoreAttach: NSObject {
 
     /// Storage's Native copy switch (device only, never in a backup): true turns the facade off from the next
     /// document start.
-    public static let deviceSwitchKey = "fp.store.off"
+    nonisolated public static let deviceSwitchKey = "fp.store.off"
     /// The store piece's breaker record (BreakerBook: the store breaker and the store's crash verdicts).
-    static let bookKey = "fp.store.breakers"
-    static let handlerName = "ktStore"
-    static let markerName = "store.marker"
+    nonisolated static let bookKey = "fp.store.breakers"
+    nonisolated static let handlerName = "ktStore"
+    nonisolated static let markerName = "store.marker"
 
     // MARK: State
 
@@ -424,7 +424,7 @@ public final class StoreAttach: NSObject {
         var label: String?
     }
 
-    static func parseHelloAnswer(_ text: String) -> HelloReply {
+    nonisolated static func parseHelloAnswer(_ text: String) -> HelloReply {
         guard let obj = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else { return HelloReply() }
         return HelloReply(mode: obj["mode"] as? String, why: obj["why"] as? String,
                           boot: (obj["boot"] as? NSNumber)?.int64Value, rule: (obj["rule"] as? NSNumber)?.intValue,
@@ -619,7 +619,7 @@ public final class StoreAttach: NSObject {
     // MARK: Helpers
 
     /// The page build a served folder holds: build.txt, else the `<meta name="build">` of its index.html.
-    public static func pageBuild(in folder: URL) -> String? {
+    nonisolated public static func pageBuild(in folder: URL) -> String? {
         if let s = try? String(contentsOf: folder.appendingPathComponent("build.txt"), encoding: .utf8) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { return t }
@@ -635,15 +635,15 @@ public final class StoreAttach: NSObject {
         defaults.set(book.encoded(), forKey: Self.bookKey)
     }
 
-    static func loadBook(_ defaults: UserDefaults) -> BreakerBook {
+    nonisolated static func loadBook(_ defaults: UserDefaults) -> BreakerBook {
         BreakerBook.decoded(defaults.data(forKey: bookKey))
     }
 
-    static func encodeBook(_ book: BreakerBook) -> String {
+    nonisolated static func encodeBook(_ book: BreakerBook) -> String {
         String(decoding: book.encoded(), as: UTF8.self)
     }
 
-    static func describe(_ state: KTStore.State?) -> String {
+    nonisolated static func describe(_ state: KTStore.State?) -> String {
         switch state {
         case nil: return "closed"
         case .ready?: return "ready"
@@ -660,7 +660,7 @@ public final class StoreAttach: NSObject {
         return out
     }
 
-    static func jsonObject<T: Encodable>(_ value: T?) -> Any? {
+    nonisolated static func jsonObject<T: Encodable>(_ value: T?) -> Any? {
         guard let value else { return nil }
         let e = JSONEncoder()
         e.dateEncodingStrategy = .millisecondsSince1970

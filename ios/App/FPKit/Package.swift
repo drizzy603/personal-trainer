@@ -62,6 +62,13 @@ let package = Package(
             dependencies: ["FPStore"],
             resources: [.copy("Vectors")]
         ),
+
+        // FPHostTests: iOS only, run by `xcodebuild test` on a simulator (KTUIProxy in a real WKWebView, the crash
+        // marker, the policy fetch). Every source is inside `#if os(iOS)`, so `swift test` on the Mac runs none.
+        .testTarget(
+            name: "FPHostTests",
+            dependencies: ["FPHost", "FPCore", "FPStore"]
+        ),
     ],
     swiftLanguageVersions: [.v5]
 )
