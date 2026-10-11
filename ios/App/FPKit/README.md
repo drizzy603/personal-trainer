@@ -22,8 +22,8 @@ CI job are the rest of S1.
 | FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7) |
 | FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
-Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac. FPHost and FPUI get theirs with
-the tasks that fill them, run by `xcodebuild test` on an iOS simulator.
+Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac. FPUITests (C6) and FPHost's
+(with the task that fills it) run by `xcodebuild test` on an iOS simulator.
 
 ## Rules
 
@@ -39,6 +39,45 @@ the tasks that fill them, run by `xcodebuild test` on an iOS simulator.
 - Only the App target links FPKit. CapApp-SPM cannot depend on it (the Capacitor CLI rewrites its
   `Package.swift`), so the thin plugin classes there will reach FPKit through host protocols the App target
   sets.
+
+## FPUI: the native Coach chat
+
+The SwiftUI chat (plan task C6), drawn from FPCore's `CoachModel` and sending FPCore's `Intent`s
+through a `CoachHost` (C7's CoachStore fills it from the page link; tests and previews from fixtures).
+The page keeps every rule: it parses markdown and `%%` markers, builds every label, pill, chip and
+PLAN CHANGES row, and decides what a message says; the views only draw the model. Nothing ever makes a
+link from model text: runs go in verbatim with explicit faces, never through
+`AttributedString(markdown:)`.
+
+| File | Holds |
+|---|---|
+| `Theme/RoomTheme.swift` | The room a view draws in: the model's tokens as colours and faces, the room's flavour (paper or studio) for the few shapes the rooms draw differently, the text size and its factor |
+| `Theme/Fonts.swift` | The faces in `Resources/Fonts` (made by `screenshots/live-activity/mkfonts.py`, set "chat"), registered at runtime; family + weight to a face, the system face for glyphs a face lacks (as the web's font stacks), WebKit's 14° synthetic italic, tabular figures |
+| `Theme/Type.swift` | The text size: the system size clamped `.large...xxLarge` with the app's toggle on, `.large` off, and the web zoom's factor (1, 1.12, 1.24) every size scales by; CSS line boxes |
+| `Coach/CoachChatView.swift` | The screen and `CoachHost`: header, the conversation (opens at its end, a short chat hugs the composer, a reply lands at its question), composer, toast and confirm |
+| `Coach/CoachHeaderView.swift` | Back or Cancel, the avatar, the status eyebrow, title, WK/DAY and the model switch (spec 114's label and accessible name) |
+| `Coach/CoachMessageViews.swift` | The column's parts in the web's order and rhythm: day dividers, seeds, the owner's bubble, replies, notes, Try again / Open Settings, tool pills, PLAN CHANGES, Thinking |
+| `Coach/CoachBlockViews.swift` | md()'s blocks (paragraphs, lists with sub-items and numbered starts, headings, rules, tables in a horizontal scroller) and the `%%` sections (metric cards, the takeaway, chips), with the web's collapsing margins |
+| `Coach/CoachInline.swift` | Runs to text: bold, italic and code to their faces, never a link |
+| `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field, 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
+| `Coach/CoachEmptyState.swift`, `Coach/CoachOverlays.swift`, `Coach/CoachLayout.swift` | The empty chat; forwarded toasts and confirms; the flow and table layouts and the page's icons |
+
+FPUITests (`xcodebuild test` on an iOS simulator) read the coach fixtures from
+`Tests/FPCoreTests/Fixtures/coach` in the source tree. `CoachRenderTests` renders every fixture in
+both rooms, with the phone set to light and to dark (the two must be the same pixels: the chat wears
+its room, not the phone's setting), on a 390 × 844 pt screen with a phone's safe areas. With
+`TEST_RUNNER_FPUI_SHOTS=<dir>` it renders `.large`, `.xLarge` and `.xxLarge` and writes the PNGs there,
+each whole conversation too (`TEST_RUNNER_FPUI_ONLY=a,b` limits it to some fixtures); without it,
+`.large` only. `Tools/chat-contact/run.sh <simulator UDID> <shots dir> <sheets dir>` adds the web
+chat drawn for the same fixtures by Playwright (`web-shots.js`, through `tests/lib/harness.js`, at
+the web's zooms 1, 1.12 and 1.25) and builds one contact sheet per room, native beside web
+(`sheet.py`). Use a simulator of your own, never the paired iPhone + Watch.
+
+FPUITests alone (in this folder):
+
+```sh
+xcodebuild test -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<UDID>' -only-testing:FPUITests
+```
 
 ## FPStore: the native store
 
