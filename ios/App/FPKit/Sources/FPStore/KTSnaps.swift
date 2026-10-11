@@ -24,51 +24,87 @@ public struct KTSnapInfo: Codable, Equatable, Sendable {
 ///
 /// Keys and values are JSON literals made like the store's answers (every surrogate half escaped), so a file is
 /// valid UTF-8 and JSON.parse in the page gives back the exact code units.
-struct KTSnapWriter {
-    private(set) var bytes: [UInt8] = []
+///
+/// The bytes grow in one malloc'd buffer (no zero fill, no per-byte appends) and each value is quoted and hashed
+/// in a single pass (`KTWire.quoteUTF8`), so a 2 MB snapshot stays well under 20 ms in a debug build.
+final class KTSnapWriter {
+    private var buf: UnsafeMutablePointer<UInt8>
+    private var capacity: Int
+    private var length = 0
     private(set) var count = 0
-    private var scratch = U16()
+    private var taken = false
+    private let encoder = KTLiteralEncoder()
 
-    init(kind: String, at: Int64, build: Int, seq: Int64, capacity: Int = 0) {
-        bytes.reserveCapacity(capacity + 128)
-        bytes.append(contentsOf: Array("{\"v\":1,\"kind\":".utf8))
-        KTWire.appendQuotedUTF8(Array(kind.utf16), to: &bytes)
-        bytes.append(contentsOf: Array(",\"at\":\(at),\"build\":\(build),\"seq\":\(seq),\"keys\":{".utf8))
+    init(kind: String, at: Int64, build: Int, seq: Int64, capacity: Int = 0) throws {
+        self.capacity = Swift.max(capacity, 0) + 256
+        guard let raw = malloc(self.capacity) else { throw KTStoreError.failed("snapshot: out of memory") }
+        buf = raw.bindMemory(to: UInt8.self, capacity: self.capacity)
+        try ascii("{\"v\":1,\"kind\":")
+        try literal(Array(kind.utf16))
+        try ascii(",\"at\":\(at),\"build\":\(build),\"seq\":\(seq),\"keys\":{")
     }
 
-    /// A value given as the stored UTF-16LE bytes (the address may be unaligned: they are copied first).
-    /// Returns the value's hash, so the caller can check it against the stored one.
+    deinit {
+        if !taken { free(buf) }
+    }
+
+    /// Room for `extra` more bytes.
+    private func reserve(_ extra: Int) throws {
+        guard length + extra > capacity else { return }
+        let wanted = Swift.max(capacity * 2, length + extra)
+        guard let raw = realloc(buf, wanted) else { throw KTStoreError.failed("snapshot: out of memory") }
+        capacity = wanted
+        buf = raw.bindMemory(to: UInt8.self, capacity: wanted)
+    }
+
+    private func ascii(_ s: String) throws {
+        try reserve(s.utf8.count)
+        for b in s.utf8 {
+            buf[length] = b
+            length += 1
+        }
+    }
+
     @discardableResult
-    mutating func add(_ key: KTKey, utf16le raw: UnsafeRawBufferPointer) -> String {
-        let n = raw.count / 2
-        if scratch.count < n { scratch = U16(repeating: 0, count: n) }
-        scratch.withUnsafeMutableBytes { dst in
-            if n > 0 { dst.baseAddress!.copyMemory(from: raw.baseAddress!, byteCount: n * 2) }
+    private func literal(_ u: U16) throws -> String {
+        try reserve(u.count * 6 + 2)
+        let (written, h) = u.withUnsafeBytes { encoder.encode(utf16le: $0, to: buf + length) }
+        length += written
+        return h
+    }
+
+    /// A value given as the stored UTF-16LE bytes (at any address). Returns the value's hash, so the caller can
+    /// check it against the stored one.
+    @discardableResult
+    func add(_ key: KTKey, utf16le raw: UnsafeRawBufferPointer) throws -> String {
+        try reserve(3)
+        if count > 0 {
+            buf[length] = 0x2C
+            length += 1
         }
-        #if _endian(big)
-        for i in 0..<n { scratch[i] = UInt16(littleEndian: scratch[i]) }
-        #endif
-        bytes.append(contentsOf: count == 0 ? [0x0A] : [0x2C, 0x0A])
-        KTWire.appendQuotedUTF8(key.units, to: &bytes)
-        bytes.append(0x3A)
-        var h = ""
-        scratch.withUnsafeBufferPointer { all in
-            let value = UnsafeBufferPointer(rebasing: all[0..<n])
-            h = KTWire.hash(value)
-            KTWire.appendQuotedUTF8(value, to: &bytes)
-        }
+        buf[length] = 0x0A
+        length += 1
+        try literal(key.units)
+        try reserve(1 + (raw.count / 2) * 6 + 2)
+        buf[length] = 0x3A
+        length += 1
+        let (written, h) = encoder.encode(utf16le: raw, to: buf + length)
+        length += written
         count += 1
         return h
     }
 
     @discardableResult
-    mutating func add(_ key: KTKey, _ value: U16) -> String {
-        value.withUnsafeBytes { add(key, utf16le: $0) }
+    func add(_ key: KTKey, _ value: U16) throws -> String {
+        try value.withUnsafeBytes { try add(key, utf16le: $0) }
     }
 
-    mutating func finish() -> [UInt8] {
-        bytes.append(contentsOf: Array("\n}}\n".utf8))
-        return bytes
+    /// The finished file. The writer is spent afterwards.
+    func finish() throws -> Data {
+        precondition(!taken, "a snapshot is finished once")
+        try ascii("\n}}\n")
+        taken = true
+        return Data(bytesNoCopy: buf, count: length, deallocator: .free)
     }
 }
 
@@ -128,7 +164,7 @@ struct KTSnaps {
     }
 
     /// Writes `bytes` as `name`, atomically.
-    func write(_ bytes: [UInt8], name: String) throws {
+    func write(_ bytes: Data, name: String) throws {
         try ensureDir()
         try KTSnaps.writeAtomically(bytes, to: dir.appendingPathComponent(name), protect: protect)
     }
@@ -199,7 +235,7 @@ struct KTSnaps {
     }
 
     /// Writes beside `url`, fsyncs, renames over `url`, then fsyncs the folder.
-    static func writeAtomically(_ bytes: [UInt8], to url: URL, protect: Bool) throws {
+    static func writeAtomically(_ bytes: Data, to url: URL, protect: Bool) throws {
         let folder = url.deletingLastPathComponent()
         let tmp = folder.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         let fd = Darwin.open(tmp.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)

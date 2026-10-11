@@ -745,7 +745,8 @@ public final class KTStore: @unchecked Sendable {
                 return wanted
             }
             boot = newBoot
-            pending = Pending(boot: newBoot, changes: wanted, migrate: plan.label == "migrate")
+            // A put is expected only when hello named keys (`need`); any other put is a bad op.
+            pending = wanted.isEmpty ? nil : Pending(boot: newBoot, changes: wanted, migrate: plan.label == "migrate")
             countHello(plan)
             let staged = try meta(s, "putbackIntent") != nil
             let answer = KTProtocol.helloAnswer(boot: newBoot, need: plan.need, rule: plan.rule, label: plan.label,
@@ -1206,22 +1207,22 @@ public final class KTStore: @unchecked Sendable {
 
     /// Every live value as snapshot JSON, each checked against its stored hash on the way out, so damage never
     /// spreads into a safety copy (it turns the store off instead).
-    private func snapshotBytes(kind: String, at now: Date) throws -> ([UInt8], Int, Int64) {
+    private func snapshotBytes(kind: String, at now: Date) throws -> (Data, Int, Int64) {
         let s = try db()
         do {
             let seq = try KTJournal.head(s)
             let size = try s.scalarInt("SELECT SUM(length(v)) FROM kv WHERE v IS NOT NULL") ?? 0
-            var w = KTSnapWriter(kind: kind, at: Int64((now.timeIntervalSince1970 * 1000).rounded()),
-                                 build: config.build, seq: seq, capacity: Int(size / 2 + size / 8))
+            let w = try KTSnapWriter(kind: kind, at: Int64((now.timeIntervalSince1970 * 1000).rounded()),
+                                     build: config.build, seq: seq, capacity: Int(size / 2 + size / 8))
             let st = try s.statement("SELECT k, v, h FROM kv WHERE v IS NOT NULL AND enc = 'u16' ORDER BY k")
             defer { st.reset() }
             while try st.step() {
                 guard let key = st.key(0), !KTProtocol.isReserved(key) else { continue }
                 let h = st.text(2)
-                let got = try st.withBlob(1) { w.add(key, utf16le: $0) }
+                let got = try st.withBlob(1) { try w.add(key, utf16le: $0) }
                 guard got == h else { throw KTStoreError.unreadable("\(key)'s value does not match its hash") }
             }
-            return (w.finish(), w.count, seq)
+            return (try w.finish(), w.count, seq)
         } catch let e as KTStoreError {
             if case .unreadable = e { fail(e) }
             throw e
@@ -1239,7 +1240,7 @@ public final class KTStore: @unchecked Sendable {
 
     /// The store as one JSON document (Settings > Storage > Export a copy). `kt_apikey` is never in the store.
     public func exportJSON() throws -> Data {
-        try sync { Data(try snapshotBytes(kind: "export", at: config.clock()).0) }
+        try sync { try snapshotBytes(kind: "export", at: config.clock()).0 }
     }
 
     /// Moves the WAL into the database file (the app calls this when it goes to the background).

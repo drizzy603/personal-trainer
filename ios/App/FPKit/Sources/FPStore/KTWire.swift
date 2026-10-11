@@ -159,71 +159,140 @@ public enum KTWire {
         return String(decoding: out, as: UTF16.self)  // exact: every surrogate half was escaped
     }
 
-    /// The same literal as `quote`, appended as UTF-8 bytes (snapshots and exports). Written with raw pointers so
-    /// a 2 MB snapshot stays fast in a debug build too.
+    /// The same literal as `quote`, appended as UTF-8 bytes.
     public static func appendQuotedUTF8(_ p: UnsafeBufferPointer<UInt16>, to out: inout [UInt8]) {
-        let n = p.count
-        let start = out.count
-        // Worst case: every unit as a 6-byte \uXXXX escape, plus the quotes.
-        out.append(contentsOf: repeatElement(0, count: n * 6 + 2))
-        var w = start
-        out.withUnsafeMutableBufferPointer { buf in
-            guard let o = buf.baseAddress else { return }
-            o[w] = 0x22; w += 1
-            if let base = p.baseAddress {
-                var i = 0
-                while i < n {
-                    let c = base[i]
-                    if c >= 0x20 && c < 0x80 && c != 0x22 && c != 0x5C {
-                        o[w] = UInt8(truncatingIfNeeded: c); w += 1
-                    } else {
-                        switch escapeKind(c) {
-                        case 0:
-                            if c < 0x80 {
-                                o[w] = UInt8(truncatingIfNeeded: c); w += 1
-                            } else if c < 0x800 {
-                                o[w] = UInt8(truncatingIfNeeded: 0xC0 | (c >> 6))
-                                o[w + 1] = UInt8(truncatingIfNeeded: 0x80 | (c & 0x3F))
-                                w += 2
-                            } else {  // a BMP unit that is not a surrogate (escapeKind sends those to \u)
-                                o[w] = UInt8(truncatingIfNeeded: 0xE0 | (c >> 12))
-                                o[w + 1] = UInt8(truncatingIfNeeded: 0x80 | ((c >> 6) & 0x3F))
-                                o[w + 2] = UInt8(truncatingIfNeeded: 0x80 | (c & 0x3F))
-                                w += 3
-                            }
-                        case 1:
-                            o[w] = 0x5C
-                            o[w + 1] = UInt8(truncatingIfNeeded: shortEscape(c))
-                            w += 2
-                        default:
-                            o[w] = 0x5C; o[w + 1] = 0x75
-                            o[w + 2] = UInt8(truncatingIfNeeded: hexDigit(c >> 12))
-                            o[w + 3] = UInt8(truncatingIfNeeded: hexDigit(c >> 8))
-                            o[w + 4] = UInt8(truncatingIfNeeded: hexDigit(c >> 4))
-                            o[w + 5] = UInt8(truncatingIfNeeded: hexDigit(c))
-                            w += 6
-                        }
-                    }
-                    i += 1
-                }
-            }
-            o[w] = 0x22; w += 1
-        }
-        out.removeSubrange(w..<out.count)
+        let encoder = KTLiteralEncoder()
+        let room = p.count * 6 + 2
+        let o = UnsafeMutablePointer<UInt8>.allocate(capacity: room)
+        defer { o.deallocate() }
+        let written = encoder.encode(utf16le: UnsafeRawBufferPointer(p), to: o).written
+        out.append(contentsOf: UnsafeBufferPointer(start: o, count: written))
     }
 
     public static func appendQuotedUTF8(_ u: U16, to out: inout [UInt8]) {
         u.withUnsafeBufferPointer { appendQuotedUTF8($0, to: &out) }
     }
 
-    /// 0: as is; 1: a two-character escape; 2: `\uXXXX`.
+    /// The store's literal for `n` code units (what `quote` makes) written as UTF-8 at `o`, which has room for
+    /// `6 * n + 2` bytes, and the units' hash (what `hash` computes), in one pass. Returns the bytes written.
+    ///
+    /// `quads` and `bytes` are two copies of the same UTF-16LE units (KTLiteralEncoder makes them): `quads` four
+    /// units to a UInt64, the unused lanes of the last one zero; `bytes` as bytes. Four printable ASCII units
+    /// (most of the page's JSON, quotes and backslashes included) take one load, a few word operations and byte
+    /// copies, with no integer conversion and no generic call, so a 2 MB snapshot stays fast in a debug build
+    /// (`swift test`) too.
+    static func quoteUTF8(quads q: UnsafePointer<UInt64>, bytes b: UnsafePointer<UInt8>, count n: Int,
+                          to o: UnsafeMutablePointer<UInt8>) -> (written: Int, hash: String) {
+        // FNV-1a and djb2 kept in 64-bit registers: only the low 32 bits count, and they never depend on the
+        // bits above them (xor, multiply and add carry upwards only).
+        var fa: UInt64 = 0x811c_9dc5, fb: UInt64 = 5381
+        let high: UInt64 = 0x8000_8000_8000_8000, ones: UInt64 = 0x0001_0001_0001_0001
+        o[0] = 0x22
+        var w = 1
+        var i = 0
+        while i < n {
+            #if _endian(little)
+            if i & 3 == 0 && n &- i >= 4 {
+                let x = q[i &>> 2]
+                // Every lane below 0x80 and at least 0x20: printable ASCII, one byte each (`"` and `\` two).
+                if x & 0xFF80_FF80_FF80_FF80 == 0 && ((x | high) &- 0x0020_0020_0020_0020) & high == high {
+                    let c0 = x & 0xFFFF, c1 = (x &>> 16) & 0xFFFF, c2 = (x &>> 32) & 0xFFFF, c3 = x &>> 48
+                    fa = (fa ^ c0) &* 0x0100_0193; fb = fb &* 33 &+ c0
+                    fa = (fa ^ c1) &* 0x0100_0193; fb = fb &* 33 &+ c1
+                    fa = (fa ^ c2) &* 0x0100_0193; fb = fb &* 33 &+ c2
+                    fa = (fa ^ c3) &* 0x0100_0193; fb = fb &* 33 &+ c3
+                    let k = i &<< 1  // an ASCII unit's UTF-8 byte is its low byte
+                    let quote = x ^ 0x0022_0022_0022_0022, slash = x ^ 0x005C_005C_005C_005C
+                    if ((quote &- ones) & ~quote) & high == 0 && ((slash &- ones) & ~slash) & high == 0 {
+                        o[w] = b[k]; o[w &+ 1] = b[k &+ 2]; o[w &+ 2] = b[k &+ 4]; o[w &+ 3] = b[k &+ 6]
+                        w &+= 4
+                    } else {  // a lane is `"` or `\` (the has-a-zero-lane test on x xor the character)
+                        var d = b[k]
+                        if d == 0x22 || d == 0x5C { o[w] = 0x5C; w &+= 1 }
+                        o[w] = d; w &+= 1
+                        d = b[k &+ 2]
+                        if d == 0x22 || d == 0x5C { o[w] = 0x5C; w &+= 1 }
+                        o[w] = d; w &+= 1
+                        d = b[k &+ 4]
+                        if d == 0x22 || d == 0x5C { o[w] = 0x5C; w &+= 1 }
+                        o[w] = d; w &+= 1
+                        d = b[k &+ 6]
+                        if d == 0x22 || d == 0x5C { o[w] = 0x5C; w &+= 1 }
+                        o[w] = d; w &+= 1
+                    }
+                    i &+= 4
+                    continue
+                }
+            }
+            let c = (q[i &>> 2] &>> UInt64(truncatingIfNeeded: (i & 3) &<< 4)) & 0xFFFF
+            #else
+            let c = UInt64(b[i &<< 1]) | UInt64(b[(i &<< 1) &+ 1]) &<< 8
+            #endif
+            fa = (fa ^ c) &* 0x0100_0193
+            fb = fb &* 33 &+ c
+            w = putUnit(c, o, w)
+            i &+= 1
+        }
+        o[w] = 0x22
+        w &+= 1
+        let ha = UInt32(truncatingIfNeeded: fa), hb = UInt32(truncatingIfNeeded: fb)
+        return (w, "\(n):\(String(ha, radix: 16)):\(String(hb, radix: 16))")
+    }
+
+    /// One unit (`c` below 0x10000) of a literal as UTF-8 at `o[w...]`: as is, a two-character escape, or
+    /// `\uXXXX` (other controls, every surrogate half, U+2028/2029). Returns the new end. Comparisons only: a
+    /// range pattern is a generic call in a debug build.
+    private static func putUnit(_ c: UInt64, _ o: UnsafeMutablePointer<UInt8>, _ w: Int) -> Int {
+        if c < 0x80 {
+            if c >= 0x20 {
+                if c == 0x22 || c == 0x5C {
+                    o[w] = 0x5C
+                    o[w + 1] = UInt8(truncatingIfNeeded: c)
+                    return w + 2
+                }
+                o[w] = UInt8(truncatingIfNeeded: c)
+                return w + 1
+            }
+            let short: UInt8 = c == 0x08 ? 0x62 : c == 0x0C ? 0x66 : c == 0x0A ? 0x6E : c == 0x0D ? 0x72
+                : c == 0x09 ? 0x74 : 0
+            if short != 0 {
+                o[w] = 0x5C
+                o[w + 1] = short
+                return w + 2
+            }
+        } else if c < 0x800 {
+            o[w] = UInt8(truncatingIfNeeded: 0xC0 | (c &>> 6))
+            o[w + 1] = UInt8(truncatingIfNeeded: 0x80 | (c & 0x3F))
+            return w + 2
+        } else if c & 0xF800 != 0xD800 && c != 0x2028 && c != 0x2029 {
+            o[w] = UInt8(truncatingIfNeeded: 0xE0 | (c &>> 12))
+            o[w + 1] = UInt8(truncatingIfNeeded: 0x80 | ((c &>> 6) & 0x3F))
+            o[w + 2] = UInt8(truncatingIfNeeded: 0x80 | (c & 0x3F))
+            return w + 3
+        }
+        o[w] = 0x5C
+        o[w + 1] = 0x75
+        o[w + 2] = hexByte(c &>> 12)
+        o[w + 3] = hexByte(c &>> 8)
+        o[w + 4] = hexByte(c &>> 4)
+        o[w + 5] = hexByte(c)
+        return w + 6
+    }
+
+    private static func hexByte(_ v: UInt64) -> UInt8 {
+        let d = UInt8(truncatingIfNeeded: v & 0xF)
+        return d < 10 ? 0x30 + d : 0x57 + d  // lowercase, like JSON.stringify
+    }
+
+    /// 0: as is; 1: a two-character escape; 2: `\uXXXX`. Comparisons only (see putUnit).
     @inline(__always)
     static func escapeKind(_ c: UInt16) -> Int {
-        switch c {
-        case 0x22, 0x5C, 0x08, 0x0C, 0x0A, 0x0D, 0x09: return 1
-        case 0..<0x20, 0xD800...0xDFFF, 0x2028, 0x2029: return 2
-        default: return 0
+        if c >= 0x20 {
+            if c == 0x22 || c == 0x5C { return 1 }
+            if c < 0xD800 { return c == 0x2028 || c == 0x2029 ? 2 : 0 }
+            return c <= 0xDFFF ? 2 : 0
         }
+        return c == 0x08 || c == 0x0C || c == 0x0A || c == 0x0D || c == 0x09 ? 1 : 2
     }
 
     @inline(__always)
@@ -247,12 +316,10 @@ public enum KTWire {
 
     @inline(__always)
     static func hexValue(_ d: UInt16) -> UInt16? {
-        switch d {
-        case 0x30...0x39: return d - 0x30
-        case 0x41...0x46: return d - 0x37
-        case 0x61...0x66: return d - 0x57
-        default: return nil
-        }
+        if d >= 0x30 && d <= 0x39 { return d - 0x30 }
+        if d >= 0x41 && d <= 0x46 { return d - 0x37 }
+        if d >= 0x61 && d <= 0x66 { return d - 0x57 }
+        return nil
     }
 
     // MARK: Payloads
@@ -268,6 +335,46 @@ public enum KTWire {
     /// The four characters `null`: an absent value in a `put` or `p` pair.
     public static func isNull(_ line: ArraySlice<UInt16>) -> Bool {
         line.elementsEqual("null".utf16)
+    }
+}
+
+/// Makes the store's literals as UTF-8 (`KTWire.quoteUTF8`) from UTF-16LE bytes at any address, such as a BLOB in
+/// SQLite's memory. It keeps two scratch copies of the value, one bound to UInt64 and one to UInt8, so every read
+/// goes through a pointer of the type its memory is bound to.
+final class KTLiteralEncoder {
+    private var quads: UnsafeMutablePointer<UInt64>
+    private var bytes: UnsafeMutablePointer<UInt8>
+    private var quadCapacity: Int
+
+    init() {
+        quadCapacity = 64
+        quads = .allocate(capacity: quadCapacity)
+        bytes = .allocate(capacity: quadCapacity * 8)
+    }
+
+    deinit {
+        quads.deallocate()
+        bytes.deallocate()
+    }
+
+    /// Writes the literal of the `raw.count / 2` units in `raw` at `out` (room for 6 per unit plus 2) and returns
+    /// the bytes written and the value's hash.
+    func encode(utf16le raw: UnsafeRawBufferPointer, to out: UnsafeMutablePointer<UInt8>) -> (written: Int, hash: String) {
+        let n = raw.count / 2
+        let need = (n + 3) / 4
+        if need > quadCapacity {
+            quads.deallocate()
+            bytes.deallocate()
+            quadCapacity = Swift.max(need, quadCapacity * 2)
+            quads = .allocate(capacity: quadCapacity)
+            bytes = .allocate(capacity: quadCapacity * 8)
+        }
+        if n > 0, let src = raw.baseAddress {
+            if n & 3 != 0 { quads[n / 4] = 0 }  // the last quad's unused lanes read as zero
+            UnsafeMutableRawPointer(quads).copyMemory(from: src, byteCount: n * 2)
+            UnsafeMutableRawPointer(bytes).copyMemory(from: src, byteCount: n * 2)
+        }
+        return KTWire.quoteUTF8(quads: quads, bytes: bytes, count: n, to: out)
     }
 }
 

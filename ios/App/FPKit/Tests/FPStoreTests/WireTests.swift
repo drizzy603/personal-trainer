@@ -122,6 +122,42 @@ final class WireTests: XCTestCase {
         }
     }
 
+    /// Snapshots quote and hash each value in one pass, four units at a time where it can
+    /// (`KTWire.quoteUTF8`). That pass must give exactly `quote` and `hash`: at every length (the quads' tails),
+    /// from any address (a BLOB in SQLite's memory), for every kind of unit and every mix of them in one quad.
+    func testSnapshotEncoderEqualsQuoteAndHashAtAnyLengthAndAddress() {
+        let alphabet: [UInt16] = [0x41, 0x7A, 0x20, 0x7E, 0x7F, 0x22, 0x5C, 0x2F, 0x0A, 0x09, 0x00, 0x1F, 0x08, 0xE9,
+                                  0x7FF, 0x800, 0x4E2D, 0xFFFF, 0xD83D, 0xDCAA, 0xDC4D, 0x2028, 0x2029, 0x3A, 0x7B]
+        var rng = SplitMix(seed: 0x6b74_7374_6f72_6531)
+        var samples: [U16] = [[], Array("plain text, four at a time".utf16), (0..<65536).map { UInt16($0) }]
+        for n in 0..<48 {
+            for mix in 0..<6 {
+                samples.append((0..<n).map { _ in
+                    // mix 0: printable ASCII only; 1: with quotes and backslashes; 2...: anything.
+                    let pick = Int(rng.next() % UInt64(mix == 0 ? 3 : mix == 1 ? 7 : alphabet.count))
+                    return mix == 0 ? [0x41, 0x7A, 0x20][pick] : alphabet[pick]
+                })
+            }
+        }
+        samples.append(Array(#"{"id":1,"note":"say \"hi\" \\ bye"}"#.utf16) + [0xD83D])
+        let encoder = KTLiteralEncoder()
+        for u in samples {
+            let expected = Array(KTWire.quote(u).utf8)
+            for offset in 0..<3 {  // aligned, odd and even-but-unaligned source addresses
+                let raw = UnsafeMutableRawPointer.allocate(byteCount: u.count * 2 + 8, alignment: 16)
+                defer { raw.deallocate() }
+                u.withUnsafeBytes { if !$0.isEmpty { (raw + offset).copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
+                let out = UnsafeMutablePointer<UInt8>.allocate(capacity: u.count * 6 + 2)
+                defer { out.deallocate() }
+                let (written, h) = encoder.encode(utf16le: UnsafeRawBufferPointer(start: raw + offset, count: u.count * 2),
+                                                  to: out)
+                XCTAssertEqual(Array(UnsafeBufferPointer(start: out, count: written)), expected,
+                               "literal of \(u.prefix(12).map { String($0, radix: 16) }) (\(u.count) units) at +\(offset)")
+                XCTAssertEqual(h, KTWire.hash(u), "hash of \(u.count) units at +\(offset)")
+            }
+        }
+    }
+
     func testUnquoteRejectsWhatIsNotOneLiteral() {
         for bad in [#""#, #"""#, #"abc"#, #""abc"#, #"abc""#, #""a\""#, #""\x""#, #""\u12""#, #""\u12g4""#, #""a"b""#] {
             XCTAssertNil(KTWire.unquote(Array(bad.utf16)), bad)
