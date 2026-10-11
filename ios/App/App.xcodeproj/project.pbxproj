@@ -35,6 +35,10 @@
 		FA5700000000000000000107 /* JetBrainsMonoFP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000106 /* JetBrainsMonoFP-Bold.ttf */; };
 		FA5700000000000000000109 /* InterFP-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA5700000000000000000108 /* InterFP-ExtraBold.ttf */; };
 		FA570000000000000000010B /* InterFP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA570000000000000000010A /* InterFP-Bold.ttf */; };
+		FB00000000000000000000E1 /* FPCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB00000000000000000000F1 /* FPCore */; };
+		FB00000000000000000000E2 /* FPStore in Frameworks */ = {isa = PBXBuildFile; productRef = FB00000000000000000000F2 /* FPStore */; };
+		FB00000000000000000000E3 /* FPHost in Frameworks */ = {isa = PBXBuildFile; productRef = FB00000000000000000000F3 /* FPHost */; };
+		FB00000000000000000000E4 /* FPUI in Frameworks */ = {isa = PBXBuildFile; productRef = FB00000000000000000000F4 /* FPUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -147,6 +151,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				FB00000000000000000000E1 /* FPCore in Frameworks */,
+				FB00000000000000000000E2 /* FPStore in Frameworks */,
+				FB00000000000000000000E3 /* FPHost in Frameworks */,
+				FB00000000000000000000E4 /* FPUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,6 +344,10 @@
 			name = App;
 			packageProductDependencies = (
 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
+				FB00000000000000000000F1 /* FPCore */,
+				FB00000000000000000000F2 /* FPStore */,
+				FB00000000000000000000F3 /* FPHost */,
+				FB00000000000000000000F4 /* FPUI */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -429,6 +441,7 @@
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
+				FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
@@ -705,7 +718,7 @@
 				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -730,7 +743,7 @@
 				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = 7D243X2KD4;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1019,6 +1032,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "CapApp-SPM";
 		};
+		FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = FPKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1026,6 +1043,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */;
 			productName = "CapApp-SPM";
+		};
+		FB00000000000000000000F1 /* FPCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */;
+			productName = FPCore;
+		};
+		FB00000000000000000000F2 /* FPStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */;
+			productName = FPStore;
+		};
+		FB00000000000000000000F3 /* FPHost */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */;
+			productName = FPHost;
+		};
+		FB00000000000000000000F4 /* FPUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB00000000000000000000F0 /* XCLocalSwiftPackageReference "FPKit" */;
+			productName = FPUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
