@@ -3,21 +3,26 @@
 //   every entry point uses it: with no #coach-input on screen (the native chat has none) each sends
 //   exactly one user message and one API call, and a card's week stamp is written only with its
 //   question; with the web composer on screen they still go through it (Send's path), as on next.
+//   A card tapped while a reply is in flight waits in the composer (the web box, or the native chat's
+//   draft) and keeps its label and stamp for the owner's Send of exactly its words.
 //   A nonce sends once (the last 20 are remembered). coachPrefill drafts for the composer.
 // - C2: messages carry ids in memory (never stored), and PLAN CHANGES Keep/Undo act by id, so a
 //   Keep after the 60-message cap shifted every index retires the right card; _planChangeRows is raw
 //   text and the HTML escapes it once; md() and _coachBlocksHTML() draw block models (_mdModel,
 //   _cmbModel), and the HTML they draw equals the page's before the rebuild on every golden case
 //   (tests/golden/coach-html.json), while the contract bodies equal FPCore's page-grammar fixtures.
-// - C3: the screen bridge (shell contract v1), inert without the shell: hello negotiates v1; with the
-//   chat on screen the page presents it natively, leaves an element placeholder and no #coach-input,
-//   and pushes coach models (rev rising, no lone surrogate) whose labels and chips are the page's own;
-//   FPScreens intents send once per nonce, act on messages by id after the cap (keep and undo only
-//   while the page's own card offers them: a model older than the page answers stale), forward the page's
+// - C3: the screen bridge (shell contract v1), inert without the shell: hello negotiates v1 (an answer
+//   outside v1..FP_CONTRACT is v0); with the chat on screen the page presents it natively, leaves an
+//   element placeholder and no #coach-input, and pushes coach models (rev rising, no lone surrogate in
+//   them or in forwarded toast, confirm and log text) whose labels and chips are the page's own;
+//   FPScreens intents send once per nonce and act only where the page's own screen offers them now:
+//   keep and undo by id after the cap while the card offers them (a model older than the page answers
+//   stale), retry only on Try again, stop not in a turn's first half second; they forward the page's
 //   confirms and toasts (and answer stale after a reload); the share photo and drafts reach the
-//   composer; setup shows Cancel and no Back; a tab switch dismisses; FP_NATIVE, kt_native_off (the
-//   About switch), screens.off, a refused present and a shell without the screen each bring back the
-//   web chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures.
+//   composer, and a draft sent or changed is not offered again; setup shows Cancel and no Back; a tab
+//   switch dismisses, uncovers the page and drops the speech line; FP_NATIVE, kt_native_off (the About
+//   switch), screens.off, a refused present and a shell without the screen each bring back the web
+//   chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
