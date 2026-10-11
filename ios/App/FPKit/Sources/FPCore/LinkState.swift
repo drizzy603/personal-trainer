@@ -320,12 +320,20 @@ public struct LinkState: Equatable, Sendable {
 
     /// Changes the book outside the link's own rules: the store breaker (launch, document start,
     /// bootDone), crash markers found at launch, the owner turning a piece back on in Settings > About.
-    /// It changes nothing in the current document: a screen that went off stays off, and a verdict
-    /// against a live screen takes effect at the next hello.
+    /// A trip it adds for the page build turns that live screen off at once (`screenOff`); anything else
+    /// waits for the next hello: a crash verdict is read by ScreenGate then, and a screen that went off
+    /// stays off for the document even when its trip is cleared.
     public mutating func editBook(_ edit: (inout BreakerBook) -> Void) -> [LinkEffect] {
         let before = book
+        let wasLive = liveScreens
         edit(&book)
-        return book == before ? [] : [.bookChanged]
+        var fx: [LinkEffect] = []
+        for s in wasLive where !isLive(s) {
+            offInDocument.insert(s)
+            if let t = book.trip(screen: s, pageBuild: pageBuild) { fx.append(.screenOff(screen: s, reason: .tripped(t))) }
+        }
+        if book != before { fx.append(.bookChanged) }
+        return fx
     }
 
     private mutating func fail(_ screens: [String], kind: FailureKind, detail: String, at now: Date) -> [LinkEffect] {

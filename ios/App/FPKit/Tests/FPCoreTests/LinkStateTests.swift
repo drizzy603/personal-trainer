@@ -369,6 +369,20 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.book.disabled.count, 1, "a crash verdict is not a page build's breaker record")
         _ = s.documentStarted(pageBuild: "P2", at: t0 + 10)
         XCTAssertEqual(s.book.disabled.count, 1, "and a new build leaves it alone: it names its own pair")
+        // a crash verdict against a live screen waits for the next hello
+        var live = linked()
+        let other = CrashMarker(piece: .screen("coach"), pageBuild: "P1", shellBuild: "60")
+        XCTAssertEqual(live.editBook { $0.recordStaleMarkers([other], at: self.t0) }, [.bookChanged])
+        XCTAssertTrue(live.isLive("coach"))
+        // a trip for the page build being served turns the live screen off at once
+        let fx = live.editBook { _ = $0.trip(screen: "coach", pageBuild: "P1", reason: .failures, detail: "set by hand", at: self.t0) }
+        XCTAssertEqual(trips(fx).map(\.detail), ["set by hand"])
+        XCTAssertEqual(fx.last, .bookChanged)
+        XCTAssertFalse(live.isLive("coach"))
+        // and one for another build changes nothing here
+        var elsewhere = linked()
+        XCTAssertEqual(elsewhere.editBook { _ = $0.trip(screen: "coach", pageBuild: "P0", reason: .failures, detail: "old", at: self.t0) }, [.bookChanged])
+        XCTAssertTrue(elsewhere.isLive("coach"))
     }
 
     func testAvailableScreensComeFromTheGate() {
