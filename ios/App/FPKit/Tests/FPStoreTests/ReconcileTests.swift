@@ -417,6 +417,46 @@ final class ReconcileTests: XCTestCase {
         XCTAssertNil(dev.store.value("kt_cards"), "not adopted")
     }
 
+    /// A document start the store cannot write (a full disk) leaves the facade off for that document: the hello
+    /// answers off when its own adoption cannot be written, and a put answered `full` attaches nothing. Either
+    /// way the page's boot stamp reaches WebKit alone, the next start adopts everything as after an older
+    /// build, and nothing is lost.
+    func testADocumentStartOnAFullDiskLeavesTheFacadeOffAndTheNextStartAdoptsEverything() throws {
+        for deletes in [false, true] {
+            let temp = TempDir()
+            let dev = migratedDevice(temp)
+            dev.olderBuild { wk in
+                wk["kt_routine"] = u(#"{"name":"from 59","weeks":[]}"# + String(repeating: " ", count: 20_000))
+                if deletes { wk["kt_coach_msgs"] = nil }  // a tombstone and a conflict: hello's own writes
+            }
+            try dev.store.withConnection { s in
+                let pages = try s.scalarInt("PRAGMA page_count") ?? 0
+                _ = try s.scalarInt("PRAGMA max_page_count = \(pages)")
+            }
+            let answer = dev.launch()
+            if deletes {
+                XCTAssertEqual(answer["mode"] as? String, "off", "hello could not write its adoption")
+                XCTAssertTrue((answer["why"] as? String ?? "").hasPrefix("full"), "\(answer)")
+            } else {
+                XCTAssertEqual(answer["mode"] as? String, "shadow")
+                XCTAssertFalse(dev.attached, "the put was answered full: nothing attached")
+            }
+            XCTAssertEqual(dev.store.status().counts[.full], 1, "deletes \(deletes)")
+            XCTAssertEqual(dev.store.state, .ready, "a full disk is not damage")
+            XCTAssertNotNil(dev.store.value("kt_coach_msgs"), "nothing half adopted")
+            dev.set("kt_theme", "dark")  // the page runs on WebKit alone
+            XCTAssertEqual(dev.store.value("kt_theme"), u("heavyweight"))
+
+            dev.relaunch()  // room again
+            let next = dev.launch()
+            XCTAssertEqual(next["rule"] as? Int, 4, "deletes \(deletes)")
+            XCTAssertEqual(next["label"] as? String, "older build")
+            XCTAssertEqual(dev.store.values(), dev.pageView)
+            XCTAssertEqual(reasons(dev)["kt_routine"], "older build")
+            XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+        }
+    }
+
     func testAsyncPostOfAFailedMirrorLandsAndTheNextLaunchIsInStep() {
         let temp = TempDir()
         let dev = migratedDevice(temp)
@@ -428,6 +468,56 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(dev.store.value("kt_bw"), dev.webkit["kt_bw"])
         XCTAssertEqual(dev.launch()["rule"] as? Int, 0, "the post landed: the gap note names a key already in step")
         XCTAssertNil(dev.webkit[KTProtocol.gapKey], "and the facade drops the note")
+    }
+
+    // MARK: The prototype's mactest
+
+    /// The prototype's mactest checks that still apply to build 60, in its order (native-store-first/mactest).
+    /// Its native-mode checks wait for the flip, and its "WebKit missing a core key: refilled" check is the
+    /// fault decision.md removed: here such a key's deletion is adopted.
+    func testMactestChecksThatStillApply() {
+        // 3. Shadow mode: WebKit in charge.
+        let temp = TempDir()
+        let dev = FakeDevice(temp)
+        dev.webkit = ["kt_a": u("1"), "kt_b": u("B"), "kt_last_open": u("1000")]
+        var answer = dev.launch(stamp: false)
+        XCTAssertEqual(Set((answer["need"] as? [String]) ?? []), ["kt_a", "kt_b", "kt_last_open"], "first launch: need all")
+        dev.set("kt_a", "2")  // WebKit takes it first, then the mirror
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0, "in step")
+        let saved = dev.webkit
+        dev.set("kt_a", "3")
+        dev.webkit = saved  // WebKit lost it in a hard kill
+        answer = dev.launch(stamp: false)
+        XCTAssertEqual(dev.store.value("kt_a"), u("2"), "WebKit lost a write: the store still follows WebKit")
+        XCTAssertEqual(answer["rule"] as? Int, 6)
+        XCTAssertEqual(dev.store.status().counts[.wouldRepairKeys], 1, "counted as WebKit-behind evidence")
+        XCTAssertNil(answer["rewrite"], "shadow never asks the page to rewrite WebKit")
+        dev.olderBuild { $0["kt_b"] = nil }
+        dev.launch()
+        XCTAssertNil(dev.store.value("kt_b"), "a WebKit deletion is followed")
+        dev.webkit["kt_dev_nav"] = u("coach/chat")  // a tool writes WebKit's file directly (test-native.sh)
+        dev.launch()
+        XCTAssertEqual(dev.store.value("kt_dev_nav"), u("coach/chat"), "a key a tool wrote into WebKit's file is adopted")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+
+        // 2b. WebKit's copy lost or unreadable: never read as deletions.
+        let temp2 = TempDir()
+        let dev2 = FakeDevice(temp2)
+        dev2.webkit = ["kt_sessions": u("[1]"), "kt_routine": u("{}"), "kt_x": u("1"), "kt_y": u("2"), "kt_z": u("3"),
+                       "kt_last_open": u("2000")]
+        dev2.launch(stamp: false)
+        let full = dev2.store.values()
+        XCTAssertEqual(dev2.store.answer(head: "hello nowk", payload: nil), #"{"mode":"off","why":"nowk"}"#,
+                       "hello nowk: off, the page runs as today")
+        XCTAssertEqual(dev2.store.values(), full)
+        let empty = dev2.store.answer(head: "hello", payload: KTProtocol.helloPayload(webkit: [:], gapNote: nil))
+        XCTAssertEqual(empty, #"{"mode":"off","why":"wiped"}"#, "an empty WebKit manifest deletes nothing")
+        XCTAssertEqual(dev2.store.values(), full)
+        dev2.olderBuild { $0["kt_x"] = nil; $0["kt_sessions"] = nil }  // an older build deleted them
+        dev2.launch()
+        XCTAssertNil(dev2.store.value("kt_x"), "an ordinary key's deletion is adopted")
+        XCTAssertNil(dev2.store.value("kt_sessions"), "and so is a core key's: nothing is refilled")
+        XCTAssertNil(dev2.webkit["kt_sessions"])
     }
 
     // MARK: The classifier on its own (the judge's model, scenarios A-G)

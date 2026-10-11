@@ -436,6 +436,36 @@ public final class KTStore: @unchecked Sendable {
         saveCounts(s)
     }
 
+    /// Values the shell keeps in `meta` beside the store's own (decision.md section 5): the last good policy file
+    /// and the store breaker's record. Only these names can be written, so the shell can never change the
+    /// store's own entries (schema, minReader, boot, ...).
+    public enum ShellMetaKey: String, CaseIterable, Sendable {
+        case policy, breaker
+    }
+
+    /// A shell value from `meta` (nil when unset or the store is off).
+    public func shellMeta(_ key: ShellMetaKey) -> String? {
+        sync { (try? db()).flatMap { (try? meta($0, key.rawValue)) ?? nil } }
+    }
+
+    /// Sets (nil: removes) a shell value in `meta`. false when the store is off or the write failed.
+    @discardableResult
+    public func setShellMeta(_ key: ShellMetaKey, _ value: String?) -> Bool {
+        sync {
+            do {
+                try write(full: false) { s in
+                    if let value { try setMeta(s, key.rawValue, value) } else { try deleteMeta(s, key.rawValue) }
+                }
+                return true
+            } catch let e as KTStoreError {
+                fail(e)
+                return false
+            } catch {
+                return false
+            }
+        }
+    }
+
     private func wkExcluded(_ s: KTSQLite) throws -> Set<KTKey> {
         guard let text = try meta(s, "wkExcluded"),
               let list = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String] else { return [] }

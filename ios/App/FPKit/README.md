@@ -6,11 +6,12 @@ this local Swift package. The page (`index.html`) stays the engine: it keeps eve
 until each one is ported, and FPKit grows around it. Build 60 brings the first two pieces: a native copy of
 the owner's data that follows WebKit and never writes it (FPStore, in shadow), and the native Coach chat.
 
-**Status: skeleton only** (plan task S1, package part). Each target holds one placeholder,
+**Status.** The package skeleton (plan task S1, package part) gave each target a placeholder,
 `<Target>Module.swift`, naming the module (a ready category for its log lines under the app's
-`app.kt.trainer` subsystem); each test target holds one test. Later tasks add their files beside them.
-Not wired into the app yet: the package reference and product dependencies in `App.xcodeproj`, the App
-target's iOS 17 deployment target and the CI job are the rest of S1.
+`app.kt.trainer` subsystem); later tasks add their files beside them. FPStore holds the native store
+(plan task S2, see [FPStore](#fpstore-the-native-store) below). Not wired into the app yet: the package
+reference and product dependencies in `App.xcodeproj`, the App target's iOS 17 deployment target and the
+CI job are the rest of S1.
 
 ## Targets
 
@@ -38,6 +39,68 @@ the tasks that fill them, run by `xcodebuild test` on an iOS simulator.
 - Only the App target links FPKit. CapApp-SPM cannot depend on it (the Capacitor CLI rewrites its
   `Package.swift`), so the thin plugin classes there will reach FPKit through host protocols the App target
   sets.
+
+## FPStore: the native store
+
+A native copy of every `kt_*` value WebKit's `localStorage` holds, in the page's exact UTF-16 code units,
+kept in step by the shell-owned facade (`Resources/ktstore.js`, plan task S3). Build 60 is **shadow only**:
+WebKit stays in charge, the store follows it, records what it would have repaired, keeps every value it gave
+up, and never writes WebKit by itself. The facade's protocol (KT1) is written out in `KTProtocol.swift`.
+
+| File | Holds |
+|---|---|
+| `KTWire.swift` | `U16` and `KTKey` (code units, never `String`), the value hash `len:fnv1a32:djb2` (the facade's `H()`), JSON string literals both ways, the one-pass snapshot encoder, an exact JSON scanner |
+| `KTProtocol.swift` | KT1: heads (`hello [nowk]`, `put`, `w`/`d`/`c B:S`, `pb`, `p B:S`), the hello payload and gap note, answers, async post bodies, reserved keys |
+| `KTStore.swift` | The store: open, the prompt channel, async posts, hello and put, rule 3, Put back, snapshots, status for Settings > About > Storage, shell values in `meta` |
+| `KTSQLite.swift` | The one connection: exact binding, and any step result other than ROW or DONE as an error, never "the end of the table" |
+| `KTJournal.swift` | `journal` with `hprev`, kept per key: its last 32 writes plus everything from the last 10 minutes |
+| `KTReconcile.swift` | The seven rules (below), a pure function of the hello and the store's state |
+| `KTSnaps.swift` | `snaps/` files written beside their name and renamed: daily (7 kept), `migrate`, `wiped`, `manual` (30 days) |
+| `KTPutBack.swift` | Put back's plan, and the record merge by id for the five log keys |
+
+On disk: `Application Support/FPStore/store.sqlite` (+ `-wal`, `-shm`) and `snaps/`. One connection on one
+serial queue, `busy_timeout` 2 s; WAL with `synchronous=NORMAL`, `FULL` for a transaction that writes
+`kt_sessions`, `kt_runs`, `kt_sports`, `kt_bw` or `kt_measurements`. Schema v1, additive forever: `kv(k, v
+BLOB or NULL tombstone, enc, h, seq, at, src, boot, pseq)`, `journal`, `meta` (`schema`, `minReader`,
+`wkExcluded`, first/last shell, diagnostics, the shell's `policy` and `breaker`), `conflicts` (30 days) and
+`putback`.
+
+Rules the store keeps:
+- Values are BLOBs of exact UTF-16LE, never TEXT: a lone surrogate, U+2028, NUL and 200k-character values
+  survive. `kt_apikey` and the facade's own `kt__store*` keys never enter kv, the journal, snaps or exports.
+- `PRAGMA quick_check` at open. A file that cannot be read (damaged, not a store, not yet unlocked, a WAL
+  without its database) is never read as empty, recreated or overwritten: the store is off for the launch
+  and `status()` says why. `meta.minReader` above this build: off, nothing written. A row whose `enc` this
+  build does not know is never adopted, repaired or deleted.
+- Async posts apply only when their (boot, seq) is newer than the key's last write.
+- Put back is staged in Storage and written by the facade at the next document start (log keys merged by
+  id, other keys only while unchanged since); the values it replaces go to `conflicts`, so it can be put
+  back in turn.
+
+The reconcile at every document start decides from the `kt_last_open` witness. Every outcome but rule 3
+leaves kv equal to WebKit:
+
+| # | Situation | The store |
+|---|---|---|
+| 1 | store unreadable, or `minReader` above this build | attaches nothing |
+| 2 | WebKit unreadable (`hello nowk`) | facade off; reconciles nothing |
+| 3 | no witness in WebKit, WebKit near-empty, the store holds a full set | snapshot first, adopt nothing, offer Put back of the snapshot |
+| 4 | witness neither in the store's history nor vouched for by the gap note | an older or facade-less build ran: adopt every difference, deletions included (conflicts "older build"); nothing refilled |
+| 5 | witness known; key named in the gap note | the store missed that write: adopt |
+| 6 | witness known; WebKit's whole manifest equals the store's state at one journal seq | WebKit lost a suffix: would-repair counted, newer values to conflicts ("lag"), adopt |
+| 7 | anything else | adopt; conflicts "unexplained"; counted |
+
+Tests (`Tests/FPStoreTests`): `WireTests` (the facade's literals, hashes, hello and gap notes from
+`Vectors/vectors.json`), `ReconcileTests` (every S2 reconcile row through the protocol on a fake device,
+and the classifier on its own), `StoreTests` (the file, answers, journal, snapshots, conflicts, Put back,
+timing) and `KillTests` (a writer SIGKILLed mid-burst keeps every acknowledged write). KillTests starts this
+test binary again through the `xctest` runner with `FPSTORE_KILL_DIR` set; in an ordinary run its child
+test is skipped. The vectors come from JavaScript itself; after changing the facade's hash or literals:
+
+```sh
+node tests/tools/ktstore-vectors.js           # rewrite Vectors/vectors.json
+node tests/tools/ktstore-vectors.js --check   # exit 1 if the committed file is stale
+```
 
 ## Testing
 

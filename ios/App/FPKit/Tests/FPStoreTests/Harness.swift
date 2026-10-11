@@ -120,8 +120,12 @@ final class FakeDevice {
             if !need.isEmpty {
                 ok = store.answer(head: "put", payload: KTProtocol.pairsPayload(need.map { ($0, webkit[$0]) })) == "ok"
             }
-            if ok { webkit[KTProtocol.gapKey] = nil }  // the facade drops its note once hello's adoption is done
-            if answer["putback"] as? Bool == true { putBack() }
+            if ok {
+                webkit[KTProtocol.gapKey] = nil  // the facade drops its note once hello's adoption is done
+                if answer["putback"] as? Bool == true { putBack() }
+            } else {
+                attached = false  // a put not answered ok: nothing attaches for this document
+            }
         }
         if stamp { set(KTProtocol.witnessKey, nextStamp()) }
         return answer

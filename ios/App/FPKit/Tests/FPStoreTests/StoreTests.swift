@@ -583,6 +583,56 @@ final class StoreTests: XCTestCase {
         XCTAssertFalse(dev.store.status().putBackStaged)
     }
 
+    // MARK: Shell values in meta
+
+    func testShellMetaKeepsPolicyAndBreakerAndNothingElse() throws {
+        let temp = TempDir()
+        let store = readyStore(temp)
+        XCTAssertNil(store.shellMeta(.policy))
+        XCTAssertTrue(store.setShellMeta(.policy, #"{"v":1,"store":{"facade":"on"}}"#))
+        XCTAssertTrue(store.setShellMeta(.breaker, "store@20261010-1 shell 60"))
+        store.close()
+        let again = KTStore.open(storeConfig(temp.store))
+        XCTAssertEqual(again.shellMeta(.policy), #"{"v":1,"store":{"facade":"on"}}"#)
+        XCTAssertEqual(again.shellMeta(.breaker), "store@20261010-1 shell 60")
+        XCTAssertTrue(again.setShellMeta(.breaker, nil))
+        XCTAssertNil(again.shellMeta(.breaker))
+        XCTAssertEqual(again.status().minReader, 60, "the store's own entries are out of reach")
+        XCTAssertEqual(again.status().schema, 1)
+        again.close()
+
+        // A store this build may not touch takes no shell values either.
+        try RawDB(temp.file.path).exec("UPDATE meta SET v = '61' WHERE k = 'minReader'")
+        let refused = KTStore.open(storeConfig(temp.store))
+        XCTAssertNil(refused.shellMeta(.policy))
+        XCTAssertFalse(refused.setShellMeta(.policy, "{}"))
+        refused.close()
+        XCTAssertEqual(try RawDB(temp.file.path).text("SELECT v FROM meta WHERE k = 'policy'"),
+                       #"{"v":1,"store":{"facade":"on"}}"#)
+    }
+
+    // MARK: Speed of the synchronous channel
+
+    /// The prototype's mactest timed a 150k-character write. The facade blocks the page for each one, so a
+    /// regression shows here first: a loose bound for a debug build (on the simulator a release build answers in
+    /// well under a millisecond).
+    func testA150kCharacterWriteIsAnsweredQuickly() {
+        let temp = TempDir()
+        let store = readyStore(temp)
+        let value = (0..<150_000).map { UInt16(32 + $0 % 90) }
+        var times: [Double] = []
+        for seq in 1...5 {
+            let payload = KTWire.quote(KTKey("kt_big")) + "\n" + KTWire.quote(value + [UInt16(seq)])
+            let start = DispatchTime.now().uptimeNanoseconds
+            XCTAssertEqual(store.answer(head: "w 1:\(seq)", payload: payload), "ok")
+            times.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+        }
+        times.sort()
+        print(String(format: "150k-character write: median %.2f ms (best %.2f ms)", times[2], times[0]))
+        XCTAssertLessThan(times[2], 50, "\(times)")
+        XCTAssertEqual(store.value("kt_big"), value + [5])
+    }
+
     // MARK: Checkpoint and status
 
     func testCheckpointEmptiesTheWALAndStatusDescribesTheStore() throws {

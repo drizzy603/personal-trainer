@@ -17,7 +17,9 @@ import Foundation
 ///   JSON object, `{"mode":"shadow","boot":B,"need":[keys],"rule":R,"label":L,"putback":P}` or
 ///   `{"mode":"off","why":W}`. With mode off the facade attaches nothing and the page runs on WebKit as today.
 /// - `put`: pairs of (key, value literal or `null`), WebKit's current values for the keys `need` named, sent
-///   right after hello. Answer `ok`, `full`, `busy` or `err`.
+///   right after hello (and only when `need` is not empty: any other put is a bad op). Answer `ok`, `full`,
+///   `busy` or `err`. On anything but `ok` the facade attaches nothing for this document, as for mode off; the
+///   page's own boot stamp then reaches WebKit alone, and the next document start adopts everything (rule 4).
 /// - `w B:S` (payload: key, value), `d B:S` (payload: key) and `c B:S` (no payload): a set, a remove or a
 ///   clear WebKit has just taken. B is the boot id from hello, S counts the document's ops from 1. Answer
 ///   `ok`, `full`, `busy` or `err`. The same heads arrive as async posts, applied only when (B, S) is newer
