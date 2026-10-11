@@ -44,10 +44,12 @@ let package = Package(
             dependencies: ["FPCore"]
         ),
 
-        // FPCoreTests: run by `swift test` on the Mac.
+        // FPCoreTests: run by `swift test` on the Mac. Fixtures/ (golden models, page-made block
+        // fixtures, shell messages, policy files) is copied as a resource.
         .testTarget(
             name: "FPCoreTests",
-            dependencies: ["FPCore"]
+            dependencies: ["FPCore"],
+            resources: [.copy("Fixtures")]
         ),
 
         // FPStoreTests: run by `swift test` on the Mac.

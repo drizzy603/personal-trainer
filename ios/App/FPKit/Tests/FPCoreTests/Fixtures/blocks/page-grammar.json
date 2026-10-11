@@ -1,0 +1,897 @@
+{
+ "source": "md(), _mdInline(), _coachBlocksHTML(), _cmbTakeHTML(), _esc() of chatui/ui 02d710e",
+ "generator": "ios/App/FPKit/Tools/blocks-fixtures.js",
+ "cases": [
+  {
+   "name": "run-analysis",
+   "text": "%%type: Run analysis\nGood session. Faster than planned, but your heart rate says it stayed easy.\n%%metric: PACE | 8:07 | vs 8:15 goal | -8s | good\n%%metric: AVG HR | 168 | vs cap 165 | +3 | warn\n%%metric: DISTANCE | 5.01 km | | on plan | plain\n%%takeaway: Aerobic base is improving - same pace, 6 bpm lower.\n%%takeaway: Second takeaway should be dropped.\n%%action: Set goal pace 8:05 | Set my run goal pace to 8:05/km\n%%action: Tempo on Thursday | Schedule a tempo run on Thursday\n%%action: Third action should be dropped | nope",
+   "eyebrow": "COACH · Run analysis",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Good session. Faster than planned, but your heart rate says it stayed easy."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "PACE",
+        "value": "8:07",
+        "ref": "vs 8:15 goal",
+        "delta": "-8s",
+        "tone": "good"
+       },
+       {
+        "label": "AVG HR",
+        "value": "168",
+        "ref": "vs cap 165",
+        "delta": "+3",
+        "tone": "warn"
+       },
+       {
+        "label": "DISTANCE",
+        "value": "5.01 km",
+        "ref": "",
+        "delta": "on plan",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Aerobic base is improving - same pace, 6 bpm lower."
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Set goal pace 8:05",
+      "msg": "Set my run goal pace to 8:05/km",
+      "primary": true
+     },
+     {
+      "label": "Tempo on Thursday",
+      "msg": "Schedule a tempo run on Thursday",
+      "primary": false
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH · Run analysis",
+    "md",
+    "p:Good session. Faster than planned, but your heart rate says it stayed easy.",
+    "metrics",
+    "m:PACE=8:07|vs 8:15 goal|-8s#good",
+    "m:AVG HR=168|vs cap 165|+3#warn",
+    "m:DISTANCE=5.01 km||on plan#plain",
+    "take:Aerobic base is improving - same pace, 6 bpm lower.",
+    "chip*:Set goal pace 8:05>Set my run goal pace to 8:05/km",
+    "chip:Tempo on Thursday>Schedule a tempo run on Thursday"
+   ]
+  },
+  {
+   "name": "programme-adjustment",
+   "text": "On it.\n\n%%type: Programme adjustment\n%%metric: BENCH | 200 lb | was 160 | +10 | good\n%%takeaway: Heavier from this week.\n%%action: Undo that | Put my bench back",
+   "eyebrow": "COACH · Programme adjustment",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "On it."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "BENCH",
+        "value": "200 lb",
+        "ref": "was 160",
+        "delta": "+10",
+        "tone": "good"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "Heavier from this week."
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Undo that",
+      "msg": "Put my bench back",
+      "primary": true
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH · Programme adjustment",
+    "md",
+    "p:On it.",
+    "metrics",
+    "m:BENCH=200 lb|was 160|+10#good",
+    "take:Heavier from this week.",
+    "chip*:Undo that>Put my bench back"
+   ]
+  },
+  {
+   "name": "metric-runs",
+   "text": "%%metric: A | 1\nline between\n%%metric: B | 2 | ref\n\n\npara one\npara two same block\n\npara three\n%%action: Only label",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "A",
+        "value": "1",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "line between"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "B",
+        "value": "2",
+        "ref": "ref",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "para one\npara two same block"
+        ]
+       },
+       {
+        "k": "p",
+        "r": [
+         "para three"
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Only label",
+      "msg": "Only label",
+      "primary": true
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "metrics",
+    "m:A=1||#-",
+    "md",
+    "p:line between",
+    "metrics",
+    "m:B=2|ref|#-",
+    "md",
+    "p:para one\npara two same block",
+    "p:para three",
+    "chip*:Only label>Only label"
+   ]
+  },
+  {
+   "name": "markdown-and-markers",
+   "text": "Intro **bold** and *em* and `code`\n- bullet one\n- bullet two\n%%type:    Spaced type   \n%%takeaway: <script>x</script> & \"q\"\n  %%metric: indented marker | still a marker",
+   "eyebrow": "COACH · Spaced type",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Intro ",
+         {
+          "t": "bold",
+          "s": "b"
+         },
+         " and ",
+         {
+          "t": "em",
+          "s": "i"
+         },
+         " and ",
+         {
+          "t": "code",
+          "s": "c"
+         }
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "bullet one"
+          ]
+         },
+         {
+          "r": [
+           "bullet two"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       "<script>x</script> & \"q\""
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "INDENTED MARKER",
+        "value": "still a marker",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "signature": [
+    "eyebrow:COACH · Spaced type",
+    "md",
+    "p:Intro {b:bold} and {i:em} and {c:code}",
+    "ul",
+    "li:bullet one",
+    "li:bullet two",
+    "take:<script>x</script> & \"q\"",
+    "metrics",
+    "m:INDENTED MARKER=still a marker||#-"
+   ]
+  },
+  {
+   "name": "lists",
+   "text": "Three things this week:\n- **Bench**: hold 160 lb and own the last rep\n- **Squat**: depth first, then load\n  - sub item under squat\n\n- still the same list after a blank line\n* star bullet\n+ plus bullet\n• dot bullet\n\nThen the order:\n3) warm up\n4) work sets\n\n1. a new list after a paragraph\n2. second",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Three things this week:"
+      ]
+     },
+     {
+      "k": "ul",
+      "items": [
+       {
+        "r": [
+         {
+          "t": "Bench",
+          "s": "b"
+         },
+         ": hold 160 lb and own the last rep"
+        ]
+       },
+       {
+        "r": [
+         {
+          "t": "Squat",
+          "s": "b"
+         },
+         ": depth first, then load"
+        ]
+       },
+       {
+        "r": [
+         "sub item under squat"
+        ],
+        "sub": true
+       },
+       {
+        "r": [
+         "still the same list after a blank line"
+        ]
+       },
+       {
+        "r": [
+         "star bullet"
+        ]
+       },
+       {
+        "r": [
+         "plus bullet"
+        ]
+       },
+       {
+        "r": [
+         "dot bullet"
+        ]
+       }
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Then the order:"
+      ]
+     },
+     {
+      "k": "ol",
+      "start": 3,
+      "items": [
+       {
+        "r": [
+         "warm up"
+        ]
+       },
+       {
+        "r": [
+         "work sets"
+        ]
+       },
+       {
+        "r": [
+         "a new list after a paragraph"
+        ]
+       },
+       {
+        "r": [
+         "second"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "md",
+    "p:Three things this week:",
+    "ul",
+    "li:{b:Bench}: hold 160 lb and own the last rep",
+    "li:{b:Squat}: depth first, then load",
+    "li.sub:sub item under squat",
+    "li:still the same list after a blank line",
+    "li:star bullet",
+    "li:plus bullet",
+    "li:dot bullet",
+    "p:Then the order:",
+    "ol:3",
+    "li:warm up",
+    "li:work sets",
+    "li:a new list after a paragraph",
+    "li:second"
+   ]
+  },
+  {
+   "name": "headings-rules",
+   "text": "# Week 6 review\nTwo lines in one paragraph\nare joined by a line break.\n\n### What changed\n---\n> A quoted line reads as plain text\n***\n___\nLast line.",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "h",
+      "r": [
+       "Week 6 review"
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Two lines in one paragraph\nare joined by a line break."
+      ]
+     },
+     {
+      "k": "h",
+      "r": [
+       "What changed"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "A quoted line reads as plain text"
+      ]
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "hr"
+     },
+     {
+      "k": "p",
+      "r": [
+       "Last line."
+      ]
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "md",
+    "h:Week 6 review",
+    "p:Two lines in one paragraph\nare joined by a line break.",
+    "h:What changed",
+    "hr",
+    "p:A quoted line reads as plain text",
+    "hr",
+    "hr",
+    "p:Last line."
+   ]
+  },
+  {
+   "name": "table",
+   "text": "Your top sets:\n| Lift | Top set | Change |\n|---|:---:|---|\n| **Bench** | 170 lb x 5 | +10 |\n| Squat | `225` x 3 | *held* |\n| Deadlift | 275 x 2\nAfter the table.",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Your top sets:"
+      ]
+     },
+     {
+      "k": "table",
+      "rows": [
+       [
+        [
+         "Lift"
+        ],
+        [
+         "Top set"
+        ],
+        [
+         "Change"
+        ]
+       ],
+       [
+        [
+         {
+          "t": "Bench",
+          "s": "b"
+         }
+        ],
+        [
+         "170 lb x 5"
+        ],
+        [
+         "+10"
+        ]
+       ],
+       [
+        [
+         "Squat"
+        ],
+        [
+         {
+          "t": "225",
+          "s": "c"
+         },
+         " x 3"
+        ],
+        [
+         {
+          "t": "held",
+          "s": "i"
+         }
+        ]
+       ],
+       [
+        [
+         "Deadlift"
+        ],
+        [
+         "275 x 2"
+        ]
+       ]
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "After the table."
+      ]
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "md",
+    "p:Your top sets:",
+    "table",
+    "th:Lift | Top set | Change",
+    "tr:{b:Bench} | 170 lb x 5 | +10",
+    "tr:Squat | {c:225} x 3 | {i:held}",
+    "tr:Deadlift | 275 x 2",
+    "p:After the table."
+   ]
+  },
+  {
+   "name": "inline-edges",
+   "text": "3*5*2 is not italic, *this is* and **this is**.\n**bold *em* bold** keeps its stars\n*em with **bold** inside*\n`code with **bold** inside`\n**a `b** c` misnests\nA [link](https://example.com/x) is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "3*5*2 is not italic, ",
+       {
+        "t": "this is",
+        "s": "i"
+       },
+       " and ",
+       {
+        "t": "this is",
+        "s": "b"
+       },
+       ".\n**bold ",
+       {
+        "t": "em",
+        "s": "i"
+       },
+       " bold** keeps its stars\n",
+       {
+        "t": "em with ",
+        "s": "i"
+       },
+       {
+        "t": "bold",
+        "s": "bi"
+       },
+       {
+        "t": " inside",
+        "s": "i"
+       },
+       "\n",
+       {
+        "t": "code with ",
+        "s": "c"
+       },
+       {
+        "t": "bold",
+        "s": "bc"
+       },
+       {
+        "t": " inside",
+        "s": "c"
+       },
+       "\n",
+       {
+        "t": "a ",
+        "s": "b"
+       },
+       {
+        "t": "b",
+        "s": "bc"
+       },
+       {
+        "t": " c",
+        "s": "c"
+       },
+       " misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
+      ]
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "md",
+    "p:3*5*2 is not italic, {i:this is} and {b:this is}.\n**bold {i:em} bold** keeps its stars\n{i:em with }{bi:bold}{i: inside}\n{c:code with }{bc:bold}{c: inside}\n{b:a }{bc:b}{c: c} misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
+   ]
+  },
+  {
+   "name": "cmb-with-markdown",
+   "text": "%%type: Week review\nThis week in short:\n- 4 sessions, **all** done\n- 2 runs\n\n%%metric: VOLUME | 12,400 lb | vs 11,900 | +4% | good\n\n%%metric: RUNS | 2 | of 3 | -1 | warn\n%%metric: SLEEP | 7.1 h | | flat | Plain\nKeep it going.\n%%takeaway: **Volume** is up; keep `deload` in week 8.\n%%action: Plan week 7 | Plan my week 7\n%%action:  | empty label is skipped\n%%action: Ask about sleep",
+   "eyebrow": "COACH · Week review",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "This week in short:"
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "4 sessions, ",
+           {
+            "t": "all",
+            "s": "b"
+           },
+           " done"
+          ]
+         },
+         {
+          "r": [
+           "2 runs"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "VOLUME",
+        "value": "12,400 lb",
+        "ref": "vs 11,900",
+        "delta": "+4%",
+        "tone": "good"
+       },
+       {
+        "label": "RUNS",
+        "value": "2",
+        "ref": "of 3",
+        "delta": "-1",
+        "tone": "warn"
+       },
+       {
+        "label": "SLEEP",
+        "value": "7.1 h",
+        "ref": "",
+        "delta": "flat",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Keep it going."
+        ]
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": [
+       {
+        "t": "Volume",
+        "s": "b"
+       },
+       " is up; keep ",
+       {
+        "t": "deload",
+        "s": "c"
+       },
+       " in week 8."
+      ]
+     }
+    ],
+    "actions": [
+     {
+      "label": "Plan week 7",
+      "msg": "Plan my week 7",
+      "primary": true
+     },
+     {
+      "label": "Ask about sleep",
+      "msg": "Ask about sleep",
+      "primary": false
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH · Week review",
+    "md",
+    "p:This week in short:",
+    "ul",
+    "li:4 sessions, {b:all} done",
+    "li:2 runs",
+    "metrics",
+    "m:VOLUME=12,400 lb|vs 11,900|+4%#good",
+    "m:RUNS=2|of 3|-1#warn",
+    "m:SLEEP=7.1 h||flat#plain",
+    "md",
+    "p:Keep it going.",
+    "take:{b:Volume} is up; keep {c:deload} in week 8.",
+    "chip*:Plan week 7>Plan my week 7",
+    "chip:Ask about sleep>Ask about sleep"
+   ]
+  },
+  {
+   "name": "plain-prose",
+   "text": "Good question.\n\nYour bench has moved from 150 to 170 lb in six weeks: that is steady progress.\n\nKeep the runs easy.",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "md",
+    "blocks": [
+     {
+      "k": "p",
+      "r": [
+       "Good question."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Your bench has moved from 150 to 170 lb in six weeks: that is steady progress."
+      ]
+     },
+     {
+      "k": "p",
+      "r": [
+       "Keep the runs easy."
+      ]
+     }
+    ]
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "md",
+    "p:Good question.",
+    "p:Your bench has moved from 150 to 170 lb in six weeks: that is steady progress.",
+    "p:Keep the runs easy."
+   ]
+  },
+  {
+   "name": "unicode",
+   "text": "Great work 💪 on the 5×5.\n日本語のテキスト and עברית side by side.\nCombining: é and a flag 🇬🇧.\n- half an emoji at the end \n%%type: Ünïcödé\n%%metric: Ström | 5 km | | ✓ | good",
+   "eyebrow": "COACH · Ünïcödé",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Great work 💪 on the 5×5.\n日本語のテキスト and עברית side by side.\nCombining: é and a flag 🇬🇧."
+        ]
+       },
+       {
+        "k": "ul",
+        "items": [
+         {
+          "r": [
+           "half an emoji at the end "
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "STRÖM",
+        "value": "5 km",
+        "ref": "",
+        "delta": "✓",
+        "tone": "good"
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "signature": [
+    "eyebrow:COACH · Ünïcödé",
+    "md",
+    "p:Great work 💪 on the 5×5.\n日本語のテキスト and עברית side by side.\nCombining: é and a flag 🇬🇧.",
+    "ul",
+    "li:half an emoji at the end ",
+    "metrics",
+    "m:STRÖM=5 km||✓#good"
+   ]
+  },
+  {
+   "name": "blank-markers",
+   "text": "%%type:\n%%metric:  | no label is skipped\n%%metric: ONLY LABEL\n%%takeaway:\nText after an empty takeaway.\n%%action:",
+   "eyebrow": "COACH",
+   "body": {
+    "k": "cmb",
+    "sections": [
+     {
+      "k": "metrics",
+      "rows": [
+       {
+        "label": "ONLY LABEL",
+        "value": "",
+        "ref": "",
+        "delta": "",
+        "tone": "plain"
+       }
+      ]
+     },
+     {
+      "k": "take",
+      "r": []
+     },
+     {
+      "k": "md",
+      "blocks": [
+       {
+        "k": "p",
+        "r": [
+         "Text after an empty takeaway."
+        ]
+       }
+      ]
+     }
+    ],
+    "actions": []
+   },
+   "signature": [
+    "eyebrow:COACH",
+    "metrics",
+    "m:ONLY LABEL=||#-",
+    "take:",
+    "md",
+    "p:Text after an empty takeaway."
+   ]
+  }
+ ]
+}
