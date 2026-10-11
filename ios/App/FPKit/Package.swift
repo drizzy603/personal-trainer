@@ -50,10 +50,12 @@ let package = Package(
             dependencies: ["FPCore"]
         ),
 
-        // FPStoreTests: run by `swift test` on the Mac.
+        // FPStoreTests: run by `swift test` on the Mac. Vectors/vectors.json comes from
+        // tests/tools/ktstore-vectors.js (what the facade's JavaScript sends).
         .testTarget(
             name: "FPStoreTests",
-            dependencies: ["FPStore"]
+            dependencies: ["FPStore"],
+            resources: [.copy("Vectors")]
         ),
     ],
     swiftLanguageVersions: [.v5]

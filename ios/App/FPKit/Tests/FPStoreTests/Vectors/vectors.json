@@ -1,0 +1,364 @@
+{
+ "generatedBy": "tests/tools/ktstore-vectors.js",
+ "values": [
+  {
+   "name": "empty",
+   "lit": "\"\"",
+   "h": "0:811c9dc5:1505",
+   "len": 0,
+   "store": "\"\""
+  },
+  {
+   "name": "plain",
+   "lit": "\"plain\"",
+   "h": "5:d3be3f67:10269c19",
+   "len": 5,
+   "store": "\"plain\""
+  },
+  {
+   "name": "json",
+   "lit": "\"{\\\"a\\\":1,\\\"b\\\":[1,2,3]}\"",
+   "h": "19:e340019f:a5d87abf",
+   "len": 19,
+   "store": "\"{\\\"a\\\":1,\\\"b\\\":[1,2,3]}\""
+  },
+  {
+   "name": "quotes",
+   "lit": "\"quote \\\" backslash \\\\ slash /\"",
+   "h": "27:46702505:5a50f447",
+   "len": 27,
+   "store": "\"quote \\\" backslash \\\\ slash /\""
+  },
+  {
+   "name": "controls",
+   "lit": "\"nl\\nret\\rtab\\tbs\\bff\\f\"",
+   "h": "17:b6900fd0:c9d59556",
+   "len": 17,
+   "store": "\"nl\\nret\\rtab\\tbs\\bff\\f\""
+  },
+  {
+   "name": "emoji pair",
+   "lit": "\"emoji 💪 pair\"",
+   "h": "13:d5e90888:9ccd49cc",
+   "len": 13,
+   "store": "\"emoji \\ud83d\\udcaa pair\""
+  },
+  {
+   "name": "lone high",
+   "lit": "\"lone high \\ud83d end\"",
+   "h": "15:afcb928d:95c0c067",
+   "len": 15,
+   "store": "\"lone high \\ud83d end\""
+  },
+  {
+   "name": "lone low",
+   "lit": "\"lone low \\udc4d end\"",
+   "h": "14:5dd6d701:d7c0fe09",
+   "len": 14,
+   "store": "\"lone low \\udc4d end\""
+  },
+  {
+   "name": "lone high at end",
+   "lit": "\"cut \\ud83d\"",
+   "h": "5:3505896c:f416c2e",
+   "len": 5,
+   "store": "\"cut \\ud83d\""
+  },
+  {
+   "name": "lone low at start",
+   "lit": "\"\\udc4d first\"",
+   "h": "7:c811ca96:89501efa",
+   "len": 7,
+   "store": "\"\\udc4d first\""
+  },
+  {
+   "name": "reversed pair",
+   "lit": "\"\\udc4d\\ud83d\"",
+   "h": "2:2d1c9d3f:76a86f",
+   "len": 2,
+   "store": "\"\\udc4d\\ud83d\""
+  },
+  {
+   "name": "u2028 u2029",
+   "lit": "\"u2028   u2029  \"",
+   "h": "15:dff9bf4f:da969e59",
+   "len": 15,
+   "store": "\"u2028 \\u2028 u2029 \\u2029\""
+  },
+  {
+   "name": "nul and ctl",
+   "lit": "\"\\u0000nul\\u0001ctl\\u001f\"",
+   "h": "9:b56a9a33:a0fb48f7",
+   "len": 9,
+   "store": "\"\\u0000nul\\u0001ctl\\u001f\""
+  },
+  {
+   "name": "latin cjk",
+   "lit": "\"é ü ñ 中文 é\"",
+   "h": "11:4d655029:81618415",
+   "len": 11,
+   "store": "\"é ü ñ 中文 é\""
+  },
+  {
+   "name": "five quotes",
+   "lit": "\"\\\"\\\"\\\"\\\"\\\"\"",
+   "h": "5:1772a125:a797b4f",
+   "len": 5,
+   "store": "\"\\\"\\\"\\\"\\\"\\\"\""
+  },
+  {
+   "name": "del and c1",
+   "lit": "\"\"",
+   "h": "3:208956cf:b88e043",
+   "len": 3,
+   "store": "\"\""
+  },
+  {
+   "name": "bmp edges",
+   "lit": "\"߿ࠀ퟿￿\"",
+   "h": "5:1d2861e6:a0c8ab62",
+   "len": 5,
+   "store": "\"߿ࠀ퟿￿\""
+  },
+  {
+   "name": "session",
+   "lit": "\"[{\\\"id\\\":1760140000000,\\\"date\\\":\\\"2026-10-10\\\",\\\"exercises\\\":[{\\\"name\\\":\\\"Bench\\\",\\\"sets\\\":[{\\\"w\\\":135,\\\"r\\\":5}]}],\\\"wSet\\\":{\\\"Bench\\\":[null,135]}}]\"",
+   "h": "126:2bbf934a:66f424f0",
+   "len": 126,
+   "store": "\"[{\\\"id\\\":1760140000000,\\\"date\\\":\\\"2026-10-10\\\",\\\"exercises\\\":[{\\\"name\\\":\\\"Bench\\\",\\\"sets\\\":[{\\\"w\\\":135,\\\"r\\\":5}]}],\\\"wSet\\\":{\\\"Bench\\\":[null,135]}}]\""
+  },
+  {
+   "name": "chat with half emoji",
+   "lit": "\"[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"Message 💪 half \\\\ud83d\\\"}]\"",
+   "h": "52:85907dcc:6e58ccdc",
+   "len": 52,
+   "store": "\"[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"Message \\ud83d\\udcaa half \\\\ud83d\\\"}]\""
+  },
+  {
+   "name": "timestamp",
+   "lit": "\"1760140000000\"",
+   "h": "13:e8b2ed3e:319246c8",
+   "len": 13,
+   "store": "\"1760140000000\""
+  }
+ ],
+ "formulas": [
+  {
+   "name": "big200k",
+   "len": 200000,
+   "h": "200000:d9b98885:e59b41a5",
+   "litH": "234139:9c3cf745:9b913deb",
+   "storeH": "234174:7609c2a2:1df7c4de"
+  },
+  {
+   "name": "allUnits",
+   "len": 65536,
+   "h": "65536:eea39dc5:6aff9505",
+   "litH": "75910:69f6c95d:251770d3",
+   "storeH": "75930:f432ca11:b121cb39"
+  }
+ ],
+ "hello": {
+  "payload": "\"{\\\"v\\\":1,\\\"at\\\":1760140000123,\\\"k\\\":{\\\"kt_sessions\\\":\\\"59:93f8660c:7416481e\\\",\\\"kt_theme\\\":\\\"-\\\"}}\"\n\"kt_last_open\"\n\"13:e8b2ed3e:319246c8\"\n\"kt_sessions\"\n\"59:93f8660c:7416481e\"\n\"kt_theme\"\n\"11:7d30bf80:39f93a2a\"\n\"kt_odd \\\"key\\\"\\n\\\\\"\n\"3:ad409d5e:b88985c\"\n\"kt_emoji 💪\"\n\"4:7c445ab1:7c9c2491\"\n\"kt_lone \\ud83d\"\n\"21:ff5abc22:f5829946\"\n\"kt_apikey\"\n\"16:de87e18f:f1983435\"\n\"kt_empty\"\n\"0:811c9dc5:1505\"\n\"kt__store_gap\"\n\"84:aded58c7:db1c4e39\"",
+  "manifest": [
+   [
+    "\"kt_last_open\"",
+    "13:e8b2ed3e:319246c8"
+   ],
+   [
+    "\"kt_sessions\"",
+    "59:93f8660c:7416481e"
+   ],
+   [
+    "\"kt_theme\"",
+    "11:7d30bf80:39f93a2a"
+   ],
+   [
+    "\"kt_odd \\\"key\\\"\\n\\\\\"",
+    "3:ad409d5e:b88985c"
+   ],
+   [
+    "\"kt_emoji 💪\"",
+    "4:7c445ab1:7c9c2491"
+   ],
+   [
+    "\"kt_apikey\"",
+    "16:de87e18f:f1983435"
+   ],
+   [
+    "\"kt_empty\"",
+    "0:811c9dc5:1505"
+   ],
+   [
+    "\"kt__store_gap\"",
+    "84:aded58c7:db1c4e39"
+   ]
+  ],
+  "skipped": 1,
+  "gap": [
+   [
+    "\"kt_sessions\"",
+    "59:93f8660c:7416481e"
+   ],
+   [
+    "\"kt_theme\"",
+    "-"
+   ]
+  ],
+  "gapAt": 1760140000123
+ },
+ "gapNotes": [
+  {
+   "note": "{\"v\":1,\"at\":5,\"k\":{}}",
+   "valid": true,
+   "all": false,
+   "keys": []
+  },
+  {
+   "note": "{\"v\":1,\"at\":5,\"k\":{\"kt_last_open\":\"13:e34dc6ab:31926e43\"}}",
+   "valid": true,
+   "all": false,
+   "keys": [
+    [
+     "\"kt_last_open\"",
+     "13:e34dc6ab:31926e43"
+    ]
+   ]
+  },
+  {
+   "note": "{\"v\":1,\"at\":7,\"k\":{\"quote\\\"key\":\"3:a:b\",\"é\":\"-\"},\"extra\":[1,{\"x\":\"}\"}]}",
+   "valid": true,
+   "all": false,
+   "keys": [
+    [
+     "\"quote\\\"key\"",
+     "3:a:b"
+    ],
+    [
+     "\"é\"",
+     "-"
+    ]
+   ]
+  },
+  {
+   "note": "{\"v\":1,\"at\":9,\"k\":{\"kt_a\":\"1:x:y\"},\"all\":true}",
+   "valid": true,
+   "all": true,
+   "keys": [
+    [
+     "\"kt_a\"",
+     "1:x:y"
+    ]
+   ]
+  },
+  {
+   "note": "{\"v\":1,\"k\":{\"lone \\udc4d\":\"1:x:y\",\"kt_b\":\"-\"}}",
+   "valid": true,
+   "all": false,
+   "keys": [
+    [
+     "\"kt_b\"",
+     "-"
+    ]
+   ]
+  },
+  {
+   "note": "{\"v\":2,\"k\":{}}",
+   "valid": false
+  },
+  {
+   "note": "{\"v\":1,\"k\":",
+   "valid": false
+  },
+  {
+   "note": "not json",
+   "valid": false
+  }
+ ],
+ "merges": [
+  {
+   "name": "into absent",
+   "base": null,
+   "extra": "[{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "expected": "[{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "added": 2
+  },
+  {
+   "name": "adds the missing record in order",
+   "base": "[{\"id\":3,\"date\":\"2026-10-03\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "extra": "[{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "expected": "[{\"id\":3,\"date\":\"2026-10-03\"},{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "added": 1
+  },
+  {
+   "name": "same id keeps the current version",
+   "base": "[{\"id\":1,\"date\":\"2026-10-01\",\"note\":\"edited\"}]",
+   "extra": "[{\"id\":1,\"date\":\"2026-10-01\",\"note\":\"old\"}]",
+   "expected": "[{\"id\":1,\"date\":\"2026-10-01\",\"note\":\"edited\"}]",
+   "added": 0
+  },
+  {
+   "name": "same date orders by id",
+   "base": "[{\"id\":10,\"date\":\"2026-10-05\"}]",
+   "extra": "[{\"id\":30,\"date\":\"2026-10-05\"},{\"id\":20,\"date\":\"2026-10-05\"}]",
+   "expected": "[{\"id\":30,\"date\":\"2026-10-05\"},{\"id\":20,\"date\":\"2026-10-05\"},{\"id\":10,\"date\":\"2026-10-05\"}]",
+   "added": 2
+  },
+  {
+   "name": "id-less measurements by content",
+   "base": "[{\"date\":\"2026-10-01\",\"waist\":80}]",
+   "extra": "[{\"date\":\"2026-10-01\",\"waist\":80},{\"date\":\"2026-09-01\",\"waist\":82}]",
+   "expected": "[{\"date\":\"2026-10-01\",\"waist\":80},{\"date\":\"2026-09-01\",\"waist\":82}]",
+   "added": 1
+  },
+  {
+   "name": "string and numeric ids are different records",
+   "base": "[{\"id\":\"5\",\"date\":\"2026-10-01\"}]",
+   "extra": "[{\"id\":5,\"date\":\"2026-10-01\"}]",
+   "expected": "[{\"id\":\"5\",\"date\":\"2026-10-01\"},{\"id\":5,\"date\":\"2026-10-01\"}]",
+   "added": 1
+  },
+  {
+   "name": "missing dates sort last",
+   "base": "[{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "extra": "[{\"id\":2},{\"id\":3,\"date\":\"\"}]",
+   "expected": "[{\"id\":1,\"date\":\"2026-10-01\"},{\"id\":3,\"date\":\"\"},{\"id\":2}]",
+   "added": 2
+  },
+  {
+   "name": "lone surrogates and brackets in strings",
+   "base": "[{\"id\":1,\"date\":\"2026-10-01\",\"n\":\"cut \\ud83d\",\"s\":\"[{\\\"]}\"}]",
+   "extra": "[{\"id\":2,\"date\":\"2026-10-02\",\"n\":\"\\udc4d}\",\"a\":[[1],{\"b\":\"]\"}]}]",
+   "expected": "[{\"id\":2,\"date\":\"2026-10-02\",\"n\":\"\\udc4d}\",\"a\":[[1],{\"b\":\"]\"}]},{\"id\":1,\"date\":\"2026-10-01\",\"n\":\"cut \\ud83d\",\"s\":\"[{\\\"]}\"}]",
+   "added": 1
+  },
+  {
+   "name": "duplicate ids in the current value are kept",
+   "base": "[{\"id\":1,\"date\":\"2026-10-01\"},{\"id\":1,\"date\":\"2026-10-01\",\"x\":1}]",
+   "extra": "[{\"id\":2,\"date\":\"2026-10-03\"}]",
+   "expected": "[{\"id\":2,\"date\":\"2026-10-03\"},{\"id\":1,\"date\":\"2026-10-01\"},{\"id\":1,\"date\":\"2026-10-01\",\"x\":1}]",
+   "added": 1
+  },
+  {
+   "name": "nothing to add",
+   "base": "[{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "extra": "[{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "expected": "[{\"id\":2,\"date\":\"2026-10-02\"},{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "added": 0
+  },
+  {
+   "name": "working-weight stamps survive",
+   "base": "[{\"id\":1,\"date\":\"2026-10-01\",\"wSet\":{\"Bench\":[null,135]},\"wk0\":3}]",
+   "extra": "[{\"id\":2,\"date\":\"2026-10-04\",\"hkOrig\":{\"date\":\"2026-10-04\",\"km\":5,\"time\":\"25:00\"}}]",
+   "expected": "[{\"id\":2,\"date\":\"2026-10-04\",\"hkOrig\":{\"date\":\"2026-10-04\",\"km\":5,\"time\":\"25:00\"}},{\"id\":1,\"date\":\"2026-10-01\",\"wSet\":{\"Bench\":[null,135]},\"wk0\":3}]",
+   "added": 1
+  },
+  {
+   "name": "empty current",
+   "base": "[]",
+   "extra": "[{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "expected": "[{\"id\":1,\"date\":\"2026-10-01\"}]",
+   "added": 1
+  }
+ ]
+}
