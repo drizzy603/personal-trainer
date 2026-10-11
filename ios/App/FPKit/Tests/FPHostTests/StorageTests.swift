@@ -66,10 +66,15 @@ final class StorageTests: XCTestCase {
     }
 
     /// With no store open (a test host never opens one), Storage's calls refuse or come back empty, and the status says
-    /// so with the switch and the test's state.
+    /// so with the switch and the test's state. The switch turned on clears the store's crash verdicts in the breaker
+    /// record beside the store (`breakers.json`), which the next launch reads before the UserDefaults copy.
     func testStorageCallsWithoutAStore() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "StorageTests-\(UUID().uuidString)"))
-        let attach = StoreAttach(defaults: defaults)
+        let suite = "StorageTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let attach = StoreAttach(defaults: defaults, directory: dir)
         XCTAssertTrue(attach.conflictsJSON(limit: 10).isEmpty)
         XCTAssertThrowsError(try attach.putBack(conflicts: [1], snap: nil, wipe: false, preview: true))
         XCTAssertThrowsError(try attach.exportCopy())
@@ -85,6 +90,13 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(defaults.bool(forKey: StoreAttach.deviceSwitchKey), true)
         attach.setNativeCopy(on: true)
         XCTAssertTrue(attach.deviceSwitchOn)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: StoreAttach.bookURL(in: dir).path),
+                      "the cleared record is written beside the store")
+        let otherSuite = "StorageTests-\(UUID().uuidString)"
+        let other = try XCTUnwrap(UserDefaults(suiteName: otherSuite))
+        defer { other.removePersistentDomain(forName: otherSuite) }
+        XCTAssertFalse(StoreAttach.loadBook(directory: dir, defaults: other).disabled.contains { $0.piece == "store" },
+                       "read back from the file alone: no store verdict")
     }
 }
 #endif
