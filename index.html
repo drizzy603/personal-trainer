@@ -6130,6 +6130,7 @@ function render() {
   if(_ci){
     _coachDraft = { v:_ci.value, s:_ci.selectionStart||0, e:_ci.selectionEnd||0,
       focus:document.activeElement===_ci };
+    if(_fp.draft && _ci.value!==_fp.draft.text) _fp.draft=null;   // the web composer took the native chat's draft and has sent or changed it
   }
   var screen = document.getElementById('screen');
   // Snapshot every typed-but-unsaved form value in #screen (body weight,
@@ -20709,6 +20710,12 @@ function coachSend(text, o){
   if(imgKey) _um._imgKey=imgKey;
   _pushCoach(_um); _coachSentN++;
   if(nonce){ _coachNonces.push({n:nonce, m:_um}); if(_coachNonces.length>20) _coachNonces.shift(); }
+  // The page's draft (coachPrefill) is spent once its words are sent, from either composer: the native
+  // composer was offered it again, and the web composer would fill with it.
+  if(_fp.draft && msg===String(_fp.draft.text).trim()){
+    if(_coachDraft && String(_coachDraft.v||'').trim()===msg) _coachDraft={ v:'', s:0, e:0, focus:false };
+    _fp.draft=null;
+  }
   saveCoachHistory();
   coachLoading=true; _coachTurnAt=Date.now();
   streamingContent='';
@@ -23689,6 +23696,7 @@ function _fpCovered(){
 // covered:false once its screen has gone, after every dismissal (the owner's and the page's).
 function _fpDown(s){
   _fp.shown[s]=false;
+  if(s==='coach') _fp.speech=null;   // a presentation never opens on words spoken before it
   if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
 }
 // What stands in #screen under a native screen: an element, so the resume check (a #screen with no
@@ -23792,11 +23800,12 @@ function _fpConfirm(opts){
   try{ Promise.resolve(P.confirm(o)).catch(function(){ delete _fp.confirms[id]; }); }catch(e){ delete _fp.confirms[id]; return false; }
   return true;
 }
-// What VoiceOver hears, for the native chat to announce once per id.
+// What VoiceOver hears, for the native chat to announce once per id: only while it is up (a reply that
+// lands with the chat down is not spoken when it opens; the web's live region has said it).
 function _fpSpeak(t){
-  if(!_fp.hello) return;
+  if(!_fp.hello || !_fp.shown.coach) return;
   _fp.speech={id:'s'+(++_fp.seq), text:String(t==null?'':t)};
-  if(_fp.shown.coach) _fpPushSoon();
+  _fpPushSoon();
 }
 // The page's pending photo (a shared image) by key: the native composer fetches it with coach.image.
 function _fpImgKey(){

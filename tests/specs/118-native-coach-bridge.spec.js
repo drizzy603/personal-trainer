@@ -796,6 +796,66 @@ serial('C3: each switch brings back the web chat (FP_NATIVE, kt_native_off and t
   }
 });
 
+// A draft the owner already sent (or cleared) in the web composer came back in the native composer
+// when the native chat did; the first model of a new presentation spoke the reply from before it.
+serial('C3: a draft sent or changed in a composer is not offered again (one nobody touched is); a presentation starts with no speech from before it', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      const draft = () => { const d = __model().composer.draft; return d ? d.text : null; };
+      const native = async (on) => { switchTab('settings'); if (_fpDeviceOff() === on) toggleNativeChat(); await __open(); };
+      await __wait(30); await __open();
+      // the native chat is offered a draft; the owner turns it off and sends the draft from the web composer
+      coachPrefill('Draft A'); await __wait(20);
+      r.offered = draft();
+      await native(false);
+      r.webA = (document.getElementById('coach-input') || {}).value;
+      sendCoachMessage(); await __idle();
+      await native(true);
+      r.afterSend = draft();
+      // the owner clears a draft in the web composer
+      coachPrefill('Draft B'); await __wait(20);
+      await native(false);
+      const box = document.getElementById('coach-input'); r.webB = box.value; box.value = ''; render(); await __wait(20);
+      await native(true);
+      r.afterClear = draft();
+      // the native composer sends the draft's words without taking it first
+      coachPrefill('Draft C'); await __wait(20);
+      r.offeredC = draft();
+      await FPScreens.call('coach.send', { text: 'Draft C', nonce: 'n-c' }); await __idle();
+      r.afterNativeSend = draft();
+      // a draft nobody has touched survives leaving the chat and coming back
+      coachPrefill('Draft D'); await __wait(20); switchTab('log'); await __wait(20); await __open();
+      r.kept = draft();
+      await FPScreens.call('coach.draftTaken', { nonce: __model().composer.draft.nonce });
+      // a reply, then the chat is left and opened again: the new presentation's first model says nothing
+      await FPScreens.call('coach.send', { text: 'Hi coach', nonce: 'n-k' }); await __idle();
+      r.spoken = __model().speech;
+      switchTab('log'); await __wait(20);
+      let m0 = __fpShell.of('model').length;
+      await __open();
+      r.reopened = (__fpShell.models()[m0] || {}).speech;
+      // a reply that lands while the chat is not up is not spoken when it opens either
+      switchTab('log'); await __wait(20);
+      coachSend('While away'); await __idle();
+      m0 = __fpShell.of('model').length;
+      await __open();
+      r.away = { first: (__fpShell.models()[m0] || {}).speech, last: coachMessages[coachMessages.length - 1].content };
+      return r;
+    }, IN_PAGE);
+    assert(out.offered === 'Draft A' && out.webA === 'Draft A', 'the draft is offered natively, and the web composer has it once the native chat is off: ' + JSON.stringify(out));
+    assert(out.afterSend === null, 'a draft sent from the web composer is not offered again natively: ' + JSON.stringify(out));
+    assert(out.webB === 'Draft B' && out.afterClear === null, 'a draft cleared in the web composer is not offered again natively: ' + JSON.stringify(out));
+    assert(out.offeredC === 'Draft C' && out.afterNativeSend === null, 'a draft whose words were sent is not offered again: ' + JSON.stringify(out));
+    assert(out.kept === 'Draft D', 'a draft nobody touched is still offered after leaving the chat: ' + JSON.stringify(out));
+    assert(out.spoken && /^Coach: On it\./.test(out.spoken.text) && !out.reopened, 'the reply is spoken while the chat is up, and not again when it opens again: ' + JSON.stringify([out.spoken, out.reopened]));
+    assert(out.away.last === 'On it.' && !out.away.first, 'a reply that landed while the chat was not up is not spoken when it opens: ' + JSON.stringify(out.away));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 serial('C3: a reload is a new boot (a stale confirm answers stale, old ids find nothing); no programmatic focus while covered', async () => {
   const app = await shellBoot('coach');
   try {
