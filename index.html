@@ -3608,6 +3608,11 @@ function lsSet(k,v) {
     return false;
   }
 }
+// The native shell's storage facade (FPStore, build 60+: ktstore.js) when it is attached: WebKit stays in
+// charge and the facade copies every write into the native store. null in the browser, in the PWA, on every
+// shell before 60 and whenever the facade is off (no window.__ktStore flag, or the store said no), so code
+// that asks it changes nothing there.
+function _ktStoreShadow(){ var s=window.__ktStoreState; return (s && s.mode==='shadow' && typeof s.acked==='function' && typeof s.remirror==='function') ? s : null; }
 function getWeights() { return lsGet('kt_weights')||{}; }
 function getSessions() { return lsGet('kt_sessions')||[]; }
 function getRuns() { return lsGet('kt_runs')||[]; }
@@ -24159,6 +24164,11 @@ function drainWatchSessions(){
       _wchLog('drain: save FAILED, queue kept');
       showToast('Couldn\u2019t save the watch session \u2014 storage full. Export your data, then reopen.','err');
     } else {
+      // Build 60+: when the native copy missed the save of the log (its mirror got no ok), send it once more
+      // before the wrist's queue goes. Cleared either way: WebKit took the save and the store's next start
+      // adopts it, while a kept entry brought back a session the owner deleted (see above).
+      var _kst=_ktStoreShadow();
+      if(_kst && !_kst.acked('kt_sessions')) _wchLog('drain: store copy '+(_kst.remirror('kt_sessions')?'re-sent':'still missing'));
       TWch.clearPendingSessions({sessions:drained}).catch(function(){});
     }
     _wchLog('drain: added '+added);
