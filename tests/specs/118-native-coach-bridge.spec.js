@@ -559,6 +559,56 @@ serial('C3: keep and undo act only while the page\'s own card offers them: after
   } finally { await app.close(); }
 });
 
+// The web's Try again exists only on a trailing failure, and its Stop ignores a press in a turn's
+// first half second (the second tap of a double tap on Send): the intents keep both rules.
+serial('C3: coach.retry acts only where the chat offers Try again; coach.stop ignores a press in a turn\'s first half second, as the web\'s Stop does', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      const r = {};
+      await __wait(30); await __open();
+      const at = Date.now() - 5000;
+      const tail = (last) => { coachMessages = _coachMids([{ role: 'user', content: 'How is my week?', at }, last]); saveCoachHistory(); render(); };
+      const chip = () => __model().messages.slice(-1)[0].chip;
+      const tryIt = async (last) => {
+        tail(last); await __wait(20);
+        const t0 = __turns.length, n0 = coachMessages.length, c = chip();
+        const a = await FPScreens.call('coach.retry', {}); await __idle();
+        return { chip: c, a, turns: __turns.length - t0, added: coachMessages.length - n0, last: coachMessages[coachMessages.length - 1].content };
+      };
+      r.good = await tryIt({ role: 'assistant', content: 'A solid week.', at });
+      r.key = await tryIt({ role: 'assistant', content: 'Coach didn\'t respond (401).', _error: true, _local: true, _errKind: 'key', at });
+      r.billing = await tryIt({ role: 'assistant', content: 'Out of credit.', _error: true, _local: true, _errKind: 'billing', at });
+      r.error = await tryIt({ role: 'assistant', content: 'Coach didn\'t respond (network error).', _error: true, _local: true, at });
+      r.stopped = await tryIt({ role: 'assistant', content: 'Stopped.', _local: true, _stopped: true, at });
+      // Stop: a reply held in flight; a press in its first half second is ignored, a later one stops it
+      let release; const held = new Promise((res) => { release = res; });
+      const api = window.fetch;
+      window.fetch = async (url, o) => { const body = JSON.parse(o.body); if (body.tools) await held; return api(url, o); };
+      tail({ role: 'assistant', content: 'A solid week.', at });
+      r.send = await FPScreens.call('coach.send', { text: 'And next week?', nonce: 'n-stop' });
+      r.early = await FPScreens.call('coach.stop', {});
+      r.earlyLoading = coachLoading;
+      await __wait(550);
+      r.late = await FPScreens.call('coach.stop', {});
+      r.lateState = { loading: coachLoading, last: coachMessages[coachMessages.length - 1].content };
+      r.idle = await FPScreens.call('coach.stop', {});
+      release(); await __wait(50);
+      return r;
+    }, IN_PAGE);
+    assert(out.good.chip === null && out.good.a.ok === false && out.good.a.error === 'stale' && out.good.turns === 0 && out.good.added === 0,
+      'after a good reply there is no Try again: retry is stale and calls nothing: ' + JSON.stringify(out.good));
+    assert(out.key.chip === 'settings' && out.key.a.error === 'stale' && out.key.turns === 0, 'a key error offers Open Settings, not Try again: ' + JSON.stringify(out.key));
+    assert(out.billing.chip === null && out.billing.a.error === 'stale' && out.billing.turns === 0, 'out of credit offers nothing to retry: ' + JSON.stringify(out.billing));
+    assert(out.error.chip === 'retry' && out.error.a.ok && out.error.turns === 1 && out.error.last === 'On it.', 'a failed turn\'s Try again runs it again: ' + JSON.stringify(out.error));
+    assert(out.stopped.chip === 'retry' && out.stopped.a.ok && out.stopped.turns === 1 && out.stopped.last === 'On it.', 'a stopped turn\'s Try again runs it again: ' + JSON.stringify(out.stopped));
+    assert(out.send.ok && out.early.ok === false && out.early.error === 'just-sent' && out.earlyLoading, 'a Stop in the turn\'s first half second is ignored: ' + JSON.stringify([out.send, out.early, out.earlyLoading]));
+    assert(out.late.ok && !out.lateState.loading && out.lateState.last === 'Stopped.' && out.idle.error === 'idle', 'a later Stop stops it; with nothing in flight it is idle: ' + JSON.stringify([out.late, out.lateState, out.idle]));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 serial('C3: a shared photo and its comment reach the native composer; Build day drafts; setup shows Cancel and no Back', async () => {
   const app = await shellBoot('coach');
   try {

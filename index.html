@@ -23847,6 +23847,14 @@ function _coachLastAnswer(){
   coachMessages.forEach(function(x){ if(x && x.role==='assistant' && !x._local && !x._toolResults) a=x; });
   return a;
 }
+// The chip under the trailing message, as renderCoach() draws it: 'retry' (Try again, on a failed or
+// stopped turn), 'settings' (a key error's Open Settings) or null (a good reply, out of credit, a
+// reply in flight). coach.retry acts only where this says 'retry'.
+function _coachTailChip(){
+  var m=coachMessages[coachMessages.length-1];
+  if(!m || m.role!=='assistant' || !(m._error || m._stopped) || coachLoading) return null;
+  return m._errKind==='key' ? 'settings' : m._errKind==='billing' ? null : 'retry';
+}
 // Every message as renderCoach() draws it, addressed by id.
 function _coachMessagesModel(){
   var out=[], led=_lastPlanMsg(), lastAns=_coachLastAnswer(), last=coachMessages[coachMessages.length-1], day='';
@@ -23863,7 +23871,7 @@ function _coachMessagesModel(){
     if(m.role==='assistant' && !m._local){ var b=_coachBodyV1(shown, m!==lastAns || coachLoading); o.eyebrow=b.eyebrow; o.body=b.body; }
     else if(m._seed && m.role!=='assistant'){ o.seed=String(m._seed); o.body=o.seed; }   // the app's prompt reads as its label
     else o.body=shown;
-    if(m.role==='assistant' && (m._error || m._stopped) && m===last && !coachLoading) o.chip=m._errKind==='key' ? 'settings' : m._errKind==='billing' ? null : 'retry';
+    if(m===last) o.chip=_coachTailChip();
     if(m.role==='assistant' && Array.isArray(m._tools) && m._tools.length){
       o.pills=m._tools.map(_toolPillModel);
       if(!m._ledgerSeen && m===led) o.ledger=_planChangeModel(m._tools, idx);
@@ -23892,9 +23900,10 @@ function _coachModel(){
 }
 
 // ── Intents: the shell calls window.FPScreens.call(name, args) ──
-// Answers {ok:true, ...} or {ok:false, error}: the page's own reasons (busy, stale, gone, idle, intake,
-// not-intake, unknown-model, empty) are answers; unknown-intent, bad-args and exception are what the
-// shell's breaker counts. Never resent by the shell; coach.send is idempotent by nonce anyway.
+// Answers {ok:true, ...} or {ok:false, error}: the page's own reasons (busy, stale, gone, idle, just-sent,
+// intake, not-intake, unknown-model, empty) are answers; unknown-intent, bad-args and exception are what
+// the shell's breaker counts. Never resent by the shell; coach.send is idempotent by nonce anyway. An
+// intent acts only where the page's own screen would offer it now (the shell's model can be older).
 function _fpStr(v){ return typeof v==='string'; }
 function _fpImage(v){ return !!v && typeof v==='object' && _fpStr(v.mediaType) && _fpStr(v.data); }
 var _FP_BAD={ok:false, error:'bad-args'};
@@ -23928,8 +23937,11 @@ var _FP_INTENTS={
     var r=coachSend(a.text, {usePending:true});
     return r.ok ? {ok:true} : {ok:false, error:r.error};
   },
-  'coach.stop':function(){ if(!coachLoading) return {ok:false, error:'idle'}; coachStop(); return {ok:true}; },
-  'coach.retry':function(){ if(coachLoading) return {ok:false, error:'busy'}; coachRetryLast(); return {ok:true}; },
+  // As the web's Stop: a press in a turn's first half second is the second tap of a double tap on Send.
+  'coach.stop':function(){ if(!coachLoading) return {ok:false, error:'idle'}; if(_coachJustSent()) return {ok:false, error:'just-sent'}; coachStop(); return {ok:true}; },
+  // As the web's Try again, which exists only on a trailing failed or stopped turn: after a good reply a
+  // retry ran the turn again (the API saw a dropped connection) and added a second reply.
+  'coach.retry':function(){ if(coachLoading) return {ok:false, error:'busy'}; if(_coachTailChip()!=='retry') return {ok:false, error:'stale'}; coachRetryLast(); return {ok:true}; },
   'coach.keep':function(a){ if(!_fpStr(a.id)) return _FP_BAD; var e=_ledgerKeepId(a.id); return e ? {ok:false, error:e} : {ok:true}; },
   'coach.undo':function(a){ if(!_fpStr(a.id)) return _FP_BAD; var e=_ledgerUndoId(a.id); return e ? {ok:false, error:e} : {ok:true}; },   // stale: the card no longer offers it
   'coach.model':function(a){
