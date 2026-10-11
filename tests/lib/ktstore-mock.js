@@ -815,6 +815,7 @@
     // store == WebKit == page reads (less what the gap note explains and the keys the store never keeps).
     check: function () {
       var st = window.__ktStoreState;
+      if (M.unflagged) return { ok: false, bad: [M.unflagged + ' KT1 prompt(s) without the shell flag'], gapped: [] };
       if (!st) return { ok: true, skipped: M.shellOn ? 'facade did not run' : 'no shell flag' };
       if (st.mode !== 'shadow') return { ok: true, skipped: 'facade off: ' + st.why };
       if (!S.device.hold) M.deliver();
