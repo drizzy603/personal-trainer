@@ -23,9 +23,10 @@ import FPCore
 /// - **VoiceOver** reads the screen alone: the web view is hidden from it while covered, and the screen is modal.
 /// - **The room, not the phone**: every hosting controller and the toast window take `overrideUserInterfaceStyle` from
 ///   the model's `paper` (light for Heavyweight, dark for Lime), so the keyboard, the photo picker and menus match.
-/// - **Crash markers**: while a screen is up, `presenting <screen>@<page build> shell <shell build>` sits in its marker
-///   file, removed when the screen goes and whenever the app stops being active (written again when it comes back with
-///   the screen still up), so only a death on screen leaves one. ShellBridge reads them at launch.
+/// - **Crash markers**: while a screen is up and the app is active, `presenting <screen>@<page build> shell <shell
+///   build>` sits in its marker file, removed when the screen goes and whenever the app stops being active or enters the
+///   background (written again when it comes back with the screen still up; a screen that goes up while the app is away
+///   writes none), so only a death on screen leaves one. ShellBridge reads them at launch.
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over.
 @MainActor
@@ -94,6 +95,10 @@ public final class ScreenHost: NSObject {
     /// How a screen's controller goes up and comes down: UIKit's presentation (tests without a window scene, where UIKit
     /// never finishes one, put a stand-in).
     var presenting: ScreenPresenting = UIKitPresenting()
+    /// Whether the app is in use now (tests set their own). A crash marker is written only then: a present made while the
+    /// app is not active (a background launch, the app sent away right after launch) wrote one, and a kill in the
+    /// background (jetsam) then read as a crash at the next launch.
+    var isActive: () -> Bool = { UIApplication.shared.applicationState == .active }
 
     /// `coach`: the chat's store (tests pass one with its own defaults; the app's keeps the composer in `fpDraft.coach`).
     public init(presenter: UIViewController, webView: WKWebView, shellBuild: String, pageBuild: String?, markerFolder: URL,
@@ -116,6 +121,7 @@ public final class ScreenHost: NSObject {
         self.coach.hooks.toast = { [weak self] t in self?.overlay.show(toast: t) }
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.didEnterBackgroundNotification, object: nil)
         nc.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
@@ -282,7 +288,8 @@ public final class ScreenHost: NSObject {
         hooks.willCover()
         webView?.endEditing(true)
         presenter.view.window?.endEditing(true)
-        markers.write(screen, page: pageBuild ?? "unknown", shell: shellBuild)
+        // only while the app is in use: didBecomeActive writes it for a screen that went up while the app was away
+        if isActive() { markers.write(screen, page: pageBuild ?? "unknown", shell: shellBuild) }
         let root = CoachScreenRoot(store: coach, overlay: overlay)
         let host = ScreenHostingController(rootView: AnyView(root))
         host.paper = model.paper
@@ -414,6 +421,7 @@ public final class ScreenHost: NSObject {
 
     // MARK: Markers follow the app's activity
 
+    /// The app stops being active, or goes to the background: no marker while it is away (a kill there is no crash).
     @objc private func willResignActive() {
         for name in up.keys { markers.remove(name) }
     }

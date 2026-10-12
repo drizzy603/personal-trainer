@@ -30,6 +30,8 @@ Scenarios (decision.md section 9, task C5's acceptance, and what C5 promises bes
   counters the web view taken out of its window with the chat up (the fault the shell counts, never by design): the
            launch's and the total leave-window counts and the page hidden under the chat go up, and Settings > About's
            sheet lists them
+  inactive the app sent to the background right after launch, so the page presents the chat while it is not active:
+           no crash marker is written while it is away, so a kill there (as jetsam's) gives no verdict at the next launch
 
 Exit 1 when any check fails.
 """
@@ -37,6 +39,7 @@ import argparse
 import importlib.util
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -572,7 +575,62 @@ def scen_counters(c):
         lw1.get('launch'), lw1.get('total'), h1.get('launch'), h1.get('total')))
 
 
-ALL = ['smoke', 'chat', 'focus', 'wckill', 'marker', 'policy', 'breaker', 'counters']
+def scen_inactive(c):
+    """Review 4 (platform low): a present made while the app was not active wrote the crash marker, and willResignActive,
+    the only removal, had already gone by, so a background kill (jetsam) read as a crash at the next launch."""
+    s = 'inactive'
+    if not c.page:
+        ev = shell_probe(c.sim, 'page', [[state('page')]])
+        c.page = shellst(ev.state('page')).get('pageBuild')
+    folder = c.sim.path('Library', 'Application Support', 'FPShell')
+    marker = os.path.join(folder, 'presenting.coach.marker')
+    c.sim.terminate()
+    if os.path.exists(marker):
+        os.remove(marker)
+    RUNS[0] += 1
+    tag = '%02d-inactive' % RUNS[0]
+    pdir = c.sim.path('Documents', 'fp-probe')
+    os.makedirs(pdir, exist_ok=True)
+    with open(os.path.join(pdir, tag + '.json'), 'w') as f:
+        json.dump({'phases': [[wait(600), state('away'), {'op': 'done'}]]}, f)
+    logp = os.path.join(pdir, tag + '.jsonl')
+    if os.path.exists(logp):
+        os.remove(logp)
+    pid = c.sim.launch(['-fpShellProbe', tag + '.json', '-fpShellProbeLog', tag + '.jsonl', '-fpOffline', '-devNav', 'coach/chat'])
+    time.sleep(0.3)
+    c.sim.open_app('com.apple.Preferences')   # the app leaves the screen before its page presents the chat
+    ev, t_end = Events(), time.time() + 25
+    while time.time() < t_end:
+        time.sleep(0.25)
+        ev = read_log(logp)
+        if any(x.get('method') == 'present' for x in ev.all('page')):
+            break
+    time.sleep(2.0)
+    ev = read_log(logp)
+    presents = [x for x in ev.all('page') if x.get('method') == 'present']
+    on_disk = os.path.exists(marker)
+    line = open(marker).read().strip() if on_disk else None
+    if pid:
+        try:
+            os.kill(pid, signal.SIGKILL)   # killed while away, as jetsam does
+        except ProcessLookupError:
+            pass
+    time.sleep(1.0)
+    c.rep.check(s, 'the page presented the chat while the app was not active (sent to the background right after launch)',
+                bool(presents) and presents[0].get('appState') in (1, 2), [(p.get('appState'), p.get('t')) for p in presents])
+    c.rep.check(s, 'no crash marker while the app was away (only a death on screen leaves one)', not on_disk, line)
+    before = len(coach_verdicts(ev.state('away') or {}, c)) if ev.state('away') else None
+    ev2 = shell_probe(c.sim, 'inactive-next', [[wait(900), state('next')]], args=['-devNav', 'coach/chat'], verdicts=True)
+    launch, e = ev2.first('launch') or {}, ev2.state('next')
+    c.rep.check(s, 'the next launch finds no marker and records no verdict: the native chat is up', launch.get('markersFound') == []
+                and not coach_verdicts(e, c) and coach(e).get('presented'), {'markersFound': launch.get('markersFound'),
+                                                                               'verdicts': coach_verdicts(e, c), 'before': before})
+    if coach_verdicts(e, c):   # leave no verdict behind for the scenarios after this one
+        shell_probe(c.sim, 'inactive-clear', [[js('retry', "_fpChatRetry(); return true;"), wait(900)]], verdicts=True)
+    note(c, s, ev2)
+
+
+ALL = ['smoke', 'chat', 'focus', 'wckill', 'marker', 'policy', 'breaker', 'counters', 'inactive']
 
 
 def main():

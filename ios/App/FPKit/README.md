@@ -114,7 +114,8 @@ and the Debug clears); it is written to `Application Support/FPShell/breakers.js
 `fp.shell.breakers`, read only when the file does not) whenever the link says `bookChanged`. The store keeps its own
 (`FPStore/breakers.json`). While a screen is up and the app active, `FPShell/presenting.<screen>.marker` holds
 `presenting <screen>@<page build> shell <shell build>`; it goes when the screen goes and when the app stops being active
-(written again when it comes back with the screen up), so only a death on screen leaves one. The next launch records the
+or enters the background (written again when it comes back with the screen up; a screen that goes up while the app is
+away writes none, so a kill in the background is no crash), so only a death on screen leaves one. The next launch records the
 verdict (that screen off for that shell and page build: the flag and every hello leave it out, so the page shows its web
 screen; a new page or shell build is clean) and removes the file, so a marker acts once.
 

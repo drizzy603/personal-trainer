@@ -59,6 +59,7 @@ final class ScreenHostTests: XCTestCase {
                           coach: CoachStore(draft: CoachComposerDraft(defaults: nil)))
         stand = StandInPresenting()
         host.presenting = stand
+        host.isActive = { true }   // the app in use (a test host's own state varies)
         var hooks = ScreenHost.Hooks()
         hooks.send = { [weak self] in self?.sent.append($0) }
         hooks.ask = { [weak self] intent, done in
@@ -127,6 +128,23 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(covered, [true, false])
         XCTAssertEqual(ScreenMarkers(folder: folder).lines(), [], "the marker goes with the screen")
         XCTAssertEqual(host.transitions, ["present coach", "dismiss coach"])
+    }
+
+    /// Review 4 (platform low): a present made while the app was not active (sent away right after launch, a background
+    /// launch) wrote the crash marker, and nothing took it away before a kill in the background (willResignActive had gone
+    /// by), so the next launch read a crash and turned the chat off.
+    func testNoMarkerWhileTheAppIsAway() async throws {
+        host.isActive = { false }
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle()
+        XCTAssertNotNil(up, "the screen goes up all the same")
+        XCTAssertEqual(ScreenMarkers(folder: folder).lines(), [], "no marker while the app is away: a kill there is no crash")
+        host.isActive = { true }
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertEqual(ScreenMarkers(folder: folder).lines(), ["presenting coach@P1 shell 60"], "in use with the screen up: the marker")
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertEqual(ScreenMarkers(folder: folder).lines(), [], "the background takes it away too")
     }
 
     func testTheMarkerFollowsTheAppsActivity() async throws {
