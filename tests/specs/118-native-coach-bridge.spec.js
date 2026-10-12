@@ -22,7 +22,9 @@
 //   composer, and a draft sent or changed is not offered again; setup shows Cancel and no Back; a tab
 //   switch dismisses, uncovers the page and drops the speech line; FP_NATIVE, kt_native_off (the About
 //   switch), screens.off, a refused present and a shell without the screen each bring back the web
-//   chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures.
+//   chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures. The
+//   shell's flag without TrovoShell (build 60's store half, before task C5) is inert: no FPScreens, no
+//   hello, the web chat.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -1073,6 +1075,23 @@ serial('C3: every intent of contract v1 (FPCore intents.json) is known, and refu
     assert(out.flag === 'undefined' && out.bridge === 'undefined' && out.mock === 'undefined' && out.hello === null && out.web && !out.ph, 'without the shell nothing is native: ' + JSON.stringify(out));
     assert(none.errors.length === 0, 'no page errors: ' + none.errors.join('|'));
   } finally { await none.close(); }
+});
+
+// Build 60's store half (plan task S6) injects the shell's flag before any shell carries TrovoShell (task C5):
+// with the flag alone the bridge stays out (no FPScreens, no hello) and the chat is the web chat.
+serial('C3 with S6: the shell\'s flag without TrovoShell (build 60 before the native chat) is inert: no bridge, no hello, the web chat', async () => {
+  const app = await boot({ native: true, shell: 'none', init: 'window.__FP_SHELL = {v:1, min:1, shell:"60", screens:[]};',
+    seed: { kt_apikey: 'sk-ant-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await app.page.evaluate(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      switchTab('coach'); openCoachChat(); await new Promise((r) => setTimeout(r, 30));
+      return { flag: !!_fpShellFlag(), plugin: _fpPlugin() == null, bridge: typeof window.FPScreens, hello: _fp.hello,
+        web: !!document.getElementById('coach-input'), ph: !!document.querySelector('.kt-fp-ph') };
+    });
+    assert(out.flag && out.plugin && out.bridge === 'undefined' && out.hello === null && out.web && !out.ph, 'the flag alone is inert: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
 });
 
 serial('C3: the coach models the page builds are FPCore\'s fixtures (tests/golden/dump-coach.js)', async () => {

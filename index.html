@@ -24466,7 +24466,9 @@ var _FP_INTENTS={
     return {ok:true};
   }
 };
-if(_fpShellFlag()){
+// The flag and TrovoShell both (_fpPlugin): build 60's store half injects the flag with no TrovoShell yet (plan
+// task C5 brings it), and there the bridge stays out, as the comment above says: no FPScreens, no hello.
+if(_fpPlugin()){
   window.FPScreens={v:FP_CONTRACT, call:function(name, args){
     return Promise.resolve().then(function(){
       var f=Object.prototype.hasOwnProperty.call(_FP_INTENTS, name) ? _FP_INTENTS[name] : null;
