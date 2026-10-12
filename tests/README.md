@@ -109,3 +109,25 @@ reinstalls the app on that phone and leaves it with the scenario seed.
 too (`-devNav <route>`, `-devTheme <room>`), builds as build 60 so the native copy
 stays attached, runs every route once per room on one app container, and checks
 the native copy against WebKit's file before the watch step.
+
+## The native screens on a simulator
+
+```sh
+./tests/native-shell.sh               # build as build 60, every scenario on iOS 26.x
+./tests/native-shell.sh --os 27 --only chat,wckill
+```
+
+runs the screen bridge (plan task C5: the TrovoShell plugin, FPUI's ShellBridge,
+ScreenHost and PageLink) in the real app on the real page: the app's Debug build
+takes each scenario's steps from launch arguments (`-fpShellProbe`), and
+`tools/native-shell.py` decides from what it reports. `-fpSmoke` logging
+`fp: ping ok v1`; the native chat presented `.overFullScreen` on the page's model,
+with a message, the model switch, a forwarded confirm and Undo toast round-tripping
+and Back; no `visibilitychange` while it is up; a focused web field (with the
+simulator's software keyboard turned on for the scenario) and then present and
+dismiss by the page, Back and the edge pan: no keyboard comes back and the document
+is not scrolled; WebContent killed with the chat up: taken over by the new
+document, resynced on its boot, nothing resent, the open confirm closed as stale;
+a planted crash marker bringing back the web chat once; the policy file's
+`screens.coach` "off"; the breaker. Spec 118 holds the page's half (its C5 case:
+the take-over after a reload).
