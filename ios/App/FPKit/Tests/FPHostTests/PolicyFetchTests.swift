@@ -92,6 +92,28 @@ final class PolicyFetchTests: XCTestCase {
         XCTAssertFalse(p.effective.facadeOn)
     }
 
+    /// The tools' -fpOffline (test-native.sh, shoot.py, native-store.sh) isolates the policy too: no fetch from Pages and
+    /// the compiled defaults in force, whatever an earlier launch kept, so a published "off" never silently stops the
+    /// tools testing the attached copy. -fpPolicyFile still wins.
+    func testOfflineInDebugFetchesNothingAndUsesTheDefaults() throws {
+        try write(#"{"v":1,"store":{"facade":"off"},"screens":{"coach":"off"}}"#)
+        _ = started()  // an earlier launch kept an "off" copy
+        let offline = FPPolicy(defaults: defaults)
+        XCTAssertFalse(offline.effective.facadeOn, "the kept copy, before start")
+        offline.start(arguments: ["App", "-fpOffline", "-devNav", "settings"])
+        #if DEBUG
+        XCTAssertEqual(offline.source, .offline)
+        XCTAssertEqual(offline.fetches, 0, "nothing fetched")
+        offline.fetchIfDue(force: true)
+        XCTAssertEqual(offline.fetches, 0, "not even when forced")
+        XCTAssertEqual(offline.effective, .defaults, "the app as built")
+        let file = FPPolicy(defaults: defaults)
+        file.start(arguments: ["App", "-fpOffline", "-fpPolicyFile", self.file.path])
+        XCTAssertEqual(file.source, .file(self.file), "a policy file still wins")
+        XCTAssertFalse(file.effective.facadeOn)
+        #endif
+    }
+
     func testTheIntervalArgumentInDebug() throws {
         try write(#"{"v":1}"#)
         let p = FPPolicy(defaults: defaults)

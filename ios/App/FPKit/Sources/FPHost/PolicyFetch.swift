@@ -14,7 +14,9 @@ import FPCore
 /// every document start (StoreAttach's hello), so it follows at the next one.
 ///
 /// In a Debug build `-fpPolicyFile <path>` points the fetch at a local file (a path relative to the app's home
-/// folder, or absolute) and `-fpPolicyEvery <seconds>` changes the 15-minute limit, for tests/native-store.sh.
+/// folder, or absolute) and `-fpPolicyEvery <seconds>` changes the 15-minute limit, for tests/native-store.sh; the
+/// tools' `-fpOffline` without a policy file fetches nothing and keeps the compiled defaults in force for the launch
+/// (the app as built: a file published on Pages, or a copy an earlier launch kept, never changes what they test).
 @MainActor
 public final class FPPolicy {
     public static let shared = FPPolicy()
@@ -31,6 +33,8 @@ public final class FPPolicy {
         case remote(URL)
         /// Debug: a local file.
         case file(URL)
+        /// Debug: `-fpOffline` without `-fpPolicyFile`: no fetch, the compiled defaults in force.
+        case offline
     }
 
     public private(set) var state: PolicyState
@@ -55,7 +59,7 @@ public final class FPPolicy {
     }
 
     /// The switches in force now.
-    public var effective: Policy { state.effective }
+    public var effective: Policy { source == .offline ? .defaults : state.effective }
 
     /// At launch: the Debug overrides, the foreground observer, and a fetch when one is due. Safe to call again.
     public func start(arguments: [String] = ProcessInfo.processInfo.arguments) {
@@ -65,6 +69,9 @@ public final class FPPolicy {
         if let path = Self.argument("-fpPolicyFile", in: arguments), !path.isEmpty {
             source = .file(path.hasPrefix("/") ? URL(fileURLWithPath: path)
                                                : URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path))
+        } else if arguments.contains("-fpOffline") {
+            source = .offline
+            Self.log.info("policy: -fpOffline, nothing fetched; the defaults are in force")
         }
         if let s = Self.argument("-fpPolicyEvery", in: arguments), let t = TimeInterval(s), t >= 0 { interval = t }
         #endif
@@ -79,6 +86,7 @@ public final class FPPolicy {
 
     /// Fetches when 15 minutes have passed since the last attempt (or `force`). A local file is read at once.
     public func fetchIfDue(force: Bool = false) {
+        if source == .offline { return }
         let now = Date()
         guard !fetching, force || state.shouldFetch(at: now, interval: interval) else { return }
         state.fetchStarted(at: now)
@@ -86,6 +94,8 @@ public final class FPPolicy {
         fetching = true
         fetches += 1
         switch source {
+        case .offline:  // returned above
+            fetching = false
         case .file(let url):
             let result: PolicyState.FetchResult
             if let data = try? Data(contentsOf: url) { result = .body(data) } else { result = .missing }
