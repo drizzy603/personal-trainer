@@ -370,6 +370,9 @@ public final class ScreenHost: NSObject {
     private func removed(_ screen: String, user: Bool) {
         guard up.removeValue(forKey: screen) != nil else { return }
         markers.remove(screen)
+        // a toast forwarded just before the chat went leaves the chat header's place (it sat over the next screen's
+        // content there): under the status bar, where the overlay puts toasts with no chat up
+        if screen == "coach" { overlay.setAnchor(nil) }
         if up.isEmpty {
             webView?.accessibilityElementsHidden = false
             hooks.didUncover()

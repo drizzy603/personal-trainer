@@ -180,6 +180,20 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(stand.shown.last?.modalPresentationStyle, .overFullScreen, "a later present goes up")
     }
 
+    /// Review 4 (chat low): a toast the page forwarded just before the chat closed (intake's "Programme saved", then the
+    /// Log tab) stayed at the chat header's place, over the next screen's pills.
+    func testAToastLeftWhenTheChatGoesLeavesTheChatHeadersPlace() async throws {
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle()
+        host.overlay.setAnchor(163)   // where the chat's header ends, as the chat reports it
+        host.toast(ToastRequest(text: "Programme saved", style: nil, undo: nil))
+        host.dismiss("coach")
+        try await settle()
+        XCTAssertNil(host.overlay.anchor, "under the status bar, where the overlay puts toasts with no chat up")
+        XCTAssertEqual(host.shownToast?.text, "Programme saved", "the toast itself stays its time")
+    }
+
     func testTheMarkerFollowsTheAppsActivity() async throws {
         host.update("coach", model: try model())
         host.present("coach")
