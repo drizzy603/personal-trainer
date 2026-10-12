@@ -228,6 +228,43 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertNotEqual(host.overlay.theme, before)
     }
 
+    /// Review 4 (chat low): a hardware keyboard's Cmd+Return did not send from the native composer, where the web
+    /// composer's Cmd/Ctrl+Enter sends from anywhere. The chat's controller offers it as UIKit's own key command, ahead of
+    /// the text view's Return, and it sends what the composer holds as Send does. (A real key reaches UIKit only from a
+    /// hardware keyboard: the simulator's software keyboard drops modified keys, Cmd+A included, so a phone with a
+    /// keyboard checks the key itself.)
+    func testCommandReturnSendsWhatTheComposerHolds() async throws {
+        FPFonts.register()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle()
+        let p = try XCTUnwrap(up)
+        let key = try XCTUnwrap(p.keyCommands?.first { $0.input == "\r" && $0.modifierFlags == .command }, "the chat offers Cmd+Return")
+        XCTAssertTrue(key.wantsPriorityOverSystemBehavior, "ahead of the text view's own Return (a new line)")
+        // the chat drawn, as it is when presented
+        let shown = UIWindow(frame: window.frame)
+        shown.windowScene = window.windowScene
+        shown.rootViewController = p
+        shown.makeKeyAndVisible()
+        defer {
+            shown.isHidden = true
+            shown.rootViewController = nil
+        }
+        host.coach.draft.text = "Sent from the keys"
+        for _ in 0..<10 {
+            p.view.setNeedsLayout()
+            p.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+        }
+        _ = p.perform(try XCTUnwrap(key.action), with: key)
+        try await settle()
+        guard case .coachSend(let text, _, _, _)? = asked.last(where: { $0.name == "coach.send" }) else {
+            return XCTFail("no coach.send: \(asked)")
+        }
+        XCTAssertEqual(text, "Sent from the keys")
+        XCTAssertEqual(host.coach.draft.text, "", "the composer empties, as after Send")
+    }
+
     func testTheMarkerFollowsTheAppsActivity() async throws {
         host.update("coach", model: try model())
         host.present("coach")

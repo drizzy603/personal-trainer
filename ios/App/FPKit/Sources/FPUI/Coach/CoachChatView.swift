@@ -1,4 +1,5 @@
 #if os(iOS)
+import Combine
 import SwiftUI
 import UIKit
 import FPCore
@@ -123,6 +124,8 @@ public struct CoachChatView: View {
         .onChange(of: model.loading) { _, now in
             if now { stopGuard = Date().addingTimeInterval(0.5) }
         }
+        // a hardware keyboard's Cmd+Return, which the screen's controller takes: Send, as the chat's own button
+        .onReceive(host.draft?.sendAsked.eraseToAnyPublisher() ?? Empty<Void, Never>().eraseToAnyPublisher()) { _ in send() }
     }
 
     /// The column: header, conversation, composer.

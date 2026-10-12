@@ -30,6 +30,8 @@ import FPCore
 /// - **A refused presentation** (UIKit's silence while another controller's presentation is delayed) is noticed by a
 ///   watchdog: the screen is not up, the page shows its own, and the queue goes on.
 /// - **VoiceOver's escape** goes back (Cancel during setup), and the toast window follows the phone's text size live.
+/// - **A hardware keyboard's Cmd+Return** sends from the chat (the controller's key command, ahead of the text view's
+///   Return), as the web composer's Cmd/Ctrl+Enter does.
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over.
 @MainActor
@@ -302,6 +304,7 @@ public final class ScreenHost: NSObject {
         let root = CoachScreenRoot(store: coach, overlay: overlay)
         let host = ScreenHostingController(rootView: AnyView(root))
         host.escape = { [weak self] in self?.escape(screen) ?? false }
+        if screen == "coach" { host.commandReturn = { [weak self] in self?.coach.draft.sendAsked.send() } }
         host.paper = model.paper
         host.modalPresentationStyle = .overFullScreen   // never .fullScreen: the page stays in its window
         host.modalPresentationCapturesStatusBarAppearance = true
@@ -610,17 +613,32 @@ final class UIKitPresenting: ScreenPresenting {
 
 // MARK: - The hosting controller
 
-/// A native screen's controller: the room's status bar, and VoiceOver's escape (ScreenHost: Back, or Cancel in setup).
+/// A native screen's controller: the room's status bar, VoiceOver's escape (ScreenHost: Back, or Cancel in setup), and
+/// a hardware keyboard's Cmd+Return (the chat: Send).
 final class ScreenHostingController: UIHostingController<AnyView> {
     var paper = true {
         didSet { if paper != oldValue { setNeedsStatusBarAppearanceUpdate() } }
     }
     /// What VoiceOver's escape does (UIKit asks the focused element, then its ancestors up to this controller).
     var escape: () -> Bool = { false }
+    /// What a hardware keyboard's Cmd+Return does on this screen (the chat: Send, as the web composer's Cmd/Ctrl+Enter
+    /// sends from anywhere); nil offers none.
+    var commandReturn: (() -> Void)?
 
     override var preferredStatusBarStyle: UIStatusBarStyle { paper ? .darkContent : .lightContent }
 
     override func accessibilityPerformEscape() -> Bool { escape() }
+
+    /// UIKit's own key command, on the controller the composer's text view answers to: it runs ahead of the text view's
+    /// handling of Return (`wantsPriorityOverSystemBehavior`), so the words go rather than a new line.
+    override var keyCommands: [UIKeyCommand]? {
+        guard commandReturn != nil else { return super.keyCommands }
+        let send = UIKeyCommand(title: "Send message", action: #selector(commandReturnPressed(_:)), input: "\r", modifierFlags: .command)
+        send.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [send]
+    }
+
+    @objc func commandReturnPressed(_ sender: UIKeyCommand) { commandReturn?() }
 }
 
 // MARK: - The coach screen

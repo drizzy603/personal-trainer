@@ -1,4 +1,5 @@
 #if os(iOS)
+import Combine
 import Foundation
 import SwiftUI
 import UIKit
@@ -19,6 +20,9 @@ public final class CoachComposerDraft: ObservableObject {
     }
     /// A photo the owner picked and has not sent (not kept across launches).
     @Published public var picked: PickedPhoto?
+    /// The owner asked to send what the composer holds from outside the chat's own Send button (a hardware keyboard's
+    /// Cmd+Return, which the screen's controller takes): the chat sends it as its Send does.
+    public let sendAsked = PassthroughSubject<Void, Never>()
 
     private let defaults: UserDefaults?
 
