@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
-const { boot, assert, run } = require('../lib/harness');
+const { boot, assert, run, SEED } = require('../lib/harness');
 const { NOTE_OPS, noteAfter, noteSteps } = require('../tools/ktstore-vectors');
 
 // One case at a time: each starts its own browser and some relaunch it.
@@ -291,6 +291,11 @@ function storageShell() {
     };
   } + ')();';
 }
+// The local calendar day n days from today, as the page's todayISO() spells it (node and the browser share a zone).
+function addDaysISO(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 // A Push workout under way (two sets, its draft flushed), then finished: WebKit as it was before the finish, and the
 // workout's startedAt.
 const FINISH = () => {
@@ -342,6 +347,70 @@ serial('a finish WebKit lost: one Put back of everything that start lost brings 
     assert(back.losses.length === 0, 'nothing left to put back: ' + JSON.stringify(back.losses));
     await ev(app, () => switchTab('settings'));
     await app.page.waitForFunction(() => /^In step/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
+    assert((await check(app)).ok, 'store == WebKit');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+serial('a draft whose workout is already filed is dropped at boot with the shell\'s flag, so Resume never files it twice; without the flag, as on next', async () => {
+  // The state a lost draft removal leaves (a kill between the finish's save and the removal, a Put back of the workout
+  // alone, the test quit on a finish): the workout filed, its draft still in WebKit.
+  const T = Date.now() - 40 * 60000;
+  const ex = { name: 'Bench Press', sets: 3, reps: 5, weight: 185 };
+  const filed = { id: T + 30 * 60000, date: addDaysISO(0), type: 'Push', label: 'Push', week: 1, startedAt: T, note: '', prs: [],
+    exercises: [{ name: 'Bench Press', isMain: true, ss: false, sets: 3, reps: [5, 5, 5], weight: 185, weightLog: [185, 185, 185], rpe: 8, rpeLog: [8, 8, 8] }] };
+  const draft = { date: addDaysISO(0), savedAt: Date.now() - 10 * 60000, session: { type: 'Push', dayName: 'Push', exercises: [ex], startedAt: T, week: 1 },
+    exIdx: 0, completed: { 'Bench Press': 3 }, weights: { 'Bench Press': 185 }, reps: { 'Bench Press': 5 }, repsLog: { 'Bench Press': [5, 5, 5] },
+    weightsLog: { 'Bench Press': [185, 185, 185] }, rpe: {}, rpeLog: {}, sessionDate: null };
+  const seed = { kt_sessions: JSON.stringify([filed].concat(JSON.parse(SEED.kt_sessions))), kt_runner_draft: JSON.stringify(draft) };
+  const state = (app) => ev(app, (T) => ({ pending: !!(runnerResumePending && runnerSession), banner: /WORKOUT IN PROGRESS/.test(document.getElementById('screen').textContent),
+    draft: localStorage.getItem('kt_runner_draft'), filed: getSessions().filter((x) => Number(x.startedAt) === T).length }), T);
+  // Without the flag (the browser, the PWA, every shell before 60): next's behaviour, the draft offered.
+  let app = await boot({ store: 'classic', seed });
+  try {
+    const s = await state(app);
+    assert(s.pending && s.banner && s.draft !== null && s.filed === 1, 'inert without the flag: ' + JSON.stringify(s));
+  } finally { await app.close(); }
+  // With the flag: dropped at boot, no Resume, Start begins a new workout, and a round is not held for it.
+  app = await boot({ store: 'classic', seed, init: 'window.__FP_SHELL = {v:1, min:1, shell:"60", screens:[]};' });
+  try {
+    const s = await state(app);
+    assert(!s.pending && !s.banner && s.draft === null && s.filed === 1, 'the filed workout\'s draft is dropped: ' + JSON.stringify(s));
+    const more = await ev(app, (d) => {
+      localStorage.setItem('kt_runner_draft', JSON.stringify(d));   // the same draft back (a later restore)
+      const held = _roundWaitsForWorkout();
+      const restored = _restoreRunnerDraft();
+      return { held, restored, draft: localStorage.getItem('kt_runner_draft') };
+    }, draft);
+    assert(!more.held && !more.restored && more.draft === null, 'no round held for it, never restored: ' + JSON.stringify(more));
+    // A draft of a workout not filed is still offered.
+    const other = await ev(app, (d) => { d.session.startedAt += 1; localStorage.setItem('kt_runner_draft', JSON.stringify(d)); return { held: _roundWaitsForWorkout(), restored: _restoreRunnerDraft() }; }, draft);
+    assert(other.held && other.restored, 'a draft of an unfiled workout is restored as before: ' + JSON.stringify(other));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+
+  // The review's case on the store: a finish WebKit lost, then a Put back of the workout alone.
+  app = await start({ native: true, init: storageShell() });
+  try {
+    await ev(app, () => __ktMock.device({ seed: false }));
+    await app.reload();
+    const f = await ev(app, FINISH);
+    await app.page.waitForTimeout(150);
+    await ev(app, (J) => __ktMock.next({ restore: J }), f.before);
+    await app.reload();
+    const id = await ev(app, () => __ktMock.conflicts().filter((c) => c.key === 'kt_sessions' && c.why === 'lag')[0].id);
+    await ev(app, (id) => __ktMock.stagePutBack({ conflicts: [id] }), id);
+    await app.reload();
+    const s = await ev(app, (t) => ({ pending: !!(runnerResumePending && runnerSession), wk: __ktMock.realStorage().getItem('kt_runner_draft'),
+      store: __ktMock.values().kt_runner_draft, filed: getSessions().filter((x) => Number(x.startedAt) === t).length,
+      open: (__ktMock.status(true).losses[0] || { items: [] }).items.map((it) => it.key) }), f.startedAt);
+    assert(s.filed === 1 && !s.pending && s.wk === null && s.store === undefined, 'the workout back once, its draft dropped from both copies: ' + JSON.stringify(s));
+    assert(s.open.indexOf('kt_runner_draft') < 0 && s.open.indexOf('kt_sessions') < 0, 'the loss no longer holds them: ' + JSON.stringify(s.open));
+    // Start opens a new workout instead of resuming the filed one.
+    await ev(app, () => { switchTab('log'); startTodaySession(); });
+    await app.page.waitForTimeout(200);
+    const after = await ev(app, (t) => ({ resumed: !!(runnerOpen && runnerSession && runnerSession.startedAt === t), filed: getSessions().filter((x) => Number(x.startedAt) === t).length }), f.startedAt);
+    assert(!after.resumed && after.filed === 1, 'never resumed, filed once: ' + JSON.stringify(after));
     assert((await check(app)).ok, 'store == WebKit');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }

@@ -9204,7 +9204,16 @@ function _runnerInProgress(){ return !!(runnerSession && (runnerOpen || runnerRe
 function _roundWaitsForWorkout(){
   if(runnerOpen && runnerSession) return true;
   if(_wristWorkUnderway()) return true;
-  try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000); }catch(e){ return false; }
+  try{ var d=JSON.parse(localStorage.getItem('kt_runner_draft')||'null'); return !!(d && d.session && (Date.now()-(d.savedAt||0))<8*3600*1000 && !_draftFiled(d)); }catch(e){ return false; }
+}
+// Build 60+ (the shell's flag): a draft whose workout is already filed, a phone session with its startedAt, is what a
+// lost removal of it leaves behind: a kill between the finish's save and the draft's removal (WebKit lost only that
+// write), a Put back of the workout without the rest of what that start lost, the TestFlight test quit on a finish.
+// Resumed and finished, the workout was filed twice. Such a draft is dropped. Without the flag the page is as on next.
+function _draftFiled(d){
+  if(!_fpShellFlag() || !d || !d.session) return false;
+  var t=Number(d.session.startedAt)||0; if(!(t>0)) return false;
+  return getSessions().some(function(x){ return !!x && Number(x.startedAt)===t; });
 }
 // The wrist's workout under way {slot, startedAt, ended}, from every live message and the shell's
 // live cache. Kept apart from the LIVE ON WATCH banner (_watchLive), which it used to be: Hide put
@@ -9422,6 +9431,7 @@ function _restoreRunnerDraft(){
     // date, and keep its day as the default log date.
     var _fresh=(Date.now()-(d.savedAt||0)) < 8*3600*1000;
     if(d.date!==todayISO() && !_fresh) return false;
+    if(_draftFiled(d)){ _clearRunnerDraft(); return false; }   // its workout is filed already: never resumed twice
     runnerSession=d.session;
     runnerSession.restoredAt=Date.now();   // picked up after the app was closed: Health asks for a set since
     runnerExIdx=d.exIdx||0;
