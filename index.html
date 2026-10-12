@@ -3630,8 +3630,16 @@ function _ktStoreShadow(){ var s=window.__ktStoreState; return (s && s.mode==='s
 // end of boot (_bootDone), the tools' launch arguments (_fpDev) and _draftFiled all read it here.
 function _fpShellFlag(){ var f=window.__FP_SHELL; return (f && typeof f==='object' && (f.v|0)>=1) ? f : null; }
 // The test tools' launch arguments, which the shell hands over in its flag (Debug builds): dev.nav (-devNav, a
-// dev-nav route) and dev.theme (-devTheme, the room for this launch).
+// dev-nav route), dev.theme (-devTheme, the room for this launch) and dev.api (-fpApiBase, below).
 function _fpDev(key){ var f=_fpShellFlag(), d=f && f.dev, v=(d && typeof d==='object') ? d[key] : null; return (typeof v==='string' && v) ? v : null; }
+// Where every coach call goes (the Messages API). A Debug shell's test tools can point it at a stand-in that answers
+// like Anthropic's (-fpApiBase http://127.0.0.1:<port>, in the flag as dev.api), so a real coach turn runs in the
+// simulator with no key and no network; only an http(s) origin on this device's loopback is taken, so the key never
+// goes anywhere else. Everywhere else (the browser, the PWA, a Release shell, every shell before 60) it is Anthropic.
+function _coachApiURL(){
+  var b=_fpDev('api');
+  return (b && /^https?:\/\/(127\.0\.0\.1|localhost)(:[0-9]{1,5})?$/.test(b) ? b : 'https://api.anthropic.com')+'/v1/messages';
+}
 function getWeights() { return lsGet('kt_weights')||{}; }
 function getSessions() { return lsGet('kt_sessions')||[]; }
 function getRuns() { return lsGet('kt_runs')||[]; }
@@ -7083,7 +7091,7 @@ function fetchCoachCard(activity){
       'Return STRICT JSON only — no prose, no code fences:\n'+
       '{"message":"...","actions":[{"label":"...","primary":false},{"label":"...","primary":true}]}';
     var _cardTimer;
-    var fetchPromise = fetch('https://api.anthropic.com/v1/messages',{
+    var fetchPromise = fetch(_coachApiURL(),{
       method:'POST',
       headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:[{role:'user',content:prompt}]})
@@ -8356,7 +8364,7 @@ function _requestDebrief(sess){
   var key=getApiKey();
   if(!key || !sess || !(sess.exercises||[]).length) return;
   var prompt=_debriefPrompt(sess);
-  fetch('https://api.anthropic.com/v1/messages',{
+  fetch(_coachApiURL(),{
     method:'POST',
     headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
     body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:120,messages:[{role:'user',content:prompt}]})
@@ -15268,7 +15276,7 @@ function fillSportWithAI(){
     'Include only fields you can confidently extract. Use numbers (not strings) for numeric values.\n\n'+
     'Possible fields:\n'+fieldDesc+'\n'+
     'Session description: "'+text+'"';
-  fetch('https://api.anthropic.com/v1/messages',{
+  fetch(_coachApiURL(),{
     method:'POST',
     headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
     body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:256,messages:[{role:'user',content:prompt}]})
@@ -19729,7 +19737,7 @@ async function runCoachTurn(systemPrompt,model,maxTok){
         // Non-streaming: iOS PWA WKWebView has reliable issues consuming
         // chunked SSE responses (silent stalls past the 60s timeout). The
         // single-JSON path is slower to *feel* but actually completes.
-        res=await _withTimeout(fetch('https://api.anthropic.com/v1/messages',{
+        res=await _withTimeout(fetch(_coachApiURL(),{
           method:'POST',
           headers:_hdrs,
           body:JSON.stringify({
@@ -20363,7 +20371,7 @@ function saveApiKey(){
 // still prove the key is live; network failure keeps the neutral toast.
 function _pingApiKey(k){
   try{
-    fetch('https://api.anthropic.com/v1/messages',{
+    fetch(_coachApiURL(),{
       method:'POST',
       headers:{'x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'hi'}]})
@@ -23292,7 +23300,7 @@ function fillExWithAI(){
   var prompt='Return ONLY a raw JSON object — no markdown, no code fences, no explanation. Fill in these fields for the exercise named "'+name+'":\n'+
     '{"cat":"Push","muscles":"Primary muscles, comma separated","equip":"Equipment needed","desc":"One to two sentence description.","tips":["Coaching cue 1","Coaching cue 2","Coaching cue 3","Coaching cue 4"]}\n'+
     'cat MUST be exactly one of: Push, Pull, Legs, Core. Use "'+_libAddCat+'" unless clearly wrong.';
-  fetch('https://api.anthropic.com/v1/messages',{
+  fetch(_coachApiURL(),{
     method:'POST',
     headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
     body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:[{role:'user',content:prompt}]})

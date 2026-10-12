@@ -45,17 +45,21 @@ public struct ShellFlag: Equatable, Sendable {
     public var shell: String
     /// The screens the page may hand to Swift this document (ScreenGate's `on`).
     public var screens: [String]
-    /// Test tooling from launch arguments (-devNav, -devTheme); nil keys are left out.
+    /// Test tooling from launch arguments (-devNav, -devTheme, -fpApiBase); nil keys are left out.
     public var devNav: String?
     public var devTheme: String?
+    /// `dev.api`: where the page sends its coach calls in a test launch (a stand-in for the Messages API on this device's
+    /// loopback; the page takes nothing else).
+    public var devAPI: String?
 
-    public init(contract: ShellContract, screens: [String], devNav: String? = nil, devTheme: String? = nil) {
+    public init(contract: ShellContract, screens: [String], devNav: String? = nil, devTheme: String? = nil, devAPI: String? = nil) {
         v = contract.v
         min = contract.min
         shell = contract.shell
         self.screens = screens
         self.devNav = devNav
         self.devTheme = devTheme
+        self.devAPI = devAPI
     }
 
     public var json: JSONValue {
@@ -66,6 +70,7 @@ public struct ShellFlag: Equatable, Sendable {
         var dev: [String: JSONValue] = [:]
         if let devNav { dev["nav"] = .string(devNav) }
         if let devTheme { dev["theme"] = .string(devTheme) }
+        if let devAPI { dev["api"] = .string(devAPI) }
         if !dev.isEmpty { o["dev"] = .object(dev) }
         return .object(o)
     }

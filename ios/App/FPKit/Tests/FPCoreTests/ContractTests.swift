@@ -15,6 +15,9 @@ final class ContractTests: XCTestCase {
     func testShellFlagScript() throws {
         let flag = ShellFlag(contract: shell60, screens: ["coach"], devNav: "coach/chat", devTheme: "dark")
         XCTAssertEqual(flag.script, #"window.__FP_SHELL = {"dev":{"nav":"coach/chat","theme":"dark"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
+        // a test launch's stand-in for the Messages API (plan task C7)
+        let api = ShellFlag(contract: shell60, screens: ["coach"], devNav: "coach/chat", devAPI: "http://127.0.0.1:47811")
+        XCTAssertEqual(api.script, #"window.__FP_SHELL = {"dev":{"api":"http://127.0.0.1:47811","nav":"coach/chat"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
         XCTAssertEqual(ShellFlag(contract: shell60, screens: []).script, #"window.__FP_SHELL = {"min":1,"screens":[],"shell":"60","v":1};"#,
                        "no dev key without launch arguments; no screens when every one is off")
         // a line separator in a dev argument cannot break the script

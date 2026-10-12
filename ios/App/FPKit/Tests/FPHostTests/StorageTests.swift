@@ -59,6 +59,12 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(obj["dev"] as? [String: String], ["nav": "settings/storage-sheet", "theme": "dark"])
         let plain = ShellFlagScript.flag(shell: "60").script
         XCTAssertFalse(plain.contains("dev"), plain)
+        // -fpApiBase: the coach's stand-in for the Messages API (plan task C7), as dev.api
+        let api = ShellFlagScript.Dev(arguments: ["App", "-devNav", "coach/chat", "-fpApiBase", "http://127.0.0.1:47811"])
+        XCTAssertEqual(api, ShellFlagScript.Dev(nav: "coach/chat", api: "http://127.0.0.1:47811"))
+        let apiJSON = String(ShellFlagScript.flag(shell: "60", dev: api).script.dropFirst("window.__FP_SHELL = ".count).dropLast())
+        let apiObj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(apiJSON.utf8)) as? [String: Any])
+        XCTAssertEqual(apiObj["dev"] as? [String: String], ["nav": "coach/chat", "api": "http://127.0.0.1:47811"])
         #if DEBUG
         XCTAssertTrue(ShellFlagScript.script(shell: "61", arguments: ["App", "-devNav", "log/run"]).contains("log/run"),
                       "a Debug build reads the launch arguments")

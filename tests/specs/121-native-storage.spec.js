@@ -496,6 +496,52 @@ serial('the tools\' launch arguments come in the flag: dev.nav once per launch, 
   } finally { await app.close(); }
 });
 
+// A Debug shell's test tools point the coach's calls at a stand-in for the Messages API on this device's loopback
+// (-fpApiBase, in the flag as dev.api: test-native.sh drives a real coach turn with no key and no network). Only an
+// http(s) origin on the loopback is taken; anything else, no dev.api, no flag (the browser, the PWA, every shell before
+// 60) is Anthropic's, so the key never goes anywhere else.
+serial('a test launch points the coach at a stand-in for the Messages API (dev.api, the loopback only); nothing else does', async () => {
+  const STUB = 'http://127.0.0.1:47999', ANTHROPIC = 'https://api.anthropic.com/v1/messages';
+  const calls = async (app) => ev(app, async () => {
+    const seen = [];
+    window.fetch = async (url) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({ id: 'msg', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5',
+        content: [{ type: 'text', text: 'Stand-in reply.' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }),
+        { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const r = coachSend('Is anyone there?');
+    if (r.ok) await r.done;
+    _pingApiKey('sk-test');   // Settings' key check
+    await new Promise((res) => setTimeout(res, 60));
+    const last = coachMessages[coachMessages.length - 1];
+    return { seen, reply: last && last.role === 'assistant' ? last.content : null };
+  });
+  const cases = [
+    ['the loopback', { api: STUB }, STUB + '/v1/messages'],
+    ['localhost over https', { api: 'https://localhost:8443' }, 'https://localhost:8443/v1/messages'],
+    ['another host', { api: 'https://example.com' }, ANTHROPIC],
+    ['a host that only starts like the loopback', { api: 'http://127.0.0.1.example.com' }, ANTHROPIC],
+    ['a path after the origin', { api: STUB + '/v1' }, ANTHROPIC],
+    ['another scheme', { api: 'ftp://127.0.0.1:21' }, ANTHROPIC],
+    ['no dev.api', { theme: 'heavyweight' }, ANTHROPIC],
+  ];
+  for (const [what, dev, want] of cases) {
+    const app = await boot({ native: true, shell: 'none', seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' }, init: init({ flag: Object.assign({}, FLAG, { dev }) }) });
+    try {
+      const out = await calls(app);
+      assert(out.seen.length === 2 && out.seen.every((u) => u === want), what + ': the chat turn and the key check go to ' + want + ': ' + JSON.stringify(out.seen));
+      assert(out.reply === 'Stand-in reply.', what + ': the turn reads the answer: ' + JSON.stringify(out.reply));
+    } finally { await app.close(); }
+  }
+  // the browser, the PWA and every shell before 60: no flag, Anthropic's
+  const app = await boot({ seed: { kt_apikey: 'sk-test', kt_coach_msgs: '[]' } });
+  try {
+    const out = await calls(app);
+    assert(out.seen.length === 2 && out.seen.every((u) => u === ANTHROPIC), 'no flag: ' + JSON.stringify(out.seen));
+  } finally { await app.close(); }
+});
+
 serial('the privacy copy is true with or without a native copy', async () => {
   const app = await boot();
   try {
