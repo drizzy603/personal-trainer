@@ -161,13 +161,17 @@ serial('the Storage sheet: counts from the status, Put back after a preview, the
       const stat = (label) => { const el = [...body.querySelectorAll('div')].find((d) => d.firstElementChild && d.firstElementChild.firstChild && d.firstElementChild.firstChild.textContent === label); return el ? el.lastElementChild.textContent : null; };
       return { text: body.textContent, older: stat('Changes made without the copy'), lost: stat('Changes this iPhone lost'),
         unexplained: stat('Unexplained differences'), fallbacks: stat('Fallbacks'), timings: stat('Timings'), trips: stat('Breaker trips'),
-        markers: stat('Crash markers'), putBacks: body.querySelectorAll('button[data-id]').length, a11y: [...body.querySelectorAll('.settings-row')].map((r) => r.getAttribute('role')) };
+        markers: stat('Crash markers'), putBacks: body.querySelectorAll('button[data-id]').length, a11y: [...body.querySelectorAll('.settings-row')].map((r) => r.getAttribute('role')),
+        lastVisit: /Last visit/.test(body.textContent), limit: (__ts.calls.filter((c) => c[0] === 'conflicts')[0] || [])[1] };
     });
     assert(sheet.older === '1 time' && sheet.lost === '1 time · 2 items' && sheet.unexplained === '1', 'what the starts found: ' + JSON.stringify(sheet));
     assert(sheet.trips === '2' && sheet.markers === '1' && /save 0\.3 ms/.test(sheet.timings), 'breaker trips, crash markers and timings: ' + JSON.stringify(sheet));
     assert(/full 3, busy 1, error 0/.test(sheet.text), 'the native answers behind the fallbacks: ' + sheet.text);
     assert(/would repair: Workout in progress, Workouts/.test(sheet.text) && /This iPhone lost it, the copy kept it/.test(sheet.text), 'the last start and the kept values read in the owner\'s words');
-    assert(sheet.putBacks === 2 && sheet.a11y.indexOf('switch') >= 0, 'a Put back per kept value, the switch is a switch: ' + JSON.stringify(sheet));
+    assert(sheet.putBacks === 1 && sheet.a11y.indexOf('switch') >= 0, 'a Put back per kept value, the switch is a switch: ' + JSON.stringify(sheet));
+    assert(!sheet.lastVisit && /Not listed: 1 value of the app’s own bookkeeping \(visits, logs, caches\)/.test(sheet.text),
+      'the app\'s own bookkeeping (Last visit) is left out of Put back, and said so: ' + sheet.text);
+    assert(sheet.limit && sheet.limit.limit === 200, 'enough rows that bookkeeping never crowds out an older kept value: ' + JSON.stringify(sheet.limit));
     assert(!/Test: quit after next save/.test(sheet.text), 'no test row where the shell does not offer it');
 
     // Put back: a preview first, then the owner's yes stages it.

@@ -21893,6 +21893,12 @@ function _fpKeyName(k){ return Object.prototype.hasOwnProperty.call(_FP_KEY_NAME
 // The five logs Put back merges record by record (FPStore KTProtocol.logKeys): one the copy kept as "no value" has
 // nothing to put back, and a log is never removed.
 var FP_LOG_KEYS={kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements:1};
+// The app's own bookkeeping (visits, logs, cursors, caches, one-time flags): written without the owner, so its kept
+// values stay out of Storage's Put back list (an older Last visit put back moved the welcome-back and wrist clocks).
+var FP_BOOKKEEPING={kt_last_open:1, kt_err_log:1, kt_wch_log:1, kt_hk_last_sync:1, kt_ota_staged:1, kt_ota_attempt:1, kt_ota_rejected:1,
+  kt_cached_html:1, kt_cached_build:1, kt_cached_err:1, kt_last_seen_build:1, kt_dev_nav:1, kt_wrist_closed:1, kt_ids_unique:1,
+  kt_streak_seeded:1, kt_demo_w_swept:1, kt_last_autobackup:1, kt_last_autobackup_hash:1, kt_coach_card:1};
+function _fpBookkeeping(k){ k=String(k||''); return FP_BOOKKEEPING.hasOwnProperty(k) || k.indexOf('kt_coach_card_')===0; }
 function _fpStorePlug(){ if(!_fpShellFlag()) return null; var P=_plug('TrovoStore'); return (P && typeof P.status==='function') ? P : null; }
 // Reads the status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
 function _fpStoreRefresh(force, then){
@@ -22051,10 +22057,11 @@ function _fpStoreSheetHTML(){
       (canPut ? '<button type="button" data-boot="'+(Math.floor(Number(g.boot))||0)+'" onclick="_fpStorePutBackLoss(this)" style="'+btn+'" aria-label="'+_esc('Put back '+what.charAt(0).toLowerCase()+what.slice(1))+'">Put back</button>' : '')+
     '</div>';
   });
-  var rows=_fpStore.rows;
+  var rows=_fpStore.rows, mine=rows && rows.filter(function(r){ return r && !_fpBookkeeping(r.key); }), books=rows ? rows.length-mine.length : 0;
   if(rows==null) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading what the copy kept\u2026</div>';
-  else if(!rows.length) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);line-height:1.5;">Nothing to put back: the copy has given nothing up in the last 30 days.</div>';
-  else rows.slice(0, 40).forEach(function(r){
+  else if(!mine.length) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);line-height:1.5;">'+
+    (books ? 'Nothing to put back: the copy gave up only the app\u2019s own bookkeeping (visits, logs, caches) in the last 30 days.' : 'Nothing to put back: the copy has given nothing up in the last 30 days.')+'</div>';
+  else mine.slice(0, 40).forEach(function(r){
     // A value the copy kept as "no value" (the key did not exist then) goes back as a removal, and says so; a log
     // kept as none has nothing to put back.
     var none=r.units==null, name=_fpKeyName(r.key), act='';
@@ -22067,6 +22074,8 @@ function _fpStoreSheetHTML(){
       '<div style="font-size:12px;color:var(--muted);line-height:1.45;">'+_esc(_fpConflictWhy(r))+'</div></div>'+act+
     '</div>';
   });
+  if(mine && mine.length && books) out+='<div style="padding:8px 20px 4px;font-size:12px;color:var(--muted);line-height:1.5;">Not listed: '+
+    _plural(books, 'value')+' of the app\u2019s own bookkeeping (visits, logs, caches), which never need putting back.</div>';
 
   var on=st.deviceSwitchOn!==false, pill=function(v){ return '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(v?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(v?'On':'Off')+'</span>'; };
   out+='<div style="height:10px;"></div>'+
@@ -22131,7 +22140,8 @@ function openStorageSheet(){
 function closeStorageSheet(){ var el=document.getElementById('fpStoreOverlay'); if(el) el.remove(); }
 function _fpStoreLoadRows(){
   var P=_fpStorePlug(); if(!P || !P.conflicts) return;
-  try{ Promise.resolve(P.conflicts({limit:60})).then(function(r){ _fpStore.rows=(r && Array.isArray(r.rows)) ? r.rows : []; _fpStorePaint(); }, function(){ _fpStore.rows=[]; _fpStorePaint(); }); }catch(e){}
+  // 200: the bookkeeping left out of the list must not crowd an older kept value out of its first 40.
+  try{ Promise.resolve(P.conflicts({limit:200})).then(function(r){ _fpStore.rows=(r && Array.isArray(r.rows)) ? r.rows : []; _fpStorePaint(); }, function(){ _fpStore.rows=[]; _fpStorePaint(); }); }catch(e){}
 }
 function toggleNativeCopy(){
   var P=_fpStorePlug(); if(!P || !P.setSwitch) return;
