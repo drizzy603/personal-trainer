@@ -14,7 +14,11 @@ the coach model and the rest of C4, and the policy file's state (S7). FPStore ho
 (the rest of S1, see [In the app](#in-the-app)). FPHost attaches the store to the app's web view, fetches
 the policy file and serves Settings > About > Storage through the TrovoStore plugin (S5, S6, S7; see
 [FPHost](#fphost-the-store-in-the-app) below): the app calls it from `AppDelegate.swift`, which also injects
-`window.__FP_SHELL`.
+`window.__FP_SHELL`. FPUI holds the SwiftUI Coach chat, drawn from fixtures so far (C6, see
+[FPUI](#fpui-the-native-coach-chat) below); the page side of the bridge it will be driven by is in
+`index.html` (C1-C3: `coachSend`, message ids and block models, `FPScreens` and the coach model, inert
+without the flag and a TrovoShell plugin). Not built yet: the TrovoShell plugin, ScreenHost and PageLink
+(C5) and the live wiring (C7), so the app still shows the web chat and the flag's `screens` stays empty.
 
 ## Targets
 
@@ -25,8 +29,8 @@ the policy file and serves Settings > About > Storage through the TrovoStore plu
 | FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7), what Settings > About > Storage does and the shell flag (S6) |
 | FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
-Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac; FPHostTests (iOS only), run by
-`xcodebuild test` on an iOS simulator. FPUI gets its own with the tasks that fill it.
+Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac; FPHostTests and FPUITests (iOS
+only), run by `xcodebuild test` on an iOS simulator.
 
 ## Rules
 
@@ -278,9 +282,9 @@ The iOS build of every target, which compiles FPHost and FPUI (no simulator boot
 xcodebuild -scheme FPKit-Package -destination 'generic/platform=iOS Simulator' build
 ```
 
-Every test target on an iOS simulator (FPCoreTests, FPStoreTests less KillTests, which is macOS only, and
-FPHostTests: KTUIProxy in a real WKWebView, the crash marker, the policy fetch; FPUI's joins the scheme when
-its tasks add it):
+Every test target on an iOS simulator (FPCoreTests, FPStoreTests less KillTests, which is macOS only,
+FPHostTests: KTUIProxy in a real WKWebView, the crash marker, the policy fetch; and FPUITests: the chat's views,
+renders, composer, photo and press areas on the coach fixtures):
 
 ```sh
 xcodebuild -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<udid>' \
