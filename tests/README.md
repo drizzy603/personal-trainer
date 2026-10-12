@@ -13,6 +13,14 @@ Run everything:
 ./tests/run.sh
 ```
 
+Shell contracts (plan task C3): `boot({shell})` runs a boot under one contract an installable shell
+speaks: `'none'` (no flag, every shell up to 59 and the PWA; the default), `'inert'` (build 60's
+`window.__FP_SHELL` with no native screen) or `'coach'` (build 60: the native Coach chat), with a
+mock TrovoShell that negotiates hello as FPCore does and records every call in `window.__fpShell`.
+`FP_SHELL_INERT=1 ./tests/run.sh` runs every native boot as `'inert'`: per-spec results must equal
+the classic run's. Spec 118 drives the bridge (`window.FPScreens.call`); `tests/golden/check.sh`
+holds the chat's HTML, the page's coach models and FPCore's fixtures together.
+
 First run installs Playwright into `tests/node_modules` (gitignored). Suites:
 
 - `01-boot` — boot smoke, all four tabs render, no page errors, voice logging stays removed

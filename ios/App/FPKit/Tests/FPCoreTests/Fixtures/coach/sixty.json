@@ -1,7 +1,7 @@
 {
  "v": 1,
  "rev": 300,
- "boot": "b1760000500000-6060",
+ "boot": "b1791561600000-c3",
  "intake": false,
  "loading": false,
  "room": "heavyweight",
@@ -124,7 +124,7 @@
   "eyebrow": "COACH · ONLINE",
   "status": "online",
   "title": "Today's plan",
-  "meta": "WK 06 · DAY 6",
+  "meta": "WK 06 · DAY 5",
   "model": {
    "label": "Sonnet 5.5",
    "name": "Sonnet",
@@ -138,22 +138,33 @@
  "empty": null,
  "messages": [
   {
-   "id": "m1",
+   "id": "m1.g",
    "role": "user",
-   "at": 1790841600000,
+   "at": 1790755200000,
+   "day": "Wed, Sep 30",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 1 about run analysis",
-   "day": "Thu, Oct 1"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m2",
+   "id": "m2.g",
    "role": "assistant",
-   "at": 1790841660000,
+   "at": 1790755260000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Run analysis",
    "body": {
     "k": "cmb",
@@ -204,30 +215,43 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m3",
+   "id": "m3.g",
    "role": "user",
-   "at": 1790928060000,
+   "at": 1790755260000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 2 about programme adjustment",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m4",
+   "id": "m4.g",
    "role": "assistant",
-   "at": 1790928120000,
+   "at": 1790755320000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Programme adjustment",
    "body": {
     "k": "cmb",
@@ -264,25 +288,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m5",
+   "id": "m5.g",
    "role": "user",
-   "at": 1791014520000,
+   "at": 1790755320000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 3 about metric runs",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m6",
+   "id": "m6.g",
    "role": "assistant",
-   "at": 1791014580000,
+   "at": 1790755380000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "cmb",
@@ -342,25 +379,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m7",
+   "id": "m7.g",
    "role": "user",
-   "at": 1791100980000,
+   "at": 1790755380000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 4 about markdown and markers",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m8",
+   "id": "m8.g",
    "role": "assistant",
-   "at": 1791101040000,
+   "at": 1790755440000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Spaced type",
    "body": {
     "k": "cmb",
@@ -426,25 +476,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m9",
+   "id": "m9.g",
    "role": "user",
-   "at": 1791187440000,
+   "at": 1790841840000,
+   "day": "Thu, Oct 1",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 5 about lists",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m10",
+   "id": "m10.g",
    "role": "assistant",
-   "at": 1791187500000,
+   "at": 1790841900000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -536,28 +599,40 @@
        }
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m11",
+   "id": "m11.g",
    "role": "user",
-   "at": 1791273900000,
+   "at": 1790841900000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 6 about headings rules",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m12",
+   "id": "m12.g",
    "role": "assistant",
-   "at": 1791273960000,
+   "at": 1790841960000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -601,33 +676,45 @@
        "Last line."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m13",
+   "id": "m13.g",
    "role": "user",
-   "at": 1791360360000,
+   "at": 1790841960000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 7 about table",
-   "day": "Thu, Oct 7"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m14",
+   "id": "m14.g",
    "role": "assistant",
-   "at": 1791360420000,
+   "at": 1790842020000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -700,28 +787,40 @@
        "After the table."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m15",
+   "id": "m15.g",
    "role": "user",
-   "at": 1791446820000,
+   "at": 1790842020000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 8 about inline edges",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m16",
+   "id": "m16.g",
    "role": "assistant",
-   "at": 1791446880000,
+   "at": 1790842080000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -786,28 +885,40 @@
        " misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m17",
+   "id": "m17.g",
    "role": "user",
-   "at": 1791533280000,
+   "at": 1790928480000,
+   "day": "Fri, Oct 2",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 9 about cmb with markdown",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m18",
+   "id": "m18.g",
    "role": "assistant",
-   "at": 1791533340000,
+   "at": 1790928540000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Week review",
    "body": {
     "k": "cmb",
@@ -898,25 +1009,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m19",
+   "id": "m19.g",
    "role": "user",
-   "at": 1790842140000,
+   "at": 1790928540000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 10 about plain prose",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m20",
+   "id": "m20.g",
    "role": "assistant",
-   "at": 1790842200000,
+   "at": 1790928600000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -939,28 +1063,40 @@
        "Keep the runs easy."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m21",
+   "id": "m21.g",
    "role": "user",
    "at": 1790928600000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 11 about unicode",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m22",
+   "id": "m22.g",
    "role": "assistant",
    "at": 1790928660000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Ünïcödé",
    "body": {
     "k": "cmb",
@@ -1001,30 +1137,43 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m23",
+   "id": "m23.g",
    "role": "user",
-   "at": 1791015060000,
+   "at": 1790928660000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 12 about blank markers",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m24",
+   "id": "m24.g",
    "role": "assistant",
-   "at": 1791015120000,
+   "at": 1790928720000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "cmb",
@@ -1059,25 +1208,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m25",
+   "id": "m25.g",
    "role": "user",
-   "at": 1791101520000,
+   "at": 1791015120000,
+   "day": "Sat, Oct 3",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 13 about run analysis",
-   "day": "Thu, Oct 4"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m26",
+   "id": "m26.g",
    "role": "assistant",
-   "at": 1791101580000,
+   "at": 1791015180000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Run analysis",
    "body": {
     "k": "cmb",
@@ -1128,25 +1290,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m27",
+   "id": "m27.g",
    "role": "user",
-   "at": 1791187980000,
+   "at": 1791015180000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 14 about programme adjustment",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m28",
+   "id": "m28.g",
    "role": "assistant",
-   "at": 1791188040000,
+   "at": 1791015240000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Programme adjustment",
    "body": {
     "k": "cmb",
@@ -1183,25 +1358,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m29",
+   "id": "m29.g",
    "role": "user",
-   "at": 1791274440000,
+   "at": 1791015240000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 15 about metric runs",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m30",
+   "id": "m30.g",
    "role": "assistant",
-   "at": 1791274500000,
+   "at": 1791015300000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "cmb",
@@ -1261,25 +1449,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m31",
+   "id": "m31.g",
    "role": "user",
-   "at": 1791360900000,
+   "at": 1791015300000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 16 about markdown and markers",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m32",
+   "id": "m32.g",
    "role": "assistant",
-   "at": 1791360960000,
+   "at": 1791015360000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Spaced type",
    "body": {
     "k": "cmb",
@@ -1345,30 +1546,43 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m33",
+   "id": "m33.g",
    "role": "user",
-   "at": 1791447360000,
+   "at": 1791101760000,
+   "day": "Sun, Oct 4",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 17 about lists",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m34",
+   "id": "m34.g",
    "role": "assistant",
-   "at": 1791447420000,
+   "at": 1791101820000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -1460,28 +1674,40 @@
        }
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m35",
+   "id": "m35.g",
    "role": "user",
-   "at": 1791533820000,
+   "at": 1791101820000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 18 about headings rules",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m36",
+   "id": "m36.g",
    "role": "assistant",
-   "at": 1791533880000,
+   "at": 1791101880000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -1525,28 +1751,40 @@
        "Last line."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m37",
+   "id": "m37.g",
    "role": "user",
-   "at": 1790842680000,
+   "at": 1791101880000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 19 about table",
-   "day": "Thu, Oct 1"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m38",
+   "id": "m38.g",
    "role": "assistant",
-   "at": 1790842740000,
+   "at": 1791101940000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -1619,28 +1857,40 @@
        "After the table."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m39",
+   "id": "m39.g",
    "role": "user",
-   "at": 1790929140000,
+   "at": 1791101940000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 20 about inline edges",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m40",
+   "id": "m40.g",
    "role": "assistant",
-   "at": 1790929200000,
+   "at": 1791102000000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -1705,28 +1955,40 @@
        " misnests\nA link is its text; [not this](ftp://x) one.\n<b>not html</b> & \"quotes\" and 'apostrophes'"
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m41",
+   "id": "m41.g",
    "role": "user",
-   "at": 1791015600000,
+   "at": 1791188400000,
+   "day": "Mon, Oct 5",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 21 about cmb with markdown",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m42",
+   "id": "m42.g",
    "role": "assistant",
-   "at": 1791015660000,
+   "at": 1791188460000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Week review",
    "body": {
     "k": "cmb",
@@ -1817,30 +2079,43 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m43",
+   "id": "m43.g",
    "role": "user",
-   "at": 1791102060000,
+   "at": 1791188460000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 22 about plain prose",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m44",
+   "id": "m44.g",
    "role": "assistant",
-   "at": 1791102120000,
+   "at": 1791188520000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -1863,28 +2138,40 @@
        "Keep the runs easy."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m45",
+   "id": "m45.g",
    "role": "user",
    "at": 1791188520000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 23 about unicode",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m46",
+   "id": "m46.g",
    "role": "assistant",
    "at": 1791188580000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Ünïcödé",
    "body": {
     "k": "cmb",
@@ -1925,25 +2212,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m47",
+   "id": "m47.g",
    "role": "user",
-   "at": 1791274980000,
+   "at": 1791188580000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 24 about blank markers",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m48",
+   "id": "m48.g",
    "role": "assistant",
-   "at": 1791275040000,
+   "at": 1791188640000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "cmb",
@@ -1978,25 +2278,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m49",
+   "id": "m49.g",
    "role": "user",
-   "at": 1791361440000,
+   "at": 1791275040000,
+   "day": "Tue, Oct 6",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 25 about run analysis",
-   "day": "Thu, Oct 7"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m50",
+   "id": "m50.g",
    "role": "assistant",
-   "at": 1791361500000,
+   "at": 1791275100000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Run analysis",
    "body": {
     "k": "cmb",
@@ -2047,25 +2360,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m51",
+   "id": "m51.g",
    "role": "user",
-   "at": 1791447900000,
+   "at": 1791275100000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 26 about programme adjustment",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m52",
+   "id": "m52.g",
    "role": "assistant",
-   "at": 1791447960000,
+   "at": 1791275160000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Programme adjustment",
    "body": {
     "k": "cmb",
@@ -2102,30 +2428,43 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Bench Press → 170 lb",
+     "label": "Logged 181 lb",
      "ok": true
     }
-   ]
+   ],
+   "ledger": null
   },
   {
-   "id": "m53",
+   "id": "m53.g",
    "role": "user",
-   "at": 1791534360000,
+   "at": 1791275160000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 27 about metric runs",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m54",
+   "id": "m54.g",
    "role": "assistant",
-   "at": 1791534420000,
+   "at": 1791275220000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "cmb",
@@ -2185,25 +2524,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m55",
+   "id": "m55.g",
    "role": "user",
-   "at": 1790843220000,
+   "at": 1791275220000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 28 about markdown and markers",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m56",
+   "id": "m56.g",
    "role": "assistant",
-   "at": 1790843280000,
+   "at": 1791275280000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Spaced type",
    "body": {
     "k": "cmb",
@@ -2269,25 +2621,38 @@
     ],
     "actions": []
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m57",
+   "id": "m57.g",
    "role": "user",
-   "at": 1790929680000,
+   "at": 1791361680000,
+   "day": "Wed, Oct 7",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 29 about lists",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m58",
+   "id": "m58.g",
    "role": "assistant",
-   "at": 1790929740000,
+   "at": 1791361740000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -2379,28 +2744,40 @@
        }
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": []
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m59",
+   "id": "m59.g",
    "role": "user",
-   "at": 1791016140000,
+   "at": 1791361740000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Question 30 about headings rules",
-   "day": null
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m60",
+   "id": "m60.g",
    "role": "assistant",
-   "at": 1791016200000,
+   "at": 1791361800000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -2444,16 +2821,21 @@
        "Last line."
       ]
      }
-    ],
-    "actions": []
+    ]
    },
-   "pills": [],
+   "chip": null,
+   "pills": [
+    {
+     "label": "Bench Press → 170 lb",
+     "ok": true
+    }
+   ],
    "ledger": {
     "head": "PLAN CHANGES · WEEK 6",
     "rows": [
      [
       "Bench Press",
-      "→ 170 lb",
+      "160 → 170 lb",
       "plan"
      ]
     ],

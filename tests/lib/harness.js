@@ -155,6 +155,8 @@ async function boot(opts = {}) {
     };
   }, { seed, native: !!opts.native, watchPending: opts.watchPending || [] });
   if (opts.init) await page.addInitScript(opts.init);
+  const shell = shellFlag(opts);   // the shell contract this boot runs under (opts.shell, FP_SHELL_INERT): see shellMock
+  if (shell) await page.addInitScript(shellMock, shell);
 
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });
@@ -185,4 +187,56 @@ function run(name, fn) {
   );
 }
 
-module.exports = { boot, assert, run, SEED };
+// Shell contracts (plan task C3). opts.shell names the one a boot runs under, one variant per contract
+// an installable shell speaks:
+//   'none'   no flag and no TrovoShell: every shell up to 59, the PWA, the browser (the default);
+//   'inert'  build 60's flag with no native screen: window.__FP_SHELL {v:1, screens:[]} and the mock;
+//   'coach'  build 60: contract v1 with the native Coach chat;
+//   or a flag object {v, min, shell, screens}.
+// FP_SHELL_INERT=1 (tests/run.sh passes it) runs every native boot that names no shell as 'inert'.
+// The mock TrovoShell answers hello the way FPCore's Negotiation does and records every call in
+// window.__fpShell (calls, of(name), models()); a spec calls the page as the shell does through
+// window.FPScreens.call(name, args).
+const SHELLS = {
+  none: null,
+  inert: { v: 1, min: 1, shell: '60', screens: [] },
+  coach: { v: 1, min: 1, shell: '60', screens: ['coach'] },
+};
+function shellFlag(opts) {
+  let s = opts.shell;
+  if (s === undefined || s === null) s = opts.native && process.env.FP_SHELL_INERT === '1' ? 'inert' : 'none';
+  if (typeof s === 'string') {
+    if (!Object.prototype.hasOwnProperty.call(SHELLS, s)) throw new Error('unknown shell variant "' + s + '" (none, inert, coach)');
+    return SHELLS[s];
+  }
+  return s || null;
+}
+// Runs in the page before its scripts: the flag the shell injects at document start, and TrovoShell.
+function shellMock(flag) {
+  window.__FP_SHELL = JSON.parse(JSON.stringify(flag));
+  if (!window.Capacitor) window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: {} };
+  const calls = [];
+  const copy = (a) => (a === undefined ? null : JSON.parse(JSON.stringify(a)));
+  function hello(a) {   // FPCore Negotiation.negotiate
+    const want = (a && a.v) | 0;
+    if (want < 1) return { v: 0, screens: [], why: 'no-version' };
+    const v = Math.min(want, flag.v);
+    if (v < (flag.min || 1)) return { v: 0, screens: [], why: 'page-too-old' };
+    return { v, screens: (flag.screens || []).filter((s) => ((a && a.screens) || []).indexOf(s) >= 0) };
+  }
+  const method = (name) => (a) => {
+    calls.push([name, copy(a)]);
+    if (window.__fpShell.refuse && window.__fpShell.refuse[name]) return Promise.reject(new Error(window.__fpShell.refuse[name]));
+    return Promise.resolve(name === 'hello' ? hello(a) : {});
+  };
+  window.__fpShell = {
+    flag, calls, refuse: {},
+    of: (name) => calls.filter((c) => c[0] === name).map((c) => c[1]),
+    models: () => calls.filter((c) => c[0] === 'model').map((c) => JSON.parse(c[1].json)),
+    call: (name, args) => window.FPScreens.call(name, args || {}),
+  };
+  window.Capacitor.Plugins.TrovoShell = {};
+  ['hello', 'bootDone', 'present', 'dismiss', 'model', 'toast', 'confirm', 'log'].forEach((n) => { window.Capacitor.Plugins.TrovoShell[n] = method(n); });
+}
+
+module.exports = { boot, assert, run, SEED, SHELLS };

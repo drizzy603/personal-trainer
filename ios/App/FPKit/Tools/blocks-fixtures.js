@@ -12,9 +12,11 @@
 //     from the page's own _mdInline(), so the runs are exactly what the page styles.
 //   - signature: the structure the PAGE renders, read off the page's HTML (not off the model).
 // The run fails unless the model, drawn back to HTML, reads the same as the page's HTML (same
-// signature), so every fixture is a model the page's grammar really produces. FPCoreTests decodes
-// each body, checks that encoding it again gives the same JSON, and that Swift's signature of the
-// decoded body equals the page's.
+// signature), so every fixture is a model the page's grammar really produces. A page from web 20261011
+// on (plan task C2) builds the model itself (_coachBodyV1, the body the native chat reads): the run
+// also fails unless the page's own model equals this port's. FPCoreTests decodes each body, checks
+// that encoding it again gives the same JSON, and that Swift's signature of the decoded body equals
+// the page's.
 //
 // Inline styles are read the way a browser draws them: <strong>, <em> and <code> toggle bold, italic
 // and code, so the one misnesting _mdInline can produce (**a `b** c`) reads as the browser shows it.
@@ -39,10 +41,24 @@ function grab(name) {
   }
   throw new Error('unbalanced ' + name);
 }
+// From web 20261011 (plan task C2) md() and _coachBlocksHTML() draw the page's own block models
+// (_mdModel, _cmbModel) and the page hands Swift their contract form (_coachBodyV1): those come along
+// when the page has them, and the port below must then equal the page's own model.
+const MODEL_FNS = ['_mdEsc', '_mdUnesc', '_mdTokens', '_mdTokHTML', '_mdModel', '_mdHTML', '_mdRunsV1', '_mdBlocksV1',
+  '_cmbModel', '_cmbHTML', '_cmbTakeTokHTML', '_cmbBodyV1', '_coachBodyV1'];
+const hasFn = (name) => src.indexOf('function ' + name + '(') >= 0;
+function grabVars() {   // the lines that declare the model's tag and entity tables
+  const out = [];
+  for (const name of ['_MD_TAGS', '_MD_ENT']) {
+    const m = new RegExp('var ' + name + '=[^\\n]*').exec(src);
+    if (m) out.push(m[0]);
+  }
+  return out.join('\n');
+}
 const page = {};
 vm.createContext(page);
-vm.runInContext(['_chars', '_wellFormed', '_esc', '_mdInline', 'md', '_hasCoachBlocks', '_coachBlocksHTML', '_cmbTakeHTML']
-  .map(grab).join('\n'), page);
+vm.runInContext([grabVars()].concat(['_chars', '_wellFormed', '_esc', '_mdInline', 'md', '_hasCoachBlocks', '_coachBlocksHTML', '_cmbTakeHTML']
+  .concat(MODEL_FNS.filter(hasFn)).map(grab)).join('\n'), page);
 
 // ── HTML tokens, read with the browser's toggle semantics for the three inline styles ──────────
 const ENT = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
@@ -303,6 +319,13 @@ const cases = CASES.map(([name, text]) => {
   if (JSON.stringify(want) !== JSON.stringify(got)) {
     console.error('model differs from the page for ' + name + '\npage:  ' + JSON.stringify(want, null, 1) + '\nmodel: ' + JSON.stringify(got, null, 1));
     process.exit(1);
+  }
+  if (typeof page._coachBodyV1 === 'function') {
+    const own = JSON.stringify(page._coachBodyV1(text, false)), port = JSON.stringify({ eyebrow: model.eyebrow, body: model.body });
+    if (own !== port) {
+      console.error('the page\'s own model (_coachBodyV1) differs from this port for ' + name + '\npage: ' + own + '\nport: ' + port);
+      process.exit(1);
+    }
   }
   return { name, text, eyebrow: model.eyebrow, body: model.body, signature: want };
 });

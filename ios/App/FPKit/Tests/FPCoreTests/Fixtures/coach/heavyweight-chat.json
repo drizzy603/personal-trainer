@@ -1,7 +1,7 @@
 {
  "v": 1,
  "rev": 42,
- "boot": "b1760000000000-4f2a",
+ "boot": "b1791561600000-c3",
  "intake": false,
  "loading": false,
  "room": "heavyweight",
@@ -124,7 +124,7 @@
   "eyebrow": "COACH · ONLINE",
   "status": "online",
   "title": "Today's plan",
-  "meta": "WK 06 · DAY 6",
+  "meta": "WK 06 · DAY 5",
   "model": {
    "label": "Sonnet 5.5",
    "name": "Sonnet",
@@ -138,22 +138,33 @@
  "empty": null,
  "messages": [
   {
-   "id": "m1",
+   "id": "m1.g",
    "role": "user",
    "at": 1791482520000,
+   "day": "Yesterday",
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "How did my run look yesterday?",
-   "day": "Yesterday"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m2",
+   "id": "m2.g",
    "role": "assistant",
    "at": 1791482580000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Run analysis",
    "body": {
     "k": "cmb",
@@ -204,26 +215,38 @@
     ],
     "actions": []
    },
-   "a11y": "Coach: Good session. PACE: 8:07 vs 8:15 goal -8s. Takeaway: Aerobic base is improving."
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m3",
+   "id": "m3.g",
    "role": "user",
    "at": 1791531000000,
+   "day": "Today",
+   "seed": "Plateau check",
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Plateau check",
-   "day": "Today",
-   "seed": "Plateau check"
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m4",
+   "id": "m4.g",
    "role": "assistant",
    "at": 1791531060000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -316,27 +339,41 @@
       ]
      }
     ]
-   }
+   },
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m5",
+   "id": "m5.g",
    "role": "user",
    "at": 1791531600000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "",
+   "errKind": null,
    "image": {
-    "key": "m5"
-   }
+    "key": null
+   },
+   "eyebrow": null,
+   "body": "",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m6",
+   "id": "m6.g",
    "role": "assistant",
    "at": 1791531660000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -348,24 +385,39 @@
       ]
      }
     ]
-   }
+   },
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m7",
+   "id": "m7.g",
    "role": "user",
    "at": 1791531900000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "Add 10 lb to my bench from this week"
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
+   "body": "Add 10 lb to my bench from this week",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m8",
+   "id": "m8.g",
    "role": "assistant",
    "at": 1791531960000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH · Programme adjustment",
    "body": {
     "k": "cmb",
@@ -402,13 +454,18 @@
     ],
     "actions": []
    },
+   "chip": null,
    "pills": [
     {
-     "label": "Changed Bench Press · 170 lb",
+     "label": "Bench Press → 170 lb",
      "ok": true
     },
     {
-     "label": "Not applied · Squat goal",
+     "label": "Bench goal 200 lb",
+     "ok": true
+    },
+    {
+     "label": "Not applied · Squat goal 315 lb",
      "ok": false
     }
    ],
@@ -417,7 +474,7 @@
     "rows": [
      [
       "Bench Press",
-      "→ 170 lb",
+      "160 → 170 lb",
       "plan"
      ],
      [
@@ -443,21 +500,33 @@
    }
   },
   {
-   "id": "m9",
+   "id": "m9.g",
    "role": "user",
    "at": 1791532200000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "Show my top sets"
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
+   "body": "Show my top sets",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m10",
+   "id": "m10.g",
    "role": "assistant",
    "at": 1791532260000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
+   "errKind": null,
+   "image": null,
    "eyebrow": "COACH",
    "body": {
     "k": "md",
@@ -531,26 +600,44 @@
       ]
      }
     ]
-   }
+   },
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m11",
+   "id": "m11.g",
    "role": "user",
    "at": 1791532500000,
+   "day": null,
+   "seed": null,
    "local": false,
    "error": false,
    "stopped": false,
-   "body": "and my squat?"
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
+   "body": "and my squat?",
+   "chip": null,
+   "pills": [],
+   "ledger": null
   },
   {
-   "id": "m12",
+   "id": "m12.g",
    "role": "assistant",
    "at": 1791532560000,
+   "day": null,
+   "seed": null,
    "local": true,
    "error": true,
    "stopped": false,
+   "errKind": null,
+   "image": null,
+   "eyebrow": null,
    "body": "Could not connect. Check your internet connection.",
-   "chip": "retry"
+   "chip": "retry",
+   "pills": [],
+   "ledger": null
   }
  ],
  "running": [],
@@ -563,7 +650,7 @@
   "draft": null
  },
  "speech": {
-  "id": "m12",
+  "id": "s1",
   "text": "Could not connect. Check your internet connection."
  }
 }
