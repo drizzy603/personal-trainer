@@ -22170,7 +22170,9 @@ function _fpStoreTestQuit(){
     try{ Promise.resolve(P.testKill({arm:false})).then(function(){ showToast('Test cancelled'); _fpStoreRefresh(true); }, function(){}); }catch(e){}
     return;
   }
-  _ktConfirm({title:'Quit after the next save?', body:'The app quits the moment your next change is saved: a set, a workout, a run, a weigh-in. Open it again and come back here to see whether this iPhone kept that save.',
+  // The quit lands inside WebKit's lost-write window and build 60 repairs nothing by itself: the save can stay missing
+  // until it is put back, and a Resume or a new log first would rewrite what Put back brings back.
+  _ktConfirm({title:'Quit after the next save?', body:'The app quits the moment your next change is saved: a set, a workout, a run, a weigh-in. This iPhone may lose that save, so when you open the app again, come straight back here before you resume or log anything: Storage says whether it kept the save, and puts it back if not.',
     confirmLabel:'Arm the test', confirmStyle:'var(--accent)', onConfirm:function(){
       try{ Promise.resolve(P.testKill({arm:true, keys:FP_QUIT_KEYS.slice()})).then(function(r){
         if(r && r.armed) showToast('Armed \u00b7 the app quits after your next save'); else showToast('Couldn\u2019t arm it \u2014 the native copy is off', 'err');

@@ -230,6 +230,9 @@ serial('the Storage sheet: counts from the status, Put back after a preview, the
     assert(/quit after saving Workout in progress · on reopening, this iPhone had lost the save; the copy kept it/.test(text), 'the last test says what the reopening found: ' + text);
     await ev(app, () => [...document.querySelectorAll('#fpStoreBody .settings-row')].find((r) => /Test: quit after next save/.test(r.textContent)).click());
     await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const warn = await ev(app, () => document.querySelector('.kt-close-sheet-sub').textContent);
+    assert(/may lose that save/.test(warn) && /before you resume or log anything/.test(warn) && /puts it back if not/.test(warn),
+      'the test says the save may stay missing until it is put back, and to come here first: ' + warn);
     await ev(app, () => document.querySelector('.kt-close-sheet [id$="ok"]').click());
     await app.page.waitForFunction(() => __ts.calls.some((c) => c[0] === 'testKill'), null, { timeout: 3000 });
     const arm = await ev(app, () => __ts.calls.filter((c) => c[0] === 'testKill')[0][1]);
