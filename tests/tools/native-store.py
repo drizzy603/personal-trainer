@@ -796,9 +796,10 @@ PAGE_H = ("var H = function (s) { var a = 0x811c9dc5, b = 5381, i, c; for (i = 0
 
 def scen_storage(c):
     """Settings > About > Storage through the real TrovoStore plugin (plan task S6): the row, Put back of a value an older
-    build replaced (staged, the page reloaded, both copies hold it), "Test: quit after next save" (the process ends right
-    after the armed save, the next launch reports what its first start found), the Native copy switch across launches,
-    the sheet and Export a copy's share sheet."""
+    build replaced (staged, the page reloaded, both copies hold it), a value the copy held as none (an older build's new
+    key) previewed as a removal with its start named, the status's losses, "Test: quit after next save" (the process ends
+    right after the armed save, the next launch reports what its first start found), the Native copy switch across
+    launches, the sheet and Export a copy's share sheet."""
     s = 'storage'
     def res(ev, label):
         e = ev.last('js', label=label)
@@ -809,7 +810,8 @@ def scen_storage(c):
     c.rep.check(s, 'the page saved the value an older build will change', res(ev, 'seed') == 'A ' + mark, res(ev, 'seed'))
     c.sim.terminate()
     db = sqlite3.connect(webkit_file(c.sim))
-    for k, v in (('kt_probe_pb', 'B ' + mark), ('kt_last_open', str(1700000000000 + int(mark)))):
+    # ...and creates one the copy never held (its Put back is a removal, and the plan says so).
+    for k, v in (('kt_probe_pb', 'B ' + mark), ('kt_probe_new', 'N ' + mark), ('kt_last_open', str(1700000000000 + int(mark)))):
         db.execute('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', (k, v.encode('utf-16-le')))
     db.commit()
     db.close()
@@ -821,10 +823,13 @@ def scen_storage(c):
             js('putback', PAGE_H + " var r = await Capacitor.Plugins.TrovoStore.conflicts({limit: 400});"
                           " var p = r.rows.filter(function (x) { return x.key === 'kt_probe_pb' && x.why === 'older build'; })[0];"
                           " if (!p) return {error: 'no older-build conflict for kt_probe_pb'};"
+                          " var n = r.rows.filter(function (x) { return x.key === 'kt_probe_new' && x.why === 'older build'; })[0];"
+                          " var removal = n ? await Capacitor.Plugins.TrovoStore.putBack({conflicts: [n.id], preview: true}) : null;"
+                          " var st = await Capacitor.Plugins.TrovoStore.status();"
                           " var prev = await Capacitor.Plugins.TrovoStore.putBack({conflicts: [p.id], preview: true});"
                           " sessionStorage.setItem('fp_pb_pick', JSON.stringify(p));"
                           " var staged = await Capacitor.Plugins.TrovoStore.putBack({conflicts: [p.id]});"
-                          " return {pick: p, preview: prev, staged: staged};"),
+                          " return {pick: p, none: n || null, removal: removal, losses: st.store ? st.store.losses : undefined, preview: prev, staged: staged};"),
         ],
         [
             js('after', PAGE_H + " var p = JSON.parse(sessionStorage.getItem('fp_pb_pick') || 'null'); var st = await Capacitor.Plugins.TrovoStore.status();"
@@ -843,6 +848,16 @@ def scen_storage(c):
     c.rep.check(s, 'a Debug build offers "Test: quit after next save" (status and method)', st0.get('testKill') is True and st0.get('testKillFn') == 'function', st0)
     pb = res(ev, 'putback') or {}
     c.rep.check(s, 'Put back previews the value, then stages it', (pb.get('preview') or {}).get('count') == 1 and (pb.get('staged') or {}).get('staged') is True, pb)
+    none, removal = pb.get('none') or {}, pb.get('removal') or {}
+    ritem = (removal.get('items') or [{}])[0]
+    c.rep.check(s, 'a value the copy held as none previews as a removal (removes), its row names its start (boot)',
+                none.get('units') is None and isinstance(none.get('boot'), int) and none.get('boot') == (pb.get('pick') or {}).get('boot')
+                and removal.get('count') == 1 and ritem.get('outcome') == 'put back' and ritem.get('removes') is True, [none, removal])
+    losses = pb.get('losses')
+    in_losses = sorted({it.get('key') for g in (losses or []) for it in (g.get('items') or [])} & {'kt_probe_pb', 'kt_probe_new'})
+    c.rep.check(s, 'the status carries the losses still open, and an older build\'s changes are not among them',
+                isinstance(losses, list) and not in_losses, '%s loss(es)%s' % (len(losses) if isinstance(losses, list) else losses,
+                                                                              ', listing %s' % in_losses if in_losses else ''))
     af = res(ev, 'after') or {}
     c.rep.check(s, 'the plugin reloaded the page and the facade wrote the kept value into WebKit', af.get('value') == 'A ' + mark
                 and (af.get('lastPutBack') or {}).get('items', [{}])[0].get('outcome') == 'put back', af)
@@ -887,7 +902,7 @@ def scen_storage(c):
         js('on', "var st = await Capacitor.Plugins.TrovoStore.status(); return {facade: st.facade, line: _fpStoreLine(st), mode: window.__ktStoreState && window.__ktStoreState.mode};"),
         js('sheet', "switchTab('settings'); openStorageSheet(); await new Promise(function (r) { setTimeout(r, 1500); });"
                     " var sh = document.querySelector('#fpStoreOverlay .kt-sheet'); if (sh) sh.scrollTop = sh.scrollHeight;"
-                    " return document.getElementById('fpStoreBody').textContent.slice(-500);"),
+                    " return document.getElementById('fpStoreBody').textContent;"),
         {'op': 'wait', 'ms': 2500},
         js('export', "Capacitor.Plugins.TrovoStore.exportCopy().then(function (r) { window.__exp = r; }, function (e) { window.__exp = {error: String(e && e.message || e)}; });"
                      " return 'presented';"),
@@ -898,6 +913,8 @@ def scen_storage(c):
                 and str(on.get('line', '')).startswith('In step'), on)
     tail = str(res(ev, 'sheet'))
     c.rep.check(s, 'the sheet offers Put back, the switch, Export a copy and the test', all(t in tail for t in ('Put back', 'Native copy', 'Export a copy', 'Test: quit after next save')), tail[-200:])
+    c.rep.check(s, 'the sheet says Remove for the value the copy held as none, and leaves the bookkeeping out', 'Remove' in tail
+                and 'kt_probe_new' in tail and 'Last visit' not in tail and 'Not listed:' in tail, tail[-300:])
     c.rep.fact(s, 'shots: %s' % ', '.join(sorted(shots.values())))
 
 
@@ -944,6 +961,16 @@ def scen_sweep(c):
             named = sorted(last.get('wouldRepair') or [])
             c.rep.check(s, 'kill %02d: WebKit lost %d writes; they show as would-repair (rule 6) with the right keys' % (t, len(lost)),
                         last.get('rule') == 6 and named == lost[:50], '%s, would repair %s' % (last.get('label'), named[:4]))
+            # Storage's one Put back for that start: a loss naming every burst key WebKit lost (keys the report launch
+            # wrote since, such as kt_last_open, are no longer the loss's to put back).
+            losses = (((rep.state('report') or {}).get('status') or {}).get('store') or {}).get('losses') or []
+            mine = [g for g in losses if g.get('boot') == last.get('boot')]
+            burst = [k for k in lost if k.startswith('kt_probe_b')]
+            items = sorted(it.get('key') for it in (mine[0].get('items') or [])) if mine else []
+            c.rep.check(s, 'kill %02d: that start is one loss to put back, naming the %d burst keys WebKit lost' % (t, len(burst)),
+                        len(mine) == 1 and mine[0].get('why') == 'lag' and set(burst) <= set(items)
+                        and len(mine[0].get('ids') or []) == len(lost),
+                        '%d loss(es) for boot %s, %d of %d keys open' % (len(mine), last.get('boot'), len(items), len(lost)))
         else:
             c.rep.check(s, 'kill %02d: WebKit kept everything; the next start is in step' % t, last.get('rule') == 0, last.get('label'))
         # The report launch's page writes its own keys (kt_last_open, ...); every burst key WebKit held before it, and
