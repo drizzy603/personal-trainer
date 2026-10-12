@@ -364,10 +364,14 @@ serial('everything a start lost goes back in one Put back, and the row says Put 
     const wiped = inStep();
     wiped.store.wipeOffer = { at: NOW - 3600000, snap: '2026-10-11-130750-wiped.json', keys: 73, seq: 10 };
     wiped.store.losses = [{ boot: 3, at: NOW - 3000000, why: 'wiped', ids: [5, 6], items: [{ key: 'kt_routine', outcome: 'put back', origin: 'conflict:5' }] }];
-    const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [done, two, wiped]);
+    // A loss of the app's own bookkeeping alone (a watch log line) is no news for the owner.
+    const books = inStep();
+    books.store.losses = [{ boot: 8, at: NOW - 5000, why: 'lag', ids: [50], items: [{ key: 'kt_wch_log', outcome: 'put back', origin: 'conflict:50' }] }];
+    const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [done, two, wiped, books]);
     assert(lines[0] === 'In step · 24 items · 176 KB', 'a loss put back in full: ' + lines[0]);
     assert(lines[1] === 'Kept 2 changes this iPhone lost · Put back', 'two starts, two keys still missing: ' + lines[1]);
     assert(lines[2] === 'In step · the copy kept what a wipe took · Put back', 'what a wipe took: ' + lines[2]);
+    assert(lines[3] === 'In step · 24 items · 176 KB', 'bookkeeping alone: ' + lines[3]);
     await ev(app, (st) => { __ts.status = st; __ts.rows = []; openStorageSheet(); }, two);
     await app.page.waitForFunction(() => document.querySelectorAll('#fpStoreBody button[data-boot]').length === 2, null, { timeout: 3000 });
     const labels = await ev(app, () => [...document.querySelectorAll('#fpStoreBody button[data-boot]')].map((b) => b.dataset.boot + ' ' + b.getAttribute('aria-label')));

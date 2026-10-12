@@ -21943,9 +21943,11 @@ function _fpStoreWhy(w){
   return w.replace(/^store: /, '') || 'off';
 }
 // The losses the copy still holds (FPStore KTLoss: what one start found this iPhone had lost, while any of it can
-// still go back), and how many keys each kind still misses, a key once. known: the shell reports them.
+// still go back), and how many keys each kind still misses, a key once. known: the shell reports them. A loss of the
+// app's own bookkeeping alone (a log line, a cursor) is no news for the owner: not listed, not counted.
 function _fpLosses(s){
-  var list=(s && Array.isArray(s.losses)) ? s.losses.filter(function(g){ return g && Array.isArray(g.ids) && g.ids.length && Array.isArray(g.items) && g.items.length; }) : [];
+  var list=(s && Array.isArray(s.losses)) ? s.losses.filter(function(g){ return g && Array.isArray(g.ids) && g.ids.length && Array.isArray(g.items) &&
+    g.items.some(function(it){ return it && !_fpBookkeeping(it.key); }); }) : [];
   var keys={lag:{}, wiped:{}};
   list.forEach(function(g){ g.items.forEach(function(it){ keys[g.why==='wiped' ? 'wiped' : 'lag'][it.key]=1; }); });
   return {list:list, lag:Object.keys(keys.lag).length, wiped:Object.keys(keys.wiped).length, known:!!(s && Array.isArray(s.losses))};
