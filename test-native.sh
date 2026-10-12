@@ -4,7 +4,7 @@
 #
 #   ./test-native.sh              # full run: build + drive + screenshots
 #   ./test-native.sh --no-build   # reuse the last build, just drive + shoot
-#   ROOMS="default" ./test-native.sh   # one pass instead of two
+#   ROOMS="heavyweight" ./test-native.sh   # one pass instead of two ("default": the stored room)
 #
 # What it does (the verified recipe from 2026-08-02):
 #   1. Refresh www/ from repo-root sources (cap copy alone ships a STALE www).
@@ -18,8 +18,9 @@
 #      with the route as a launch argument (-devNav <route>; routes per
 #      CLAUDE.md), which the shell hands to the page in window.__FP_SHELL.
 #      Nothing writes WebKit's localstorage.sqlite3 behind the native copy.
-#      Every route runs once per room in ROOMS (default: the stored room, then
-#      Lime through -devTheme dark), all on one app container with the native
+#      Every route runs once per room in ROOMS (default: Heavyweight, then Lime,
+#      each through -devTheme, so a container whose stored room is Lime still
+#      shoots Heavyweight first; "default" leaves the stored room), all on one app container with the native
 #      copy attached; -fpOffline keeps the page's own update check off, so the
 #      bundled page is the one under test even when Pages serves a newer one.
 #   5. Check the native copy (FPStore's store.sqlite) holds what WebKit holds.
@@ -36,7 +37,7 @@ OUT=screenshots/out/native
 APP_ID=app.kt.trainer
 WATCH_ID=app.kt.trainer.watchkitapp
 ROUTES="log/workout progress progress/calendar progress/day progress/compare progress/records coach settings settings/storage settings/storage-sheet log/sport modal/build modal/routines modal/nextround"
-ROOMS=${ROOMS:-"default dark"}
+ROOMS=${ROOMS:-"heavyweight dark"}
 mkdir -p "$OUT"
 
 PROJ=$(grep -m1 'CURRENT_PROJECT_VERSION = ' ios/App/App.xcodeproj/project.pbxproj | sed 's/[^0-9]//g')
