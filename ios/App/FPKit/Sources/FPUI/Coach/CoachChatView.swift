@@ -83,6 +83,8 @@ public struct CoachChatView: View {
     @State private var spoken: String?
     @State private var stopGuard: Date = .distantPast
     @State private var atEnd = true
+    /// Until when the owner's own action (Send, Stop, a chip, Try again) asks for the conversation's end.
+    @State private var pinnedUntil: Date = .distantPast
     @FocusState private var focused: Bool
 
     public init(model: CoachModel, host: CoachHost, toast: Binding<ToastRequest?> = .constant(nil),
@@ -160,11 +162,12 @@ public struct CoachChatView: View {
     // MARK: The conversation
 
     @ViewBuilder private func conversation(theme t: RoomTheme, gutter: CGFloat, column: CGFloat) -> some View {
+        let owner = ownerHost
         let content = VStack(spacing: 0) {
             if model.messages.isEmpty, let empty = model.empty, !model.intake {
-                CoachEmptyStateView(empty: empty, send: host.send)
+                CoachEmptyStateView(empty: empty, send: owner.send)
             } else {
-                MessageColumn(model: model, columnWidth: column, host: host)
+                MessageColumn(model: model, columnWidth: column, host: owner)
             }
         }
         .padding(.horizontal, gutter)
@@ -211,17 +214,70 @@ public struct CoachChatView: View {
     /// What decides where the conversation lands: the newest message and whether a reply is in flight.
     private var landingKey: String { (model.messages.last?.id ?? "") + (model.loading ? "+thinking" : "") }
 
+    /// Where the conversation goes when its landing key changes.
+    enum Landing: Equatable {
+        /// The reader scrolled up: they keep their place.
+        case stay
+        /// The end in view (a new question, Thinking, a note).
+        case end
+        /// A reply landed: it opens at its question, this scroll mark 12 pt under the header.
+        case turn(String)
+    }
+
     /// A reply that lands while the reader is at the end opens at its start: the owner's question
     /// 12 pt under the header, the answer below it; one that fits still ends above the composer. A
-    /// new question or Thinking keeps the end in view. A reader who scrolled up keeps their place.
-    private func land(_ proxy: ScrollViewProxy, from old: String, to new: String) {
-        guard atEnd, !options.unscrolled else { return }
+    /// new question or Thinking keeps the end in view. A reader who scrolled up keeps their place,
+    /// unless the change is the owner's own doing (`pinned`: Send, Stop, a chip, Try again), which
+    /// brings the end into view as the web chat's coachSend, coachStop and coachRetryLast scroll to
+    /// it: a message sent while scrolled up stayed out of view, and so did its reply.
+    static func landing(atEnd: Bool, pinned: Bool, from old: String, model: CoachModel, unscrolled: Bool) -> Landing {
+        guard !unscrolled, atEnd || pinned else { return .stay }
         let replyLanded = old.hasSuffix("+thinking") && !model.loading && model.messages.last?.look == .reply
-        if replyLanded, let turn = ChatPart.parts(model).last(where: \.isTurn) {
-            proxy.scrollTo("mark-" + turn.id, anchor: .top)
-        } else {
-            proxy.scrollTo(Self.endID, anchor: .bottom)
+        if replyLanded, let turn = ChatPart.parts(model).last(where: \.isTurn) { return .turn("mark-" + turn.id) }
+        return .end
+    }
+
+    /// The owner's own actions that ask for the conversation's end (the web chat scrolls to its end on each).
+    static func asksForEnd(_ intent: Intent) -> Bool {
+        switch intent {
+        case .coachSend, .coachChip, .coachAction, .coachStop, .coachRetry: return true
+        default: return false
         }
+    }
+
+    /// How long an owner's action waits for the change it asks for (the echo shows at once; the page's answer to a Stop
+    /// or a chip within the link's timeouts).
+    static let pinWindow: TimeInterval = 5
+
+    private func land(_ proxy: ScrollViewProxy, from old: String, to new: String) {
+        let pinned = Date() < pinnedUntil
+        switch Self.landing(atEnd: atEnd, pinned: pinned, from: old, model: model, unscrolled: options.unscrolled) {
+        case .stay:
+            return
+        case .end:
+            proxy.scrollTo(Self.endID, anchor: .bottom)
+        case .turn(let mark):
+            proxy.scrollTo(mark, anchor: .top)
+        }
+        pinnedUntil = .distantPast   // spent: a reader who scrolls up from here keeps their place
+    }
+
+    /// The owner acted: the next landing brings the end into view, wherever the reader was.
+    private func pinEnd() {
+        pinnedUntil = Date().addingTimeInterval(Self.pinWindow)
+    }
+
+    /// The host the conversation's own controls use (a chip, Try again, the empty chat's suggestions): the owner's
+    /// actions pin the end first.
+    private var ownerHost: CoachHost {
+        var h = host
+        let send = host.send
+        let pinned = $pinnedUntil
+        h.send = { intent in
+            if Self.asksForEnd(intent) { pinned.wrappedValue = Date().addingTimeInterval(Self.pinWindow) }
+            send(intent)
+        }
+        return h
     }
 
     // MARK: Composer actions
@@ -241,12 +297,14 @@ public struct CoachChatView: View {
         if let d = host.draft {
             // the host's composer: it echoes the message and keeps what the page never got
             guard let intent = Self.sendIntent(text: d.text, picked: d.picked, model: model) else { return }
+            pinEnd()
             host.send(intent)
             d.text = ""
             d.picked = nil
             return
         }
         guard let intent = Self.sendIntent(text: text, picked: picked, model: model) else { return }
+        pinEnd()
         host.send(intent)
         text = ""
         picked = nil
@@ -255,6 +313,7 @@ public struct CoachChatView: View {
     /// Stop, except in a turn's first half second (a double tap on Send must not stop the reply it sent).
     private func stop() {
         guard Date() >= stopGuard else { return }
+        pinEnd()
         host.send(.coachStop)
     }
 

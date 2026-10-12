@@ -22,8 +22,11 @@ Scenarios (decision.md section 9, task C7), in this order:
            gives way to the page's message, Thinking while the stand-in takes its time; its tool call changes the
            programme, the reply shows its words, a tool pill and PLAN CHANGES with Undo and Keep changes; Undo asks (the
            page's confirm, forwarded), restores the previous programme and the card goes; a second turn's Keep changes
-           keeps the change and the card goes; a third leaves its card for the shots. Presses go through the controls'
-           own accessibility actions (the probe turns the runtime on), so Send, Undo, Restore and Keep are the buttons'
+           keeps the change and the card goes; Send while scrolled up to the top brings the conversation to its end, as
+           the web chat's Send does (the owner's message and the reply in view); a reader who scrolls up while a reply
+           is on its way keeps their place when it lands; a third leaves its card for the shots. Presses go through the
+           controls' own accessibility actions (the probe turns the runtime on), so Send, Undo, Restore and Keep are the
+           buttons'
   combos   coach/chat by launch argument in both rooms x the phone's appearance (simctl ui appearance light|dark) x its
            text size (simctl ui content_size large|extra-extra-large), on the live turns: the chat is native and over
            the page, in its room whatever the phone says (Heavyweight light, Lime dark), at the phone's text size; the
@@ -315,6 +318,22 @@ return { lb: out, shown: out === null ? null : wDisp(out), backup: !!localStorag
 """
 
 
+# The scroll checks need a conversation longer than the screen: older messages go in front of what the container holds
+# (restore puts the conversation back as it was found).
+PAD_JS = r"""
+var n = coachMessages.length, k = Math.max(0, 26 - n);
+if (k % 2) k++;
+var add = [], t0 = Date.now() - 3 * 86400000;
+for (var i = 0; i < k; i++) {
+  var q = Math.floor(i / 2) + 1;
+  add.push(i % 2 === 0 ? { role: 'user', at: t0 + i * 60000, content: 'Earlier question ' + q + ': how should I pace my sets this week?' }
+    : { role: 'assistant', at: t0 + i * 60000, content: 'Earlier answer ' + q + ': keep two reps in reserve on the main lifts, and rest two to three minutes between heavy sets so the last one moves as well as the first.' });
+}
+if (add.length) { coachMessages = add.concat(coachMessages); saveCoachHistory(); render(); }
+return { padded: add.length, total: coachMessages.length };
+"""
+
+
 def scen_live(c):
     s = 'live'
     ev0 = probe(c.sim, 'live-lift', [[js('lift', LIFT_JS)]])
@@ -326,6 +345,8 @@ def scen_live(c):
     newtxt, new3txt = '%g' % new, '%g' % new3
     q1, q2 = 'Add %g %s to my %s, please' % (step, lift['unit'], lift['name']), 'Put my %s up again' % lift['name']
     q3 = 'One more plate on my %s?' % lift['name']
+    q4, final4 = 'Scroll check: is my week on track?', 'Scroll check answered: your week is on track.'
+    q5 = 'Stop check: what should I eat after training?'
     final1 = 'Done: %s is %s %s from this week on.' % (lift['name'], newtxt, lift['unit'])
     final2 = 'Done again: %s is %s %s from this week on.' % (lift['name'], newtxt, lift['unit'])
     final3 = '%s is %s %s from this week on. Keep it if the bar moved well; Undo puts %s back.' % (lift['name'], new3txt, lift['unit'], newtxt)
@@ -333,7 +354,9 @@ def scen_live(c):
     tool3 = {'name': 'set_exercise_weight', 'input': {'name': lift['name'], 'weight': new3}}
     stub = stubs.CoachStub({'turns': [{'match': q1, 'text': 'On it.', 'tool': tool, 'final': final1, 'delay': 2.5},
                                       {'match': q2, 'text': 'Again.', 'tool': tool, 'final': final2},
-                                      {'match': q3, 'text': 'Another plate.', 'tool': tool3, 'final': final3}]})
+                                      {'match': q4, 'final': final4, 'delay': 1.5},
+                                      {'match': q3, 'text': 'Another plate.', 'tool': tool3, 'final': final3, 'delay': 2.5},
+                                      {'match': q5, 'final': 'Stop check answered (never shown: the owner stops it).', 'delay': 8}]})
     stub.start()
     c.rep.fact(s, 'stand-in on %s; %s at %g %s, to %s' % (stub.base, lift['name'], lift['shown'], lift['unit'], newtxt))
     # The page takes a send within milliseconds, too soon to see the echo: for the first send only, its coach.send waits
@@ -342,7 +365,7 @@ def scen_live(c):
             "return f.call(window.FPScreens, n, a); return new Promise(function (r) { setTimeout(function () { r(f.call(window.FPScreens, n, a)); }, 1400); }); }; return true;")
     unslow = "if (window.__fpCall) { window.FPScreens.call = window.__fpCall; delete window.__fpCall; } return true;"
     phase = [
-        wait_coach('up'), wait(700), state('live up'), mark('live-1-chat'),
+        wait_coach('up'), js('pad', PAD_JS), wait(900), state('live up'), mark('live-1-chat'),
         js('slow send', slow),
         {'op': 'nativeFocus'}, wait(600), {'op': 'type', 'text': q1}, wait(500), state('typed'),
         press('Send message'), state('echo'), mark('live-2-echo-before-the-page-has-it'),
@@ -353,13 +376,25 @@ def scen_live(c):
         press(ledger='undo'), wait_coach('confirm', 5000), wait(600), state('undo confirm'), mark('live-5-undo-confirm'),
         press('Restore', where='overlay'), wait_coach('noLedger', 5000), wait(400), state('undone'), mark('live-6-undone'),
         js('after undo', LOAD_JS, name=lift['name']),
-        {'op': 'draft', 'text': q2}, press('Send message'),
+        {'op': 'draft', 'text': q2}, wait(500), press('Send message'),
         wait_coach('ledger', 20000, 'reply 2'), wait(900), state('reply 2'), mark('live-7-second-reply'),
         js('after turn 2', LOAD_JS, name=lift['name']),
         press(ledger='keep'), wait_coach('noLedger', 5000), wait(700), state('kept'), mark('live-8-kept'),
         js('after keep', LOAD_JS, name=lift['name']),
-        # a third change left on its card: the combos draw the chat with it (restore takes it back)
-        {'op': 'draft', 'text': q3}, press('Send message'), wait_coach('ledger', 20000, 'reply 3'), wait(600), state('reply 3'),
+        # review 4: the owner's own Send while scrolled up brings the end into view, as the web chat's Send scrolls to its end
+        {'op': 'resign'}, wait(500), {'op': 'scroll', 'to': 'top'}, wait(900), state('scrolled up'), mark('live-9-scrolled-up'),
+        {'op': 'draft', 'text': q4}, wait(500), press('Send message'), wait(1200), state('sent scrolled up'), mark('live-10-sent-while-scrolled-up'),
+        wait_coach('reply', 20000, 'reply 4'), wait(900), state('reply 4'), mark('live-11-scroll-check-reply'),
+        # and the owner's Stop while scrolled up brings it to its end too (the web's Stop scrolls to the end): the question
+        # and the note that says it stopped. Stop waits out the page's first half second of a turn (_coachJustSent).
+        {'op': 'draft', 'text': q5}, wait(500), press('Send message'), wait_coach('loading', 6000, 'thinking 5'), wait(900),
+        {'op': 'scroll', 'to': 'top'}, wait(700), state('up before stop'),
+        press('Stop the reply'), wait_coach('idle', 6000, 'stopped'), wait(1200), state('stopped scrolled up'), mark('live-12-stopped-while-scrolled-up'),
+        # a third change left on its card: the combos draw the chat with it (restore takes it back). A reader who scrolls up
+        # while its reply is on its way keeps their place when it lands.
+        {'op': 'draft', 'text': q3}, wait(500), press('Send message'), wait_coach('loading', 6000, 'thinking 3'), wait(300),
+        {'op': 'scroll', 'to': 'top'}, wait(600), state('up while thinking'),
+        wait_coach('ledger', 20000, 'reply 3'), wait(900), state('reply 3'),
     ]
     try:
         ev = probe(c.sim, 'live', [phase], args=['-devNav', 'coach/chat', '-fpApiBase', stub.base], out=c.opts.out, timeout=180)
@@ -373,16 +408,20 @@ def scen_live(c):
             [r.get('kind') for r in turn1] == ['question', 'tool_result'] and all(r.get('key') and r.get('version') == '2023-06-01' and r.get('status') == 200 for r in turn1)
             and not any(x.get('error') for x in (turn1[-1].get('results') or [])) if len(turn1) == 2 else False,
             [(r.get('kind'), r.get('status'), r.get('results')) for r in turn1])
+    pad = (ev.first('js', label='pad') or {}).get('result') or {}
+    c.rep.fact(s, 'the conversation holds %s messages for the scroll checks (%s older ones put in front, taken back by restore)' % (pad.get('total'), pad.get('padded')))
     t1, ech, rep = ev.state('typed'), ev.state('echo'), ev.state('reply')
     c.check(s, 'the question typed in the native composer is in its store', store(t1).get('draft') == q1, store(t1).get('draft'))
     sp = [e for e in ev.all('press') if e.get('control') == 'Send message']
+    c.check(s, 'every Send went through the chat\'s own Send button (its accessibility action, as a tap), never the probe\'s fallback',
+            len(sp) == 5 and all(e.get('via') == 'accessibility' for e in sp), [e.get('via') for e in sp])
     c.rep.fact(s, 'Send pressed through %s; Undo through %s; Restore through %s; Keep through %s' % (
         sp[0].get('via') if sp else '?', (ev.first('press', control='Undo') or {}).get('via'), (ev.first('press', control='Restore') or {}).get('via'),
         (ev.first('press', control='Keep changes') or {}).get('via')))
     events = ' | '.join(store(rep).get('events') or [])
     sent = [r for r in nsh.intents(ev, 'coach.send')]
-    c.check(s, 'each Send sent its message once (coach.send by its own nonce, done) and emptied the composer', len(sent) == 3
-            and all(r.get('outcome') == 'done' for r in sent) and len({r.get('key') for r in sent}) == 3 and store(ech).get('draft') == '',
+    c.check(s, 'each Send sent its message once (coach.send by its own nonce, done) and emptied the composer', len(sent) == 5
+            and all(r.get('outcome') == 'done' for r in sent) and len({r.get('key') for r in sent}) == 5 and store(ech).get('draft') == '',
             [(r.get('key'), r.get('outcome'), r.get('ms')) for r in sent])
     nonce1 = sent[0].get('key') if sent else None
     et = (store(ech).get('tail') or [{}])[-1]
@@ -428,6 +467,29 @@ def scen_live(c):
     ak = (ev.first('js', label='after keep') or {}).get('result') or {}
     c.check(s, 'Keep changes keeps the change and the card goes', ak.get('shown') == new and (ak.get('last') or {}).get('seen')
             and not any(m.get('ledger') for m in store(kp).get('tail') or []), {'load': ak.get('shown'), 'last': ak.get('last')})
+    def scroll(label):
+        return coach(ev.state(label)).get('scroll') or {}
+    up, sent_up, r4 = scroll('scrolled up'), scroll('sent scrolled up'), scroll('reply 4')
+    c.check(s, 'scrolled to the top, the conversation\'s end is far out of view', (up.get('fromEnd') or 0) > 300, up)
+    t4 = store(ev.state('sent scrolled up')).get('tail') or []
+    c.check(s, 'Send while scrolled up brings the conversation to its end: the owner\'s message is in view (the web\'s Send scrolls to the end)',
+            sent_up.get('fromEnd') is not None and sent_up.get('fromEnd') < 24 and any(m.get('role') == 'user' and m.get('text') == q4 for m in t4),
+            {'scroll': sent_up, 'tail': [(m.get('role'), m.get('text')) for m in t4[-2:]]})
+    c.check(s, 'and its reply lands in view under the question', r4.get('fromEnd') is not None and r4.get('fromEnd') < (r4.get('visible') or 0)
+            and final4 in (((store(ev.state('reply 4')).get('tail') or [{}])[-1]).get('text') or ''), r4)
+    ub, stp = scroll('up before stop'), scroll('stopped scrolled up')
+    t5 = store(ev.state('stopped scrolled up')).get('tail') or []
+    stops = [r for r in nsh.intents(ev, 'coach.stop')]
+    stp_press = ev.first('press', control='Stop the reply') or {}
+    c.check(s, 'Stop while scrolled up brings the conversation to its end too: the question and the note that says it stopped are in view '
+            '(the web\'s Stop scrolls to the end)', (ub.get('fromEnd') or 0) > 300 and stp.get('fromEnd') is not None and stp.get('fromEnd') < 24
+            and stp_press.get('via') == 'accessibility' and [r.get('outcome') for r in stops] == ['done']
+            and len(t5) > 1 and t5[-1].get('role') == 'assistant' and (t5[-1].get('text') or '').startswith('Stopped') and t5[-2].get('text') == q5,
+            {'before': ub, 'after': stp, 'via': stp_press.get('via'), 'stop': [(r.get('outcome'), r.get('ms')) for r in stops],
+             'tail': [(m.get('role'), m.get('text')) for m in t5[-2:]]})
+    wt, r3s = scroll('up while thinking'), scroll('reply 3')
+    c.check(s, 'a reader who scrolls up while the reply is on its way keeps their place when it lands', (wt.get('fromEnd') or 0) > 300
+            and wt.get('offset') is not None and r3s.get('offset') is not None and abs(r3s['offset'] - wt['offset']) < 30, {'waiting': wt, 'landed': r3s})
     r3 = ev.state('reply 3')
     l3 = ((store(r3).get('tail') or [{}])[-1]).get('ledger') or {}
     c.check(s, 'a third change waits on its card for the shots (from what Keep kept)', l3.get('canUndo')

@@ -151,8 +151,9 @@ gone when the chat covers it); a real coach turn from the native composer on
 loopback (the Debug argument `-fpApiBase` hands it to the page as
 `window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a loopback
 origin): the echo, Thinking, the reply with a tool pill and PLAN CHANGES, Undo
-through the forwarded confirm, Keep changes; then `coach/chat` by launch argument
-in both rooms x `simctl ui appearance light|dark` x `content_size
-large|extra-extra-large`. It puts back what it changed in the container and the
+through the forwarded confirm, Keep changes, Send and Stop while scrolled to the
+top each bringing the end into view, a reader scrolled up keeping their place; then
+`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark`
+x `content_size large|extra-extra-large`. It puts back what it changed in the container and the
 phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
 on its own (one JSON line per request).

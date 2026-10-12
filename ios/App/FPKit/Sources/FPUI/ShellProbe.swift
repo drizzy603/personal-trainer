@@ -24,8 +24,9 @@ import FPCore
 /// {text}` (keys on the native composer), `composerSend {nonce}` (Send on what the composer holds), `draft {text}` (the
 /// composer's words set), `press {label}` / `press {ledger: undo|keep}` (a control of the chat, by its accessible name,
 /// or the newest PLAN CHANGES card's button), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
-/// a toast, up, down), `resign` (the native composer gives the keys back), `hideWeb` / `showWeb` (the web view out of
-/// its window and back: the fault Settings > About counts), `done`.
+/// a toast, up, down), `resign` (the native composer gives the keys back), `scroll {to: top|end}` (the conversation
+/// scrolled; every state reports where it is), `hideWeb` / `showWeb` (the web view out of its window and back: the
+/// fault Settings > About counts), `done`.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?
@@ -322,6 +323,25 @@ final class ShellProbe {
         case "resign":
             let ok = b?.screens.firstTextInput()?.resignFirstResponder() ?? false
             event("resign", ["ok": ok])
+            next()
+        case "scroll":
+            // The owner scrolls the conversation: to its top, or to its end (as a drag that ends there would leave it).
+            let to = step["to"] as? String ?? "top"
+            if let s = b?.screens.conversationScroll() {
+                let inset = s.adjustedContentInset
+                let y = to == "end" ? max(-inset.top, s.contentSize.height + inset.bottom - s.bounds.height) : -inset.top
+                // as a finger's drag reaches its scroll view: the move between the drag's own callbacks
+                let d = s.delegate
+                d?.scrollViewWillBeginDragging?(s)
+                s.setContentOffset(CGPoint(x: s.contentOffset.x, y: y), animated: false)
+                d?.scrollViewDidScroll?(s)
+                var target = s.contentOffset
+                withUnsafeMutablePointer(to: &target) { d?.scrollViewWillEndDragging?(s, withVelocity: .zero, targetContentOffset: $0) }
+                d?.scrollViewDidEndDragging?(s, willDecelerate: false)
+                event("scroll", ["to": to, "state": b?.screens.conversationScrollState() ?? NSNull()])
+            } else {
+                event("scroll", ["to": to, "error": "no conversation"])
+            }
             next()
         case "hideWeb":
             // The fault Settings > About counts (never by design): the web view out of its window while the app is active,

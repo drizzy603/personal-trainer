@@ -442,6 +442,29 @@ public final class ScreenHost: NSObject {
         return up.values.first.flatMap { find($0.host.view) }
     }
 
+    /// The chat's conversation (SwiftUI's ScrollView is a UIScrollView): the tallest scroll view of the screen up that is
+    /// not a text view (the composer) and scrolls up and down (a table's own scrolls sideways).
+    func conversationScroll() -> UIScrollView? {
+        var best: UIScrollView?
+        func walk(_ v: UIView) {
+            if let s = v as? UIScrollView, !(s is UITextView), s.contentSize.width <= s.bounds.width + 1,
+               s.bounds.height > (best?.bounds.height ?? 0) { best = s }
+            v.subviews.forEach(walk)
+        }
+        if let u = up["coach"] { walk(u.host.view) }
+        return best
+    }
+
+    /// Where the conversation is scrolled: from its top, and how far its end is below the visible part (0 at the end).
+    func conversationScrollState() -> [String: Any]? {
+        guard let s = conversationScroll() else { return nil }
+        let inset = s.adjustedContentInset
+        let visible = s.bounds.height - inset.top - inset.bottom
+        let top = s.contentOffset.y + inset.top
+        return ["offset": Double(top), "content": Double(s.contentSize.height), "visible": Double(visible),
+                "fromEnd": Double(max(0, s.contentSize.height - visible - top)), "dragging": s.isDragging || s.isDecelerating]
+    }
+
     /// What a state check reports.
     public func describe() -> [String: Any] {
         var screens: [String: Any] = [:]
@@ -468,6 +491,7 @@ public final class ScreenHost: NSObject {
                 "inWindow": u.host.view.window != nil,
                 "composerFrame": firstTextInput().map { NSCoder.string(for: $0.convert($0.bounds, to: nil)) } ?? NSNull(),
                 "composerFocused": firstTextInput()?.isFirstResponder ?? false,
+                "scroll": conversationScrollState() ?? NSNull(),
             ] as [String: Any]
         }
         return [
