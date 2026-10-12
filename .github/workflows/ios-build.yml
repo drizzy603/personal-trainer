@@ -77,7 +77,8 @@ jobs:
 
   # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
   # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
-  # simulator (FPHost's and FPUI's join the FPKit-Package scheme as their tasks add them).
+  # simulator: FPCoreTests, FPStoreTests (KillTests is macOS only), FPHostTests and FPUITests, all in the
+  # FPKit-Package scheme.
   fpkit-ios:
     name: FPKit on an iOS simulator (FPHost, FPUI)
     runs-on: macos-latest
