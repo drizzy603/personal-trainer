@@ -27,6 +27,17 @@ final class StandInPresenting: ScreenPresenting {
     }
 }
 
+/// Stands in for UIKit refusing a presentation without a word (another controller's delayed presentation under way): the
+/// completion never comes and no controller presents the screen.
+@MainActor
+final class SilentPresenting: ScreenPresenting {
+    func present(_ screen: UIViewController, from presenter: UIViewController, animated: Bool, completion: @escaping () -> Void) {}
+
+    func dismiss(_ screen: UIViewController, animated: Bool, completion: @escaping () -> Void) {
+        DispatchQueue.main.async { completion() }
+    }
+}
+
 /// ScreenHost (plan task C5) over a web view standing in for the page: only `.overFullScreen` (the web view stays in
 /// its window), one transition at a time with a dismissal that cancels a present not yet started, the owner's back
 /// latched, the web view hidden from VoiceOver while covered, the room's appearance whatever the phone's, the crash
@@ -145,6 +156,28 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(ScreenMarkers(folder: folder).lines(), ["presenting coach@P1 shell 60"], "in use with the screen up: the marker")
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         XCTAssertEqual(ScreenMarkers(folder: folder).lines(), [], "the background takes it away too")
+    }
+
+    /// Review 4 (platform low): UIKit refuses a presentation it cannot make now (a share sheet's delayed presentation)
+    /// without a word: no completion ever came, the queue stayed busy for the rest of the process and the page showed its
+    /// placeholder under nothing (a blank chat). The watchdog notices: the page shows its own, the queue goes on.
+    func testARefusedPresentationDoesNotStopTheQueue() async throws {
+        var failed: [String] = []
+        host.hooks.failed = { screen, _ in failed.append(screen) }
+        host.presenting = SilentPresenting()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle(2.6)
+        XCTAssertEqual(failed, ["coach"], "the page hears it could not go up and shows its own chat")
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(host.describe()["busy"] as? Bool, false, "the queue goes on")
+        XCTAssertEqual(ScreenMarkers(folder: folder).lines(), [])
+        XCTAssertEqual(covered, [true, false], "the page is uncovered again")
+        XCTAssertFalse(webView.accessibilityElementsHidden)
+        host.presenting = stand
+        XCTAssertTrue(host.present("coach"))
+        try await settle()
+        XCTAssertEqual(stand.shown.last?.modalPresentationStyle, .overFullScreen, "a later present goes up")
     }
 
     func testTheMarkerFollowsTheAppsActivity() async throws {

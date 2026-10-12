@@ -27,6 +27,8 @@ import FPCore
 ///   build>` sits in its marker file, removed when the screen goes and whenever the app stops being active or enters the
 ///   background (written again when it comes back with the screen still up; a screen that goes up while the app is away
 ///   writes none), so only a death on screen leaves one. ShellBridge reads them at launch.
+/// - **A refused presentation** (UIKit's silence while another controller's presentation is delayed) is noticed by a
+///   watchdog: the screen is not up, the page shows its own, and the queue goes on.
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over.
 @MainActor
@@ -99,6 +101,9 @@ public final class ScreenHost: NSObject {
     /// app is not active (a background launch, the app sent away right after launch) wrote one, and a kill in the
     /// background (jetsam) then read as a crash at the next launch.
     var isActive: () -> Bool = { UIApplication.shared.applicationState == .active }
+    /// How long a presentation may go without UIKit's completion while no controller presents the screen before it counts
+    /// as refused (UIKit refuses one it cannot make now, a share sheet's delayed presentation under way, without a word).
+    var refusalWatchdog: TimeInterval = 2
 
     /// `coach`: the chat's store (tests pass one with its own defaults; the app's keeps the composer in `fpDraft.coach`).
     public init(presenter: UIViewController, webView: WKWebView, shellBuild: String, pageBuild: String?, markerFolder: URL,
@@ -309,11 +314,40 @@ public final class ScreenHost: NSObject {
         Self.log.info("screens: presenting \(screen, privacy: .public) (rev \(model.rev), \(model.paper ? "paper" : "dark", privacy: .public))")
         presenting.present(host, from: presenter, animated: animated) { [weak self, weak u] in
             guard let self, let u else { return }
+            guard self.up[screen] === u else {
+                // counted as refused already, and UIKit went on after all: nothing native is meant to be up
+                u.host.presentingViewController?.dismiss(animated: false)
+                return
+            }
             u.presented = true
             self.webView?.accessibilityElementsHidden = true
             UIAccessibility.post(notification: .screenChanged, argument: nil)
             self.opDone()
         }
+        // UIKit refuses a presentation it cannot make now (another controller's delayed presentation, a share sheet's)
+        // without a word: no completion ever comes, and the queue stopped for the rest of the process with the page
+        // covered by nothing (a blank chat). A screen no controller presents when the watchdog fires was refused.
+        DispatchQueue.main.asyncAfter(deadline: .now() + refusalWatchdog) { [weak self, weak u] in
+            MainActor.assumeIsolated {
+                guard let self, let u, self.up[screen] === u, !u.presented, u.host.presentingViewController == nil else { return }
+                self.refused(screen)
+            }
+        }
+    }
+
+    /// UIKit did not present the screen: it is not up, its marker goes, the page is uncovered and shows its own (the
+    /// bridge's `screens.off`), and the queue goes on.
+    private func refused(_ screen: String) {
+        guard up.removeValue(forKey: screen) != nil else { return }
+        markers.remove(screen)
+        transitions.append("refused " + screen)
+        Self.log.error("screens: UIKit refused to present \(screen, privacy: .public): the page shows its own")
+        if up.isEmpty {
+            webView?.accessibilityElementsHidden = false
+            hooks.didUncover()
+        }
+        hooks.failed(screen, "UIKit refused the presentation")
+        opDone()
     }
 
     // MARK: Dismiss
