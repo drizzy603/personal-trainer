@@ -3,7 +3,8 @@
 // tests/tools/ktstore-vectors.js noteAfter() builds it (the vectors FPStore's Swift tests read); a `full` on a
 // repeated delete, then a relaunch, rewrites nothing; the watch drain re-sends kt_sessions to the store before it
 // clears the wrist's queue, and never keeps a saved entry; a finish WebKit lost goes back through the page's own
-// Storage sheet (a TrovoStore plugin over the mock) in one Put back, the draft's removal with it.
+// Storage sheet (a TrovoStore plugin over the mock) in one Put back, the draft's removal with it; and with the shell's
+// flag a draft whose workout is already filed is dropped at boot, so it is never resumed and filed twice.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
