@@ -29,6 +29,7 @@ import FPCore
 ///   writes none), so only a death on screen leaves one. ShellBridge reads them at launch.
 /// - **A refused presentation** (UIKit's silence while another controller's presentation is delayed) is noticed by a
 ///   watchdog: the screen is not up, the page shows its own, and the queue goes on.
+/// - **VoiceOver's escape** goes back (Cancel during setup).
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over.
 @MainActor
@@ -297,6 +298,7 @@ public final class ScreenHost: NSObject {
         if isActive() { markers.write(screen, page: pageBuild ?? "unknown", shell: shellBuild) }
         let root = CoachScreenRoot(store: coach, overlay: overlay)
         let host = ScreenHostingController(rootView: AnyView(root))
+        host.escape = { [weak self] in self?.escape(screen) ?? false }
         host.paper = model.paper
         host.modalPresentationStyle = .overFullScreen   // never .fullScreen: the page stays in its window
         host.modalPresentationCapturesStatusBarAppearance = true
@@ -467,6 +469,22 @@ public final class ScreenHost: NSObject {
         for name in up.keys { markers.write(name, page: pageBuild ?? "unknown", shell: shellBuild) }
     }
 
+    // MARK: VoiceOver's escape
+
+    /// VoiceOver's escape (a two-finger scrub) on a native screen goes back, as a navigation stack's pops: Back where the
+    /// screen offers it, Cancel during setup (the page asks first, its confirm forwarded). False where it offers neither.
+    func escape(_ screen: String) -> Bool {
+        guard let u = up[screen], u.presented, let m = model(screen) else { return false }
+        if m.intake {
+            guard m.header.cancel else { return false }
+            hooks.send(.coachCancelIntake)
+            return true
+        }
+        guard m.header.back else { return false }
+        userBack(screen)
+        return true
+    }
+
     /// The system text size the screens draw at (clamped by the model's toggle in RoomTheme).
     static var systemTextSize: DynamicTypeSize {
         DynamicTypeSize(UITraitCollection.current.preferredContentSizeCategory) ?? .large
@@ -577,13 +595,17 @@ final class UIKitPresenting: ScreenPresenting {
 
 // MARK: - The hosting controller
 
-/// A native screen's controller: the room's status bar.
+/// A native screen's controller: the room's status bar, and VoiceOver's escape (ScreenHost: Back, or Cancel in setup).
 final class ScreenHostingController: UIHostingController<AnyView> {
     var paper = true {
         didSet { if paper != oldValue { setNeedsStatusBarAppearanceUpdate() } }
     }
+    /// What VoiceOver's escape does (UIKit asks the focused element, then its ancestors up to this controller).
+    var escape: () -> Bool = { false }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { paper ? .darkContent : .lightContent }
+
+    override func accessibilityPerformEscape() -> Bool { escape() }
 }
 
 // MARK: - The coach screen

@@ -194,6 +194,27 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(host.shownToast?.text, "Programme saved", "the toast itself stays its time")
     }
 
+    /// Review 4 (platform low): VoiceOver's escape (a two-finger scrub) did nothing on the chat; a native screen over the
+    /// page goes back on it, as a navigation stack's escape pops (Cancel during setup: the page asks first).
+    func testVoiceOversEscapeGoesBack() async throws {
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await settle()
+        let p = try XCTUnwrap(up)
+        XCTAssertTrue(p.accessibilityPerformEscape(), "escape goes back")
+        try await settle()
+        XCTAssertNil(up)
+        XCTAssertEqual(owner, ["coach"], "the page hears coach.back")
+        var intake = try model("intake")
+        intake.boot = "intake-boot"
+        host.update("coach", model: intake)
+        host.present("coach")
+        try await settle()
+        XCTAssertTrue(try XCTUnwrap(up).accessibilityPerformEscape(), "escape during setup is Cancel")
+        XCTAssertEqual(sent.last, .coachCancelIntake, "the page asks first (its confirm, forwarded)")
+        XCTAssertNotNil(up, "the chat stays until the page says")
+    }
+
     func testTheMarkerFollowsTheAppsActivity() async throws {
         host.update("coach", model: try model())
         host.present("coach")
