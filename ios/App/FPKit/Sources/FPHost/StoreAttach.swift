@@ -859,8 +859,10 @@ struct DebugOptions {
     var breakProxy = false
     /// `-fpIgnoreBootDone`: bootDone leaves the store breaker armed (a document that "never finished booting").
     var ignoreBootDone = false
-    /// `-fpIgnoreMarker`: a stale crash marker is reported but gives no verdict (the kill sweep's report launches,
-    /// which must classify what WebKit lost with the facade on).
+    /// `-fpIgnoreMarker`: a stale crash marker is reported but gives no verdict. tests/tools/native-store.py passes it
+    /// on every launch but the marker scenario's and the test quit's reopen: its own kills (simctl terminate, the
+    /// sweep's SIGKILLs) can land inside a store operation, and the sweep's report launches must classify what WebKit
+    /// lost with the facade on.
     var ignoreMarker = false
     /// Scripts added before the flag: `-fpNoWebKit` (localStorage throws, so the facade says hello nowk) and the
     /// scenario runner's own (a reference to WebKit's real Storage, taken before the facade replaces it, with the

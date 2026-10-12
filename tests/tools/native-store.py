@@ -139,6 +139,13 @@ class Events(list):
 
 
 RUNS = [0]
+# The launches that found a stale store marker. The runner ends launches with simctl terminate (and the sweep's with
+# SIGKILL), a kill that can land inside a store operation (on iOS 27.0 one did, right after one of the drill's 2.5 MB
+# seeds), and the marker it leaves turns the facade off for the (shell, page) pair from the next launch on, as designed
+# for a crash: the rest of the run would then test that verdict. So every launch takes -fpIgnoreMarker (the marker is
+# still read, reported in the launch event and listed here, but gives no verdict) unless it asks for verdicts, as the
+# marker scenario's own launches do.
+MARKED = []
 
 
 def read_log(path):
@@ -156,8 +163,10 @@ def read_log(path):
     return out
 
 
-def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, during=None):
-    """One launch running `phases`. Returns its events. `during(events)` is called while waiting (host actions)."""
+def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, during=None, verdicts=False):
+    """One launch running `phases`. Returns its events. `during(events)` is called while waiting (host actions).
+    `verdicts`: a stale store marker found at this launch gives its verdict (the marker scenario); otherwise the launch
+    takes -fpIgnoreMarker (see MARKED)."""
     RUNS[0] += 1
     tag = '%02d-%s' % (RUNS[0], name)
     pdir = sim.path('Documents', 'fp-probe')
@@ -168,7 +177,8 @@ def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, 
     if os.path.exists(logp):
         os.remove(logp)
     sim.terminate()
-    pid = sim.launch(['-fpProbe', tag + '.json', '-fpProbeLog', tag + '.jsonl', '-fpOffline', *args])
+    marker = [] if verdicts else ['-fpIgnoreMarker']
+    pid = sim.launch(['-fpProbe', tag + '.json', '-fpProbeLog', tag + '.jsonl', '-fpOffline', *marker, *args])
     t_end = time.time() + timeout
     ev = Events()
     while time.time() < t_end:
@@ -182,6 +192,8 @@ def probe(sim, name, phases, args=(), until='done', timeout=90, terminate=True, 
     ev.pid = pid
     ev.tag = tag
     ev.timedOut = not ev.first(until)
+    if not verdicts and (ev.first('launch') or {}).get('markerFound'):
+        MARKED.append(tag)
     if terminate and until != 'sigkill':
         sim.terminate()
     return ev
@@ -652,7 +664,7 @@ def scen_marker(c):
     mpath = c.sim.path('Library', 'Application Support', 'FPStore', 'store.marker')
     with open(mpath, 'wb') as f:
         f.write(line.encode() + b'1')
-    ev = probe(c.sim, 'marker-1', [[state('marker'), {'op': 'status'}]])
+    ev = probe(c.sim, 'marker-1', [[state('marker'), {'op': 'status'}]], verdicts=True)
     launch, h = ev.first('launch') or {}, c.hello(ev) or {}
     st = ((ev.state('marker') or {}).get('js') or {}).get('st') or {}
     stat = (ev.first('status') or {}).get('status') or {}
@@ -663,7 +675,7 @@ def scen_marker(c):
                 and 'crash marker' in (verdicts[0].get('why') or ''), verdicts and verdicts[0].get('why'))
     with open(mpath, 'rb') as f:
         c.rep.check(s, 'the marker file is reset for this launch', f.read().endswith(b'0'), None)
-    ev = probe(c.sim, 'marker-2', [[state('marker again'), {'op': 'status'}]])
+    ev = probe(c.sim, 'marker-2', [[state('marker again'), {'op': 'status'}]], verdicts=True)
     launch = ev.first('launch') or {}
     stat = (ev.first('status') or {}).get('status') or {}
     c.rep.check(s, 'the marker acts once: no new verdict next launch (still off for this shell+page pair)', launch.get('markerFound') is None
@@ -875,11 +887,13 @@ def scen_storage(c):
         js('reopen', "var st = await Capacitor.Plugins.TrovoStore.status(); return {tq: st.testQuit, armed: st.testQuitArmed,"
                      " text: st.testQuit ? _fpTestQuitLine(st.testQuit) : null};"),
         js('off', "return await Capacitor.Plugins.TrovoStore.setSwitch({on: false});"),
-    ]])
+    ]], verdicts=True)   # the app ended itself here, not the runner: a marker would be the app's own
     ro = res(ev, 'reopen') or {}
     tq = ro.get('tq') or {}
     c.rep.check(s, 'the next launch reports the test quit and what its first start found', tq.get('key') == 'kt_probe_quit'
                 and isinstance(tq.get('after'), dict) and ro.get('armed') is False, ro)
+    found = (ev.first('launch') or {}).get('markerFound')
+    c.rep.check(s, 'the test quit left no store marker (no store operation was in flight when it ended the app)', not found, found)
     c.rep.fact(s, ro.get('text') or '-')
     c.rep.check(s, 'the Native copy switch goes off', res(ev, 'off') == {'on': False}, res(ev, 'off'))
     ev = probe(c.sim, 'storage-off', [[
@@ -950,7 +964,7 @@ def scen_sweep(c):
                          acked == 100 and not missing and r.get('fallbacks') == 0,
                          'missing %s' % missing[:5] if missing else 'burst %.1f ms, WebKit lost %d' % (r.get('ms', 0), len(lost)))
         before = {k: v for k, v in wk.items() if not reserved(k)}
-        rep = probe(c.sim, 'kill-%02d-report' % t, [[state('report')]], args=['-fpIgnoreMarker'])
+        rep = probe(c.sim, 'kill-%02d-report' % t, [[state('report')]])   # -fpIgnoreMarker, as every runner launch
         launch, h = rep.first('launch') or {}, c.hello(rep) or {}
         last = h.get('lastHello') or {}
         if launch.get('markerFound'):
@@ -1143,6 +1157,8 @@ def main():
         rep.check('capacitor', 'CapacitorHttp patched in every launch', all(v for _, v in c.cap_http), [s for s, v in c.cap_http if not v])
     if c.alerts:
         rep.check('alert', 'no alert on screen in any state check (no KT1 prompt shown as an alert)', not any(v for _, v in c.alerts), [s for s, v in c.alerts if v])
+    rep.fact('runner', '%d launch(es) found a stale marker a kill of the runner\'s own left inside a store operation (reported, '
+                       'no verdict)%s' % (len(MARKED), ': ' + ', '.join(MARKED) if MARKED else ''))
     sim.screenshot(os.path.join(opts.out or tempfile.gettempdir(), 'native-store-%s.png' % rt))
     print('== %s: %d checks, %d failed, %.0f s' % (rep.label, len(rep.rows), len(rep.failed), time.time() - t0), flush=True)
     for scen, name, ok, detail in rep.failed:
