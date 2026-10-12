@@ -125,8 +125,8 @@ public class TrovoOtaPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // First successful render of a live page disarms the breaker. Every page
-    // sends it once per document on its first paint, so it also tells the shell
-    // the page booted (FPKit's store breaker, until the page's own bootDone).
+    // sends it once per document on its first paint (the notification says so;
+    // FPKit's store breaker listens to the page's own bootDone, through TrovoShell).
     @objc func confirm(_ call: CAPPluginCall) {
         UserDefaults.standard.removeObject(forKey: TrovoOta.attemptKey)
         DispatchQueue.main.async { [weak self] in

@@ -6,8 +6,9 @@ import FPCore
 /// document start in the main frame. The page reads native capabilities from this flag and the plugins it finds, never
 /// from build stamps.
 ///
-/// - `screens`: build 60's store half draws no native screen, so it is empty until the native Coach chat fills it from
-///   ScreenGate (plan task C5).
+/// - `screens`: the native screens this binary may show the page being served, as FPUI's ShellBridge works them out
+///   from ScreenGate when the web view is set up (the policy file, a crash verdict for this shell and page build, the
+///   native breaker; plan task C5). The page never reads it: its hello's answer is what counts, document by document.
 /// - `dev`: Debug builds only, the test tools' launch arguments `-devNav <route>` and `-devTheme <room>` (plan task S6).
 ///   The page's dev-nav hook routes to `dev.nav` once per launch and its first paint wears the room `dev.theme`
 ///   without saving it, so test-native.sh and screenshots/shoot.py no longer write `kt_dev_nav` into WebKit's file
@@ -39,14 +40,15 @@ public enum ShellFlagScript {
         ShellFlag(contract: ShellContract(shell: shell, screens: screens), screens: screens, devNav: dev?.nav, devTheme: dev?.theme)
     }
 
-    /// The document-start script for this process: the flag, with `dev` from the launch arguments in a Debug build.
-    public static func script(shell: String, arguments: [String] = ProcessInfo.processInfo.arguments) -> String {
+    /// The document-start script for this process: the flag with `screens`, and `dev` from the launch arguments in a
+    /// Debug build.
+    public static func script(shell: String, screens: [String] = [], arguments: [String] = ProcessInfo.processInfo.arguments) -> String {
         #if DEBUG
         let dev: Dev? = Dev(arguments: arguments)
         #else
         let dev: Dev? = nil
         #endif
-        return flag(shell: shell, dev: dev).script
+        return flag(shell: shell, screens: screens, dev: dev).script
     }
 }
 #endif

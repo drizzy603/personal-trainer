@@ -3,7 +3,9 @@ import WebKit
 import Capacitor
 import ActivityKit
 import CapApp_SPM
+import FPCore
 import FPHost
+import FPUI
 import ObjectiveC.runtime
 
 @UIApplicationMain
@@ -142,33 +144,58 @@ class SuperoViewController: CAPBridgeViewController {
         if let live = TrovoOta.launchLocation() {
             descriptor.appLocation = live
         }
+        // The shell owns focus (FPKit ScreenHost): the web view becomes first
+        // responder when the owner taps into it, never at its first appearance,
+        // so nothing can hand a keyboard back to it after a native screen.
+        descriptor.hasInitialFocus = false
         return descriptor
     }
 
-    // The page's first paint (TrovoOta.confirm) stands in for its bootDone until
-    // the TrovoShell plugin carries it: it disarms FPKit's store breaker.
-    private var bootObserver: NSObjectProtocol?
+    // The shell's WKWebView: it counts every time it leaves its window while the
+    // app is active (native screens go over it, never in its place).
+    override open func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
+        ShellWebView(frame: frame, configuration: configuration)
+    }
+
+    // The policy file's screen switches reach the native screens at once.
+    private var policyObserver: NSObjectProtocol?
 
     deinit {
-        if let bootObserver { NotificationCenter.default.removeObserver(bootObserver) }
+        if let policyObserver { NotificationCenter.default.removeObserver(policyObserver) }
     }
 
     override open func capacitorDidLoad() {
         if let webView {
+            // FPKit's native screens (shell contract v1): bound to this web view
+            // (a scene that reconnects binds its own), with the policy file and
+            // the store's bootDone from FPHost. It says which screens the page
+            // being served may present (ScreenGate) for the flag below.
+            let shell = ShellBridge.shared
+            shell.environment.policy = { FPPolicy.shared.effective }
+            shell.environment.bootDone = { page, from in StoreAttach.shared.bootDone(page: page, webView: from) }
+            let page = (bridge?.config.appLocation).flatMap { StoreAttach.pageBuild(in: $0) }
+            let screens = shell.install(webView: webView, presenter: self, pageBuild: page)
             // window.__FP_SHELL (shell contract v1) at document start: what this
-            // binary offers the page (no native screen yet) and, in Debug builds,
-            // the test tools' -devNav/-devTheme launch arguments.
+            // binary offers the page and, in Debug builds, the test tools'
+            // -devNav/-devTheme launch arguments.
             webView.configuration.userContentController.addUserScript(WKUserScript(
-                source: ShellFlagScript.script(shell: StoreAttach.shared.shellBuild),
+                source: ShellFlagScript.script(shell: StoreAttach.shared.shellBuild, screens: screens),
                 injectionTime: .atDocumentStart, forMainFrameOnly: true))
             // FPKit's native copy of the owner's data (shadow, build 60): KTUIProxy in
             // front of Capacitor's UI delegate, then the facade at document start.
             // Bound to this web view; a scene that reconnects binds its own.
             StoreAttach.shared.install(webView: webView, pageFolder: bridge?.config.appLocation)
+            #if DEBUG
+            ShellBridge.debugHooks["policy"] = { step in
+                let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(step["file"] as? String ?? "fp-policy.json")
+                if let text = step["json"] as? String { try? Data(text.utf8).write(to: url) } else { try? FileManager.default.removeItem(at: url) }
+                FPPolicy.shared.fetchIfDue(force: true)
+            }
+            #endif
         }
-        bootObserver = NotificationCenter.default.addObserver(forName: .trovoOtaConfirmed, object: nil, queue: .main) { [weak self] note in
-            let from = (note.object as? WKWebView) ?? self?.webView
-            MainActor.assumeIsolated { StoreAttach.shared.bootDone(page: nil, webView: from) }
+        policyObserver = NotificationCenter.default.addObserver(forName: FPPolicy.changed, object: nil, queue: .main) { note in
+            let screens = note.userInfo?["screens"] as? [String] ?? []
+            MainActor.assumeIsolated { ShellBridge.shared.policyChanged(screens: screens) }
         }
         NotificationCenter.default.addObserver(forName: .trovoDeepLink, object: nil, queue: .main) { [weak self] note in
             guard let url = note.userInfo?["url"] as? String else { return }
@@ -186,6 +213,11 @@ class SuperoViewController: CAPBridgeViewController {
         let storePlugin = TrovoStorePlugin()
         storePlugin.host = StoreHostAdapter()
         bridge?.registerPluginInstance(storePlugin)
+        // The page's half of the screen bridge (hello, bootDone, present, dismiss,
+        // model, toast, confirm, log) reaches FPKit's ShellBridge through its host.
+        let shellPlugin = TrovoShellPlugin()
+        shellPlugin.host = ShellHostAdapter()
+        bridge?.registerPluginInstance(shellPlugin)
         hideKeyboardAccessoryBar()
         // WebKit can create its content view after this callback; try once more.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.hideKeyboardAccessoryBar() }
@@ -251,6 +283,14 @@ final class StoreHostAdapter: TrovoStoreHost {
     }
 }
 
+/// TrovoShell's host: the page's messages for the native screens reach FPUI's
+/// ShellBridge through it.
+final class ShellHostAdapter: TrovoShellHost {
+    func shellMessage(_ method: String, options: [String: Any], webView: WKWebView?, done: @escaping (Result<[String: Any], Error>) -> Void) {
+        ShellBridge.shared.pageMessage(method, options: options, webView: webView, done: done)
+    }
+}
+
 // URL opens and user activities arrive on the scene under the UIScene
 // lifecycle; forward them to the same handlers (Capacitor's proxy, the
 // trovo:// deep link) the app delegate used before.
@@ -268,8 +308,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidDisconnect(_ scene: UIScene) {
         // UIKit may disconnect a background scene and connect a new one in the
-        // same process: the old page lets go of the store now.
-        StoreAttach.shared.sceneDisconnected(webView: (window?.rootViewController as? CAPBridgeViewController)?.webView)
+        // same process: the old page lets go of the store and its native screens now.
+        let webView = (window?.rootViewController as? CAPBridgeViewController)?.webView
+        StoreAttach.shared.sceneDisconnected(webView: webView)
+        ShellBridge.shared.sceneDisconnected(webView: webView)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
