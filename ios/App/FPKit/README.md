@@ -159,6 +159,16 @@ Debug launch arguments (never read by a Release build): `-fpStoreSwitch on|off`,
 `-fpProbe <steps file>` with `-fpProbeLog <name>`, `-fpPolicyFile <path>`, `-fpPolicyEvery <seconds>`, and the
 tools' `-devNav <route>` / `-devTheme <room>` (into `window.__FP_SHELL.dev`: test-native.sh and
 screenshots/shoot.py drive the page's dev-nav hook with them instead of writing `kt_dev_nav` into WebKit's file).
+`-fpOffline` keeps the page's own update check off and, without `-fpPolicyFile`, fetches no policy file either:
+the compiled defaults are in force for the launch, so the tools test the app as built.
+
+**A background launch can boot the page.** A watch message or a Health delivery can launch the phone app with no
+one looking. The hub answers the watch from its cache either way, and the web view may never load; but UIKit can
+also connect the scene in the background, and then the page boots and says hello (seen on the iOS 26.5 simulator
+after a watch wake with the app killed: the store attached, in step, the breaker disarmed at bootDone, the marker
+idle). Both cases happen. The device checklist should cover a watch wake and a Health delivery with the app killed,
+then Storage for breaker trips and crash markers. (CLAUDE.md's "no scene, so the plugin and the web view never load"
+needs the same correction at the merge.)
 
 ### tests/native-store.sh
 
@@ -187,7 +197,11 @@ Adding the package changed `originHash` in
 `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
 pin, moving `ion-ios-filesystem` (the Filesystem plugin's library, `from: "1.1.1"`) from 1.1.2 to 1.1.4.
 The committed file keeps the pins as they were under the new hash. If a later change to the package graph
-rewrites the file again, keep the pins unless that change means to move them.
+rewrites the file again, keep the pins unless that change means to move them. The hash also depends on the
+checkout's path: a build in another worktree or checkout rewrites `originHash` (and Xcode may move
+`ion-ios-filesystem` to 1.1.4 with it), so put the file back with `git checkout` before committing there, and
+at the merge resolve once in the main checkout and commit that file with the `ion-ios-filesystem` pin chosen
+deliberately (a dirty tree stops ./publish.sh).
 
 ## Testing
 
