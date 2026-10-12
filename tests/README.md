@@ -131,3 +131,21 @@ document, resynced on its boot, nothing resent, the open confirm closed as stale
 a planted crash marker bringing back the web chat once; the policy file's
 `screens.coach` "off"; the breaker. Spec 118 holds the page's half (its C5 case:
 the take-over after a reload).
+
+## The live native chat in test-native.sh
+
+`../test-native.sh` drives the live chat (plan task C7) after its routes, through
+`tools/native-chat.py` on the same phone and container: `-fpSmoke`'s ping; the
+keyboard sequences (the simulator's software keyboard turned on for them: the
+native composer on the keys, typed words in the chat's store, Back with the keys
+up, the composer's words kept across a present and a relaunch, a web field's keys
+gone when the chat covers it); a real coach turn from the native composer on
+`tools/coach-stub.py`, a stand-in for Anthropic's Messages API on the Mac's
+loopback (the Debug argument `-fpApiBase` hands it to the page as
+`window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a loopback
+origin): the echo, Thinking, the reply with a tool pill and PLAN CHANGES, Undo
+through the forwarded confirm, Keep changes; then `coach/chat` by launch argument
+in both rooms x `simctl ui appearance light|dark` x `content_size
+large|extra-extra-large`. It puts back what it changed in the container and the
+phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
+on its own (one JSON line per request).

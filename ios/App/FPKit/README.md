@@ -19,9 +19,11 @@ below) and the shell's side of the screen bridge (C5, see [The screen bridge](#t
 below): the TrovoShell plugin brings the page's messages to `ShellBridge`, `ScreenHost` puts the chat up over
 the page on the page's own model, and `PageLink` carries the chat's intents back; the page side is in
 `index.html` (C1-C3 and C5's take-over: `coachSend`, message ids and block models, `FPScreens`, the coach
-model, inert without the flag and a TrovoShell plugin). Not built yet: the live wiring (C7: CoachStore, the
-optimistic echo, drafts, `coach/chat` in test-native.sh). The published policy file keeps `screens.coach`
-off, so phones online show the web chat until it is turned on.
+model, inert without the flag and a TrovoShell plugin). The live chat (C7, see [The live chat](#the-live-chat-coachstore)
+below): `CoachStore` keeps the page's models in order, echoes the owner's message until the page's own takes its place,
+puts back what never reached the page, and keeps the composer across presents and launches; test-native.sh drives it in
+the real app, a coach turn included, on a stand-in for the Messages API. The published policy file keeps
+`screens.coach` off, so phones online show the web chat until it is turned on.
 
 ## Targets
 
@@ -53,7 +55,8 @@ only), run by `xcodebuild test` on an iOS simulator.
 ## FPUI: the native Coach chat
 
 The SwiftUI chat (plan task C6), drawn from FPCore's `CoachModel` and sending FPCore's `Intent`s
-through a `CoachHost` (C7's CoachStore fills it from the page link; tests and previews from fixtures).
+through a `CoachHost` (C7's CoachStore fills it from the page link, its composer included; tests and previews from
+fixtures, and then the chat keeps its own composer).
 The page keeps every rule: it parses markdown and `%%` markers, builds every label, pill, chip and
 PLAN CHANGES row, and decides what a message says; the views only draw the model. Nothing ever makes a
 link from model text: runs go in verbatim with explicit faces, never through
@@ -64,7 +67,8 @@ link from model text: runs go in verbatim with explicit faces, never through
 | `Theme/RoomTheme.swift` | The room a view draws in: the model's tokens as colours and faces, the room's flavour (paper or studio) for the few shapes the rooms draw differently, the text size and its factor |
 | `Theme/Fonts.swift` | The faces in `Resources/Fonts` (made by `screenshots/live-activity/mkfonts.py`, set "chat"), registered at runtime; family + weight to a face, the system face for glyphs a face lacks (as the web's font stacks), WebKit's 14° synthetic italic, tabular figures |
 | `Theme/Type.swift` | The text size: the system size clamped `.large...xxLarge` with the app's toggle on, `.large` off, and the web zoom's factor (1, 1.12, 1.24) every size scales by; CSS line boxes |
-| `Coach/CoachChatView.swift` | The screen and `CoachHost`: header, the conversation (opens at its end, a short chat hugs the composer, a reply lands at its question), composer, toast and confirm |
+| `Coach/CoachChatView.swift` | The screen and `CoachHost`: header, the conversation (opens at its end, a short chat hugs the composer, a reply lands at its question), composer (the host's draft when it keeps one, observed by the composer alone; `sendIntent`, the one builder of Send's `coach.send`), toast and confirm |
+| `Coach/CoachStore.swift` | The live chat (C7): `CoachStore` and its `CoachComposerDraft`; see [The live chat](#the-live-chat-coachstore) |
 | `Coach/CoachHeaderView.swift` | Back or Cancel, the avatar, the status eyebrow, title, WK/DAY and the model switch (spec 114's label and accessible name) |
 | `Coach/CoachMessageViews.swift` | The column's parts in the web's order and rhythm: day dividers, seeds, the owner's bubble, replies, notes, Try again / Open Settings, tool pills, PLAN CHANGES, Thinking; what VoiceOver reads for a reply (`ReplySpeech`: one stop, its type first, a table cell by cell, metrics and the takeaway in words) |
 | `Coach/CoachBlockViews.swift` | md()'s blocks (paragraphs, lists with sub-items and numbered starts, headings, rules, tables in a horizontal scroller) and the `%%` sections (metric cards, the takeaway, chips), with the web's collapsing margins |
@@ -100,9 +104,9 @@ in `ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoShellPlugin.swift` (calls hop to 
 |---|---|
 | `ShellBridge.swift` | `ShellBridge.shared`: bound to one web view (`install(webView:presenter:pageBuild:)` from `capacitorDidLoad`, which answers the screens the page being served may present, for the flag), with its LinkState (FPCore: the 15 s hello deadline in foreground time, negotiation, the 3-failure breaker), PageLink and ScreenHost. A document-start script posts `fpShell` at every main-frame document: the document before it is gone (its pending intents end unsent or unanswered and are never resent, its open confirm closes as stale; a screen it had up stays up). `hello` negotiates with ScreenGate for the hello's page build and names the screens still up from the document before (`up`, FPCore `HelloReply.takingOver`), which the page takes over; the shell then resyncs them (`shell.covered`, `coach.snapshot`). `bootDone` reaches the store breaker (FPHost `StoreAttach.bootDone`, through `environment`). The policy file's screen switches (FPHost `FPPolicy.changed`, through the App) take a screen down at once (`screens.off` "withdrawn"). Also `ShellWebView`, the app's WKWebView: it counts every time it leaves its window while the app is active (never by design) |
 | `PageLink.swift` | Swift to page: `window.FPScreens.call(name, args)` through `callAsyncJavaScript` in the page world, one intent at a time, first in first out, 2 s (5 s for a snapshot); every intent carries its document's boot, and a document that goes takes its intents with it (`documentGone`, never sent again). An error answer a page whose process just died also gives waits 0.8 s to show its document went before it counts |
-| `ScreenHost.swift` | Native screens over the page: `.overFullScreen` only (the web view never leaves its window: no `visibilitychange`, no leave and return path), one transition at a time (a dismissal right behind a present not yet started cancels both), the owner's Back and edge pan latched (the page hears `coach.back`; if it stays on the chat the screen goes up again), focus (the page's field blurred through `shell.covered` and editing ended before covering; the descriptor's `hasInitialFocus` is false), VoiceOver (the web view hidden while covered, the screen modal), `overrideUserInterfaceStyle` from the model's `paper` on every hosting controller and the toast window, the crash marker. The toast window (`ShellOverlay`): forwarded toasts 8 px under the chat's header (or the status bar), its strip only as tall as the toast; confirms over everything, the window key while one is open |
+| `ScreenHost.swift` | Native screens over the page: `.overFullScreen` only (the web view never leaves its window: no `visibilitychange`, no leave and return path), one transition at a time (a dismissal right behind a present not yet started cancels both), the owner's Back and edge pan latched (the page hears `coach.back`; if it stays on the chat the screen goes up again), focus (the page's field blurred through `shell.covered` and editing ended before covering; the descriptor's `hasInitialFocus` is false), VoiceOver (the web view hidden while covered, the screen modal), `overrideUserInterfaceStyle` from the model's `paper` on every hosting controller and the toast window, the crash marker. The toast window (`ShellOverlay`): forwarded toasts 8 px under the chat's header (or the status bar), its strip only as tall as the toast; confirms over everything, the window key while one is open. The chat's `CoachStore` lives here, one per binding (C7): models go to it (`update`), the chat draws on it, its intents and their outcomes go through `Hooks.ask`, a document that goes reaches it (`forgetModels`) |
 | `SlideTransition.swift` | `ScreenSlideTransition` (SwiftUI has a `SlideTransition` of its own): the push-like slide in from the trailing edge with the page dimmed under it, out the same way, interactive from the leading edge; a cross-fade with Reduce Motion |
-| `ShellProbe.swift` | Debug builds only: the shell scenarios' hands inside the app (`-fpShellProbe <steps>`), for tests/native-shell.sh |
+| `ShellProbe.swift` | Debug builds only: the shell scenarios' hands inside the app (`-fpShellProbe <steps>`), for tests/native-shell.sh and tests/tools/native-chat.py (test-native.sh): JavaScript in the page world, intents through the link, the owner's Back and edge pan, taps on the toast window, keys on the native composer, Send, and presses on the chat's controls through their own accessibility actions (it turns the simulator's accessibility runtime on for them and back off when done) |
 
 **The breaker book and crash markers.** The screens' BreakerBook (the native breaker per screen and page build, and the
 screens' crash verdicts) lives in the link, and every change goes through it (`editBook` for the markers found at launch
@@ -145,6 +149,79 @@ flight: the new document takes the chat over, the shell resyncs on its boot, not
 composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat, once), `policy`
 (`screens.coach` "off" takes the chat down at once) and `breaker` (three timeouts turn it off for the page build). Shots
 in `screenshots/out/native-shell/`.
+
+## The live chat: CoachStore
+
+Plan task C7 (`Sources/FPUI/Coach/CoachStore.swift`): what the native chat draws and where its taps go, between the page's
+models and the owner's hands. ScreenHost keeps one per web view binding, so it outlives every presentation of the chat.
+
+- **Models in order.** Within a document a model replaces the one drawn only when its `rev` is newer; an older or equal
+  rev is stale and ignored (LinkState drops most of them first, but a snapshot's answer and a push can cross). A model of
+  another document (the resync after a reload or a WebContent restart) replaces it whatever its rev. While the chat is up
+  across a reload it keeps drawing the old document's model until the new one's arrives; down, the model goes with its
+  document, so the chat never opens on a gone document's model.
+- **The optimistic echo.** Send (and an empty chat's suggestion) shows the owner's message at once as their bubble,
+  keyed by the send's nonce, over a day divider where the page would put one (`display`: the page's model with the
+  messages on their way after its own). It gives way to the page's message when a model holds it: by the message id
+  `coach.send` answers with, or, when the page's push overtakes that answer (pushes go through the plugin's queue), by a
+  message of the owner's with the same words or photo said at or after the send. Never resent: a send the page refuses
+  (`busy`, a reply in flight) or that never reached it (nothing linked) goes back in the composer at once, in front of
+  anything typed since, with a toast in the room's error style ("Couldn't send that: your message is back in the box");
+  one with no answer to rely on (a timeout, a broken bridge, its document gone) waits for the page's next model (the
+  next document's, or the same document's 1.5 s on) and goes back only if that model does not hold it, or after 8 s with
+  no word at all; one the page took but no model shows after 5 s (Clear chat) goes quietly. A send still being asked
+  waits for its answer whatever models come meanwhile (one made right after a reload reaches the new page after the
+  shell's resync snapshot, whose model cannot hold it yet). The scene going puts everything still on its way back in the
+  composer, without a toast.
+- **The composer** (`CoachComposerDraft`) is the store's: the owner's words survive the chat going down and up again and a
+  relaunch (UserDefaults `fpDraft.coach`, removed when the box is empty); a picked photo survives a dismissal in memory.
+  Only the composer observes it, so typing never repaints the conversation. The page's own draft (Build day's question,
+  a shared photo's comment) goes in once per nonce, filling the box as the web composer fills from `coachPrefill`, and the
+  page hears `coach.draftTaken`; a chat drawn on the store never sends its own.
+- **Photos** by key: those this chat sends (`n:<nonce>`, as the page keys them, so the page's message draws the same
+  photo as the echo did) and the page's pending one (a shared image), fetched once with `coach.image` (one the page will
+  not give is not asked for again, and the chat says Photo).
+- **Toasts and confirms** go through the bridge: the page forwards its own while the chat covers it and ScreenHost's
+  window draws them; the store's own (a message not sent) go to the same window. A confirm open when its document goes
+  closes there as stale.
+
+Tests: `CoachStoreTests` (rev order and the next document's model, the echo by id and by words and time, a duplicate,
+refused and unlinked sends back at once, a timeout decided by the next model, no word at all, taken but never shown, a
+reload's resync putting back what the next document lacks and not what it saved, a send right after a reload waiting
+for its answer, the binding going, the composer across presents and launches and drawn in the chat's box, the page's
+draft once per nonce, Back to the host, a suggestion's echo, photos by key), plus
+`ScreenHostTests` and `ShellBridgeTests` cases for a reload under the live chat (the confirm closes stale, the send ends
+with its document and is never sent again, the new boot's snapshot is drawn at rev 1, the words come back).
+
+### The coach's API base in a test launch
+
+A real coach turn needs Anthropic's API and a key; a Debug build's `-fpApiBase http://127.0.0.1:<port>` hands the page
+a stand-in instead (FPHost `ShellFlagScript.Dev.api`, FPCore `ShellFlag.devAPI`, `window.__FP_SHELL.dev.api`). The page's
+`_coachApiURL()` takes it only when it is an http(s) origin on this device's loopback, else every coach call goes to
+Anthropic as always, so a Release shell (no `dev` in its flag), an older shell, the PWA and the browser never change
+(spec 121). In the simulator the page's fetch (CapacitorHttp, through URLSession) reaches the Mac's loopback with no ATS
+exception. `tests/tools/coach-stub.py` is the stand-in: it answers `POST /v1/messages` as the API does (its shapes and
+status codes; 401 without `x-api-key`, 400 without `anthropic-version` or with an unknown `tool_use_id`) from a script
+of turns (a question's words to its opening text, tool call and closing words, with an optional delay), answers the
+one-shot calls (Today's card, a debrief, the key check) with the JSON their callers parse, and records every request
+(never the key itself).
+
+### test-native.sh and the live chat
+
+After its routes, `test-native.sh` runs `tests/tools/native-chat.py` on the same phone and app container: `prepare` (every
+localStorage value kept to put back, as base64 of its UTF-16 code units since a value can hold half an emoji; a probe key
+only if the container has none; the composer emptied), `smoke` (`-fpSmoke` logs `fp: ping ok v1`), `keys` (with the
+simulator's software keyboard turned on: the native composer takes the keys and sits above them, typed words reach the
+store, Back with the keys up leaves none and nothing scrolled, the words kept across a present and a relaunch, a web
+field's keys gone when the chat covers it, the page's own dismiss with the native keys up), `live` (a coach turn on
+`coach-stub.py`: the echo shot before the page has it (its `coach.send` held 1.4 s in the page world, under the link's
+2 s), Thinking with Stop, the reply with a tool pill and PLAN CHANGES, Undo through the forwarded confirm and Restore,
+a second turn's Keep changes, a third card left for the next shots; every press through the control's own accessibility
+action), `combos` (`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark` x `content_size
+large|extra-extra-large`: native, over the page, drawn in the room's appearance whatever the phone says, at the phone's
+text size; the phone's settings put back) and `restore` (only the values that changed put back, the page reloaded, the
+chat, programme, weights, key and room compared). Every launch takes `-fpIgnoreMarker`. Shots in
+`screenshots/out/native/` (`coach-chat-*`, `keys-*`, `live-*`).
 
 ## FPStore: the native store
 
@@ -237,7 +314,7 @@ page does not wait on goes to a utility queue.
 | `PolicyFetch.swift` | `FPPolicy.shared`: `policy.json` from GitHub Pages (beside build.txt) at launch and on foreground, at most every 15 minutes, the last good copy kept in UserDefaults; posts `FPPolicy.changed` (native screens follow at once; the store reads `effective` at each document start) |
 | `StoreProbe.swift` | Debug builds only: the scenario runner's hands inside the app (`-fpProbe <steps>`), for tests/native-store.sh |
 | `StoreTestQuit.swift` | Storage's "Test: quit after next save" (TestFlight and Debug builds): the arm (a write or remove of one of the keys the page names, within ten minutes) and the record kept beside the store across the quit (`FPStore/testquit.json`), which the next launch's first document start completes with what it found (in step, or the keys WebKit lost that the store kept) |
-| `ShellFlagScript.swift` | `window.__FP_SHELL` for this binary (FPCore `ShellFlag`): `screens` as FPUI's ShellBridge works them out from ScreenGate when the web view is set up (the page never reads it; each hello's answer is what counts) and, in a Debug build, `dev` from the test tools' `-devNav <route>` and `-devTheme <room>` |
+| `ShellFlagScript.swift` | `window.__FP_SHELL` for this binary (FPCore `ShellFlag`): `screens` as FPUI's ShellBridge works them out from ScreenGate when the web view is set up (the page never reads it; each hello's answer is what counts) and, in a Debug build, `dev` from the test tools' `-devNav <route>`, `-devTheme <room>` and `-fpApiBase <origin>` (the coach's stand-in API) |
 
 **Settings > About > Storage** (plan task S6). The page reads and acts on the store through the TrovoStore plugin
 (`ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoStorePlugin.swift`), which reaches StoreAttach through
@@ -263,7 +340,9 @@ Debug launch arguments (never read by a Release build): `-fpStoreSwitch on|off`,
 `-fpClearBreaker`, `-fpBreakProxy`, `-fpIgnoreBootDone`, `-fpIgnoreMarker`, `-fpNoWebKit`, `-fpOffline`,
 `-fpProbe <steps file>` with `-fpProbeLog <name>`, `-fpPolicyFile <path>`, `-fpPolicyEvery <seconds>`, and the
 tools' `-devNav <route>` / `-devTheme <room>` (into `window.__FP_SHELL.dev`: test-native.sh and
-screenshots/shoot.py drive the page's dev-nav hook with them instead of writing `kt_dev_nav` into WebKit's file).
+screenshots/shoot.py drive the page's dev-nav hook with them instead of writing `kt_dev_nav` into WebKit's file) and
+`-fpApiBase <origin>` (`dev.api`: the coach's stand-in for the Messages API on the loopback, see
+[The coach's API base](#the-coachs-api-base-in-a-test-launch)).
 `-fpOffline` keeps the page's own update check off and, without `-fpPolicyFile`, fetches no policy file either:
 the compiled defaults are in force for the launch, so the tools test the app as built.
 
