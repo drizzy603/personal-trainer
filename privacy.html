@@ -181,7 +181,7 @@
 <div class="hero">
   <div class="label">Legal</div>
   <h1>Privacy Policy</h1>
-  <p class="updated">Fitness Programmer · Last updated: September 15, 2026</p>
+  <p class="updated">Fitness Programmer · Last updated: October 11, 2026</p>
 </div>
 
 <div class="content">
@@ -197,7 +197,7 @@
 
   <div class="section">
     <h2>2. What Data We Collect</h2>
-    <p>Fitness Programmer is a local-first application. The following data is stored exclusively on your device using your browser's localStorage or the app's local storage — none of it is ever sent to us, and we operate no servers that could receive it:</p>
+    <p>Fitness Programmer is a local-first application. The following data is stored exclusively on your device using your browser's localStorage or the app's local storage (newer versions of the iOS app also keep a second, native copy of it on your device as a safety net; see Section 7) — none of it is ever sent to us, and we operate no servers that could receive it:</p>
     <ul>
       <li>Workout sessions (exercises, sets, reps, weight, RPE)</li>
       <li>Run and sport activity logs</li>
@@ -211,7 +211,7 @@
       <li>If you turn on the readiness score: the sleep, heart-rate-variability and resting-heart-rate values it is computed from (see Section 4)</li>
     </ul>
     <p>We do not operate servers that receive, store, or process your personal training data.</p>
-    <p>When the iOS app launches it checks for newer app content by fetching a small version file (and, when that is newer, the app's page) from GitHub Pages, where this site is hosted. The request carries no personal data and no identifier; like any web request, GitHub receives your device's IP address.</p>
+    <p>When the iOS app launches it checks for newer app content by fetching a small version file (and, when that is newer, the app's page) from GitHub Pages, where this site is hosted. Newer versions of the iOS app also fetch a small settings file from the same place, at launch and when you return to the app (at most every 15 minutes), so a misbehaving app feature can be switched off remotely. These requests carry no personal data and no identifier; like any web request, GitHub receives your device's IP address.</p>
     <p>If you use the AI Coach, the relevant parts of this data (your programme, recent training history, your athlete profile, and your messages) are sent directly from your device to Anthropic to generate the Coach's responses — see Sections 3 and 6. If you never use the Coach, nothing leaves your device.</p>
   </div>
 
@@ -256,8 +256,9 @@
   <div class="section">
     <h2>7. Data Storage and Security</h2>
     <p>All data is stored locally on your device. We have no access to it and therefore cannot recover it if lost. We recommend using the Export feature in Settings to regularly back up your data as a JSON file.</p>
+    <p>Newer versions of the iOS app also keep a second, native copy of your data on your device, beside the app's own storage, so that a change the phone's storage loses can be put back from Settings → About → Storage. The native copy never leaves your device unless you export it, and we cannot access it. Your Anthropic API key is never part of it.</p>
     <p>On iOS, Fitness Programmer also writes a daily backup file to the Files app on your device and, when iCloud Drive is available, to the Supero folder in your iCloud Drive. That backup lives in your own Apple account and we cannot access it. Heart-rate and calorie values imported from Apple Health are left out of the iCloud copy.</p>
-    <p>Clearing your browser data or uninstalling the app will permanently delete all locally stored data.</p>
+    <p>Uninstalling the app will permanently delete all locally stored data, the native copy included; in a browser, clearing your browser data does the same.</p>
   </div>
 
   <div class="section">

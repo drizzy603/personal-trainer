@@ -25,10 +25,12 @@ let package = Package(
             name: "FPCore"
         ),
 
-        // FPStore: FPCore plus the system SQLite3 (the SDK's module; linked as libsqlite3).
+        // FPStore: FPCore plus the system SQLite3 (the SDK's module; linked as libsqlite3). Resources/ktstore.js
+        // is the shadow facade the shell injects at document start (plan task S3), read through Bundle.module.
         .target(
             name: "FPStore",
             dependencies: ["FPCore"],
+            resources: [.copy("Resources/ktstore.js")],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
 
@@ -59,6 +61,13 @@ let package = Package(
             name: "FPStoreTests",
             dependencies: ["FPStore"],
             resources: [.copy("Vectors")]
+        ),
+
+        // FPHostTests: iOS only, run by `xcodebuild test` on a simulator (KTUIProxy in a real WKWebView, the crash
+        // marker, the policy fetch). Every source is inside `#if os(iOS)`, so `swift test` on the Mac runs none.
+        .testTarget(
+            name: "FPHostTests",
+            dependencies: ["FPHost", "FPCore", "FPStore"]
         ),
     ],
     swiftLanguageVersions: [.v5]

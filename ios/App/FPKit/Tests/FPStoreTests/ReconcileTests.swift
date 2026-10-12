@@ -354,6 +354,97 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(dev.store.conflictValue(id: lag.id), u(s3s2s1), "the newer value is kept for Put back")
     }
 
+    /// Everything one start found WebKit had lost is one loss (`status(losses: true)`), Put back of all of it one
+    /// intent, and the loss stays open while any of it could still come back: Put back of the workout alone used to
+    /// leave the working weights, the records and the draft's removal behind while the next start read "in step".
+    func testEverythingAStartLostIsOneLossUntilEachOfItIsBack() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        let draft = #"{"date":"2026-10-11","savedAt":1760180000000,"session":{"type":"Push","dayName":"Push","startedAt":1760179000000},"completed":{"Bench":3}}"#
+        dev.set("kt_runner_draft", draft)  // a workout under way: both copies hold its draft
+        let saved = dev.webkit
+        // The finish: the workout, its working weights and records, the draft's removal, every one acknowledged...
+        let before = String(decoding: try XCTUnwrap(dev.webkit["kt_sessions"]), as: UTF16.self)
+        let finished = #"[{"id":1760180100000,"date":"2026-10-11","type":"Push","startedAt":1760179000000},"# + before.dropFirst()
+        dev.set("kt_sessions", finished)
+        dev.set("kt_weights", #"{"Bench":140,"Squat":185}"#)
+        dev.set("kt_prs", #"{"Bench":190}"#)
+        dev.remove("kt_runner_draft")
+        dev.webkit = saved  // ...then lost by WebKit in a hard kill
+        dev.relaunch()
+        let answer = dev.launch(stamp: false)
+        XCTAssertEqual(answer["rule"] as? Int, 6)
+        let boot = try XCTUnwrap((answer["boot"] as? NSNumber)?.int64Value)
+        let lost: Set<String> = ["kt_prs", "kt_runner_draft", "kt_sessions", "kt_weights"]
+        XCTAssertEqual(Set(dev.store.status().lastHello?.wouldRepair ?? []), lost)
+        let rows = dev.store.conflicts().filter { $0.why == "lag" }
+        XCTAssertEqual(Set(rows.map(\.key)), lost)
+        XCTAssertTrue(rows.allSatisfy { $0.boot == boot }, "each value given up names the start that gave it up: \(rows)")
+        XCTAssertNil(dev.store.status().losses, "the plain status leaves losses unresolved (it is read at every hello)")
+
+        var losses = dev.store.status(losses: true).losses ?? []
+        XCTAssertEqual(losses.count, 1, "one start, one loss: \(losses)")
+        let loss = try XCTUnwrap(losses.first)
+        XCTAssertEqual(loss.boot, boot)
+        XCTAssertEqual(loss.why, "lag")
+        XCTAssertEqual(Set(loss.ids), Set(rows.map(\.id)))
+        XCTAssertEqual(Set(loss.items.map(\.key)), lost)
+        XCTAssertEqual(loss.items.first { $0.key == "kt_sessions" }?.added, 1)
+        XCTAssertEqual(loss.items.first { $0.key == "kt_runner_draft" }?.removes, true, "the draft's removal goes back as a removal")
+        XCTAssertTrue(loss.items.allSatisfy { $0.outcome == .putBack })
+
+        // Put back of the workout alone: the next start is in step, the draft is still in WebKit, and the rest of the
+        // loss stays open.
+        let sessions = try XCTUnwrap(rows.first { $0.key == "kt_sessions" })
+        dev.store.stagePutBack(conflicts: [sessions.id])
+        XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
+        XCTAssertEqual(dev.webkit["kt_sessions"], u(finished))
+        XCTAssertEqual(dev.webkit["kt_runner_draft"], u(draft))
+        XCTAssertTrue(dev.store.status().inStep)
+        losses = dev.store.status(losses: true).losses ?? []
+        XCTAssertEqual(losses.map(\.boot), [boot], "still open")
+        XCTAssertEqual(Set(losses.first?.items.map(\.key) ?? []), ["kt_prs", "kt_runner_draft", "kt_weights"])
+
+        // A key the owner changes since is no longer the loss's to put back.
+        dev.set("kt_prs", #"{"Bench":195}"#)
+        XCTAssertEqual(Set(dev.store.status(losses: true).losses?.first?.items.map(\.key) ?? []), ["kt_runner_draft", "kt_weights"])
+
+        // One Put back of the whole loss brings back what is still missing and removes the draft.
+        let plan = dev.store.stagePutBack(conflicts: losses[0].ids)
+        XCTAssertEqual(plan.count, 2)
+        XCTAssertEqual(plan.removals, 1)
+        XCTAssertEqual(plan.items.first { $0.key == "kt_sessions" }?.outcome, .nothingToAdd)
+        XCTAssertEqual(plan.items.first { $0.key == "kt_prs" }?.outcome, .changedSince)
+        dev.launch()
+        XCTAssertNil(dev.webkit["kt_runner_draft"])
+        XCTAssertEqual(dev.webkit["kt_weights"], u(#"{"Bench":140,"Squat":185}"#))
+        XCTAssertEqual(dev.webkit["kt_prs"], u(#"{"Bench":195}"#), "the owner's newer value stays")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        XCTAssertEqual(dev.store.status(losses: true).losses ?? [], [], "nothing left to put back: the loss is resolved")
+    }
+
+    /// A wipe's follow-up is a loss too ("wiped" rows), resolved by Put back of the wipe's snapshot.
+    func testAWipesFollowUpIsALossUntilItsSnapshotIsPutBack() throws {
+        let temp = TempDir()
+        let dev = migratedDevice(temp)
+        dev.webkit = [:]
+        XCTAssertEqual(dev.launch(stamp: false)["why"] as? String, "wiped")
+        dev.set(KTProtocol.witnessKey, dev.nextStamp())  // the fresh page, without the facade
+        XCTAssertEqual(dev.store.status(losses: true).losses ?? [], [], "nothing given up yet: the copy kept its set")
+        let follow = dev.launch()
+        XCTAssertEqual(follow["rule"] as? Int, 4)
+        let losses = dev.store.status(losses: true).losses ?? []
+        XCTAssertEqual(losses.count, 1)
+        XCTAssertEqual(losses.first?.why, "wiped")
+        XCTAssertTrue(losses.first?.items.contains { $0.key == "kt_routine" } ?? false)
+        XCTAssertFalse(losses.first?.items.contains { $0.key == KTProtocol.witnessKey.string } ?? true,
+                       "the visit stamp changed since: not the loss's to put back")
+        let snap = try XCTUnwrap(dev.store.status().wipeOffer?.snap)
+        dev.store.stagePutBack(snap: snap)
+        dev.launch()
+        XCTAssertEqual(dev.store.status(losses: true).losses ?? [], [], "the snapshot's Put back resolves it")
+    }
+
     func testLostProgrammeEditBehindBusyDiagnosticKeysIsStillDetected() throws {
         let temp = TempDir()
         let clock = TestClock()

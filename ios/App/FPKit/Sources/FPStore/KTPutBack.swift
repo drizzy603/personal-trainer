@@ -21,20 +21,36 @@ public struct KTPutBackItem: Codable, Equatable, Sendable {
     public var outcome: Outcome
     /// Log keys: the records the merge adds.
     public var added: Int?
+    /// Log keys: which records it adds (at most 20), each "<date> <name>": the record's `date`, then its day name
+    /// (`label`), else its `type` or `sport`. A merge only adds, so this is what deleting would undo.
+    public var records: [String]?
     /// `conflict:<id>[,<id>...]` or `snap:<name>`.
     public var origin: String
+    /// true when this Put back deletes the key: the value kept was "no value" (an older build created the key, a
+    /// loss took back a removal), so the facade removes it from WebKit and the store. Only ever on a `putBack` of a
+    /// key that is not a log (a log is merged, never removed). Absent from the JSON otherwise, so Storage can say
+    /// "Remove ...?" before it asks, instead of promising that nothing is removed.
+    public var removes: Bool?
 
-    public init(key: String, outcome: Outcome, added: Int? = nil, origin: String) {
+    public init(key: String, outcome: Outcome, added: Int? = nil, origin: String, removes: Bool? = nil, records: [String]? = nil) {
         self.key = key
         self.outcome = outcome
         self.added = added
         self.origin = origin
+        self.removes = removes
+        self.records = records
     }
+
+    /// How many added records an item names.
+    public static let recordsListed = 20
 }
 
 public struct KTPutBackPlan: Codable, Equatable, Sendable {
     public var items: [KTPutBackItem]
+    /// Keys the Put back writes, removals included.
     public var count: Int { items.filter { $0.outcome == .putBack }.count }
+    /// Of those, the keys it deletes.
+    public var removals: Int { items.filter { $0.outcome == .putBack && $0.removes == true }.count }
     public init(items: [KTPutBackItem]) { self.items = items }
 }
 
@@ -50,6 +66,8 @@ enum KTMerge {
     struct Result: Equatable {
         var merged: U16
         var added: Int
+        /// Each added record as "<date> <name>" (KTPutBackItem.records), in the order they were added.
+        var addedRecords: [String] = []
     }
 
     /// nil when either side is not a JSON array. A nil `current` is an absent key: an empty log.
@@ -65,6 +83,7 @@ enum KTMerge {
             records.append(rec)
         }
         var added = 0
+        var summaries: [String] = []
         for r in extraParts {
             let rec = Record(extra, r)
             if let id = rec.idToken {
@@ -74,6 +93,7 @@ enum KTMerge {
             }
             records.append(rec)
             added += 1
+            summaries.append(rec.summary)
         }
         let sorted = stableSort(records)
         var out: U16 = [0x5B]
@@ -82,7 +102,7 @@ enum KTMerge {
             out.append(contentsOf: rec.text)
         }
         out.append(0x5D)
-        return Result(merged: out, added: added)
+        return Result(merged: out, added: added, addedRecords: summaries)
     }
 
     /// One record: its exact text and what lsSet's comparator reads from it.
@@ -94,12 +114,22 @@ enum KTMerge {
         let date: U16
         /// `(r && r.id) || 0`, as the subtraction reads it (NaN for a non-numeric string).
         let id: Double
+        /// What Storage calls it: the day's name (`label`), else `type`, else `sport` (strings only).
+        let name: U16?
+
+        /// "<date> <name>", for KTPutBackItem.records.
+        var summary: String {
+            var s = String(decoding: date, as: UTF16.self)
+            if let name, !name.isEmpty { s += (s.isEmpty ? "" : " ") + String(decoding: name, as: UTF16.self) }
+            return s
+        }
 
         init(_ u: U16, _ range: Range<Int>) {
             text = Array(u[range])
             var idToken: U16?
             var date: U16 = []
             var id = 0.0
+            var label: U16?, type: U16?, sport: U16?
             if let members = KTJSON.objectMembers(u, range) {
                 for (name, vr) in members {
                     if name == Array("id".utf16) {
@@ -108,12 +138,20 @@ enum KTMerge {
                         id = Record.number(u, vr)
                     } else if name == Array("date".utf16) {
                         date = Record.string(u, vr)
+                    } else if name == Array("label".utf16) {
+                        label = KTJSON.string(u, vr)
+                    } else if name == Array("type".utf16) {
+                        type = KTJSON.string(u, vr)
+                    } else if name == Array("sport".utf16) {
+                        sport = KTJSON.string(u, vr)
                     }
                 }
             }
             self.idToken = idToken
             self.date = date
             self.id = id
+            func named(_ v: U16?) -> U16? { (v?.isEmpty ?? true) ? nil : v }
+            self.name = named(label) ?? named(type) ?? named(sport)
         }
 
         /// JavaScript's `String(x || '')` for a JSON token.

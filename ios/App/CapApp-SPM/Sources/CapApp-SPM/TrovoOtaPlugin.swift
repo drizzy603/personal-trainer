@@ -73,6 +73,12 @@ public enum TrovoOta {
     }
 }
 
+public extension Notification.Name {
+    /// Posted on the main thread when the page confirms its first paint (`TrovoOta.confirm`); the object is the
+    /// web view it came from.
+    static let trovoOtaConfirmed = Notification.Name("TrovoOtaConfirmed")
+}
+
 @objc(TrovoOtaPlugin)
 public class TrovoOtaPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "TrovoOtaPlugin"
@@ -118,9 +124,14 @@ public class TrovoOtaPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    // First successful render of a live page disarms the breaker.
+    // First successful render of a live page disarms the breaker. Every page
+    // sends it once per document on its first paint, so it also tells the shell
+    // the page booted (FPKit's store breaker, until the page's own bootDone).
     @objc func confirm(_ call: CAPPluginCall) {
         UserDefaults.standard.removeObject(forKey: TrovoOta.attemptKey)
+        DispatchQueue.main.async { [weak self] in
+            NotificationCenter.default.post(name: .trovoOtaConfirmed, object: self?.bridge?.webView)
+        }
         call.resolve()
     }
 

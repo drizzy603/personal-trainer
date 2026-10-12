@@ -504,6 +504,100 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(dev.launch()["rule"] as? Int, 0)
     }
 
+    /// A value the copy kept as "no value" (the key did not exist then) goes back as a removal: the plan says so
+    /// (`removes`), so Storage can ask "Remove ...?" instead of promising that nothing is removed. Seen on the iOS 27
+    /// simulator: an older build's kt_streak_days row, "had no value", previewed as a plain "put back" and deleted
+    /// the key (its value came back only through the putback row it left).
+    func testPutBackOfAValueTheCopyHeldAsNoneIsARemovalAndThePlanSaysSo() throws {
+        let temp = TempDir()
+        let dev = FakeDevice(temp)
+        dev.webkit = Seed.values.filter { $0.key != "kt_streak_days" }
+        dev.launch()
+        let streak = u(#"{"2026-10-07":1,"2026-10-08":1,"2026-10-09":2}"#)
+        dev.olderBuild { wk in
+            wk["kt_streak_days"] = streak  // build 59 wrote a key the copy never held
+            wk["kt_theme"] = u("dark")
+        }
+        dev.launch()
+        let none = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_streak_days" })
+        XCTAssertNil(none.units, "the copy held no value for it")
+        let theme = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_theme" })
+
+        // What the plugin hands the page (StoreAttach.putBackJSON encodes the items exactly so).
+        func items(_ plan: KTPutBackPlan) throws -> [String: [String: Any]] {
+            let obj = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(plan)) as? [String: Any]
+            var out: [String: [String: Any]] = [:]
+            for item in (obj?["items"] as? [[String: Any]]) ?? [] { out[item["key"] as? String ?? ""] = item }
+            return out
+        }
+        let preview = try items(dev.store.previewPutBack(conflicts: [none.id, theme.id]))
+        XCTAssertEqual(preview["kt_streak_days"]?["outcome"] as? String, "put back")
+        XCTAssertEqual(preview["kt_streak_days"]?["removes"] as? Bool, true, "a removal is marked: \(preview)")
+        XCTAssertEqual(preview["kt_theme"]?["outcome"] as? String, "put back")
+        XCTAssertNil(preview["kt_theme"]?["removes"], "a value that goes back is not a removal: \(preview)")
+
+        // A log key the copy held as none never removes anything: there is nothing to add.
+        dev.olderBuild { $0["kt_sports"] = nil }
+        dev.launch()
+        dev.olderBuild { $0["kt_sports"] = u(#"[{"id":9,"date":"2026-10-09","type":"Tennis"}]"#) }
+        dev.launch()
+        let noLog = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_sports" && $0.units == nil })
+        let logPlan = try items(dev.store.previewPutBack(conflicts: [noLog.id]))
+        XCTAssertEqual(logPlan["kt_sports"]?["outcome"] as? String, "nothing to add")
+        XCTAssertNil(logPlan["kt_sports"]?["removes"])
+
+        // Staged, it deletes the key from WebKit and the store; the value it removed is kept, so it can come back.
+        dev.store.stagePutBack(conflicts: [none.id])
+        dev.launch()
+        XCTAssertNil(dev.webkit["kt_streak_days"], "removed from WebKit")
+        XCTAssertNil(dev.store.value("kt_streak_days"), "and from the store")
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+        let removed = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_streak_days" && $0.why == "putback" })
+        XCTAssertEqual(dev.store.conflictValue(id: removed.id), streak)
+        let back = try items(dev.store.stagePutBack(conflicts: [removed.id]))
+        XCTAssertNil(back["kt_streak_days"]?["removes"], "putting the removed value back is not a removal")
+        dev.launch()
+        XCTAssertEqual(dev.webkit["kt_streak_days"], streak)
+        XCTAssertEqual(dev.store.values(), dev.pageView)
+    }
+
+    /// Put back of a log names the records it brings back (date and day or type), so the owner sees that a workout
+    /// they deleted would come back, and which: a merge only adds, so it is undone by deleting those records again.
+    func testPutBackOfALogNamesTheRecordsItBringsBack() throws {
+        let temp = TempDir()
+        let dev = FakeDevice(temp)
+        var seed = Seed.values
+        seed["kt_sessions"] = u(#"[{"id":3,"date":"2026-10-09","type":"Pull","label":"Back + Biceps"},{"id":2,"date":"2026-10-08","type":"Push"},{"id":1,"date":"2026-10-01"}]"#)
+        seed["kt_runs"] = u(#"[{"id":7,"date":"2026-10-07","distance":5,"type":"easy"}]"#)
+        dev.webkit = seed
+        dev.launch()
+        // An older build deletes two workouts and the run; back on 60 the copy keeps what it held.
+        dev.olderBuild { wk in
+            wk["kt_sessions"] = u(#"[{"id":1,"date":"2026-10-01"}]"#)
+            wk["kt_runs"] = u("[]")
+        }
+        dev.launch()
+        let sessions = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_sessions" })
+        let runs = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_runs" })
+        // What the plugin hands the page (StoreAttach.putBackJSON encodes the items exactly so).
+        func items(_ plan: KTPutBackPlan) throws -> [String: [String: Any]] {
+            let obj = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(plan)) as? [String: Any]
+            var out: [String: [String: Any]] = [:]
+            for item in (obj?["items"] as? [[String: Any]]) ?? [] { out[item["key"] as? String ?? ""] = item }
+            return out
+        }
+        let plan = try items(dev.store.previewPutBack(conflicts: [sessions.id, runs.id]))
+        XCTAssertEqual(plan["kt_sessions"]?["added"] as? Int, 2)
+        XCTAssertEqual(plan["kt_sessions"]?["records"] as? [String], ["2026-10-09 Back + Biceps", "2026-10-08 Push"],
+                       "the day's name when it has one, else its type: \(plan)")
+        XCTAssertEqual(plan["kt_runs"]?["records"] as? [String], ["2026-10-07 easy"])
+        // A value key never lists records.
+        dev.olderBuild { $0["kt_theme"] = u("dark") }
+        dev.launch()
+        let theme = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_theme" })
+        XCTAssertNil(try items(dev.store.previewPutBack(conflicts: [theme.id]))["kt_theme"]?["records"])
+    }
+
     func testPutBackMergesALogByIdAndNeverDropsARecord() throws {
         let temp = TempDir()
         let dev = FakeDevice(temp)

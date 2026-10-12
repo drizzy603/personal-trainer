@@ -6,11 +6,12 @@
 # refuses anything surprising:
 #   - must be run from `next` with a clean tree and nothing unpushed
 #   - `main` must be a strict ancestor of `next` (a pure fast-forward)
-#   - the Playwright suite must be green (skip with --no-tests only if it just ran)
+#   - the Playwright suite must be green (skip with --no-tests only if it just ran), and when the shell's
+#     storage facade, the mock native store or the harness changed, the store matrix too (STORE=shadow)
 # It never force-pushes and never touches the native shell or the App Store.
 #
 #   ./publish.sh            # test, merge, push, confirm the live stamp
-#   ./publish.sh --no-tests # skip the suite (it was just run)
+#   ./publish.sh --no-tests # skip the suites (they were just run)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -30,6 +31,13 @@ if [ "${1:-}" != "--no-tests" ]; then
   echo "${DIM}publish: running the suite…${OFF}"
   ./tests/run.sh >/tmp/publish-tests.log 2>&1 || { tail -20 /tmp/publish-tests.log; die "suite is red — not publishing"; }
   grep -q 'All suites passed' /tmp/publish-tests.log || die "suite did not report a pass — not publishing"
+  # The store matrix is made of the facade the shell injects, the mock native store and the harness: when any of
+  # them changed since main, run every spec through them as well.
+  if ! git diff --quiet origin/main next -- ios/App/FPKit/Sources/FPStore/Resources/ktstore.js tests/lib/ktstore-mock.js tests/lib/harness.js; then
+    echo "${DIM}publish: the storage facade, the mock store or the harness changed — running the suite with STORE=shadow…${OFF}"
+    STORE=shadow ./tests/run.sh >/tmp/publish-tests-shadow.log 2>&1 || { tail -20 /tmp/publish-tests-shadow.log; die "the store matrix (STORE=shadow) is red — not publishing"; }
+    grep -q 'All suites passed' /tmp/publish-tests-shadow.log || die "the store matrix did not report a pass — not publishing"
+  fi
 fi
 
 echo "${DIM}publish: fast-forwarding main by ${AHEAD} commit(s)…${OFF}"
