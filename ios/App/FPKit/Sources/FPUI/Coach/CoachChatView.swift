@@ -202,6 +202,14 @@ public struct CoachChatView: View {
                         atEnd = endY - g.size.height < 80
                     }
                     .onChange(of: landingKey) { old, new in land(proxy, from: old, to: new) }
+                    // the keys coming up (or going) change the conversation's height: a reader at the end stays there,
+                    // as the web's _chatAnchor holds the distance from the bottom (the default anchor sets only the first
+                    // offset, so a chat a little taller than the space above the keys showed its top, the newest message
+                    // under the composer)
+                    .onChange(of: g.size.height) { _, _ in
+                        guard atEnd, !options.unscrolled else { return }
+                        proxy.scrollTo(Self.endID, anchor: .bottom)
+                    }
                 }
             }
         }

@@ -228,12 +228,24 @@ def scen_smoke(c):
 FIELD_JS = nsh.FIELD_JS
 OPEN_JS = nsh.OPEN_JS
 TYPED = 'Draft kept across presents and launches'
+# The keys check needs a chat longer than the space left above the keys and shorter than the screen (review 4: six
+# messages showed the newest cut under the composer once the keys came up): older ones go in front up to six.
+PAD6_JS = r"""
+var n = coachMessages.length, k = Math.max(0, 6 - n), add = [], t0 = Date.now() - 2 * 86400000;
+for (var i = 0; i < k; i++) {
+  var q = Math.floor(i / 2) + 1, user = (k - i) % 2 === 0;
+  add.push(user ? { role: 'user', at: t0 + i * 60000, content: 'Earlier question ' + q + ': should I deload next week?' }
+    : { role: 'assistant', at: t0 + i * 60000, content: 'Earlier answer ' + q + ': not yet; your bar speed held this week, so keep the plan and check again on Sunday.' });
+}
+if (add.length) { coachMessages = add.concat(coachMessages); saveCoachHistory(); render(); }
+return { padded: add.length, total: coachMessages.length };
+"""
 
 
 def scen_keys(c):
     s = 'keys'
     phase = [
-        wait_coach('up'), wait(700), state('up'),
+        wait_coach('up'), js('pad', PAD6_JS), wait(900), state('up'),
         {'op': 'nativeFocus'}, wait(1500), state('keys up'), mark('keys-1-native-up'),
         {'op': 'type', 'text': TYPED}, wait(700), state('typed'), mark('keys-2-typed'),
         press('Back'), wait(2400), state('after back'), mark('keys-3-after-back'),
@@ -266,6 +278,11 @@ def scen_keys(c):
             {'kb': kb(up), 'focused': coach(up).get('composerFocused')})
     c.check(s, 'the composer sits above the keys', bool(kbd and comp) and comp[1] + comp[3] <= kbd[1] + 1,
             {'composer': coach(up).get('composerFrame'), 'keysTop': kbd and kbd[1]})
+    sb, sk = coach(ev.state('up')).get('scroll') or {}, coach(up).get('scroll') or {}
+    pad = (ev.first('js', label='pad') or {}).get('result') or {}
+    c.check(s, 'the newest message stays in view above the composer when the keys come up (the chat was at its end; %s messages)' % pad.get('total'),
+            sb.get('fromEnd') is not None and sb.get('fromEnd') < 4 and sk.get('fromEnd') is not None and sk.get('fromEnd') < 4,
+            {'before keys': sb, 'keys up': sk})
     c.check(s, 'typed words reach the composer\'s store', store(typed).get('draft') == TYPED and (ev.first('type') or {}).get('via') == 'keys',
             (store(typed).get('draft'), (ev.first('type') or {}).get('via')))
     pb = page(back)

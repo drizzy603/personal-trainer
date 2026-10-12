@@ -67,7 +67,7 @@ link from model text: runs go in verbatim with explicit faces, never through
 | `Theme/RoomTheme.swift` | The room a view draws in: the model's tokens as colours and faces, the room's flavour (paper or studio) for the few shapes the rooms draw differently, the text size and its factor |
 | `Theme/Fonts.swift` | The faces in `Resources/Fonts` (made by `screenshots/live-activity/mkfonts.py`, set "chat"), registered at runtime; family + weight to a face, the system face for glyphs a face lacks (as the web's font stacks), WebKit's 14° synthetic italic, tabular figures |
 | `Theme/Type.swift` | The text size: the system size clamped `.large...xxLarge` with the app's toggle on, `.large` off, and the web zoom's factor (1, 1.12, 1.24) every size scales by; CSS line boxes |
-| `Coach/CoachChatView.swift` | The screen and `CoachHost`: header, the conversation (opens at its end, a short chat hugs the composer, a reply lands at its question, the owner's own Send, Stop, chip or Try again brings the end into view wherever the reader was), composer (the host's draft when it keeps one, observed by the composer alone; `sendIntent`, the one builder of Send's `coach.send`), toast and confirm |
+| `Coach/CoachChatView.swift` | The screen and `CoachHost`: header, the conversation (opens at its end, a short chat hugs the composer, a reply lands at its question, the owner's own Send, Stop, chip or Try again brings the end into view wherever the reader was, a reader at the end stays there when the keys come up), composer (the host's draft when it keeps one, observed by the composer alone; `sendIntent`, the one builder of Send's `coach.send`), toast and confirm |
 | `Coach/CoachStore.swift` | The live chat (C7): `CoachStore` and its `CoachComposerDraft`; see [The live chat](#the-live-chat-coachstore) |
 | `Coach/CoachHeaderView.swift` | Back or Cancel, the avatar, the status eyebrow, title, WK/DAY and the model switch (spec 114's label and accessible name) |
 | `Coach/CoachMessageViews.swift` | The column's parts in the web's order and rhythm: day dividers, seeds, the owner's bubble, replies, notes, Try again / Open Settings, tool pills, PLAN CHANGES, Thinking; what VoiceOver reads for a reply (`ReplySpeech`: one stop, its type first, a table cell by cell, metrics and the takeaway in words) |
@@ -231,7 +231,8 @@ localStorage value kept to put back, as base64 of its UTF-16 code units since a 
 only if the container has none; the composer emptied), `smoke` (`-fpSmoke` logs `fp: ping ok v1`), `keys` (with the
 simulator's software keyboard turned on: the native composer takes the keys and sits above them, typed words reach the
 store, Back with the keys up leaves none and nothing scrolled, the words kept across a present and a relaunch, a web
-field's keys gone when the chat covers it, the page's own dismiss with the native keys up), `live` (a coach turn on
+field's keys gone when the chat covers it, the page's own dismiss with the native keys up, a six-message chat at its end
+keeping its newest message in view as the keys come up), `live` (a coach turn on
 `coach-stub.py`: the echo shot before the page has it (its `coach.send` held 1.4 s in the page world, under the link's
 2 s), Thinking with Stop, the reply with a tool pill and PLAN CHANGES, Undo through the forwarded confirm and Restore,
 a second turn's Keep changes, Send while scrolled to the top bringing the end into view with the owner's message and the

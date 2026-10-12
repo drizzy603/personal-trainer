@@ -146,7 +146,8 @@ TrovoShell `status`/`reset` and the `visibility` report on the mock).
 keyboard sequences (the simulator's software keyboard turned on for them: the
 native composer on the keys, typed words in the chat's store, Back with the keys
 up, the composer's words kept across a present and a relaunch, a web field's keys
-gone when the chat covers it); a real coach turn from the native composer on
+gone when the chat covers it, a short chat's newest message in view as the keys
+come up); a real coach turn from the native composer on
 `tools/coach-stub.py`, a stand-in for Anthropic's Messages API on the Mac's
 loopback (the Debug argument `-fpApiBase` hands it to the page as
 `window.__FP_SHELL.dev.api`; spec 121 holds the page to taking only a loopback
