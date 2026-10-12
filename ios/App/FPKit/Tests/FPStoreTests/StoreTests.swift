@@ -561,6 +561,43 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(dev.store.values(), dev.pageView)
     }
 
+    /// Put back of a log names the records it brings back (date and day or type), so the owner sees that a workout
+    /// they deleted would come back, and which: a merge only adds, so it is undone by deleting those records again.
+    func testPutBackOfALogNamesTheRecordsItBringsBack() throws {
+        let temp = TempDir()
+        let dev = FakeDevice(temp)
+        var seed = Seed.values
+        seed["kt_sessions"] = u(#"[{"id":3,"date":"2026-10-09","type":"Pull","label":"Back + Biceps"},{"id":2,"date":"2026-10-08","type":"Push"},{"id":1,"date":"2026-10-01"}]"#)
+        seed["kt_runs"] = u(#"[{"id":7,"date":"2026-10-07","distance":5,"type":"easy"}]"#)
+        dev.webkit = seed
+        dev.launch()
+        // An older build deletes two workouts and the run; back on 60 the copy keeps what it held.
+        dev.olderBuild { wk in
+            wk["kt_sessions"] = u(#"[{"id":1,"date":"2026-10-01"}]"#)
+            wk["kt_runs"] = u("[]")
+        }
+        dev.launch()
+        let sessions = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_sessions" })
+        let runs = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_runs" })
+        // What the plugin hands the page (StoreAttach.putBackJSON encodes the items exactly so).
+        func items(_ plan: KTPutBackPlan) throws -> [String: [String: Any]] {
+            let obj = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(plan)) as? [String: Any]
+            var out: [String: [String: Any]] = [:]
+            for item in (obj?["items"] as? [[String: Any]]) ?? [] { out[item["key"] as? String ?? ""] = item }
+            return out
+        }
+        let plan = try items(dev.store.previewPutBack(conflicts: [sessions.id, runs.id]))
+        XCTAssertEqual(plan["kt_sessions"]?["added"] as? Int, 2)
+        XCTAssertEqual(plan["kt_sessions"]?["records"] as? [String], ["2026-10-09 Back + Biceps", "2026-10-08 Push"],
+                       "the day's name when it has one, else its type: \(plan)")
+        XCTAssertEqual(plan["kt_runs"]?["records"] as? [String], ["2026-10-07 easy"])
+        // A value key never lists records.
+        dev.olderBuild { $0["kt_theme"] = u("dark") }
+        dev.launch()
+        let theme = try XCTUnwrap(dev.store.conflicts().first { $0.key == "kt_theme" })
+        XCTAssertNil(try items(dev.store.previewPutBack(conflicts: [theme.id]))["kt_theme"]?["records"])
+    }
+
     func testPutBackMergesALogByIdAndNeverDropsARecord() throws {
         let temp = TempDir()
         let dev = FakeDevice(temp)

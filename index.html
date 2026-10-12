@@ -21888,8 +21888,22 @@ var FP_QUIT_KEYS=['kt_runner_draft','kt_sessions','kt_runs','kt_sports','kt_bw',
 var _FP_KEY_NAMES={kt_sessions:'Workouts', kt_runs:'Runs', kt_sports:'Activities', kt_bw:'Body weight', kt_measurements:'Measurements',
   kt_routine:'Programme', kt_routine_backup:'Previous programme', kt_coach_msgs:'Coach chat', kt_weights:'Working weights',
   kt_runner_draft:'Workout in progress', kt_profile:'Athlete profile', kt_prs:'Records', kt_week:'Programme week',
-  kt_streak_days:'Streak days', kt_last_open:'Last visit', kt_err_log:'Error log', kt_wch_log:'Watch sync log'};
+  kt_streak_days:'Streak days', kt_last_open:'Last visit', kt_err_log:'Error log', kt_wch_log:'Watch sync log',
+  kt_routine_archive:'Programme history', kt_routine_next:'Next round', kt_custom_ex:'Your exercises', kt_ex_notes:'Exercise notes',
+  kt_skips:'Skipped days', kt_milestones:'Milestones', kt_user_name:'Your name', kt_log_tabs:'Log tabs', kt_theme:'Look',
+  kt_unit_w:'Weight unit', kt_unit_d:'Distance unit', kt_bench_goal:'Bench goal', kt_squat_goal:'Squat goal', kt_5k_goal:'5K goal',
+  kt_bw_goal:'Body-weight goal', kt_run_goal:'Run goal', kt_hk_imported:'Apple Health imports', kt_hk_gone:'Apple Health deletions'};
 function _fpKeyName(k){ return Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, k) ? _FP_KEY_NAMES[k] : String(k||'?'); }
+// A list of Put back items in the owner's words: their data by name (fmt), then the rest (the app's own settings
+// and bookkeeping, which have no name here) counted, so a whole start's Put back reads as what it brings back.
+function _fpItemNames(items, fmt){
+  var named=[], other=0;
+  (items||[]).forEach(function(it){
+    if(Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, it.key) && !_fpBookkeeping(it.key)) named.push(fmt ? fmt(it) : _fpKeyName(it.key)); else other++;
+  });
+  if(other) named.push(named.length ? _plural(other, 'other app setting') : _plural(other, 'app setting'));
+  return named.join(', ');
+}
 // The five logs Put back merges record by record (FPStore KTProtocol.logKeys): one the copy kept as "no value" has
 // nothing to put back, and a log is never removed.
 var FP_LOG_KEYS={kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements:1};
@@ -22053,7 +22067,7 @@ function _fpStoreSheetHTML(){
     var n=g.items.length, what=(g.why==='wiped' ? 'Everything the wipe took' : 'Everything this start lost')+' ('+n+')', when=_fpStoreWhen(g.at);
     out+='<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
       '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);">'+_esc(what)+'</div>'+
-      '<div style="font-size:12px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere;">'+_esc(g.items.map(function(it){ return _fpKeyName(it.key); }).join(', ')+(when ? ' · '+when : ''))+'</div></div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere;">'+_esc(_fpItemNames(g.items)+(when ? ' \u00b7 '+when : ''))+'</div></div>'+
       (canPut ? '<button type="button" data-boot="'+(Math.floor(Number(g.boot))||0)+'" onclick="_fpStorePutBackLoss(this)" style="'+btn+'" aria-label="'+_esc('Put back '+what.charAt(0).toLowerCase()+what.slice(1))+'">Put back</button>' : '')+
     '</div>';
   });
@@ -22207,16 +22221,33 @@ function _fpPutBackNone(items){
 // deleting them); any other value it replaces, or deletes, is kept, so that Put back can be put back in turn.
 function _fpPutBackAsk(back, label){
   var nm=function(it){ return _fpKeyName(it.key)+(it.added ? ' (+'+_plural(it.added, 'record')+')' : ''); };
+  // A log names the records it brings back (FPStore lists them: "<date> <name>"), so a workout deleted on purpose
+  // is seen coming back before the yes.
+  var full=function(it){
+    var r=Array.isArray(it.records) ? it.records : [], shown=r.slice(0, 3).map(function(x){ return _fpRecordName(x, it.key); }), more=(it.added|0)-shown.length;
+    return shown.length ? _fpKeyName(it.key)+' (+'+_plural(it.added|0, 'record')+': '+shown.join(', ')+(more>0 ? ' and '+more+' more' : '')+')' : nm(it);
+  };
   var rem=back.filter(function(it){ return !!it.removes; }), put=back.filter(function(it){ return !it.removes; });
   var logs=put.filter(function(it){ return (it.added|0)>0; }), vals=put.length-logs.length, s=[];
-  if(put.length) s.push('The app reloads and writes the kept copy back'+(back.length>1 ? ': '+put.map(nm).join(', ') : '')+'.');
-  if(rem.length) s.push((put.length ? 'It deletes ' : 'The app reloads and deletes ')+rem.map(nm).join(', ')+' from this iPhone: the copy held no value for '+(rem.length>1 ? 'them' : 'it')+'.');
+  var listed=back.length>1 || logs.some(function(it){ return Array.isArray(it.records) && it.records.length; });
+  if(put.length) s.push('The app reloads and writes the kept copy back'+(listed ? ': '+_fpItemNames(put, full) : '')+'.');
+  if(rem.length) s.push((put.length ? 'It deletes ' : 'The app reloads and deletes ')+_fpItemNames(rem, nm)+' from this iPhone: the copy held no value for '+(rem.length>1 ? 'them' : 'it')+'.');
   if(logs.length) s.push('Workouts, runs, activities and weigh-ins only gain the records they lost'+(rem.length ? '' : '; nothing is removed')+'. To undo that, delete those records.');
   else if(!rem.length) s.push('Nothing is removed.');
   if(vals || rem.length) s.push('What it replaces is kept, so '+(logs.length ? 'the rest' : 'this')+' can be put back too.');
   var only=back.length===1 ? back[0] : null;
   return { title: only ? (only.removes ? 'Remove ' : 'Put back ')+nm(only)+'?' : 'Put back '+label+'?', body: s.join(' '),
     ok: only && only.removes ? 'Remove' : 'Put back' };
+}
+// One record a log's Put back brings back, "<date> <name>" from FPStore, in the owner's words: "Oct 9 Back + Biceps",
+// a run by its kind ("Oct 7 Easy run"), the year only when it is not this one.
+function _fpRecordName(x, key){
+  var m=/^(\d{4})-(\d{2})-(\d{2})(?: ([\s\S]*))?$/.exec(String(x||''));
+  if(!m) return String(x||'');
+  var d=new Date(+m[1], +m[2]-1, +m[3], 12), name=m[4]||'';
+  var day=isNaN(d.getTime()) ? m[1]+'-'+m[2]+'-'+m[3] : d.toLocaleDateString('en-US', d.getFullYear()===new Date().getFullYear() ? {month:'short', day:'numeric'} : {month:'short', day:'numeric', year:'numeric'});
+  if(key==='kt_runs') name=_runTypeLabel(name);
+  return day+(name ? ' '+name : '');
 }
 // Put back: a preview first (what would go back, and what stays because it changed since), then the owner's yes
 // stages it and the shell reloads the page, so the facade writes it into WebKit before the page's first script.

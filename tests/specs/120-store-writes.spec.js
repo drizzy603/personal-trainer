@@ -334,7 +334,9 @@ serial('a finish WebKit lost: one Put back of everything that start lost brings 
     await ev(app, () => document.querySelector('#fpStoreBody button[data-boot]').click());
     await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
     const ask = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent }));
-    assert(ask.title === 'Put back everything this start lost?' && /Workouts \(\+1 record\)/.test(ask.body) && /deletes Workout in progress/.test(ask.body), 'the question: ' + JSON.stringify(ask));
+    assert(ask.title === 'Put back everything this start lost?' && /Workouts \(\+1 record: [A-Z][a-z]{2} \d{1,2} Push\)/.test(ask.body) && /deletes Workout in progress/.test(ask.body),
+      'the question names the workout that comes back and the draft it deletes: ' + JSON.stringify(ask));
+    assert(!/kt_/.test(ask.body), 'in the owner\'s words, the app\'s own settings counted: ' + ask.body);
     await ev(app, () => document.querySelector('.kt-close-sheet [id$="ok"]').click());
     await app.page.waitForFunction(() => __pb.length === 2, null, { timeout: 3000 });
     const pb = await ev(app, (ids) => ({ calls: __pb, ids }), lost.losses[0].ids);

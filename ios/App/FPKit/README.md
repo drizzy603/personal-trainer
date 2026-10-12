@@ -82,7 +82,8 @@ Rules the store keeps:
   id, other keys only while unchanged since); the values it replaces go to `conflicts`, so it can be put
   back in turn. A kept "no value" (an older build created the key, a loss took back a removal) goes back as a
   removal, and its plan item says so (`removes: true`), so Storage asks "Remove ...?" instead of promising
-  that nothing is removed; a log is merged, never removed.
+  that nothing is removed; a log is merged, never removed, and its item names the records it adds (`records`,
+  "<date> <day name or type>", at most 20): a merge is undone only by deleting them again.
 - Every value given up names the start that gave it up (`boot`). `status(losses: true)` (what Storage reads;
   the status each hello reads leaves it out) groups each start's "lag" and "wiped" rows into one loss, kept
   while Put back of it would still write or remove something: Storage offers "Put back everything this start

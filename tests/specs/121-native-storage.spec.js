@@ -282,6 +282,22 @@ serial('a value the copy held as none goes back as a removal: the row says Remov
     const ask2 = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent }));
     assert(ask2.title === 'Put back Programme?' && /Nothing is removed/.test(ask2.body) && /can be put back too/.test(ask2.body) && !/deletes/.test(ask2.body),
       'a plain Put back: ' + JSON.stringify(ask2));
+
+    // A log names the records it brings back (a workout deleted on purpose is seen coming back), and how to undo it.
+    await ev(app, () => {
+      const t = todayISO();
+      __ts.plan = { items: [
+        { key: 'kt_runs', outcome: 'put back', added: 1, origin: 'conflict:10', records: [t + ' easy'] },
+        { key: 'kt_sessions', outcome: 'put back', added: 4, origin: 'conflict:10', records: [t + ' Back + Biceps', t + ' Push', t + ' Legs', t + ' Arms'] }], count: 2 };
+      document.querySelector('.kt-close-sheet [id$="cancel"], .kt-close-sheet button:not([id$="ok"])').click();
+      openStorageSheet();
+    });
+    await app.page.waitForFunction(() => !document.querySelector('.kt-close-sheet') && !!document.querySelector('#fpStoreBody button[data-id="10"]'), null, { timeout: 3000 });
+    await ev(app, () => document.querySelector('#fpStoreBody button[data-id="10"]').click());
+    await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const ask3 = await ev(app, () => document.querySelector('.kt-close-sheet-sub').textContent);
+    assert(/: Runs \(\+1 record: [A-Z][a-z]{2} \d{1,2} Easy run\), Workouts \(\+4 records: [A-Z][a-z]{2} \d{1,2} Back \+ Biceps, [A-Z][a-z]{2} \d{1,2} Push, [A-Z][a-z]{2} \d{1,2} Legs and 1 more\)\./.test(ask3)
+      && /To undo that, delete those records/.test(ask3), 'the records that come back are named: ' + ask3);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

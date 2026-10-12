@@ -531,7 +531,13 @@
     more.forEach(function (r) { var t = idTok(r); if (t !== null) { if (!ids[t]) added.push(r); } else if (!texts[JSON.stringify(r)]) added.push(r); });
     var all = base.concat(added);
     all.sort(lsCmp);   // stable since ES2019, as KTMerge's merge sort
-    return { merged: JSON.stringify(all), added: added.length };
+    return { merged: JSON.stringify(all), added: added.length, records: added.map(recordName) };
+  }
+  // KTMerge.Record.summary: "<date> <name>", the name being the day's (label), else type, else sport.
+  function recordName(r) {
+    var d = String((r && r.date) || ''), pick = function (v) { return typeof v === 'string' && v ? v : null; };
+    var n = isObj(r) ? (pick(r.label) || pick(r.type) || pick(r.sport)) : null;
+    return n ? (d ? d + ' ' : '') + n : d;
   }
   function changedSince(key, seq) {
     var rows = S.journal.filter(function (r) { return r.k === key && r.seq > seq; });
@@ -554,16 +560,16 @@
         if (cur.row && cur.row.enc !== 'u16') { items.push({ key: key, outcome: 'untouched', origin: origin }); return; }
         var curH = cur.row ? cur.row.h : ABSENT;
         if (LOG_KEYS[key]) {
-          var merged = cur.value, added = 0, bad = false;
+          var merged = cur.value, added = 0, bad = false, recs = [];
           rows.forEach(function (r) {
             if (bad || r.value == null) return;
             var m = mergeLogs(merged, r.value);
             if (!m) { bad = true; return; }
-            merged = m.merged; added += m.added;
+            merged = m.merged; added += m.added; recs = recs.concat(m.records);
           });
           if (bad) items.push({ key: key, outcome: 'unmergeable', origin: origin });
           else if (!added) items.push({ key: key, outcome: 'nothing to add', added: 0, origin: origin });
-          else { items.push({ key: key, outcome: 'put back', added: added, origin: origin }); entries.push({ key: key, value: merged, hbase: curH, origin: origin }); }
+          else { items.push({ key: key, outcome: 'put back', added: added, origin: origin, records: recs.slice(0, 20) }); entries.push({ key: key, value: merged, hbase: curH, origin: origin }); }
         } else {
           var newest = rows[rows.length - 1];
           if (curH === newest.h) items.push({ key: key, outcome: 'nothing to add', origin: origin });
@@ -590,7 +596,7 @@
           var m = mergeLogs(cur.value, snapValue);
           if (!m) items.push({ key: key, outcome: 'unmergeable', origin: origin });
           else if (!m.added) items.push({ key: key, outcome: 'nothing to add', added: 0, origin: origin });
-          else { items.push({ key: key, outcome: 'put back', added: m.added, origin: origin }); entries.push({ key: key, value: m.merged, hbase: curH, origin: origin }); }
+          else { items.push({ key: key, outcome: 'put back', added: m.added, origin: origin, records: m.records.slice(0, 20) }); entries.push({ key: key, value: m.merged, hbase: curH, origin: origin }); }
         } else if (curH === H(snapValue)) items.push({ key: key, outcome: 'nothing to add', origin: origin });
         else if (changedSince(key, info.seq)) items.push({ key: key, outcome: 'changed since', origin: origin });
         else { items.push({ key: key, outcome: 'put back', origin: origin }); entries.push({ key: key, value: snapValue, hbase: curH, origin: origin }); }

@@ -1097,19 +1097,22 @@ public final class KTStore: @unchecked Sendable {
                 if KTProtocol.logKeys.contains(key) {
                     var merged = value
                     var added = 0
+                    var records: [String] = []
                     var bad = false
                     for r in rows {
                         guard let extra = r.value else { continue }
                         guard let m = KTMerge.logs(current: merged, extra: extra) else { bad = true; break }
                         merged = m.merged
                         added += m.added
+                        records += m.addedRecords
                     }
                     if bad {
                         items.append(KTPutBackItem(key: key.string, outcome: .unmergeable, origin: origin))
                     } else if added == 0 {
                         items.append(KTPutBackItem(key: key.string, outcome: .nothingToAdd, added: 0, origin: origin))
                     } else {
-                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, added: added, origin: origin))
+                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, added: added, origin: origin,
+                                                   records: Array(records.prefix(KTPutBackItem.recordsListed))))
                         entries.append(Resolved(key: key, value: merged, hbase: curH, origin: origin))
                     }
                 } else {
@@ -1150,7 +1153,8 @@ public final class KTStore: @unchecked Sendable {
                     if m.added == 0 {
                         items.append(KTPutBackItem(key: key.string, outcome: .nothingToAdd, added: 0, origin: origin))
                     } else {
-                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, added: m.added, origin: origin))
+                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, added: m.added, origin: origin,
+                                                   records: Array(m.addedRecords.prefix(KTPutBackItem.recordsListed))))
                         entries.append(Resolved(key: key, value: m.merged, hbase: curH, origin: origin))
                     }
                 } else if curH == KTWire.hash(snapValue) {
