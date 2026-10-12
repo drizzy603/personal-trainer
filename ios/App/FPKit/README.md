@@ -14,11 +14,14 @@ the coach model and the rest of C4, and the policy file's state (S7). FPStore ho
 (the rest of S1, see [In the app](#in-the-app)). FPHost attaches the store to the app's web view, fetches
 the policy file and serves Settings > About > Storage through the TrovoStore plugin (S5, S6, S7; see
 [FPHost](#fphost-the-store-in-the-app) below): the app calls it from `AppDelegate.swift`, which also injects
-`window.__FP_SHELL`. FPUI holds the SwiftUI Coach chat, drawn from fixtures so far (C6, see
-[FPUI](#fpui-the-native-coach-chat) below); the page side of the bridge it will be driven by is in
-`index.html` (C1-C3: `coachSend`, message ids and block models, `FPScreens` and the coach model, inert
-without the flag and a TrovoShell plugin). Not built yet: the TrovoShell plugin, ScreenHost and PageLink
-(C5) and the live wiring (C7), so the app still shows the web chat and the flag's `screens` stays empty.
+`window.__FP_SHELL`. FPUI holds the SwiftUI Coach chat (C6, see [FPUI](#fpui-the-native-coach-chat)
+below) and the shell's side of the screen bridge (C5, see [The screen bridge](#the-screen-bridge-in-the-app)
+below): the TrovoShell plugin brings the page's messages to `ShellBridge`, `ScreenHost` puts the chat up over
+the page on the page's own model, and `PageLink` carries the chat's intents back; the page side is in
+`index.html` (C1-C3 and C5's take-over: `coachSend`, message ids and block models, `FPScreens`, the coach
+model, inert without the flag and a TrovoShell plugin). Not built yet: the live wiring (C7: CoachStore, the
+optimistic echo, drafts, `coach/chat` in test-native.sh). The published policy file keeps `screens.coach`
+off, so phones online show the web chat until it is turned on.
 
 ## Targets
 
@@ -27,7 +30,7 @@ without the flag and a TrovoShell plugin). Not built yet: the TrovoShell plugin,
 | FPCore | Foundation only | iOS, macOS | The shell contract and its negotiation, lone-surrogate mending, the coach model and its tokens, blocks, intents, the link state, breakers and crash-marker policy (C4); the policy file's state (S7) |
 | FPStore | FPCore, the system SQLite3 | iOS, macOS | KTStore: every `kt_*` value in exact UTF-16, the wire codec, the seven-rule reconcile (observe only in build 60), the journal, snaps and Put back (S2); the shadow facade `Resources/ktstore.js` (S3) |
 | FPHost | FPCore, FPStore, WebKit | iOS only | StoreAttach and KTUIProxy (S5), crash markers, the policy fetch (S7), what Settings > About > Storage does and the shell flag (S6) |
-| FPUI | FPCore, SwiftUI | iOS only | ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
+| FPUI | FPCore, SwiftUI, WebKit | iOS only | ShellBridge, ScreenHost, PageLink and the slide transition (C5), room themes, fonts and the Coach views (C6, C7) |
 
 Test targets: FPCoreTests and FPStoreTests, run by `swift test` on the Mac; FPHostTests and FPUITests (iOS
 only), run by `xcodebuild test` on an iOS simulator.
@@ -86,6 +89,62 @@ FPUITests alone (in this folder):
 ```sh
 xcodebuild test -scheme FPKit-Package -destination 'platform=iOS Simulator,id=<UDID>' -only-testing:FPUITests
 ```
+
+## The screen bridge in the app
+
+Plan task C5 (decision.md sections 6 and 7): the shell's side of contract v1, in FPUI, with the thin TrovoShell plugin
+in `ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoShellPlugin.swift` (calls hop to main and reach `ShellBridge` through
+`ShellHostAdapter` in `AppDelegate.swift`, since CapApp-SPM cannot depend on FPKit).
+
+| File | Holds |
+|---|---|
+| `ShellBridge.swift` | `ShellBridge.shared`: bound to one web view (`install(webView:presenter:pageBuild:)` from `capacitorDidLoad`, which answers the screens the page being served may present, for the flag), with its LinkState (FPCore: the 15 s hello deadline in foreground time, negotiation, the 3-failure breaker), PageLink and ScreenHost. A document-start script posts `fpShell` at every main-frame document: the document before it is gone (its pending intents end unsent or unanswered and are never resent, its open confirm closes as stale; a screen it had up stays up). `hello` negotiates with ScreenGate for the hello's page build and names the screens still up from the document before (`up`, FPCore `HelloReply.takingOver`), which the page takes over; the shell then resyncs them (`shell.covered`, `coach.snapshot`). `bootDone` reaches the store breaker (FPHost `StoreAttach.bootDone`, through `environment`). The policy file's screen switches (FPHost `FPPolicy.changed`, through the App) take a screen down at once (`screens.off` "withdrawn"). Also `ShellWebView`, the app's WKWebView: it counts every time it leaves its window while the app is active (never by design) |
+| `PageLink.swift` | Swift to page: `window.FPScreens.call(name, args)` through `callAsyncJavaScript` in the page world, one intent at a time, first in first out, 2 s (5 s for a snapshot); every intent carries its document's boot, and a document that goes takes its intents with it (`documentGone`, never sent again). An error answer a page whose process just died also gives waits 0.8 s to show its document went before it counts |
+| `ScreenHost.swift` | Native screens over the page: `.overFullScreen` only (the web view never leaves its window: no `visibilitychange`, no leave and return path), one transition at a time (a dismissal right behind a present not yet started cancels both), the owner's Back and edge pan latched (the page hears `coach.back`; if it stays on the chat the screen goes up again), focus (the page's field blurred through `shell.covered` and editing ended before covering; the descriptor's `hasInitialFocus` is false), VoiceOver (the web view hidden while covered, the screen modal), `overrideUserInterfaceStyle` from the model's `paper` on every hosting controller and the toast window, the crash marker. The toast window (`ShellOverlay`): forwarded toasts 8 px under the chat's header (or the status bar), its strip only as tall as the toast; confirms over everything, the window key while one is open |
+| `SlideTransition.swift` | `ScreenSlideTransition` (SwiftUI has a `SlideTransition` of its own): the push-like slide in from the trailing edge with the page dimmed under it, out the same way, interactive from the leading edge; a cross-fade with Reduce Motion |
+| `ShellProbe.swift` | Debug builds only: the shell scenarios' hands inside the app (`-fpShellProbe <steps>`), for tests/native-shell.sh |
+
+**The breaker book and crash markers.** The screens' BreakerBook (the native breaker per screen and page build, and the
+screens' crash verdicts) lives in the link, and every change goes through it (`editBook` for the markers found at launch
+and the Debug clears); it is written to `Application Support/FPShell/breakers.json` (a copy in UserDefaults under
+`fp.shell.breakers`, read only when the file does not) whenever the link says `bookChanged`. The store keeps its own
+(`FPStore/breakers.json`). While a screen is up and the app active, `FPShell/presenting.<screen>.marker` holds
+`presenting <screen>@<page build> shell <shell build>`; it goes when the screen goes and when the app stops being active
+(written again when it comes back with the screen up), so only a death on screen leaves one. The next launch records the
+verdict (that screen off for that shell and page build: the flag and every hello leave it out, so the page shows its web
+screen; a new page or shell build is clean) and removes the file, so a marker acts once.
+
+**Switches.** The page's own (`FP_NATIVE`, Settings > About's `kt_native_off`), the policy file's `screens.coach`, a
+crash verdict, the native breaker (no hello within 15 s of foreground time, or 3 failed intents or undecodable models in
+a row). The shell keeps no device switch of its own in build 60.
+
+Debug launch arguments (besides FPHost's): `-fpSmoke` (after each hello a ping through the real link, logged as
+`fp: ping ok v1`, subsystem `app.kt.trainer`), `-fpShellProbe <steps file>` with `-fpShellProbeLog <name>`; FPHost's
+`-fpIgnoreMarker`, `-fpClearVerdicts` and `-fpClearBreaker` act on the screens' records too (the tools end the app with
+`simctl terminate`, which can land with the chat up and leave a marker).
+
+Tests: `PageLinkTests` (a real WKWebView and a stand-in `FPScreens`: order, one at a time, the answers as the breaker
+counts them, timeouts, a late answer dropped, nothing sent unlinked, a document that goes, a new document, an outcome
+that asks again), `ScreenHostTests` (over a stand-in page in a window, with a stand-in for UIKit's presentation, which
+never finishes in a test host without a window scene: `.overFullScreen`, the queue, the latch, the marker and the app's
+activity, the confirm, the toast strip; the edge pan and the toast window need a window scene and are skipped without
+one) and `ShellBridgeTests` (markers to verdicts once, hello and `up`, the resync, the policy's off, another web view's
+message refused). In the real app, `tests/native-shell.sh`.
+
+### tests/native-shell.sh
+
+The screen bridge in the real app on the real page, on the first paired iPhone + Watch of a runtime (iOS 26.x by default;
+`--os 27`), scenario by scenario through `ShellProbe` and `tests/tools/native-shell.py`: `smoke` (`-fpSmoke` logs
+`fp: ping ok v1`; v1 negotiated with the coach), `chat` (the chat presented `.overFullScreen` on the page's model, a
+message sent and answered, the model switch, a forwarded confirm and an Undo toast round-tripping, Back, no
+`visibilitychange`, Heavyweight light and Lime dark), `focus` (a tap into the page and a focused field low enough that
+WebKit scrolls to it, then present and dismiss by the page, by Back and by the edge pan: no keyboard comes back and the
+document is not scrolled; an edge pan let go early leaves the chat up; the simulator's software keyboard is turned on for
+the scenario, since it counts a hardware keyboard as attached), `wckill` (WebContent killed with the chat up and a send in
+flight: the new document takes the chat over, the shell resyncs on its boot, nothing is resent, the words go back in the
+composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat, once), `policy`
+(`screens.coach` "off" takes the chat down at once) and `breaker` (three timeouts turn it off for the page build). Shots
+in `screenshots/out/native-shell/`.
 
 ## FPStore: the native store
 
@@ -178,7 +237,7 @@ page does not wait on goes to a utility queue.
 | `PolicyFetch.swift` | `FPPolicy.shared`: `policy.json` from GitHub Pages (beside build.txt) at launch and on foreground, at most every 15 minutes, the last good copy kept in UserDefaults; posts `FPPolicy.changed` (native screens follow at once; the store reads `effective` at each document start) |
 | `StoreProbe.swift` | Debug builds only: the scenario runner's hands inside the app (`-fpProbe <steps>`), for tests/native-store.sh |
 | `StoreTestQuit.swift` | Storage's "Test: quit after next save" (TestFlight and Debug builds): the arm (a write or remove of one of the keys the page names, within ten minutes) and the record kept beside the store across the quit (`FPStore/testquit.json`), which the next launch's first document start completes with what it found (in step, or the keys WebKit lost that the store kept) |
-| `ShellFlagScript.swift` | `window.__FP_SHELL` for this binary (FPCore `ShellFlag`): no native screen in the store half (`screens` stays empty until the native chat's ScreenGate fills it, task C5) and, in a Debug build, `dev` from the test tools' `-devNav <route>` and `-devTheme <room>` |
+| `ShellFlagScript.swift` | `window.__FP_SHELL` for this binary (FPCore `ShellFlag`): `screens` as FPUI's ShellBridge works them out from ScreenGate when the web view is set up (the page never reads it; each hello's answer is what counts) and, in a Debug build, `dev` from the test tools' `-devNav <route>` and `-devTheme <room>` |
 
 **Settings > About > Storage** (plan task S6). The page reads and acts on the store through the TrovoStore plugin
 (`ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoStorePlugin.swift`), which reaches StoreAttach through
@@ -191,9 +250,10 @@ one JSON file, handed to the share sheet; never a `supero-backup-*` name) and, w
 the shell's flag and the plugin.
 
 The page's `bootDone` (the end of its boot, whatever painted first; it also sends the OTA confirm when the first
-render was the coach route) reaches StoreAttach through the TrovoShell plugin once a shell carries it (plan task
-C5). Until then the OTA confirm every page sends stands in for it: `TrovoOtaPlugin.confirm` posts
-`.trovoOtaConfirmed` with its web view, and `AppDelegate.swift` hands it to `StoreAttach.bootDone`.
+render was the coach route) reaches StoreAttach through the TrovoShell plugin (plan task C5: `ShellBridge` hands it to
+`environment.bootDone`, which `AppDelegate.swift` points at `StoreAttach.bootDone`). The OTA confirm no longer stands in
+for it (`.trovoOtaConfirmed` is still posted, and nothing listens): a document that paints but never finishes its boot
+now arms the store breaker as the plan says.
 
 A new store gets `minReader` 60, so a build numbered below 60 refuses its own store from its second launch
 (attach nothing, "minReader"). Release builds get 60 from release-ios.sh; tests/native-store.sh builds with
@@ -234,9 +294,11 @@ CapApp-SPM's), and the App target depends on FPCore, FPStore, FPHost and FPUI, l
 app like CapApp-SPM. Only the App target's two configurations moved to iOS 17.0. The project level stays at
 15.0 because `cap sync` writes CapApp-SPM's `.iOS(.v15)` from the first `IPHONEOS_DEPLOYMENT_TARGET` in
 `project.pbxproj`; the widget (16.2), the share extension (15.0) and the watch targets keep theirs.
-`AppDelegate.swift` imports FPHost (objectVersion 60 means no new App-target files): `capacitorDidLoad`
-installs StoreAttach and forwards the OTA confirm as bootDone, and the SceneDelegate starts the policy fetch and
-rebinds the store when a scene connects or disconnects.
+`AppDelegate.swift` imports FPHost and FPUI (objectVersion 60 means no new App-target files):
+`instanceDescriptor()` sets `hasInitialFocus = false` (the shell owns focus), `webView(with:configuration:)` returns
+`ShellWebView`, and `capacitorDidLoad` binds `ShellBridge` (the flag's `screens` from it), installs StoreAttach,
+registers TrovoShell and TrovoStore through their host adapters and forwards `FPPolicy.changed` to the native
+screens; the SceneDelegate starts the policy fetch and lets the store and the screens go when a scene disconnects.
 
 Adding the package changed `originHash` in
 `App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`, and Xcode then re-resolved every
