@@ -1040,6 +1040,63 @@ serial('C3: once the page has taken its last native screen down it is no longer 
   } finally { await refused.close(); }
 });
 
+// C5: the page reloaded under the native chat (WebContent died, a Put back reload). The shell still shows the chat and
+// names it in hello's answer (up, FPCore HelloReply.takingOver): the page takes it over where it can show it now (no
+// present, since the chat is up; covered; a model of this boot follows; it works on) and dismisses it where it cannot
+// (no API key, the About switch off), so the shell takes it down. Only a screen this document negotiated is ever named.
+serial('C5: a hello answer naming the chat still up (a reload under it): the page takes it over with no present, covered, a model of this boot; a page that cannot show it dismisses it', async () => {
+  const UP = "window.__fpShellUp = ['coach'];";
+  const app = await shellBoot('coach', { init: COACH_API + ';' + UP });
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(60);
+      const r = {};
+      r.taken = { tab: currentTab, view: coachView, shown: !!_fp.shown.coach, covered: _fpCovered(), ph: !!document.querySelector('#screen > .kt-fp-ph'),
+        web: !!document.getElementById('coach-input'), present: __fpShell.of('present').length, dismiss: __fpShell.of('dismiss').length,
+        models: __fpShell.models().map((m) => m.boot), boot: _fpBoot, up: __fpShell.of('hello')[0] && _fp.hello,
+        log: __fpShell.of('log').map((l) => l.text).filter((t) => /taken over from/.test(t)) };
+      // it works on: a send from the native composer, then another tab dismisses it as usual
+      const n0 = __users();
+      const s = await FPScreens.call('coach.send', { text: 'After the reload', nonce: 'c5-n1' }); await __idle();
+      r.sent = { ok: s.ok, users: __users() - n0, turns: __turns.length };
+      switchTab('log'); await __wait(30);
+      r.left = { dismiss: __fpShell.of('dismiss').length, covered: _fpCovered(), shown: !!_fp.shown.coach };
+      return r;
+    }, IN_PAGE);
+    const t = out.taken;
+    assert(t.tab === 'coach' && t.view === 'chat' && t.shown && t.covered && t.ph && !t.web, 'the page is on the chat, covered, its placeholder up: ' + JSON.stringify(t));
+    assert(t.present === 0 && t.dismiss === 0, 'no present (the chat is up) and no dismiss: ' + JSON.stringify(t));
+    assert(t.models.length >= 1 && t.models.every((b) => b === t.boot), 'a model of this boot follows: ' + JSON.stringify(t.models));
+    assert(t.log.length === 1, 'the log says it was taken over: ' + JSON.stringify(t.log));
+    assert(out.sent.ok && out.sent.users === 1 && out.sent.turns === 1, 'a send works on the taken-over chat: ' + JSON.stringify(out.sent));
+    assert(out.left.dismiss === 1 && !out.left.covered && !out.left.shown, 'another tab dismisses it as usual: ' + JSON.stringify(out.left));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+  // a page that cannot show it: no key, or the About switch off, dismisses it and stays where it booted
+  for (const [what, seed] of [['no API key', { kt_apikey: '' }], ['the About switch off', { kt_native_off: '1' }]]) {
+    const b = await shellBoot('coach', { init: COACH_API + ';' + UP, seed });
+    try {
+      const out = await b.page.evaluate(async () => {
+        await new Promise((r) => setTimeout(r, 60));
+        return { tab: currentTab, shown: !!_fp.shown.coach, covered: _fpCovered(), present: __fpShell.of('present').length, dismiss: __fpShell.of('dismiss') };
+      });
+      assert(out.dismiss.length === 1 && out.dismiss[0].screen === 'coach' && out.present === 0 && !out.shown && !out.covered && out.tab === 'log',
+        what + ': the page dismisses the chat it cannot show and stays on Log: ' + JSON.stringify(out));
+      assert(b.errors.length === 0, what + ': no page errors: ' + b.errors.join('|'));
+    } finally { await b.close(); }
+  }
+  // the inert shell (no screen negotiated) never names one, and the page is as before
+  const inert = await shellBoot('inert', { init: COACH_API + ';' + UP });
+  try {
+    const out = await inert.page.evaluate(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+      return { tab: currentTab, shown: Object.keys(_fp.shown).length, hello: _fp.hello, calls: __fpShell.calls.map((c) => c[0]).filter((n) => n === 'present' || n === 'dismiss') };
+    });
+    assert(out.tab === 'log' && out.shown === 0 && out.calls.length === 0 && out.hello && out.hello.screens.length === 0, 'inert: nothing taken over: ' + JSON.stringify(out));
+  } finally { await inert.close(); }
+});
+
 serial('C3: every intent of contract v1 (FPCore intents.json) is known, and refuses missing arguments; no shell, no bridge', async () => {
   const intents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
   const app = await shellBoot('coach');

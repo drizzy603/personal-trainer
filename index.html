@@ -2239,7 +2239,7 @@ var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
 // every shell before 60 run the page exactly as before.
 var FP_NATIVE=true, FP_CONTRACT=1, FP_SCREENS=['coach'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
-var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null};
+var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false};
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
@@ -24175,16 +24175,41 @@ function _fpHello(){
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
+      var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
+      if(up.length) _fpTakeOver(up);
       if(_fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
     }).catch(function(e){ _fp.hello={v:0, screens:[], why:'error'}; });
   }catch(e){}
+}
+// A reload under a native screen (WebContent died, a Put back reload): the shell still shows it from
+// the document before and names it in hello's answer (up). The page takes over each one it can show
+// now: the screen is up (no present), the page is covered, and its models follow from this boot. One
+// it cannot show (no API key, the About switch off) it dismisses, so the shell takes it down (plan
+// task C5).
+function _fpTakeOver(up){
+  var P=_fpPlugin();
+  up.forEach(function(s){
+    if(s==='coach' && _fpLive(s) && !!getApiKey()){
+      _fp.taking=true;   // the page moves under the screen: _fpSync waits
+      try{
+        if(currentTab!=='coach') switchTab('coach');
+        if(!intakeMode) coachView='chat';
+      }finally{ _fp.taking=false; }
+      _fp.shown[s]=true;
+      _fpLog(s+' taken over from the document before');
+      render();   // its model, from this boot
+    } else {
+      _fpLog(s+' not taken over: dismissed');
+      if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:s})).catch(function(){}); }catch(e){} }
+    }
+  });
 }
 // The first statement of paintRunner, which ends every render(), every tab switch and the runner's
 // paint: each native screen presented or dismissed as the page's state wants it, and its model
 // pushed (one per tick, rev rising). Dismiss when the page leaves the screen (another tab, Back, the
 // end of setup, the key removed, a switch turned off).
 function _fpSync(){
-  if(!_fp.hello) return;
+  if(!_fp.hello || _fp.taking) return;
   try{
     var P=_fpPlugin();
     FP_SCREENS.forEach(function(s){

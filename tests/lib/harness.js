@@ -230,12 +230,16 @@ function shellMock(flag) {
   if (!window.Capacitor) window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: {} };
   const calls = [];
   const copy = (a) => (a === undefined ? null : JSON.parse(JSON.stringify(a)));
-  function hello(a) {   // FPCore Negotiation.negotiate
+  function hello(a) {   // FPCore Negotiation.negotiate, then HelloReply.takingOver
     const want = (a && a.v) | 0;
     if (want < 1) return { v: 0, screens: [], why: 'no-version' };
     const v = Math.min(want, flag.v);
     if (v < (flag.min || 1)) return { v: 0, screens: [], why: 'page-too-old' };
-    return { v, screens: (flag.screens || []).filter((s) => ((a && a.screens) || []).indexOf(s) >= 0) };
+    const screens = (flag.screens || []).filter((s) => ((a && a.screens) || []).indexOf(s) >= 0);
+    // window.__fpShellUp (a spec's init): the screens the shell still shows from the document before (a reload under
+    // the native chat); the answer names those this document may have, as `up` (plan task C5)
+    const up = Array.isArray(window.__fpShellUp) ? window.__fpShellUp.filter((s) => screens.indexOf(s) >= 0) : [];
+    return up.length ? { v, screens, up } : { v, screens };
   }
   const method = (name) => (a) => {
     calls.push([name, copy(a)]);
