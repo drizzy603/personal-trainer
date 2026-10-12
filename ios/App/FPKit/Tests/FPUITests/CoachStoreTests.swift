@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
 import UIKit
 import XCTest
 import FPCore
@@ -271,6 +272,23 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertNil(store.display)
     }
 
+    /// Intents go in order: a send made just after a reload, while the chat still draws the old document's model, reaches
+    /// the new page after the shell's resync snapshot, whose model cannot hold it yet. The echo waits for its own answer.
+    func testASendRightAfterAReloadWaitsForItsOwnAnswer() throws {
+        store.apply(try model(rev: 7))
+        store.documentGone(chatUp: true)
+        store.draft.text = "Right after the reload"
+        store.sendComposer(nonce: "n15")
+        XCTAssertTrue(store.apply(try model(boot: "b2", rev: 1)), "the resync, before the page has taken the send")
+        XCTAssertEqual(store.echoes.map(\.phase), [.sending], "still on its way, not put back")
+        XCTAssertEqual(try XCTUnwrap(store.display).messages.last?.id, "echo-n15")
+        answer("coach.send", done(["id": .string("m13.h")]))
+        store.apply(try model(boot: "b2", rev: 2, adding: [said("m13.h", "Right after the reload", at: clock)], loading: true))
+        XCTAssertEqual(store.echoes, [])
+        XCTAssertEqual(store.restored, [])
+        XCTAssertEqual(store.draft.text, "")
+    }
+
     func testTheBindingGoingPutsEverythingOnItsWayBackQuietly() throws {
         store.apply(try model(rev: 1))
         store.draft.text = "Mid-flight"
@@ -317,6 +335,55 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertEqual(asked.count, 2)
     }
 
+    /// The chat drawn on the store's host: its box shows the store's words (not the page's draft, which the store takes
+    /// itself, so the chat sends no coach.draftTaken), keys typed into the box reach the store, and words the store puts
+    /// back show in the box at once.
+    func testTheChatDrawsTheStoresComposer() throws {
+        FPFonts.register()
+        var m = try model(rev: 1)
+        m.composer.draft = Draft(text: "The page's draft", nonce: "d9.b1")
+        store.draft.text = "The owner's own words"
+        let host = UIHostingController(rootView: CoachChatView(model: m, host: store.host)
+            .safeAreaPadding(.top, CoachRenderTests.safeTop).safeAreaPadding(.bottom, CoachRenderTests.safeBottom))
+        host.safeAreaRegions = []
+        let window = UIWindow(frame: CGRect(origin: .zero, size: CoachRenderTests.screen))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func box() -> UITextView? {
+            func find(_ v: UIView) -> UITextView? {
+                if let t = v as? UITextView { return t }
+                for s in v.subviews { if let t = find(s) { return t } }
+                return nil
+            }
+            return find(host.view)
+        }
+        func settle() {
+            for _ in 0..<10 {
+                host.view.setNeedsLayout()
+                host.view.layoutIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            }
+        }
+        settle()
+        let tv = try XCTUnwrap(box(), "the composer's box")
+        XCTAssertEqual(tv.text, "The owner's own words", "the store's words, not the page's draft")
+        XCTAssertFalse(asked.contains { $0.name == "coach.draftTaken" }, "the chat leaves the page's draft to the store: \(asked)")
+        // keys typed into the box reach the store
+        tv.becomeFirstResponder()
+        tv.selectedRange = NSRange(location: (tv.text as NSString).length, length: 0)
+        tv.insertText(", typed")
+        settle()
+        XCTAssertEqual(store.draft.text, "The owner's own words, typed")
+        // words the store puts back show at once
+        store.draft.text = "Put back"
+        settle()
+        XCTAssertEqual(box()?.text, "Put back")
+    }
+
     func testBackGoesToTheHostAndTheRestToThePage() throws {
         store.handle(.coachBack)
         XCTAssertEqual(backs, 1)
@@ -361,9 +428,17 @@ final class CoachStoreTests: XCTestCase {
         // Send with the composer's own words takes the pending photo along, keyed by it
         store.draft.picked = nil
         store.draft.text = "This one"
-        store.sendComposer(nonce: "n15")
-        XCTAssertEqual(asked.last, .coachSend(text: "This one", image: nil, usePending: true, nonce: "n15"))
+        store.sendComposer(nonce: "n16")
+        XCTAssertEqual(asked.last, .coachSend(text: "This one", image: nil, usePending: true, nonce: "n16"))
         XCTAssertEqual(try XCTUnwrap(store.display).messages.last?.image?.key, "p3.b1")
+        // a photo the page will not give is not asked for again (the chat says Photo); one a broken bridge lost is
+        store.apply(try model(rev: 4, composer: composer(image: "p4.b1")))
+        answer("coach.image", .answered(.refused("gone")))
+        store.apply(try model(rev: 5, composer: composer(image: "p4.b1")))
+        store.apply(try model(rev: 6, composer: composer(image: "p5.b1")))
+        answer("coach.image", .answered(.failed(.timeout)))
+        store.apply(try model(rev: 7, composer: composer(image: "p5.b1")))
+        XCTAssertEqual(asked.filter { $0.name == "coach.image" }, [.coachImage(key: "p3.b1"), .coachImage(key: "p4.b1"), .coachImage(key: "p5.b1"), .coachImage(key: "p5.b1")])
     }
 }
 #endif

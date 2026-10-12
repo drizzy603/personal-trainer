@@ -87,13 +87,14 @@ public final class CoachStore: ObservableObject {
         public let imageKey: String?
         /// When the owner sent it.
         public let at: Date
-        /// The document it went to.
-        public let boot: String
         public internal(set) var phase: Phase = .sending
         /// The page's message id (`coach.send`'s answer).
         public internal(set) var pageID: String?
         /// When it entered its phase.
         var since: Date
+        /// Unsure: the document whose model was drawn when it became so. A model of another document, or of this one a
+        /// while later, decides.
+        var unsureOf: String?
         /// The photo to put back with the words if the message never reached the page.
         var picked: PickedPhoto?
     }
@@ -117,6 +118,7 @@ public final class CoachStore: ObservableObject {
     public private(set) var toasts: [String] = []
     private var imageKeys: [String] = []
     private var fetching: Set<String> = []
+    private var noImage: Set<String> = []
 
     /// How long a message the page took waits for a model that holds it before the echo goes without it (the page let
     /// it go: Clear chat).
@@ -194,11 +196,11 @@ public final class CoachStore: ObservableObject {
         for e in left { putBack(e, why: "the chat went", toast: false) }
     }
 
-    /// Whether the page's model holds this message: by the id the page answered with, or a message of the owner's with
-    /// the same photo or words, said at or after the send (a model can come before the answer, and the next document's
-    /// ids are new).
+    /// Whether the page's model holds this message: by the id the page answered with (ids carry their boot's tag), or a
+    /// message of the owner's with the same photo or words, said at or after the send (a model can come before the
+    /// answer, and the next document's ids are new).
     func holds(_ e: Echo, _ m: CoachModel) -> Bool {
-        if let id = e.pageID, m.boot == e.boot, m.message(id: id) != nil { return true }
+        if let id = e.pageID, m.message(id: id) != nil { return true }
         let floor = e.at.addingTimeInterval(-2)
         return m.messages.contains { msg in
             guard msg.role == .user, msg.seed == nil, let at = msg.at, at >= floor else { return false }
@@ -207,26 +209,26 @@ public final class CoachStore: ObservableObject {
         }
     }
 
-    /// Each message on its way against a new model: the page's own replaces it; another document without it, or the
-    /// same one a while after a failure, means it never arrived: back in the composer.
+    /// Each message on its way against a new model: the page's own replaces it. One with no answer to rely on that a model
+    /// of another document, or of its own a while later, does not hold never arrived: back in the composer. One still
+    /// being asked waits for its answer (the next document's resync can come before a send made right after a reload is
+    /// taken, since intents go in order); one the page took waits for the model that holds it.
     private func settle(_ m: CoachModel) {
         guard !echoes.isEmpty else { return }
         let t = now()
         var keep: [Echo] = []
-        var back: [(Echo, String)] = []
+        var back: [Echo] = []
         for e in echoes {
             if holds(e, m) {
                 note("echo \(e.nonce) replaced by the page's message")
-            } else if e.boot != m.boot {
-                back.append((e, "not in the next document"))
-            } else if e.phase == .unsure, t.timeIntervalSince(e.since) >= unsureSettle {
-                back.append((e, "not in the page's model"))
+            } else if e.phase == .unsure, m.boot != e.unsureOf || t.timeIntervalSince(e.since) >= unsureSettle {
+                back.append(e)
             } else {
                 keep.append(e)
             }
         }
         echoes = keep
-        for (e, why) in back { putBack(e, why: why) }
+        for e in back { putBack(e, why: "not in the page's model") }
     }
 
     // MARK: Intents
@@ -276,7 +278,7 @@ public final class CoachStore: ObservableObject {
             key = k
         }
         let t = now()
-        let e = Echo(nonce: nonce, words: words.trimmingCharacters(in: .whitespacesAndNewlines), imageKey: key, at: t, boot: m.boot, since: t, picked: picked)
+        let e = Echo(nonce: nonce, words: words.trimmingCharacters(in: .whitespacesAndNewlines), imageKey: key, at: t, since: t, picked: picked)
         echoes.append(e)
         note("echo \(nonce) shown")
         hooks.ask(intent) { [weak self] outcome in self?.answered(nonce, outcome) }
@@ -308,6 +310,7 @@ public final class CoachStore: ObservableObject {
             putBack(e, why: why)
         case .answered(.failed), .documentGone:
             e.phase = .unsure
+            e.unsureOf = model?.boot
             echoes[i] = e
             note("echo \(nonce): \(outcome.word), the page's next model decides")
             later(unsureGrace) { $0.expire(nonce, .unsure) }
@@ -363,15 +366,17 @@ public final class CoachStore: ObservableObject {
         hooks.ask(.coachDraftTaken(nonce: d.nonce)) { _ in }
     }
 
-    /// The page's pending photo (a shared image), fetched once by its key.
+    /// The page's pending photo (a shared image), fetched once by its key (one the page would not give, or that is no
+    /// image, is not asked for again: the chat says Photo).
     private func fetchPendingPhoto(_ m: CoachModel) {
-        guard let key = m.composer.image?.key, images[key] == nil, !fetching.contains(key) else { return }
+        guard let key = m.composer.image?.key, images[key] == nil, !fetching.contains(key), !noImage.contains(key) else { return }
         fetching.insert(key)
         hooks.ask(.coachImage(key: key)) { [weak self] outcome in
             guard let self else { return }
             self.fetching.remove(key)
             guard case .answered(.done(let r)) = outcome, let b64 = r.value["data"]?.string, let data = Data(base64Encoded: b64),
                   let ui = UIImage(data: data) else {
+                if case .answered(.failed) = outcome {} else { self.noImage.insert(key) }   // a broken bridge may answer next time
                 self.note("the page's photo \(key) did not come (\(outcome.word))")
                 return
             }
