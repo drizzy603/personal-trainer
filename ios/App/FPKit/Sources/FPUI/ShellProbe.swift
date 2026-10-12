@@ -185,7 +185,10 @@ final class ShellProbe {
     private func run(_ steps: [[String: Any]], _ i: Int) {
         guard i < steps.count else {
             running = false
-            if nextPhase >= phases.count { event("done") }
+            if nextPhase >= phases.count {
+                Self.restoreAccessibility()
+                event("done")
+            }
             return
         }
         let step = steps[i]
@@ -333,6 +336,7 @@ final class ShellProbe {
             }
             next()
         case "done":
+            Self.restoreAccessibility()
             event("done")
             running = false
         default:
@@ -343,14 +347,33 @@ final class ShellProbe {
 
     // MARK: Presses and waits on the live chat (plan task C7)
 
-    /// A press on a control of the chat that is up, as the owner's finger would make it: first the control's own
-    /// accessibility element by its label (`accessibilityActivate`, which runs the control's action, as VoiceOver's
-    /// double tap does), else what that control sends, built from the model as the control builds it and sent through
-    /// the chat's store; `via` says which.
-    /// - `{label}`: a control by its accessible name ("Send message", "Back", "Stop the reply", the model switch's name);
-    /// - `{ledger: "undo"|"keep"}`: the newest PLAN CHANGES card's Undo, or its Keep changes (or Got it).
+    /// A press on a control, as the owner's finger would make it: first the control's own accessibility element by its
+    /// label (`accessibilityActivate`, which runs the control's action, as VoiceOver's double tap does; the probe turns the
+    /// accessibility runtime on for it), else what that control sends, built from the model as the control builds it and
+    /// sent through the chat's store; `via` says which.
+    /// - `{label}`: a control of the chat by its accessible name ("Send message", "Back", "Stop the reply", the model
+    ///   switch's name);
+    /// - `{ledger: "undo"|"keep"}`: the newest PLAN CHANGES card's Undo, or its Keep changes (or Got it);
+    /// - `{label, where: "overlay"}`: a button of the forwarded confirm in the toast window (its confirm or cancel label).
     private func press(_ step: [String: Any], _ b: ShellBridge.Binding?, done: @escaping ([String: Any]) -> Void) {
+        if !Self.accessibilityOn {
+            // the first press: SwiftUI builds its elements once the runtime is on
+            Self.enableAccessibility()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated { self.press(step, b, done: done) }
+            }
+            return
+        }
         guard let screens = b?.screens else { return done(["pressed": false, "why": "no binding"]) }
+        if step["where"] as? String == "overlay" {
+            let label = step["label"] as? String ?? ""
+            guard let c = screens.overlay.confirm else { return done(["pressed": false, "why": "no confirm open"]) }
+            if let root = screens.overlay.windowView, let el = Self.axFind(label, in: root), el.accessibilityActivate() {
+                return done(["pressed": true, "via": "accessibility", "control": label])
+            }
+            guard label == c.confirm || label == c.cancel else { return done(["pressed": false, "why": "the confirm has no \(label)"]) }
+            return done(["pressed": screens.overlay.tapConfirm(label == c.confirm), "via": "model", "control": label])
+        }
         let store = screens.coach
         guard let m = store.display, screens.isUp("coach") else { return done(["pressed": false, "why": "the chat is not up"]) }
         var label = step["label"] as? String ?? ""
@@ -379,6 +402,39 @@ final class ShellProbe {
         done(["pressed": fallback(), "via": "model", "control": label])
     }
 
+    private static var accessibilityOn = false
+    /// The switches as they were before the probe turned them on: (setter, getter, value).
+    private static var accessibilityWas: [(String, Int32)] = []
+    private static let accessibilitySwitches = [("_AXSSetAutomationEnabled", "_AXSAutomationEnabled"),
+                                                ("_AXSApplicationAccessibilitySetEnabled", "_AXSApplicationAccessibilityEnabled")]
+
+    /// Turns the accessibility runtime on in this process, as the accessibility inspector and XCTest do, so SwiftUI
+    /// vends its elements and a press can go through a control's own action (Debug builds' probe only). The simulator's
+    /// switches go back as they were when the probe is done (`restoreAccessibility`).
+    static func enableAccessibility() {
+        guard !accessibilityOn else { return }
+        accessibilityOn = true
+        guard let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
+        typealias Get = @convention(c) () -> Int32
+        typealias Set = @convention(c) (Int32) -> Void
+        for (setter, getter) in accessibilitySwitches {
+            guard let set = dlsym(lib, setter) else { continue }
+            let was = dlsym(lib, getter).map { unsafeBitCast($0, to: Get.self)() } ?? 0
+            accessibilityWas.append((setter, was))
+            unsafeBitCast(set, to: Set.self)(1)
+        }
+    }
+
+    static func restoreAccessibility() {
+        guard accessibilityOn, let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
+        typealias Set = @convention(c) (Int32) -> Void
+        for (setter, was) in accessibilityWas {
+            if let set = dlsym(lib, setter) { unsafeBitCast(set, to: Set.self)(was) }
+        }
+        accessibilityWas = []
+        accessibilityOn = false
+    }
+
     /// The accessibility element with this label under `root` (SwiftUI's own elements of the hosting view included).
     static func axFind(_ label: String, in root: NSObject, depth: Int = 0) -> NSObject? {
         guard depth < 48 else { return nil }
@@ -399,7 +455,8 @@ final class ShellProbe {
 
     /// Waits until the chat says `until` (polling every 150 ms) or the deadline: "idle" (no reply in flight, nothing on
     /// its way), "reply" (that, and the newest message is the coach's reply), "ledger" (that reply carries PLAN
-    /// CHANGES), "noLedger" (no card shows), "confirm" / "toast" (one shows in the toast window), "up" / "down".
+    /// CHANGES), "noLedger" (no card shows), "loading" (a reply in flight: Thinking, Stop), "confirm" / "toast" (one
+    /// shows in the toast window), "up" / "down".
     private func waitCoach(_ until: String, deadline: Date, started: Date, _ done: @escaping (Bool, Int) -> Void) {
         let met = coachSays(until)
         let waited = Int(Date().timeIntervalSince(started) * 1000)
@@ -418,6 +475,7 @@ final class ShellProbe {
         case "reply": return idle && store.display?.messages.last?.look == .reply
         case "ledger": return idle && store.display?.messages.last(where: { $0.role != .user })?.ledger != nil
         case "noLedger": return idle && store.display?.messages.contains(where: { $0.ledger != nil }) == false
+        case "loading": return store.display?.loading == true
         case "confirm": return screens.openConfirm != nil
         case "toast": return screens.shownToast != nil
         case "up": return screens.isUp("coach")

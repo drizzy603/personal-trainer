@@ -593,6 +593,8 @@ final class ShellOverlay {
 
     private var window: OverlayWindow?
     private var host: UIHostingController<OverlayRoot>?
+    /// The window while it shows something (the probe's presses find the confirm's buttons there).
+    var windowView: UIView? { window.flatMap { $0.isHidden ? nil : $0 } }
     private var hideToast: DispatchWorkItem?
     private weak var previousKey: UIWindow?
 

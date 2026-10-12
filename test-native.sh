@@ -23,8 +23,21 @@
 #      shoots Heavyweight first; "default" leaves the stored room), all on one app container with the native
 #      copy attached; -fpOffline keeps the page's own update check off, so the
 #      bundled page is the one under test even when Pages serves a newer one.
-#   5. Check the native copy (FPStore's store.sqlite) holds what WebKit holds.
-#   6. Install + launch the watch app; its screenshot proves the plan arrived
+#      Every launch takes -fpIgnoreMarker: ending the app with simctl terminate
+#      while the native chat is up leaves a crash marker, which must not turn
+#      the chat off for the rest of the run (tests/native-shell.sh tests markers).
+#   5. The native Coach chat, live (tests/tools/native-chat.py; plan task C7):
+#      -fpSmoke logs "fp: ping ok v1"; the keyboard sequences the simulator can
+#      drive (its software keyboard on for them); a real coach turn from the
+#      native composer on a stand-in for the Messages API on this Mac's loopback
+#      (tests/tools/coach-stub.py, the Debug argument -fpApiBase), with the echo,
+#      Thinking, the reply, a tool pill and PLAN CHANGES with Undo and Keep
+#      round-tripping; then coach/chat by launch argument in both rooms x the
+#      phone's appearance (simctl ui appearance light|dark) x its text size
+#      (simctl ui content_size large|extra-extra-large). Whatever it changed in
+#      the container is put back after, and the phone's settings too.
+#   6. Check the native copy (FPStore's store.sqlite) holds what WebKit holds.
+#   7. Install + launch the watch app; its screenshot proves the plan arrived
 #      over the real WCSession bridge.
 # Screenshots land in screenshots/out/native/. LOOK AT THEM — a blank frame
 # is a failed run. Set completion / wrist taps can't be driven from here
@@ -78,7 +91,7 @@ boot "$PHONE"; open -a Simulator 2>/dev/null || true   # Simulator.app is option
 
 echo "── Installing + launching phone app"
 xcrun simctl install "$PHONE" "$PHONE_APP"
-xcrun simctl launch "$PHONE" $APP_ID -fpOffline >/dev/null; sleep 4
+xcrun simctl launch "$PHONE" $APP_ID -fpOffline -fpIgnoreMarker >/dev/null; sleep 4
 
 DATA=$(xcrun simctl get_app_container "$PHONE" $APP_ID data)
 DB=$(find "$DATA/Library/WebKit" -name localstorage.sqlite3 2>/dev/null | head -1)
@@ -87,9 +100,9 @@ DB=$(find "$DATA/Library/WebKit" -name localstorage.sqlite3 2>/dev/null | head -
 drive(){  # drive <route> <shot-name> [room]: relaunch on the route (and the room), then shoot
   xcrun simctl terminate "$PHONE" $APP_ID 2>/dev/null || true; sleep 1
   if [ -n "${3:-}" ]; then
-    xcrun simctl launch "$PHONE" $APP_ID -fpOffline -devNav "$1" -devTheme "$3" >/dev/null
+    xcrun simctl launch "$PHONE" $APP_ID -fpOffline -fpIgnoreMarker -devNav "$1" -devTheme "$3" >/dev/null
   else
-    xcrun simctl launch "$PHONE" $APP_ID -fpOffline -devNav "$1" >/dev/null
+    xcrun simctl launch "$PHONE" $APP_ID -fpOffline -fpIgnoreMarker -devNav "$1" >/dev/null
   fi
   sleep 4
   xcrun simctl io "$PHONE" screenshot "$OUT/$2.png" >/dev/null 2>&1
@@ -105,9 +118,14 @@ for room in $ROOMS; do
     if [ "$room" = default ]; then drive "$r" "$name"; else drive "$r" "$name" "$room"; fi
   done
 done
+
+echo "── The native Coach chat, live (coach/chat in both rooms x appearance x text size, keys, a stand-in coach turn)"
+CHAT_RC=0
+python3 tests/tools/native-chat.py --phone "$PHONE" --shell "$SHELL_BUILD" --out "$OUT" || CHAT_RC=1
+
 # Clean relaunch — the app must boot normally after all the nav driving.
 xcrun simctl terminate "$PHONE" $APP_ID 2>/dev/null || true; sleep 1
-xcrun simctl launch "$PHONE" $APP_ID -fpOffline >/dev/null; sleep 4
+xcrun simctl launch "$PHONE" $APP_ID -fpOffline -fpIgnoreMarker >/dev/null; sleep 4
 xcrun simctl io "$PHONE" screenshot "$OUT/boot.png" >/dev/null 2>&1
 echo "  shot: $OUT/boot.png"
 
@@ -182,6 +200,11 @@ xcrun simctl io "$WATCH" screenshot "$OUT/watch.png" >/dev/null 2>&1
 echo "  shot: $OUT/watch.png"
 
 echo
+if [ "$CHAT_RC" != 0 ]; then
+  echo "FAIL: the native Coach chat checks failed (the FAIL lines under \"The native Coach chat, live\" above)"
+  exit 1
+fi
 echo "DONE — inspect every PNG in $OUT/ (watch.png showing today's plan"
-echo "proves the WCSession bridge; a blank frame anywhere is a failure)."
+echo "proves the WCSession bridge; coach-chat-*, keys-* and live-* are the native"
+echo "chat; a blank frame anywhere is a failure)."
 echo "Sims left booted for hand-testing taps (runner sets, wrist logging)."

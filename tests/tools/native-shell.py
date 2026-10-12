@@ -360,6 +360,7 @@ def scen_wckill(c):
         intent('stale confirm', 'confirm', id='@lastConfirm', yes=True), wait(300),
         js('stale yes', "return localStorage.getItem('kt_probe_stale_yes');"),
         js('stub', STUB_JS), {'op': 'send', 'text': 'Probe after the kill', 'nonce': 'probe-after-1'}, wait(3000), state('after send'),
+        {'op': 'draft', 'text': ''},   # the composer keeps its words across launches (fpDraft.coach): leave it empty
     ]
     ev = shell_probe(c.sim, 'wckill', [steps1, steps2], args=['-devNav', 'coach/chat'], out=c.opts.out, timeout=150)
     b, a, s2 = ev.state('before kill'), ev.state('after kill'), ev.state('after send')
@@ -379,8 +380,10 @@ def scen_wckill(c):
     c.rep.check(s, 'the send in flight at the kill ended as gone and was never sent again (one record, the old boot)', len(sends) == 1 and sends[0].get('boot') == boot0
                 and sends[0].get('outcome') == 'gone', sends)
     texts = pa.get('texts') or []
-    c.rep.check(s, 'the page never got it (no resend), and its words are back in the composer', not any('Probe never resent' in t for t in texts)
-                and screens(a).get('restored') == ['Probe never resent'], {'texts': texts[-3:], 'restored': screens(a).get('restored')})
+    cs = screens(a).get('coach') or {}
+    c.rep.check(s, 'the page never got it (no resend), and its words are back in the composer, with a word to the owner', not any('Probe never resent' in t for t in texts)
+                and screens(a).get('restored') == ['Probe never resent'] and cs.get('draft') == 'Probe never resent' and len(cs.get('toasts') or []) == 1,
+                {'texts': texts[-3:], 'restored': screens(a).get('restored'), 'draft': cs.get('draft'), 'toasts': cs.get('toasts')})
     ov_b, ov_a = screens(b).get('overlay') or {}, screens(a).get('overlay') or {}
     c.rep.check(s, 'the confirm open at the kill closed as stale', ov_b.get('confirm') and not ov_a.get('confirm'), '%s -> %s' % (ov_b.get('confirm'), ov_a.get('confirm')))
     st = ev.first('intent-step', label='stale confirm') or {}
