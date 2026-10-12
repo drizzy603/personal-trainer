@@ -23,18 +23,27 @@ public struct KTPutBackItem: Codable, Equatable, Sendable {
     public var added: Int?
     /// `conflict:<id>[,<id>...]` or `snap:<name>`.
     public var origin: String
+    /// true when this Put back deletes the key: the value kept was "no value" (an older build created the key, a
+    /// loss took back a removal), so the facade removes it from WebKit and the store. Only ever on a `putBack` of a
+    /// key that is not a log (a log is merged, never removed). Absent from the JSON otherwise, so Storage can say
+    /// "Remove ...?" before it asks, instead of promising that nothing is removed.
+    public var removes: Bool?
 
-    public init(key: String, outcome: Outcome, added: Int? = nil, origin: String) {
+    public init(key: String, outcome: Outcome, added: Int? = nil, origin: String, removes: Bool? = nil) {
         self.key = key
         self.outcome = outcome
         self.added = added
         self.origin = origin
+        self.removes = removes
     }
 }
 
 public struct KTPutBackPlan: Codable, Equatable, Sendable {
     public var items: [KTPutBackItem]
+    /// Keys the Put back writes, removals included.
     public var count: Int { items.filter { $0.outcome == .putBack }.count }
+    /// Of those, the keys it deletes.
+    public var removals: Int { items.filter { $0.outcome == .putBack && $0.removes == true }.count }
     public init(items: [KTPutBackItem]) { self.items = items }
 }
 

@@ -21880,6 +21880,9 @@ var _FP_KEY_NAMES={kt_sessions:'Workouts', kt_runs:'Runs', kt_sports:'Activities
   kt_runner_draft:'Workout in progress', kt_profile:'Athlete profile', kt_prs:'Records', kt_week:'Programme week',
   kt_streak_days:'Streak days', kt_last_open:'Last visit', kt_err_log:'Error log', kt_wch_log:'Watch sync log'};
 function _fpKeyName(k){ return Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, k) ? _FP_KEY_NAMES[k] : String(k||'?'); }
+// The five logs Put back merges record by record (FPStore KTProtocol.logKeys): one the copy kept as "no value" has
+// nothing to put back, and a log is never removed.
+var FP_LOG_KEYS={kt_sessions:1, kt_runs:1, kt_sports:1, kt_bw:1, kt_measurements:1};
 function _fpStorePlug(){ if(!_fpShellFlag()) return null; var P=_plug('TrovoStore'); return (P && typeof P.status==='function') ? P : null; }
 // Reads the status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
 function _fpStoreRefresh(force, then){
@@ -22017,10 +22020,16 @@ function _fpStoreSheetHTML(){
   if(rows==null) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading what the copy kept\u2026</div>';
   else if(!rows.length) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);line-height:1.5;">Nothing to put back: the copy has given nothing up in the last 30 days.</div>';
   else rows.slice(0, 40).forEach(function(r){
+    // A value the copy kept as "no value" (the key did not exist then) goes back as a removal, and says so; a log
+    // kept as none has nothing to put back.
+    var none=r.units==null, name=_fpKeyName(r.key), act='';
+    if(canPut && !(none && FP_LOG_KEYS[r.key])){
+      act='<button type="button" data-id="'+(Math.floor(Number(r.id))||0)+'" onclick="_fpStorePutBack(this)" style="'+btn+'" aria-label="'+
+        _esc(none ? 'Remove '+name+' (it had no value before)' : 'Put back '+name)+'">'+(none ? 'Remove' : 'Put back')+'</button>';
+    }
     out+='<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
-      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);overflow-wrap:anywhere;">'+_esc(_fpKeyName(r.key))+'</div>'+
-      '<div style="font-size:12px;color:var(--muted);line-height:1.45;">'+_esc(_fpConflictWhy(r))+'</div></div>'+
-      (canPut ? '<button type="button" data-id="'+(Math.floor(Number(r.id))||0)+'" onclick="_fpStorePutBack(this)" style="'+btn+'" aria-label="Put back '+_esc(_fpKeyName(r.key))+'">Put back</button>' : '')+
+      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);overflow-wrap:anywhere;">'+_esc(name)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;">'+_esc(_fpConflictWhy(r))+'</div></div>'+act+
     '</div>';
   });
 
@@ -22138,6 +22147,22 @@ function _fpPutBackNone(items){
   if(o==='unmergeable') return 'Couldn\u2019t merge it \u2014 left as it is';
   return 'Nothing to put back';
 }
+// The question before a Put back, from its preview: what goes back, what it deletes (a value the copy kept as "no
+// value": FPStore marks it removes), and how each can be undone. A log only gains the records it lost (undone by
+// deleting them); any other value it replaces, or deletes, is kept, so that Put back can be put back in turn.
+function _fpPutBackAsk(back, label){
+  var nm=function(it){ return _fpKeyName(it.key)+(it.added ? ' (+'+_plural(it.added, 'record')+')' : ''); };
+  var rem=back.filter(function(it){ return !!it.removes; }), put=back.filter(function(it){ return !it.removes; });
+  var logs=put.filter(function(it){ return (it.added|0)>0; }), vals=put.length-logs.length, s=[];
+  if(put.length) s.push('The app reloads and writes the kept copy back'+(back.length>1 ? ': '+put.map(nm).join(', ') : '')+'.');
+  if(rem.length) s.push((put.length ? 'It deletes ' : 'The app reloads and deletes ')+rem.map(nm).join(', ')+' from this iPhone: the copy held no value for '+(rem.length>1 ? 'them' : 'it')+'.');
+  if(logs.length) s.push('Workouts, runs, activities and weigh-ins only gain the records they lost'+(rem.length ? '' : '; nothing is removed')+'. To undo that, delete those records.');
+  else if(!rem.length) s.push('Nothing is removed.');
+  if(vals || rem.length) s.push('What it replaces is kept, so '+(logs.length ? 'the rest' : 'this')+' can be put back too.');
+  var only=back.length===1 ? back[0] : null;
+  return { title: only ? (only.removes ? 'Remove ' : 'Put back ')+nm(only)+'?' : 'Put back '+label+'?', body: s.join(' '),
+    ok: only && only.removes ? 'Remove' : 'Put back' };
+}
 // Put back: a preview first (what would go back, and what stays because it changed since), then the owner's yes
 // stages it and the shell reloads the page, so the facade writes it into WebKit before the page's first script.
 function _fpStorePutBackGo(what, label){
@@ -22145,12 +22170,10 @@ function _fpStorePutBackGo(what, label){
   try{ Promise.resolve(P.putBack(Object.assign({}, what, {preview:true}))).then(function(plan){
     var items=(plan && plan.items) || [], back=items.filter(function(it){ return it && it.outcome==='put back'; });
     if(!back.length){ showToast(_fpPutBackNone(items)); return; }
-    var names=back.map(function(it){ return _fpKeyName(it.key)+(it.added ? ' (+'+_plural(it.added, 'record')+')' : ''); });
-    _ktConfirm({title:'Put back '+(back.length===1 ? names[0] : label)+'?',
-      body:'The app reloads and writes the kept copy back'+(back.length>1 ? ': '+names.join(', ') : '')+'. Workouts, runs, activities and weigh-ins only gain the records they lost; nothing is removed. What it replaces is kept, so this can be put back too.',
-      confirmLabel:'Put back', confirmStyle:'var(--accent)', onConfirm:function(){
+    var ask=_fpPutBackAsk(back, label);
+    _ktConfirm({title:ask.title, body:ask.body, confirmLabel:ask.ok, confirmStyle:'var(--accent)', onConfirm:function(){
         try{ Promise.resolve(P.putBack(what)).then(function(r){
-          if(r && r.staged){ closeStorageSheet(); showToast('Putting it back \u2014 the app reloads'); }
+          if(r && r.staged){ closeStorageSheet(); showToast((ask.ok==='Remove' ? 'Removing it' : 'Putting it back')+' \u2014 the app reloads'); }
           else showToast(_fpPutBackNone(r && r.items));
         }, function(e){ showToast('Couldn\u2019t put it back \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
       }});

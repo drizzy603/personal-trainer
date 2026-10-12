@@ -412,3 +412,31 @@ serial('Put back of a value the store gave up writes it into WebKit and the stor
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
+
+serial('Put back of a value the store held as none is a removal: the plan says so (removes), and the value it removes can come back', async () => {
+  const app = await migrated();
+  try {
+    // Build 59 pins a Log tab: a key the store never held. Back on 60 the store adopts it and keeps "no value".
+    await relaunchWith(app, { shell: false });
+    await ev(app, () => localStorage.setItem('kt_log_tabs', '["run","body"]'));
+    await relaunchWith(app, { shell: true });
+    assert((await docInfo(app)).answer.rule === 4, 'rule 4');
+    const c = await ev(app, () => __ktMock.conflicts().filter((x) => x.key === 'kt_log_tabs')[0]);
+    assert(c && c.why === 'older build' && c.units == null, 'kept as no value: ' + JSON.stringify(c));
+    const plan = await ev(app, (id) => __ktMock.previewPutBack({ conflicts: [id] }), c.id);
+    assert(plan.count === 1 && plan.items[0].outcome === 'put back' && plan.items[0].removes === true, 'the plan marks the removal: ' + JSON.stringify(plan));
+    // Staged: the facade removes it from WebKit, the store tombstones it, and what it removed is kept.
+    await ev(app, (id) => __ktMock.stagePutBack({ conflicts: [id] }), c.id);
+    await app.reload();
+    const out = await ev(app, () => ({ wk: localStorage.getItem('kt_log_tabs'), row: __ktMock.row('kt_log_tabs'),
+      kept: __ktMock.conflicts().filter((x) => x.key === 'kt_log_tabs' && x.why === 'putback').map((x) => ({ id: x.id, v: __ktMock.conflictValue(x.id) })) }));
+    assert(out.wk === null && out.row && out.row.v === null && out.row.src === 'putback', 'removed from both copies: ' + JSON.stringify(out));
+    assert(out.kept.length === 1 && out.kept[0].v === '["run","body"]', 'the removed value is kept: ' + JSON.stringify(out.kept));
+    const back = await ev(app, (id) => __ktMock.stagePutBack({ conflicts: [id] }), out.kept[0].id);
+    assert(back.count === 1 && !back.items[0].removes, 'putting it back is not a removal: ' + JSON.stringify(back));
+    await app.reload();
+    assert(await ev(app, () => localStorage.getItem('kt_log_tabs')) === '["run","body"]', 'it came back');
+    assert((await check(app)).ok, 'store == WebKit');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});

@@ -568,7 +568,13 @@
           var newest = rows[rows.length - 1];
           if (curH === newest.h) items.push({ key: key, outcome: 'nothing to add', origin: origin });
           else if (curH !== newest.hnew) items.push({ key: key, outcome: 'changed since', origin: origin });
-          else { items.push({ key: key, outcome: 'put back', origin: origin }); entries.push({ key: key, value: newest.value, hbase: curH, origin: origin }); }
+          else {
+            // A kept "no value" goes back as a removal, and the plan says so (KTPutBackItem.removes).
+            var item = { key: key, outcome: 'put back', origin: origin };
+            if (newest.value == null) item.removes = true;
+            items.push(item);
+            entries.push({ key: key, value: newest.value, hbase: curH, origin: origin });
+          }
         }
       });
     }

@@ -4,7 +4,8 @@
 //   X KB"), or how else the copy stands now (a wipe found at this start, changes made without it, off and why). Its
 //   sheet shows what the starts found (changes made without the copy, changes this iPhone lost, unexplained
 //   differences), fallbacks, timings, breaker trips and crash markers; Put back previews, asks, then stages (one kept
-//   value, or everything a wipe took); the Native copy switch, Export a copy, and "Test: quit after next save" only
+//   value, or everything a wipe took); a value the copy kept as none goes back as a removal, its button and question
+//   say Remove and what is deleted; the Native copy switch, Export a copy, and "Test: quit after next save" only
 //   where the shell offers it.
 // - The end of boot: the OTA confirm goes even when the first render is the coach route (it returns before the first
 //   paint's confirm), exactly once; a shell's TrovoShell hears bootDone {page} at the end of boot, only with the flag.
@@ -231,6 +232,49 @@ serial('the Storage sheet: counts from the status, Put back after a preview, the
     assert(arm.arm === true && arm.keys.indexOf('kt_runner_draft') >= 0 && arm.keys.indexOf('kt_sessions') >= 0 && arm.keys.indexOf('kt_last_open') < 0,
       'armed for the training saves, never the app\'s bookkeeping: ' + JSON.stringify(arm));
     await app.page.waitForFunction(() => /Armed/.test((document.getElementById('fpStoreBody') || {}).textContent || ''), null, { timeout: 3000 });
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
+serial('a value the copy held as none goes back as a removal: the row says Remove and the question says what is deleted', async () => {
+  // Seen on the iOS 27 simulator: "kt_streak_days · older build · had no value" previewed as a plain "put back", the
+  // question promised that nothing is removed, and the key was deleted.
+  const rows = [
+    { id: 12, at: NOW - 60000, key: 'kt_streak_days', why: 'older build', h: '-', hnew: '751:a:b', units: null },
+    { id: 11, at: NOW - 60000, key: 'kt_bw', why: 'older build', h: '-', hnew: '40:c:d', units: null },
+    { id: 10, at: NOW - 90000, key: 'kt_routine', why: 'older build', h: '900:e:f', hnew: '880:g:h', units: 900 },
+  ];
+  const removal = { items: [{ key: 'kt_streak_days', outcome: 'put back', origin: 'conflict:12', removes: true }], count: 1 };
+  const app = await boot({ native: true, init: init({ status: inStep(), rows, plan: removal, flag: FLAG }) });
+  try {
+    await ev(app, () => { switchTab('settings'); openStorageSheet(); });
+    await app.page.waitForFunction(() => !!document.querySelector('#fpStoreBody button[data-id="12"]'), null, { timeout: 3000 });
+    const btns = await ev(app, () => [10, 11, 12].map((id) => { const b = document.querySelector('#fpStoreBody button[data-id="' + id + '"]'); return b ? [b.textContent, b.getAttribute('aria-label')] : null; }));
+    assert(btns[2] && btns[2][0] === 'Remove' && btns[2][1] === 'Remove Streak days (it had no value before)', 'a value held as none is a removal, said on its button: ' + JSON.stringify(btns));
+    assert(btns[1] === null, 'a log held as none has nothing to put back, so no button: ' + JSON.stringify(btns));
+    assert(btns[0] && btns[0][0] === 'Put back' && btns[0][1] === 'Put back Programme', 'a kept value is put back as before: ' + JSON.stringify(btns));
+
+    // The question names the deletion and never says that nothing is removed.
+    await ev(app, () => document.querySelector('#fpStoreBody button[data-id="12"]').click());
+    await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const ask = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent,
+      ok: document.querySelector('.kt-close-sheet [id$="ok"]').textContent.trim() }));
+    assert(ask.title === 'Remove Streak days?' && /deletes Streak days from this iPhone/.test(ask.body) && !/nothing is removed/i.test(ask.body),
+      'the question says it deletes: ' + JSON.stringify(ask));
+    assert(ask.ok === 'Remove', 'and its button says so: ' + JSON.stringify(ask));
+    await ev(app, () => document.querySelector('.kt-close-sheet [id$="ok"]').click());
+    await app.page.waitForFunction(() => __ts.calls.filter((c) => c[0] === 'putBack').length === 2, null, { timeout: 3000 });
+    const staged = await ev(app, () => __ts.calls.filter((c) => c[0] === 'putBack')[1][1]);
+    assert(!staged.preview && JSON.stringify(staged.conflicts) === '[12]', 'staged on the yes: ' + JSON.stringify(staged));
+
+    // A kept value that goes back replaces nothing for good: that question still says nothing is removed.
+    await ev(app, () => { __ts.plan = { items: [{ key: 'kt_routine', outcome: 'put back', origin: 'conflict:10' }], count: 1 }; openStorageSheet(); });
+    await app.page.waitForFunction(() => !!document.querySelector('#fpStoreBody button[data-id="10"]'), null, { timeout: 3000 });
+    await ev(app, () => document.querySelector('#fpStoreBody button[data-id="10"]').click());
+    await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const ask2 = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent }));
+    assert(ask2.title === 'Put back Programme?' && /Nothing is removed/.test(ask2.body) && /can be put back too/.test(ask2.body) && !/deletes/.test(ask2.body),
+      'a plain Put back: ' + JSON.stringify(ask2));
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
 });

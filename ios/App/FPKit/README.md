@@ -80,7 +80,9 @@ Rules the store keeps:
 - Async posts apply only when their (boot, seq) is newer than the key's last write.
 - Put back is staged in Storage and written by the facade at the next document start (log keys merged by
   id, other keys only while unchanged since); the values it replaces go to `conflicts`, so it can be put
-  back in turn.
+  back in turn. A kept "no value" (an older build created the key, a loss took back a removal) goes back as a
+  removal, and its plan item says so (`removes: true`), so Storage asks "Remove ...?" instead of promising
+  that nothing is removed; a log is merged, never removed.
 
 The reconcile at every document start decides from the `kt_last_open` witness. Every outcome but rule 3
 leaves kv equal to WebKit:

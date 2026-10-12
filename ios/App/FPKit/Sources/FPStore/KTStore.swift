@@ -1096,7 +1096,9 @@ public final class KTStore: @unchecked Sendable {
                     } else if curH != newest.hnew {
                         items.append(KTPutBackItem(key: key.string, outcome: .changedSince, origin: origin))
                     } else {
-                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, origin: origin))
+                        // A kept "no value" goes back as a removal: the plan says so (Storage asks "Remove ...?").
+                        items.append(KTPutBackItem(key: key.string, outcome: .putBack, origin: origin,
+                                                   removes: newest.value == nil ? true : nil))
                         entries.append(Resolved(key: key, value: newest.value, hbase: curH, origin: origin))
                     }
                 }
