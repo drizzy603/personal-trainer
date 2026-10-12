@@ -39,7 +39,7 @@
     "failed": "{ok: false, error: 'unknown-intent' | 'bad-args' | 'exception'}, a timeout, a script error or an answer without ok: counted by the 3-failure breaker"
   },
   "messages": [
-    {"name": "hello", "args": {"v": "int", "page": "string", "screens": "[string]", "boot": "string?"}, "answers": "{v, screens} (v 0 and why when refused)", "does": "The page speaks contract v and can hand these screens to Swift"},
+    {"name": "hello", "args": {"v": "int", "page": "string", "screens": "[string]", "boot": "string?"}, "answers": "{v, screens, up?} (v 0 and why when refused; up: screens the shell still shows from the document before, which the page takes over or dismisses)", "does": "The page speaks contract v and can hand these screens to Swift"},
     {"name": "bootDone", "args": {"page": "string"}, "does": "The end of boot whatever painted: disarms the store breaker; the OTA confirm moves here"},
     {"name": "present", "args": {"screen": "string"}, "does": "Show the native screen"},
     {"name": "dismiss", "args": {"screen": "string"}, "does": "The page left the screen (another tab, the runner, the end of intake)"},

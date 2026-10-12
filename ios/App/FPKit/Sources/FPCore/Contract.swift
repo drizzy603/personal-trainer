@@ -7,8 +7,9 @@ import Foundation
 //   file, a stale crash marker or the native breaker turned off for the page build being served
 //   (ScreenGate). Later builds only add keys (`tabs` in 61, `features: ['stream']` in 62).
 // - The page answers with the TrovoShell plugin: `hello {v, page, screens, boot?}` gets the
-//   negotiated `{v, screens}`; then `bootDone`, `present`/`dismiss`, `model`, `toast`, `confirm` and
-//   `log` (PageMessage). Plugin calls arrive off main; the plugin hops to main.
+//   negotiated `{v, screens, up?}` (`up`: a native screen still showing from the document before, which
+//   the page takes over); then `bootDone`, `present`/`dismiss`, `model`, `toast`, `confirm` and `log`
+//   (PageMessage). Plugin calls arrive off main; the plugin hops to main.
 // - Native behaviour comes from this flag and the plugin's presence, never from build stamps: an
 //   older binary serves a newer staged page.
 // - Within a version, only additions; the page speaks every contract an installable shell speaks.
@@ -111,18 +112,25 @@ public struct HelloReply: Equatable, Sendable {
     public var v: Int
     /// The screens the page may present this document.
     public var screens: [String]
+    /// The screens the shell shows now from an earlier document of this web view (the page reloaded under a native
+    /// screen: WebContent died, a Put back reload): the page takes each over where it can show it (the screen is up,
+    /// with no present; its models follow from this boot) and dismisses the others. Always among `screens`; left out
+    /// of the JSON when none (plan task C5, additive within v1).
+    public var up: [String]
     /// Why the shell refused (refused replies only).
     public var why: String?
 
     public var json: JSONValue {
         var o: [String: JSONValue] = ["v": .number(Double(v)), "screens": .array(screens.map(JSONValue.string))]
+        if !up.isEmpty { o["up"] = .array(up.map(JSONValue.string)) }
         if let why { o["why"] = .string(why) }
         return .object(o)
     }
 
-    public init(v: Int, screens: [String], why: String? = nil) {
+    public init(v: Int, screens: [String], up: [String] = [], why: String? = nil) {
         self.v = v
         self.screens = screens
+        self.up = up
         self.why = why
     }
 
@@ -131,6 +139,14 @@ public struct HelloReply: Equatable, Sendable {
         case .linked(let v, let screens): self.init(v: v, screens: screens)
         case .refused(let r): self.init(v: 0, screens: [], why: r.rawValue)
         }
+    }
+
+    /// This reply naming the screens the shell still shows (`shown`, in its order) that the page may take over: those
+    /// negotiated now. Refused replies take none.
+    public func takingOver(_ shown: [String]) -> HelloReply {
+        var r = self
+        r.up = v >= 1 ? shown.filter { screens.contains($0) } : []
+        return r
     }
 }
 

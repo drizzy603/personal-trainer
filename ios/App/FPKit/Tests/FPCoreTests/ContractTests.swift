@@ -43,6 +43,18 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(HelloReply(.refused(.noVersion)).json, ["v": 0, "screens": [], "why": "no-version"])
     }
 
+    /// A reload under a native screen: the answer names the screens the shell still shows that this document may have
+    /// (the page takes them over); never one it may not, never on a refusal, and no key at all when there is none.
+    func testHelloReplyNamesTheScreensStillUp() {
+        let linked = HelloReply(.linked(v: 1, screens: ["coach"]))
+        XCTAssertEqual(linked.takingOver(["coach"]).json, ["v": 1, "screens": ["coach"], "up": ["coach"]])
+        XCTAssertEqual(linked.takingOver([]).json, ["v": 1, "screens": ["coach"]], "nothing up: the reply is v1's as before")
+        XCTAssertEqual(HelloReply(.linked(v: 1, screens: [])).takingOver(["coach"]).json, ["v": 1, "screens": []],
+                       "a screen this document may not have is not taken over (the shell takes it down)")
+        XCTAssertEqual(HelloReply(.refused(.pageTooOld)).takingOver(["coach"]).up, [])
+        XCTAssertEqual(HelloReply(v: 1, screens: ["coach"], up: ["coach"]).up, ["coach"])
+    }
+
     func testHelloDecoding() {
         let h = HelloRequest(json: ["v": 1, "page": "20261012-1", "screens": ["coach", 3, "settings"], "boot": "b1"])
         XCTAssertEqual(h, HelloRequest(v: 1, page: "20261012-1", screens: ["coach", "settings"], boot: "b1"))
