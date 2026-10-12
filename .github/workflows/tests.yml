@@ -20,8 +20,8 @@ jobs:
   # Separate jobs, each inside its own 15 minutes: the classic run (the browser, the PWA and every shell before
   # 60); the store matrix (STORE=shadow: every document starts with build 60's storage, the shipped facade over a
   # mock native store, and each browser close checks for drift); the contract run (FP_SHELL_INERT=1: every native
-  # boot under build 60's shell flag with no native screen); and both at once, build 60 as it ships. Same specs,
-  # same results.
+  # boot under build 60's shell flag with no native screen); and both at once (build 60 with no native screen up).
+  # Same specs, same results.
   playwright:
     name: Playwright suites (${{ matrix.mode }})
     runs-on: ubuntu-latest

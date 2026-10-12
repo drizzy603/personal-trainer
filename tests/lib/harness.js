@@ -17,12 +17,12 @@
 // native boot that names none, runs the page under a shell's flag
 // window.__FP_SHELL and a TrovoShell mock (see shellMock at the end of this
 // file). The two are independent and combine: STORE=shadow FP_SHELL_INERT=1
-// is build 60 as it ships (the native copy in shadow under the flag, no native
-// screen), and opts.store with opts.shell does the same for one boot. The
-// store's scripts go first (everything after writes through the facade), the
-// shell's last, after the native mock and opts.init. A spec that sets
-// window.__FP_SHELL or a TrovoShell itself in opts.init names shell: 'none',
-// so FP_SHELL_INERT=1 never paints the inert flag over its own.
+// is build 60 with no native screen up (the native copy in shadow under the
+// flag and TrovoShell), and opts.store with opts.shell does the same for one
+// boot. The store's scripts go first (everything after writes through the
+// facade), the shell's last, after the native mock and opts.init. A spec that
+// sets window.__FP_SHELL or a TrovoShell itself in opts.init names
+// shell: 'none', so FP_SHELL_INERT=1 never paints the inert flag over its own.
 //
 // Usage in a spec:
 //   const { boot, assert, run } = require('../lib/harness');

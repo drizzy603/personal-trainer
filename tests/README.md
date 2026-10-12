@@ -81,9 +81,9 @@ the inert run never paints the harness's flag and mock over its own. Spec 118 dr
 (`window.FPScreens.call`); `tests/golden/check.sh` holds the chat's HTML, the page's coach models and
 FPCore's fixtures together.
 
-**Both at once.** `STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh` is build 60 as it ships: every
-document starts with the native copy in shadow, and every native boot runs under the shell's flag
-with no native screen. `boot({store: 'shadow', shell: 'inert'})` does the same for one boot (the
+**Both at once.** `STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh` is build 60 with no native screen
+up: every document starts with the native copy in shadow, and every native boot runs under the
+shell's flag and TrovoShell with no screen negotiated. `boot({store: 'shadow', shell: 'inert'})` does the same for one boot (the
 store's scripts first, then the seed and the native mock, `opts.init`, and the shell's flag and
 TrovoShell last). CI runs classic, shadow, inert and both at once as four jobs.
 

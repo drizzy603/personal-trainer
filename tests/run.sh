@@ -11,7 +11,8 @@
 #                                    flag with no native screen (window.__FP_SHELL {v:1, screens:[]} and a TrovoShell
 #                                    mock: tests/lib/harness.js opts.shell)
 #   STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh
-#                                    both at once: build 60 as it ships (the native copy in shadow under the shell's flag)
+#                                    both at once: build 60 with no native screen up (the native copy in shadow under
+#                                    the shell's flag and TrovoShell)
 # Per-spec results in every mode must equal the classic run's.
 set -e
 cd "$(dirname "$0")"
