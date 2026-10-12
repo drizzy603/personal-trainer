@@ -198,14 +198,17 @@ public final class CoachStore: ObservableObject {
 
     /// Whether the page's model holds this message: by the id the page answered with (ids carry their boot's tag), or a
     /// message of the owner's with the same photo or words, said at or after the send (a model can come before the
-    /// answer, and the next document's ids are new).
+    /// answer, and the next document's ids are new). A photo sent with no words is held by a message of the owner's with a
+    /// photo and no words: the page keeps no photo key across a reload, so the next document's message has none, and a
+    /// photo-only send whose answer the reload lost went back in the composer although the page had it.
     func holds(_ e: Echo, _ m: CoachModel) -> Bool {
         if let id = e.pageID, m.message(id: id) != nil { return true }
         let floor = e.at.addingTimeInterval(-2)
         return m.messages.contains { msg in
             guard msg.role == .user, msg.seed == nil, let at = msg.at, at >= floor else { return false }
             if let k = e.imageKey, msg.image?.key == k { return true }
-            return !e.words.isEmpty && ChatPart.bubbleText(msg) == e.words
+            if e.words.isEmpty { return e.imageKey != nil && msg.image != nil && ChatPart.bubbleText(msg).isEmpty }
+            return ChatPart.bubbleText(msg) == e.words
         }
     }
 

@@ -289,6 +289,38 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertEqual(store.draft.text, "")
     }
 
+    /// Review 4 (chat low): a photo sent with no words whose answer a reload lost went back in the composer (with its
+    /// toast) although the page had it: the next document's message carries the photo with no key (the page keeps none
+    /// across a reload) and no words, so neither the key nor the words could hold the echo. One the next document lacks
+    /// still comes back, its photo with it.
+    func testAPhotoSentAloneThatTheNextDocumentHoldsIsNotPutBack() throws {
+        store.apply(try model(rev: 7))
+        let (ui, jpeg) = tinyPhoto()
+        let photo = PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: 8, height: 8), preview: ui)
+        store.draft.picked = photo
+        XCTAssertTrue(store.sendComposer(nonce: "n21"))
+        answer("coach.send", .documentGone)
+        store.documentGone(chatUp: true)
+        var saved = said("m13.h", "", at: clock)
+        saved["image"] = ["key": NSNull()]
+        XCTAssertTrue(store.apply(try model(boot: "b2", rev: 1, adding: [saved])))
+        XCTAssertEqual(store.echoes, [])
+        XCTAssertEqual(store.restored, [], "the page had it: nothing goes back")
+        XCTAssertNil(store.draft.picked)
+        XCTAssertTrue(toasts.isEmpty, "and no word that it was not sent")
+        // the next document without it: back in the composer, its photo too, never resent
+        clock = clock.addingTimeInterval(60)
+        store.draft.picked = photo
+        XCTAssertTrue(store.sendComposer(nonce: "n22"))
+        answer("coach.send", .documentGone)
+        store.documentGone(chatUp: true)
+        XCTAssertTrue(store.apply(try model(boot: "b3", rev: 1)))
+        XCTAssertEqual(store.echoes, [])
+        XCTAssertEqual(store.restored, [""])
+        XCTAssertNotNil(store.draft.picked, "the photo is back in the composer")
+        XCTAssertEqual(sends.count, 2)
+    }
+
     func testTheBindingGoingPutsEverythingOnItsWayBackQuietly() throws {
         store.apply(try model(rev: 1))
         store.draft.text = "Mid-flight"

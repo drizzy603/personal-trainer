@@ -199,7 +199,9 @@ models and the owner's hands. ScreenHost keeps one per web view binding, so it o
   page hears `coach.draftTaken`; a chat drawn on the store never sends its own.
 - **Photos** by key: those this chat sends (`n:<nonce>`, as the page keys them, so the page's message draws the same
   photo as the echo did) and the page's pending one (a shared image), fetched once with `coach.image` (one the page will
-  not give is not asked for again, and the chat says Photo).
+  not give is not asked for again, and the chat says Photo). A photo sent with no words is held by a message of the
+  owner's with a photo and no words said at or after it: the page keeps no photo key across a reload, so one whose answer
+  a reload lost went back in the composer although the page had it.
 - **Toasts and confirms** go through the bridge: the page forwards its own while the chat covers it and ScreenHost's
   window draws them; the store's own (a message not sent) go to the same window. A confirm open when its document goes
   closes there as stale.
