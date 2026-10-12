@@ -33,12 +33,24 @@ public struct CoachChatOptions: Equatable, Sendable {
     /// When set, the whole conversation at its natural height and this width, no scroll view
     /// (contact sheets, snapshots of a long chat).
     public var unscrolledWidth: CGFloat?
+    /// The host draws the toast and the confirm (ScreenHost's window above every screen, plan task
+    /// C5): the chat still sets its bindings (a photo that came to nothing) but draws neither, and
+    /// reports where its header ends (`CoachHeaderBottomKey`) so the host's toast sits under it.
+    public var hostDrawsOverlays: Bool
 
-    public init(unscrolledWidth: CGFloat? = nil) {
+    public init(unscrolledWidth: CGFloat? = nil, hostDrawsOverlays: Bool = false) {
         self.unscrolledWidth = unscrolledWidth
+        self.hostDrawsOverlays = hostDrawsOverlays
     }
 
     public var unscrolled: Bool { unscrolledWidth != nil }
+}
+
+/// Where the chat's header ends, in global (window) coordinates: the host's toast goes 8 px under
+/// it, as the web chat's does (`--toast-head`).
+public struct CoachHeaderBottomKey: PreferenceKey {
+    public static let defaultValue: CGFloat = 0
+    public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// The native Coach chat (plan task C6): FPCore's CoachModel drawn as the web chat draws it, in the
@@ -89,7 +101,7 @@ public struct CoachChatView: View {
             }
         }
         .background(theme.color(.bg).ignoresSafeArea())
-        .overlay { confirmView(theme) }
+        .overlay { if !options.hostDrawsOverlays { confirmView(theme) } }
         // outermost, so the confirm sheet (an overlay) is in the room too
         .environment(\.roomTheme, theme)
         .environment(\.colorScheme, theme.colorScheme)
@@ -114,8 +126,11 @@ public struct CoachChatView: View {
         let column = max(0, width - 2 * gutter)
         return VStack(spacing: 0) {
             CoachHeaderView(header: model.header, avatar: host.avatar, narrow: width <= 345, gutter: gutter, send: host.send)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: CoachHeaderBottomKey.self, value: g.frame(in: .global).maxY)
+                })
             conversation(theme: theme, gutter: gutter, column: column)
-                .overlay(alignment: .top) { toastView(theme) }
+                .overlay(alignment: .top) { if !options.hostDrawsOverlays { toastView(theme) } }
             CoachComposer(composer: model.composer, loading: model.loading, text: $text, picked: $picked,
                           pagePhoto: model.composer.image.flatMap { host.image($0.key) }, focused: $focused,
                           onSend: send, onStop: stop, onRemovePagePhoto: { host.send(.coachClearImage) },
