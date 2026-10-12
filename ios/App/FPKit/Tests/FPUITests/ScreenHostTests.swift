@@ -215,6 +215,19 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertNotNil(up, "the chat stays until the page says")
     }
 
+    /// Review 4 (platform low): forwarded toasts kept the text size the overlay last saw at a model push, so a toast right
+    /// after the phone's text size changed was drawn at the old scale while the chat had re-laid out.
+    func testToastsFollowTheTextSizeLive() throws {
+        let m = try model()
+        XCTAssertTrue(m.dynTypeOn)
+        host.update("coach", model: m)
+        let before = host.overlay.theme
+        NotificationCenter.default.post(name: UIContentSizeCategory.didChangeNotification, object: nil,
+                                        userInfo: [UIContentSizeCategory.newValueUserInfoKey: UIContentSizeCategory.extraExtraLarge])
+        XCTAssertEqual(host.overlay.theme, RoomTheme(model: m, system: .xxLarge))
+        XCTAssertNotEqual(host.overlay.theme, before)
+    }
+
     func testTheMarkerFollowsTheAppsActivity() async throws {
         host.update("coach", model: try model())
         host.present("coach")

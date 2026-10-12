@@ -29,7 +29,7 @@ import FPCore
 ///   writes none), so only a death on screen leaves one. ShellBridge reads them at launch.
 /// - **A refused presentation** (UIKit's silence while another controller's presentation is delayed) is noticed by a
 ///   watchdog: the screen is not up, the page shows its own, and the queue goes on.
-/// - **VoiceOver's escape** goes back (Cancel during setup).
+/// - **VoiceOver's escape** goes back (Cancel during setup), and the toast window follows the phone's text size live.
 /// - **Toasts and confirms** the page forwards while covered show in a window above every screen (`ShellOverlay`), so
 ///   one outlives the screen it was shown over.
 @MainActor
@@ -105,6 +105,8 @@ public final class ScreenHost: NSObject {
     /// How long a presentation may go without UIKit's completion while no controller presents the screen before it counts
     /// as refused (UIKit refuses one it cannot make now, a share sheet's delayed presentation under way, without a word).
     var refusalWatchdog: TimeInterval = 2
+    /// The system text size the overlay's toasts are drawn at, as the last change of it said (nil: the trait collection's).
+    private var textSize: DynamicTypeSize?
 
     /// `coach`: the chat's store (tests pass one with its own defaults; the app's keeps the composer in `fpDraft.coach`).
     public init(presenter: UIViewController, webView: WKWebView, shellBuild: String, pageBuild: String?, markerFolder: URL,
@@ -129,6 +131,7 @@ public final class ScreenHost: NSObject {
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.didEnterBackgroundNotification, object: nil)
         nc.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(textSizeChanged(_:)), name: UIContentSizeCategory.didChangeNotification, object: nil)
     }
 
     /// The screens up now (presented or going up), in name order.
@@ -175,7 +178,7 @@ public final class ScreenHost: NSObject {
     /// unless it is stale there too.
     public func update(_ screen: String, model: CoachModel) {
         guard screen == "coach", coach.apply(model) else { return }
-        let theme = RoomTheme(model: model, system: Self.systemTextSize)
+        let theme = RoomTheme(model: model, system: textSize ?? Self.systemTextSize)
         overlay.setRoom(theme)
         if let u = up[screen] {
             u.host.paper = model.paper
@@ -483,6 +486,18 @@ public final class ScreenHost: NSObject {
         guard m.header.back else { return false }
         userBack(screen)
         return true
+    }
+
+    // MARK: The system text size
+
+    /// The phone's text size changed with a screen or a toast up: the overlay's toasts follow it at once (the chat itself
+    /// follows its traits), clamped by the model's toggle as the chat's are.
+    @objc private func textSizeChanged(_ note: Notification) {
+        let raw = note.userInfo?[UIContentSizeCategory.newValueUserInfoKey]
+        let category = (raw as? UIContentSizeCategory) ?? (raw as? String).map(UIContentSizeCategory.init(rawValue:))
+            ?? UIApplication.shared.preferredContentSizeCategory
+        textSize = DynamicTypeSize(category) ?? .large
+        if let m = coach.model { overlay.setRoom(RoomTheme(model: m, system: textSize ?? Self.systemTextSize)) }
     }
 
     /// The system text size the screens draw at (clamped by the model's toggle in RoomTheme).
