@@ -5,6 +5,8 @@
 // clears the wrist's queue, and never keeps a saved entry; a finish WebKit lost goes back through the page's own
 // Storage sheet (a TrovoStore plugin over the mock) in one Put back, the draft's removal with it; and with the shell's
 // flag a draft whose workout is already filed is dropped at boot, so it is never resumed and filed twice.
+// A native boot that sets the shell's flag itself (storageShell) or means none names shell: 'none', so
+// FP_SHELL_INERT=1 never paints the harness's inert flag over it; the others take whatever the run gives them.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -257,7 +259,7 @@ serial('the watch drain re-sends kt_sessions before it clears the wrist\'s queue
 });
 
 serial('without the shell flag the drain is the drain it was: no store, the queue cleared after the save', async () => {
-  const app = await boot({ native: true, store: 'classic', seed: { kt_sessions: '[]' } });
+  const app = await boot({ native: true, shell: 'none', store: 'classic', seed: { kt_sessions: '[]' } });
   try {
     await ev(app, (p) => { window.__payload = p; }, wristPayload());
     const out = await ev(app, DRAIN, { fail: false });
@@ -310,7 +312,7 @@ const FINISH = () => {
 };
 
 serial('a finish WebKit lost: one Put back of everything that start lost brings it all back in one reload, the draft\'s removal with it', async () => {
-  const app = await start({ native: true, init: storageShell() });
+  const app = await start({ native: true, shell: 'none', init: storageShell() });
   try {
     await ev(app, () => __ktMock.device({ seed: false }));
     await app.reload();
@@ -393,7 +395,7 @@ serial('a draft whose workout is already filed is dropped at boot with the shell
   } finally { await app.close(); }
 
   // The review's case on the store: a finish WebKit lost, then a Put back of the workout alone.
-  app = await start({ native: true, init: storageShell() });
+  app = await start({ native: true, shell: 'none', init: storageShell() });
   try {
     await ev(app, () => __ktMock.device({ seed: false }));
     await app.reload();

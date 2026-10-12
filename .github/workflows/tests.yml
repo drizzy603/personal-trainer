@@ -17,17 +17,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Two separate jobs, each inside its own 15 minutes: the classic run (the browser, the PWA and every shell
-  # before 60) and the store matrix (STORE=shadow: every document starts as in a build 60 shell, with the
-  # shipped facade over a mock native store, and each browser close checks for drift). Same specs, same results.
+  # Separate jobs, each inside its own 15 minutes: the classic run (the browser, the PWA and every shell before
+  # 60); the store matrix (STORE=shadow: every document starts with build 60's storage, the shipped facade over a
+  # mock native store, and each browser close checks for drift); the contract run (FP_SHELL_INERT=1: every native
+  # boot under build 60's shell flag with no native screen); and both at once, build 60 as it ships. Same specs,
+  # same results.
   playwright:
-    name: Playwright suites (${{ matrix.store }})
+    name: Playwright suites (${{ matrix.mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        store: [classic, shadow]
+        include:
+          - mode: classic
+            store: ''
+            inert: ''
+          - mode: shadow
+            store: shadow
+            inert: ''
+          - mode: inert
+            store: ''
+            inert: '1'
+          - mode: shadow + inert
+            store: shadow
+            inert: '1'
 
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +64,7 @@ jobs:
       - name: Run suites
         env:
           STORE: ${{ matrix.store }}
+          FP_SHELL_INERT: ${{ matrix.inert }}
         run: |
           set -o pipefail
           ./tests/run.sh 2>&1 | tee suite.log

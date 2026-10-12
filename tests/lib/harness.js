@@ -13,6 +13,17 @@
 // all before the seed and the page's own scripts. app.close() then checks for
 // drift: the store, WebKit and what the page reads must hold the same values.
 //
+// Shell contracts (plan task C3): opts.shell, or FP_SHELL_INERT=1 for every
+// native boot that names none, runs the page under a shell's flag
+// window.__FP_SHELL and a TrovoShell mock (see shellMock at the end of this
+// file). The two are independent and combine: STORE=shadow FP_SHELL_INERT=1
+// is build 60 as it ships (the native copy in shadow under the flag, no native
+// screen), and opts.store with opts.shell does the same for one boot. The
+// store's scripts go first (everything after writes through the facade), the
+// shell's last, after the native mock and opts.init. A spec that sets
+// window.__FP_SHELL or a TrovoShell itself in opts.init names shell: 'none',
+// so FP_SHELL_INERT=1 never paints the inert flag over its own.
+//
 // Usage in a spec:
 //   const { boot, assert, run } = require('../lib/harness');
 //   run('my suite', async () => {
@@ -99,6 +110,8 @@ function startServer() {
 // opts.store       — 'shadow': the build 60 shell's storage (flag, mock native store, shipped facade);
 //                    'classic' or false: none, whatever STORE says. Default: process.env.STORE.
 // opts.storeCheck  — false skips the drift check at close (a spec that leaves a difference on purpose)
+// opts.shell       — the shell contract: 'none', 'inert', 'coach' or a flag object (SHELLS, shellFlag below).
+//                    Default: 'inert' for a native boot when FP_SHELL_INERT=1, else 'none'. Combines with opts.store.
 async function boot(opts = {}) {
   const store = storeMode(opts);
   const srv = await startServer();
@@ -114,8 +127,8 @@ async function boot(opts = {}) {
     return route.abort();
   });
 
-  // The shell's document-start scripts come first, as StoreAttach injects them: everything after (the seed,
-  // opts.init, the page) reads and writes localStorage through the facade.
+  // The store's document-start scripts come first, as StoreAttach injects them: everything after (the seed,
+  // opts.init, the shell mock, the page) reads and writes localStorage through the facade.
   if (store) {
     const s = loadStoreScripts();
     await page.addInitScript({ content: s.mock });
@@ -162,7 +175,7 @@ async function boot(opts = {}) {
   await page.waitForFunction(() => typeof window.render === 'function', { timeout: 10000 });
 
   return {
-    page, errors, store,
+    page, errors, store, shell,
     // A relaunch of the page in the same browser (sessionStorage, and so the store, survive it).
     reload: async () => {
       await page.reload({ waitUntil: 'load' });

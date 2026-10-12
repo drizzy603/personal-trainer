@@ -13,14 +13,6 @@ Run everything:
 ./tests/run.sh
 ```
 
-Shell contracts (plan task C3): `boot({shell})` runs a boot under one contract an installable shell
-speaks: `'none'` (no flag, every shell up to 59 and the PWA; the default), `'inert'` (build 60's
-`window.__FP_SHELL` with no native screen) or `'coach'` (build 60: the native Coach chat), with a
-mock TrovoShell that negotiates hello as FPCore does and records every call in `window.__fpShell`.
-`FP_SHELL_INERT=1 ./tests/run.sh` runs every native boot as `'inert'`: per-spec results must equal
-the classic run's. Spec 118 drives the bridge (`window.FPScreens.call`); `tests/golden/check.sh`
-holds the chat's HTML, the page's coach models and FPCore's fixtures together.
-
 First run installs Playwright into `tests/node_modules` (gitignored). Suites:
 
 - `01-boot` — boot smoke, all four tabs render, no page errors, voice logging stays removed
@@ -48,8 +40,9 @@ prompt channel, and the shipped facade
 page. Every write goes to WebKit first and is mirrored to the mock store; each
 `app.close()` checks that the store, WebKit and the page's reads hold the same
 values (a difference fails the spec as `store drift`). Per-spec results must equal
-the classic run's. CI runs both as separate jobs; `publish.sh` adds the shadow run
-when the facade, the mock or the harness changed.
+the classic run's. CI runs it as its own job (beside classic, the contract run and
+both at once, below); `publish.sh` adds the shadow run when the facade, the mock or
+the harness changed.
 
 `boot({store: 'shadow'})` turns it on for one boot whatever STORE says
 (`store: 'classic'` turns it off). Specs 119 and 120 drive the mock through
@@ -70,6 +63,29 @@ lost, Remove for a value kept as none, the Native copy switch, Export a copy, th
 TestFlight-only test quit), `bootDone` and the OTA confirm at the end of boot
 (also when the first render is the coach route), and the tools'
 `dev.nav`/`dev.theme` in the flag.
+
+## The shell contracts
+
+```sh
+FP_SHELL_INERT=1 ./tests/run.sh
+```
+
+Shell contracts (plan task C3): `boot({shell})` runs a boot under one contract an installable shell
+speaks: `'none'` (no flag, every shell up to 59 and the PWA; the default), `'inert'` (build 60's
+`window.__FP_SHELL` with no native screen) or `'coach'` (build 60: the native Coach chat), with a
+mock TrovoShell that negotiates hello as FPCore does and records every call in `window.__fpShell`.
+`FP_SHELL_INERT=1 ./tests/run.sh` runs every native boot that names no shell as `'inert'`: per-spec
+results must equal the classic run's. A spec that builds its own shell in `opts.init` (sets
+`window.__FP_SHELL`, a TrovoShell or a TrovoStore itself, as 120 and 121 do) names `shell: 'none'`, so
+the inert run never paints the harness's flag and mock over its own. Spec 118 drives the bridge
+(`window.FPScreens.call`); `tests/golden/check.sh` holds the chat's HTML, the page's coach models and
+FPCore's fixtures together.
+
+**Both at once.** `STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh` is build 60 as it ships: every
+document starts with the native copy in shadow, and every native boot runs under the shell's flag
+with no native screen. `boot({store: 'shadow', shell: 'inert'})` does the same for one boot (the
+store's scripts first, then the seed and the native mock, `opts.init`, and the shell's flag and
+TrovoShell last). CI runs classic, shadow, inert and both at once as four jobs.
 
 ## The native store on a simulator
 

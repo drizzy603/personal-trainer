@@ -13,6 +13,8 @@
 //   kt_dev_nav still works without it.
 // - The privacy copy is true with or without a native copy.
 // The watch drain's re-send to the store before the wrist's queue is cleared is spec 120's.
+// Every native boot names shell: 'none': each builds the shell it means in opts.init (the flag or none, TrovoStore,
+// TrovoShell), and FP_SHELL_INERT=1 must not paint the harness's inert flag and TrovoShell mock over it.
 const { boot, assert, run } = require('../lib/harness');
 
 // One case at a time: each starts its own browser.
@@ -117,13 +119,13 @@ serial('the Storage row: none in the browser or without the shell\'s flag, the p
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
   // A shell before 60: native, no TrovoStore.
-  app = await boot({ native: true });
+  app = await boot({ native: true, shell: 'none' });
   try {
     await ev(app, () => switchTab('settings'));
     assert(await rowText(app) === null, 'no row on a shell without the plugin');
   } finally { await app.close(); }
   // The plugin but no flag: nothing changes, and the plugin is never asked.
-  app = await boot({ native: true, init: init({ status: inStep() }) });
+  app = await boot({ native: true, shell: 'none', init: init({ status: inStep() }) });
   try {
     await ev(app, () => switchTab('settings'));
     await settle(app, 200);
@@ -131,7 +133,7 @@ serial('the Storage row: none in the browser or without the shell\'s flag, the p
     assert(!out.row && out.calls === 0 && !out.sheet, 'without the flag: no row, no sheet, no call: ' + JSON.stringify(out));
   } finally { await app.close(); }
   // Both: the row reads the mocked status.
-  app = await boot({ native: true, init: init({ status: inStep(), flag: FLAG }) });
+  app = await boot({ native: true, shell: 'none', init: init({ status: inStep(), flag: FLAG }) });
   try {
     await ev(app, () => switchTab('settings'));
     await app.page.waitForFunction(() => /In step/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
@@ -149,7 +151,7 @@ serial('the Storage row: none in the browser or without the shell\'s flag, the p
 });
 
 serial('the Storage sheet: counts from the status, Put back after a preview, the switch, Export a copy, the TestFlight test', async () => {
-  let app = await boot({ native: true, init: init({ status: lagged(), rows: ROWS, plan: PLAN, flag: FLAG }) });
+  let app = await boot({ native: true, shell: 'none', init: init({ status: lagged(), rows: ROWS, plan: PLAN, flag: FLAG }) });
   try {
     await ev(app, () => switchTab('settings'));
     await app.page.waitForFunction(() => /this iPhone lost/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
@@ -222,7 +224,7 @@ serial('the Storage sheet: counts from the status, Put back after a preview, the
   const st = inStep(); st.testKill = true;
   st.testQuit = { armedAt: NOW - 120000, firedAt: NOW - 60000, key: 'kt_runner_draft', op: 'w', shell: '60', page: '20261010-3',
     after: { at: NOW - 30000, rule: 6, label: 'lag', wouldRepair: ['kt_runner_draft'], adopted: {} } };
-  app = await boot({ native: true, init: init({ status: st, flag: FLAG, testKill: true }) });
+  app = await boot({ native: true, shell: 'none', init: init({ status: st, flag: FLAG, testKill: true }) });
   try {
     await ev(app, () => { switchTab('settings'); openStorageSheet(); });
     await app.page.waitForFunction(() => /Test: quit after next save/.test((document.getElementById('fpStoreBody') || {}).textContent || ''), null, { timeout: 3000 });
@@ -252,7 +254,7 @@ serial('a value the copy held as none goes back as a removal: the row says Remov
     { id: 10, at: NOW - 90000, key: 'kt_routine', why: 'older build', h: '900:e:f', hnew: '880:g:h', units: 900 },
   ];
   const removal = { items: [{ key: 'kt_streak_days', outcome: 'put back', origin: 'conflict:12', removes: true }], count: 1 };
-  const app = await boot({ native: true, init: init({ status: inStep(), rows, plan: removal, flag: FLAG }) });
+  const app = await boot({ native: true, shell: 'none', init: init({ status: inStep(), rows, plan: removal, flag: FLAG }) });
   try {
     await ev(app, () => { switchTab('settings'); openStorageSheet(); });
     await app.page.waitForFunction(() => !!document.querySelector('#fpStoreBody button[data-id="12"]'), null, { timeout: 3000 });
@@ -323,7 +325,7 @@ serial('everything a start lost goes back in one Put back, and the row says Put 
     { key: 'kt_runner_draft', outcome: 'put back', origin: 'conflict:22', removes: true },
     { key: 'kt_sessions', outcome: 'nothing to add', added: 0, origin: 'conflict:23' },
     { key: 'kt_weights', outcome: 'put back', origin: 'conflict:24' }], count: 3 };
-  const app = await boot({ native: true, init: init({ status: partial, rows, plan, flag: FLAG }) });
+  const app = await boot({ native: true, shell: 'none', init: init({ status: partial, rows, plan, flag: FLAG }) });
   try {
     await ev(app, () => switchTab('settings'));
     await app.page.waitForFunction(() => /Put back/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
@@ -401,7 +403,7 @@ serial('the row says how the copy stands now: a wipe this start, an offer waitin
   // Wiped at an earlier start (the store's last record still says rule 3), then switched off: the switch is the news.
   const offAfterWipe = JSON.parse(JSON.stringify(switchedOff)); offAfterWipe.store.wipeOffer = wipe;
   offAfterWipe.store.lastHello = { at: NOW - 86400000, boot: 2, rule: 3, label: 'wiped', adopted: {}, wouldRepair: [] };
-  const app = await boot({ native: true, init: init({ status: offerWaits, flag: FLAG }) });
+  const app = await boot({ native: true, shell: 'none', init: init({ status: offerWaits, flag: FLAG }) });
   try {
     const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [wipedNow, offerWaits, without, switchedOff, closed, unreadable, offAfterWipe]);
     assert(lines[0] === 'This iPhone’s data was wiped · the copy kept 73 items', 'the wiped start: ' + lines[0]);
@@ -427,7 +429,7 @@ serial('the row says how the copy stands now: a wipe this start, an offer waitin
 });
 
 serial('the OTA confirm is sent when the first render is the coach route, once', async () => {
-  const app = await boot({ native: true, seed: { kt_ota_attempt: '20200101-1' }, init: init({ ota: true, coachFirst: true }) });
+  const app = await boot({ native: true, shell: 'none', seed: { kt_ota_attempt: '20200101-1' }, init: init({ ota: true, coachFirst: true }) });
   try {
     await settle(app, 400);
     const out = await ev(app, () => ({ route: _lastRenderedRoute, tab: currentTab, events: __ts.events, confirmed: _otaConfirmed,
@@ -446,14 +448,14 @@ serial('the OTA confirm is sent when the first render is the coach route, once',
 
 serial('the first paint confirms as before; bootDone reaches TrovoShell at the end of boot only with the flag', async () => {
   // No flag (every shell before 60): the confirm from the first paint, before the end of boot, and no bootDone.
-  let app = await boot({ native: true, init: init({ ota: true, shellPlugin: true }) });
+  let app = await boot({ native: true, shell: 'none', init: init({ ota: true, shellPlugin: true }) });
   try {
     await settle(app, 300);
     const ev1 = await ev(app, () => __ts.events);
     assert(ev1.length === 1 && ev1[0][0] === 'confirm' && ev1[0][1] === 'undefined', 'one confirm from the first paint, nothing else: ' + JSON.stringify(ev1));
   } finally { await app.close(); }
   // The flag: the same confirm, and bootDone with the page's build once boot is over.
-  app = await boot({ native: true, init: init({ ota: true, shellPlugin: true, flag: FLAG }) });
+  app = await boot({ native: true, shell: 'none', init: init({ ota: true, shellPlugin: true, flag: FLAG }) });
   try {
     await settle(app, 300);
     const out = await ev(app, () => ({ events: __ts.events, build: APP_BUILD }));
@@ -465,7 +467,7 @@ serial('the first paint confirms as before; bootDone reaches TrovoShell at the e
 });
 
 serial('the tools\' launch arguments come in the flag: dev.nav once per launch, dev.theme painted and never saved', async () => {
-  let app = await boot({ native: true, init: init({ flag: Object.assign({}, FLAG, { dev: { nav: 'settings', theme: 'dark' } }), icon: true }) });
+  let app = await boot({ native: true, shell: 'none', init: init({ flag: Object.assign({}, FLAG, { dev: { nav: 'settings', theme: 'dark' } }), icon: true }) });
   try {
     await app.page.waitForFunction(() => currentTab === 'settings', null, { timeout: 3000 });
     const out = await ev(app, () => ({ room: document.documentElement.getAttribute('data-room'), theme: currentTheme, saved: localStorage.getItem('kt_theme'),
@@ -481,7 +483,7 @@ serial('the tools\' launch arguments come in the flag: dev.nav once per launch, 
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
   // settings/storage-sheet opens the Storage sheet (test-native.sh shoots it).
-  app = await boot({ native: true, init: init({ status: inStep(), flag: Object.assign({}, FLAG, { dev: { nav: 'settings/storage-sheet' } }) }) });
+  app = await boot({ native: true, shell: 'none', init: init({ status: inStep(), flag: Object.assign({}, FLAG, { dev: { nav: 'settings/storage-sheet' } }) }) });
   try {
     await app.page.waitForFunction(() => /In step/.test((document.getElementById('fpStoreHead') || {}).textContent || ''), null, { timeout: 3000 });
     assert(await ev(app, () => currentTab) === 'settings', 'the route lands in Settings with the sheet open');
