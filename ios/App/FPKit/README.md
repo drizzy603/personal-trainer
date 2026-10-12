@@ -73,7 +73,7 @@ link from model text: runs go in verbatim with explicit faces, never through
 | `Coach/CoachMessageViews.swift` | The column's parts in the web's order and rhythm: day dividers, seeds, the owner's bubble, replies, notes, Try again / Open Settings, tool pills, PLAN CHANGES, Thinking; what VoiceOver reads for a reply (`ReplySpeech`: one stop, its type first, a table cell by cell, metrics and the takeaway in words) |
 | `Coach/CoachBlockViews.swift` | md()'s blocks (paragraphs, lists with sub-items and numbered starts, headings, rules, tables in a horizontal scroller) and the `%%` sections (metric cards, the takeaway, chips), with the web's collapsing margins |
 | `Coach/CoachInline.swift` | Runs to text: bold, italic and code to their faces, never a link |
-| `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field that grows to four whole lines, then scrolls inside them; 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
+| `Coach/CoachComposer.swift`, `Coach/CoachPhoto.swift` | One field that grows to four whole lines, then scrolls inside them, made anew whenever its face changes size (an empty one kept the line height it was made at); 44 pt photo button and Send (disabled with nothing to send, Stop while a reply is in flight); PhotosPicker, the photo prepared as spec 20 says (1568 px long edge, JPEG 0.82) |
 | `Coach/CoachEmptyState.swift`, `Coach/CoachOverlays.swift`, `Coach/CoachLayout.swift` | The empty chat; forwarded toasts and confirms; the flow and table layouts, `HeightCap` (the composer box: as tall as its draft up to four lines, never taller, where a frame with a max height grows to it), the page's icons, and `PressAreaButton` (a control drawn smaller than 44 pt, pressed as 44: the press shape goes inside the Button's label, never around the finished Button) |
 
 FPUITests (`xcodebuild test` on an iOS simulator) read the coach fixtures from
@@ -241,7 +241,8 @@ reply (the probe moves the conversation as a finger's drag does, between the dra
 chat's own Send: a press that fell back to the store's send skipped what the chat does on the owner's action), Stop
 while scrolled to the top bringing it into view with the question and the note that says it stopped, a reader who scrolls up while a reply is on its way keeping their place, a third card left for the next shots; every press through the control's own accessibility action), `combos` (`coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark` x `content_size
 large|extra-extra-large`: native, over the page, drawn in the room's appearance whatever the phone says, at the phone's
-text size; the phone's settings put back) and `restore` (only the values that changed put back, the page reloaded, the
+text size; the phone's settings put back), `textoff` (the app's Larger Text off and the phone at extra-extra-large: the empty
+composer as tall as at Large) and `restore` (only the values that changed put back, the page reloaded, the
 chat, programme, weights, key and room compared). Every launch takes `-fpIgnoreMarker`. Shots in
 `screenshots/out/native/` (`coach-chat-*`, `keys-*`, `live-*`).
 

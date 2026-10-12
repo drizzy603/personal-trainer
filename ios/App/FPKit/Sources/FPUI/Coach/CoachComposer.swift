@@ -145,6 +145,10 @@ struct CoachComposer: View {
                     .lineSpacing(max(0, line - font.lineHeight))
                     .focused(focused)
                     .accessibilityLabel(composer.a11y)
+                    // a new field whenever its face changes size (the phone's text size, the app's Larger Text): an
+                    // empty field kept the line height of the size it was made at (22 pt against 18 at Large, the
+                    // placeholder riding high) until a key was typed
+                    .id(font.pointSize)
             }
             .padding(.vertical, (t.px(44) - font.lineHeight) / 2)
             .padding(.leading, lead)

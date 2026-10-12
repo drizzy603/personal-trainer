@@ -155,6 +155,7 @@ origin): the echo, Thinking, the reply with a tool pill and PLAN CHANGES, Undo
 through the forwarded confirm, Keep changes, Send and Stop while scrolled to the
 top each bringing the end into view, a reader scrolled up keeping their place; then
 `coach/chat` by launch argument in both rooms x `simctl ui appearance light|dark`
-x `content_size large|extra-extra-large`. It puts back what it changed in the container and the
+x `content_size large|extra-extra-large`; the app's Larger Text off keeping the empty composer at its Large
+height. It puts back what it changed in the container and the
 phone's settings. `python3 tools/coach-stub.py --script FILE` serves the stand-in
 on its own (one JSON line per request).

@@ -31,6 +31,8 @@ Scenarios (decision.md section 9, task C7), in this order:
            text size (simctl ui content_size large|extra-extra-large), on the live turns: the chat is native and over
            the page, in its room whatever the phone says (Heavyweight light, Lime dark), at the phone's text size; the
            phone's settings go back
+  textoff  the phone at extra-extra-large and the app's Larger Text turned off with the chat up: the empty composer is as
+           tall as at Large (the chat is pinned to Large, its field too), and the phone's setting goes back
   restore  what prepare kept goes back (only the values that changed), the page reloads on it, the composer is empty
 Exit 1 when any check fails.
 """
@@ -518,6 +520,39 @@ def scen_live(c):
     c.note(s, ev)
 
 
+def scen_textoff(c):
+    """Review 4 (chat low): with a large system text size, turning the app's Larger Text off (kt_dyn_type '0') while the
+    chat is up pinned the chat to Large but not its field: the empty composer kept the phone's size (22 pt against 18
+    at Large), its placeholder riding high until a key."""
+    s = 'textoff'
+    sim = c.sim
+    was_size = sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', check=False).strip()
+    on = "localStorage.removeItem('kt_dyn_type'); render(); return localStorage.getItem('kt_dyn_type');"
+    off = "localStorage.setItem('kt_dyn_type', '0'); render(); return localStorage.getItem('kt_dyn_type');"
+    try:
+        sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', 'large')
+        ev = probe(sim, 'textoff-l', [[wait_coach('up'), {'op': 'draft', 'text': ''}, js('on', on), wait(1200), state('large')]],
+                   args=['-devNav', 'coach/chat'], out=c.opts.out)
+        large = rect(coach(ev.state('large')).get('composerFrame') or '')
+        c.note(s, ev)
+        sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', 'extra-extra-large')
+        ev = probe(sim, 'textoff-xxl', [[wait_coach('up'), {'op': 'draft', 'text': ''}, js('on', on), wait(1200), state('xxl on'),
+                                         js('off', off), wait(1500), state('xxl off'), mark('textoff-xxl-off'), js('on again', on), wait(600)]],
+                   args=['-devNav', 'coach/chat'], out=c.opts.out)
+        xon, xoff = ev.state('xxl on'), ev.state('xxl off')
+        c.note(s, ev)
+    finally:
+        if was_size and was_size not in ('unknown', 'unsupported'):
+            sim.sh('xcrun', 'simctl', 'ui', sim.udid, 'content_size', was_size, check=False)
+    hon = rect(coach(xon).get('composerFrame') or '')
+    hoff = rect(coach(xoff).get('composerFrame') or '')
+    got = {'large': large and large[3], 'xxl on': hon and hon[3], 'xxl off': hoff and hoff[3],
+           'dynTypeOn': (coach(xon).get('dynTypeOn'), coach(xoff).get('dynTypeOn'))}
+    c.check(s, 'Larger Text turned off with the chat up at extra-extra-large: the empty composer is as tall as at Large (its field pinned too)',
+            bool(large and hoff) and abs(hoff[3] - large[3]) < 0.5 and coach(xoff).get('dynTypeOn') is False, got)
+    c.rep.fact(s, 'the phone is back to %s' % was_size)
+
+
 RESTORE_JS = U16 + r"""
 var snap = {}, now = [], changed = [], removed = [];
 Object.keys(args.snap).forEach(function (k) { snap[unU16(k)] = unU16(args.snap[k]); });
@@ -551,7 +586,7 @@ def scen_restore(c):
 
 
 # combos after live: the shots draw the chat with the live turns and a card waiting (restore takes them back)
-ALL = ['prepare', 'smoke', 'keys', 'live', 'combos', 'restore']
+ALL = ['prepare', 'smoke', 'keys', 'live', 'combos', 'textoff', 'restore']
 
 
 def main():
