@@ -21020,6 +21020,9 @@ function scrollChatToReply(){
 // the end), an error in its own words, and 'Stopped'. Cleared first so the same words announce again.
 function _coachSay(t){
   _fpSpeak(t);   // the native chat announces it (once per id)
+  // Under the native chat the page says nothing itself: the web view is only hidden from VoiceOver there, and a live
+  // region it still voiced would say every line twice.
+  if(_fp.shown.coach) return;
   var el=document.getElementById('coach-live'); if(!el) return;
   el.textContent='';
   setTimeout(function(){ el.textContent=String(t||''); }, 50);

@@ -1241,6 +1241,29 @@ serial('C3 with S6: the shell\'s flag without TrovoShell (build 60 before the na
   } finally { await app.close(); }
 });
 
+// Review 4 (chat low): under the native chat _coachSay still wrote #coach-live while the native chat announced the same
+// line, and the web view is only hidden from VoiceOver there, so each line could be heard twice.
+serial('C3: under the native chat the page\'s live region stays quiet (the native chat speaks each line once); the web chat speaks as before', async () => {
+  const app = await shellBoot('coach');
+  try {
+    const out = await app.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30); await __open();
+      const live = () => document.getElementById('coach-live').textContent;
+      _coachSay('Coach is thinking'); await __wait(150);
+      const r = { shown: !!_fp.shown.coach, native: live(), speech: _fp.speech && _fp.speech.text };
+      FP_NATIVE = false; render(); await __wait(30);   // the web chat again
+      _coachSay('Stopped'); await __wait(150);
+      r.webShown = !!_fp.shown.coach; r.web = live();
+      FP_NATIVE = true; render(); await __wait(30);
+      return r;
+    }, IN_PAGE);
+    assert(out.shown && out.native === '' && out.speech === 'Coach is thinking', 'under the native chat the page is quiet and the native chat speaks: ' + JSON.stringify(out));
+    assert(!out.webShown && out.web === 'Stopped', 'the web chat speaks through its live region: ' + JSON.stringify(out));
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 serial('C3: the coach models the page builds are FPCore\'s fixtures (tests/golden/dump-coach.js)', async () => {
   const bad = await require('../golden/dump-coach').drift();
   assert(bad.length === 0, 'the page builds different coach models for ' + bad.join(', ') + ': run node tests/golden/dump-coach.js, then swift test');
