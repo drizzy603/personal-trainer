@@ -334,6 +334,28 @@ public struct Message: Equatable, Sendable, Identifiable {
     /// The page's VoiceOver text for it (`_coachSpeech`), when it sends one.
     public var a11y: String?
 
+    /// A message Swift draws before the page has it: the native chat's echo of the owner's words on their way to the
+    /// page (plan task C7, FPUI CoachStore), replaced by the page's own message once a model holds it. Every field not
+    /// given takes the value a message with no such field decodes to.
+    public init(id: String, role: Role, at: Date? = nil, day: String? = nil, body: MessageBody, image: MessageImage? = nil) {
+        self.id = id
+        self.role = role
+        self.at = at
+        self.day = day
+        seed = nil
+        local = false
+        error = false
+        stopped = false
+        errorKind = nil
+        self.image = image
+        eyebrow = nil
+        self.body = body
+        chip = nil
+        pills = []
+        ledger = nil
+        a11y = nil
+    }
+
     init(json: JSONValue) {
         id = json["id"]?.string ?? ""
         role = Role(json["role"]?.string)

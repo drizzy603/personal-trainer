@@ -41,6 +41,8 @@ final class ScreenHostTests: XCTestCase {
     private var stand: StandInPresenting!
     private var folder: URL!
     private var sent: [Intent] = []
+    private var asked: [Intent] = []
+    private var answers: [(PageLink.Outcome) -> Void] = []
     private var covered: [Bool] = []
     private var owner: [String] = []
 
@@ -53,16 +55,23 @@ final class ScreenHostTests: XCTestCase {
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
         window.rootViewController = root
         window.makeKeyAndVisible()
-        host = ScreenHost(presenter: root, webView: webView, shellBuild: "60", pageBuild: "P1", markerFolder: folder)
+        host = ScreenHost(presenter: root, webView: webView, shellBuild: "60", pageBuild: "P1", markerFolder: folder,
+                          coach: CoachStore(draft: CoachComposerDraft(defaults: nil)))
         stand = StandInPresenting()
         host.presenting = stand
         var hooks = ScreenHost.Hooks()
         hooks.send = { [weak self] in self?.sent.append($0) }
+        hooks.ask = { [weak self] intent, done in
+            self?.asked.append(intent)
+            self?.answers.append(done)
+        }
         hooks.willCover = { [weak self] in self?.covered.append(true) }
         hooks.didUncover = { [weak self] in self?.covered.append(false) }
         hooks.userDismissed = { [weak self] in self?.owner.append($0) }
         host.hooks = hooks
         sent = []
+        asked = []
+        answers = []
         covered = []
         owner = []
     }
@@ -101,8 +110,13 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(p.overrideUserInterfaceStyle, .light, "Heavyweight is paper: light whatever the phone says")
         XCTAssertEqual(p.preferredStatusBarStyle, .darkContent)
         XCTAssertEqual(ScreenMarkers(folder: folder).lines(), ["presenting coach@P1 shell 60"])
-        // a model in the other room turns the screen dark
-        host.update("coach", model: try model("lime-chat"))
+        // a newer model in the other room turns the screen dark (an older or equal rev of the document is stale: the
+        // chat's store keeps the one it draws, and so does the screen)
+        var lime = try model("lime-chat")
+        host.update("coach", model: lime)
+        XCTAssertEqual(p.overrideUserInterfaceStyle, .light, "rev 42 again: stale")
+        lime.rev = 43
+        host.update("coach", model: lime)
         XCTAssertEqual(p.overrideUserInterfaceStyle, .dark)
         XCTAssertEqual(p.preferredStatusBarStyle, .lightContent)
         host.dismiss("coach")
@@ -257,14 +271,40 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertNil(host.shownToast)
     }
 
-    func testAnUnsentMessageGoesBackInTheComposerOnce() async throws {
+    /// The chat's store lives with the host (plan task C7): its Back is the host's, its intents and their outcomes go
+    /// through `ask`; a reload with the chat up keeps it drawn until the next document's model, and a message that never
+    /// reached the page comes back in the composer once, the chat still up, its toast in the host's window.
+    func testTheChatsStoreFollowsAReloadWithTheChatUp() async throws {
         host.update("coach", model: try model())
         host.present("coach")
         try await settle()
-        host.restoreDraft("coach", text: "Never sent")
+        host.coach.draft.text = "Never sent"
+        XCTAssertTrue(host.coach.sendComposer(nonce: "n1"))
+        XCTAssertEqual(asked, [.coachSend(text: "Never sent", image: nil, usePending: nil, nonce: "n1")])
+        XCTAssertEqual(host.coach.display?.messages.last?.id, "echo-n1")
+        // the page's document goes with the send in it
+        answers.removeFirst()(.documentGone)
+        host.forgetModels(exceptUp: true)
+        XCTAssertNotNil(host.model("coach"), "up: drawn until the next document's resync")
+        XCTAssertEqual(host.restored, [])
+        var next = try model()
+        next.boot = "b-next"
+        next.rev = 1
+        host.update("coach", model: next)
+        XCTAssertEqual(host.model("coach")?.boot, "b-next")
         XCTAssertEqual(host.restored, ["Never sent"])
-        host.restoreDraft("coach", text: "")
-        XCTAssertEqual(host.restored, ["Never sent"], "nothing to put back for no words")
+        XCTAssertEqual(host.coach.draft.text, "Never sent", "back in the composer, never resent")
+        XCTAssertEqual(asked.filter { $0.name == "coach.send" }.count, 1)
+        XCTAssertNotNil(up, "the chat stayed up")
+        // the chat's Back is the host's own (latched), never an intent of the chat's
+        host.coach.handle(.coachBack)
+        try await settle()
+        XCTAssertNil(up)
+        XCTAssertEqual(owner, ["coach"])
+        // a model of a document gone while the chat is down goes with it: no present until the next document's
+        host.forgetModels(exceptUp: true)
+        XCTAssertNil(host.model("coach"))
+        XCTAssertFalse(host.present("coach"))
     }
 
     func testMarkersFoundAtLaunchAreRead() throws {

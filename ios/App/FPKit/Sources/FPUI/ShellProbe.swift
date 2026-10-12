@@ -18,9 +18,13 @@ import FPCore
 /// `state {label}`, `mark {label, hold}` (the keyboard log starts again; nothing moves for `hold` ms, 1500 by default,
 /// while the host screenshots), `killWebContent`, `reload`, `back` (the chat's Back), `edgeBack {progress, finish}`
 /// (the edge pan without a finger), `confirm {yes}` and `undo` (taps on the toast window), `blockPage {ms}` (the page's
-/// main thread busy), `send {text, nonce}` (the composer's Send), `webResponder` (the web view's content view takes
-/// first responder, as a tap into the page does), `nativeFocus` (the native composer takes it), `hook {name, ...}` (one
-/// of `ShellBridge.debugHooks`, set by the App), `done`.
+/// main thread busy), `send {text, nonce}` (these words through the composer's Send), `webResponder` (the web view's
+/// content view takes first responder, as a tap into the page does), `nativeFocus` (the native composer takes it),
+/// `hook {name, ...}` (one of `ShellBridge.debugHooks`, set by the App), and for the live chat (plan task C7): `type
+/// {text}` (keys on the native composer), `composerSend {nonce}` (Send on what the composer holds), `draft {text}` (the
+/// composer's words set), `press {label}` / `press {ledger: undo|keep}` (a control of the chat, by its accessible name,
+/// or the newest PLAN CHANGES card's button), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
+/// a toast, up, down), `resign` (the native composer gives the keys back), `done`.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?
@@ -258,10 +262,54 @@ final class ShellProbe {
             b?.webView?.evaluateJavaScript("(function(){ var e = Date.now() + \(ms); while (Date.now() < e) {} })(); 0", completionHandler: nil)
             next()
         case "send":
+            // the composer's Send with these words (CoachStore: echoed, followed, put back if they never arrive)
             let text = step["text"] as? String ?? "probe"
             let nonce = step["nonce"] as? String ?? Intent.nonce()
-            event("send", ["text": text, "nonce": nonce])
-            b?.screens.hooks.send(.coachSend(text: text, image: nil, usePending: nil, nonce: nonce))
+            var sent = false
+            if let store = b?.screens.coach {
+                store.draft.text = text
+                sent = store.sendComposer(nonce: nonce)
+            }
+            event("send", ["text": text, "nonce": nonce, "sent": sent])
+            next()
+        case "type":
+            // keys on the native composer: through the text view (UIKit's text input, as the keyboard types) when it
+            // has the keys, else into the composer's draft
+            let text = step["text"] as? String ?? ""
+            let field = b?.screens.firstTextInput()
+            if let field, field.isFirstResponder, let input = field as? UIKeyInput {
+                input.insertText(text)
+                event("type", ["via": "keys", "text": text])
+            } else {
+                b?.screens.coach.draft.text += text
+                event("type", ["via": "draft", "text": text])
+            }
+            next()
+        case "composerSend":
+            // the composer's Send on what it holds (the chat's button calls the same)
+            let nonce = step["nonce"] as? String ?? Intent.nonce()
+            let sent = b?.screens.coach.sendComposer(nonce: nonce) ?? false
+            event("composerSend", ["nonce": nonce, "sent": sent, "draft": b?.screens.coach.draft.text ?? NSNull()])
+            next()
+        case "draft":
+            b?.screens.coach.draft.text = step["text"] as? String ?? ""
+            event("draft", ["text": b?.screens.coach.draft.text ?? NSNull()])
+            next()
+        case "press":
+            press(step, b) { [weak self] fields in
+                self?.event("press", fields.merging(["label": label]) { a, _ in a })
+                next()
+            }
+        case "waitCoach":
+            let until = step["until"] as? String ?? "idle"
+            let ms = (step["ms"] as? NSNumber)?.doubleValue ?? 8000
+            waitCoach(until, deadline: Date().addingTimeInterval(ms / 1000), started: Date()) { [weak self] met, waited in
+                self?.event("waitCoach", ["label": label, "until": until, "met": met, "ms": waited])
+                next()
+            }
+        case "resign":
+            let ok = b?.screens.firstTextInput()?.resignFirstResponder() ?? false
+            event("resign", ["ok": ok])
             next()
         case "webResponder":
             // What the owner's tap into the page does first: the web view's content view takes first responder (with
@@ -290,6 +338,91 @@ final class ShellProbe {
         default:
             event("unknownStep", ["op": op])
             next()
+        }
+    }
+
+    // MARK: Presses and waits on the live chat (plan task C7)
+
+    /// A press on a control of the chat that is up, as the owner's finger would make it: first the control's own
+    /// accessibility element by its label (`accessibilityActivate`, which runs the control's action, as VoiceOver's
+    /// double tap does), else what that control sends, built from the model as the control builds it and sent through
+    /// the chat's store; `via` says which.
+    /// - `{label}`: a control by its accessible name ("Send message", "Back", "Stop the reply", the model switch's name);
+    /// - `{ledger: "undo"|"keep"}`: the newest PLAN CHANGES card's Undo, or its Keep changes (or Got it).
+    private func press(_ step: [String: Any], _ b: ShellBridge.Binding?, done: @escaping ([String: Any]) -> Void) {
+        guard let screens = b?.screens else { return done(["pressed": false, "why": "no binding"]) }
+        let store = screens.coach
+        guard let m = store.display, screens.isUp("coach") else { return done(["pressed": false, "why": "the chat is not up"]) }
+        var label = step["label"] as? String ?? ""
+        var fallback: (() -> Bool)?
+        if let which = step["ledger"] as? String {
+            let kind = ModelAction.Kind(which)
+            guard let msg = m.messages.last(where: { $0.ledger != nil }), let l = msg.ledger,
+                  let a = l.actions.first(where: { $0.kind == kind }), let intent = a.intent(messageID: msg.id) else {
+                return done(["pressed": false, "why": "no card offers \(which)"])
+            }
+            label = a.label
+            fallback = { store.handle(intent); return true }
+        } else {
+            switch label {
+            case "Send message": fallback = { store.sendComposer() }
+            case "Back": fallback = { store.handle(.coachBack); return true }
+            case "Stop the reply": fallback = { store.handle(.coachStop); return true }
+            default:
+                if let sw = m.header.model, sw.a11y == label || sw.label == label { fallback = { store.handle(sw.intent); return true } }
+            }
+        }
+        if let root = screens.hostView("coach"), let el = Self.axFind(label, in: root), el.accessibilityActivate() {
+            return done(["pressed": true, "via": "accessibility", "control": label])
+        }
+        guard let fallback else { return done(["pressed": false, "why": "no control named \(label)"]) }
+        done(["pressed": fallback(), "via": "model", "control": label])
+    }
+
+    /// The accessibility element with this label under `root` (SwiftUI's own elements of the hosting view included).
+    static func axFind(_ label: String, in root: NSObject, depth: Int = 0) -> NSObject? {
+        guard depth < 48 else { return nil }
+        if root.isAccessibilityElement, root.accessibilityLabel == label { return root }
+        var kids: [Any] = []
+        if let els = root.accessibilityElements {
+            kids += els
+        } else {
+            let n = root.accessibilityElementCount()
+            if n > 0, n != NSNotFound { for i in 0..<n { if let e = root.accessibilityElement(at: i) { kids.append(e) } } }
+        }
+        if let v = root as? UIView { kids += v.subviews }
+        for k in kids {
+            if let o = k as? NSObject, o !== root, let f = axFind(label, in: o, depth: depth + 1) { return f }
+        }
+        return nil
+    }
+
+    /// Waits until the chat says `until` (polling every 150 ms) or the deadline: "idle" (no reply in flight, nothing on
+    /// its way), "reply" (that, and the newest message is the coach's reply), "ledger" (that reply carries PLAN
+    /// CHANGES), "noLedger" (no card shows), "confirm" / "toast" (one shows in the toast window), "up" / "down".
+    private func waitCoach(_ until: String, deadline: Date, started: Date, _ done: @escaping (Bool, Int) -> Void) {
+        let met = coachSays(until)
+        let waited = Int(Date().timeIntervalSince(started) * 1000)
+        if met || Date() >= deadline { return done(met, waited) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            MainActor.assumeIsolated { self.waitCoach(until, deadline: deadline, started: started, done) }
+        }
+    }
+
+    private func coachSays(_ until: String) -> Bool {
+        guard let screens = bridge.binding?.screens else { return false }
+        let store = screens.coach
+        let idle = store.display.map { !$0.loading } == true && store.echoes.isEmpty
+        switch until {
+        case "idle": return idle
+        case "reply": return idle && store.display?.messages.last?.look == .reply
+        case "ledger": return idle && store.display?.messages.last(where: { $0.role != .user })?.ledger != nil
+        case "noLedger": return idle && store.display?.messages.contains(where: { $0.ledger != nil }) == false
+        case "confirm": return screens.openConfirm != nil
+        case "toast": return screens.shownToast != nil
+        case "up": return screens.isUp("coach")
+        case "down": return !screens.isUp("coach")
+        default: return false
         }
     }
 

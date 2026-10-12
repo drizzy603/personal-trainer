@@ -147,6 +147,78 @@ final class ShellBridgeTests: XCTestCase {
         if case .success = await message(b, "present", ["screen": "coach"]) { XCTFail("a present after it is refused") }
     }
 
+    /// A page that holds coach.send unanswered and answers coach.snapshot with `window.__snap` (the model JSON a test
+    /// puts there).
+    static let reloadPage = """
+        <!doctype html><meta charset="utf-8"><title>fp</title><script>
+        window.__got = [];
+        window.FPScreens = { v: 1, call: function (name, args) {
+          window.__got.push(name + (args && (args.nonce || args.id) ? ':' + (args.nonce || args.id) : ''));
+          if (name === 'coach.send') return new Promise(function () {});
+          if (name === 'coach.snapshot') return Promise.resolve(window.__snap ? { ok: true, json: window.__snap } : { ok: false, error: 'none' });
+          return Promise.resolve({ ok: true });
+        } };
+        </script>
+        """
+
+    private func loadReloadPage(marking old: Bool) async throws {
+        if old { _ = try? await webView.evaluateJavaScript("window.__fpOld = true; 0") }
+        webView.loadHTMLString(Self.reloadPage, baseURL: URL(string: "https://fp.test/"))
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            let ready = "typeof window.FPScreens === 'object' && typeof window.__fpOld === 'undefined'"
+            if !webView.isLoading, (try? await webView.evaluateJavaScript(ready)) as? Bool == true { return }
+        }
+        XCTFail("the stand-in page did not load")
+    }
+
+    /// The live chat across a reload under it (plan task C7): the open confirm closes as stale, the message in flight ends
+    /// with its document and is never sent again, the next document's hello takes the chat over and its snapshot is drawn
+    /// (a new boot, whatever its rev), and the words the page never got are back in the composer.
+    func testAReloadUnderTheLiveChatResyncsClosesTheConfirmAndPutsTheMessageBack() async throws {
+        let b = bridge()
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        let screens = try XCTUnwrap(b.binding?.screens)
+        screens.presenting = stand
+        try await loadReloadPage(marking: false)
+        _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
+        _ = await message(b, "model", ["screen": "coach", "rev": 5, "json": try modelJSON(boot: "b1", rev: 5)])
+        _ = try await message(b, "present", ["screen": "coach"]).get()
+        let up = Date().addingTimeInterval(4)
+        while stand.shown.last == nil, Date() < up { try await Task.sleep(nanoseconds: 30_000_000) }
+        _ = try await message(b, "confirm", ["id": "c1.b1", "title": "Restore previous programme?", "confirm": "Restore"]).get()
+        XCTAssertEqual(screens.openConfirm, "c1.b1")
+        screens.coach.draft.text = "Lost in the reload"
+        XCTAssertTrue(screens.coach.sendComposer(nonce: "n-reload"))
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let inPage = ((try? await webView.evaluateJavaScript("window.__got")) as? [String]) ?? []
+        XCTAssertEqual(inPage.filter { $0.hasPrefix("coach.") }, ["coach.send:n-reload"], "in the page, unanswered: \(inPage)")
+        // the reload: a new document under the chat
+        try await loadReloadPage(marking: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(screens.openConfirm, "the open confirm closed as stale")
+        XCTAssertEqual(screens.coach.echoes.map(\.phase), [.unsure], "its send ended with its document; the next model decides")
+        _ = try await webView.evaluateJavaScript("window.__snap = \(Self.jsString(try modelJSON(boot: "b2", rev: 1))); 0")
+        let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
+        XCTAssertEqual(hello["up"] as? [String], ["coach"], "the next document takes the chat over")
+        let drawn = Date().addingTimeInterval(4)
+        while screens.coach.model?.boot != "b2", Date() < drawn { try await Task.sleep(nanoseconds: 30_000_000) }
+        XCTAssertEqual(screens.coach.model?.boot, "b2", "the new boot's snapshot is drawn though its rev is lower")
+        XCTAssertEqual(screens.coach.model?.rev, 1)
+        XCTAssertEqual(screens.coach.restored, ["Lost in the reload"])
+        XCTAssertEqual(screens.coach.draft.text, "Lost in the reload")
+        XCTAssertNotNil(stand.shown.last, "the chat stayed up all along")
+        let got = ((try? await webView.evaluateJavaScript("window.__got")) as? [String]) ?? []
+        XCTAssertFalse(got.contains { $0.hasPrefix("coach.send") }, "never sent again: \(got)")
+        XCTAssertTrue(got.contains("coach.snapshot"), "resynced: \(got)")
+        screens.tearDown()
+    }
+
+    private static func jsString(_ s: String) -> String {
+        String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self).dropFirst().dropLast().description
+    }
+
     func testAMessageFromAnotherWebViewIsRefused() async throws {
         let b = bridge()
         b.install(webView: webView, presenter: root, pageBuild: "P1")

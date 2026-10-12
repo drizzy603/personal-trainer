@@ -32,9 +32,11 @@ import FPCore
 public final class ScreenHost: NSObject {
     /// What ScreenHost needs from the shell (ShellBridge).
     public struct Hooks {
-        /// An intent from a screen's control (Send, Undo, the model switch, ...), the owner's answer to a confirm, a
-        /// toast's Undo. Back and the edge pan arrive as `userDismissed`.
+        /// The owner's answer to a confirm, a toast's Undo. Back and the edge pan arrive as `userDismissed`.
         public var send: (Intent) -> Void = { _ in }
+        /// An intent from a screen's control (Send, Undo, the model switch, ...) and how it ended: the chat's store
+        /// follows what became of each message the owner sent (plan task C7).
+        public var ask: (Intent, @escaping (PageLink.Outcome) -> Void) -> Void = { _, done in done(.notLinked) }
         /// The page is about to be covered: blur its field through the bridge (`shell.covered {on:true}`).
         public var willCover: () -> Void = {}
         /// Nothing native covers the page any more (`shell.covered {on:false}`).
@@ -61,12 +63,10 @@ public final class ScreenHost: NSObject {
     final class Up {
         let name: String
         let host: ScreenHostingController
-        let state: CoachScreenState
         var presented = false
-        init(name: String, host: ScreenHostingController, state: CoachScreenState) {
+        init(name: String, host: ScreenHostingController) {
             self.name = name
             self.host = host
-            self.state = state
         }
     }
 
@@ -76,8 +76,9 @@ public final class ScreenHost: NSObject {
     }
 
     private var up: [String: Up] = [:]
-    /// The newest model per screen (a screen opens on it).
-    private var models: [String: CoachModel] = [:]
+    /// The live chat (plan task C7): the page's newest model (the chat opens on it), the owner's messages on their way,
+    /// the composer. It outlives each presentation.
+    public let coach: CoachStore
     private var ops: [Op] = []
     private var busy = false
     /// Screens the owner took down whose page has not yet said dismiss.
@@ -94,16 +95,25 @@ public final class ScreenHost: NSObject {
     /// never finishes one, put a stand-in).
     var presenting: ScreenPresenting = UIKitPresenting()
 
-    public init(presenter: UIViewController, webView: WKWebView, shellBuild: String, pageBuild: String?, markerFolder: URL) {
+    /// `coach`: the chat's store (tests pass one with its own defaults; the app's keeps the composer in `fpDraft.coach`).
+    public init(presenter: UIViewController, webView: WKWebView, shellBuild: String, pageBuild: String?, markerFolder: URL,
+                coach: CoachStore? = nil) {
         self.presenter = presenter
         self.webView = webView
         self.shellBuild = shellBuild
         self.pageBuild = pageBuild
         markers = ScreenMarkers(folder: markerFolder)
+        self.coach = coach ?? CoachStore()
         super.init()
         slide.ended = { [weak self] presenting, completed in self?.transitionEnded(presenting: presenting, completed: completed) }
         overlay.answer = { [weak self] confirm, yes in self?.answer(confirm, yes: yes) }
         overlay.undo = { [weak self] id in self?.hooks.send(.toastUndo(id: id)) }
+        self.coach.hooks.ask = { [weak self] intent, done in
+            guard let self else { return done(.notLinked) }
+            self.hooks.ask(intent, done)
+        }
+        self.coach.hooks.back = { [weak self] in self?.userBack("coach") }
+        self.coach.hooks.toast = { [weak self] t in self?.overlay.show(toast: t) }
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -114,15 +124,15 @@ public final class ScreenHost: NSObject {
 
     public func isUp(_ screen: String) -> Bool { up[screen] != nil }
 
-    /// The model a screen shows (the newest decoded).
-    public func model(_ screen: String) -> CoachModel? { models[screen] }
+    /// The model a screen shows (the page's newest).
+    public func model(_ screen: String) -> CoachModel? { screen == "coach" ? coach.model : nil }
 
     // MARK: Requests from the page (through ShellBridge)
 
     /// The page's `present`. The model must have come first (the page pushes it before presenting).
     @discardableResult
     public func present(_ screen: String) -> Bool {
-        guard models[screen] != nil else { return false }
+        guard model(screen) != nil else { return false }
         latched.remove(screen)   // the page went through its dismiss before asking again
         if let i = ops.lastIndex(of: .dismiss(screen, user: false)), i == ops.count - 1, up[screen] != nil {
             ops.remove(at: i)   // a dismissal that has not started, then this: the screen just stays
@@ -149,13 +159,13 @@ public final class ScreenHost: NSObject {
         enqueue(.dismiss(screen, user: false))
     }
 
-    /// A model the link accepted (newer, of this document).
+    /// A model the link accepted (newer, of this document, or the next document's resync): the chat's store draws it
+    /// unless it is stale there too.
     public func update(_ screen: String, model: CoachModel) {
-        models[screen] = model
+        guard screen == "coach", coach.apply(model) else { return }
         let theme = RoomTheme(model: model, system: Self.systemTextSize)
         overlay.setRoom(theme)
         if let u = up[screen] {
-            u.state.model = model
             u.host.paper = model.paper
             u.host.overrideUserInterfaceStyle = model.paper ? .light : .dark
         }
@@ -203,37 +213,24 @@ public final class ScreenHost: NSObject {
     /// The page did not leave the screen the owner took down (coach.back refused or failed): put it back, since the
     /// page still shows its placeholder.
     public func userBackRefused(_ screen: String) {
-        guard latched.remove(screen) != nil, up[screen] == nil, models[screen] != nil else { return }
+        guard latched.remove(screen) != nil, up[screen] == nil, model(screen) != nil else { return }
         Self.log.info("screens: the page kept \(screen, privacy: .public) after the owner's back: it goes up again")
         enqueue(.present(screen))
     }
 
-    /// Nonces of the shell's own drafts (a message that never reached the page, back in the composer): the chat's
-    /// `coach.draftTaken` for one stays here.
-    public static let localDraftPrefix = "shell-"
-    private var localDrafts = 0
-    /// The messages put back in a composer this launch (for the probe).
-    public private(set) var restored: [String] = []
+    /// The messages put back in the chat's composer this launch (for the probe): the owner's words that never reached
+    /// the page (its document went, no page was linked, the page refused them), never resent (CoachStore).
+    public var restored: [String] { coach.restored }
 
-    /// A message the owner sent that never reached the page (its document went, no page was linked, the bridge
-    /// failed) goes back in the composer as a draft: never resent. Only when the page has no draft of its own waiting.
-    public func restoreDraft(_ screen: String, text: String) {
-        guard let u = up[screen], !text.isEmpty, u.state.model.composer.draft == nil else { return }
-        localDrafts += 1
-        var m = u.state.model
-        m.composer.draft = Draft(text: text, nonce: Self.localDraftPrefix + String(localDrafts))
-        u.state.model = m
-        restored.append(text)
-        Self.log.info("screens: an unsent message is back in the \(screen, privacy: .public) composer")
-    }
-
-    /// A document went: models of screens that are not up belong to it and go (a screen opens on its own document's
-    /// model); a screen up keeps its model until the next document's resync.
+    /// A document went: the model of a screen that is not up belongs to it and goes (a screen opens on its own
+    /// document's model); a screen up keeps its model until the next document's resync, and the owner's messages on
+    /// their way wait for that model (CoachStore).
     public func forgetModels(exceptUp: Bool) {
-        for name in models.keys where !(exceptUp && up[name] != nil) { models[name] = nil }
+        coach.documentGone(chatUp: exceptUp && up["coach"] != nil)
     }
 
-    /// Every screen down at once, with no animation (the scene is going; the link is gone for good).
+    /// Every screen down at once, with no animation (the scene is going; the link is gone for good). The owner's
+    /// messages still on their way go back in the composer, kept for the next chat.
     public func tearDown() {
         ops.removeAll()
         for u in up.values {
@@ -245,6 +242,7 @@ public final class ScreenHost: NSObject {
         overlay.show(confirm: nil)
         overlay.show(toast: nil)
         webView?.accessibilityElementsHidden = false
+        coach.tearDown()
     }
 
     // MARK: The queue
@@ -273,7 +271,7 @@ public final class ScreenHost: NSObject {
 
     private func runPresent(_ screen: String) {
         guard up[screen] == nil else { return opDone() }
-        guard let model = models[screen] else { return opDone() }
+        guard let model = model(screen) else { return opDone() }
         guard let presenter, presenter.view.window != nil, presenter.isViewLoaded else {
             Self.log.error("screens: \(screen, privacy: .public) not presented: no window")
             hooks.failed(screen, "no window")
@@ -285,8 +283,7 @@ public final class ScreenHost: NSObject {
         webView?.endEditing(true)
         presenter.view.window?.endEditing(true)
         markers.write(screen, page: pageBuild ?? "unknown", shell: shellBuild)
-        let state = CoachScreenState(model: model)
-        let root = CoachScreenRoot(state: state, host: coachHost(screen), overlay: overlay)
+        let root = CoachScreenRoot(store: coach, overlay: overlay)
         let host = ScreenHostingController(rootView: AnyView(root))
         host.paper = model.paper
         host.modalPresentationStyle = .overFullScreen   // never .fullScreen: the page stays in its window
@@ -298,7 +295,7 @@ public final class ScreenHost: NSObject {
         let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(edgePan(_:)))
         pan.edges = .left
         host.view.addGestureRecognizer(pan)
-        let u = Up(name: screen, host: host, state: state)
+        let u = Up(name: screen, host: host)
         up[screen] = u
         precondition(host.modalPresentationStyle == .overFullScreen, "a native screen is presented over the page, never instead of it")
         transitions.append("present " + screen)
@@ -310,14 +307,6 @@ public final class ScreenHost: NSObject {
             UIAccessibility.post(notification: .screenChanged, argument: nil)
             self.opDone()
         }
-    }
-
-    /// What the chat's controls do: Back takes the screen down here and now (latched); everything else goes to the page.
-    private func coachHost(_ screen: String) -> CoachHost {
-        CoachHost(send: { [weak self] intent in
-            guard let self else { return }
-            if intent == .coachBack { self.userBack(screen) } else { self.hooks.send(intent) }
-        })
     }
 
     // MARK: Dismiss
@@ -373,7 +362,7 @@ public final class ScreenHost: NSObject {
     @discardableResult
     func beginInteractiveBack(from view: UIView) -> Bool {
         guard !busy, interactive == nil, let u = up.values.first(where: { $0.host.view === view }), u.presented,
-              u.state.model.header.back, !u.state.model.intake else { return false }
+              let m = model(u.name), m.header.back, !m.intake else { return false }
         busy = true
         let t = UIPercentDrivenInteractiveTransition()
         t.completionCurve = .easeOut
@@ -440,6 +429,9 @@ public final class ScreenHost: NSObject {
 
     // MARK: For the probe
 
+    /// The view of a screen that is up (the probe's presses find its controls there).
+    func hostView(_ screen: String) -> UIView? { up[screen]?.host.view }
+
     /// The first text field or view of the screen up (the probe's tap into the native composer).
     func firstTextInput() -> UIView? {
         func find(_ v: UIView) -> UIView? {
@@ -454,26 +446,35 @@ public final class ScreenHost: NSObject {
     public func describe() -> [String: Any] {
         var screens: [String: Any] = [:]
         for (name, u) in up {
+            guard let m = name == "coach" ? coach.display : nil else { continue }
+            let traits = u.host.view.traitCollection
             screens[name] = [
                 "presented": u.presented,
                 "style": u.host.modalPresentationStyle.rawValue,
                 "overFullScreen": u.host.modalPresentationStyle == .overFullScreen,
                 "interfaceStyle": u.host.overrideUserInterfaceStyle.rawValue,
-                "rev": u.state.model.rev,
-                "boot": u.state.model.boot,
-                "messages": u.state.model.messages.count,
-                "loading": u.state.model.loading,
-                "draft": u.state.model.composer.draft?.text ?? NSNull(),
-                "modelLabel": u.state.model.header.model?.label ?? NSNull(),
-                "last": u.state.model.messages.last.map { $0.role == .user ? "user" : "coach" } ?? NSNull(),
+                "drawnStyle": traits.userInterfaceStyle.rawValue,
+                "contentSize": traits.preferredContentSizeCategory.rawValue,
+                "rev": m.rev,
+                "boot": m.boot,
+                "room": m.room.id,
+                "dynTypeOn": m.dynTypeOn,
+                "messages": m.messages.count,
+                "loading": m.loading,
+                "draft": coach.draft.text,
+                "modelLabel": m.header.model?.label ?? NSNull(),
+                "last": m.messages.last.map { $0.role == .user ? "user" : "coach" } ?? NSNull(),
                 "modal": u.host.view.accessibilityViewIsModal,
                 "inWindow": u.host.view.window != nil,
+                "composerFrame": firstTextInput().map { NSCoder.string(for: $0.convert($0.bounds, to: nil)) } ?? NSNull(),
+                "composerFocused": firstTextInput()?.isFirstResponder ?? false,
             ] as [String: Any]
         }
         return [
             "up": shown, "screens": screens, "latched": latched.sorted(), "ops": ops.count, "busy": busy,
             "webViewInWindow": webView?.window != nil, "webViewA11yHidden": webView?.accessibilityElementsHidden ?? NSNull(),
             "overlay": overlay.describe(), "markers": markers.lines(), "transitions": transitions, "restored": restored,
+            "coach": coach.describe(),
         ]
     }
 }
@@ -518,28 +519,21 @@ final class ScreenHostingController: UIHostingController<AnyView> {
 
 // MARK: - The coach screen
 
-/// The coach screen's model, which the page's pushes replace.
-final class CoachScreenState: ObservableObject {
-    @Published var model: CoachModel
-
-    init(model: CoachModel) {
-        self.model = model
-    }
-}
-
-/// The SwiftUI chat (FPUI Coach, plan task C6) on the page's model; its toast and confirm go to ScreenHost's window.
+/// The SwiftUI chat (FPUI Coach, plan task C6) on the live store (C7): the page's model with the owner's messages on
+/// their way, the composer the store keeps; its toast and confirm go to ScreenHost's window.
 struct CoachScreenRoot: View {
-    @ObservedObject var state: CoachScreenState
-    let host: CoachHost
+    @ObservedObject var store: CoachStore
     let overlay: ShellOverlay
 
     var body: some View {
-        CoachChatView(model: state.model, host: host,
-                      toast: Binding(get: { overlay.toast }, set: { overlay.show(toast: $0) }),
-                      confirm: .constant(nil), options: CoachChatOptions(hostDrawsOverlays: true))
-            .onPreferenceChange(CoachHeaderBottomKey.self) { y in
-                MainActor.assumeIsolated { overlay.setAnchor(y > 0 ? y : nil) }
-            }
+        if let model = store.display {
+            CoachChatView(model: model, host: store.host,
+                          toast: Binding(get: { overlay.toast }, set: { overlay.show(toast: $0) }),
+                          confirm: .constant(nil), options: CoachChatOptions(hostDrawsOverlays: true))
+                .onPreferenceChange(CoachHeaderBottomKey.self) { y in
+                    MainActor.assumeIsolated { overlay.setAnchor(y > 0 ? y : nil) }
+                }
+        }
     }
 }
 

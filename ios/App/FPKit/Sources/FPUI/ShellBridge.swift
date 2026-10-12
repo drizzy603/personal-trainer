@@ -173,7 +173,9 @@ public final class ShellBridge: NSObject {
         if debug.clearBreaker { fx += link.editBook { $0.screens = [:] } }
         #endif
         let pageLink = PageLink(webView: webView)
-        let screens = ScreenHost(presenter: presenter, webView: webView, shellBuild: shell.shell, pageBuild: pageBuild, markerFolder: folder)
+        // the live chat's store (plan task C7), its composer kept in these defaults (fpDraft.coach)
+        let screens = ScreenHost(presenter: presenter, webView: webView, shellBuild: shell.shell, pageBuild: pageBuild, markerFolder: folder,
+                                 coach: CoachStore(draft: CoachComposerDraft(defaults: defaults)))
         let handler = DocumentHandler(self)
         let ucc = webView.configuration.userContentController
         ucc.removeScriptMessageHandler(forName: Self.handlerName)
@@ -218,7 +220,11 @@ public final class ShellBridge: NSObject {
         var hooks = ScreenHost.Hooks()
         hooks.send = { [weak self, weak b] intent in
             guard let self, let b else { return }
-            self.screenIntent(intent, b)
+            self.screenIntent(intent, b, nil)
+        }
+        hooks.ask = { [weak self, weak b] intent, done in
+            guard let self, let b else { return done(.notLinked) }
+            self.screenIntent(intent, b, done)
         }
         hooks.willCover = { [weak self, weak b] in
             guard let self, let b else { return }
@@ -420,19 +426,13 @@ public final class ShellBridge: NSObject {
 
     // MARK: Swift to page
 
-    /// An intent from a native screen.
-    private func screenIntent(_ intent: Intent, _ b: Binding) {
-        if case .coachDraftTaken(let nonce) = intent, nonce.hasPrefix(ScreenHost.localDraftPrefix) { return }   // the shell's own
+    /// An intent from a native screen; `done` hears how it ended (the chat's store follows each message the owner sent:
+    /// one that never reached the page goes back in the composer, never resent).
+    private func screenIntent(_ intent: Intent, _ b: Binding, _ done: ((PageLink.Outcome) -> Void)?) {
         b.pageLink.send(intent) { [weak self, weak b] outcome in
             guard let self, let b else { return }
             self.finished(intent, outcome, b)
-            // a message that never reached the page goes back in the composer (never resent)
-            if case .coachSend(let text, _, _, _) = intent {
-                switch outcome {
-                case .answered(.done): break
-                default: b.screens.restoreDraft("coach", text: text)
-                }
-            }
+            done?(outcome)
         }
     }
 

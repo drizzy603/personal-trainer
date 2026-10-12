@@ -310,6 +310,20 @@ final class CoachModelTests: XCTestCase {
         }
     }
 
+    /// The echo Swift draws of the owner's words on their way (plan task C7): a bubble like the page's own, every field
+    /// it does not give as a message with no such field decodes.
+    func testAMessageBuiltInSwiftIsTheOwnersBubble() throws {
+        let at = Date(timeIntervalSince1970: 1_791_482_520)
+        let echo = Message(id: "echo-n1", role: .user, at: at, day: "Today", body: .text("How did my week go?"), image: MessageImage(key: "n:n1"))
+        XCTAssertEqual(echo.look, .bubble)
+        XCTAssertEqual([echo.id, echo.day], ["echo-n1", "Today"])
+        XCTAssertEqual(echo.at, at)
+        XCTAssertEqual(echo.image?.key, "n:n1")
+        let decoded = try CoachModel(json: ["v": 1, "messages": [["id": "echo-n1", "role": "user", "at": 1_791_482_520_000, "day": "Today",
+                                                                    "body": "How did my week go?", "image": ["key": "n:n1"]]]])
+        XCTAssertEqual(decoded.messages, [echo], "the same message the page's model would carry")
+    }
+
     func testActionsMapToIntents() {
         XCTAssertEqual(ModelAction.Kind("gotIt"), .keep)
         XCTAssertEqual(ModelAction.Kind("openSettings"), .settings)

@@ -4,8 +4,8 @@ import UIKit
 import FPCore
 
 /// What the chat needs from whoever hosts it (plan tasks C6 and C7): where its intents go, the
-/// photos it can show, and the owner's initial for the header. C7's CoachStore fills it from the
-/// page link; previews and tests fill it from fixtures.
+/// photos it can show, the owner's initial for the header, and the composer when the host keeps it.
+/// C7's CoachStore fills it from the page link; previews and tests fill it from fixtures.
 public struct CoachHost {
     /// Every tap the chat turns into a call to the page (FPCore's Intent): sends, chips, Stop,
     /// Undo/Keep by message id, the model switch, Back, Cancel, the empty chat's buttons, the
@@ -17,11 +17,17 @@ public struct CoachHost {
     public var image: (String) -> UIImage?
     /// The owner's initial over the header (decorative). Nil draws none.
     public var avatar: String?
+    /// The composer's words and photo when the host keeps them (CoachStore: across presents, the
+    /// words in fpDraft.coach), and then the host takes the page's drafts too. Nil: the chat keeps its
+    /// own, from the page's draft (previews, contact sheets).
+    public var draft: CoachComposerDraft?
 
-    public init(send: @escaping (Intent) -> Void, image: @escaping (String) -> UIImage? = { _ in nil }, avatar: String? = nil) {
+    public init(send: @escaping (Intent) -> Void, image: @escaping (String) -> UIImage? = { _ in nil }, avatar: String? = nil,
+                draft: CoachComposerDraft? = nil) {
         self.send = send
         self.image = image
         self.avatar = avatar
+        self.draft = draft
     }
 
     /// A host that does nothing (previews).
@@ -131,14 +137,24 @@ public struct CoachChatView: View {
                 })
             conversation(theme: theme, gutter: gutter, column: column)
                 .overlay(alignment: .top) { if !options.hostDrawsOverlays { toastView(theme) } }
-            CoachComposer(composer: model.composer, loading: model.loading, text: $text, picked: $picked,
-                          pagePhoto: model.composer.image.flatMap { host.image($0.key) }, focused: $focused,
-                          onSend: send, onStop: stop, onRemovePagePhoto: { host.send(.coachClearImage) },
-                          onPhotoFailed: { toast = Self.photoFailedToast })
-                .padding(.horizontal, theme.flavor == .studio ? gutter - theme.px(6) : gutter)
-                .padding(.bottom, theme.px(8))
+            Group {
+                if let d = host.draft {
+                    HostDraftComposer(draft: d) { text, picked in composer(text: text, picked: picked) }
+                } else {
+                    composer(text: $text, picked: $picked)
+                }
+            }
+            .padding(.horizontal, theme.flavor == .studio ? gutter - theme.px(6) : gutter)
+            .padding(.bottom, theme.px(8))
         }
         .frame(width: width, height: height, alignment: .top)
+    }
+
+    private func composer(text: Binding<String>, picked: Binding<PickedPhoto?>) -> CoachComposer {
+        CoachComposer(composer: model.composer, loading: model.loading, text: text, picked: picked,
+                      pagePhoto: model.composer.image.flatMap { host.image($0.key) }, focused: $focused,
+                      onSend: send, onStop: stop, onRemovePagePhoto: { host.send(.coachClearImage) },
+                      onPhotoFailed: { toast = Self.photoFailedToast })
     }
 
     // MARK: The conversation
@@ -210,12 +226,28 @@ public struct CoachChatView: View {
 
     // MARK: Composer actions
 
-    private func send() {
+    /// What Send sends: the composer's words and photo (or the page's pending one, which the
+    /// composer shows) as one `coach.send` with its own nonce; nil with nothing to send or a reply
+    /// in flight. The chat's Send and CoachStore's (the probe's hands) both build it here.
+    static func sendIntent(text: String, picked: PickedPhoto?, model: CoachModel, nonce: String = Intent.nonce()) -> Intent? {
         let hasPhoto = picked != nil || model.composer.image != nil
-        guard !model.loading, CoachComposer.canSend(text: text, hasPhoto: hasPhoto) else { return }
+        guard !model.loading, CoachComposer.canSend(text: text, hasPhoto: hasPhoto) else { return nil }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let usePending: Bool? = picked == nil && model.composer.image != nil ? true : nil
-        host.send(.coachSend(text: words, image: picked?.prepared.coachImage, usePending: usePending, nonce: Intent.nonce()))
+        return .coachSend(text: words, image: picked?.prepared.coachImage, usePending: usePending, nonce: nonce)
+    }
+
+    private func send() {
+        if let d = host.draft {
+            // the host's composer: it echoes the message and keeps what the page never got
+            guard let intent = Self.sendIntent(text: d.text, picked: d.picked, model: model) else { return }
+            host.send(intent)
+            d.text = ""
+            d.picked = nil
+            return
+        }
+        guard let intent = Self.sendIntent(text: text, picked: picked, model: model) else { return }
+        host.send(intent)
         text = ""
         picked = nil
     }
@@ -226,9 +258,10 @@ public struct CoachChatView: View {
         host.send(.coachStop)
     }
 
-    /// The page's draft goes in the box once per nonce, and the page hears it was taken.
+    /// The page's draft goes in the box once per nonce, and the page hears it was taken. A host
+    /// that keeps the composer (CoachStore) takes the page's drafts itself.
     private func takeDraft() {
-        guard let d = model.composer.draft, d.nonce != takenDraft else { return }
+        guard host.draft == nil, let d = model.composer.draft, d.nonce != takenDraft else { return }
         if takenDraft != nil || text.isEmpty || text == d.text { text = d.text }
         takenDraft = d.nonce
         host.send(.coachDraftTaken(nonce: d.nonce))
@@ -277,6 +310,16 @@ public struct CoachChatView: View {
             }
         }
     }
+}
+
+/// The composer on the host's draft (CoachStore): only this view observes it, so a keystroke
+/// repaints the composer and never the conversation, and words the host puts back (a message that
+/// never reached the page, the page's own draft) show at once.
+private struct HostDraftComposer: View {
+    @ObservedObject var draft: CoachComposerDraft
+    let make: (Binding<String>, Binding<PickedPhoto?>) -> CoachComposer
+
+    var body: some View { make($draft.text, $draft.picked) }
 }
 
 /// Where the conversation's end is in the scroll view (its bottom edge, in the scroll view's space).
