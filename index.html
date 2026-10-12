@@ -24349,9 +24349,10 @@ function _coachHeadModel(){
   var off=(typeof navigator!=='undefined' && navigator.onLine===false), sw=_coachModelSwitch();
   var st=intakeMode ? 'intake' : coachLoading ? 'replying' : off ? 'offline' : 'online';
   var ver=(sw.label.match(/ [\d.]+$/)||[''])[0].trim();
+  // avatar: the owner's initial as the web header's .screen-avatar draws it (_initialOf, unescaped: the model is text)
   return {eyebrow:'COACH · '+st.toUpperCase(), status:st, title:intakeMode ? 'Build your plan' : "Today's plan", meta:intakeMode ? null : _coachDayMeta(),
     model:intakeMode ? null : {label:sw.label, name:sw.label.replace(/ [\d.]+$/,''), version:ver||null, next:sw.next, a11y:sw.a11y},
-    back:!intakeMode, cancel:!!intakeMode};
+    back:!intakeMode, cancel:!!intakeMode, avatar:(_graphemes(String(getUserFirstName()==null ? '' : getUserFirstName()).trim())[0]||'?').toUpperCase()};
 }
 // The newest reply the coach wrote (its chips are the only live ones).
 function _coachLastAnswer(){

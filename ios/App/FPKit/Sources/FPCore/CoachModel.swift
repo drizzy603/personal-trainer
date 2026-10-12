@@ -150,6 +150,9 @@ public struct Header: Equatable, Sendable {
     public var model: ModelSwitch?
     public var back: Bool
     public var cancel: Bool
+    /// The owner's initial over the header, as the web chat's `.screen-avatar` draws it (`_initialOf(getUserFirstName())`:
+    /// the first grapheme, uppercased; "?" with no name). Additive within v1: a page that sends none draws none.
+    public var avatar: String?
 
     init(json: JSONValue?, intake: Bool) {
         let j = json ?? .null
@@ -160,6 +163,7 @@ public struct Header: Equatable, Sendable {
         model = j["model"].flatMap(ModelSwitch.init(json:))
         back = j["back"]?.bool ?? !intake
         cancel = j["cancel"]?.bool ?? intake
+        avatar = j["avatar"]?.string.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 

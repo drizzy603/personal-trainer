@@ -133,7 +133,8 @@ public struct CoachChatView: View {
         let gutter = theme.px(width <= 360 ? 16 : 20)
         let column = max(0, width - 2 * gutter)
         return VStack(spacing: 0) {
-            CoachHeaderView(header: model.header, avatar: host.avatar, narrow: width <= 345, gutter: gutter, send: host.send)
+            // the page's own initial (header.avatar), else the host's (previews)
+            CoachHeaderView(header: model.header, avatar: model.header.avatar ?? host.avatar, narrow: width <= 345, gutter: gutter, send: host.send)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: CoachHeaderBottomKey.self, value: g.frame(in: .global).maxY)
                 })

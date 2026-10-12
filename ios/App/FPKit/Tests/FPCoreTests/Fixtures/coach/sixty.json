@@ -133,7 +133,8 @@
    "a11y": "Coach model: Sonnet 5.5. Switch to Haiku 4.5"
   },
   "back": true,
-  "cancel": false
+  "cancel": false,
+  "avatar": "R"
  },
  "empty": null,
  "messages": [

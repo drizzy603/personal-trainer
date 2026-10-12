@@ -127,7 +127,8 @@
   "meta": null,
   "model": null,
   "back": false,
-  "cancel": true
+  "cancel": true,
+  "avatar": "R"
  },
  "empty": null,
  "messages": [

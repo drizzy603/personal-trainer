@@ -365,6 +365,8 @@ serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-
       const m1 = __model();
       r.raw = JSON.stringify(_coachModel());   // the model before _nativeJSON mends it: the seeded halves are in it
       r.m1 = { v: m1.v, boot: m1.boot, room: m1.room, paper: m1.paper, msgs: m1.messages.length, ids: m1.messages.map((m) => m.id), chips: m1.messages[1].body.actions, eyebrow: m1.messages[1].eyebrow };
+      // the owner's initial over the header, as the web header's .screen-avatar draws it (review 4: the native header had none)
+      r.avatar = { model: m1.header.avatar, web: _initialOf(getUserFirstName()), name: getUserFirstName() };
       // three renders in one tick: one model, its rev higher
       const n = __fpShell.of('model').length;
       render(); render(); render(); await __wait(30);
@@ -399,6 +401,7 @@ serial('C3: hello negotiates v1; the chat goes native (a placeholder, no #coach-
       'present leaves an element placeholder and no web chat; the model goes first: ' + JSON.stringify(out.chat));
     assert(out.m1.v === 1 && out.m1.boot === out.boot && out.m1.room === 'heavyweight' && out.m1.paper === true && out.m1.msgs === 2 && out.m1.ids.every((x) => /^m\d+\./.test(x)) &&
       out.m1.chips.length === 1 && out.m1.chips[0].msg === 'Plan my week', 'the model: v1, this boot, the room, ids, the newest reply\'s chip: ' + JSON.stringify(out.m1));
+    assert(typeof out.avatar.model === 'string' && out.avatar.model.length >= 1 && out.avatar.model === out.avatar.web, 'the header carries the owner\'s initial, as the web header draws it: ' + JSON.stringify(out.avatar));
     assert(out.coalesced.added === 1 && out.coalesced.revs.every((v, i, a) => i === 0 || v > a[i - 1]), 'renders in one tick push one model; revs rise: ' + JSON.stringify(out.coalesced));
     assert(JSON.stringify(out.empty.chips) === JSON.stringify(out.empty.want) && out.empty.chips.length >= 3 && out.empty.prog && out.empty.prog.actions.some((a) => a.do === 'regenerate'), 'chips are getCoachChips(): ' + JSON.stringify(out.empty));
     assert(JSON.stringify(out.pills.got) === JSON.stringify(out.pills.want), 'pills are toolCallLabel() as shown: ' + JSON.stringify(out.pills));
