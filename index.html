@@ -3626,6 +3626,8 @@ function _ktStoreShadow(){ var s=window.__ktStoreState; return (s && s.mode==='s
 // The shell's flag (window.__FP_SHELL, injected at document start by build 60+ shells: shell contract v1). Native
 // behaviour comes from this flag and the plugins it names, never from a build stamp (an older shell serves a newer
 // staged page). null in the browser, in the PWA and on every shell before 60, so nothing below changes there.
+// The one test of the flag: the screen bridge (_fpPlugin, FPScreens and hello), the Storage row (_fpStorePlug), the
+// end of boot (_bootDone), the tools' launch arguments (_fpDev) and _draftFiled all read it here.
 function _fpShellFlag(){ var f=window.__FP_SHELL; return (f && typeof f==='object' && (f.v|0)>=1) ? f : null; }
 // The test tools' launch arguments, which the shell hands over in its flag (Debug builds): dev.nav (-devNav, a
 // dev-nav route) and dev.theme (-devTheme, the room for this launch).
@@ -21955,7 +21957,6 @@ function renderSettings() {
       '<div class="settings-row-body"><div class="settings-row-title">Privacy policy</div><div class="settings-row-sub">How your data is handled</div></div>'+
       '<span class="settings-row-chev">›</span>'+
     '</div>'+
-    _fpAboutRow()+
     (function(){
       var liveBuild=localStorage.getItem('kt_last_seen_build')||'';
       var cachedBuild=localStorage.getItem('kt_cached_build')||'';
@@ -21976,7 +21977,11 @@ function renderSettings() {
         '<div class="settings-row-body"><div class="settings-row-title">App build '+APP_BUILD+'</div><div class="settings-row-sub">'+status+'</div></div>'+
       '</div>';
     })()+
+    // The build 60+ shell's own rows, under the build they belong to: the native copy (Storage: the flag and
+    // TrovoStore) and the native chat's switch (the flag, TrovoShell and a negotiated coach screen). Neither shows
+    // in the browser, the PWA or a shell before 60.
     _fpStoreRowHTML()+
+    _fpAboutRow()+
     (function(){
       var n=0; try{ n=(JSON.parse(localStorage.getItem('kt_err_log')||'[]')).length; }catch(e){}
       return '<div class="settings-row" onclick="openErrorLogSheet()">'+
@@ -22119,7 +22124,8 @@ var _FP_KEY_NAMES={kt_sessions:'Workouts', kt_runs:'Runs', kt_sports:'Activities
   kt_routine_archive:'Programme history', kt_routine_next:'Next round', kt_custom_ex:'Your exercises', kt_ex_notes:'Exercise notes',
   kt_skips:'Skipped days', kt_milestones:'Milestones', kt_user_name:'Your name', kt_log_tabs:'Log tabs', kt_theme:'Look',
   kt_unit_w:'Weight unit', kt_unit_d:'Distance unit', kt_bench_goal:'Bench goal', kt_squat_goal:'Squat goal', kt_5k_goal:'5K goal',
-  kt_bw_goal:'Body-weight goal', kt_run_goal:'Run goal', kt_hk_imported:'Apple Health imports', kt_hk_gone:'Apple Health deletions'};
+  kt_bw_goal:'Body-weight goal', kt_run_goal:'Run goal', kt_hk_imported:'Apple Health imports', kt_hk_gone:'Apple Health deletions',
+  kt_native_off:'Native Coach chat switch'};
 function _fpKeyName(k){ return Object.prototype.hasOwnProperty.call(_FP_KEY_NAMES, k) ? _FP_KEY_NAMES[k] : String(k||'?'); }
 // A list of Put back items in the owner's words: their data by name (fmt), then the rest (the app's own settings
 // and bookkeeping, which have no name here) counted, so a whole start's Put back reads as what it brings back.
@@ -24114,9 +24120,9 @@ function _nativeJSON(v){
 // no FPScreens, no forwarding, and renderCoach() draws the web chat. Never keyed on a build stamp: an
 // older shell serves a newer staged page. Off switches: FP_NATIVE (by OTA), kt_native_off (this
 // device: Settings > About, never in a backup), the shell's screens.off (its breaker, the policy file
-// or its own switch: for this document), and a present the shell refuses.
-function _fpFlag(){ var f=window.__FP_SHELL; return (f && typeof f==='object' && (f.v|0)>=1) ? f : null; }
-function _fpPlugin(){ return _fpFlag() ? _plug('TrovoShell') : null; }
+// or its own switch: for this document), and a present the shell refuses. The flag is read by
+// _fpShellFlag (beside lsSet), the one test every native piece shares; TrovoShell by _fpPlugin.
+function _fpPlugin(){ return _fpShellFlag() ? _plug('TrovoShell') : null; }
 function _fpDeviceOff(){ try{ return localStorage.getItem('kt_native_off')==='1'; }catch(e){ return false; } }
 // The shell agreed to show this screen this document (hello), and nothing has turned it off since.
 function _fpNegotiated(s){ return !!(_fp.hello && _fp.v>=1 && _fp.hello.screens.indexOf(s)>=0); }
@@ -24460,7 +24466,7 @@ var _FP_INTENTS={
     return {ok:true};
   }
 };
-if(_fpFlag()){
+if(_fpShellFlag()){
   window.FPScreens={v:FP_CONTRACT, call:function(name, args){
     return Promise.resolve().then(function(){
       var f=Object.prototype.hasOwnProperty.call(_FP_INTENTS, name) ? _FP_INTENTS[name] : null;
@@ -25439,11 +25445,13 @@ function _devNavOnce(route){
 
 // ── End of boot ───────────────────────────────────────────────────────────────
 // Whatever painted first, the page has booted. The OTA confirm goes now if the first paint did not send it (a first
-// render on the coach route returns before that call), and a shell with the TrovoShell plugin hears bootDone (shell
-// contract v1), which disarms the native copy's breaker; until a shell carries it, the confirm stands in for it.
+// render on the coach route returns before that call), and a shell with the TrovoShell plugin (_fpPlugin, as for the
+// screen bridge) hears bootDone {page} (shell contract v1): the page's one end-of-boot signal, once per document. The
+// bridge's hello went out earlier in the boot and may be answered after this; bootDone never waits for it and hello
+// never stands in for it. It disarms the native copy's store breaker; until a shell carries it, the confirm does.
 function _bootDone(){
   _otaConfirm();
-  var P=_fpShellFlag() ? _plug('TrovoShell') : null;
+  var P=_fpPlugin();
   if(P && P.bootDone){ try{ Promise.resolve(P.bootDone({page:APP_BUILD})).catch(function(){}); }catch(e){} }
 }
 _bootDone();
