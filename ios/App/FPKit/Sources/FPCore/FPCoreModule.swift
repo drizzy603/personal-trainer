@@ -25,6 +25,9 @@ import Foundation
 ///   3-failure breaker per direction, a reset on a new page build, boots and revs, nothing ever resent.
 /// - `Breaker.swift`: the records the host keeps between launches (`BreakerBook`): the native breaker per
 ///   screen and page build, crash markers per (shell build, page build) pair, the store breaker.
+/// - `ShellStatus.swift`: what Settings > About shows of the native screens (`ScreenStatus`: each screen on or
+///   off and why, and whether the owner can try it again) and the shell's counters kept across launches
+///   (`ShellCounters`: the web view leaving its window, the page hidden under a native screen, trips, markers).
 /// - `Policy.swift`: `policy.json` (S7): parsing, safe defaults, the last good copy, at most one fetch
 ///   every 15 minutes; a missing or bad file changes nothing.
 public enum FPCoreModule {

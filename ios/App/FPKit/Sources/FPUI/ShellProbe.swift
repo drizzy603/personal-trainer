@@ -24,7 +24,8 @@ import FPCore
 /// {text}` (keys on the native composer), `composerSend {nonce}` (Send on what the composer holds), `draft {text}` (the
 /// composer's words set), `press {label}` / `press {ledger: undo|keep}` (a control of the chat, by its accessible name,
 /// or the newest PLAN CHANGES card's button), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
-/// a toast, up, down), `resign` (the native composer gives the keys back), `done`.
+/// a toast, up, down), `resign` (the native composer gives the keys back), `hideWeb` / `showWeb` (the web view out of
+/// its window and back: the fault Settings > About counts), `done`.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?
@@ -41,6 +42,8 @@ final class ShellProbe {
     private var bootWait = 0
     /// The id of the last confirm the page forwarded (an `intent` step's "@lastConfirm" argument stands for it).
     private var lastConfirm: String?
+    /// Where `hideWeb` took the web view from, for `showWeb`.
+    private var hiddenWeb: (superview: UIView, index: Int, frame: CGRect)?
 
     /// Scripts the shell adds at document start while probing: the page's visibilitychange events, counted from the
     /// document's start.
@@ -146,6 +149,12 @@ final class ShellProbe {
             event("page", ["method": method, "text": l.text])
         case .bootDone(let p):
             event("page", ["method": method, "page": p])
+        case .status:
+            event("page", ["method": method])
+        case .reset(let s):
+            event("page", ["method": method, "screen": s])
+        case .visibility(let v):
+            event("page", ["method": method, "state": v.state, "at": v.at ?? NSNull()])
         }
     }
 
@@ -313,6 +322,25 @@ final class ShellProbe {
         case "resign":
             let ok = b?.screens.firstTextInput()?.resignFirstResponder() ?? false
             event("resign", ["ok": ok])
+            next()
+        case "hideWeb":
+            // The fault Settings > About counts (never by design): the web view out of its window while the app is active,
+            // as a .fullScreen presentation or a push would take it out (ShellWebView counts it; the page goes hidden).
+            if let wv = b?.webView, let sup = wv.superview {
+                hiddenWeb = (sup, sup.subviews.firstIndex(of: wv) ?? sup.subviews.count, wv.frame)
+                wv.removeFromSuperview()
+                event("hideWeb", ["window": wv.window != nil])
+            } else {
+                event("hideWeb", ["error": "no superview"])
+            }
+            next()
+        case "showWeb":
+            if let wv = b?.webView, let h = hiddenWeb {
+                h.superview.insertSubview(wv, at: min(h.index, h.superview.subviews.count))
+                wv.frame = h.frame
+                hiddenWeb = nil
+                event("showWeb", ["window": wv.window != nil])
+            }
             next()
         case "webResponder":
             // What the owner's tap into the page does first: the web view's content view takes first responder (with

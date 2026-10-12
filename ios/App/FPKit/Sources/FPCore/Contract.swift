@@ -45,6 +45,10 @@ public struct ShellFlag: Equatable, Sendable {
     public var shell: String
     /// The screens the page may hand to Swift this document (ScreenGate's `on`).
     public var screens: [String]
+    /// The native screens this binary has, on or off (`binary`, additive within v1): Settings > About keeps the row of
+    /// every screen the binary offers and says why one is off (a crash verdict, the native breaker, the policy file),
+    /// where a row shown only for a negotiated screen vanished exactly when it had something to say.
+    public var binary: [String]
     /// Test tooling from launch arguments (-devNav, -devTheme, -fpApiBase); nil keys are left out.
     public var devNav: String?
     public var devTheme: String?
@@ -57,6 +61,7 @@ public struct ShellFlag: Equatable, Sendable {
         min = contract.min
         shell = contract.shell
         self.screens = screens
+        binary = contract.screens
         self.devNav = devNav
         self.devTheme = devTheme
         self.devAPI = devAPI
@@ -65,7 +70,7 @@ public struct ShellFlag: Equatable, Sendable {
     public var json: JSONValue {
         var o: [String: JSONValue] = [
             "v": .number(Double(v)), "min": .number(Double(min)), "shell": .string(shell),
-            "screens": .array(screens.map(JSONValue.string)),
+            "screens": .array(screens.map(JSONValue.string)), "binary": .array(binary.map(JSONValue.string)),
         ]
         var dev: [String: JSONValue] = [:]
         if let devNav { dev["nav"] = .string(devNav) }
@@ -242,9 +247,17 @@ public enum PageMessage: Equatable, Sendable {
     case toast(ToastRequest)
     case confirm(ConfirmRequest)
     case log(LogLine)
+    /// Settings > About: every screen of this binary, on or off and why, and the shell's counters (`ScreenStatus`).
+    case status
+    /// Settings > About's "Try the native chat again": the screen's crash verdicts and native breaker record go, so the
+    /// next document may show it again (this one keeps what it negotiated). Answers the status after.
+    case reset(screen: String)
+    /// The page went hidden or visible while a native screen covered it (it sends nothing otherwise): the shell counts a
+    /// hidden page while the app is in use, which a native screen over the page never causes by design.
+    case visibility(VisibilityReport)
 
     /// The plugin's methods.
-    public static let methods = ["hello", "bootDone", "present", "dismiss", "model", "toast", "confirm", "log"]
+    public static let methods = ["hello", "bootDone", "present", "dismiss", "model", "toast", "confirm", "log", "status", "reset", "visibility"]
 
     public enum DecodeError: Error, Equatable {
         case unknownMethod(String)
@@ -272,9 +285,29 @@ public enum PageMessage: Equatable, Sendable {
             self = .confirm(ConfirmRequest(id: try str("id"), title: try str("title"), body: o["body"]?.string,
                                            confirm: o["confirm"]?.string, cancel: o["cancel"]?.string, tone: o["tone"]?.string))
         case "log": self = .log(LogLine(text: try str("text"), level: o["level"]?.string))
+        case "status": self = .status
+        case "reset": self = .reset(screen: try str("screen"))
+        case "visibility":
+            let at = o["at"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
+            self = .visibility(VisibilityReport(state: try str("state"), at: at))
         default: throw DecodeError.unknownMethod(method)
         }
     }
+}
+
+/// `visibility {state, at?}`: what the page's visibilitychange said while a native screen covered it.
+public struct VisibilityReport: Equatable, Sendable {
+    /// `document.visibilityState`: "hidden" or "visible".
+    public var state: String
+    /// When the page saw it (its `Date.now()`); nil when it sent none.
+    public var at: Date?
+
+    public init(state: String, at: Date? = nil) {
+        self.state = state
+        self.at = at
+    }
+
+    public var hidden: Bool { state == "hidden" }
 }
 
 /// `model {screen, rev, json}`: json is `_nativeJSON(model)`.

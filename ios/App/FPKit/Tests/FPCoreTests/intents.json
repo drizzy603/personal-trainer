@@ -46,6 +46,9 @@
     {"name": "model", "args": {"screen": "string", "rev": "int", "json": "string"}, "does": "The screen's model, json = _nativeJSON(model)"},
     {"name": "toast", "args": {"text": "string", "style": "string", "undo": "string?"}, "does": "showToast or showUndoToast while a native screen covers the page; style ok, pr or err"},
     {"name": "confirm", "args": {"id": "string", "title": "string", "body": "string", "confirm": "string", "cancel": "string", "tone": "string"}, "does": "_ktConfirm while a native screen covers the page; tone danger, accent or neutral"},
-    {"name": "log", "args": {"text": "string", "level": "string?"}, "does": "A line for the shell's log"}
+    {"name": "log", "args": {"text": "string", "level": "string?"}, "does": "A line for the shell's log"},
+    {"name": "status", "args": {}, "answers": "{v, shell, page, screens: {<screen>: {on, live, off, trip, why, at, canReset}}, verdicts, counters: {since, leftWindow, hidden, trips, markers}}", "does": "Settings > About: every native screen this binary has, whether the next document may show it and why not (off: device, policy, crash, breaker; trip: no-hello or failures), and the shell's counters (this launch and in all)"},
+    {"name": "reset", "args": {"screen": "string"}, "answers": "the status after", "does": "Settings > About's Try the native chat again: the screen's crash verdicts and native breaker record go, so the next document may show it (this one keeps what it negotiated)"},
+    {"name": "visibility", "args": {"state": "string", "at": "int?"}, "does": "The page went hidden or visible (document.visibilityState, at its Date.now()) while a native screen covered it; the shell counts a hidden page while the app is in use, never by design"}
   ]
 }

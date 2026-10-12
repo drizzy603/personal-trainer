@@ -106,7 +106,7 @@ in `ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoShellPlugin.swift` (calls hop to 
 | `PageLink.swift` | Swift to page: `window.FPScreens.call(name, args)` through `callAsyncJavaScript` in the page world, one intent at a time, first in first out, 2 s (5 s for a snapshot); every intent carries its document's boot, and a document that goes takes its intents with it (`documentGone`, never sent again). An error answer a page whose process just died also gives waits 0.8 s to show its document went before it counts |
 | `ScreenHost.swift` | Native screens over the page: `.overFullScreen` only (the web view never leaves its window: no `visibilitychange`, no leave and return path), one transition at a time (a dismissal right behind a present not yet started cancels both), the owner's Back and edge pan latched (the page hears `coach.back`; if it stays on the chat the screen goes up again), focus (the page's field blurred through `shell.covered` and editing ended before covering; the descriptor's `hasInitialFocus` is false), VoiceOver (the web view hidden while covered, the screen modal), `overrideUserInterfaceStyle` from the model's `paper` on every hosting controller and the toast window, the crash marker. The toast window (`ShellOverlay`): forwarded toasts 8 px under the chat's header (or the status bar), its strip only as tall as the toast; confirms over everything, the window key while one is open. The chat's `CoachStore` lives here, one per binding (C7): models go to it (`update`), the chat draws on it, its intents and their outcomes go through `Hooks.ask`, a document that goes reaches it (`forgetModels`) |
 | `SlideTransition.swift` | `ScreenSlideTransition` (SwiftUI has a `SlideTransition` of its own): the push-like slide in from the trailing edge with the page dimmed under it, out the same way, interactive from the leading edge; a cross-fade with Reduce Motion |
-| `ShellProbe.swift` | Debug builds only: the shell scenarios' hands inside the app (`-fpShellProbe <steps>`), for tests/native-shell.sh and tests/tools/native-chat.py (test-native.sh): JavaScript in the page world, intents through the link, the owner's Back and edge pan, taps on the toast window, keys on the native composer, Send, and presses on the chat's controls through their own accessibility actions (it turns the simulator's accessibility runtime on for them and back off when done) |
+| `ShellProbe.swift` | Debug builds only: the shell scenarios' hands inside the app (`-fpShellProbe <steps>`), for tests/native-shell.sh and tests/tools/native-chat.py (test-native.sh): JavaScript in the page world, intents through the link, the owner's Back and edge pan, taps on the toast window, keys on the native composer, Send, presses on the chat's controls through their own accessibility actions (it turns the simulator's accessibility runtime on for them and back off when done), and the web view taken out of its window and back (the fault Settings > About counts) |
 
 **The breaker book and crash markers.** The screens' BreakerBook (the native breaker per screen and page build, and the
 screens' crash verdicts) lives in the link, and every change goes through it (`editBook` for the markers found at launch
@@ -121,6 +121,21 @@ screen; a new page or shell build is clean) and removes the file, so a marker ac
 **Switches.** The page's own (`FP_NATIVE`, Settings > About's `kt_native_off`), the policy file's `screens.coach`, a
 crash verdict, the native breaker (no hello within 15 s of foreground time, or 3 failed intents or undecodable models in
 a row). The shell keeps no device switch of its own in build 60.
+
+**Settings > About says why** (decision.md section 6; section 11.9's counters). The flag names every screen the binary
+has (`binary`), so the page keeps the Native Coach chat row whether the chat is on or off; TrovoShell `status` (FPCore
+`ScreenStatus`) says, per screen, whether the next document may show it, whether this one does, and why not: `device`,
+`policy`, `crash` (the verdict's words and time) or `breaker` (`no-hello` or `failures`, with the trip's detail). The row
+reads "Off: the app closed with it open", "Paused: no hello", "Paused: calls kept failing" or "Off by the policy file", and
+its sheet offers "Try the native chat again" where a verdict or a trip holds: TrovoShell `reset` clears the screen's crash
+verdicts and its breaker record through the link's book (saved), for the next document; the one on screen keeps what it
+negotiated. The sheet lists the shell's counters, kept across launches in UserDefaults `fp.shell.counters` (FPCore
+`ShellCounters`) beside this launch's: the web view leaving its window while the app is active (ShellWebView), the page
+going hidden while a native screen covers it and the app is in use (the page's TrovoShell `visibility`, sent on every
+visibilitychange while covered; the shell counts a hidden page only while the app is active and only one that went hidden
+after the app last became active, so leaving the app or a report that arrives on the way back is not counted), breaker
+trips and crash markers. Before, the row needed a negotiated chat: it vanished exactly when the chat was off, and only the
+Debug `-fpClearVerdicts` could clear a verdict.
 
 Debug launch arguments (besides FPHost's): `-fpSmoke` (after each hello a ping through the real link, logged as
 `fp: ping ok v1`, subsystem `app.kt.trainer`), `-fpShellProbe <steps file>` with `-fpShellProbeLog <name>`; FPHost's
@@ -146,9 +161,12 @@ WebKit scrolls to it, then present and dismiss by the page, by Back and by the e
 document is not scrolled; an edge pan let go early leaves the chat up; the simulator's software keyboard is turned on for
 the scenario, since it counts a hardware keyboard as attached), `wckill` (WebContent killed with the chat up and a send in
 flight: the new document takes the chat over, the shell resyncs on its boot, nothing is resent, the words go back in the
-composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat, once), `policy`
-(`screens.coach` "off" takes the chat down at once) and `breaker` (three timeouts turn it off for the page build). Shots
-in `screenshots/out/native-shell/`.
+composer, the open confirm closes as stale), `marker` (a planted crash marker brings back the web chat, once; Settings >
+About keeps the row and says why, its sheet lists the counters, and the owner's "Try the native chat again" brings the
+native chat back at the next launch), `policy` (`screens.coach` "off" takes the chat down at once, and About says so),
+`breaker` (three timeouts turn it off for the page build; About says it is paused; Try again brings it back) and
+`counters` (the web view taken out of its window with the chat up: the leave-window and hidden-page counts go up, and
+About's sheet lists them). Shots in `screenshots/out/native-shell/`.
 
 ## The live chat: CoachStore
 

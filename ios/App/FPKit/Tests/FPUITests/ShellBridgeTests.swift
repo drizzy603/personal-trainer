@@ -219,6 +219,86 @@ final class ShellBridgeTests: XCTestCase {
         String(decoding: try! JSONSerialization.data(withJSONObject: [s]), as: UTF8.self).dropFirst().dropLast().description
     }
 
+    /// Settings > About (decision.md section 6: "Settings > About says why"): after a crash verdict the status still
+    /// lists the chat, off, with the verdict's words, and "Try the native chat again" clears the verdict through the
+    /// link's book (kept in the book file) for the next document; this document keeps what it negotiated.
+    func testStatusSaysWhyTheChatIsOffAndResetTurnsItBackOnForTheNextDocument() async throws {
+        ScreenMarkers(folder: folder).write("coach", page: "P1", shell: "60")
+        let b = bridge()
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), [], "the verdict: off for this pair")
+        _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
+        let st = try await message(b, "status", [:]).get()
+        let coach = try XCTUnwrap((st["screens"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(coach["off"] as? String, "crash")
+        XCTAssertEqual(coach["on"] as? Bool, false)
+        XCTAssertEqual(coach["live"] as? Bool, false)
+        XCTAssertEqual(coach["canReset"] as? Bool, true)
+        XCTAssertEqual(coach["why"] as? String, "crash marker: the app closed while the native coach screen was up")
+        let counters = try XCTUnwrap(st["counters"] as? [String: Any])
+        XCTAssertEqual((counters["markers"] as? [String: Any])?["launch"] as? Int, 1, "the marker this launch found counts")
+        XCTAssertEqual((counters["markers"] as? [String: Any])?["found"] as? [String], ["presenting coach@P1 shell 60"])
+        XCTAssertEqual((counters["markers"] as? [String: Any])?["total"] as? Int, 1)
+        // reset: the verdict goes from the book file, the status says on for the next document, this one is unchanged
+        let after = try await message(b, "reset", ["screen": "coach"]).get()
+        let again = try XCTUnwrap((after["screens"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(again["on"] as? Bool, true)
+        XCTAssertEqual(again["live"] as? Bool, false, "this document keeps what it negotiated")
+        XCTAssertTrue(ShellBridge.loadBook(folder: folder, defaults: defaults).disabled.isEmpty, "the book file has no verdict left")
+        XCTAssertFalse(b.binding?.link.isLive("coach") ?? true)
+        if case .success = await message(b, "reset", ["screen": "settings"]) { XCTFail("a screen this binary lacks is refused") }
+        // the next launch (a new bridge on the same files): the chat is on, the totals kept
+        let next = bridge()
+        XCTAssertEqual(next.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        XCTAssertEqual(next.counters.markers.total, 1, "the totals are kept across launches")
+        XCTAssertEqual(next.launchCounts.markers, 0)
+    }
+
+    /// The breaker's trip is named in the status, counted, and cleared by reset the same way.
+    func testStatusNamesTheBreakersTripAndResetClearsIt() async throws {
+        let b = bridge()
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
+        let fx = try XCTUnwrap(b.binding).link.editBook { _ = $0.trip(screen: "coach", pageBuild: "P1", reason: .failures, detail: "3 in a row: timeout, timeout, timeout", at: Date()) }
+        XCTAssertTrue(fx.contains(.bookChanged))
+        let st = try await message(b, "status", [:]).get()
+        let coach = try XCTUnwrap((st["screens"] as? [String: Any])?["coach"] as? [String: Any])
+        XCTAssertEqual(coach["off"] as? String, "breaker")
+        XCTAssertEqual(coach["trip"] as? String, "failures")
+        XCTAssertEqual(coach["why"] as? String, "3 in a row: timeout, timeout, timeout")
+        _ = try await message(b, "reset", ["screen": "coach"]).get()
+        XCTAssertNil(b.binding?.link.book.screens["coach"], "the trip is gone from the link's book")
+        XCTAssertNil(ShellBridge.loadBook(folder: folder, defaults: defaults).screens["coach"], "and from the book file")
+        let st2 = try await message(b, "status", [:]).get()
+        XCTAssertEqual(((st2["screens"] as? [String: Any])?["coach"] as? [String: Any])?["on"] as? Bool, true)
+    }
+
+    /// The page reports visibilitychange while a native screen covers it: a hidden page counts only while the app is in
+    /// use, and only when it went hidden after the app last became active (leaving the app, or a report that arrives
+    /// after coming back, is by design).
+    func testAHiddenPageCountsOnlyWhileTheAppIsInUse() async throws {
+        let b = bridge()
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        b.appActive = { true }
+        let since = Date()
+        b.activeSince = since
+        var r = try await message(b, "visibility", ["state": "hidden", "at": (since.timeIntervalSince1970 + 1) * 1000]).get()
+        XCTAssertEqual(r["counted"] as? Bool, true)
+        r = try await message(b, "visibility", ["state": "visible", "at": (since.timeIntervalSince1970 + 2) * 1000]).get()
+        XCTAssertEqual(r["counted"] as? Bool, false, "coming back into view is no fault")
+        r = try await message(b, "visibility", ["state": "hidden", "at": (since.timeIntervalSince1970 - 5) * 1000]).get()
+        XCTAssertEqual(r["counted"] as? Bool, false, "hidden before the app became active: the app left the screen")
+        b.appActive = { false }
+        r = try await message(b, "visibility", ["state": "hidden"]).get()
+        XCTAssertEqual(r["counted"] as? Bool, false, "the app is going to the background")
+        XCTAssertEqual(b.counters.hidden.total, 1)
+        XCTAssertEqual(b.launchCounts.hidden, 1)
+        let st = try await message(b, "status", [:]).get()
+        XCTAssertEqual(((st["counters"] as? [String: Any])?["hidden"] as? [String: Any])?["total"] as? Int, 1)
+        b.noteLeftWindow()
+        XCTAssertEqual(b.counters.leftWindow.total, 1)
+        XCTAssertEqual(ShellCounters.decoded(defaults.data(forKey: ShellBridge.countersKey)).hidden.total, 1, "kept in the defaults")
+    }
+
     func testAMessageFromAnotherWebViewIsRefused() async throws {
         let b = bridge()
         b.install(webView: webView, presenter: root, pageBuild: "P1")

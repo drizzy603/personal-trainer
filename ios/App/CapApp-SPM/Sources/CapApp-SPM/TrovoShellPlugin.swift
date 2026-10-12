@@ -17,6 +17,12 @@ import WebKit
 //   toast({text, style, undo?})             while a native screen covers the page
 //   confirm({id, title, body, confirm, cancel, tone})
 //   log({text, level?})
+//   status()                                Settings > About: every native screen of this binary, on or off and why,
+//                                           and the shell's counters (FPCore ScreenStatus)
+//   reset({screen})                         Settings > About's "Try the native chat again": the screen's crash verdicts
+//                                           and breaker record go, for the next document; answers the status after
+//   visibility({state, at?})                the page went hidden or visible while a native screen covered it (counted
+//                                           when hidden while the app was in use)
 
 /// What the TrovoShell plugin needs from FPKit. Called on the main thread.
 @MainActor
@@ -38,6 +44,9 @@ public class TrovoShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "toast", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "confirm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "log", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reset", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "visibility", returnType: CAPPluginReturnPromise),
     ]
 
     /// Set by the App target before registration.
@@ -51,6 +60,9 @@ public class TrovoShellPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func toast(_ call: CAPPluginCall) { forward("toast", call) }
     @objc func confirm(_ call: CAPPluginCall) { forward("confirm", call) }
     @objc func log(_ call: CAPPluginCall) { forward("log", call) }
+    @objc func status(_ call: CAPPluginCall) { forward("status", call) }
+    @objc func reset(_ call: CAPPluginCall) { forward("reset", call) }
+    @objc func visibility(_ call: CAPPluginCall) { forward("visibility", call) }
 
     /// Calls arrive off the main thread, in the order the page made them; one hop to main keeps that order.
     private func forward(_ method: String, _ call: CAPPluginCall) {

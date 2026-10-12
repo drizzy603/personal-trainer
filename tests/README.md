@@ -72,8 +72,11 @@ FP_SHELL_INERT=1 ./tests/run.sh
 
 Shell contracts (plan task C3): `boot({shell})` runs a boot under one contract an installable shell
 speaks: `'none'` (no flag, every shell up to 59 and the PWA; the default), `'inert'` (build 60's
-`window.__FP_SHELL` with no native screen) or `'coach'` (build 60: the native Coach chat), with a
-mock TrovoShell that negotiates hello as FPCore does and records every call in `window.__fpShell`.
+`window.__FP_SHELL` with no native screen on: its binary has the chat, which the published policy
+file keeps off, so Settings › About shows the row saying so) or `'coach'` (build 60: the native Coach
+chat), with a mock TrovoShell that negotiates hello as FPCore does, answers `status` (a spec's
+`window.__fpShellStatus`, else the flag's binary screens on or off by the policy file) and `reset`, and
+records every call in `window.__fpShell`.
 `FP_SHELL_INERT=1 ./tests/run.sh` runs every native boot that names no shell as `'inert'`: per-spec
 results must equal the classic run's. A spec that builds its own shell in `opts.init` (sets
 `window.__FP_SHELL`, a TrovoShell or a TrovoStore itself, as 120 and 121 do) names `shell: 'none'`, so
@@ -129,8 +132,12 @@ dismiss by the page, Back and the edge pan: no keyboard comes back and the docum
 is not scrolled; WebContent killed with the chat up: taken over by the new
 document, resynced on its boot, nothing resent, the open confirm closed as stale;
 a planted crash marker bringing back the web chat once; the policy file's
-`screens.coach` "off"; the breaker. Spec 118 holds the page's half (its C5 case:
-the take-over after a reload).
+`screens.coach` "off"; the breaker; Settings › About keeping the Native Coach
+chat row and saying why it is off in each case, and the owner's "Try the native
+chat again" bringing it back at the next launch; the shell's counters (the web
+view taken out of its window with the chat up). Spec 118 holds the page's half
+(its C5 cases: the take-over after a reload, and the About row, its sheet,
+TrovoShell `status`/`reset` and the `visibility` report on the mock).
 
 ## The live native chat in test-native.sh
 

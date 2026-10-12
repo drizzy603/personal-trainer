@@ -28,6 +28,13 @@ import FPCore
 ///   the app is active; the next launch finds a marker only after a death on screen, records the verdict (that screen
 ///   is off for that shell and page build: the page shows its web screen) and removes the file, so it acts once.
 ///
+/// - **Settings > About** asks `status` (FPCore ScreenStatus: every screen of this binary, on or off and why, whether the
+///   owner can try it again) and `reset` ("Try the native chat again": the screen's crash verdicts and breaker record go
+///   through the link's book, for the next document). The counters the owner cannot see in os_log are kept across
+///   launches (FPCore ShellCounters, UserDefaults `fp.shell.counters`): the web view leaving its window while the app is
+///   active (ShellWebView), the page going hidden under a native screen while the app is in use (the page's
+///   `visibility`), breaker trips and crash markers.
+///
 /// FPHost's policy fetch and the store's bootDone reach this through `environment` (the App target sets it: FPUI does
 /// not import FPHost).
 @MainActor
@@ -39,6 +46,7 @@ public final class ShellBridge: NSObject {
     nonisolated static let handlerName = "fpShell"
     nonisolated static let bookFileName = "breakers.json"
     nonisolated static let bookKey = "fp.shell.breakers"
+    nonisolated static let countersKey = "fp.shell.counters"
 
     /// What the App target supplies.
     public struct Environment {
@@ -101,6 +109,14 @@ public final class ShellBridge: NSObject {
     private var foundMarkers: [CrashMarker] = []
     /// Their lines, for Settings and the probe.
     public private(set) var markersFound: [String] = []
+    /// Settings > About's counters: the totals kept across launches, and this launch's.
+    public private(set) var counters = ShellCounters()
+    public private(set) var launchCounts = LaunchCounts()
+    /// Since when the app has been active without a break (nil while it is not): a page hidden before that moment was the
+    /// app leaving the screen, not a native screen hiding the page.
+    var activeSince: Date?
+    /// Whether the app is in use now (tests set their own).
+    var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
     #if DEBUG
     var debug = ShellDebug()
     /// Debug builds: what the App target lets the scenario runner do that FPUI cannot reach itself (ShellProbe's `hook`
@@ -127,6 +143,11 @@ public final class ShellBridge: NSObject {
         debug = ShellDebug(arguments: ProcessInfo.processInfo.arguments)
         #endif
         storedBook = Self.loadBook(folder: folder, defaults: defaults)
+        counters = ShellCounters.decoded(defaults.data(forKey: Self.countersKey))
+        if counters.since == nil {
+            counters.since = Date()
+            saveCounters()
+        }
         let markers = ScreenMarkers(folder: folder)
         for (url, marker) in markers.found(defaultShell: shell.shell) {
             try? FileManager.default.removeItem(at: url)   // a marker acts once
@@ -141,9 +162,13 @@ public final class ShellBridge: NSObject {
             Self.log.error("shell: crash marker found (\(marker.line, privacy: .public)): that screen is off for this shell and page build")
             foundMarkers.append(marker)
         }
+        launchCounts.markersFound = markersFound
+        activeSince = appActive() ? Date() : nil
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         nc.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        nc.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         #if DEBUG
         ShellProbe.startIfAsked(bridge: self, arguments: ProcessInfo.processInfo.arguments)
         ShellProbe.shared?.event("launch", ["shell": shell.shell, "markersFound": markersFound, "ignored": debug.ignoreMarker,
@@ -167,6 +192,9 @@ public final class ShellBridge: NSObject {
             let markers = foundMarkers
             foundMarkers = []
             fx += link.editBook { $0.recordStaleMarkers(markers, at: now) }
+            for _ in markers { counters.markers.add(at: now) }
+            launchCounts.markers += markers.count
+            saveCounters()
         }
         #if DEBUG
         if debug.clearVerdicts { fx += link.editBook { book in for s in self.shell.screens { book.clearDisabled(piece: s) } } }
@@ -303,6 +331,14 @@ public final class ShellBridge: NSObject {
         scheduleHelloDeadline(b)
     }
 
+    @objc private func didBecomeActive() {
+        activeSince = Date()
+    }
+
+    @objc private func willResignActive() {
+        activeSince = nil
+    }
+
     // MARK: Page to Swift (the TrovoShell plugin, on the main thread)
 
     /// A TrovoShell call from the page in `webView`; `done` resolves or rejects it.
@@ -364,6 +400,20 @@ public final class ShellBridge: NSObject {
             default: Self.pageLog.notice("\(line.text, privacy: .public)")
             }
             done(.success([:]))
+        case .status:
+            done(.success(status(b)))
+        case .reset(let s):
+            guard shell.screens.contains(s) else {
+                done(.failure(Refusal.badMessage("reset: this binary has no \(s) screen")))
+                return
+            }
+            // through the link, so the book is saved and nothing of this document changes: a screen that went off stays
+            // off for it, and the next document's hello finds the screen on
+            apply(b.link.editBook { $0.turnBackOn(screen: s) }, b)
+            Self.log.notice("shell: the owner turned \(s, privacy: .public) back on (Settings > About): from the next document")
+            done(.success(status(b)))
+        case .visibility(let v):
+            done(.success(["counted": noteVisibility(v, at: now)]))
         }
         #if DEBUG
         ShellProbe.shared?.pageMessage(method, message)
@@ -487,6 +537,11 @@ public final class ShellBridge: NSObject {
                 b.screens.forgetModels(exceptUp: true)
             case .screenOff(let screen, let reason):
                 Self.log.error("shell: \(screen, privacy: .public) off for this document: \(reason.code, privacy: .public)")
+                if case .tripped(let t) = reason {
+                    counters.trips.add(at: t.at)
+                    launchCounts.trips += 1
+                    saveCounters()
+                }
                 if b.screens.isUp(screen) { b.screens.dismiss(screen) }
                 if b.link.link != nil { send(.screensOff(screen: screen, why: reason.code), b) }
             case .breakersReset(let page):
@@ -508,6 +563,42 @@ public final class ShellBridge: NSObject {
         guard !off.isEmpty else { return }
         Self.log.notice("shell: the policy file turned off \(off.joined(separator: ","), privacy: .public)")
         apply(b.link.withdraw(off), b)
+    }
+
+    // MARK: Settings > About
+
+    /// TrovoShell `status` (FPCore ScreenStatus): every screen of this binary for the page build being served, on or off
+    /// and why, whether this document shows it, and the counters (this launch's and in all).
+    func status(_ b: Binding) -> [String: Any] {
+        let page = b.link.pageBuild ?? b.pageBuild
+        var launch = launchCounts
+        launch.leftWindow = ShellWebView.leftWindowWhileActive
+        let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens, gate: gate(page: page, book: b.link.book),
+                                     live: b.link.liveScreens, book: b.link.book, counters: counters, launch: launch)
+        return (json.foundation as? [String: Any]) ?? [:]
+    }
+
+    /// The page went hidden (or visible) while a native screen covered it. Counted only when it went hidden while the app
+    /// was in use: going to the background, or coming back, hides the page by design (and its report can arrive after
+    /// the app is active again, so the page's own time must fall after the app became active).
+    @discardableResult
+    func noteVisibility(_ v: VisibilityReport, at now: Date) -> Bool {
+        guard v.hidden, appActive(), let since = activeSince, (v.at ?? now) >= since else { return false }
+        counters.hidden.add(at: v.at ?? now)
+        launchCounts.hidden += 1
+        saveCounters()
+        Self.log.fault("shell: the page went hidden under a native screen while the app was active (\(self.launchCounts.hidden) this launch)")
+        return true
+    }
+
+    /// ShellWebView left its window while the app was active (counted there for this launch): kept in the totals.
+    func noteLeftWindow(at now: Date = Date()) {
+        counters.leftWindow.add(at: now)
+        saveCounters()
+    }
+
+    private func saveCounters() {
+        defaults.set(counters.encoded(), forKey: Self.countersKey)
     }
 
     // MARK: Gate and book
@@ -599,6 +690,7 @@ public final class ShellBridge: NSObject {
             "documents": b.documents, "bootDones": b.bootDones, "pending": b.pageLink.pending,
             "book": Self.bookJSON(b.link.book), "screens": b.screens.describe(), "markersFound": markersFound,
             "leftWindow": ShellWebView.leftWindowWhileActive, "gate": gate(page: b.link.pageBuild ?? b.pageBuild, book: b.link.book).on,
+            "status": status(b),
         ]
     }
 }
@@ -615,6 +707,7 @@ public final class ShellWebView: WKWebView {
         if newWindow == nil, window != nil, UIApplication.shared.applicationState == .active {
             Self.leftWindowWhileActive += 1
             ShellBridge.log.fault("shell: the web view left its window while the app was active (\(Self.leftWindowWhileActive) this launch)")
+            ShellBridge.shared.noteLeftWindow()   // Settings > About counts it (in all, across launches)
         }
         super.willMove(toWindow: newWindow)
     }

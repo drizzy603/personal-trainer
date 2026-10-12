@@ -107,6 +107,32 @@
     "text": "fp: hello v1 coach",
     "level": "info"
    }
+  },
+  {
+   "method": "status",
+   "options": {},
+   "note": "Settings > About reads every native screen, on or off and why, and the counters"
+  },
+  {
+   "method": "reset",
+   "options": {
+    "screen": "coach"
+   },
+   "note": "Settings > About: Try the native chat again"
+  },
+  {
+   "method": "visibility",
+   "options": {
+    "state": "hidden",
+    "at": 1760000000500
+   },
+   "note": "the page went hidden while a native screen covered it"
+  },
+  {
+   "method": "visibility",
+   "options": {
+    "state": "visible"
+   }
   }
  ]
 }

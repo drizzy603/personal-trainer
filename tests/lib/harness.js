@@ -203,17 +203,20 @@ function run(name, fn) {
 // Shell contracts (plan task C3). opts.shell names the one a boot runs under, one variant per contract
 // an installable shell speaks:
 //   'none'   no flag and no TrovoShell: every shell up to 59, the PWA, the browser (the default);
-//   'inert'  build 60's flag with no native screen: window.__FP_SHELL {v:1, screens:[]} and the mock;
+//   'inert'  build 60's flag with no native screen on: window.__FP_SHELL {v:1, screens:[], binary:['coach']}
+//            and the mock (the published policy file keeps the chat off: Settings > About says so);
 //   'coach'  build 60: contract v1 with the native Coach chat;
-//   or a flag object {v, min, shell, screens}.
+//   or a flag object {v, min, shell, screens, binary?}.
 // FP_SHELL_INERT=1 (tests/run.sh passes it) runs every native boot that names no shell as 'inert'.
 // The mock TrovoShell answers hello the way FPCore's Negotiation does and records every call in
 // window.__fpShell (calls, of(name), models()); a spec calls the page as the shell does through
-// window.FPScreens.call(name, args).
+// window.FPScreens.call(name, args). Its status (Settings > About) is window.__fpShellStatus when a spec
+// sets one, else FPCore ScreenStatus's shape for the flag: each binary screen on when the flag has it,
+// else off by the policy file; reset turns a screen of __fpShellStatus back on for the next launch.
 const SHELLS = {
   none: null,
-  inert: { v: 1, min: 1, shell: '60', screens: [] },
-  coach: { v: 1, min: 1, shell: '60', screens: ['coach'] },
+  inert: { v: 1, min: 1, shell: '60', screens: [], binary: ['coach'] },
+  coach: { v: 1, min: 1, shell: '60', screens: ['coach'], binary: ['coach'] },
 };
 function shellFlag(opts) {
   let s = opts.shell;
@@ -241,10 +244,31 @@ function shellMock(flag) {
     const up = Array.isArray(window.__fpShellUp) ? window.__fpShellUp.filter((s) => screens.indexOf(s) >= 0) : [];
     return up.length ? { v, screens, up } : { v, screens };
   }
+  // FPCore ScreenStatus's shape (Settings > About): a spec's own window.__fpShellStatus, else the flag's binary screens,
+  // each on when the flag offers it, else off by the policy file
+  const count = () => ({ launch: 0, total: 0, last: null });
+  function status() {
+    if (window.__fpShellStatus) return copy(window.__fpShellStatus);
+    const screens = {};
+    (flag.binary || []).forEach((s) => {
+      const on = (flag.screens || []).indexOf(s) >= 0;
+      screens[s] = { on, live: on, off: on ? null : 'policy', trip: null, why: null, at: null, canReset: false };
+    });
+    return { v: 1, shell: flag.shell, page: null, screens, verdicts: [],
+      counters: { since: null, leftWindow: count(), hidden: count(), trips: count(), markers: Object.assign(count(), { found: [] }) } };
+  }
+  function reset(a) {   // the next launch may show it: off, verdicts and trips gone
+    const st = window.__fpShellStatus, s = st && st.screens && st.screens[a && a.screen];
+    if (s) Object.assign(s, { on: true, off: null, trip: null, why: null, at: null, canReset: false });
+    if (st && Array.isArray(st.verdicts)) st.verdicts = st.verdicts.filter((v) => v.piece !== (a && a.screen));
+    return status();
+  }
+  const answer = (name, a) => (name === 'hello' ? hello(a) : name === 'status' ? status() : name === 'reset' ? reset(a)
+    : name === 'visibility' ? { counted: false } : {});
   const method = (name) => (a) => {
     calls.push([name, copy(a)]);
     if (window.__fpShell.refuse && window.__fpShell.refuse[name]) return Promise.reject(new Error(window.__fpShell.refuse[name]));
-    return Promise.resolve(name === 'hello' ? hello(a) : {});
+    return Promise.resolve(answer(name, a));
   };
   window.__fpShell = {
     flag, calls, refuse: {},
@@ -253,7 +277,8 @@ function shellMock(flag) {
     call: (name, args) => window.FPScreens.call(name, args || {}),
   };
   window.Capacitor.Plugins.TrovoShell = {};
-  ['hello', 'bootDone', 'present', 'dismiss', 'model', 'toast', 'confirm', 'log'].forEach((n) => { window.Capacitor.Plugins.TrovoShell[n] = method(n); });
+  ['hello', 'bootDone', 'present', 'dismiss', 'model', 'toast', 'confirm', 'log', 'status', 'reset', 'visibility']
+    .forEach((n) => { window.Capacitor.Plugins.TrovoShell[n] = method(n); });
 }
 
 module.exports = { boot, assert, run, SEED, SHELLS };

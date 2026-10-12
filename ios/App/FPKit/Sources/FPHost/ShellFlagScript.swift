@@ -9,6 +9,8 @@ import FPCore
 /// - `screens`: the native screens this binary may show the page being served, as FPUI's ShellBridge works them out
 ///   from ScreenGate when the web view is set up (the policy file, a crash verdict for this shell and page build, the
 ///   native breaker; plan task C5). The page never reads it: its hello's answer is what counts, document by document.
+/// - `binary`: every native screen compiled into this binary, on or off. Settings > About keeps a row for each and
+///   says why one is off (TrovoShell `status`), where a row shown only for a negotiated screen vanished when it was off.
 /// - `dev`: Debug builds only, the test tools' launch arguments `-devNav <route>` and `-devTheme <room>` (plan task S6).
 ///   The page's dev-nav hook routes to `dev.nav` once per launch and its first paint wears the room `dev.theme`
 ///   without saving it, so test-native.sh and screenshots/shoot.py no longer write `kt_dev_nav` into WebKit's file
@@ -40,8 +42,10 @@ public enum ShellFlagScript {
         }
     }
 
-    public static func flag(shell: String, screens: [String] = [], dev: Dev? = nil) -> ShellFlag {
-        ShellFlag(contract: ShellContract(shell: shell, screens: screens), screens: screens, devNav: dev?.nav, devTheme: dev?.theme,
+    /// `binary`: the native screens compiled into this binary (FPCore `ShellContract.binaryScreens`), on or off, so the
+    /// page keeps their Settings > About rows and says why one is off.
+    public static func flag(shell: String, screens: [String] = [], binary: [String] = ShellContract.binaryScreens, dev: Dev? = nil) -> ShellFlag {
+        ShellFlag(contract: ShellContract(shell: shell, screens: binary), screens: screens, devNav: dev?.nav, devTheme: dev?.theme,
                   devAPI: dev?.api)
     }
 

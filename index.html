@@ -21986,8 +21986,8 @@ function renderSettings() {
       '</div>';
     })()+
     // The build 60+ shell's own rows, under the build they belong to: the native copy (Storage: the flag and
-    // TrovoStore) and the native chat's switch (the flag, TrovoShell and a negotiated coach screen). Neither shows
-    // in the browser, the PWA or a shell before 60.
+    // TrovoStore) and the native chat (the flag, TrovoShell and a binary that has the chat, on or off: the row says
+    // why it is off). Neither shows in the browser, the PWA or a shell before 60.
     _fpStoreRowHTML()+
     _fpAboutRow()+
     (function(){
@@ -24509,28 +24509,154 @@ if(_fpPlugin()){
       return f((args && typeof args==='object') ? args : {});
     }).catch(function(e){ _fpLog('intent '+name+' threw: '+((e && e.message) || e), 'error'); return {ok:false, error:'exception'}; });
   }};
+  // A native screen goes over the page (.overFullScreen), so the page stays visible under it while the app is in use:
+  // every visibilitychange while one covers the page goes to the shell, which counts a page hidden while the app was in
+  // use (Settings > About; leaving the app hides it by design, and the shell tells the two apart).
+  document.addEventListener('visibilitychange', function(){
+    if(!_fpCovered()) return;
+    var P=_fpPlugin(); if(!P || typeof P.visibility!=='function') return;
+    try{ Promise.resolve(P.visibility({state:String(document.visibilityState||''), at:Date.now()})).catch(function(){}); }catch(e){}
+  });
   _fpHello();
 }
 
-// Settings > About: the native chat's switch (this device), shown on a shell that has the native chat.
+// Settings > About > Native Coach chat (build 60+). The row stands whenever this binary offers the native chat (the
+// flag's binary), on or off, and says how it stands and why it is off: this iPhone's switch (kt_native_off), the
+// policy file, a crash verdict (the app closed with the chat open), the shell's breaker (no hello in time, or calls
+// failing), or this document's own reason. Its sheet has the switch, "Try the native chat again" where a verdict or a
+// trip holds (TrovoShell reset: from the next launch) and the shell's counters (TrovoShell status: the web view leaving
+// its window, the page hidden under a native screen, breaker trips, crash markers). Before, the row showed only for a
+// negotiated chat, so it vanished exactly when the chat was off for a reason. Inert without the flag and TrovoShell.
+var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
+// The native screens this binary has, on or off (the flag's binary; an older flag has none).
+function _fpBinary(s){ var f=_fpShellFlag(); return !!(f && Array.isArray(f.binary) && f.binary.indexOf(s)>=0); }
+function _fpChatOffered(){ return !!(FP_NATIVE && _fpPlugin() && (_fpBinary('coach') || _fpNegotiated('coach') || _fpDeviceOff())); }
+// Reads the shell's status again (at most every 1.5 s unless forced) and repaints the row and an open sheet.
+function _fpChatRefresh(force, then){
+  var P=_fpPlugin(); if(!P || typeof P.status!=='function'){ if(then) then(null); return; }
+  if(then) _fpChat.cbs.push(then);
+  if(_fpChat.busy) return;
+  if(!force && _fpChat.st && Date.now()-_fpChat.at<1500){ _fpChatDone(); return; }
+  _fpChat.busy=true;
+  var done=function(st){ _fpChat.busy=false; _fpChat.at=Date.now(); if(st && typeof st==='object') _fpChat.st=st; _fpChatPaint(); _fpChatDone(); };
+  try{ Promise.resolve(P.status()).then(done, function(){ done(null); }); }catch(e){ done(null); }
+}
+function _fpChatDone(){ var cbs=_fpChat.cbs; _fpChat.cbs=[]; cbs.forEach(function(f){ try{ f(_fpChat.st); }catch(e){} }); }
+// How the native chat stands, in the owner's words: the row's line, its pill (On, Off, Paused) and the sheet's note.
+function _fpChatState(){
+  var st=_fpChat.st, c=(st && st.screens && st.screens.coach) || null, d=_fp.off.coach;
+  var when=c && c.at ? _fpStoreWhen(c.at) : '';
+  if(_fpDeviceOff()) return {line:'Off \u00b7 the app shows its web chat', pill:'Off', note:'Switched off on this iPhone. Turn it on to use the iPhone\u2019s own chat screen again.'};
+  if(_fpLive('coach')) return {line:'On \u00b7 the iPhone\u2019s own chat screen', pill:'On', note:'The Coach chat opens as an iPhone screen, over the app.'};
+  if(c && c.off==='crash') return {line:'Off: the app closed with it open', pill:'Off',
+    note:'The app closed while the native chat was open'+(when ? ' (found '+when+')' : '')+', so this version of the app shows its web chat. Nothing was lost.'};
+  if(c && c.off==='breaker') return c.trip==='no-hello'
+    ? {line:'Paused: no hello', pill:'Paused', note:'The page didn\u2019t check in with the native chat in time'+(when ? ' ('+when+')' : '')+', so this version shows the web chat.'}
+    : {line:'Paused: calls kept failing', pill:'Paused', note:'Calls between the page and the native chat failed several times in a row'+(when ? ' ('+when+')' : '')+', so this version shows the web chat.'};
+  if(c && c.off==='policy') return {line:'Off by the policy file', pill:'Off', note:'The app\u2019s remote switch has the native chat off for now. It comes back by itself when the switch does.'};
+  if(c && c.on){
+    if(d==='present') return {line:'Paused: it couldn\u2019t open \u00b7 back from the next launch', pill:'Paused', note:'The iPhone didn\u2019t open the native chat this time, so the app shows its web chat until it starts again.'};
+    if(d==='model') return {line:'Paused: it couldn\u2019t be drawn \u00b7 back from the next launch', pill:'Paused', note:'The chat couldn\u2019t be drawn natively this time, so the app shows its web chat until it starts again.'};
+    if(_fp.hello) return {line:'Back from the next launch', pill:'Off', note:'The native chat is on again from the next time the app starts.'};
+    return {line:'Starting\u2026', pill:'Off', note:''};
+  }
+  if(!st) return {line:'Checking the native chat\u2026', pill:'Off', note:''};
+  return {line:'Not available now \u00b7 the app shows its web chat', pill:'Off', note:''};
+}
+function _fpChatPill(p){
+  return '<span id="fp-chat-pill" style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(p==='On'?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+_esc(p)+'</span>';
+}
 function _fpAboutRow(){
-  if(!FP_NATIVE || !_fpPlugin() || !(_fpNegotiated('coach') || _fpDeviceOff())) return '';
-  var off=_fpDeviceOff(), on=!off && _fpLive('coach');
-  var sub=off ? 'Off · the app shows its web chat' : on ? "The iPhone's own chat screen" : 'Not available now · the app shows its web chat';
-  return '<div class="settings-row" onclick="toggleNativeChat()">'+
+  if(!_fpChatOffered()) return '';
+  setTimeout(function(){ _fpChatRefresh(false); }, 0);
+  var s=_fpChatState();
+  return '<div class="settings-row" id="fp-chat-row" onclick="openNativeChatSheet()">'+
     '<div class="settings-row-ic" style="background:var(--card2);">'+
       '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
         '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
       '</svg>'+
     '</div>'+
-    '<div class="settings-row-body"><div class="settings-row-title">Native Coach chat</div><div class="settings-row-sub">'+_esc(sub)+'</div></div>'+
-    '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(off?'background:var(--card2);color:var(--lite);border:1px solid var(--border);':'background:var(--accent);color:var(--on-accent);')+'">'+(off?'Off':'On')+'</span>'+
+    '<div class="settings-row-body"><div class="settings-row-title">Native Coach chat</div><div class="settings-row-sub" id="fp-chat-sub">'+_esc(s.line)+'</div></div>'+
+    _fpChatPill(s.pill)+
   '</div>';
+}
+function _fpChatPaint(){
+  var s=_fpChatState(), sub=document.getElementById('fp-chat-sub'), pill=document.getElementById('fp-chat-pill');
+  if(sub) sub.textContent=s.line;
+  if(pill) pill.outerHTML=_fpChatPill(s.pill);
+  var body=document.getElementById('fpChatBody'); if(!body) return;
+  var h=_fpChatSheetHTML(); if(h===_fpChat.html) return;
+  _fpChat.html=h; body.innerHTML=h; _a11yPass();
+}
+// "0 this launch · 0 in all" for one of the shell's counters.
+function _fpChatCount(x){ x=x||{}; return (x.launch|0)+' this launch \u00b7 '+(x.total|0)+' in all'; }
+function _fpChatSheetHTML(){
+  var st=_fpChat.st, s=_fpChatState(), c=(st && st.screens && st.screens.coach) || null, cn=(st && st.counters) || {}, off=_fpDeviceOff();
+  var out='<div style="margin:0 20px 6px;padding:14px 16px;border-radius:14px;background:var(--card2);border:1px solid var(--border);">'+
+    '<div class="kt-mono" style="font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:6px;">NATIVE COACH CHAT</div>'+
+    '<div id="fpChatHead" style="font-size:16px;font-weight:800;color:var(--text);line-height:1.3;">'+_esc(s.line)+'</div>'+
+    (s.note ? '<div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">'+_esc(s.note)+'</div>' : '')+
+  '</div>';
+  out+='<div style="height:10px;"></div>'+
+    '<div class="settings-row" onclick="toggleNativeChat()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Native Coach chat</div><div class="settings-row-sub">'+
+        (off ? 'Off on this iPhone \u00b7 the app shows its web chat' : 'Uses the iPhone\u2019s own chat screen whenever it can')+'</div></div>'+
+      '<span style="flex-shrink:0;padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;'+(!off?'background:var(--accent);color:var(--on-accent);':'background:var(--card2);color:var(--lite);border:1px solid var(--border);')+'">'+(off?'Off':'On')+'</span>'+
+    '</div>'+
+    (c && c.canReset && !off ?
+    '<div class="settings-row" onclick="_fpChatRetry()">'+
+      '<div class="settings-row-body"><div class="settings-row-title">Try the native chat again</div><div class="settings-row-sub">Back from the next launch</div></div>'+
+      '<span class="settings-row-chev">\u203a</span>'+
+    '</div>' : '');
+  out+=_fpStoreEyebrow('SAFETY');
+  if(!st) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading the counters\u2026</div>';
+  else {
+    var trips=cn.trips||{}, marks=cn.markers||{};
+    out+=_fpStoreStat('Left its window while open', _fpChatCount(cn.leftWindow), 'Stays 0: a native screen goes over the app, never in its place');
+    out+=_fpStoreStat('Hidden under a native screen', _fpChatCount(cn.hidden), 'Stays 0: the app under the chat keeps showing while you use it');
+    out+=_fpStoreStat('Breaker trips', _fpChatCount(trips), trips.last ? 'Last: '+_fpStoreWhen(trips.last) : 'No hello in time, or calls failing in a row, pauses it for that version');
+    out+=_fpStoreStat('Crash markers', _fpChatCount(marks)+(Array.isArray(st.verdicts) && st.verdicts.length ? ' \u00b7 '+_plural(st.verdicts.length, 'verdict')+' held' : ''),
+      marks.last ? 'Last: '+_fpStoreWhen(marks.last) : 'The app closing with the chat open turns it off for that version');
+  }
+  return out;
+}
+function openNativeChatSheet(){
+  if(!_fpChatOffered()) return;
+  var existing=document.getElementById('fpChatOverlay'); if(existing) existing.remove();
+  var overlay=document.createElement('div');
+  overlay.id='fpChatOverlay';
+  overlay.className='kt-sheet-overlay';
+  _fpChat.html=_fpChatSheetHTML();
+  overlay.innerHTML='<div class="kt-sheet" style="padding:0 0 calc(max(env(safe-area-inset-bottom),16px) + 8px);">'+
+    '<div class="kt-sheet-head" style="padding:20px 20px 12px;margin-bottom:0;">'+
+      '<div class="kt-sheet-title" id="fpChatTitle" tabindex="-1">Native Coach chat</div>'+
+      '<button class="kt-sheet-x" onclick="closeNativeChatSheet()" aria-label="Close">✕</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--muted);padding:0 20px 12px;line-height:1.5;">The Coach chat as an iPhone screen, over the app. The app keeps the conversation either way: the web chat shows whenever the native one is off.</div>'+
+    '<div id="fpChatBody">'+_fpChat.html+'</div>'+
+  '</div>';
+  document.body.appendChild(overlay);
+  _sheetDrag(overlay, closeNativeChatSheet);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeNativeChatSheet(); });
+  _a11yPass();
+  _fpChatRefresh(true);
+}
+function closeNativeChatSheet(){ var el=document.getElementById('fpChatOverlay'); if(el) el.remove(); }
+// "Try the native chat again": the shell clears the crash verdict or the breaker's trip (TrovoShell reset), and the
+// next launch's hello offers the chat again; this launch keeps the web chat.
+function _fpChatRetry(){
+  var P=_fpPlugin(); if(!P || typeof P.reset!=='function') return;
+  try{ Promise.resolve(P.reset({screen:'coach'})).then(function(st){
+    if(st && typeof st==='object' && st.screens){ _fpChat.st=st; _fpChat.at=Date.now(); }
+    showToast('The native chat is back from the next launch');
+    _fpChatPaint();
+  }, function(e){ showToast('Couldn\u2019t turn it back on \u2014 '+((e&&e.message)||'try again'), 'err'); }); }catch(e){}
 }
 function toggleNativeChat(){
   try{ if(_fpDeviceOff()) localStorage.removeItem('kt_native_off'); else localStorage.setItem('kt_native_off', '1'); }catch(e){}
   render();
   showToast(_fpDeviceOff() ? 'Native Coach chat off' : 'Native Coach chat on');
+  _fpChatPaint();
 }
 // 7-day plan summary — widget + reminders share this.
 // kind: what the day is ('lift' | 'run' | 'sport' | 'rest'), so the widget can tell an empty lift
@@ -25411,6 +25537,7 @@ window._trovoOpen=_handleDeepLink;
 //   "log/workout" | "log/run" | "log/body" | "log/sport"
 //   "progress" | "progress/compare" | "progress/records" | "progress/day" | "progress/calendar" | "settings"
 //   "settings/storage" (Settings at its About › Storage row) | "settings/storage-sheet" (the Storage sheet open)
+//   "settings/chat-sheet" (About › Native Coach chat open: how it stands, why it is off, the shell's counters)
 //   "coach" (home) | "coach/chat"
 //   "modal/programme" | "modal/build" | "modal/routines" | "modal/nextround"
 //   "overlay/how" | "overlay/privacy"
@@ -25438,6 +25565,7 @@ function _devNavOnce(route){
         if(head==='coach' && sub==='chat'){ coachView='chat'; render(); }
         if(head==='settings' && sub==='storage'){ var _sr=document.getElementById('fp-store-row'); if(_sr) _sr.scrollIntoView({block:'center'}); }
         if(head==='settings' && sub==='storage-sheet'){ openStorageSheet(); }
+        if(head==='settings' && sub==='chat-sheet'){ openNativeChatSheet(); }
         if(head==='progress' && sub==='compare'){ _cmpDevOpen(); }
         if(head==='progress' && sub==='calendar'){ var _cc=document.querySelector('.kt-cal-card'); if(_cc) _cc.scrollIntoView({block:'start'}); }
         if(head==='progress' && sub==='day'){ var _ad=_calActiveDays(); if(_ad.length){ _calNavToDate(_ad[_ad.length-1]); render(); openCalDay(_ad[_ad.length-1]); } }

@@ -843,7 +843,8 @@ serial('C3: each switch brings back the web chat (FP_NATIVE, kt_native_off and t
     assert(out.v1.v === 1 && out.v1.live && out.v1.present === 1 && !out.v1.web, 'v1: the native chat: ' + JSON.stringify(out.v1));
     assert(odd.errors.length === 0, 'no page errors: ' + odd.errors.join('|'));
   } finally { await odd.close(); }
-  // a shell whose flag has no coach screen (its policy file, its breaker): hello answers none
+  // a shell with the chat off (its policy file, its breaker): hello answers none, the web chat, nothing forwarded; a
+  // binary that has the chat keeps its About row and says why it is off, one without it (an older flag: no binary) has none
   for (const variant of ['inert', { v: 1, min: 1, shell: '60', screens: ['settings'] }]) {
     const tag = (typeof variant === 'string' ? variant : 'no coach') + ': ';
     const app2 = await shellBoot(variant);
@@ -852,14 +853,103 @@ serial('C3: each switch brings back the web chat (FP_NATIVE, kt_native_off and t
         eval(IN_PAGE);
         await __wait(30); await __open();
         const toastBefore = __fpShell.of('toast').length; showToast('Saved');
-        switchTab('settings'); await __wait(20);
+        switchTab('settings'); await __wait(40);
+        const row = document.getElementById('fp-chat-row');
         return { hello: __fpShell.of('hello'), v: _fp.v, live: _fpLive('coach'), present: __fpShell.of('present').length, models: __fpShell.of('model').length,
-          toasts: __fpShell.of('toast').length - toastBefore, row: /Native Coach chat/.test(document.getElementById('screen').innerText) };
+          toasts: __fpShell.of('toast').length - toastBefore, row: row ? row.innerText.replace(/\s+/g, ' ') : null };
       }, IN_PAGE);
-      assert(out.hello.length === 1 && out.v === 1 && !out.live && out.present === 0 && out.models === 0 && out.toasts === 0 && !out.row, tag + 'hello answers no screen: the web chat, nothing forwarded, no switch: ' + JSON.stringify(out));
+      assert(out.hello.length === 1 && out.v === 1 && !out.live && out.present === 0 && out.models === 0 && out.toasts === 0, tag + 'hello answers no screen: the web chat, nothing forwarded: ' + JSON.stringify(out));
+      if (typeof variant === 'string') assert(/Native Coach chat Off by the policy file Off/.test(out.row || ''), tag + 'the About row stays and says why: ' + JSON.stringify(out.row));
+      else assert(out.row === null, tag + 'a binary without the chat has no row: ' + JSON.stringify(out.row));
       assert(app2.errors.length === 0, tag + 'no page errors: ' + app2.errors.join('|'));
     } finally { await app2.close(); }
   }
+});
+
+// Review 4 (platform): after a crash verdict, a breaker trip or the policy file's off, Settings > About showed no
+// Native Coach chat row at all (it needed a negotiated chat) and nothing could clear a verdict but a new build; the
+// shell's counters for the device checklist were in os_log only (decision.md sections 6 and 11.9).
+serial('C5: Settings > About keeps the native chat row whenever the binary has it and says why it is off; its sheet lists the shell\'s counters, and Try the native chat again clears a verdict or a trip for the next launch; a visibilitychange under the native chat goes to the shell', async () => {
+  const at = Date.now() - 60000;
+  const count = (launch, total, last) => ({ launch, total, last: last || null });
+  const CRASH = { v: 1, shell: '60', page: 'P1', verdicts: [{ piece: 'coach', shell: '60', page: 'P1', why: 'crash marker: the app closed while the native coach screen was up', at }],
+    screens: { coach: { on: false, live: false, off: 'crash', trip: null, why: 'crash marker: the app closed while the native coach screen was up', at, canReset: true } },
+    counters: { since: at - 86400000, leftWindow: count(0, 0), hidden: count(0, 2, at), trips: count(0, 1, at), markers: Object.assign(count(1, 1, at), { found: ['presenting coach@P1 shell 60'] }) } };
+  const flag = { v: 1, min: 1, shell: '60', screens: [], binary: ['coach'] };
+  const app = await shellBoot(flag, { init: COACH_API + ';window.__fpShellStatus = ' + JSON.stringify(CRASH) + ';' });
+  try {
+    const out = await app.page.evaluate(async ({ IN_PAGE, CRASH, at }) => {
+      eval(IN_PAGE);
+      const text = (el) => (el ? el.innerText.replace(/\s+/g, ' ').trim() : null);
+      const row = () => text(document.getElementById('fp-chat-row'));
+      const sheet = () => text(document.getElementById('fpChatBody'));
+      const again = async (st) => { window.__fpShellStatus = st; _fpChat.at = 0; switchTab('log'); switchTab('settings'); await __wait(40); return row(); };
+      await __wait(30);
+      const r = {};
+      switchTab('settings'); await __wait(40);
+      r.crashRow = row();
+      openNativeChatSheet(); await __wait(40);
+      r.crashSheet = sheet();
+      const retry = [...document.querySelectorAll('#fpChatBody .settings-row')].find((x) => /Try the native chat again/.test(x.textContent));
+      r.retryRole = retry ? retry.getAttribute('role') : null;
+      if (retry) retry.click();
+      await __wait(40);
+      r.reset = __fpShell.of('reset');
+      r.toast = document.getElementById('toast').textContent;
+      r.afterRow = row(); r.afterSheet = sheet();
+      closeNativeChatSheet();
+      const breaker = (trip) => Object.assign({}, CRASH, { verdicts: [], screens: { coach: { on: false, live: false, off: 'breaker', trip, why: trip === 'no-hello' ? 'no hello within 15 s' : '3 in a row: timeout, timeout, timeout', at, canReset: true } } });
+      r.noHello = await again(breaker('no-hello'));
+      r.failures = await again(breaker('failures'));
+      r.policy = await again(Object.assign({}, CRASH, { verdicts: [], screens: { coach: { on: false, live: false, off: 'policy', trip: null, why: null, at: null, canReset: false } } }));
+      openNativeChatSheet(); await __wait(40);
+      r.policySheet = sheet();
+      closeNativeChatSheet();
+      // the device switch is the owner's own: the row says so whatever the shell says
+      toggleNativeChat(); await __wait(40);
+      r.device = row();
+      toggleNativeChat(); await __wait(40);
+      r.statusCalls = __fpShell.of('status').length;
+      return r;
+    }, { IN_PAGE, CRASH, at });
+    assert(out.crashRow === 'Native Coach chat Off: the app closed with it open Off', 'a crash verdict: the row stays and says why: ' + JSON.stringify(out.crashRow));
+    assert(/NATIVE COACH CHAT Off: the app closed with it open The app closed while the native chat was open/.test(out.crashSheet) && /Try the native chat again Back from the next launch/.test(out.crashSheet), 'the sheet says why and offers Try again: ' + out.crashSheet);
+    assert(/Left its window while open Stays 0: a native screen goes over the app, never in its place 0 this launch . 0 in all/.test(out.crashSheet)
+      && /Hidden under a native screen Stays 0: the app under the chat keeps showing while you use it 0 this launch . 2 in all/.test(out.crashSheet)
+      && /Breaker trips Last: .+? 0 this launch . 1 in all/.test(out.crashSheet) && /Crash markers Last: .+? 1 this launch . 1 in all . 1 verdict held/.test(out.crashSheet),
+      'the sheet lists the shell\'s counters: ' + out.crashSheet);
+    assert(out.retryRole === 'button' && out.reset.length === 1 && out.reset[0].screen === 'coach', 'Try again asks the shell to reset the chat: ' + JSON.stringify([out.retryRole, out.reset]));
+    assert(out.toast === 'The native chat is back from the next launch' && out.afterRow === 'Native Coach chat Back from the next launch Off' && !/Try the native chat again/.test(out.afterSheet),
+      'and says it is back from the next launch: ' + JSON.stringify([out.toast, out.afterRow]));
+    assert(out.noHello === 'Native Coach chat Paused: no hello Paused', 'the breaker, no hello: ' + JSON.stringify(out.noHello));
+    assert(out.failures === 'Native Coach chat Paused: calls kept failing Paused', 'the breaker, failures: ' + JSON.stringify(out.failures));
+    assert(out.policy === 'Native Coach chat Off by the policy file Off' && !/Try the native chat again/.test(out.policySheet), 'the policy file (nothing to reset): ' + JSON.stringify([out.policy, out.policySheet]));
+    assert(/^Native Coach chat Off . the app shows its web chat Off$/.test(out.device), 'the switch on this iPhone: ' + JSON.stringify(out.device));
+    assert(out.statusCalls >= 5, 'the row and the sheet read the shell\'s status: ' + out.statusCalls);
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+  // the chat on: its row says so; a visibilitychange while it covers the page goes to the shell, none while it does not
+  const live = await shellBoot('coach');
+  try {
+    const out = await live.page.evaluate(async (IN_PAGE) => {
+      eval(IN_PAGE);
+      await __wait(30); await __open();
+      const r = { covered: _fpCovered() };
+      document.dispatchEvent(new Event('visibilitychange')); await __wait(20);
+      r.whileCovered = __fpShell.of('visibility');
+      switchTab('settings'); await __wait(40);
+      r.uncovered = _fpCovered();
+      document.dispatchEvent(new Event('visibilitychange')); await __wait(20);
+      r.after = __fpShell.of('visibility').length;
+      const row = document.getElementById('fp-chat-row');
+      r.row = row ? row.innerText.replace(/\s+/g, ' ').trim() : null;
+      return r;
+    }, IN_PAGE);
+    assert(out.covered && out.whileCovered.length === 1 && out.whileCovered[0].state === 'visible' && typeof out.whileCovered[0].at === 'number', 'a visibilitychange under the native chat goes to the shell with its state and time: ' + JSON.stringify(out.whileCovered));
+    assert(!out.uncovered && out.after === 1, 'none while nothing native covers the page: ' + JSON.stringify(out));
+    assert(/^Native Coach chat On . the iPhone.s own chat screen On$/.test(out.row || ''), 'the chat on: ' + JSON.stringify(out.row));
+    assert(live.errors.length === 0, 'no page errors: ' + live.errors.join('|'));
+  } finally { await live.close(); }
 });
 
 // A draft the owner already sent (or cleared) in the web composer came back in the native composer

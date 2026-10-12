@@ -56,6 +56,7 @@ final class StorageTests: XCTestCase {
         XCTAssertEqual(obj["min"] as? Int, 1)
         XCTAssertEqual(obj["shell"] as? String, "60")
         XCTAssertEqual(obj["screens"] as? [String], [], "no native screen in the store half")
+        XCTAssertEqual(obj["binary"] as? [String], ["coach"], "the binary's screens, on or off (Settings > About keeps their rows)")
         XCTAssertEqual(obj["dev"] as? [String: String], ["nav": "settings/storage-sheet", "theme": "dark"])
         let plain = ShellFlagScript.flag(shell: "60").script
         XCTAssertFalse(plain.contains("dev"), plain)

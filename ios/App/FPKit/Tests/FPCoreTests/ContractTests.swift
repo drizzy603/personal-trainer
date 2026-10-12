@@ -14,12 +14,12 @@ final class ContractTests: XCTestCase {
 
     func testShellFlagScript() throws {
         let flag = ShellFlag(contract: shell60, screens: ["coach"], devNav: "coach/chat", devTheme: "dark")
-        XCTAssertEqual(flag.script, #"window.__FP_SHELL = {"dev":{"nav":"coach/chat","theme":"dark"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
+        XCTAssertEqual(flag.script, #"window.__FP_SHELL = {"binary":["coach"],"dev":{"nav":"coach/chat","theme":"dark"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
         // a test launch's stand-in for the Messages API (plan task C7)
         let api = ShellFlag(contract: shell60, screens: ["coach"], devNav: "coach/chat", devAPI: "http://127.0.0.1:47811")
-        XCTAssertEqual(api.script, #"window.__FP_SHELL = {"dev":{"api":"http://127.0.0.1:47811","nav":"coach/chat"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
-        XCTAssertEqual(ShellFlag(contract: shell60, screens: []).script, #"window.__FP_SHELL = {"min":1,"screens":[],"shell":"60","v":1};"#,
-                       "no dev key without launch arguments; no screens when every one is off")
+        XCTAssertEqual(api.script, #"window.__FP_SHELL = {"binary":["coach"],"dev":{"api":"http://127.0.0.1:47811","nav":"coach/chat"},"min":1,"screens":["coach"],"shell":"60","v":1};"#)
+        XCTAssertEqual(ShellFlag(contract: shell60, screens: []).script, #"window.__FP_SHELL = {"binary":["coach"],"min":1,"screens":[],"shell":"60","v":1};"#,
+                       "no dev key without launch arguments; no screens when every one is off, and the binary's screens all the same")
         // a line separator in a dev argument cannot break the script
         let odd = ShellFlag(contract: shell60, screens: ["coach"], devNav: "a\u{2028}b").script
         XCTAssertFalse(odd.contains("\u{2028}"))
@@ -96,6 +96,8 @@ final class ContractTests: XCTestCase {
         XCTAssertThrowsError(try PageMessage(method: "present", options: [:])) { XCTAssertEqual($0 as? PageMessage.DecodeError, .missing("screen")) }
         XCTAssertThrowsError(try PageMessage(method: "model", options: ["screen": "coach", "json": "{}"])) { XCTAssertEqual($0 as? PageMessage.DecodeError, .missing("rev")) }
         XCTAssertThrowsError(try PageMessage(method: "hello", options: ["page": "x"])) { XCTAssertEqual($0 as? PageMessage.DecodeError, .missing("v")) }
+        XCTAssertThrowsError(try PageMessage(method: "reset", options: [:])) { XCTAssertEqual($0 as? PageMessage.DecodeError, .missing("screen")) }
+        XCTAssertThrowsError(try PageMessage(method: "visibility", options: ["at": 1])) { XCTAssertEqual($0 as? PageMessage.DecodeError, .missing("state")) }
     }
 
     func testPageMessagesCarryWhatTheShellNeeds() throws {
@@ -121,6 +123,13 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(stop.tone, .accent)
         XCTAssertEqual(restore.answer(true), .confirm(id: "c-3", yes: true))
         XCTAssertEqual(messages[12], .log(LogLine(text: "fp: hello v1 coach", level: "info")))
+        // Settings > About: the status, "Try the native chat again", and the page hidden under a native screen
+        XCTAssertEqual(messages[13], .status)
+        XCTAssertEqual(messages[14], .reset(screen: "coach"))
+        XCTAssertEqual(messages[15], .visibility(VisibilityReport(state: "hidden", at: Date(timeIntervalSince1970: 1_760_000_000.5))))
+        XCTAssertEqual(messages[16], .visibility(VisibilityReport(state: "visible")), "no time: the shell's own")
+        XCTAssertTrue(VisibilityReport(state: "hidden").hidden)
+        XCTAssertFalse(VisibilityReport(state: "visible").hidden)
         // defaults the page may leave out
         let bare = ConfirmRequest(id: "c", title: "Sure?", body: "", confirm: nil, cancel: "", tone: nil)
         XCTAssertEqual([bare.confirm, bare.cancel], ["Confirm", "Cancel"])

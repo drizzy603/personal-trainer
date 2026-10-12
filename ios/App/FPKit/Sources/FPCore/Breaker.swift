@@ -403,4 +403,15 @@ public struct BreakerBook: Codable, Equatable, Sendable {
     public mutating func clearDisabled(piece: String) {
         disabled.removeAll { $0.piece == piece }
     }
+
+    /// Settings > About's "Try the native chat again": the screen's crash verdicts (every pair) and its native breaker
+    /// record (the trip and the counts, kept for one page build) go, so ScreenGate offers it again at the next hello.
+    /// True when anything went.
+    @discardableResult
+    public mutating func turnBackOn(screen: String) -> Bool {
+        let before = self
+        clearDisabled(piece: screen)
+        screens[screen] = nil
+        return self != before
+    }
 }

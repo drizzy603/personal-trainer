@@ -20,11 +20,16 @@ Scenarios (decision.md section 9, task C5's acceptance, and what C5 promises bes
            without resending (the send in flight ends as gone, its words back in the composer), and the open confirm
            closes as stale (answered after the reload: stale)
   marker   a planted crash marker brings back the web chat, once: the verdict stays for this shell and page build, no
-           second verdict, and the owner's clear (-fpClearVerdicts) brings the native chat back
+           second verdict; Settings > About keeps the Native Coach chat row and says why (the app closed with it open),
+           its sheet lists the shell's counters, and the owner's "Try the native chat again" brings the native chat back
+           at the next launch
   policy   the policy file's screens.coach "off" takes the native chat down at once (the web chat for the rest of the
-           document); "on" again from the next document
+           document) and Settings > About says so; "on" again from the next document
   breaker  three intents that time out turn the chat off for the page build (screens.off "failures"); the next launch
-           does not offer it; -fpClearBreaker brings it back
+           does not offer it and Settings > About says it is paused; "Try the native chat again" brings it back
+  counters the web view taken out of its window with the chat up (the fault the shell counts, never by design): the
+           launch's and the total leave-window counts and the page hidden under the chat go up, and Settings > About's
+           sheet lists them
 
 Exit 1 when any check fails.
 """
@@ -201,7 +206,8 @@ def scen_smoke(c):
                 and (p.get('fp', {}).get('hello') or {}).get('screens') == ['coach'] and sh.get('phase') == 'linked' and sh.get('negotiated') == ['coach'],
                 '%s / %s %s' % (p.get('fp', {}).get('hello'), sh.get('phase'), sh.get('negotiated')))
     flag = p.get('flag') or {}
-    c.rep.check(s, 'the flag offers the coach (ScreenGate when the web view was set up)', flag.get('screens') == ['coach'] and flag.get('v') == 1, flag)
+    c.rep.check(s, 'the flag offers the coach (ScreenGate when the web view was set up) and names the binary\'s screens', flag.get('screens') == ['coach']
+                and flag.get('v') == 1 and flag.get('binary') == ['coach'], flag)
     c.rep.check(s, 'the page booted with the bridge (bootDone through TrovoShell)', sh.get('bootDones', 0) >= 1, sh.get('bootDones'))
     c.rep.fact(s, 'shell %s, page %s' % (c.opts.shell, c.page))
     note(c, s, ev)
@@ -399,6 +405,35 @@ def scen_wckill(c):
     note(c, s, ev)
 
 
+# Settings > About > Native Coach chat: the row (scrolled into view), its sheet opened, and what both say.
+ABOUT_JS = r"""
+switchTab('settings');
+var row = document.getElementById('fp-chat-row'); if (row) row.scrollIntoView({block: 'center'});
+if (args.sheet) openNativeChatSheet();
+return true;
+"""
+ABOUT_READ_JS = r"""
+var t = function (el) { return el ? el.innerText.replace(/\s+/g, ' ').trim() : null; };
+return { row: t(document.getElementById('fp-chat-row')), sheet: t(document.getElementById('fpChatBody')),
+  status: (window._fpChat && _fpChat.st) || null, off: (window._fp && _fp.off) || null };
+"""
+
+
+def about(sheet=True, label='about'):
+    """Steps: Settings > About's native chat row and (sheet) its sheet, then read both (js label)."""
+    return [js('open ' + label, ABOUT_JS, sheet=sheet), wait(1200), js(label, ABOUT_READ_JS)]
+
+
+def about_of(ev, label='about'):
+    return (ev.first('js', label=label) or {}).get('result') or {}
+
+
+def coach_verdicts(e, c):
+    """The coach's crash verdicts in the book for this page and shell build (another build's are not this run's)."""
+    return [d for d in (shellst(e).get('book') or {}).get('disabled') or []
+            if d.get('piece') == 'coach' and d.get('page') == c.page and d.get('shell') == c.opts.shell]
+
+
 def scen_marker(c):
     s = 'marker'
     if not c.page:
@@ -410,25 +445,43 @@ def scen_marker(c):
     c.sim.terminate()
     with open(os.path.join(folder, 'presenting.coach.marker'), 'w') as f:
         f.write(line + '\n')
-    ev = shell_probe(c.sim, 'marker-1', [[wait(600), state('marker'), mark('web-chat')]], args=['-devNav', 'coach/chat'], verdicts=True, out=c.opts.out)
+    ev = shell_probe(c.sim, 'marker-1', [[wait(600), state('marker'), mark('web-chat'), *about(), mark('marker-about')]],
+                     args=['-devNav', 'coach/chat'], verdicts=True, out=c.opts.out)
     launch, e = ev.first('launch') or {}, ev.state('marker')
     p, sh = page(e), shellst(e)
-    verdicts = [d for d in (sh.get('book') or {}).get('disabled') or [] if d.get('piece') == 'coach']
+    verdicts = coach_verdicts(e, c)
     c.rep.check(s, 'a planted marker is found at launch and gives a verdict for this shell and page build', launch.get('markersFound') == [line]
-                and len(verdicts) == 1 and verdicts[0].get('page') == c.page and verdicts[0].get('shell') == c.opts.shell, '%s / %s' % (launch.get('markersFound'), verdicts))
+                and len(verdicts) == 1, '%s / %s' % (launch.get('markersFound'), verdicts))
     c.rep.check(s, 'the web chat is back: no coach in the flag or the hello, the page draws its own', (p.get('flag') or {}).get('screens') == []
                 and (p.get('fp', {}).get('hello') or {}).get('screens') == [] and p.get('webChat') and not p.get('ph') and screens(e).get('up') == []
                 and not any(x.get('method') == 'present' for x in ev.all('page')), {k: p.get(k) for k in ('flag', 'webChat', 'ph', 'tab', 'view')})
     c.rep.check(s, 'the marker was read once and removed', not os.path.exists(os.path.join(folder, 'presenting.coach.marker')), None)
+    ab = about_of(ev)
+    st = ((ab.get('status') or {}).get('screens') or {}).get('coach') or {}
+    c.rep.check(s, 'Settings > About keeps the Native Coach chat row and says why it is off (the app closed with it open)',
+                'Native Coach chat' in (ab.get('row') or '') and 'Off: the app closed with it open' in (ab.get('row') or '')
+                and st.get('off') == 'crash' and st.get('canReset') is True, {'row': ab.get('row'), 'status': st})
+    mk = ((ab.get('status') or {}).get('counters') or {}).get('markers') or {}
+    c.rep.check(s, 'its sheet offers "Try the native chat again" and lists the shell\'s counters (this launch\'s marker counted)',
+                'Try the native chat again' in (ab.get('sheet') or '') and 'Crash markers' in (ab.get('sheet') or '')
+                and 'Left its window while open' in (ab.get('sheet') or '') and mk.get('launch') == 1 and mk.get('found') == [line],
+                {'sheet': (ab.get('sheet') or '')[:400], 'markers': mk})
     ev = shell_probe(c.sim, 'marker-2', [[wait(600), state('again')]], args=['-devNav', 'coach/chat'], verdicts=True)
     launch, e = ev.first('launch') or {}, ev.state('again')
-    verdicts = [d for d in (shellst(e).get('book') or {}).get('disabled') or [] if d.get('piece') == 'coach']
+    verdicts = coach_verdicts(e, c)
     c.rep.check(s, 'it acts once: no marker next launch, no second verdict, still the web chat for this pair', launch.get('markersFound') == [] and len(verdicts) == 1
                 and page(e).get('webChat'), '%s / %d verdicts' % (launch.get('markersFound'), len(verdicts)))
-    ev = shell_probe(c.sim, 'marker-cleared', [[wait(900), state('cleared'), mark('native-again')]], args=['-devNav', 'coach/chat', '-fpClearVerdicts'], verdicts=True, out=c.opts.out)
+    # the owner's "Try the native chat again" (Settings > About), not a Debug argument
+    ev = shell_probe(c.sim, 'marker-retry', [[wait(600), *about(label='before'), js('retry', "_fpChatRetry(); return true;"), wait(1200),
+                                              js('after', ABOUT_READ_JS), state('retried'), mark('marker-retried')]], verdicts=True, out=c.opts.out)
+    resets = [x for x in ev.all('page') if x.get('method') == 'reset']
+    ab = about_of(ev, 'after')
+    c.rep.check(s, '"Try the native chat again" asks the shell to reset the chat; the verdict goes and the row says it is back from the next launch',
+                len(resets) == 1 and resets[0].get('screen') == 'coach' and not coach_verdicts(ev.state('retried'), c)
+                and 'Back from the next launch' in (ab.get('row') or ''), {'resets': resets, 'row': ab.get('row')})
+    ev = shell_probe(c.sim, 'marker-cleared', [[wait(900), state('cleared'), mark('native-again')]], args=['-devNav', 'coach/chat'], verdicts=True, out=c.opts.out)
     e = ev.state('cleared')
-    c.rep.check(s, 'the owner\'s clear brings the native chat back', coach(e).get('presented') and not page(e).get('webChat')
-                and not [d for d in (shellst(e).get('book') or {}).get('disabled') or [] if d.get('piece') == 'coach'], coach(e))
+    c.rep.check(s, 'the next launch brings the native chat back', coach(e).get('presented') and not page(e).get('webChat') and not coach_verdicts(e, c), coach(e))
     note(c, s, ev)
 
 
@@ -438,6 +491,7 @@ def scen_policy(c):
     with open(c.sim.path('fp-policy.json'), 'w') as f:   # the launch reads this file: the defaults (coach on)
         f.write('{"v":1}')
     steps1 = [wait(800), state('native'), {'op': 'hook', 'name': 'policy', 'json': '{"v":1,"screens":{"coach":"off"}}'}, wait(2200), state('off'), mark('policy-off'),
+              *about(label='policy about'), mark('policy-about'), js('back to chat', OPEN_JS), wait(600),
               {'op': 'hook', 'name': 'policy', 'json': '{"v":1}'}, wait(800), state('on again'), {'op': 'reload'}]
     steps2 = [wait(800), state('next document')]
     ev = shell_probe(c.sim, 'policy', [steps1, steps2], args=['-devNav', 'coach/chat', '-fpPolicyFile', 'fp-policy.json', '-fpPolicyEvery', '0'],
@@ -448,6 +502,10 @@ def scen_policy(c):
     c.rep.check(s, 'screens.coach "off" takes it down at once: screens.off "withdrawn", the web chat for the rest of the document', screens(off).get('up') == []
                 and (page(off).get('fp', {}).get('off') or {}).get('coach') == 'withdrawn' and page(off).get('webChat') and so and so[-1].get('outcome') == 'done',
                 {'up': screens(off).get('up'), 'off': page(off).get('fp', {}).get('off'), 'webChat': page(off).get('webChat'), 'screens.off': so})
+    ab = about_of(ev, 'policy about')
+    c.rep.check(s, 'Settings > About says the policy file has it off (nothing to reset)', 'Off by the policy file' in (ab.get('row') or '')
+                and (((ab.get('status') or {}).get('screens') or {}).get('coach') or {}).get('off') == 'policy'
+                and 'Try the native chat again' not in (ab.get('sheet') or ''), {'row': ab.get('row'), 'sheet': (ab.get('sheet') or '')[:200]})
     c.rep.check(s, '"on" again changes nothing in this document', page(on).get('webChat') and screens(on).get('up') == [], screens(on).get('up'))
     c.rep.check(s, 'the next document negotiates the coach again', shellst(nd).get('negotiated') == ['coach'] and (page(nd).get('fp', {}).get('hello') or {}).get('screens') == ['coach'],
                 shellst(nd).get('negotiated'))
@@ -466,17 +524,55 @@ def scen_breaker(c):
                 and (trip.get('trip') or {}).get('reason') == 'failures' and trip.get('pageBuild') == c.page, '%s / %s' % ([p.get('outcome') for p in pings], trip.get('trip')))
     c.rep.check(s, 'the chat goes down and the page shows its own (screens.off "failures")', screens(t).get('up') == [] and page(t).get('webChat')
                 and (page(t).get('fp', {}).get('off') or {}).get('coach') == 'failures', {'up': screens(t).get('up'), 'off': page(t).get('fp', {}).get('off')})
-    ev = shell_probe(c.sim, 'breaker-next', [[wait(600), state('next launch')]], args=['-devNav', 'coach/chat'])
+    ev = shell_probe(c.sim, 'breaker-next', [[wait(600), state('next launch'), *about(label='breaker about'), mark('breaker-about'),
+                                              js('retry', "_fpChatRetry(); return true;"), wait(1200), js('after', ABOUT_READ_JS)]],
+                     args=['-devNav', 'coach/chat'], out=c.opts.out)
     e = ev.state('next launch')
     c.rep.check(s, 'the next launch of this page build offers no native chat (flag and hello)', (page(e).get('flag') or {}).get('screens') == []
                 and (page(e).get('fp', {}).get('hello') or {}).get('screens') == [] and page(e).get('webChat'), page(e).get('flag'))
-    ev = shell_probe(c.sim, 'breaker-clear', [[wait(900), state('cleared')]], args=['-devNav', 'coach/chat', '-fpClearBreaker'])
+    ab = about_of(ev, 'breaker about')
+    st = ((ab.get('status') or {}).get('screens') or {}).get('coach') or {}
+    trips = ((ab.get('status') or {}).get('counters') or {}).get('trips') or {}
+    c.rep.check(s, 'Settings > About says it is paused (calls kept failing) and counts the trip', 'Paused: calls kept failing' in (ab.get('row') or '')
+                and st.get('off') == 'breaker' and st.get('trip') == 'failures' and (trips.get('total') or 0) >= 1, {'row': ab.get('row'), 'status': st, 'trips': trips})
+    after = about_of(ev, 'after')
+    c.rep.check(s, '"Try the native chat again" clears the trip for the next launch', 'Back from the next launch' in (after.get('row') or '')
+                and any(x.get('method') == 'reset' for x in ev.all('page')), after.get('row'))
+    ev = shell_probe(c.sim, 'breaker-clear', [[wait(900), state('cleared')]], args=['-devNav', 'coach/chat'])
     e = ev.state('cleared')
-    c.rep.check(s, '-fpClearBreaker brings it back', coach(e).get('presented'), coach(e))
+    c.rep.check(s, 'the next launch brings the native chat back', coach(e).get('presented') and not ((shellst(e).get('book') or {}).get('screens') or {}).get('coach'), coach(e))
     note(c, s, ev)
 
 
-ALL = ['smoke', 'chat', 'focus', 'wckill', 'marker', 'policy', 'breaker']
+def scen_counters(c):
+    """The fault Settings > About counts: the web view out of its window with the chat up and the app active."""
+    s = 'counters'
+    steps = [wait(900), state('before'), {'op': 'hideWeb'}, wait(1500), state('out'), {'op': 'showWeb'}, wait(1500), state('back'), mark('counters-chat'),
+             *about(label='counters about'), mark('counters-about')]
+    ev = shell_probe(c.sim, 'counters', [steps], args=['-devNav', 'coach/chat'], out=c.opts.out, timeout=120)
+    b, back = ev.state('before'), ev.state('back')
+    c0 = ((shellst(b).get('status') or {}).get('counters') or {})
+    c1 = ((shellst(back).get('status') or {}).get('counters') or {})
+    hw = ev.first('hideWeb') or {}
+    c.rep.check(s, 'the web view went out of its window with the chat up (the probe), and came back', hw.get('window') is False and coach(b).get('presented')
+                and (ev.first('showWeb') or {}).get('window') is True, {'hide': hw, 'show': ev.first('showWeb')})
+    lw0, lw1 = c0.get('leftWindow') or {}, c1.get('leftWindow') or {}
+    c.rep.check(s, 'the leave-window count goes up, this launch and in all', lw0.get('launch') == 0 and lw1.get('launch') == 1
+                and (lw1.get('total') or 0) == (lw0.get('total') or 0) + 1 and shellst(back).get('leftWindow') == 1, {'before': lw0, 'after': lw1})
+    vis = page(back).get('visEvents') or []
+    reports = [x for x in ev.all('page') if x.get('method') == 'visibility']
+    h0, h1 = c0.get('hidden') or {}, c1.get('hidden') or {}
+    c.rep.check(s, 'the page went hidden under the chat and said so; the shell counted it (this launch and in all)',
+                any(str(v).startswith('hidden@') for v in vis) and any(r.get('state') == 'hidden' for r in reports)
+                and h1.get('launch') == 1 and (h1.get('total') or 0) == (h0.get('total') or 0) + 1, {'vis': vis, 'reports': reports, 'before': h0, 'after': h1})
+    ab = about_of(ev, 'counters about')
+    c.rep.check(s, 'Settings > About\'s sheet lists them', 'Left its window while open' in (ab.get('sheet') or '') and '1 this launch' in (ab.get('sheet') or ''),
+                (ab.get('sheet') or '')[:500])
+    c.rep.fact(s, 'counters now: left its window %s/%s, hidden %s/%s (this launch / in all)' % (
+        lw1.get('launch'), lw1.get('total'), h1.get('launch'), h1.get('total')))
+
+
+ALL = ['smoke', 'chat', 'focus', 'wckill', 'marker', 'policy', 'breaker', 'counters']
 
 
 def main():
