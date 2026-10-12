@@ -279,6 +279,83 @@ serial('a value the copy held as none goes back as a removal: the row says Remov
   } finally { await app.close(); }
 });
 
+serial('everything a start lost goes back in one Put back, and the row says Put back until each of it is back', async () => {
+  // A finish WebKit lost (rule 6, four keys), then a Put back of the workout alone: the next start is in step, but the
+  // working weights, the records and the draft's removal are still the copy's to put back (store.losses).
+  const partial = inStep();
+  partial.store.conflicts = 9;
+  partial.store.losses = [{ boot: 4, at: NOW - 60000, why: 'lag', ids: [21, 22, 23, 24], items: [
+    { key: 'kt_prs', outcome: 'put back', origin: 'conflict:21' },
+    { key: 'kt_runner_draft', outcome: 'put back', origin: 'conflict:22', removes: true },
+    { key: 'kt_weights', outcome: 'put back', origin: 'conflict:24' }] }];
+  const rows = [
+    { id: 25, at: NOW - 30000, key: 'kt_sessions', why: 'putback', h: '9:a:b', hnew: '12:c:d', units: 4000, boot: 5 },
+    { id: 24, at: NOW - 60000, key: 'kt_weights', why: 'lag', h: '30:e:f', hnew: '28:g:h', units: 30, boot: 4 },
+    { id: 23, at: NOW - 60000, key: 'kt_sessions', why: 'lag', h: '12:c:d', hnew: '9:a:b', units: 4200, boot: 4 },
+    { id: 22, at: NOW - 60000, key: 'kt_runner_draft', why: 'lag', h: '-', hnew: '800:i:j', units: null, boot: 4 },
+    { id: 21, at: NOW - 60000, key: 'kt_prs', why: 'lag', h: '20:k:l', hnew: '18:m:n', units: 20, boot: 4 },
+  ];
+  const plan = { items: [
+    { key: 'kt_prs', outcome: 'put back', origin: 'conflict:21' },
+    { key: 'kt_runner_draft', outcome: 'put back', origin: 'conflict:22', removes: true },
+    { key: 'kt_sessions', outcome: 'nothing to add', added: 0, origin: 'conflict:23' },
+    { key: 'kt_weights', outcome: 'put back', origin: 'conflict:24' }], count: 3 };
+  const app = await boot({ native: true, init: init({ status: partial, rows, plan, flag: FLAG }) });
+  try {
+    await ev(app, () => switchTab('settings'));
+    await app.page.waitForFunction(() => /Put back/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
+    assert(await ev(app, () => document.getElementById('fp-store-sub').textContent) === 'Kept 3 changes this iPhone lost · Put back',
+      'an in-step start whose loss is still open keeps the row on Put back');
+    await ev(app, () => openStorageSheet());
+    await app.page.waitForFunction(() => !!document.querySelector('#fpStoreBody button[data-boot="4"]'), null, { timeout: 3000 });
+    const group = await ev(app, () => {
+      const b = document.querySelector('#fpStoreBody button[data-boot="4"]'), row = b.parentElement;
+      return { text: row.textContent, label: b.getAttribute('aria-label'), n: document.querySelectorAll('#fpStoreBody button[data-boot]').length,
+        first: document.querySelector('#fpStoreBody button[data-boot], #fpStoreBody button[data-id]') === b };
+    });
+    assert(group.n === 1 && group.label === 'Put back everything this start lost (3)', 'one Put back for the start: ' + JSON.stringify(group));
+    assert(/Everything this start lost/.test(group.text) && /Records, Workout in progress, Working weights/.test(group.text), 'it names what that start lost: ' + group.text);
+    assert(group.first, 'above the single kept values');
+    // One preview and one staged call carry every id that start gave up.
+    await ev(app, () => document.querySelector('#fpStoreBody button[data-boot="4"]').click());
+    await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const ask = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent }));
+    assert(ask.title === 'Put back everything this start lost?', 'the question: ' + JSON.stringify(ask));
+    assert(/writes the kept copy back: Records, Working weights\./.test(ask.body) && /It deletes Workout in progress from this iPhone/.test(ask.body) && !/nothing is removed/i.test(ask.body),
+      'it says what goes back and what is deleted: ' + ask.body);
+    await ev(app, () => document.querySelector('.kt-close-sheet [id$="ok"]').click());
+    await app.page.waitForFunction(() => __ts.calls.filter((c) => c[0] === 'putBack').length === 2, null, { timeout: 3000 });
+    const calls = await ev(app, () => __ts.calls.filter((c) => c[0] === 'putBack').map((c) => c[1]));
+    assert(calls[0].preview === true && JSON.stringify(calls[0].conflicts) === '[21,22,23,24]' && !calls[1].preview && JSON.stringify(calls[1].conflicts) === '[21,22,23,24]',
+      'one intent for the whole start: ' + JSON.stringify(calls));
+
+    // Every key back (or changed since): the loss is gone and the row is in step again, whatever the last start was.
+    const done = inStep(); done.store.losses = []; done.store.inStep = false;
+    done.store.lastHello = { at: NOW, boot: 6, rule: 6, label: 'lag', adopted: { lag: ['kt_weights'] }, wouldRepair: ['kt_weights'] };
+    // Two starts that lost: one Put back each, the row counts what is still missing once per key.
+    const two = inStep();
+    two.store.losses = [
+      { boot: 9, at: NOW - 1000, why: 'lag', ids: [40, 41], items: [{ key: 'kt_sessions', outcome: 'put back', added: 1, origin: 'conflict:40' }, { key: 'kt_weights', outcome: 'put back', origin: 'conflict:41' }] },
+      { boot: 7, at: NOW - 86400000, why: 'lag', ids: [30], items: [{ key: 'kt_sessions', outcome: 'put back', added: 2, origin: 'conflict:30' }] }];
+    // A wipe's follow-up while its snapshot is offered: the offer is the one Put back.
+    const wiped = inStep();
+    wiped.store.wipeOffer = { at: NOW - 3600000, snap: '2026-10-11-130750-wiped.json', keys: 73, seq: 10 };
+    wiped.store.losses = [{ boot: 3, at: NOW - 3000000, why: 'wiped', ids: [5, 6], items: [{ key: 'kt_routine', outcome: 'put back', origin: 'conflict:5' }] }];
+    const lines = await ev(app, (all) => all.map((st) => _fpStoreLine(st)), [done, two, wiped]);
+    assert(lines[0] === 'In step · 24 items · 176 KB', 'a loss put back in full: ' + lines[0]);
+    assert(lines[1] === 'Kept 2 changes this iPhone lost · Put back', 'two starts, two keys still missing: ' + lines[1]);
+    assert(lines[2] === 'In step · the copy kept what a wipe took · Put back', 'what a wipe took: ' + lines[2]);
+    await ev(app, (st) => { __ts.status = st; __ts.rows = []; openStorageSheet(); }, two);
+    await app.page.waitForFunction(() => document.querySelectorAll('#fpStoreBody button[data-boot]').length === 2, null, { timeout: 3000 });
+    const labels = await ev(app, () => [...document.querySelectorAll('#fpStoreBody button[data-boot]')].map((b) => b.dataset.boot + ' ' + b.getAttribute('aria-label')));
+    assert(JSON.stringify(labels) === '["9 Put back everything this start lost (2)","7 Put back everything this start lost (1)"]', 'newest start first: ' + JSON.stringify(labels));
+    await ev(app, (st) => { __ts.status = st; openStorageSheet(); }, wiped);
+    await app.page.waitForFunction(() => /Everything the copy kept/.test((document.getElementById('fpStoreBody') || {}).textContent || ''), null, { timeout: 3000 });
+    assert(await ev(app, () => document.querySelectorAll('#fpStoreBody button[data-boot]').length) === 0, 'the wipe\'s offer stands for its follow-up');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
+  } finally { await app.close(); }
+});
+
 serial('the row says how the copy stands now: a wipe this start, an offer waiting, changes made without it, off', async () => {
   const wipe = { at: NOW - 3600000, snap: '2026-10-11-130750-wiped.json', keys: 73, seq: 10 };
   // Rule 3 this start: the copy kept its set and stays off for the document.

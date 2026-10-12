@@ -21912,6 +21912,14 @@ function _fpStoreWhy(w){
   if(/wiped/i.test(w)) return 'this iPhone\u2019s data was wiped';
   return w.replace(/^store: /, '') || 'off';
 }
+// The losses the copy still holds (FPStore KTLoss: what one start found this iPhone had lost, while any of it can
+// still go back), and how many keys each kind still misses, a key once. known: the shell reports them.
+function _fpLosses(s){
+  var list=(s && Array.isArray(s.losses)) ? s.losses.filter(function(g){ return g && Array.isArray(g.ids) && g.ids.length && Array.isArray(g.items) && g.items.length; }) : [];
+  var keys={lag:{}, wiped:{}};
+  list.forEach(function(g){ g.items.forEach(function(it){ keys[g.why==='wiped' ? 'wiped' : 'lag'][it.key]=1; }); });
+  return {list:list, lag:Object.keys(keys.lag).length, wiped:Object.keys(keys.wiped).length, known:!!(s && Array.isArray(s.losses))};
+}
 // The row's line: how the copy stands now.
 function _fpStoreLine(st){
   if(!st) return 'Checking the native copy\u2026';
@@ -21926,9 +21934,14 @@ function _fpStoreLine(st){
   if(st.facade==='off' && s.wipeOffer && /wiped/i.test(String(st.why||''))) return 'This iPhone\u2019s data was wiped \u00b7 the copy kept '+_plural(s.wipeOffer.keys, 'item');
   if(st.facade==='off') return 'Off \u00b7 '+_fpStoreWhy(st.why);
   if(st.facade!=='attached') return 'Starting\u2026';
-  if(h && h.rule===6) return 'Kept '+_plural((h.wouldRepair||[]).length, 'change')+' this iPhone lost \u00b7 Put back';
+  // A loss stays the news until each of it is back (or changed since), whatever later starts found: a Put back of
+  // one key used to leave the rest behind under "In step".
+  var L=_fpLosses(s);
+  if(L.lag) return 'Kept '+_plural(L.lag, 'change')+' this iPhone lost \u00b7 Put back';
+  if(L.wiped) return 'In step \u00b7 the copy kept what a wipe took \u00b7 Put back';
+  if(!L.known && h && h.rule===6) return 'Kept '+_plural((h.wouldRepair||[]).length, 'change')+' this iPhone lost \u00b7 Put back';
   if(!h || s.inStep) return 'In step \u00b7 '+size;
-  if(h.rule===4 && ((h.adopted||{}).wiped||[]).length) return 'In step \u00b7 the copy kept what a wipe took \u00b7 Put back';
+  if(!L.known && h.rule===4 && ((h.adopted||{}).wiped||[]).length) return 'In step \u00b7 the copy kept what a wipe took \u00b7 Put back';
   if(h.rule===4) return 'In step \u00b7 caught up with changes made without it \u00b7 '+size;
   if(h.rule===7) return 'In step \u00b7 '+_plural(((h.adopted||{}).unexplained||[]).length, 'unexplained difference')+' \u00b7 '+size;
   return 'In step \u00b7 '+size;
@@ -22016,6 +22029,18 @@ function _fpStoreSheetHTML(){
     '</div>';
   }
   if(s && s.putBackStaged) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);">A Put back is waiting for the next start.</div>';
+  // What each start lost, while any of it can still go back: one Put back for all of it, one intent (the kept values
+  // of a lost finish went back one key at a time, each its own reload, and a workout put back without its draft's
+  // removal could be resumed and filed twice). A wipe's follow-up has the offer above.
+  _fpLosses(s).list.forEach(function(g){
+    if(g.why==='wiped' && s.wipeOffer && s.wipeOffer.snap) return;
+    var n=g.items.length, what=(g.why==='wiped' ? 'Everything the wipe took' : 'Everything this start lost')+' ('+n+')', when=_fpStoreWhen(g.at);
+    out+='<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);">'+
+      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);">'+_esc(what)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere;">'+_esc(g.items.map(function(it){ return _fpKeyName(it.key); }).join(', ')+(when ? ' · '+when : ''))+'</div></div>'+
+      (canPut ? '<button type="button" data-boot="'+(Math.floor(Number(g.boot))||0)+'" onclick="_fpStorePutBackLoss(this)" style="'+btn+'" aria-label="'+_esc('Put back '+what.charAt(0).toLowerCase()+what.slice(1))+'">Put back</button>' : '')+
+    '</div>';
+  });
   var rows=_fpStore.rows;
   if(rows==null) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);">Reading what the copy kept\u2026</div>';
   else if(!rows.length) out+='<div style="padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);line-height:1.5;">Nothing to put back: the copy has given nothing up in the last 30 days.</div>';
@@ -22139,6 +22164,14 @@ function _fpStorePutBack(el){
   _fpStorePutBackGo({conflicts:[id]}, row ? _fpKeyName(row.key) : 'it');
 }
 function _fpStorePutBackWipe(){ _fpStorePutBackGo({wipe:true}, 'everything the copy kept'); }
+// One start's loss (store.losses): every id it gave up, in one Put back.
+function _fpStorePutBackLoss(el){
+  var boot=Math.floor(Number(el && el.dataset ? el.dataset.boot : el));
+  var g=_fpLosses(_fpStore.st && _fpStore.st.store).list.filter(function(x){ return Math.floor(Number(x.boot))===boot; })[0];
+  var ids=g ? g.ids.map(function(i){ return Math.floor(Number(i)); }).filter(function(i){ return i>0; }) : [];
+  if(!ids.length) return;
+  _fpStorePutBackGo({conflicts:ids}, g.why==='wiped' ? 'everything the wipe took' : 'everything this start lost');
+}
 function _fpPutBackNone(items){
   var o=(items && items[0] && items[0].outcome) || '';
   if(o==='changed since') return 'It changed since then, so it stays as it is';

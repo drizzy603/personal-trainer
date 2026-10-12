@@ -620,7 +620,8 @@ public final class StoreAttach: NSObject {
     }
 
     /// The values the store gave up in the last 30 days, newest first, as JSON objects (id, at, key, why, h, hnew,
-    /// units); empty when the store is off.
+    /// units, boot: the start that gave it up); empty when the store is off. The losses still open, grouped by start,
+    /// come with the status (`store.losses`).
     public func conflictsJSON(limit: Int) -> [[String: Any]] {
         guard let store = try? readyStore() else { return [] }
         let rows = marker.around { store.conflicts(limit: max(1, min(limit, 500))) }
@@ -752,7 +753,7 @@ public final class StoreAttach: NSObject {
                       skippingThisLaunch: book.store.skipping,
                       crashVerdicts: book.disabled.filter { $0.piece == CrashMarker.Piece.store.name },
                       markerFoundAtLaunch: markerFound?.line, storeClosedWhy: storeClosedWhy, counters: counters,
-                      proxy: binding?.proxy.counts, pagesAlive: pagesAlive, store: store?.status(),
+                      proxy: binding?.proxy.counts, pagesAlive: pagesAlive, store: store?.status(losses: true),
                       testQuit: testQuit, testQuitArmed: testQuitArmed)
     }
 

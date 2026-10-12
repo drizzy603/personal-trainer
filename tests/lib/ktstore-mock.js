@@ -599,6 +599,25 @@
     return { plan: plan(items), entries: entries };
   }
   function plan(items) { return { items: items, count: items.filter(function (i) { return i.outcome === 'put back'; }).length }; }
+  // KTStore.losses(): the lag and wiped rows grouped by the start that gave them up, newest start first, kept while
+  // Put back of the group would still write or remove something (at most 10).
+  function losses() {
+    var groups = {}, out = [];
+    S.conflicts.forEach(function (c) {
+      if (c.why !== 'lag' && c.why !== 'wiped') return;
+      var g = groups[c.boot] || (groups[c.boot] = { boot: c.boot, at: c.at, why: c.why, ids: [], items: [] });
+      g.ids.push(c.id);
+      if (c.at > g.at) g.at = c.at;
+      if (c.why === 'wiped') g.why = 'wiped';
+    });
+    Object.keys(groups).map(Number).sort(function (a, b) { return b - a; }).forEach(function (boot) {
+      if (out.length >= 10) return;
+      var g = groups[boot];
+      g.items = resolve({ conflicts: g.ids }).plan.items.filter(function (i) { return i.outcome === 'put back'; });
+      if (g.items.length) out.push(g);
+    });
+    return out;
+  }
   function stage(intent) {
     var r = resolve(intent);
     if (r.plan.count > 0) { S.intent = { conflicts: (intent.conflicts || []).slice(), snap: intent.snap || null, at: nowMs() }; D.meta = true; flush(); }
@@ -754,13 +773,15 @@
     journal: function () { return JSON.parse(JSON.stringify(S.journal)); },
     conflicts: function (limit) {
       return S.conflicts.slice().reverse().slice(0, limit || 500).map(function (c) {
-        return { id: c.id, at: c.at, key: c.k, why: c.why, h: c.h, hnew: c.hnew, units: c.units };
+        return { id: c.id, at: c.at, key: c.k, why: c.why, h: c.h, hnew: c.hnew, units: c.units, boot: c.boot };
       });
     },
+    losses: function () { return losses(); },
     conflictValue: function (id) { return conflictValue(id); },
     snaps: function () { return Object.keys(S.snaps).sort().reverse(); },
     readSnap: function (name) { var v = snapValues(name); return v ? JSON.parse(JSON.stringify(v)) : null; },
-    status: function () {
+    // KTStore.status(losses:): withLosses as the shell's Storage reads it (StoreAttach), else as every hello does.
+    status: function (withLosses) {
       var st = {
         state: S.device.state === 'ready' ? 'ready' : S.device.state, why: S.device.state === 'refused' ? 'minReader' : (S.device.why || null),
         build: S.device.build, schema: S.schema, minReader: S.minReader, firstShell: S.firstShell, lastShell: S.lastShell,
@@ -778,6 +799,7 @@
       var w = wipeRecord();
       if (w) st.wipeOffer = { at: w.at, snap: w.snap, keys: Object.keys(w.hashes).length, seq: w.seq };
       if (S.lastHello) st.inStep = S.lastHello.rule === 0 || S.lastHello.rule === 5 || S.lastHello.label === 'migrate';
+      if (withLosses) st.losses = losses();
       return st;
     },
     count: function (name) { return S.counts[name] || 0; },

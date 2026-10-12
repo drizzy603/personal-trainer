@@ -83,6 +83,10 @@ Rules the store keeps:
   back in turn. A kept "no value" (an older build created the key, a loss took back a removal) goes back as a
   removal, and its plan item says so (`removes: true`), so Storage asks "Remove ...?" instead of promising
   that nothing is removed; a log is merged, never removed.
+- Every value given up names the start that gave it up (`boot`). `status(losses: true)` (what Storage reads;
+  the status each hello reads leaves it out) groups each start's "lag" and "wiped" rows into one loss, kept
+  while Put back of it would still write or remove something: Storage offers "Put back everything this start
+  lost" as one intent, and its row says Put back until each key is back or changed since.
 
 The reconcile at every document start decides from the `kt_last_open` witness. Every outcome but rule 3
 leaves kv equal to WebKit:

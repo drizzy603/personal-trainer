@@ -62,6 +62,26 @@ public struct KTConflict: Codable, Equatable, Sendable {
     public var hnew: String
     /// The given-up value's size in UTF-16 code units (nil when absent).
     public var units: Int?
+    /// The boot of the document start that gave it up (a Put back's: the document that wrote it). Every value one
+    /// start gave up shares it, so Storage can put a whole start's loss back at once.
+    public var boot: Int64?
+}
+
+/// Everything one document start found this iPhone had lost and the copy kept (rule 6's "lag" rows; a wipe's
+/// follow-up, "wiped"), while Put back of it would still bring something back. Storage offers "Put back everything
+/// this start lost" for it (one intent, `ids`) and its row keeps saying Put back until every key is back, changed
+/// since, or no longer the copy's to put back.
+public struct KTLoss: Codable, Equatable, Sendable {
+    /// The start's boot (KTConflict.boot).
+    public var boot: Int64
+    /// When that start gave the values up.
+    public var at: Int64
+    /// "lag", or "wiped" when any of it is what a wipe took.
+    public var why: String
+    /// Every conflict that start gave up as lag or wiped: Put back of all of them is one intent.
+    public var ids: [Int64]
+    /// What Put back of `ids` would do now, the keys it would still write (or remove) only.
+    public var items: [KTPutBackItem]
 }
 
 /// Everything Settings > About > Storage shows.
@@ -91,6 +111,9 @@ public struct KTStatus: Codable, Equatable, Sendable {
     public var snaps: [String]
     /// The last document start found WebKit and the store in step (gap-note keys and confirmed Put back aside).
     public var inStep: Bool
+    /// The losses still open, newest start first: only from `status(losses: true)` (resolving them reads the kept
+    /// values, too slow for the status every hello reads); nil otherwise.
+    public var losses: [KTLoss]?
 }
 
 /// What an async post did.
@@ -1328,7 +1351,9 @@ public final class KTStore: @unchecked Sendable {
 
     // MARK: - Status
 
-    public func status() -> KTStatus {
+    /// What Storage shows. `losses: true` also resolves the losses still open (Settings reads it; every hello's own
+    /// reads leave them out).
+    public func status(losses withLosses: Bool = false) -> KTStatus {
         sync {
             var st = KTStatus(state: "ready", why: nil, build: config.build, schema: nil, minReader: nil,
                               firstShell: nil, lastShell: nil, keys: 0, bytes: 0, tombstones: 0, unknownEnc: 0,
@@ -1356,15 +1381,54 @@ public final class KTStore: @unchecked Sendable {
                 st.wipeOffer = KTWipeOffer(at: w.at, snap: w.snap, keys: w.hashes.count, seq: w.seq)
             }
             if let h = lastHello { st.inStep = h.rule == 0 || h.rule == 5 || h.label == "migrate" }
+            if withLosses { st.losses = lossesLocked() }
             return st
         }
+    }
+
+    /// The losses still open (KTLoss), newest start first.
+    public func losses() -> [KTLoss] { sync { lossesLocked() } }
+
+    /// Groups the "lag" and "wiped" rows of the last 30 days by the start that gave them up, and keeps the starts
+    /// whose Put back would still write or remove something now (resolved against the store as it is: a key already
+    /// back, or changed since, no longer counts). At most `limit` starts, newest first.
+    private func lossesLocked(limit: Int = 10) -> [KTLoss] {
+        guard case .ready = stateValue, let s = try? db(), let st = try? s.statement(
+            "SELECT id, at, why, boot FROM conflicts WHERE why IN ('lag', 'wiped') ORDER BY id") else { return [] }
+        var groups: [Int64: KTLoss] = [:]
+        do {
+            while try st.step() {
+                let id = st.int64(0), at = st.int64(1), why = st.text(2) ?? "", boot = st.int64(3)
+                var g = groups[boot] ?? KTLoss(boot: boot, at: at, why: why, ids: [], items: [])
+                g.ids.append(id)
+                g.at = max(g.at, at)
+                if why == KTReason.wiped.rawValue { g.why = why }
+                groups[boot] = g
+            }
+            st.reset()
+        } catch let e as KTStoreError {
+            st.reset()
+            fail(e)
+            return []
+        } catch {
+            st.reset()
+            return []
+        }
+        var out: [KTLoss] = []
+        for boot in groups.keys.sorted(by: >) {
+            guard out.count < limit else { break }
+            guard var g = groups[boot], let plan = try? resolve(Intent(conflicts: g.ids, snap: nil)).plan else { continue }
+            g.items = plan.items.filter { $0.outcome == .putBack }
+            if !g.items.isEmpty { out.append(g) }
+        }
+        return out
     }
 
     /// The values given up in the last 30 days, newest first.
     public func conflicts(limit: Int = 500) -> [KTConflict] {
         sync {
             guard let s = try? db(), let st = try? s.statement(
-                "SELECT id, at, k, why, h, hnew, length(value) FROM conflicts ORDER BY id DESC LIMIT ?") else { return [] }
+                "SELECT id, at, k, why, h, hnew, length(value), boot FROM conflicts ORDER BY id DESC LIMIT ?") else { return [] }
             defer { st.reset() }
             var out: [KTConflict] = []
             do {
@@ -1372,7 +1436,7 @@ public final class KTStore: @unchecked Sendable {
                 while try st.step() {
                     out.append(KTConflict(id: st.int64(0), at: st.int64(1), key: st.text(2) ?? "", why: st.text(3) ?? "",
                                           h: st.text(4) ?? "", hnew: st.text(5) ?? "",
-                                          units: st.isNull(6) ? nil : Int(st.int64(6) / 2)))
+                                          units: st.isNull(6) ? nil : Int(st.int64(6) / 2), boot: st.int64(7)))
                 }
             } catch let e as KTStoreError {
                 fail(e)

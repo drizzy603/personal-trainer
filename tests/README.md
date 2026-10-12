@@ -50,13 +50,17 @@ document on, `device({seed:false})` stops the harness re-seeding WebKit at each
 load (a real relaunch does not), `next({wipe | restore | plant | unreadable})`
 changes WebKit behind the facade at the next document start, `fail({...})` makes
 the store answer full, busy, err or nothing, and `status()`, `values()`,
-`conflicts()`, `stagePutBack()` read and act as Settings › About › Storage will.
+`conflicts()`, `stagePutBack()` read and act as Settings › About › Storage will
+(`status(true)` with the losses still open, as the shell's Storage reads it).
+Spec 120 also runs the page's own Storage sheet over the mock (a TrovoStore
+plugin in front of `__ktMock`): a finish WebKit lost goes back in one Put back.
 
 Spec 121 covers the page's side of Storage with a mocked TrovoStore plugin: the
 row only with the shell's flag (`window.__FP_SHELL`) and the plugin, the sheet's
-counts and actions (Put back after a preview, the Native copy switch, Export a
-copy, the TestFlight-only test quit), `bootDone` and the OTA confirm at the end
-of boot (also when the first render is the coach route), and the tools'
+counts and actions (Put back after a preview, one Put back for everything a start
+lost, Remove for a value kept as none, the Native copy switch, Export a copy, the
+TestFlight-only test quit), `bootDone` and the OTA confirm at the end of boot
+(also when the first render is the coach route), and the tools'
 `dev.nav`/`dev.theme` in the flag.
 
 ## The native store on a simulator

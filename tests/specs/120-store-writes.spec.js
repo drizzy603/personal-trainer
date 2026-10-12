@@ -2,7 +2,8 @@
 // a native answer other than ok never reaches the page; the gap note is written op by op exactly as
 // tests/tools/ktstore-vectors.js noteAfter() builds it (the vectors FPStore's Swift tests read); a `full` on a
 // repeated delete, then a relaunch, rewrites nothing; the watch drain re-sends kt_sessions to the store before it
-// clears the wrist's queue, and never keeps a saved entry.
+// clears the wrist's queue, and never keeps a saved entry; a finish WebKit lost goes back through the page's own
+// Storage sheet (a TrovoStore plugin over the mock) in one Put back, the draft's removal with it.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -261,6 +262,87 @@ serial('without the shell flag the drain is the drain it was: no store, the queu
     const out = await ev(app, DRAIN, { fail: false });
     assert(out.state === 'undefined' && out.resent === 0 && out.saved === 1 && out.pending === 0 && out.seen.length === 1 && out.seen[0].n === 1, 'classic drain: ' + JSON.stringify(out));
     assert(!/store copy/.test(out.log), 'no store line in the watch log');
+    assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+  } finally { await app.close(); }
+});
+
+// The shell's flag and a TrovoStore plugin over the mock, as StoreAttach serves Settings > About > Storage: status
+// with the losses resolved, conflicts, Put back previewed or staged (the shell then reloads; specs reload themselves).
+function storageShell() {
+  return '(' + function () {
+    var P = window.Capacitor && window.Capacitor.Plugins, M = window.__ktMock;
+    window.__FP_SHELL = { v: 1, min: 1, shell: '60', screens: [] };
+    window.__pb = [];
+    if (!P || !M) return;
+    P.TrovoStore = {
+      status: function () {
+        var st = window.__ktStoreState || {};
+        return Promise.resolve({ shell: '60', facade: st.mode === 'shadow' ? 'attached' : 'off', why: st.why || null, document: { attached: st.mode === 'shadow' },
+          deviceSwitchOn: true, counters: {}, crashVerdicts: [], breakerTrips: 0, store: M.status(true), testKill: false });
+      },
+      conflicts: function (o) { return Promise.resolve({ rows: M.conflicts((o && o.limit) || 100) }); },
+      putBack: function (o) {
+        window.__pb.push(o);
+        var intent = { conflicts: (o.conflicts || []).slice() }, plan = o.preview ? M.previewPutBack(intent) : M.stagePutBack(intent);
+        return Promise.resolve({ items: plan.items, count: plan.count, staged: !o.preview && plan.count > 0 });
+      },
+      setSwitch: function (o) { return Promise.resolve({ on: !!o.on }); },
+      exportCopy: function () { return Promise.resolve({ shared: false }); },
+    };
+  } + ')();';
+}
+// A Push workout under way (two sets, its draft flushed), then finished: WebKit as it was before the finish, and the
+// workout's startedAt.
+const FINISH = () => {
+  openDeckRunner('Push');
+  runnerCompleteSet(); runnerCompleteSet();
+  _flushRunnerDraft();
+  const before = __ktMock.wk(), startedAt = runnerSession.startedAt;
+  runnerFinishSession();
+  const s = getSessions().filter((x) => Number(x.startedAt) === startedAt);
+  return { before, startedAt, filed: s.length, draft: localStorage.getItem('kt_runner_draft') };
+};
+
+serial('a finish WebKit lost: one Put back of everything that start lost brings it all back in one reload, the draft\'s removal with it', async () => {
+  const app = await start({ native: true, init: storageShell() });
+  try {
+    await ev(app, () => __ktMock.device({ seed: false }));
+    await app.reload();
+    const f = await ev(app, FINISH);
+    assert(f.filed === 1 && f.draft === null && /kt_runner_draft/.test(Object.keys(f.before).join(' ')), 'filed once, the draft removed: ' + JSON.stringify({ filed: f.filed, draft: f.draft }));
+    await app.page.waitForTimeout(150);
+    // A hard kill right after the finish: WebKit lost it all, the copy kept it (rule 6).
+    await ev(app, (J) => __ktMock.next({ restore: J }), f.before);
+    await app.reload();
+    const lost = await ev(app, (t) => ({ rule: __ktStoreState.rule, losses: __ktMock.status(true).losses, banner: !!(runnerResumePending && runnerSession),
+      filed: getSessions().filter((x) => Number(x.startedAt) === t).length }), f.startedAt);
+    assert(lost.rule === 6 && lost.filed === 0 && lost.banner, 'WebKit lost the finish, the draft is offered as it holds it: ' + JSON.stringify({ rule: lost.rule, filed: lost.filed, banner: lost.banner }));
+    assert(lost.losses.length === 1, 'one loss: ' + JSON.stringify(lost.losses));
+    const items = {}; lost.losses[0].items.forEach((it) => { items[it.key] = it; });
+    assert(items.kt_sessions && items.kt_sessions.added === 1 && items.kt_runner_draft && items.kt_runner_draft.removes === true,
+      'the workout and the draft\'s removal are in it: ' + JSON.stringify(lost.losses[0].items));
+    await ev(app, () => switchTab('settings'));
+    await app.page.waitForFunction(() => /this iPhone lost · Put back/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
+    // Storage: one Put back for the start, previewed, asked, staged as one intent.
+    await ev(app, () => openStorageSheet());
+    await app.page.waitForFunction(() => document.querySelectorAll('#fpStoreBody button[data-boot]').length === 1, null, { timeout: 3000 });
+    await ev(app, () => document.querySelector('#fpStoreBody button[data-boot]').click());
+    await app.page.waitForFunction(() => !!document.querySelector('.kt-close-sheet'), null, { timeout: 3000 });
+    const ask = await ev(app, () => ({ title: document.querySelector('.kt-close-sheet-ttl').textContent, body: document.querySelector('.kt-close-sheet-sub').textContent }));
+    assert(ask.title === 'Put back everything this start lost?' && /Workouts \(\+1 record\)/.test(ask.body) && /deletes Workout in progress/.test(ask.body), 'the question: ' + JSON.stringify(ask));
+    await ev(app, () => document.querySelector('.kt-close-sheet [id$="ok"]').click());
+    await app.page.waitForFunction(() => __pb.length === 2, null, { timeout: 3000 });
+    const pb = await ev(app, (ids) => ({ calls: __pb, ids }), lost.losses[0].ids);
+    assert(JSON.stringify(pb.calls[1].conflicts) === JSON.stringify(pb.ids) && !pb.calls[1].preview, 'staged every id of the start at once: ' + JSON.stringify(pb));
+    await app.reload();   // the shell reloads the page
+    const back = await ev(app, (t) => ({ putBack: __ktStoreState.putBack, filed: getSessions().filter((x) => Number(x.startedAt) === t).length,
+      wk: __ktMock.realStorage().getItem('kt_runner_draft'), store: __ktMock.values().kt_runner_draft, banner: !!(runnerResumePending && runnerSession),
+      losses: __ktMock.status(true).losses }), f.startedAt);
+    assert(back.putBack >= 2 && back.filed === 1 && back.wk === null && back.store === undefined && !back.banner, 'the workout is back once, the draft is gone: ' + JSON.stringify(back));
+    assert(back.losses.length === 0, 'nothing left to put back: ' + JSON.stringify(back.losses));
+    await ev(app, () => switchTab('settings'));
+    await app.page.waitForFunction(() => /^In step/.test((document.getElementById('fp-store-sub') || {}).textContent || ''), null, { timeout: 3000 });
+    assert((await check(app)).ok, 'store == WebKit');
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
   } finally { await app.close(); }
 });
