@@ -137,6 +137,11 @@ jobs:
           echo "udid=$(echo "$udid" | sed -n 1p)" >> "$GITHUB_OUTPUT"
           echo "name=$(echo "$udid" | sed -n 2p)" >> "$GITHUB_OUTPUT"
 
+      # A fresh runner's simulator spends minutes on its first boot; booting it before the tests keeps that wait out of
+      # the first test that starts WebKit (KTUIProxyTests' first page load gave up after 362 s on a cold device).
+      - name: Boot the simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
       # TEST_RUNNER_CI reaches the simulator's test process as CI (the speed bounds loosen on shared runners).
       - name: Test on the simulator
         working-directory: ios/App/FPKit

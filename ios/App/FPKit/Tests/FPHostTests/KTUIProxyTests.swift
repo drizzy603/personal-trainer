@@ -88,12 +88,26 @@ final class KTUIProxyTests: XCTestCase {
         try await waitLoaded()
     }
 
+    /// The first web view in a fresh simulator can wait minutes for WebKit's processes (a GitHub runner's device starts
+    /// cold: the first load there once ran 362 s); later loads take a moment, so only the first one gets the long wait.
+    private static var warm = false
+
     private func waitLoaded() async throws {
-        for _ in 0..<200 {
+        let start = Date()
+        let limit: TimeInterval = Self.warm ? 20 : 180
+        var last = "nothing yet"
+        while Date().timeIntervalSince(start) < limit {
             try await Task.sleep(nanoseconds: 50_000_000)
-            if !webView.isLoading, (try? await webView.evaluateJavaScript("document.readyState")) as? String == "complete" { return }
+            if webView.isLoading { last = "still loading"; continue }
+            do {
+                let state = try await webView.evaluateJavaScript("document.readyState") as? String
+                if state == "complete" { Self.warm = true; return }
+                last = "readyState " + (state ?? "nil")
+            } catch {
+                last = "\(error)"
+            }
         }
-        XCTFail("the page never loaded")
+        XCTFail("the page never loaded in \(Int(Date().timeIntervalSince(start))) s (\(webView.url?.absoluteString ?? "no url"); last: \(last))")
     }
 
     private func js(_ src: String) async throws -> Any? {
