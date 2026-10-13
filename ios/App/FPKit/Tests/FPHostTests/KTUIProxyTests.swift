@@ -64,17 +64,13 @@ final class KTUIProxyTests: XCTestCase {
 
     override func setUp() async throws {
         scheme = CapacitorScheme()
-        let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(scheme, forURLScheme: "capacitor")
-        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), configuration: config)
         inner = FakeCapacitorDelegate()
-        webView.uiDelegate = inner
         asked = []
         proxy = KTUIProxy(inner: inner) { [weak self] head, payload, _ in
             self?.asked.append((head, payload))
             return head.hasPrefix("hello") ? "{\"mode\":\"off\",\"why\":\"test\"}" : "ok"
         }
-        webView.uiDelegate = proxy
+        webView = makeWebView()
     }
 
     override func tearDown() async throws {
@@ -83,31 +79,51 @@ final class KTUIProxyTests: XCTestCase {
         inner = nil
     }
 
-    private func load(_ url: String) async throws {
-        webView.load(URLRequest(url: URL(string: url)!))
-        try await waitLoaded()
+    /// A web view serving the scheme, with Capacitor's delegate set first and the proxy put in its place, as the app does.
+    private func makeWebView() -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(scheme, forURLScheme: "capacitor")
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), configuration: config)
+        view.uiDelegate = inner
+        view.uiDelegate = proxy
+        return view
     }
 
-    /// The first web view in a fresh simulator can wait minutes for WebKit's processes (a GitHub runner's device starts
-    /// cold: the first load there once ran 362 s); later loads take a moment, so only the first one gets the long wait.
+    /// Whether a page has loaded in this process yet.
     private static var warm = false
 
-    private func waitLoaded() async throws {
+    /// The first web view in a fresh simulator waits for WebKit's processes to start: 34 s on this Mac's never-booted
+    /// device. On a GitHub runner that first view never finished its page at all (still loading after 180 s), while every
+    /// later view loaded at once. So until a page has loaded in this process, a view that has not finished in 60 s is
+    /// replaced by a new one, five times at most; after that a page gets 20 s.
+    private func load(_ url: String) async throws {
+        try await loadPage(url) { $0.load(URLRequest(url: URL(string: url)!)) }
+    }
+
+    private func loadPage(_ what: String, _ begin: (WKWebView) -> Void) async throws {
         let start = Date()
-        let limit: TimeInterval = Self.warm ? 20 : 180
         var last = "nothing yet"
-        while Date().timeIntervalSince(start) < limit {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            if webView.isLoading { last = "still loading"; continue }
-            do {
-                let state = try await webView.evaluateJavaScript("document.readyState") as? String
-                if state == "complete" { Self.warm = true; return }
-                last = "readyState " + (state ?? "nil")
-            } catch {
-                last = "\(error)"
+        for attempt in 1...(Self.warm ? 1 : 5) {
+            if attempt > 1 { webView = makeWebView() }
+            begin(webView)
+            let began = Date()
+            while Date().timeIntervalSince(began) < (Self.warm ? 20 : 60) {
+                try await Task.sleep(nanoseconds: 50_000_000)
+                if webView.isLoading { last = "still loading"; continue }
+                do {
+                    let state = try await webView.evaluateJavaScript("document.readyState") as? String
+                    if state == "complete" {
+                        if !Self.warm { print("KTUIProxyTests: the first page loaded on view \(attempt) after \(Int(Date().timeIntervalSince(start))) s") }
+                        Self.warm = true
+                        return
+                    }
+                    last = "readyState " + (state ?? "nil")
+                } catch {
+                    last = "\(error)"
+                }
             }
         }
-        XCTFail("the page never loaded in \(Int(Date().timeIntervalSince(start))) s (\(webView.url?.absoluteString ?? "no url"); last: \(last))")
+        XCTFail("the page never loaded in \(Int(Date().timeIntervalSince(start))) s (\(what); last: \(last))")
     }
 
     private func js(_ src: String) async throws -> Any? {
@@ -169,8 +185,9 @@ final class KTUIProxyTests: XCTestCase {
     }
 
     func testKT1FromAnotherOriginIsRefused() async throws {
-        webView.loadHTMLString("<!doctype html><body>web</body>", baseURL: URL(string: "https://example.com/"))
-        try await waitLoaded()
+        try await loadPage("https://example.com/") {
+            $0.loadHTMLString("<!doctype html><body>web</body>", baseURL: URL(string: "https://example.com/"))
+        }
         let r = try await js("return String(prompt('\\u0001KT1 hello', ''));")
         XCTAssertEqual(r as? String, "null")
         XCTAssertTrue(asked.isEmpty)
