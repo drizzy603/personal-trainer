@@ -73,7 +73,16 @@ jobs:
           swift --version
 
       - name: swift test
-        run: swift test --package-path ios/App/FPKit
+        run: |
+          set -o pipefail
+          swift test --package-path ios/App/FPKit 2>&1 | tee "$RUNNER_TEMP/fpkit.log"
+
+      # A run's log needs a login; annotations do not, so the failing lines go there.
+      - name: Name the failures
+        if: failure()
+        run: |
+          echo "::notice title=toolchain::$(xcodebuild -version | tr '\n' ' ')"
+          .github/scripts/annotate-xc.sh "$RUNNER_TEMP/fpkit.log"
 
   # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
   # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
@@ -93,11 +102,12 @@ jobs:
       - name: Build every FPKit target for the iOS Simulator
         working-directory: ios/App/FPKit
         run: |
+          set -o pipefail
           xcodebuild -version
           xcodebuild \
             -scheme FPKit-Package \
             -destination 'generic/platform=iOS Simulator' \
-            build
+            build 2>&1 | tee "$RUNNER_TEMP/build.log"
 
       # The newest iOS runtime's first available iPhone; device names change with every Xcode.
       - name: Pick an iPhone simulator
@@ -121,18 +131,31 @@ jobs:
               sys.exit("no available iPhone simulator")
           print("simulator: %s, iOS %s" % (best[2], ".".join(map(str, best[0]))), file=sys.stderr)
           print(best[1])
+          print("%s, iOS %s" % (best[2], ".".join(map(str, best[0]))))
           PY
           )
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "udid=$(echo "$udid" | sed -n 1p)" >> "$GITHUB_OUTPUT"
+          echo "name=$(echo "$udid" | sed -n 2p)" >> "$GITHUB_OUTPUT"
 
+      # TEST_RUNNER_CI reaches the simulator's test process as CI (the speed bounds loosen on shared runners).
       - name: Test on the simulator
         working-directory: ios/App/FPKit
+        env:
+          TEST_RUNNER_CI: 'true'
         run: |
+          set -o pipefail
           xcodebuild \
             -scheme FPKit-Package \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
-            test
+            test 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      # A run's log needs a login; annotations do not, so the failing lines go there.
+      - name: Name the failures
+        if: failure()
+        run: |
+          echo "::notice title=toolchain::$(xcodebuild -version | tr '\n' ' ') on ${{ steps.sim.outputs.name }}"
+          .github/scripts/annotate-xc.sh "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/test.log"
 
   release:
     name: Archive + TestFlight upload

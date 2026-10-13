@@ -3,6 +3,10 @@ import SQLite3
 import XCTest
 @testable import FPStore
 
+/// GitHub's shared Macs run several times slower than a Mac on a desk and stall at random, so there a speed bound only
+/// catches a collapse. GitHub Actions sets CI; xcodebuild hands TEST_RUNNER_CI to a simulator's test process as CI.
+let ciSlack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
+
 /// KTStore itself: the file, the writes and their answers, the journal, snapshots, conflicts and Put back.
 final class StoreTests: XCTestCase {
     /// A ready store after one document start on an empty WebKit (boot 1).
@@ -445,7 +449,7 @@ final class StoreTests: XCTestCase {
         let median = times[2]
         print(String(format: "snapshot: %d bytes, median %.2f ms (best %.2f ms)", size, median, times[0]))
         XCTAssertGreaterThanOrEqual(size, 2_000_000)
-        XCTAssertLessThan(median, 20, "a 2 MB snapshot takes under 20 ms (median of 5: \(times))")
+        XCTAssertLessThan(median, 20 * ciSlack, "a 2 MB snapshot takes under 20 ms (median of 5: \(times))")
     }
 
     // MARK: Conflicts and Put back
@@ -723,7 +727,7 @@ final class StoreTests: XCTestCase {
         }
         times.sort()
         print(String(format: "150k-character write: median %.2f ms (best %.2f ms)", times[2], times[0]))
-        XCTAssertLessThan(times[2], 50, "\(times)")
+        XCTAssertLessThan(times[2], 50 * ciSlack, "\(times)")
         XCTAssertEqual(store.value("kt_big"), value + [5])
     }
 

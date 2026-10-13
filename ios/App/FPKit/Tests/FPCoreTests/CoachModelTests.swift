@@ -224,7 +224,10 @@ final class CoachModelTests: XCTestCase {
         XCTAssertEqual(m?.messages.count, 60)
         XCTAssertEqual(Set(m?.messages.map(\.id) ?? []).count, 60, "ids are unique")
         XCTAssertNotNil(m?.messages.last?.ledger)
-        XCTAssertLessThan(each, 0.25, "a model decodes well inside a frame budget on the Mac (\(each) s)")
+        // GitHub's shared Macs are several times slower and stall at random (GitHub Actions sets CI; xcodebuild hands
+        // TEST_RUNNER_CI to a simulator's test process as CI): there the bound only catches a collapse.
+        let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
+        XCTAssertLessThan(each, 0.25 * slack, "a model decodes well inside a frame budget on the Mac (\(each) s)")
     }
 
     /// What a newer page may add decodes, and anything unknown draws as text.
