@@ -22,8 +22,10 @@ the page on the page's own model, and `PageLink` carries the chat's intents back
 model, inert without the flag and a TrovoShell plugin). The live chat (C7, see [The live chat](#the-live-chat-coachstore)
 below): `CoachStore` keeps the page's models in order, echoes the owner's message until the page's own takes its place,
 puts back what never reached the page, and keeps the composer across presents and launches; test-native.sh drives it in
-the real app, a coach turn included, on a stand-in for the Messages API. The published policy file keeps
-`screens.coach` off, so phones online show the web chat until it is turned on.
+the real app, a coach turn included, on a stand-in for the Messages API. The published policy file has had
+`screens.coach` on since 2026-10-13 (after the owner checked build 60's store on the phone); a phone takes it at its next
+policy fetch (a cold launch or a return to the foreground, at most every 15 minutes) and shows the native chat from the
+next launch.
 
 ## Targets
 
