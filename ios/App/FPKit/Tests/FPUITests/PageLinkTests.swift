@@ -36,6 +36,7 @@ final class PageLinkTests: XCTestCase {
         """
 
     override func setUp() async throws {
+        try await WebKitWarmUp.ensure()
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         try await load()
         link = PageLink(webView: webView)

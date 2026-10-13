@@ -22,6 +22,7 @@ final class ShellBridgeTests: XCTestCase {
     private var stand: StandInPresenting!
 
     override func setUp() async throws {
+        try await WebKitWarmUp.ensure()
         stand = StandInPresenting()
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("fpshell-\(UUID().uuidString)", isDirectory: true)
         suite = "fp.shell.tests.\(UUID().uuidString)"

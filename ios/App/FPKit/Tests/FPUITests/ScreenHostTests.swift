@@ -58,6 +58,7 @@ final class ScreenHostTests: XCTestCase {
     private var owner: [String] = []
 
     override func setUp() async throws {
+        try await WebKitWarmUp.ensure()
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("fpshell-\(UUID().uuidString)", isDirectory: true)
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         root = UIViewController()
