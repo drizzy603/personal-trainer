@@ -8,16 +8,19 @@ import UIKit
 /// `Resources/Fonts` holds static TrueType faces made from the web's own fonts
 /// (`screenshots/live-activity/mkfonts.py`, set "chat"): Archivo for Heavyweight, Inter with
 /// JetBrains Mono for Lime, at the weights the web chat uses (400, 500, 600, 700, 800; JetBrains
-/// Mono 400, 600, 700, 800). Each is renamed "<Family> FP" (PostScript `ArchivoFP-SemiBold`), so it
-/// can never collide with a system font. They are registered for the process at runtime, from the
-/// package's resource bundle, so the App target needs no UIAppFonts entry.
+/// Mono 400, 600, 700, 800), and Anton 400, the display face (Heavyweight's Coach hub headline,
+/// `RoomTheme.Face.display`; one weight, so every weight asked of it draws it). Each is renamed
+/// "<Family> FP" (PostScript `ArchivoFP-SemiBold`), so it can never collide with a system font.
+/// They are registered for the process at runtime, from the package's resource bundle, so the App
+/// target needs no UIAppFonts entry.
 ///
-/// Neither family has an italic: the web synthesizes one (WebKit slants the upright face 14°), and
-/// so does `uiFont(...italic:)`. A family the page names that is not bundled (a newer page's) falls
+/// No family has an italic: the web synthesizes one (WebKit slants the upright face 14°), and so
+/// does `uiFont(...italic:)`. A family the page names that is not bundled (a newer page's) falls
 /// back to the system face at the same weight, as a browser falls back for a font it lacks.
 public enum FPFonts {
     /// The families bundled, by the name the page's tokens use, with their PostScript family.
     public static let families: [String: String] = [
+        "Anton": "AntonFP",
         "Archivo": "ArchivoFP",
         "Inter": "InterFP",
         "JetBrains Mono": "JetBrainsMonoFP",
@@ -25,6 +28,7 @@ public enum FPFonts {
 
     /// The weights bundled per PostScript family.
     public static let weights: [String: [Int]] = [
+        "AntonFP": [400],
         "ArchivoFP": [400, 500, 600, 700, 800],
         "InterFP": [400, 500, 600, 700, 800],
         "JetBrainsMonoFP": [400, 600, 700, 800],

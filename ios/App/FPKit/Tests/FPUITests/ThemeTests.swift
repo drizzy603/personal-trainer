@@ -29,7 +29,8 @@ final class ThemeTests: XCTestCase {
 
     func testEveryBundledFaceRegisters() {
         let names = Set(FPFonts.register())
-        let want: Set<String> = ["ArchivoFP-Regular", "ArchivoFP-Medium", "ArchivoFP-SemiBold", "ArchivoFP-Bold", "ArchivoFP-ExtraBold",
+        let want: Set<String> = ["AntonFP-Regular",
+                                 "ArchivoFP-Regular", "ArchivoFP-Medium", "ArchivoFP-SemiBold", "ArchivoFP-Bold", "ArchivoFP-ExtraBold",
                                  "InterFP-Regular", "InterFP-Medium", "InterFP-SemiBold", "InterFP-Bold", "InterFP-ExtraBold",
                                  "JetBrainsMonoFP-Regular", "JetBrainsMonoFP-SemiBold", "JetBrainsMonoFP-Bold", "JetBrainsMonoFP-ExtraBold"]
         XCTAssertEqual(names, want)
@@ -44,6 +45,9 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(FPFonts.postScriptName(family: "JetBrains Mono", weight: 900), "JetBrainsMonoFP-ExtraBold")
         XCTAssertEqual(FPFonts.postScriptName(family: "Inter", weight: 300), "InterFP-Regular")
         XCTAssertNil(FPFonts.postScriptName(family: "Helvetica Neue", weight: 400))
+        // Anton has one weight: every weight asked of it draws it
+        XCTAssertEqual(FPFonts.postScriptName(family: "Anton", weight: 800), "AntonFP-Regular")
+        XCTAssertEqual(FPFonts.postScriptName(family: "Anton", weight: 400), "AntonFP-Regular")
         // a family a newer page names that is not bundled: the system face at that weight
         let sys = FPFonts.uiFont(family: "Helvetica Neue", weight: 700, size: 15)
         XCTAssertEqual(sys.pointSize, 15)
