@@ -36,6 +36,32 @@ struct CoachComposer: View {
     var onPhotoFailed: () -> Void = {}
     @Environment(\.roomTheme) private var t
     @State private var item: PhotosPickerItem?
+    /// The software keyboard is up (`keysUp(end:in:)`): the pending photo takes less of the column.
+    @State private var keysUp = false
+    /// The face size the box last held the focus at (nil while it does not hold it): a field made anew
+    /// for a new size gets the focus back only when the old one had it (`refocus`).
+    @State private var focusedAt: CGFloat?
+
+    /// More than this much of the window under the keyboard is the software keyboard up: the web's own
+    /// threshold for `kb-open` (index.html's visualViewport cut of 120 px). A hardware keyboard's
+    /// shortcut bar stays under it, so it is not "up", as on the web.
+    static let keysUpCut: CGFloat = 120
+
+    /// Whether a keyboard whose frame ends at `end` (screen coordinates) is up over `window`.
+    static func keysUp(end: CGRect, in window: CGRect) -> Bool {
+        let cut = end.intersection(window)
+        return !cut.isNull && cut.height > keysUpCut
+    }
+
+    /// Whether the box gets the focus back: it held the focus at `focusedAt` (nil = it did not), the
+    /// face is now `size` and the focus is now `focusedNow`. A text-size change makes the field anew
+    /// (`.id(font.pointSize)`), which drops its focus and the keys with it; only a focus the owner had
+    /// at the old size comes back, never one the owner did not have, and never a focus the owner left
+    /// at the size the box still has.
+    static func refocus(focusedAt: CGFloat?, size: CGFloat, focusedNow: Bool) -> Bool {
+        guard let focusedAt, !focusedNow else { return false }
+        return focusedAt != size
+    }
 
     /// Something to send: words, or a photo.
     static func canSend(text: String, hasPhoto: Bool) -> Bool {
@@ -56,13 +82,62 @@ struct CoachComposer: View {
     var body: some View {
         VStack(spacing: 0) {
             if hasPhoto {
-                PendingPhotoView(image: preview) {
+                PendingPhotoView(image: preview, keysUp: keysUp) {
                     if picked != nil { picked = nil } else { onRemovePagePhoto() }
                 }
                 .padding(.bottom, t.px(8))
             }
             row
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            keysUp = Self.keysUp(note)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keysUp = false
+        }
+    }
+
+    /// The keys' state a frame change leaves: its end frame against the window it covers (the
+    /// notification's screen, else the key window's).
+    private static func keysUp(_ note: Notification) -> Bool {
+        guard let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return false }
+        let window = (note.object as? UIScreen)?.bounds
+            ?? UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.frame }.first
+        guard let window else { return false }
+        return keysUp(end: end, in: window)
+    }
+
+    /// The focus moved (`now`) with the face at `size`: notes the size the box holds the focus at, and
+    /// gives it back to a field made anew for a new size (`refocus`).
+    private func focusChanged(_ now: Bool, size: CGFloat) {
+        if Self.refocus(focusedAt: focusedAt, size: size, focusedNow: now) {
+            giveFocusBack()
+        } else if now {
+            focusedAt = size
+        } else if focusedAt == size {
+            focusedAt = nil
+        }
+    }
+
+    /// The face changed size: a field that lost the focus with its old size gets it back. One that
+    /// still holds it is waited on (it drops it as it is made anew, through `focusChanged`); if it
+    /// keeps it past the next turn, the focus is noted at the new size.
+    private func sizeChanged(_ size: CGFloat) {
+        let now = focused.wrappedValue
+        if Self.refocus(focusedAt: focusedAt, size: size, focusedNow: now) {
+            giveFocusBack()
+        } else if now, focusedAt != nil {
+            let focus = focused, at = $focusedAt
+            DispatchQueue.main.async { if focus.wrappedValue { at.wrappedValue = size } }
+        }
+    }
+
+    /// The focus back to the box on the next turn, once the new field is in place (only a focus the
+    /// owner had: `refocus` decided).
+    private func giveFocusBack() {
+        focusedAt = nil
+        let focus = focused
+        DispatchQueue.main.async { if !focus.wrappedValue { focus.wrappedValue = true } }
     }
 
     private var row: some View {
@@ -150,6 +225,8 @@ struct CoachComposer: View {
                     // placeholder riding high) until a key was typed
                     .id(font.pointSize)
             }
+            .onChange(of: focused.wrappedValue) { _, now in focusChanged(now, size: font.pointSize) }
+            .onChange(of: font.pointSize) { _, size in sizeChanged(size) }
             .padding(.vertical, (t.px(44) - font.lineHeight) / 2)
             .padding(.leading, lead)
             .padding(.trailing, t.px(8))
@@ -211,8 +288,14 @@ struct CoachComposer: View {
 /// The photo waiting to be sent, on the room's card, with a remove button.
 struct PendingPhotoView: View {
     let image: UIImage?
+    /// The software keyboard is up: the image is capped lower (`imageCap`).
+    var keysUp = false
     let onRemove: () -> Void
     @Environment(\.roomTheme) private var t
+
+    /// The tallest the image is drawn: 140 px, or 96 px while the keys are up, as the web caps
+    /// `.coach-img-preview img` under `html.kb-open` (140 left ~34 pt of conversation on a 667 pt phone).
+    static func imageCap(keysUp: Bool, theme t: RoomTheme) -> CGFloat { t.px(keysUp ? 96 : 140) }
 
     /// How far Remove's press reaches past its drawn circle, in points at this size (a 44 pt circle
     /// at every size: 36 + 2 × 4 at large, and both scale together).
@@ -223,12 +306,12 @@ struct PendingPhotoView: View {
         ZStack(alignment: .topTrailing) {
             Group {
                 if let image {
-                    // the web rounds the image's box (the column's width, 140 px tall at most) and
+                    // the web rounds the image's box (the column's width, 140 px tall at most, 96 with the keys up) and
                     // fits the photo inside it, so a photo that does not fill the box keeps its corners
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: t.px(140))
+                        .frame(maxWidth: .infinity, maxHeight: Self.imageCap(keysUp: keysUp, theme: t))
                         .clipShape(RoundedRectangle(cornerRadius: t.radius(.photo), style: .circular))
                         .accessibilityLabel("Photo to send")
                 } else {
