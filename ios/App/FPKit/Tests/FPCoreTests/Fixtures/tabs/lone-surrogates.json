@@ -1,0 +1,31 @@
+{
+ "v": 1,
+ "rev": 3,
+ "boot": "b1760000900000-\ud83d",
+ "room": "heavyweight",
+ "paper": true,
+ "tint": "#0a43f5",
+ "idle": "#6b6b66",
+ "items": [
+  {
+   "id": "log",
+   "title": "Log",
+   "a11y": "\ud83dLog"
+  },
+  {
+   "id": "progress",
+   "title": "Progress",
+   "a11y": "Progress"
+  },
+  {
+   "id": "coach",
+   "title": "Coach \ud83d",
+   "a11y": "Coach\ude00"
+  },
+  {
+   "id": "settings",
+   "title": "Settings",
+   "a11y": "Settings"
+  }
+ ]
+}
