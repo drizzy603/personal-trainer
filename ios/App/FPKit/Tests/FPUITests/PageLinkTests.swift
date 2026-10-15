@@ -97,6 +97,34 @@ final class PageLinkTests: XCTestCase {
         XCTAssertEqual(link.records.map(\.key), ["300", nil, "n1"])
     }
 
+    /// Contract 5 K3: the connect screen's key travels as `secret`, which a record never keeps (records keep `nonce`, `id`
+    /// or `key`), so neither the record nor the probe's view of it (every field ShellProbe writes) holds any of it.
+    func testASetKeyRecordCarriesNoKey() async throws {
+        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        let secret = String((0..<24).map { _ in letters.randomElement()! })
+        let canary = "sk-ant-test-" + secret
+        var seen: [PageLink.Record] = []
+        link.onRecord = { seen.append($0) }
+        let outcome = await send(.coachHomeSetKey(secret: canary))
+        XCTAssertEqual(outcome?.word, "done", "the page received it")
+        let record = try XCTUnwrap(link.records.last)
+        XCTAssertEqual(record.name, "coachHome.setKey")
+        XCTAssertNil(record.key, "no nonce, id or key: nothing kept")
+        XCTAssertNil(PageLink.key(.coachHomeSetKey(secret: canary)))
+        XCTAssertFalse(seen.isEmpty)
+        let c = Array(secret)
+        let pieces = (0...(c.count - 6)).map { String(c[$0..<$0 + 6]) }
+        for r in seen + link.records {
+            var text = ""
+            dump(r, to: &text)
+            // what ShellProbe.intentRecord writes for it
+            let probe: [String: Any] = ["seq": r.seq, "name": r.name, "boot": r.boot, "key": r.key ?? NSNull(), "sent": r.sent,
+                                        "outcome": r.outcome ?? NSNull(), "ms": r.ms ?? NSNull()]
+            text += String(decoding: try JSONSerialization.data(withJSONObject: probe), as: UTF8.self)
+            XCTAssertEqual(pieces.filter { text.contains($0) }, [], text)
+        }
+    }
+
     func testAnswersAreClassifiedAsTheBreakerCountsThem() async throws {
         link.timeoutScale = 0.1   // 2 s -> 0.2 s
         let refused = await send(.coachRetry)

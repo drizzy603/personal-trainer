@@ -43,8 +43,14 @@ final class ShellBridgeTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// Build 60's bridge: the chat only.
     private func bridge() -> ShellBridge {
-        ShellBridge(defaults: defaults, folder: folder, shellBuild: "60")
+        ShellBridge(defaults: defaults, folder: folder, shellBuild: "60", binary: ["coach"])
+    }
+
+    /// Build 61's: coach, coachHome and tabs.
+    private func bridge61() -> ShellBridge {
+        ShellBridge(defaults: defaults, folder: folder, shellBuild: "61")
     }
 
     /// Loads PageLinkTests' stand-in page (window.FPScreens answering) after the bridge's document-start script is in.
@@ -309,5 +315,72 @@ final class ShellBridgeTests: XCTestCase {
         }
         if case .success = r { XCTFail("another page's hello is refused") }
     }
+
+    /// Contract 3.1's refusal codes (D31): every refusal new in 61 reads `<code>: <words>`, and build 60's keep theirs.
+    func testRefusalsNewIn61StartWithTheirCode() {
+        let new: [(ShellBridge.Refusal, String)] = [(.off, "off"), (.badTab("home"), "bad-tab"), (.noSwitch("coach"), "no-switch"),
+                                                   (.notPresentable("tabs"), "not-presentable"), (.notPresentable("coachHome"), "not-presentable"),
+                                                   (.notNative, "not-native")]
+        for (r, code) in new {
+            let text = String(describing: r)
+            XCTAssertTrue(text.hasPrefix(code + ": "), text)
+            XCTAssertEqual(text.split(separator: ":", maxSplits: 1).first.map(String.init), code, text)
+            XCTAssertEqual(r.code, code)
+        }
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.badTab("home")), "bad-tab: home is not one of log, progress, coach, settings")
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.notPresentable("tabs")), "not-presentable: tabs is never presented")
+        // build 60's words, unchanged
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.notThisPage), "not the page the shell is bound to")
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.badMessage("x")), "bad message: x")
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.notLive("coach")), "the coach screen is not on for this document")
+        XCTAssertEqual(String(describing: ShellBridge.Refusal.noModel("coach")), "no coach model to open on")
+        XCTAssertNil(ShellBridge.Refusal.notLive("coach").code)
+    }
+
+    /// Build 61 with no tab root yet (H1's stubs): `selectTab` and `sheets` are refused `off`, `setSwitch` `no-switch`;
+    /// `present tabs` and `present coachHome` are refused `not-presentable` before build 60's checks; `dismiss tabs` is
+    /// answered and changes nothing; `status {refresh: true}` answers the status.
+    func testBuild61sNewMessagesWithNoTabRoot() async throws {
+        let b = bridge61()
+        XCTAssertEqual(b.shell.screens, ["coach", "coachHome", "tabs"])
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        b.binding?.screens.presenting = stand
+        try await loadPage()
+        let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
+        XCTAssertEqual(hello["screens"] as? [String], ["coach"])
+        XCTAssertNil(hello["tabs"], "no tabs negotiated, no tabs in the reply")
+        func refusal(_ method: String, _ options: [String: Any]) async -> String? {
+            if case .failure(let e) = await message(b, method, options) { return String(describing: e) }
+            return nil
+        }
+        var why = await refusal("selectTab", ["tab": "progress"])
+        XCTAssertEqual(why, "off: no live tab root")
+        why = await refusal("selectTab", ["tab": "nowhere", "intent": "chat"])
+        XCTAssertEqual(why, "off: no live tab root", "no root: off before the id")
+        why = await refusal("sheets", ["open": true])
+        XCTAssertEqual(why, "off: no live tab root")
+        why = await refusal("setSwitch", ["screen": "coach", "on": false])
+        XCTAssertEqual(why, "no-switch: this binary keeps no switch for coach")
+        why = await refusal("present", ["screen": "tabs"])
+        XCTAssertEqual(why, "not-presentable: tabs is never presented")
+        why = await refusal("present", ["screen": "coachHome"])
+        XCTAssertEqual(why, "not-presentable: coachHome needs a live tab root")
+        why = await refusal("selectTab", [:])
+        XCTAssertEqual(why?.hasPrefix("bad message: selectTab"), true, why ?? "")
+        // dismiss tabs: ok, nothing changes
+        let records = b.binding?.pageLink.records.count ?? -1
+        _ = try await message(b, "dismiss", ["screen": "tabs"]).get()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(b.binding?.screens.shown, [])
+        XCTAssertEqual(b.binding?.pageLink.records.count, records, "nothing sent to the page")
+        XCTAssertTrue(b.binding?.link.isLive("coach") ?? false, "the chat is still this document's")
+        XCTAssertNil(stand.shown.last)
+        // the status, plain and with refresh, lists all three pieces
+        let plain = try await message(b, "status", [:]).get()
+        XCTAssertEqual(Set(((plain["screens"] as? [String: Any]) ?? [:]).keys), ["coach", "coachHome", "tabs"])
+        let fresh = try await message(b, "status", ["refresh": true]).get()
+        XCTAssertEqual(Set(((fresh["screens"] as? [String: Any]) ?? [:]).keys), ["coach", "coachHome", "tabs"])
+    }
 }
+
 #endif
