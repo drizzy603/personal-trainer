@@ -3,7 +3,7 @@
   "rule": "The words, trimmed, go into the composer: words empty after trimming leave it as it is; a composer empty after trimming becomes the words; a composer that already holds the words verbatim (a UTF-16 match: JS indexOf, NSString range(of:options:.literal)) is left as it is; any other composer becomes the words, a line feed, then the composer as it was.",
   "notes": [
     "composer: the box the words go into (the web composer for screens.off {screen:'coach', draft}; the native one for CoachStore's putBack and a page draft). words: the words handed in. result: the composer after.",
-    "Trimming is JS String.prototype.trim() and Swift's .whitespacesAndNewlines; they differ only on U+FEFF and U+0085, which no keyboard types, so no case uses them.",
+    "Trimming is JS String.prototype.trim() and Swift's .whitespacesAndNewlines. They differ on three characters, checked over every code point (macOS 27 Foundation, Node 25): U+FEFF (JS trims it, Swift does not), U+0085 and U+200B (Swift trims them, JS does not). No case uses them.",
     "Every string is well-formed UTF-16 (no lone surrogate).",
     "Read by CoachStoreTests (CoachStore.mergeDraft) and by the page's specs (the screens.off handler). A rule change edits this file first."
   ],
@@ -29,6 +29,7 @@
     { "name": "a CJK line into an empty composer", "composer": "", "words": "今日は脚の日", "result": "今日は脚の日" },
     { "name": "a CJK line into other words", "composer": "明日は休み", "words": "今日は脚の日", "result": "今日は脚の日\n明日は休み" },
     { "name": "empty words leave the composer as it is", "composer": "owner", "words": "", "result": "owner" },
-    { "name": "words of spaces only leave the composer as it is", "composer": " owner ", "words": " \n　", "result": " owner " }
+    { "name": "words of spaces only leave the composer as it is", "composer": " owner ", "words": " \n　", "result": " owner " },
+    { "name": "empty words into a composer of spaces leave it as it is", "composer": " \n ", "words": "", "result": " \n " }
   ]
 }
