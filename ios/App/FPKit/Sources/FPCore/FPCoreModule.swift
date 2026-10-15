@@ -15,6 +15,10 @@ import Foundation
 /// - `CoachModel.swift`: coach model v1, everything the native chat draws, built by the page: `paper`
 ///   (the native appearance), `dynTypeOn`, the room `tokens`, header, empty state, messages addressed by
 ///   id with chatui's stored fields, pills, PLAN CHANGES, composer and speech.
+/// - `CoachHomeModel.swift`: coach home model v1 (contract 6.2, build 61), the native Coach tab's root built by
+///   the page: the hub or the connect screen (`route`, an unknown one drawn as the hub), `resume` (the shell's
+///   hold), meta, hero, the connect block, the hub's groups and rows; the room `tokens` with the hub's `home*`
+///   sizes. Never the API key.
 /// - `Tokens.swift`: the room tokens (colours, type, space, radii, fonts) with compiled Heavyweight and
 ///   Lime defaults from the page's THEMES, so most polish ships by OTA; the text size clamp.
 /// - `Blocks.swift`: message bodies as the page's md() and %% grammar model them, with `.unknown(text)`

@@ -120,14 +120,27 @@ final class CoachModelTests: XCTestCase {
             let tokens = try FixtureFiles.json("coach/\(file).json")["tokens"]
             let type = try XCTUnwrap(tokens?["type"]?.object), space = try XCTUnwrap(tokens?["space"]?.object)
             let radius = try XCTUnwrap(tokens?["radius"]?.object), font = try XCTUnwrap(tokens?["font"]?.object)
-            XCTAssertEqual(Set(type.keys), Set(TypeToken.allCases.map(\.rawValue)), file)
+            // the chat's half only: the hub's home* sizes never enter CoachModel (contract 6.3)
+            XCTAssertEqual(Set(type.keys), Set(TypeToken.chat.map(\.rawValue)), file)
             XCTAssertEqual(Set(space.keys), Set(SpaceToken.allCases.map(\.rawValue)), file)
             XCTAssertEqual(Set(radius.keys), Set(RadiusToken.allCases.map(\.rawValue)), file)
             XCTAssertEqual(Set(font.keys), Set(FontToken.allCases.map(\.rawValue)), file)
-            for t in TypeToken.allCases { XCTAssertEqual(type[t.rawValue]?.double, defaults.size(t), "\(file) type.\(t.rawValue)") }
+            for t in TypeToken.chat { XCTAssertEqual(type[t.rawValue]?.double, defaults.size(t), "\(file) type.\(t.rawValue)") }
             for t in SpaceToken.allCases { XCTAssertEqual(space[t.rawValue]?.double, defaults.space(t), "\(file) space.\(t.rawValue)") }
             for t in RadiusToken.allCases { XCTAssertEqual(radius[t.rawValue]?.double, defaults.radius(t), "\(file) radius.\(t.rawValue)") }
             for t in FontToken.allCases { XCTAssertEqual(font[t.rawValue]?.string, defaults.font(t), "\(file) font.\(t.rawValue)") }
+        }
+    }
+
+    /// CoachModel stays byte-identical whichever host draws it (contract 6.3): no coach fixture, page-built or
+    /// hand-made, carries one of the hub's home* sizes.
+    func testNoCoachFixtureCarriesAHomeSize() throws {
+        let files = FixtureFiles.files(in: "coach")
+        XCTAssertFalse(files.isEmpty)
+        for url in files {
+            let type = try JSONText.parse(utf8: Data(contentsOf: url))["tokens"]?["type"]?.object ?? [:]
+            let home = type.keys.filter { $0.hasPrefix("home") }.sorted()
+            XCTAssertEqual(home, [], "\(url.lastPathComponent) carries hub sizes")
         }
     }
 

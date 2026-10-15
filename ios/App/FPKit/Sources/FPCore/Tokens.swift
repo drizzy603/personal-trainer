@@ -218,8 +218,11 @@ public enum ColorToken: String, CaseIterable, Sendable {
     case composerFocus       // the composer's focus ring
 }
 
-/// The type scale, in points at the large (default) text size.
+/// The type scale, in points at the large (default) text size: the chat's 26 sizes (the same in both rooms)
+/// and the Coach tab's 16 `home*` sizes (per room, contract 6.2). The page sends both in `tokens.type`: the
+/// chat's in every model, the hub's only in CoachHomeModel (never in CoachModel, which stays byte-identical).
 public enum TypeToken: String, CaseIterable, Sendable {
+    // the chat (CoachModel)
     case title, headEyebrow, headMeta, model
     case body, bubble, heading, eyebrow
     case metricLabel, metricValue, metricRef, take
@@ -227,6 +230,19 @@ public enum TypeToken: String, CaseIterable, Sendable {
     case ledgerHead, ledgerRow, ledgerNote, button
     case table, tableHead, composer, thinking
     case emptyTitle, emptySub
+    // the Coach tab's hub and connect screen (CoachHomeModel)
+    case homeMeta, homeAvatar, homeGreet
+    case homeTitle       // the headline clamp's max
+    case homeTitleMin    // the headline clamp's min
+    case homeBody, homeGroupHead, homeRowTitle, homeRowSub
+    case homeFieldLabel, homeField, homeCtaLabel, homeCtaTitle, homeCtaArrow, homeHelp, homeLink
+
+    /// The chat's sizes: the keys of the page's `_COACH_TOKENS.type` and of every CoachModel.
+    public static let chat: [TypeToken] = allCases.filter { !$0.isHome }
+    /// The hub's sizes: added to `tokens.type` in CoachHomeModel only.
+    public static let home: [TypeToken] = allCases.filter(\.isHome)
+
+    public var isHome: Bool { rawValue.hasPrefix("home") }
 }
 
 /// Spacing, in points.
@@ -337,6 +353,23 @@ public struct Tokens: Equatable, Sendable {
         .emptyTitle: 22, .emptySub: 14,
     ].reduce(into: [:]) { $0[$1.key.rawValue] = $1.value }
 
+    /// The hub's sizes at the large text size, from the room CSS (contract 6.2's table; index.html at 91708ae):
+    /// meta 1505 (Heavyweight's face 1922), avatar 683, greet 1914 / 1515, the headline clamp 1905 / 1516, body
+    /// 1915 / 1522, group head 1561, rows 1563-1564, field label 1549, the field's inline 16 px 21107, the CTA
+    /// 1545-1547, help and link inline 21116 / 21119. The headline's viewport factor (17 % / 13.25 %), Lime's
+    /// 41 pt headline at <= 360 pt and its 16 pt gutter there are view geometry, not tokens.
+    private static let homeScaleHeavyweight: [String: Double] = [
+        TypeToken.homeMeta: 10, .homeAvatar: 13, .homeGreet: 15, .homeTitle: 74, .homeTitleMin: 54, .homeBody: 15,
+        .homeGroupHead: 9, .homeRowTitle: 14, .homeRowSub: 11.5, .homeFieldLabel: 9, .homeField: 16,
+        .homeCtaLabel: 9, .homeCtaTitle: 18, .homeCtaArrow: 22, .homeHelp: 12, .homeLink: 14,
+    ].reduce(into: [:]) { $0[$1.key.rawValue] = $1.value }
+
+    private static let homeScaleLime: [String: Double] = [
+        TypeToken.homeMeta: 10, .homeAvatar: 13, .homeGreet: 14, .homeTitle: 56, .homeTitleMin: 43, .homeBody: 14,
+        .homeGroupHead: 9, .homeRowTitle: 14, .homeRowSub: 11.5, .homeFieldLabel: 9, .homeField: 16,
+        .homeCtaLabel: 9, .homeCtaTitle: 18, .homeCtaArrow: 22, .homeHelp: 12, .homeLink: 14,
+    ].reduce(into: [:]) { $0[$1.key.rawValue] = $1.value }
+
     private static let spacing: [String: Double] = [
         SpaceToken.gutter: 20, .messageGap: 8, .turnGap: 20, .blockGap: 10, .sectionGap: 12, .paragraphGap: 10, .listItemGap: 6,
         .cardPadH: 14, .cardPadV: 12, .metricPadV: 10, .bubblePadH: 16, .bubblePadV: 12,
@@ -368,7 +401,7 @@ public struct Tokens: Equatable, Sendable {
             .deltaGood: "#4f7000", .deltaWarn: "color-mix(in srgb, #ea580c 80%, #0f0f0f)",
             .progAction: "#0a43f5", .composerFocus: "#0a43f5",
         ]),
-        sizes: typeScale,
+        sizes: typeScale.merging(homeScaleHeavyweight) { $1 },
         spaces: spacing,
         radii: radiusTable(composer: 16, send: 12),
         fonts: [FontToken.body.rawValue: "Archivo", FontToken.eyebrow.rawValue: "Archivo",
@@ -394,7 +427,7 @@ public struct Tokens: Equatable, Sendable {
             .deltaGood: "#d8ff63", .deltaWarn: "#ff9d5c",
             .progAction: "#b9b9be", .composerFocus: "#b9b9be",
         ]),
-        sizes: typeScale,
+        sizes: typeScale.merging(homeScaleLime) { $1 },
         spaces: spacing,
         radii: radiusTable(composer: 20, send: 22),
         fonts: [FontToken.body.rawValue: "Inter", FontToken.eyebrow.rawValue: "JetBrains Mono",

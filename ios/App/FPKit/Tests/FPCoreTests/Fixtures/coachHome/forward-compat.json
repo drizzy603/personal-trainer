@@ -1,0 +1,148 @@
+{
+ "v": 1,
+ "rev": 7,
+ "boot": "b1760000800000-ab01",
+ "room": "heavyweight",
+ "paper": true,
+ "dynTypeOn": false,
+ "newTopLevel": {
+  "anything": [
+   1,
+   2,
+   3
+  ]
+ },
+ "tokens": {
+  "color": {
+   "bg": "var(--bg)",
+   "card": "#ffffff",
+   "card2": "#efece4",
+   "border": "rgba(15,15,15,.10)",
+   "accent": "#ff7a00",
+   "accentSoft": "rgba(10,67,245,.10)",
+   "accentDim": "rgba(10,67,245,.06)",
+   "onAccent": "#ffffff",
+   "accentInk": "#0a43f5",
+   "earned": "#b7f000",
+   "earnedInk": "#4f7000",
+   "satAccent": "#4d7cff",
+   "green": "#4f7000",
+   "yellow": "#4f7000",
+   "red": "#dc2626",
+   "orange": "#ea580c",
+   "cyan": "#0a43f5",
+   "text": "#0f0f0f",
+   "muted": "#6b6b66",
+   "lite": "#3f3f3a",
+   "purple": "#0a43f5",
+   "blkLift": "#0a43f5",
+   "blkRun": "#16a34a",
+   "blkSport": "#7c3aed",
+   "glow": "#ffffff"
+  },
+  "type": {
+   "homeMeta": 10,
+   "homeAvatar": 13,
+   "homeGreet": 15,
+   "homeTitle": 70,
+   "homeTitleMin": 54,
+   "homeBody": 15,
+   "homeGroupHead": 9,
+   "homeRowTitle": 14,
+   "homeRowSub": 11.5,
+   "homeFieldLabel": 9,
+   "homeField": 16,
+   "homeCtaLabel": 9,
+   "homeCtaTitle": 18,
+   "homeCtaArrow": 22,
+   "homeHelp": 12,
+   "homeLink": 14,
+   "homeBadge": 8
+  },
+  "shadow": {
+   "card": "0 1px 2px rgba(0,0,0,.1)"
+  }
+ },
+ "route": "upsell",
+ "resume": true,
+ "meta": {
+  "label": "COACH · PRO",
+  "avatar": "K",
+  "badge": "NEW"
+ },
+ "hero": {
+  "greet": "Hi Kalani.",
+  "title": "Coach",
+  "accent": "goes pro.",
+  "body": "Everything you had, and more.",
+  "image": "hero.png"
+ },
+ "connect": {
+  "label": "Anthropic API Key",
+  "placeholder": "sk-ant-...",
+  "cta": {
+   "label": "UPGRADE",
+   "title": "Unlock coaching",
+   "icon": "star"
+  },
+  "help": "Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.\nAnthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.",
+  "starter": null,
+  "extra": 1
+ },
+ "groups": [
+  {
+   "head": "Conversation",
+   "collapsed": false,
+   "rows": [
+    {
+     "sub": "3 exchanges · Push day went well",
+     "do": "openChat",
+     "title": "Open Chat",
+     "icon": "chat",
+     "badge": 2
+    },
+    {
+     "sub": null,
+     "do": "shareChat",
+     "title": "Share Chat",
+     "icon": "share"
+    },
+    {
+     "sub": "Generate a custom training plan",
+     "do": "startIntake",
+     "title": "Build My Programme",
+     "icon": "sparkles"
+    }
+   ]
+  },
+  {
+   "head": "Pro",
+   "rows": [
+    {
+     "sub": null,
+     "do": "upgrade",
+     "title": "Go Pro",
+     "icon": "star"
+    }
+   ]
+  },
+  "not a group",
+  {
+   "head": "Account",
+   "rows": [
+    {
+     "sub": null,
+     "do": "clearChat",
+     "title": "",
+     "icon": "trash"
+    },
+    {
+     "sub": null,
+     "do": "disconnect",
+     "title": "Disconnect",
+     "icon": "disconnect"
+    }
+   ]
+  }
+ ]
+}
