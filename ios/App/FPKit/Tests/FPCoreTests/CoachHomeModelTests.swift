@@ -204,4 +204,58 @@ final class CoachHomeModelTests: XCTestCase {
         let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
         XCTAssertLessThan(each, 0.016 * slack, "a hub model decodes well inside a frame on the Mac (\(each) s)")
     }
+
+    // MARK: The intent map (N6)
+
+    /// A canary shaped like a key (`sk-ant-test-` and 24 random letters), never a real one (contract 5 K8).
+    private func canary() -> String {
+        "sk-ant-test-" + String((0..<24).map { _ in "abcdefghijklmnopqrstuvwxyz".randomElement()! })
+    }
+
+    /// Each row action sends `coachHome.<do>` with no arguments; the piece is `coachHome`.
+    func testRowActionsMapToTheirIntents() {
+        let names: [CoachHomeModel.Row.Action: String] = [
+            .openChat: "coachHome.openChat", .startIntake: "coachHome.startIntake",
+            .clearChat: "coachHome.clearChat", .disconnect: "coachHome.disconnect",
+        ]
+        XCTAssertEqual(Set(names.keys), Set(CoachHomeModel.Row.Action.allCases))
+        for (action, name) in names {
+            XCTAssertEqual(action.intent.name, name)
+            XCTAssertEqual(action.intent.name, "coachHome." + action.rawValue, "do maps to coachHome.<do>")
+            XCTAssertEqual(action.intent.arguments, [:])
+            XCTAssertEqual(action.intent.screen, "coachHome")
+            XCTAssertNotNil(IntentSignature.named(name), "\(name) is in intents.json's list")
+        }
+    }
+
+    /// The CTA builds `coachHome.setKey` whose only argument is `secret`; the starter link `coachHome.openStarter`.
+    func testConnectMapsToSetKeyAndOpenStarter() throws {
+        let c = try XCTUnwrap(try decode(["v": 1, "connect": ["starter": [:]]]).connect)
+        let key = canary()
+        let set = c.setKey(secret: key)
+        XCTAssertEqual(set.name, "coachHome.setKey")
+        XCTAssertEqual(set.arguments, ["secret": .string(key)], "the argument is named secret, never key")
+        XCTAssertEqual(set.screen, "coachHome")
+        XCTAssertEqual(try Intent(name: set.name, arguments: set.arguments), set, "round-trips")
+        XCTAssertEqual(c.openStarter.name, "coachHome.openStarter")
+        XCTAssertEqual(c.openStarter.arguments, [:])
+        XCTAssertEqual(c.openStarter.screen, "coachHome")
+    }
+
+    /// Where N builds the setKey intent, its printed forms hold no 6-character piece of the key (H1's redaction).
+    func testTheMapsSetKeyNeverPrintsTheKey() throws {
+        let c = try XCTUnwrap(try decode(["v": 1, "connect": [:]]).connect)
+        let key = canary()
+        let set = c.setKey(secret: key)
+        var dumped = ""
+        dump(set, to: &dumped)
+        let printed = ["\(set)", String(describing: set), String(reflecting: set), dumped]
+        let chars = Array(key)
+        for p in printed {
+            for i in 0...(chars.count - 6) {
+                let piece = String(chars[i..<(i + 6)])
+                XCTAssertFalse(p.contains(piece), "a printed form holds '\(piece)'")
+            }
+        }
+    }
 }
