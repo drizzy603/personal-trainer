@@ -5,7 +5,7 @@ import FPCore
 /// The link state machine (C4 acceptance): the 15 s hello deadline, the 3-failure breaker, and the reset
 /// on a new page build.
 final class LinkStateTests: XCTestCase {
-    private let shell = ShellContract(shell: "60")
+    private let shell = ShellContract(shell: "60", screens: ["coach"])
     private let t0 = Date(timeIntervalSince1970: 1_791_500_000)
     private let send = Intent.coachSend(text: "hi", image: nil, usePending: nil, nonce: "n1")
     private let ok = IntentOutcome.done(IntentReply(json: ["ok": true]))

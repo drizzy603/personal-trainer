@@ -34,8 +34,100 @@ public struct ShellContract: Equatable, Sendable {
 
     /// Contract v1.
     public static let current = 1
-    /// Build 60's native screens.
-    public static let binaryScreens = ["coach"]
+    /// The native pieces compiled into this binary (build 61, contract 1.1): the chat, the native Coach tab and the
+    /// native tab bar root. Build 60's were `["coach"]` (its tests pass `screens: ["coach"]`).
+    public static let binaryScreens = ["coach", "coachHome", "tabs"]
+}
+
+/// The tab ids (contract 1.2): exactly the page's `currentTab` values, in the bar's order.
+public enum ShellTabs {
+    public static let ids = ["log", "progress", "coach", "settings"]
+
+    public static func isTab(_ id: String) -> Bool { ids.contains(id) }
+
+    /// The tab the shell shows when the web view's first document starts (contract 2.4, 9): Coach for a cold
+    /// `trovo://share`; else the `-devNav` route's head when it names Progress, Coach or Settings; else Log (`log/*`,
+    /// `runner/*`, `modal/*`, `overlay/*`, `demo/*`, an unknown head or no route).
+    public static func firstTab(share: Bool, devNav: String?) -> String {
+        if share { return "coach" }
+        guard let nav = devNav else { return "log" }
+        let head = nav.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        return ["progress", "coach", "settings"].contains(head) ? head : "log"
+    }
+}
+
+/// The tab bar's geometry in whole points (contract 7.1): `h` how far the bar covers the web view's bottom edge, `safe`
+/// the window's bottom inset without the bar, `rev` its revision (the flag's prediction is rev 0).
+public struct BarMetrics: Equatable, Sendable {
+    public var h: Int
+    public var safe: Int
+    public var rev: Int
+
+    public init(h: Int, safe: Int, rev: Int) {
+        self.h = h
+        self.safe = safe
+        self.rev = rev
+    }
+
+    public var json: JSONValue {
+        .object(["h": .number(Double(h)), "safe": .number(Double(safe)), "rev": .number(Double(rev))])
+    }
+}
+
+/// The flag's `tabs` (contract 2.2): present iff the web view's root is a live tab root.
+public struct TabsFlag: Equatable, Sendable {
+    /// The tab the shell shows when the web view's first document starts.
+    public var selected: String
+    /// The first-frame prediction of the bar's cover and the bottom inset without it.
+    public var h: Int
+    public var safe: Int
+
+    public init(selected: String, h: Int, safe: Int) {
+        self.selected = selected
+        self.h = h
+        self.safe = safe
+    }
+
+    public var json: JSONValue {
+        .object(["selected": .string(selected), "bar": .object(["h": .number(Double(h)), "safe": .number(Double(safe))])])
+    }
+}
+
+/// hello's `tabs` (contract 3.2): present iff `tabs` is negotiated.
+public struct TabsReply: Equatable, Sendable {
+    /// The tab the shell shows now.
+    public var selected: String
+    /// The scene's selection counter.
+    public var seq: Int
+    /// The measured bar.
+    public var bar: BarMetrics
+
+    public init(selected: String, seq: Int, bar: BarMetrics) {
+        self.selected = selected
+        self.seq = seq
+        self.bar = bar
+    }
+
+    public var json: JSONValue {
+        .object(["selected": .string(selected), "seq": .number(Double(seq)), "bar": bar.json])
+    }
+}
+
+/// Why a tab root fell back (contract 10.3, 10.5): the fixed words of `status.fellBack.why` and of
+/// `screens.off {screen: 'tabs', why}`.
+public enum FellBackWhy: String, CaseIterable, Equatable, Sendable {
+    /// A hello that did not name `tabs`, or the page's `dismiss {screen: 'tabs'}`.
+    case page
+    /// A version refusal.
+    case refused
+    /// No hello within the deadline.
+    case noHello = "no-hello"
+    /// A `tabs` breaker trip.
+    case failures
+    /// The policy file turned `tabs` off.
+    case policy
+    /// The shell's device switch turned off.
+    case `switch`
 }
 
 /// `window.__FP_SHELL`, injected at document start.
@@ -55,8 +147,12 @@ public struct ShellFlag: Equatable, Sendable {
     /// `dev.api`: where the page sends its coach calls in a test launch (a stand-in for the Messages API on this device's
     /// loopback; the page takes nothing else).
     public var devAPI: String?
+    /// `tabs`: only under a live tab root (contract 2.2); left out otherwise.
+    public var tabs: TabsFlag?
 
-    public init(contract: ShellContract, screens: [String], devNav: String? = nil, devTheme: String? = nil, devAPI: String? = nil) {
+    public init(contract: ShellContract, screens: [String], devNav: String? = nil, devTheme: String? = nil, devAPI: String? = nil,
+                tabs: TabsFlag? = nil) {
+        self.tabs = tabs
         v = contract.v
         min = contract.min
         shell = contract.shell
@@ -77,6 +173,7 @@ public struct ShellFlag: Equatable, Sendable {
         if let devTheme { dev["theme"] = .string(devTheme) }
         if let devAPI { dev["api"] = .string(devAPI) }
         if !dev.isEmpty { o["dev"] = .object(dev) }
+        if let tabs { o["tabs"] = tabs.json }
         return .object(o)
     }
 
@@ -129,19 +226,23 @@ public struct HelloReply: Equatable, Sendable {
     public var up: [String]
     /// Why the shell refused (refused replies only).
     public var why: String?
+    /// The selection and the measured bar, iff `tabs` is negotiated (contract 3.2); left out of the JSON otherwise.
+    public var tabs: TabsReply?
 
     public var json: JSONValue {
         var o: [String: JSONValue] = ["v": .number(Double(v)), "screens": .array(screens.map(JSONValue.string))]
         if !up.isEmpty { o["up"] = .array(up.map(JSONValue.string)) }
         if let why { o["why"] = .string(why) }
+        if let tabs { o["tabs"] = tabs.json }
         return .object(o)
     }
 
-    public init(v: Int, screens: [String], up: [String] = [], why: String? = nil) {
+    public init(v: Int, screens: [String], up: [String] = [], why: String? = nil, tabs: TabsReply? = nil) {
         self.v = v
         self.screens = screens
         self.up = up
         self.why = why
+        self.tabs = tabs
     }
 
     public init(_ n: Negotiation) {
@@ -248,16 +349,26 @@ public enum PageMessage: Equatable, Sendable {
     case confirm(ConfirmRequest)
     case log(LogLine)
     /// Settings > About: every screen of this binary, on or off and why, and the shell's counters (`ScreenStatus`).
-    case status
+    /// `refresh` (contract 3.10, D43: About's "Check the switches now") asks for a forced policy fetch first; false when
+    /// the page sends no option, as build 60's page does.
+    case status(refresh: Bool)
     /// Settings > About's "Try the native chat again": the screen's crash verdicts and native breaker record go, so the
     /// next document may show it again (this one keeps what it negotiated). Answers the status after.
     case reset(screen: String)
     /// The page went hidden or visible while a native screen covered it (it sends nothing otherwise): the shell counts a
     /// hidden page while the app is in use, which a native screen over the page never causes by design.
     case visibility(VisibilityReport)
+    /// Tabs mode (contract 3.3): the page's `switchTab` asks the shell to select `tab`; `intent` is what the page is about
+    /// to show there (`chat`, `intake`), a hint for the hold.
+    case selectTab(tab: String, intent: String?)
+    /// Tabs mode (contract 3.4): whether an overlay that covers the page's own bar is open in this document.
+    case sheets(open: Bool)
+    /// The shell's own device switch for a piece the root decides (contract 3.5): only `tabs` in 61.
+    case setSwitch(screen: String, on: Bool)
 
-    /// The plugin's methods.
-    public static let methods = ["hello", "bootDone", "present", "dismiss", "model", "toast", "confirm", "log", "status", "reset", "visibility"]
+    /// The plugin's methods (contract 3.1), in its order.
+    public static let methods = ["hello", "bootDone", "present", "dismiss", "model", "toast", "confirm", "log", "status", "reset", "visibility",
+                                 "selectTab", "sheets", "setSwitch"]
 
     public enum DecodeError: Error, Equatable {
         case unknownMethod(String)
@@ -269,6 +380,10 @@ public enum PageMessage: Equatable, Sendable {
         func str(_ k: String) throws -> String {
             guard let s = o[k]?.string else { throw DecodeError.missing(k) }
             return s
+        }
+        func bool(_ k: String) throws -> Bool {
+            guard let b = o[k]?.bool else { throw DecodeError.missing(k) }
+            return b
         }
         switch method {
         case "hello":
@@ -285,11 +400,14 @@ public enum PageMessage: Equatable, Sendable {
             self = .confirm(ConfirmRequest(id: try str("id"), title: try str("title"), body: o["body"]?.string,
                                            confirm: o["confirm"]?.string, cancel: o["cancel"]?.string, tone: o["tone"]?.string))
         case "log": self = .log(LogLine(text: try str("text"), level: o["level"]?.string))
-        case "status": self = .status
+        case "status": self = .status(refresh: o["refresh"]?.bool ?? false)
         case "reset": self = .reset(screen: try str("screen"))
         case "visibility":
             let at = o["at"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
             self = .visibility(VisibilityReport(state: try str("state"), at: at))
+        case "selectTab": self = .selectTab(tab: try str("tab"), intent: o["intent"]?.string.flatMap { $0.isEmpty ? nil : $0 })
+        case "sheets": self = .sheets(open: try bool("open"))
+        case "setSwitch": self = .setSwitch(screen: try str("screen"), on: try bool("on"))
         default: throw DecodeError.unknownMethod(method)
         }
     }

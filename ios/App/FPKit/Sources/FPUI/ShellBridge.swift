@@ -57,11 +57,36 @@ public final class ShellBridge: NSObject {
         public init() {}
     }
 
+    /// Why a page message was rejected. The plugin rejects with `String(describing:)`, so the page reads the text; every
+    /// refusal new in 61 is worded `<code>: <words>` and the page reads the code before the first `:` (contract 3.1, D31).
+    /// Build 60's four keep their words.
     public enum Refusal: Error, CustomStringConvertible {
         case notThisPage
         case badMessage(String)
         case notLive(String)
         case noModel(String)
+        /// `selectTab` or `sheets` with no live tab root (classic or fallen back).
+        case off
+        /// `selectTab` with an id outside the four.
+        case badTab(String)
+        /// `setSwitch` for a piece this binary keeps no switch for (any but `tabs`).
+        case noSwitch(String)
+        /// `present tabs` (never presented), or `present coachHome` without a live tab root.
+        case notPresentable(String)
+        /// `present coach` under a live tab root while the Coach tab is not NATIVE.
+        case notNative
+
+        /// The code the page reads (nil for build 60's refusals, which carry none).
+        public var code: String? {
+            switch self {
+            case .notThisPage, .badMessage, .notLive, .noModel: return nil
+            case .off: return "off"
+            case .badTab: return "bad-tab"
+            case .noSwitch: return "no-switch"
+            case .notPresentable: return "not-presentable"
+            case .notNative: return "not-native"
+            }
+        }
 
         public var description: String {
             switch self {
@@ -69,6 +94,12 @@ public final class ShellBridge: NSObject {
             case .badMessage(let why): return "bad message: " + why
             case .notLive(let s): return "the \(s) screen is not on for this document"
             case .noModel(let s): return "no \(s) model to open on"
+            case .off: return "off: no live tab root"
+            case .badTab(let t): return "bad-tab: \(t) is not one of " + ShellTabs.ids.joined(separator: ", ")
+            case .noSwitch(let s): return "no-switch: this binary keeps no switch for \(s)"
+            case .notPresentable(let s):
+                return s == "tabs" ? "not-presentable: tabs is never presented" : "not-presentable: \(s) needs a live tab root"
+            case .notNative: return "not-native: the Coach tab is not native"
             }
         }
     }
@@ -124,10 +155,11 @@ public final class ShellBridge: NSObject {
     public static var debugHooks: [String: ([String: Any]) -> Void] = [:]
     #endif
 
-    init(defaults: UserDefaults = .standard, folder: URL? = nil, shellBuild: String? = nil) {
+    /// `binary`: the pieces this binary has (tests that model build 60 pass `["coach"]`).
+    init(defaults: UserDefaults = .standard, folder: URL? = nil, shellBuild: String? = nil, binary: [String] = ShellContract.binaryScreens) {
         self.defaults = defaults
         let build = shellBuild ?? (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "0"
-        shell = ShellContract(shell: build)
+        shell = ShellContract(shell: build, screens: binary)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.folder = folder ?? support.appendingPathComponent("FPShell", isDirectory: true)
         super.init()
@@ -370,6 +402,13 @@ public final class ShellBridge: NSObject {
             ShellProbe.shared?.bootDone(page: page)
             #endif
         case .present(let s):
+            // build 61's pieces that no present brings up here: the bar is never presented, and the native Coach tab
+            // needs a live tab root (H7 and H8 build both; until then no root is a tab root)
+            if s == "tabs" || s == "coachHome" {
+                Self.log.error("shell: present \(s, privacy: .public) refused: not presentable")
+                done(.failure(Refusal.notPresentable(s)))
+                return
+            }
             guard b.link.isLive(s) else {
                 Self.log.error("shell: present \(s, privacy: .public) refused: not on for this document")
                 done(.failure(Refusal.notLive(s)))
@@ -401,6 +440,8 @@ public final class ShellBridge: NSObject {
             }
             done(.success([:]))
         case .status:
+            // `refresh` (About's "Check the switches now", contract 3.10) forces a policy fetch from H8 on; until then the
+            // status as it stands
             done(.success(status(b)))
         case .reset(let s):
             guard shell.screens.contains(s) else {
@@ -414,6 +455,12 @@ public final class ShellBridge: NSObject {
             done(.success(status(b)))
         case .visibility(let v):
             done(.success(["counted": noteVisibility(v, at: now)]))
+        case .selectTab, .sheets:
+            // tabs mode needs a live tab root, which no scene builds yet (H7)
+            done(.failure(Refusal.off))
+        case .setSwitch(let s, _):
+            // the shell's switch file comes with H6 and H8
+            done(.failure(Refusal.noSwitch(s)))
         }
         #if DEBUG
         ShellProbe.shared?.pageMessage(method, message)
