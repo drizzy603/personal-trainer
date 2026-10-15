@@ -48,8 +48,10 @@ final class PressAreaTests: XCTestCase {
         try XCTUnwrap(CoachFixtures.model("heavyweight-chat").header.model)
     }
 
-    /// The type of a view's body as SwiftUI would build it (the environment at its defaults).
-    static func bodyType<V: View>(_ v: V) -> String { String(describing: type(of: v.body)) }
+    /// The type of a view's body as SwiftUI builds it, read statically from the view's type (`V.Body`):
+    /// calling `body` outside a view read its environment outside one, which SwiftUI reports
+    /// ("Accessing Environment's value outside of being installed on a View").
+    static func bodyType<V: View>(_: V) -> String { String(describing: V.Body.self) }
 
     func testTheSmallControlsAreBuiltOnPressAreaButton() throws {
         XCTAssertEqual(Self.buttonLabel(in: "A<PressAreaButton<X, Rectangle>, Button<Y<Z>>>"), "Y<Z>", "the reader skips other types named …Button")
