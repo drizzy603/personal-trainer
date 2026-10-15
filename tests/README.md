@@ -67,28 +67,89 @@ TestFlight-only test quit), `bootDone` and the OTA confirm at the end of boot
 ## The shell contracts
 
 ```sh
-FP_SHELL_INERT=1 ./tests/run.sh
+./tests/run.sh; STORE=shadow ./tests/run.sh; FP_SHELL_INERT=1 ./tests/run.sh
+STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh; FP_SHELL_INERT=60 ./tests/run.sh   # the five modes
+SHARD=1/2 ./tests/run.sh; SHARD=2/2 ./tests/run.sh                              # any mode in two halves
+./tests/run.sh --list                                                           # what a run would run
 ```
 
-Shell contracts (plan task C3): `boot({shell})` runs a boot under one contract an installable shell
-speaks: `'none'` (no flag, every shell up to 59 and the PWA; the default), `'inert'` (build 60's
-`window.__FP_SHELL` with no native screen on: its binary has the chat, which the published policy
-file keeps off, so Settings › About shows the row saying so) or `'coach'` (build 60: the native Coach
-chat), with a mock TrovoShell that negotiates hello as FPCore does, answers `status` (a spec's
-`window.__fpShellStatus`, else the flag's binary screens on or off by the policy file) and `reset`, and
-records every call in `window.__fpShell`.
-`FP_SHELL_INERT=1 ./tests/run.sh` runs every native boot that names no shell as `'inert'`: per-spec
-results must equal the classic run's. A spec that builds its own shell in `opts.init` (sets
-`window.__FP_SHELL`, a TrovoShell or a TrovoStore itself, as 120 and 121 do) names `shell: 'none'`, so
-the inert run never paints the harness's flag and mock over its own. Spec 118 drives the bridge
-(`window.FPScreens.call`); `tests/golden/check.sh` holds the chat's HTML, the page's coach models and
-FPCore's fixtures together.
+Shell contracts (plan tasks C3 and P1): `boot({shell})` runs a boot under one contract an installable
+shell speaks. Build 60's, byte for byte (a build 60 phone keeps getting OTA pages): `'none'` (no flag,
+every shell up to 59 and the PWA; the default), `'inert'` (60's `window.__FP_SHELL` with no native
+screen on: its binary has the chat, which the policy file keeps off, so Settings › About shows the row
+saying so) and `'coach'` (60's native Coach chat). Build 61's, each `JSON.parse` of contract 2.1's
+canonical string (the strings FPCore's ContractTests hold): `'inert61'` (classic root, nothing native),
+`'coach61'` (classic root, 60's overlay chat), `'tabs'` (tab root, everything on) and `'tabsWeb'` (tab
+root, the native Coach tab off). A flag object works too. `SHELL_METHODS` (exported) is what each
+binary registers on TrovoShell: `'60'` the 11 of today, `'61'` contract 3.1's 14 (its first 11 are
+60's); a flag whose `binary` names `tabs` gets the 61 list, any other the 60 list, and
+`opts.shellMethods` overrides either (a 60 TrovoShell under a 61 flag).
 
-**Both at once.** `STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh` is build 60 with no native screen
+**The five modes.** `FP_SHELL_INERT` runs every native boot that names no shell under an inert flag:
+`1` is `'inert61'` (the newest installable one), `60` is build 60's `'inert'`; `''` or `0` none;
+anything else exits 2. Classic, `STORE=shadow`, `FP_SHELL_INERT=1`, both at once and
+`FP_SHELL_INERT=60` must give identical per-spec results; no mode runs the suite with tabs negotiated
+(specs that measure the page's own bar would change), so tabs mode is held by specs that name their
+shells. `SHARD=i/n` runs the i-th of every n specs of the sorted list (round robin, for CI's jobs);
+`--list` prints the run's specs, the skip and the shard applied, and exits 0.
+
+**Self-shelled specs.** A spec whose every native boot names its shell says `// fp-spec: self-shelled`
+in its first five lines: `run.sh` skips it whenever `FP_SHELL_INERT` is set (printing why: its classic
+and shadow runs cover those modes), and the harness throws on any native boot of it that names no
+shell. A spec that builds its own flag or TrovoShell in `opts.init` (sets `window.__FP_SHELL`, a
+TrovoShell or a TrovoStore itself, as 120 and 121 do) names `shell: 'none'`, so an inert run never
+paints the harness's flag and mock over its own.
+
+**The mock.** Under 60's flags it is the C3 mock: hello negotiates as FPCore does, `status` is a
+spec's `window.__fpShellStatus` or the flag's binary screens on or off by the policy file, `reset`,
+and every call recorded in `window.__fpShell` (`calls`, `of(name)`, `models()`, `call(name, args)`, a
+spec's direct `FPScreens.call`; `refuse[name]` rejects a method with a spec's message). Under 61's
+flags it models the shell (contract 2-4, 8, 10.3, 15.3):
+- **The scene** outlives the document (sessionStorage `__fpShellMock`; a new browser is a new scene):
+  `root` (`tabs` iff the scene's first flag has `tabs`), `fellBack` (`{why, at}`: `page`, `refused`,
+  `no-hello`, `failures`, `policy`, `switch`), `selected`, `seq`, `rev`, `bar`, the Coach tab's mode
+  (`waiting` until the scene's first `coachHome` declaration or 3 s after a hello with none, `native`,
+  `web`), the pushed chat, the last `coachHome` model, `switches`, `declined`, `strays`, `policy`. A
+  document in a fallen-back scene starts with no `tabs` in its flag. Per document: the sheets state
+  (closed at every start), the negotiated set, covered.
+- **The rules** are one self-contained function, `MOCK_RULES` (exported): the dependency rule, hello's
+  negotiation with the fallback at hello and its declines, the bar's height per tab, Coach mode and
+  sheets, the funnel's messages, the fallback's messages. The page's mock runs the same source.
+- **hello** answers `{v, screens, up?, why?, tabs?}`, then (next task) the resync: `shell.covered` for
+  the selected tab's mode and the snapshots of what is up; never `tabs.select`. `selectTab` runs the
+  funnel and answers `{tab, seq}` (`off`, `bad-tab`); `sheets` answers `{bar}` 16 ms later; `setSwitch`
+  (`no-switch` but for `tabs`; off falls back `switch`); `present`/`dismiss` (`coachHome` declares the
+  Coach tab, `coach` pushes, `dismiss tabs` falls back `page` with no `screens.off tabs`); `status` adds
+  `root`, `fellBack`, `switches`, `policy`, `counters.strays` and `off` `os`/`device`/`page`/`needs`;
+  `status {refresh: true}` stamps the policy check. Refusals read `<code>: <words>`.
+- **Shell to page** messages go through one FIFO queue, one at a time, never resent, each recorded in
+  `__fpShell.sent` as `[name, args, answer, t0, t1]`. `__fpShell.composer` stands for the native
+  composer's words: a shell-side `screens.off {screen:'coach'}` carries them as `draft`, cleared only
+  by an answer with `took: true`.
+- **Helpers**: `__fpShell.tap(tab)` (the owner's tap; a re-tap sends `again: true`),
+  `select(tab, 'deepLink' | 'stray')`, `bar(h, safe)`, `fallBack(why, draft)`, `state()`.
+- **Knobs** (`opts.init`): `__fpShellHelloSilent`, `__fpShellHelloDelay` (ms), `__fpShellPre {selected,
+  seq}`, `__fpShellHelloTabs` (the reply's `tabs` replaced; `null` drops it), `__fpShellOff` (pieces off
+  before this hello), `__fpShellBar {h, safe}`, `__fpShellThrow` (methods that throw synchronously),
+  `__fpShellUp`, `__fpShellStatus`, `__fpShellCross` (a tap crosses the next `selectTab`),
+  `__fpShellSheetsDelay`, `__fpShellSheetsSilent`, `__fpShellRefreshDelay`, `__fpShellIOS` (below 26:
+  `tabs` off `os`).
+
+**Boot options** for build 61: `opts.html` (another page text served as `/index.html`: a string or a
+function of the page's own, such as an OTA switch or a page whose main script throws), `BASE_PAGE()`
+(91708ae's `index.html` through `git show`, pinned for good: the page before the tabs half; CI checks
+out with `fetch-depth: 0`), `opts.clock` (`{time}`: Playwright's clock installed before the page loads,
+for the 16 s failsafe), `opts.shellMethods`, and `opts.pageErrors`: under a 61 flag `close()` throws
+when the page threw, unless the boot passed `pageErrors: 'allow'` (an error only tabs mode throws could
+stop a 61 phone's boot before the OTA confirm, and the breaker would reject the staged page for good).
+
+**Both at once.** `STORE=shadow FP_SHELL_INERT=1 ./tests/run.sh` is build 61 with no native screen
 up: every document starts with the native copy in shadow, and every native boot runs under the
-shell's flag and TrovoShell with no screen negotiated. `boot({store: 'shadow', shell: 'inert'})` does the same for one boot (the
-store's scripts first, then the seed and the native mock, `opts.init`, and the shell's flag and
-TrovoShell last). CI runs classic, shadow, inert and both at once as four jobs.
+shell's flag and TrovoShell with no screen negotiated. `boot({store: 'shadow', shell: 'inert61'})`
+does the same for one boot (the store's scripts first, then the seed and the native mock,
+`opts.init`, and the shell's flag and TrovoShell last). Spec 118 drives the bridge
+(`window.FPScreens.call`); spec 122 holds the harness's own cases; `tests/golden/check.sh` holds the
+chat's HTML, the page's coach models and FPCore's fixtures together.
 
 ## The native store on a simulator
 
