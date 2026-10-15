@@ -69,7 +69,7 @@ final class TokensTests: XCTestCase {
         XCTAssertEqual(l.font(.eyebrow), "JetBrains Mono")
         XCTAssertEqual(l.radius(.composer), 20)
 
-        // every token has a default in both rooms, and the type scale is the same in both
+        // every token has a default in both rooms, and the chat's type scale is the same in both
         for room in [Tokens.heavyweight, Tokens.lime] {
             for t in ColorToken.allCases { XCTAssertNotNil(room.colors[t.rawValue], "\(room.room) \(t)") }
             for t in TypeToken.allCases { XCTAssertNotNil(room.sizes[t.rawValue], "\(room.room) \(t)") }
@@ -77,10 +77,48 @@ final class TokensTests: XCTestCase {
             for t in RadiusToken.allCases { XCTAssertNotNil(room.radii[t.rawValue], "\(room.room) \(t)") }
             for t in FontToken.allCases { XCTAssertNotNil(room.fonts[t.rawValue], "\(room.room) \(t)") }
         }
-        XCTAssertEqual(Tokens.heavyweight.sizes, Tokens.lime.sizes)
+        for t in TypeToken.chat { XCTAssertEqual(Tokens.heavyweight.size(t), Tokens.lime.size(t), "type.\(t.rawValue)") }
         XCTAssertEqual(h.size(.composer), 16, "no editable field under 16 pt (spec 115)")
         XCTAssertEqual(h.size(.body), 15)
         XCTAssertEqual(h.space(.hit), 44)
+    }
+
+    /// The Coach tab's 16 hub sizes (contract 6.2's table, D33): per room, at the large text size, from the room
+    /// CSS. The page sends the same values in CoachHomeModel's `tokens.type` (CoachHomeModelTests holds the
+    /// page-built files to them).
+    func testHomeTypeScalePerRoom() {
+        let expected: [TypeToken: (heavyweight: Double, lime: Double)] = [
+            .homeMeta: (10, 10), .homeAvatar: (13, 13), .homeGreet: (15, 14), .homeTitle: (74, 56),
+            .homeTitleMin: (54, 43), .homeBody: (15, 14), .homeGroupHead: (9, 9), .homeRowTitle: (14, 14),
+            .homeRowSub: (11.5, 11.5), .homeFieldLabel: (9, 9), .homeField: (16, 16), .homeCtaLabel: (9, 9),
+            .homeCtaTitle: (18, 18), .homeCtaArrow: (22, 22), .homeHelp: (12, 12), .homeLink: (14, 14),
+        ]
+        XCTAssertEqual(Set(expected.keys), Set(TypeToken.home), "the table names every home* token")
+        for (t, v) in expected {
+            XCTAssertEqual(Tokens.heavyweight.size(t), v.heavyweight, "heavyweight \(t.rawValue)")
+            XCTAssertEqual(Tokens.lime.size(t), v.lime, "lime \(t.rawValue)")
+            XCTAssertEqual(Tokens.defaults(for: .other("ocean"), paper: false).size(t), v.lime, "an unknown dark room: Lime's")
+        }
+        XCTAssertEqual(Tokens.heavyweight.size(.homeField), 16, "no editable field under 16 pt (spec 115)")
+        XCTAssertLessThan(Tokens.heavyweight.size(.homeTitleMin), Tokens.heavyweight.size(.homeTitle))
+        XCTAssertLessThan(Tokens.lime.size(.homeTitleMin), Tokens.lime.size(.homeTitle))
+        // the page's override reads like any other size
+        let t = Tokens(room: .lime, overrides: ["type": ["homeTitle": 60, "homeGreet": 200]])
+        XCTAssertEqual(t.size(.homeTitle), 60)
+        XCTAssertEqual(t.size(.homeGreet), 14, "a size out of range keeps the room's default")
+        XCTAssertEqual(t.rejected, ["type.homeGreet"])
+    }
+
+    /// TypeToken.chat (the page's `_COACH_TOKENS.type`, every CoachModel) and TypeToken.home (CoachHomeModel only)
+    /// split the type scale in two.
+    func testChatAndHomeTypeTokensPartitionTheScale() {
+        XCTAssertEqual(TypeToken.chat.count, 26)
+        XCTAssertEqual(TypeToken.home.count, 16)
+        XCTAssertTrue(Set(TypeToken.chat).isDisjoint(with: TypeToken.home))
+        XCTAssertEqual(Set(TypeToken.chat).union(TypeToken.home), Set(TypeToken.allCases))
+        XCTAssertEqual(TypeToken.chat + TypeToken.home, TypeToken.allCases, "in declaration order")
+        XCTAssertTrue(TypeToken.home.allSatisfy { $0.rawValue.hasPrefix("home") })
+        XCTAssertFalse(TypeToken.chat.contains { $0.rawValue.hasPrefix("home") })
     }
 
     func testOverridesApplyOverTheDefaults() {
