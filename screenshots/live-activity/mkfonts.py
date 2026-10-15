@@ -15,7 +15,8 @@ Two sets, each face marked with where it goes:
   chat    the native Coach chat (FPKit's FPUI, Theme/Fonts.swift registers them at runtime):
           ios/App/FPKit/Sources/FPUI/Resources/Fonts. The web chat's body weights: Heavyweight is
           Archivo, Lime is Inter with JetBrains Mono eyebrows, figures and code. Neither family has
-          an italic: the web synthesizes one, and so does Fonts.swift.
+          an italic: the web synthesizes one, and so does Fonts.swift. Anton is the display face
+          (Heavyweight's Coach hub headline, RoomTheme.Face.display).
 
 Usage: python3 mkfonts.py [widgetOutDir [chatOutDir]]
 Needs: pip install fonttools brotli
@@ -39,8 +40,8 @@ OUT = {
 # (source woff2 stem, family, PostScript family, weight, style, sets);
 # '<stem>-latin.woff2' and '<stem>-latin-ext.woff2' are merged into each
 FACES = [
-    # the rest Live Activity's six faces (and the chat's bold weights)
-    ('anton',     'Anton',          'AntonFP',          400, 'Regular',   ('widget',)),
+    # the rest Live Activity's six faces (and the chat's bold weights and display face)
+    ('anton',     'Anton',          'AntonFP',          400, 'Regular',   ('widget', 'chat')),
     ('archivo',   'Archivo',        'ArchivoFP',        700, 'Bold',      ('widget', 'chat')),
     ('jbm-var',   'JetBrains Mono', 'JetBrainsMonoFP',  250, 'Clock',     ('widget',)),   # the in-app rest clock weight
     ('jbm-var',   'JetBrains Mono', 'JetBrainsMonoFP',  700, 'Bold',      ('widget', 'chat')),
