@@ -137,5 +137,126 @@ final class ComposerTests: XCTestCase {
             try report.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
         }
     }
+
+    // MARK: The photo with the keys up, the focus across a text-size change (N5)
+
+    /// The pending photo is capped at 140 px, and at 96 px while the keys are up, as the web caps
+    /// `.coach-img-preview img` under `html.kb-open`, at every size in both rooms.
+    func testTheImageCapIs96WithTheKeysUpAnd140Otherwise() throws {
+        let base = try CoachFixtures.model("heavyweight-chat")
+        for (roomName, room) in CoachRenderTests.rooms {
+            for (sizeName, size) in CoachRenderTests.sizes {
+                let theme = RoomTheme(model: CoachFixtures.model(base, in: room), system: size)
+                XCTAssertEqual(PendingPhotoView.imageCap(keysUp: true, theme: theme), theme.px(96), "\(roomName) \(sizeName): keys up")
+                XCTAssertEqual(PendingPhotoView.imageCap(keysUp: false, theme: theme), theme.px(140), "\(roomName) \(sizeName): keys down")
+            }
+        }
+    }
+
+    /// A tall photo fills the cap and no more: the card is the cap plus its chrome (the 8 px padding
+    /// and the 1 px border, each side), 96 px with the keys up, 140 px with them down.
+    func testAPendingTallPhotoIsCappedLowerWithTheKeysUp() throws {
+        FPFonts.register()
+        let base = try CoachFixtures.model("heavyweight-chat")
+        let tall = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 2000)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 300, height: 2000))
+        }
+        for (roomName, room) in CoachRenderTests.rooms {
+            for (sizeName, size) in CoachRenderTests.sizes {
+                let theme = RoomTheme(model: CoachFixtures.model(base, in: room), system: size)
+                let chrome = 2 * (theme.px(8) + 1)
+                for keysUp in [true, false] {
+                    let host = UIHostingController(rootView: PendingPhotoView(image: tall, keysUp: keysUp, onRemove: {})
+                        .environment(\.roomTheme, theme))
+                    let drawn = host.sizeThatFits(in: CGSize(width: 350, height: 2000))
+                    let cap = PendingPhotoView.imageCap(keysUp: keysUp, theme: theme)
+                    let what = "\(roomName) \(sizeName), keys \(keysUp ? "up" : "down")"
+                    XCTAssertLessThanOrEqual(drawn.height, cap + chrome + 0.5, "\(what): the card is at most the cap plus its chrome (\(drawn))")
+                    XCTAssertGreaterThanOrEqual(drawn.height, cap + chrome - 1, "\(what): a tall photo fills the cap (\(drawn))")
+                }
+            }
+        }
+    }
+
+    /// The software keyboard is up when its end frame covers more than 120 pt of the window (the
+    /// web's `kb-open` threshold); a hardware keyboard's shortcut bar, or keys moved off screen, are not.
+    func testTheKeysAreUpOnlyPastTheWebsThreshold() {
+        let window = CGRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertTrue(CoachComposer.keysUp(end: CGRect(x: 0, y: 844 - 336, width: 390, height: 336), in: window), "the software keyboard")
+        XCTAssertFalse(CoachComposer.keysUp(end: CGRect(x: 0, y: 844 - 55, width: 390, height: 55), in: window), "a hardware keyboard's shortcut bar")
+        XCTAssertFalse(CoachComposer.keysUp(end: CGRect(x: 0, y: 844 - 120, width: 390, height: 120), in: window), "120 pt is not past the threshold")
+        XCTAssertTrue(CoachComposer.keysUp(end: CGRect(x: 0, y: 844 - 121, width: 390, height: 121), in: window), "121 pt is")
+        XCTAssertFalse(CoachComposer.keysUp(end: CGRect(x: 0, y: 844, width: 390, height: 336), in: window), "keys moved below the window (hidden)")
+        XCTAssertFalse(CoachComposer.keysUp(end: .zero, in: window), "no frame")
+        XCTAssertTrue(CoachComposer.keysUp(end: CGRect(x: 0, y: 1194 - 400, width: 834, height: 400), in: CGRect(x: 0, y: 0, width: 834, height: 1194)), "an iPad's keys")
+    }
+
+    /// The field made anew for a new face size gets the focus back only when the owner had it at the
+    /// old size: never a focus the owner did not have, and never one left at the size the box still has.
+    func testTheFocusComesBackAfterATextSizeChangeOnlyWhenTheOwnerHadIt() {
+        XCTAssertTrue(CoachComposer.refocus(focusedAt: 16, size: 17.9, focusedNow: false), "focused at the old size, dropped by the new field: back")
+        XCTAssertFalse(CoachComposer.refocus(focusedAt: 16, size: 17.9, focusedNow: true), "still focused: nothing to give back")
+        XCTAssertFalse(CoachComposer.refocus(focusedAt: nil, size: 17.9, focusedNow: false), "not focused before the change: no focus")
+        XCTAssertFalse(CoachComposer.refocus(focusedAt: 16, size: 16, focusedNow: false), "the owner left the box at the same size: no focus")
+        XCTAssertFalse(CoachComposer.refocus(focusedAt: nil, size: 16, focusedNow: false), "nothing at all")
+    }
+
+    /// The chat's box keeps the owner's focus across a change of the phone's text size: the field
+    /// made anew for the new face size gets it back, size after size, and a box the owner had left
+    /// stays unfocused. This host shows no keyboard (it has no window scene), but the box takes first
+    /// responder as the owner's tap gives it (the probe's `nativeFocus` does the same) and SwiftUI's
+    /// focus follows it: build 60's field, made anew with no rule, kept the focus on neither.
+    func testTheOwnersFocusSurvivesATextSizeChangeAndNoOtherIsGiven() throws {
+        FPFonts.register()
+        let model = try CoachFixtures.model("heavyweight-chat")
+        let host = UIHostingController(rootView: CoachRenderTests.Phone(model: model, size: .large))
+        host.safeAreaRegions = []
+        let window = UIWindow(frame: CGRect(origin: .zero, size: CoachRenderTests.screen))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.frame = window.bounds
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func box() -> UITextView? {
+            func find(_ v: UIView) -> UITextView? {
+                if let t = v as? UITextView { return t }
+                for s in v.subviews { if let t = find(s) { return t } }
+                return nil
+            }
+            return find(host.view)
+        }
+        /// Lays out and turns the run loop `turns` times, or until `done` holds.
+        func settle(_ turns: Int, until done: () -> Bool = { false }) {
+            for _ in 0..<turns {
+                host.view.setNeedsLayout()
+                host.view.layoutIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+                if done() { return }
+            }
+        }
+        settle(10)
+        XCTAssertTrue(try XCTUnwrap(box(), "the composer's box").becomeFirstResponder(), "the owner's tap: the box takes the focus")
+        settle(10)
+        for size in [DynamicTypeSize.xLarge, .xxLarge] {
+            let old = try XCTUnwrap(box(), "\(size): the box before")
+            host.rootView = CoachRenderTests.Phone(model: model, size: size)
+            settle(100) { box().map { $0 !== old && $0.isFirstResponder } ?? false }
+            let new = try XCTUnwrap(box(), "\(size): the box after")
+            XCTAssertFalse(new === old, "\(size): the field is made anew for its new face size")
+            XCTAssertTrue(new.isFirstResponder, "\(size): and the owner's focus comes back to it")
+        }
+        // the owner leaves the box; a text-size change after that gives it no focus
+        XCTAssertTrue(try XCTUnwrap(box()).resignFirstResponder(), "the owner leaves the box")
+        settle(10)
+        let left = try XCTUnwrap(box())
+        host.rootView = CoachRenderTests.Phone(model: model, size: .large)
+        settle(30)
+        let after = try XCTUnwrap(box(), "the box after the owner left it")
+        XCTAssertFalse(after === left, "the field is made anew for its new face size")
+        XCTAssertFalse(after.isFirstResponder, "a focus the owner did not have is never given")
+    }
 }
 #endif
