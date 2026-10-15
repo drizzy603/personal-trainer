@@ -24,12 +24,18 @@ enum CoachFixtures {
         let name: String, composer: String, words: String, result: String
     }
 
-    /// Every putback vector, in file order.
+    /// Every putback vector, in file order. A file of another version, or a case without its four strings, is an error,
+    /// never skipped: the tests that read these say they run every case.
     static func putbacks() throws -> [Putback] {
+        func unreadable(_ why: String) -> Error {
+            CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: putbackFile.path, NSDebugDescriptionErrorKey: why])
+        }
         let o = try JSONSerialization.jsonObject(with: Data(contentsOf: putbackFile)) as? [String: Any]
-        return ((o?["cases"] as? [[String: Any]]) ?? []).compactMap { c in
+        guard o?["v"] as? Int == 1 else { throw unreadable("v is not 1") }
+        guard let cases = o?["cases"] as? [[String: Any]] else { throw unreadable("no cases array") }
+        return try cases.enumerated().map { i, c in
             guard let n = c["name"] as? String, let comp = c["composer"] as? String, let w = c["words"] as? String,
-                  let r = c["result"] as? String else { return nil }
+                  let r = c["result"] as? String else { throw unreadable("case \(i) lacks one of name, composer, words, result") }
             return Putback(name: n, composer: comp, words: w, result: r)
         }
     }
