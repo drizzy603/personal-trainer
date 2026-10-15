@@ -9,6 +9,7 @@ Golden inputs for `swift test` (FPCoreTests). The test target copies this folder
 | `coach/{forward-compat,lone-surrogates,minimal}.json` | What no page sends: a newer page's additions, an older page that skipped `_nativeJSON` (half emojis), the bare minimum | `node ios/App/FPKit/Tools/coach-fixtures.js index.html ios/App/FPKit/Tests/FPCoreTests/Fixtures`: by hand, bodies from `blocks/`, the palette from the page's THEMES |
 | `shell/page-messages.json` | One call of every TrovoShell method (hello, bootDone, present, dismiss, model, toast, confirm, log) with the options the page sends | by hand, from decision.md section 6 and chatui's toasts and confirms |
 | `policy/good`, `policy/bad` | Policy files (S7): what reads, and what changes nothing. `good/default.json` is the file to publish as `policy.json` beside build.txt | by hand |
+| `tabs/{forward-compat,lone-surrogates,minimal}.json` | Tabs models v1 (contract 6.1) no page sends: a newer page's additions (a badge, an unknown id, items out of order, an unreadable colour), an older page that skipped `_nativeJSON` (half emojis), the bare minimum. The page-built `tabs/{heavyweight,lime}.json` come from `tests/golden/dump-coach-home.js` (P6) | `node ios/App/FPKit/Tools/tabs-fixtures.js index.html ios/App/FPKit/Tests/FPCoreTests/Fixtures`: by hand, colours from the page's THEMES, titles and labels from its `<nav id="tabs">` |
 
 Rules:
 - Every JSON fixture is what the page hands Swift: built through `_nativeJSON`, so no lone surrogate,

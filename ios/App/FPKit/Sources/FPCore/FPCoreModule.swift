@@ -30,6 +30,9 @@ import Foundation
 ///   (`ShellCounters`: the web view leaving its window, the page hidden under a native screen, trips, markers).
 /// - `Policy.swift`: `policy.json` (S7): parsing, safe defaults, the last good copy, at most one fetch
 ///   every 15 minutes; a missing or bad file changes nothing.
+/// - `TabsModel.swift`: tabs model v1 (build 61), what the native tab bar wears, built by the page: room,
+///   `paper`, the selected and idle colours, and each of the four fixed tabs' title and accessibility label;
+///   compiled per-room defaults for the first frame. The bar's order and glyphs are the shell's.
 public enum FPCoreModule {
     /// The module's name: its folder under Sources/, and the category its log lines can use.
     public static let name = "FPCore"
