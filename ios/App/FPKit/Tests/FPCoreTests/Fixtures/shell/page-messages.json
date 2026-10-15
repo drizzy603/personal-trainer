@@ -1,5 +1,5 @@
 {
- "about": "One call of every TrovoShell method (page to Swift), contract v1",
+ "about": "One call of every TrovoShell method (page to Swift), contract v1 as build 61 speaks it (14 methods)",
  "calls": [
   {
    "method": "hello",
@@ -133,6 +133,36 @@
    "options": {
     "state": "visible"
    }
+  },
+  {
+   "method": "status",
+   "options": {
+    "refresh": true
+   },
+   "note": "Settings > About's Check the switches now: a forced policy fetch first (contract 3.10)"
+  },
+  {
+   "method": "selectTab",
+   "options": {
+    "tab": "coach",
+    "intent": "chat"
+   },
+   "note": "tabs mode: the page's switchTab, before its local switch"
+  },
+  {
+   "method": "sheets",
+   "options": {
+    "open": true
+   },
+   "note": "tabs mode: an overlay that covers the page's own bar opened"
+  },
+  {
+   "method": "setSwitch",
+   "options": {
+    "screen": "tabs",
+    "on": false
+   },
+   "note": "Settings > About: the tab bar's device switch"
   }
  ]
 }
