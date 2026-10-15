@@ -9,6 +9,7 @@ Golden inputs for `swift test` (FPCoreTests). The test target copies this folder
 | `coach/{forward-compat,lone-surrogates,minimal}.json` | What no page sends: a newer page's additions, an older page that skipped `_nativeJSON` (half emojis), the bare minimum | `node ios/App/FPKit/Tools/coach-fixtures.js index.html ios/App/FPKit/Tests/FPCoreTests/Fixtures`: by hand, bodies from `blocks/`, the palette from the page's THEMES |
 | `shell/page-messages.json` | One call of every TrovoShell method (hello, bootDone, present, dismiss, model, toast, confirm, log) with the options the page sends | by hand, from decision.md section 6 and chatui's toasts and confirms |
 | `policy/good`, `policy/bad` | Policy files (S7): what reads, and what changes nothing. `good/default.json` is the file to publish as `policy.json` beside build.txt | by hand |
+| `draft/putback.json` | The one draft-merge rule (contract 4.2): composer and words in, the composer after. CoachStoreTests runs every case through `CoachStore.mergeDraft` (putBack and a page draft); the page's specs through its `screens.off {screen:'coach', draft}` handler. No FPCore test reads it | by hand (N4); a rule change edits this file first, then both sides |
 
 Rules:
 - Every JSON fixture is what the page hands Swift: built through `_nativeJSON`, so no lone surrogate,

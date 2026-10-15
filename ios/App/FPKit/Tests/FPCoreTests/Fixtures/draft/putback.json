@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "rule": "The words, trimmed, go into the composer: words empty after trimming leave it as it is; a composer empty after trimming becomes the words; a composer that already holds the words verbatim (a UTF-16 match: JS indexOf, NSString range(of:options:.literal)) is left as it is; any other composer becomes the words, a line feed, then the composer as it was.",
+  "notes": [
+    "composer: the box the words go into (the web composer for screens.off {screen:'coach', draft}; the native one for CoachStore's putBack and a page draft). words: the words handed in. result: the composer after.",
+    "Trimming is JS String.prototype.trim() and Swift's .whitespacesAndNewlines; they differ only on U+FEFF and U+0085, which no keyboard types, so no case uses them.",
+    "Every string is well-formed UTF-16 (no lone surrogate).",
+    "Read by CoachStoreTests (CoachStore.mergeDraft) and by the page's specs (the screens.off handler). A rule change edits this file first."
+  ],
+  "cases": [
+    { "name": "empty composer", "composer": "", "words": "Plan my deload", "result": "Plan my deload" },
+    { "name": "spaces and line breaks only", "composer": "  \n\t  　 \r\n", "words": "Plan my deload", "result": "Plan my deload" },
+    { "name": "the words exactly", "composer": "Plan my deload", "words": "Plan my deload", "result": "Plan my deload" },
+    { "name": "the words inside a longer text", "composer": "First: Plan my deload, then my bench", "words": "Plan my deload", "result": "First: Plan my deload, then my bench" },
+    { "name": "the composer holds the words with spaces around them", "composer": "  Plan my deload\n", "words": "Plan my deload", "result": "  Plan my deload\n" },
+    { "name": "the words with spaces around them into an empty composer", "composer": "", "words": " \n Plan my deload  ", "result": "Plan my deload" },
+    { "name": "the words with spaces around them, already held", "composer": "Plan my deload", "words": "  Plan my deload\n", "result": "Plan my deload" },
+    { "name": "the words with spaces around them, other words", "composer": "owner", "words": "\tpage \n", "result": "page\nowner" },
+    { "name": "other words", "composer": "owner", "words": "page", "result": "page\nowner" },
+    { "name": "other words, the composer keeps its own spaces", "composer": " owner\n", "words": "page", "result": "page\n owner\n" },
+    { "name": "multi-line words into other words", "composer": "Typed since", "words": "Line one\nLine two", "result": "Line one\nLine two\nTyped since" },
+    { "name": "multi-line words already held", "composer": "Intro\nLine one\nLine two\nOutro", "words": "Line one\nLine two", "result": "Intro\nLine one\nLine two\nOutro" },
+    { "name": "words found inside a longer word are held", "composer": "look", "words": "ok", "result": "look" },
+    { "name": "an emoji without its skin tone, in a composer with it", "composer": "👍🏽 great", "words": "👍", "result": "👍🏽 great" },
+    { "name": "an emoji with its skin tone, in a composer without it", "composer": "👍 great", "words": "👍🏽", "result": "👍🏽\n👍 great" },
+    { "name": "precomposed accent into a decomposed composer", "composer": "café later", "words": "café", "result": "café\ncafé later" },
+    { "name": "decomposed accent into a precomposed composer", "composer": "café later", "words": "café", "result": "café\ncafé later" },
+    { "name": "the same accent, same form", "composer": "café later", "words": "café", "result": "café later" },
+    { "name": "a CJK line into an empty composer", "composer": "", "words": "今日は脚の日", "result": "今日は脚の日" },
+    { "name": "a CJK line into other words", "composer": "明日は休み", "words": "今日は脚の日", "result": "今日は脚の日\n明日は休み" },
+    { "name": "empty words leave the composer as it is", "composer": "owner", "words": "", "result": "owner" },
+    { "name": "words of spaces only leave the composer as it is", "composer": " owner ", "words": " \n　", "result": " owner " }
+  ]
+}
