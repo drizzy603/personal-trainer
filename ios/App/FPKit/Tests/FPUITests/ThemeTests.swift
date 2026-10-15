@@ -1,4 +1,5 @@
 #if os(iOS)
+import CoreText
 import SwiftUI
 import UIKit
 import XCTest
@@ -87,6 +88,41 @@ final class ThemeTests: XCTestCase {
         XCTAssertTrue(big.largerText)
         XCTAssertFalse(hw.largerText)
         XCTAssertEqual(RoomFlavor(room: .other("x"), paper: true), .paper)
+    }
+
+    func testDisplayFaceIsAntonInHeavyweightAndInterInLime() {
+        let hw = RoomTheme.defaults(.heavyweight)
+        XCTAssertEqual(hw.family(.display), "Anton")
+        XCTAssertEqual(hw.uiFont(.display, 74, 800).fontName, "AntonFP-Regular")
+        XCTAssertFalse(hw.isMonospace(.display))
+        let lime = RoomTheme.defaults(.lime)
+        XCTAssertEqual(lime.family(.display), "Inter")
+        XCTAssertEqual(lime.uiFont(.display, 56, 800).fontName, "InterFP-ExtraBold")
+        // the chat's roles are untouched by the new one
+        XCTAssertEqual(hw.family(.body), "Archivo")
+        XCTAssertEqual(lime.family(.body), "Inter")
+        // sizes scale with the text size, as every other face
+        let big = RoomTheme(tokens: Tokens.heavyweight, paper: true, textSize: .xxLarge)
+        XCTAssertEqual(big.uiFont(.display, 74, 800).pointSize, 74 * 1.24, accuracy: 0.0001)
+    }
+
+    func testAntonIsReallyDrawn() {
+        // the face is really used, not the system fallback a missing family gets without a word
+        // (Fonts.swift: an unbundled family draws the system face at the weight asked)
+        let text = "COACH"
+        func measure(_ f: UIFont) -> CGSize { (text as NSString).size(withAttributes: [.font: f]) }
+        let anton = RoomTheme.defaults(.heavyweight).uiFont(.display, 74, 800)
+        let system = UIFont.systemFont(ofSize: 74, weight: FPFonts.systemWeight(800))
+        XCTAssertEqual(anton.fontName, "AntonFP-Regular")
+        XCTAssertGreaterThan(abs(measure(anton).width - measure(system).width), 4, "Anton's run measures unlike the system face's")
+        // Anton is a condensed display face: taller capitals than the system face at the same size
+        XCTAssertGreaterThan(anton.capHeight, system.capHeight)
+        // the face's own glyphs: every letter of the run maps to a glyph in Anton itself
+        let ct = CTFontCreateWithName("AntonFP-Regular" as CFString, 74, nil)
+        var chars = Array(text.utf16)
+        var glyphs = [CGGlyph](repeating: 0, count: chars.count)
+        XCTAssertTrue(CTFontGetGlyphsForCharacters(ct, &chars, &glyphs, chars.count))
+        XCTAssertFalse(glyphs.contains(0))
     }
 }
 #endif

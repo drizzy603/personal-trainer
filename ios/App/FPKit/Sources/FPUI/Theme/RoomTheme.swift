@@ -79,9 +79,10 @@ public struct RoomTheme: Equatable {
 
     // MARK: Faces
 
-    /// A face role: the body text, the eyebrows (caps labels), and figures (metrics, code).
+    /// A face role: the body text, the eyebrows (caps labels), figures (metrics, code), and the
+    /// display face (the Coach hub's headline: Anton in Heavyweight, Inter in Lime).
     public enum Face: Sendable {
-        case body, eyebrow, mono
+        case body, eyebrow, mono, display
     }
 
     public func family(_ f: Face) -> String {
@@ -89,6 +90,7 @@ public struct RoomTheme: Equatable {
         case .body: return tokens.font(.body)
         case .eyebrow: return tokens.font(.eyebrow)
         case .mono: return tokens.font(.mono)
+        case .display: return tokens.font(.display)
         }
     }
 
