@@ -2,7 +2,7 @@ name: iOS build
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
     paths:
       - 'index.html'
       - 'sw.js'
@@ -11,11 +11,21 @@ on:
       - 'package*.json'
       - 'ios/**'
       - '.github/workflows/ios-build.yml'
+      - '.github/scripts/**'
+      - 'tests/tools/scene-plist.sh'
   pull_request:
     paths:
       - 'index.html'
       - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+      - '.github/scripts/**'
+      - 'tests/tools/scene-plist.sh'
   workflow_dispatch:
+
+# One run per ref: a newer push to main or next cancels the run still going for the older one.
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -87,7 +97,13 @@ jobs:
   # FPHost and FPUI keep every source inside #if os(iOS), so swift test on the Mac never compiles them.
   # This job builds every FPKit target for the iOS Simulator, then runs every FPKit test target on a
   # simulator: FPCoreTests, FPStoreTests (KillTests is macOS only), FPHostTests and FPUITests, all in the
-  # FPKit-Package scheme.
+  # FPKit-Package scheme. The warm-up lint runs first: every test class that loads a web view warms WebKit
+  # (.github/scripts/fpkit-lint.sh).
+  #
+  # Time budget (the split rule): the test step prints its minutes as a notice. When it passes 22 of the
+  # job's 30 minutes, this job becomes two, each booting its own simulator first (as below):
+  #   -only-testing:FPCoreTests -only-testing:FPStoreTests -only-testing:FPHostTests
+  #   -only-testing:FPUITests
   fpkit-ios:
     name: FPKit on an iOS simulator (FPHost, FPUI)
     runs-on: macos-latest
@@ -95,6 +111,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # A test class that makes a web view without warming WebKit first fails here, in seconds, with its file named.
+      - name: WebKit warm-up lint
+        run: bash .github/scripts/fpkit-lint.sh
 
       - name: Select latest stable Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
@@ -149,11 +169,20 @@ jobs:
           TEST_RUNNER_CI: 'true'
         run: |
           set -o pipefail
+          start=$(date +%s)
+          status=0
           xcodebuild \
             -scheme FPKit-Package \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -parallel-testing-enabled NO \
-            test 2>&1 | tee "$RUNNER_TEMP/test.log"
+            test 2>&1 | tee "$RUNNER_TEMP/test.log" || status=$?
+          secs=$(( $(date +%s) - start ))
+          mins=$(awk -v s="$secs" 'BEGIN { printf "%.1f", s / 60 }')
+          echo "::notice title=fpkit-ios test minutes::the test step took $mins minutes (split at 22 of 30: see the job's comment)"
+          if [ "$secs" -gt $(( 22 * 60 )) ]; then
+            echo "::warning title=fpkit-ios time budget::the test step took $mins minutes, past 22: split the job (the job's comment)"
+          fi
+          exit $status
 
       # A run's log needs a login; annotations do not, so the failing lines go there.
       - name: Name the failures
