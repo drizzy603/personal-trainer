@@ -360,11 +360,163 @@ final class CoachStoreTests: XCTestCase {
         XCTAssertEqual(store.draft.text, "Build my Arms day, short", "taken once: the owner's edit stays")
         XCTAssertEqual(asked.count, 1)
         store.apply(try model(rev: 3, composer: composer(draft: ["text": "What about this photo?", "nonce": "d2.b1"])))
-        XCTAssertEqual(store.draft.text, "What about this photo?", "a new draft from the page fills the box, as the web's coachPrefill does")
+        // build 61 (N4): a new draft from the page goes in front of the owner's words, never over them (the web's
+        // coachPrefill replaces, but the native composer outlives launches)
+        XCTAssertEqual(store.draft.text, "What about this photo?\nBuild my Arms day, short",
+                       "the page's draft in front, the owner's words kept")
         XCTAssertEqual(asked.last, .coachDraftTaken(nonce: "d2.b1"))
         // a chat drawn on the store never sends its own draftTaken
         store.handle(.coachDraftTaken(nonce: "d2.b1"))
         XCTAssertEqual(asked.count, 2)
+    }
+
+    // MARK: One draft-merge rule (contract 4.2, Fixtures/draft/putback.json)
+
+    /// Strings compared code unit by code unit: Swift's `==` takes canonical equivalents as equal, so a precomposed and a
+    /// decomposed accent would pass where the page's `===` fails.
+    private func assertSameUnits(_ a: String, _ b: String, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(Array(a.utf16), Array(b.utf16), "\(what): \(a.debugDescription) is not \(b.debugDescription)", file: file, line: line)
+    }
+
+    func testEveryPutbackVectorThroughTheMergeRule() throws {
+        let cases = try CoachFixtures.putbacks()
+        XCTAssertGreaterThanOrEqual(cases.count, 20, "the shared vectors")
+        for c in cases {
+            assertSameUnits(CoachStore.mergeDraft(c.words, into: c.composer), c.result, c.name)
+        }
+    }
+
+    /// Each real path follows the vectors: a page draft taken, and the words of a send that never reached the page put back.
+    func testThePageDraftAndThePutBackFollowTheVectors() throws {
+        let cases = try CoachFixtures.putbacks()
+        var rev = 1
+        store.apply(try model(rev: rev))
+        for (i, c) in cases.enumerated() {
+            // a page draft taken into the composer as the vector has it
+            store.draft.text = c.composer
+            rev += 1
+            store.apply(try model(rev: rev, composer: composer(draft: ["text": c.words, "nonce": "v\(i).b1"])))
+            assertSameUnits(store.draft.text, c.result, "page draft: " + c.name)
+            // the words of an unsent message put back into it
+            guard !c.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            store.draft.text = c.words
+            XCTAssertTrue(store.sendComposer(nonce: "p\(i)"), c.name)
+            store.draft.text = c.composer   // what the box holds when the words come back
+            answer("coach.send", .answered(.refused("busy")))
+            assertSameUnits(store.draft.text, c.result, "put back: " + c.name)
+        }
+    }
+
+    func testAPageDraftGoesInFrontOfTheOwnersWordsAndNeverTwice() throws {
+        store.apply(try model(rev: 1))
+        store.draft.text = "owner"
+        store.apply(try model(rev: 2, composer: composer(draft: ["text": "page", "nonce": "d1.b1"])))
+        XCTAssertEqual(store.draft.text, "page\nowner")
+        XCTAssertEqual(defaults.string(forKey: CoachComposerDraft.defaultsKey), "page\nowner", "kept across launches")
+        // one the composer already holds is not added again
+        store.draft.text = "Before: Build my Arms day, thanks"
+        store.apply(try model(rev: 3, composer: composer(draft: ["text": "Build my Arms day", "nonce": "d2.b1"])))
+        XCTAssertEqual(store.draft.text, "Before: Build my Arms day, thanks")
+        XCTAssertEqual(asked, [.coachDraftTaken(nonce: "d1.b1"), .coachDraftTaken(nonce: "d2.b1")], "each taken and said so")
+        // an empty composer takes the page's words
+        store.draft.text = "  \n"
+        store.apply(try model(rev: 4, composer: composer(draft: ["text": "What about this photo?", "nonce": "d3.b1"])))
+        XCTAssertEqual(store.draft.text, "What about this photo?")
+    }
+
+    // MARK: The hand-over (contract 4.2)
+
+    func testTheHandOverOffersTheTrimmedWordsOrNothing() {
+        store.draft.text = "  Half a thought \n"
+        XCTAssertEqual(store.handOverDraft(), "Half a thought")
+        XCTAssertEqual(store.draft.text, "  Half a thought \n", "offering changes nothing")
+        store.draft.text = ""
+        XCTAssertNil(store.handOverDraft())
+        store.draft.text = " \n\t\u{3000}"
+        XCTAssertNil(store.handOverDraft(), "spaces and line breaks only")
+        // a photo is not handed over: it stays with the native chat
+        let (ui, jpeg) = tinyPhoto()
+        store.draft.text = ""
+        store.draft.picked = PickedPhoto(prepared: CoachPhoto.Prepared(data: jpeg, mediaType: "image/jpeg", width: 8, height: 8), preview: ui)
+        XCTAssertNil(store.handOverDraft())
+        store.handedOver("", taken: true)
+        XCTAssertNotNil(store.draft.picked, "the photo stays native")
+    }
+
+    func testWordsTakenByThePageLeaveTheComposerAndTheDefaults() {
+        store.draft.text = "Plan my deload "
+        XCTAssertEqual(defaults.string(forKey: CoachComposerDraft.defaultsKey), "Plan my deload ")
+        let words = store.handOverDraft()
+        XCTAssertEqual(words, "Plan my deload")
+        store.handedOver(words ?? "", taken: true)
+        XCTAssertEqual(store.draft.text, "")
+        XCTAssertNil(defaults.object(forKey: CoachComposerDraft.defaultsKey), "fpDraft.coach goes")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults).text, "", "the next launch's composer is empty")
+        XCTAssertEqual(store.describe()["draft"] as? String, "", "describe holds no words once they left")
+    }
+
+    func testWordsThePageDidNotTakeStayNative() {
+        store.draft.text = "Plan my deload"
+        let words = store.handOverDraft()
+        store.handedOver(words ?? "", taken: false)
+        XCTAssertEqual(store.draft.text, "Plan my deload")
+        XCTAssertEqual(defaults.string(forKey: CoachComposerDraft.defaultsKey), "Plan my deload", "kept for the next native chat")
+        XCTAssertEqual(CoachComposerDraft(defaults: defaults).text, "Plan my deload")
+    }
+
+    func testAComposerEditedAfterTheHandOverIsNotEmptied() {
+        store.draft.text = "Plan my deload"
+        let words = store.handOverDraft()
+        store.draft.text = "Plan my deload and my bench"   // typed while the page answered
+        store.handedOver(words ?? "", taken: true)
+        XCTAssertEqual(store.draft.text, "Plan my deload and my bench")
+        XCTAssertEqual(defaults.string(forKey: CoachComposerDraft.defaultsKey), "Plan my deload and my bench")
+        // and a canonically equal but different spelling is not "those words" either
+        store.draft.text = "caf\u{E9}"
+        let w2 = store.handOverDraft()
+        store.draft.text = "cafe\u{301}"
+        store.handedOver(w2 ?? "", taken: true)
+        XCTAssertEqual(Array(store.draft.text.utf16), Array("cafe\u{301}".utf16))
+    }
+
+    func testTheHandOverIsNeverWrittenDownWithItsWords() {
+        let secretish = "Words only the composer may hold 7f3a"
+        store.draft.text = secretish
+        let words = store.handOverDraft()
+        XCTAssertEqual(store.describe()["draft"] as? String, secretish, "describe shows the words while the composer holds them")
+        store.handedOver(words ?? "", taken: false)
+        store.handedOver(words ?? "", taken: true)
+        store.draft.text = "else"
+        store.handedOver(secretish, taken: true)
+        XCTAssertFalse(store.events.isEmpty)
+        XCTAssertTrue(store.events.filter { $0.hasPrefix("hand-over") }.count >= 4, "\(store.events)")
+        XCTAssertFalse(store.events.contains { $0.contains("7f3a") }, "no event holds the words: \(store.events)")
+        XCTAssertFalse((store.describe()["events"] as? [String] ?? []).contains { $0.contains("7f3a") })
+        XCTAssertEqual(store.describe()["draft"] as? String, "else")
+    }
+
+    /// Contract 4.2's round trip: the words go to the page, the page hands them back as its draft when the native chat
+    /// returns, and they land once, in front of anything typed since.
+    func testTheRoundTripLandsTheWordsOnce() throws {
+        store.apply(try model(rev: 1))
+        store.draft.text = "Plan my deload"
+        store.handedOver(store.handOverDraft() ?? "", taken: true)
+        XCTAssertEqual(store.draft.text, "")
+        store.apply(try model(rev: 2, composer: composer(draft: ["text": "Plan my deload", "nonce": "h1.b1"])))
+        XCTAssertEqual(store.draft.text, "Plan my deload", "back once")
+        store.apply(try model(rev: 3, composer: composer(draft: ["text": "Plan my deload", "nonce": "h1.b1"])))
+        XCTAssertEqual(store.draft.text, "Plan my deload", "the same nonce is not taken twice")
+        // with other words typed natively in between
+        store.draft.text = "Plan my deload"
+        store.handedOver(store.handOverDraft() ?? "", taken: true)
+        store.draft.text = "other"
+        store.apply(try model(rev: 4, composer: composer(draft: ["text": "Plan my deload", "nonce": "h2.b1"])))
+        XCTAssertEqual(store.draft.text, "Plan my deload\nother")
+        // words the page did not take stay native, and the page's copy (if it sends one) is not added twice
+        store.draft.text = "Kept native"
+        store.handedOver(store.handOverDraft() ?? "", taken: false)
+        store.apply(try model(rev: 5, composer: composer(draft: ["text": "Kept native", "nonce": "h3.b1"])))
+        XCTAssertEqual(store.draft.text, "Kept native")
     }
 
     /// The chat drawn on the store's host: its box shows the store's words (not the page's draft, which the store takes

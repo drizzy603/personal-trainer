@@ -342,14 +342,7 @@ public final class CoachStore: ObservableObject {
     /// A message that never reached the page: its words go back in the composer, in front of anything typed since, and
     /// its photo too; the owner is told. Never resent.
     private func putBack(_ e: Echo, why: String, toast: Bool = true) {
-        if !e.words.isEmpty {
-            let cur = draft.text
-            if cur.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                draft.text = e.words
-            } else if !cur.contains(e.words) {
-                draft.text = e.words + "\n" + cur
-            }
-        }
+        draft.text = Self.mergeDraft(e.words, into: draft.text)
         if let p = e.picked, draft.picked == nil { draft.picked = p }
         restored.append(e.words)
         note("echo \(e.nonce) back in the composer (\(why))")
@@ -363,14 +356,64 @@ public final class CoachStore: ObservableObject {
     // MARK: The page's draft and photo
 
     /// The page's draft goes in the composer once per nonce, as the web composer fills from `coachPrefill`: the owner
-    /// asked for it (Build day's question, a shared photo's comment). The page hears `coach.draftTaken`.
+    /// asked for it (Build day's question, a shared photo's comment, words the page held for the native chat after a
+    /// hand-over). It goes in by `mergeDraft`, never replacing: the native composer outlives launches, so the web's
+    /// replace would drop words typed days ago, and words the page hands back land once, in front of anything typed
+    /// since (contract 4.2). The page hears `coach.draftTaken`.
     private func takePageDraft(_ m: CoachModel) {
         guard let d = m.composer.draft, !draftsTaken.contains(d.nonce) else { return }
         draftsTaken.append(d.nonce)
         if draftsTaken.count > 20 { draftsTaken.removeFirst(draftsTaken.count - 20) }
-        draft.text = d.text
+        draft.text = Self.mergeDraft(d.text, into: draft.text)
         note("the page's draft \(d.nonce) is in the composer")
         hooks.ask(.coachDraftTaken(nonce: d.nonce)) { _ in }
+    }
+
+    /// The one draft-merge rule (contract 4.2; the shared vectors `Tests/FPCoreTests/Fixtures/draft/putback.json`, which
+    /// the page's `screens.off {screen:'coach', draft}` handler follows too). The words, trimmed, go into the composer:
+    /// words empty after trimming leave it as it is; a composer empty after trimming becomes the words; one that already
+    /// holds them verbatim is left as it is; any other becomes the words, a new line, then the composer as it was.
+    /// "Verbatim" is a UTF-16 match (`NSString` `.literal`, the page's `indexOf`), not `String.contains`, which matches
+    /// graphemes and canonical equivalents and so disagrees with the page on emoji modifiers and accent forms.
+    static func mergeDraft(_ words: String, into composer: String) -> String {
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        if w.isEmpty { return composer }
+        if composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return w }
+        if (composer as NSString).range(of: w, options: .literal).location != NSNotFound { return composer }
+        return w + "\n" + composer
+    }
+
+    // MARK: The hand-over (contract 4.2)
+
+    /// The composer's words for `screens.off {screen:'coach', draft}` when the shell takes the native chat away: trimmed,
+    /// nil when there are none. A picked photo is not handed over: it lives in memory only and stays with the native chat.
+    /// Nothing changes here; `handedOver` decides once the page has answered.
+    public func handOverDraft() -> String? {
+        let w = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        note(w.isEmpty ? "hand-over: nothing in the composer" : "hand-over: the composer's words offered to the page")
+        return w.isEmpty ? nil : w
+    }
+
+    /// The page's answer to the hand-over. `taken` (the answer said `took`, which a page says only once it holds the
+    /// words durably, `kt_coach_handover`) and the composer still holding those words: the composer empties and
+    /// `fpDraft.coach` goes. Otherwise nothing changes, so the words come back in the next native chat: an older page,
+    /// a failed write or an error loses nothing and shows nothing twice. The events never hold the words.
+    public func handedOver(_ words: String, taken: Bool) {
+        guard taken else {
+            note("hand-over: not taken, the words stay in the native composer")
+            return
+        }
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !w.isEmpty else {
+            note("hand-over: taken, with no words; the composer stays as it is")
+            return
+        }
+        guard draft.text.trimmingCharacters(in: .whitespacesAndNewlines).utf16.elementsEqual(w.utf16) else {
+            note("hand-over: taken, but the composer changed since; it stays as it is")
+            return
+        }
+        draft.text = ""
+        note("hand-over: taken by the page; the composer is empty")
     }
 
     /// The page's pending photo (a shared image), fetched once by its key (one the page would not give, or that is no

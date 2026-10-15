@@ -14,6 +14,26 @@ enum CoachFixtures {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("FPCoreTests/Fixtures/blocks/page-grammar.json")
 
+    /// The shared draft-merge vectors (contract 4.2), which the page's specs read too.
+    static let putbackFile: URL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("FPCoreTests/Fixtures/draft/putback.json")
+
+    /// One draft-merge vector: the composer, the words handed in, the composer after.
+    struct Putback {
+        let name: String, composer: String, words: String, result: String
+    }
+
+    /// Every putback vector, in file order.
+    static func putbacks() throws -> [Putback] {
+        let o = try JSONSerialization.jsonObject(with: Data(contentsOf: putbackFile)) as? [String: Any]
+        return ((o?["cases"] as? [[String: Any]]) ?? []).compactMap { c in
+            guard let n = c["name"] as? String, let comp = c["composer"] as? String, let w = c["words"] as? String,
+                  let r = c["result"] as? String else { return nil }
+            return Putback(name: n, composer: comp, words: w, result: r)
+        }
+    }
+
     /// Every coach fixture by name (file name without .json), sorted.
     static func names() throws -> [String] {
         try FileManager.default.contentsOfDirectory(atPath: coachDir.path)
