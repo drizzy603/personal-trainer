@@ -201,5 +201,62 @@ final class ComposerTests: XCTestCase {
         XCTAssertFalse(CoachComposer.refocus(focusedAt: 16, size: 16, focusedNow: false), "the owner left the box at the same size: no focus")
         XCTAssertFalse(CoachComposer.refocus(focusedAt: nil, size: 16, focusedNow: false), "nothing at all")
     }
+
+    /// The chat's box keeps the owner's focus across a change of the phone's text size: the field
+    /// made anew for the new face size gets it back, size after size, and a box the owner had left
+    /// stays unfocused. This host shows no keyboard (it has no window scene), but the box takes first
+    /// responder as the owner's tap gives it (the probe's `nativeFocus` does the same) and SwiftUI's
+    /// focus follows it: build 60's field, made anew with no rule, kept the focus on neither.
+    func testTheOwnersFocusSurvivesATextSizeChangeAndNoOtherIsGiven() throws {
+        FPFonts.register()
+        let model = try CoachFixtures.model("heavyweight-chat")
+        let host = UIHostingController(rootView: CoachRenderTests.Phone(model: model, size: .large))
+        host.safeAreaRegions = []
+        let window = UIWindow(frame: CGRect(origin: .zero, size: CoachRenderTests.screen))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.frame = window.bounds
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func box() -> UITextView? {
+            func find(_ v: UIView) -> UITextView? {
+                if let t = v as? UITextView { return t }
+                for s in v.subviews { if let t = find(s) { return t } }
+                return nil
+            }
+            return find(host.view)
+        }
+        /// Lays out and turns the run loop `turns` times, or until `done` holds.
+        func settle(_ turns: Int, until done: () -> Bool = { false }) {
+            for _ in 0..<turns {
+                host.view.setNeedsLayout()
+                host.view.layoutIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+                if done() { return }
+            }
+        }
+        settle(10)
+        XCTAssertTrue(try XCTUnwrap(box(), "the composer's box").becomeFirstResponder(), "the owner's tap: the box takes the focus")
+        settle(10)
+        for size in [DynamicTypeSize.xLarge, .xxLarge] {
+            let old = try XCTUnwrap(box(), "\(size): the box before")
+            host.rootView = CoachRenderTests.Phone(model: model, size: size)
+            settle(100) { box().map { $0 !== old && $0.isFirstResponder } ?? false }
+            let new = try XCTUnwrap(box(), "\(size): the box after")
+            XCTAssertFalse(new === old, "\(size): the field is made anew for its new face size")
+            XCTAssertTrue(new.isFirstResponder, "\(size): and the owner's focus comes back to it")
+        }
+        // the owner leaves the box; a text-size change after that gives it no focus
+        XCTAssertTrue(try XCTUnwrap(box()).resignFirstResponder(), "the owner leaves the box")
+        settle(10)
+        let left = try XCTUnwrap(box())
+        host.rootView = CoachRenderTests.Phone(model: model, size: .large)
+        settle(30)
+        let after = try XCTUnwrap(box(), "the box after the owner left it")
+        XCTAssertFalse(after === left, "the field is made anew for its new face size")
+        XCTAssertFalse(after.isFirstResponder, "a focus the owner did not have is never given")
+    }
 }
 #endif
