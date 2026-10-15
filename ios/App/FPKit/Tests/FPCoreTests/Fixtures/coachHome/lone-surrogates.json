@@ -1,0 +1,96 @@
+{
+ "v": 1,
+ "rev": 3,
+ "boot": "b1760000900000-d83d",
+ "room": "dark",
+ "paper": false,
+ "dynTypeOn": true,
+ "tokens": {
+  "color": {
+   "bg": "#0b0b0c",
+   "card": "#151517",
+   "card2": "#1e1e21",
+   "border": "rgba(255,255,255,.08)",
+   "accent": "#d8ff63",
+   "accentSoft": "rgba(216,255,99,.12)",
+   "accentDim": "rgba(216,255,99,.06)",
+   "onAccent": "#0b0b0c",
+   "accentInk": "#d8ff63",
+   "green": "#d8ff63",
+   "yellow": "#ffd65a",
+   "red": "#ff5d55",
+   "orange": "#ff9d5c",
+   "cyan": "#69cfff",
+   "text": "#f4f4f1",
+   "muted": "#8c8c91",
+   "lite": "#b9b9be",
+   "purple": "#ad92ff",
+   "blkLift": "#4d7cff",
+   "blkRun": "#22a55a",
+   "blkSport": "#8b5cf6",
+   "earned": "#d8ff63",
+   "earnedInk": "#d8ff63"
+  },
+  "type": {
+   "homeMeta": 10,
+   "homeAvatar": 13,
+   "homeGreet": 14,
+   "homeTitle": 56,
+   "homeTitleMin": 43,
+   "homeBody": 14,
+   "homeGroupHead": 9,
+   "homeRowTitle": 14,
+   "homeRowSub": 11.5,
+   "homeFieldLabel": 9,
+   "homeField": 16,
+   "homeCtaLabel": 9,
+   "homeCtaTitle": 18,
+   "homeCtaArrow": 22,
+   "homeHelp": 12,
+   "homeLink": 14
+  }
+ },
+ "route": "hub",
+ "resume": false,
+ "meta": {
+  "label": "COACH · WK 06 / 12 · STRENGTH",
+  "avatar": "K"
+ },
+ "hero": {
+  "greet": "Hi Kalani \ud83d.",
+  "title": "Coach \ude00",
+  "accent": "ready.",
+  "body": "3 exchanges so far. Pick up where you left off, or start a new thread."
+ },
+ "connect": null,
+ "groups": [
+  {
+   "head": "Conversation",
+   "rows": [
+    {
+     "sub": "3 exchanges · Push day went well \ud83d",
+     "do": "openChat",
+     "title": "Open Chat",
+     "icon": "chat"
+    }
+   ]
+  },
+  {
+   "head": "Account",
+   "rows": [
+    {
+     "sub": null,
+     "do": "clearChat",
+     "title": "Clear Chat History",
+     "icon": "trash"
+    },
+    {
+     "sub": null,
+     "do": "disconnect",
+     "title": "Disconnect",
+     "icon": "disconnect"
+    }
+   ]
+  }
+ ]
+}
