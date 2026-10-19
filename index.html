@@ -2315,6 +2315,9 @@ var FP_CONTRACT=1, FP_SCREENS=['coach','tabs'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
 var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false,
   declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0}};
+// Settings > About's Native Coach row (_fpAboutRow): its status, here ahead of the first render, which in tabs mode can be
+// Settings (the boot tab, contract 2.4): declared beside the row, it was still undefined there and the boot stopped.
+var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
 // fp-tabs boot block: tabs mode is decided once per document, by the head script's test (contract 2.3). On a pass the
 // page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
 // flag's; the flag's selection counts as seq 0 and its bar as rev 0. A throw here leaves tabs mode on its own and the
@@ -24795,7 +24798,7 @@ if(_fpPlugin()){
 // trip holds (TrovoShell reset: from the next launch) and the shell's counters (TrovoShell status: the web view leaving
 // its window, the page hidden under a native screen, breaker trips, crash markers). Before, the row showed only for a
 // negotiated chat, so it vanished exactly when the chat was off for a reason. Inert without the flag and TrovoShell.
-var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
+// Its state, _fpChat, is declared with _fp: the first render reads it when the boot tab is Settings (tabs mode).
 // The native screens this binary has, on or off (the flag's binary; an older flag has none).
 function _fpBinary(s){ var f=_fpShellFlag(); return !!(f && Array.isArray(f.binary) && f.binary.indexOf(s)>=0); }
 function _fpChatOffered(){ return !!(FP_NATIVE && _fpPlugin() && (_fpBinary('coach') || _fpNegotiated('coach') || _fpDeviceOff())); }
