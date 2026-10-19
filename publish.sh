@@ -8,9 +8,10 @@
 #   - `main` must be a strict ancestor of `next` (a pure fast-forward)
 #   - the Playwright suite must be green (skip with --no-tests only if it just ran), and when the shell's
 #     storage facade, the mock native store or the harness changed, the store matrix too (STORE=shadow)
-#   - when the page's bridge to the native shell changed since main (an index.html line naming its flags, plugin,
-#     intents, models or --fp-* variables: BRIDGE below) or the harness did, the inert modes too, each green:
-#     FP_SHELL_INERT=1 (build 61's flag, no native screen up), then FP_SHELL_INERT=60 (build 60's)
+#   - when the page's bridge to the native shell changed since main (a change inside a top-level block of index.html
+#     that names the shell's flag, plugin or intents, the page's _fp state, FP_ switches or fp- names, or the models
+#     the shell reads: BRIDGE below) or the harness did, the inert modes too, each green: FP_SHELL_INERT=1 (build
+#     61's flag, no native screen up), then FP_SHELL_INERT=60 (build 60's)
 #   - next and the working tree must stay as they were while the suites run: what is pushed is the commit they tested
 # It never force-pushes and never touches the native shell or the App Store.
 #
@@ -25,17 +26,24 @@ unset STORE FP_SHELL_INERT SHARD
 RED=$'\e[31m'; GRN=$'\e[32m'; DIM=$'\e[2m'; OFF=$'\e[0m'
 die(){ echo "${RED}publish: $1${OFF}"; exit 1; }
 
-# The page's bridge to the native shell: a changed line of index.html that names one of these.
-BRIDGE='^[+-].*(FP_NATIVE|FP_TAB|FP_SCREENS|FP_CONTRACT|_FP_INTENTS|FPScreens|__FP_SHELL|TrovoShell|_fp[A-Z][A-Za-z]*|_coachHomeModel|_tabsModel|_coachModel|fp-tabs|fp-hold|--fp-(bar-up|bar-h|safe-b|sheet-b|clear))'
-# True when the inert modes must run: the harness changed since main, or the bridge did. When git cannot tell, they
-# run. The diff is read whole before grep sees it: piped into grep -q under pipefail, a long diff whose first bridge
-# line comes early reads as no change (grep stops reading, git dies of SIGPIPE and the pipe's status is 141).
+# The page's bridge to the native shell, by name: FP_ (the shell's flag __FP_SHELL, the intents table _FP_INTENTS and
+# every FP_ switch), FPScreens and TrovoShell, the page's state and functions (_fp, _fp.x, _fpX), the names it writes
+# for the shell (html.fp-tabs, fp-hold, --fp-*, fp_tab, fp-chat-*), selectTab, the deep link's entry (_trovoOpen), the
+# hand-over and device-switch keys, and the models the shell reads.
+BRIDGE='^[-+ ].*(FP_[A-Z]|FPScreens|TrovoShell|_fp([A-Z]|[^A-Za-z0-9_$]|$)|fp[-_]|selectTab|_trovoOpen|_coachHomeModel|_tabsModel|_coachModel|kt_coach_handover|kt_native_off)'
+# True when the inert modes must run: the harness changed since main, or the bridge did. A change of index.html counts
+# with the whole top-level block it sits in (git diff -W, git's default rule, as index.html has no diff attribute: from
+# a line starting with a letter, _ or $, so a function, a var or a CSS rule with the comment above it, to the next), so
+# a line that reaches the bridge through an alias (T=_fp.tabs, then T.seq) or a reply's fields counts as well; the
+# stamp's block names none of it. When git or grep cannot tell, they run. The diff is read whole before grep sees it:
+# piped into grep -q under pipefail, a long diff whose first bridge line comes early reads as no change (grep stops
+# reading, git dies of SIGPIPE and the pipe's status is 141).
 bridge_changed(){
   local d rc=0
   git diff --quiet origin/main "$SHA" -- tests/lib/harness.js || return 0
-  d=$(git diff --no-color --no-ext-diff origin/main "$SHA" -- index.html) || return 0
+  d=$(git diff -W --no-color --no-ext-diff origin/main "$SHA" -- index.html) || return 0
   LC_ALL=C grep -qE "$BRIDGE" <<<"$d" || rc=$?
-  [ "$rc" -ne 1 ]                                  # 0: a bridge line changed; 2: grep failed, so they run
+  [ "$rc" -ne 1 ]                                  # 0: a bridge block changed; 2: grep failed, so they run
 }
 
 [ "$(git branch --show-current)" = "next" ] || die "run this from branch next (you are on $(git branch --show-current))"
