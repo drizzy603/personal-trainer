@@ -358,7 +358,6 @@ async function TOUR() {
 }
 const GETTER = (name) => 'Object.defineProperty(window, "' + name + '", { configurable: true, get: function () { return false; } });';
 const HIDDEN = 'window.__vis = "hidden"; Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return window.__vis; } });';
-const px = (o, k) => parseFloat(o[k]);
 
 serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the page\'s own #tabs; a tour sends no selectTab, sheets, setSwitch or dismiss tabs; hello names coach ([] without FP_NATIVE); a 61 tab root falls back page at that hello', async () => {
   const OTA_NO_TABS = edited('var FP_NATIVE=true, FP_TABS=true,', 'var FP_NATIVE=true, FP_TABS=false,');
