@@ -2314,7 +2314,7 @@ var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
 var FP_CONTRACT=1, FP_SCREENS=['coach','tabs'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
 var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false,
-  declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0}};
+  declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0, pend:0}};
 // Settings > About's Native Coach row (_fpAboutRow): its status, here ahead of the first render, which in tabs mode can be
 // Settings (the boot tab, contract 2.4): declared beside the row, it was still undefined there and the boot stopped.
 var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
@@ -24346,11 +24346,13 @@ function _fpBarApply(){
 // (P-D8), so two quick selections never bounce back to the first and a newer tabs.select already applied wins.
 function _fpSelectTab(tab, intent){
   var P=_fpPlugin(); if(!P || typeof P.selectTab!=='function') return;
-  var n=++_fp.tabs.req, a={tab:tab};
+  var T=_fp.tabs, n=++T.req, a={tab:tab};
   if(intent==='chat' || intent==='intake') a.intent=intent;
+  T.pend++;   // unanswered: hello's reply leaves the page's tab to this answer
+  var done=function(){ T.pend=Math.max(0, T.pend-1); };
   try{
-    Promise.resolve(P.selectTab(a)).then(function(r){ _fpTabsAnswer(r, n); }, function(e){ _fpTabsRefused(e, 'selectTab'); });
-  }catch(e){ setTimeout(function(){ _fpTabsRefused(e, 'selectTab'); }, 0); }   // after the switch this call is part of
+    Promise.resolve(P.selectTab(a)).then(function(r){ done(); _fpTabsAnswer(r, n); }, function(e){ done(); _fpTabsRefused(e, 'selectTab'); });
+  }catch(e){ done(); setTimeout(function(){ _fpTabsRefused(e, 'selectTab'); }, 0); }   // after the switch this call is part of
 }
 function _fpTabsAnswer(r, n){
   var T=_fp.tabs;
@@ -24429,7 +24431,9 @@ function _fpHello(){
       if(T.mode){
         _fp.taking=true;   // the adoption's render presents nothing until the take-over has read up
         try{
-          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(tabs.selected!==currentTab) _switchTabLocal(tabs.selected); }
+          // a page selection still unanswered was asked after this reply was made: its answer carries the shell's
+          // selection, so the page does not bounce to the reply's tab and back (P-D8)
+          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(!T.pend && tabs.selected!==currentTab) _switchTabLocal(tabs.selected); }
           if(tabs.bar.rev>T.rev) _fpBarSet(tabs.bar, tabs.bar.rev);
           if(up.length) _fpTakeOver(up);
         }finally{ _fp.taking=false; }

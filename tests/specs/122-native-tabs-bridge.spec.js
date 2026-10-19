@@ -534,6 +534,26 @@ serial('P2: hello adopts a newer selection with no selectTab; the funnel (one se
       assert(ok && (s.ans === null || J(s.ans) === '{"ok":true}'), s.tag + ': ' + J(s.vars) + ' at zoom ' + s.z + ' (want ' + J(want[i].map((n) => Math.round(n / s.z * 100) / 100)) + ')');
     });
     assert(v.bad.every((x) => x.ok === false && x.error === 'bad-args') && v.rev === 4, 'tabs.bar: bad-args unless three whole numbers; older revs change nothing: ' + J(v));
+    // a hello reply made before a page selection that is still unanswered (a slow hello, dev-nav at 120 ms): the page
+    // keeps its own tab and leaves the shell's selection to that answer, never bouncing to the reply's tab and back
+    const h = await ev(app, async () => {
+      const w = (ms) => new Promise((z) => setTimeout(z, ms));
+      const TS = Capacitor.Plugins.TrovoShell, realSel = TS.selectTab, realHello = TS.hello, realLocal = window._switchTabLocal;
+      switchTab('log'); await w(30);
+      const sc = __fpShell.state().scene, seen = [];
+      let release = null;
+      TS.selectTab = function (x) { return new Promise((res) => { release = () => res(realSel(x)); }); };
+      TS.hello = function (x) { __fpShell.calls.push(['hello', x]);
+        return Promise.resolve({ v: 1, screens: ['tabs'], tabs: { selected: sc.selected, seq: sc.seq + 1, bar: { h: 83, safe: 34, rev: 0 } } }); };
+      window._switchTabLocal = function (t) { seen.push(t); return realLocal(t); };
+      switchTab('settings'); _fp.hello = null; _fpHello(); await w(40);
+      const mid = { tab: currentTab, seq: _fp.tabs.seq, pend: _fp.tabs.pend };
+      release(); await w(40);
+      TS.selectTab = realSel; TS.hello = realHello; window._switchTabLocal = realLocal;
+      return { from: sc.selected, mid, seen, tab: currentTab, pend: _fp.tabs.pend, shell: __fpShell.state().scene.selected };
+    });
+    assert(h.from === 'log' && h.mid.tab === 'settings' && h.mid.pend === 1 && J(h.seen) === '["settings"]' && h.tab === 'settings' && h.pend === 0 && h.shell === 'settings',
+      'hello\'s reply leaves the tab to a page selection still unanswered: ' + J(h));
   } finally { await app.close(); }
   // outside tabs mode (a 61 classic root): every tabs.* answers off once its arguments pass; visibility only while covered
   const c = await pageBoot('coach61');
