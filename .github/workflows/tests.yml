@@ -9,13 +9,14 @@ name: Web regression tests
 #                     native screen up
 #   shadow + inert61  STORE=shadow FP_SHELL_INERT=1: both at once
 #   inert60           FP_SHELL_INERT=60: build 60's flag with no native screen up, while a build 60 can be installed
-# Same specs, same results: per-spec results in every mode equal the classic run's. The three inert jobs skip the
-# specs marked `// fp-spec: self-shelled` (tests/run.sh skips them whenever FP_SHELL_INERT is set): they name their
-# shell on every native boot, so their classic and shadow runs already cover the inert modes.
+# Same specs, same results: per-spec results in every mode equal the classic run's. The six jobs of the three inert
+# modes skip the specs marked `// fp-spec: self-shelled` (tests/run.sh skips them whenever FP_SHELL_INERT is set): they
+# name their shell on every native boot, so their classic and shadow runs already cover the inert modes.
 
 # Pushes to main and next, and pull requests, on the same paths: the page and its service worker, the tests, the
 # storage facade the shell injects, FPCore's test folder (the specs read intents.json, the shared fixtures and
-# page-grammar.json there) and TrovoShellPlugin.swift (spec 122's drift check reads its method names).
+# page-grammar.json there) and TrovoShellPlugin.swift (for spec 122's drift case, which P13 adds: it will read the
+# plugin's method names).
 on:
   push:
     branches: [main, next]
