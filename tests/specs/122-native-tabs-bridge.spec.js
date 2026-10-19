@@ -9,6 +9,16 @@
 //   screens.off tabs (a live chat goes with the composer's words); every refusal reads '<code>: <words>'; the funnel's
 //   order; the scene's seq, selection and fallback survive a reload; sheets answers 16 ms later by default; under a 61
 //   flag a page error fails close() unless pageErrors: 'allow'; status {refresh: true} is recorded and answered.
+// - Tabs mode (P2; contract 2.3-2.4, 3.2-3.3, 3.8, 4.1-4.3, 7.2, 8.4, I8, I14): the page is inert without a usable tabs
+//   flag (no shell, build 60's, 61's classic roots, the flag with no TrovoShell or 60's methods, a malformed tabs,
+//   FP_TABS or FP_NATIVE off by a getter or by the page an OTA ships): no fp-tabs, no --fp-* and its own #tabs, and a
+//   tour sends no selectTab, sheets, setSwitch or dismiss tabs; the class and the flag's bar are on <html> before #tabs
+//   is in and #tabs is hidden; the boot tab (the flag's, fp_tab); hello names FP_SCREENS and adopts a newer selection
+//   and bar with no selectTab; the funnel (one selectTab per switchTab before the local switch, answers correct only the
+//   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
+//   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
+//   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
+//   off), the failsafe on visible time (real time and Playwright's clock), and a broken page still drops the bar.
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -295,4 +305,498 @@ serial('P1: sheets answers 16 ms later by default with the bar\'s height (0 over
     try { await b.close(); } catch (e) { msg = e.message; }
     assert(fails ? /boom in the page/.test(msg) : msg === '', shell + (allow ? ' allowed' : '') + ': ' + (msg || 'closed'));
   }
+});
+
+// ── P2: tabs mode ──────────────────────────────────────────────────────────────────────────────────────────────────
+const fs = require('fs');
+const path = require('path');
+const PAGE = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
+// The page with one piece of its text replaced, as an OTA could ship it (the piece must be there exactly once).
+function edited(from, to) {
+  const i = PAGE.indexOf(from);
+  if (i < 0 || PAGE.indexOf(from, i + 1) >= 0) throw new Error('spec 122: not exactly one "' + from.slice(0, 50) + '" in index.html');
+  return (src) => src.replace(from, () => to);
+}
+const TABS = (tabs) => Object.assign(JSON.parse(CONTRACT_FLAGS.tabs), tabs === undefined ? {} : { tabs });
+const BAR = { h: 83, safe: 34 };
+const pageBoot = (shell, extra) => boot(Object.assign({ native: true, shell }, extra || {}));
+const helloIn = (app) => app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+// What the page shows of the tab bar: the class, every --fp-* variable on <html>, its own #tabs and the lit tab.
+const look = (app) => ev(app, () => {
+  const r = document.documentElement, t = document.getElementById('tabs'), cs = getComputedStyle(t), vars = {};
+  for (let i = 0; i < r.style.length; i++) if (r.style[i].indexOf('--fp-') === 0) vars[r.style[i]] = r.style.getPropertyValue(r.style[i]).trim();
+  const lit = (sel) => Array.prototype.map.call(document.querySelectorAll(sel), (b) => b.getAttribute('data-tab')).join(',');
+  return { cls: r.classList.contains('fp-tabs'), vars, own: cs.display !== 'none' && t.getBoundingClientRect().height > 0,
+    display: cs.display, active: lit('.tab.active'), current: lit('.tab[aria-current="page"]'), tab: currentTab,
+    route: _lastRenderedRoute, mode: _fp.tabs.mode, left: _fp.tabs.left, why: _fp.tabs.why, told: _fp.tabs.told,
+    offCoach: _fp.off.coach || null, hello: window.__fpShell ? window.__fpShell.of('hello') : null,
+    tabsCalls: window.__fpShell ? window.__fpShell.calls.filter((c) => ['selectTab', 'sheets', 'setSwitch'].indexOf(c[0]) >= 0
+      || (c[0] === 'dismiss' && c[1] && c[1].screen === 'tabs')).map((c) => [c[0], c[1]]) : null,
+    scene: window.__fpShell ? window.__fpShell.state() : null, build: APP_BUILD };
+});
+const dismissTabs = (o) => (o.tabsCalls || []).filter((c) => c[0] === 'dismiss').length;
+// Back in classic: no class, no variable, the page's own bar with the tab it shows lit (aria-current too once the page
+// has set it: a classic boot leaves it to the first switch, as before).
+const classicLook = (o, tag, current) => {
+  assert(!o.cls && J(o.vars) === '{}' && o.own && o.display !== 'none', tag + ': no fp-tabs, no --fp-*, its own #tabs: ' + J(o));
+  assert(o.active === o.tab && (current === false ? o.current === '' || o.current === o.tab : o.current === o.tab),
+    tag + ': the tab it shows is lit: ' + J([o.tab, o.active, o.current]));
+};
+const routeTab = (o) => String(o.route).split('/')[0];
+// The shell's bar gone at the page's word: the scene fell back 'page' and recorded the decline (for this page build when
+// the mock has heard it: the mock learns the page build from hello only).
+const fellBackPage = (o, tag) => assert(o.scene.scene.fellBack && o.scene.scene.fellBack.why === 'page' && !o.scene.live
+  && Object.prototype.hasOwnProperty.call(o.scene.scene.declined, 'tabs')
+  && [o.build, o.scene.doc.page].indexOf(o.scene.scene.declined.tabs) >= 0, tag + ': the scene fell back page with tabs declined: ' + J(o.scene));
+// The page's own tour of what a session does: every tab, a sheet, the runner, a toast.
+async function TOUR() {
+  const w = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (const t of ['progress', 'coach', 'settings', 'log']) { switchTab(t); await w(10); }
+  openThemeSheet(); await w(30); closeThemeSheet(); await w(30);
+  openDeckRunner('Push'); await w(30); closeDeckRunner(); await w(30);
+  showToast('Saved'); await w(30);
+}
+const GETTER = (name) => 'Object.defineProperty(window, "' + name + '", { configurable: true, get: function () { return false; } });';
+const HIDDEN = 'window.__vis = "hidden"; Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return window.__vis; } });';
+const px = (o, k) => parseFloat(o[k]);
+
+serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the page\'s own #tabs; a tour sends no selectTab, sheets, setSwitch or dismiss tabs; hello names coach ([] without FP_NATIVE); a 61 tab root falls back page at that hello', async () => {
+  const OTA_NO_TABS = edited('var FP_NATIVE=true, FP_TABS=true,', 'var FP_NATIVE=true, FP_TABS=false,');
+  const OTA_NO_NATIVE = edited('var FP_NATIVE=true, FP_TABS=true,', 'var FP_NATIVE=false, FP_TABS=true,');
+  const rows = [
+    ['no shell', { shell: 'none' }, null],
+    ['build 60, inert', { shell: 'inert' }, ['coach']],
+    ['build 60, the chat', { shell: 'coach' }, ['coach']],
+    ['61 classic, inert61', { shell: 'inert61' }, ['coach']],
+    ['61 classic, coach61', { shell: 'coach61' }, ['coach']],
+    ['the tabs flag with no TrovoShell', { shell: 'none', init: 'window.__FP_SHELL = ' + CONTRACT_FLAGS.tabs + ';' }, null],
+    ['the tabs flag over build 60\'s 11 methods', { shell: 'tabs', shellMethods: SHELL_METHODS['60'] }, ['coach'], true],
+    ['tabs.selected home', { shell: TABS({ bar: BAR, selected: 'home' }) }, ['coach'], true],
+    ['tabs.bar.h a string', { shell: TABS({ bar: { h: '83', safe: 34 }, selected: 'log' }) }, ['coach'], true],
+    ['tabs with no bar', { shell: TABS({ selected: 'log' }) }, ['coach'], true],
+    ['FP_TABS false (a getter)', { shell: 'tabs', init: GETTER('FP_TABS') }, ['coach'], true],
+    ['FP_TABS false (the page an OTA ships)', { shell: 'tabs', html: OTA_NO_TABS }, ['coach'], true],
+    ['FP_NATIVE false (a getter)', { shell: 'tabs', init: GETTER('FP_NATIVE') }, [], true],
+    ['FP_NATIVE false (the page an OTA ships)', { shell: 'tabs', html: OTA_NO_NATIVE }, [], true],
+  ];
+  for (const [tag, o, names, falls] of rows) {
+    const app = await pageBoot(o.shell, o);
+    try {
+      if (names) await helloIn(app);
+      const first = await look(app);
+      classicLook(first, tag + ' (boot)', false);
+      await app.page.evaluate(TOUR);
+      const out = await look(app);
+      classicLook(out, tag + ' (after the tour)');
+      assert(!out.mode && !out.left, tag + ': never in tabs mode: ' + J(out));
+      assert(out.tabsCalls === null ? names === null : out.tabsCalls.length === 0, tag + ': no selectTab, sheets, setSwitch or dismiss tabs: ' + J(out.tabsCalls));
+      if (names === null) assert(out.hello === null || out.hello.length === 0, tag + ': no hello: ' + J(out.hello));
+      else assert(out.hello.length === 1 && J(out.hello[0].screens) === J(names), tag + ': hello names ' + J(names) + ': ' + J(out.hello));
+      if (falls) {
+        fellBackPage(out, tag);
+        const got = await ev(app, () => _fp.hello);
+        assert(got.screens.indexOf('tabs') < 0 && !out.mode, tag + ': answered without tabs, never in tabs mode: ' + J(got));
+      }
+    } finally { await app.close(); }
+  }
+});
+
+serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #tabs is in; #tabs hidden); hello names FP_SCREENS; a reply at seq 0 moves nothing and its newer bar sets the variables; the boot tab is fp_tab when it names a tab', async () => {
+  const FIRST = '(function () { window.__ff = null; new MutationObserver(function (ms) { ms.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) {'
+    + ' if (n.id === "tabs" && !window.__ff) { var r = document.documentElement; window.__ff = { cls: r.classList.contains("fp-tabs"), h: r.style.getPropertyValue("--fp-bar-h"),'
+    + ' up: r.style.getPropertyValue("--fp-bar-up"), main: "_fp" in window }; } }); }); }).observe(document, { childList: true, subtree: true }); })();';
+  const app = await pageBoot('tabs', { init: FIRST + 'window.__fpShellHelloTabs = { selected: "progress", seq: 0, bar: { h: 49, safe: 0, rev: 1 } };'
+    + 'if (!sessionStorage.getItem("__p2")) { sessionStorage.setItem("__p2", "1"); sessionStorage.setItem("fp_tab", "home"); }' });
+  try {
+    await helloIn(app);
+    await settle(app, 100);
+    const ff = await ev(app, () => window.__ff);
+    assert(ff && ff.cls && ff.h === '83px' && ff.up === '83px' && ff.main === false, 'the head set the class and the flag\'s bar before #tabs was in: ' + J(ff));
+    let o = await look(app);
+    const screens = await ev(app, () => FP_SCREENS.slice());
+    assert(o.cls && o.display === 'none' && !o.own, '#tabs is hidden in tabs mode: ' + J(o));
+    assert(o.hello.length === 1 && J(o.hello[0].screens) === J(screens) && screens.indexOf('coach') >= 0 && screens.indexOf('tabs') >= 0,
+      'hello names FP_SCREENS (coach and tabs among them): ' + J(o.hello));
+    assert(o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.tabsCalls.length === 0, 'fp_tab home is no tab: the flag\'s Log; seq 0 moves nothing: ' + J(o));
+    assert(J(o.vars) === J({ '--fp-bar-h': '49px', '--fp-safe-b': '0px', '--fp-sheet-b': '16px', '--fp-clear': '49px', '--fp-bar-up': '49px' }),
+      'the reply\'s bar (rev 1) sets the variables: ' + J(o.vars));
+    // fp_tab: written by every local switch in tabs mode; a reload boots on it
+    await ev(app, () => { sessionStorage.setItem('fp_tab', 'settings'); });
+    await app.reload(); await helloIn(app); await settle(app, 60);
+    o = await look(app);
+    let ends = await ev(app, () => ({ bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
+    assert(o.mode && o.tab === 'settings' && o.route === 'settings' && o.active === 'settings' && o.current === 'settings', 'fp_tab settings: the boot tab: ' + J(o));
+    assert(ends.bootDone === 1 && ends.errors === 0 && app.errors.length === 0, 'booted on Settings, the boot ran to its end (bootDone) with no error: ' + J([ends, app.errors]));
+    const sw = await ev(app, async () => { switchTab('progress'); await new Promise((r) => setTimeout(r, 30)); return sessionStorage.getItem('fp_tab'); });
+    assert(sw === 'progress', 'a local switch writes fp_tab: ' + sw);
+    await app.reload(); await helloIn(app); await settle(app, 60);
+    o = await look(app);
+    ends = await ev(app, () => ({ bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
+    assert(o.tab === 'progress' && o.route === 'progress' && o.active === 'progress', 'a reload boots on the tab it showed: ' + J(o));
+    assert(ends.bootDone === 1 && ends.errors === 0 && app.errors.length === 0, 'booted on Progress, the boot ran to its end: ' + J([ends, app.errors]));
+  } finally { await app.close(); }
+});
+
+serial('P2: hello adopts a newer selection with no selectTab; the funnel (one selectTab per switchTab, before the local switch; answers correct only the newest request; a crossing tap wins; no bounce); tabs.select newer, older, again, bad-args; tabs.bar and the variables at every zoom; visibility', async () => {
+  const app = await pageBoot('tabs', { seed: { kt_apikey: 'sk-ant-test' }, init: 'window.__fpShellPre = { selected: "progress", seq: 3 };' });
+  try {
+    await helloIn(app);
+    await settle(app, 100);
+    const a = await look(app);
+    assert(a.tab === 'progress' && a.route === 'progress' && a.active === 'progress' && a.tabsCalls.length === 0, 'hello\'s newer selection, adopted with no selectTab: ' + J(a));
+    const f = await ev(app, async () => {
+      const w = (ms) => new Promise((r) => setTimeout(r, ms));
+      const r = {};
+      const sel = () => __fpShell.calls.filter((c) => c[0] === 'selectTab');
+      const ts = () => __fpShell.sent.filter((s) => s[0] === 'tabs.select');
+      r.seq0 = _fp.tabs.seq;
+      switchTab('settings'); r.now = currentTab; await w(30);
+      r.one = sel().map((c) => [c[1], c[2].currentTab]);
+      switchTab('coach', { intent: 'chat' }); switchTab('log', { intent: 'nope' }); switchTab('progress', { intent: 'intake' }); await w(30);
+      r.intents = sel().slice(1).map((c) => c[1]);
+      // two quick selections: their answers never bounce the page back to the first
+      const seen = [], real = window._switchTabLocal;
+      window._switchTabLocal = function (t) { seen.push(t); return real(t); };
+      switchTab('log'); switchTab('settings'); await w(60);
+      r.quick = { seen: seen.slice(), tab: currentTab, seq: _fp.tabs.seq, shell: __fpShell.state().scene };
+      // a tap crossing the page's own selection: the page ends on the tab the owner tapped
+      seen.length = 0; window.__fpShellCross = 'coach'; switchTab('log'); await w(120);
+      r.cross = { seen: seen.slice(), tab: currentTab, seq: _fp.tabs.seq, shell: __fpShell.state().scene, last: ts().slice(-1)[0] };
+      window._switchTabLocal = real;
+      // the owner's tap: tabs.select, no selectTab, answered after the new tab is drawn
+      const renders = [], realR = window.render;
+      window.render = function () { const x = realR.apply(this, arguments); renders.push([currentTab, performance.now()]); return x; };
+      const n0 = sel().length;
+      const ans = await __fpShell.tap('settings');
+      const msg = ts().slice(-1)[0];
+      window.render = realR;
+      r.tap = { ans, tab: currentTab, sel: sel().length - n0, msg: msg[1], drawn: renders.some((x) => x[0] === 'settings' && x[1] <= msg[4]) };
+      // an older tabs.select changes nothing and answers the page's tab
+      const s0 = _fp.tabs.seq;
+      r.older = { ans: await FPScreens.call('tabs.select', { tab: 'log', seq: 1 }), tab: currentTab, seq: _fp.tabs.seq, s0 };
+      // the owner's re-tap of Coach: back to the hub, not while a reply is in flight
+      await __fpShell.tap('coach'); coachView = 'chat'; render(); await w(20);
+      r.again = { ans: await __fpShell.tap('coach'), msg: ts().slice(-1)[0][1], view: coachView };
+      coachView = 'chat'; coachLoading = true; render(); await w(20);
+      await __fpShell.tap('coach'); r.againLoading = { view: coachView, msg: ts().slice(-1)[0][1] };
+      coachLoading = false; render();
+      // bad-args, checked before anything moves
+      const b0 = { tab: currentTab, seq: _fp.tabs.seq };
+      r.bad = [await FPScreens.call('tabs.select', { tab: 'home', seq: 99 }), await FPScreens.call('tabs.select', { tab: 'log', seq: '1' }),
+        await FPScreens.call('tabs.select', { tab: 'log', seq: 99, again: 1 }), await FPScreens.call('tabs.select', { tab: 'log' }),
+        await FPScreens.call('tabs.select', { tab: 'log', seq: 1.5 })];
+      r.afterBad = { b0, tab: currentTab, seq: _fp.tabs.seq };
+      // visibility: every visibilitychange in tabs mode, on a web tab too
+      switchTab('log'); await w(20);
+      const v0 = __fpShell.of('visibility').length;
+      document.dispatchEvent(new Event('visibilitychange')); await w(10);
+      r.vis = { n: __fpShell.of('visibility').length - v0, covered: _fpCovered(), args: __fpShell.of('visibility').slice(-1)[0] };
+      return r;
+    });
+    assert(f.seq0 === 3, 'hello\'s seq is the page\'s: ' + f.seq0);
+    assert(f.now === 'settings' && J(f.one) === J([[{ tab: 'settings' }, 'progress']]), 'one selectTab {tab}, sent before the local switch, which runs at once: ' + J(f));
+    assert(J(f.intents) === J([{ tab: 'coach', intent: 'chat' }, { tab: 'log' }, { tab: 'progress', intent: 'intake' }]), 'the intent goes when it is chat or intake: ' + J(f.intents));
+    assert(J(f.quick.seen) === '["log","settings"]' && f.quick.tab === 'settings' && f.quick.shell.selected === 'settings' && f.quick.seq === f.quick.shell.seq,
+      'two quick selections never bounce back: ' + J(f.quick));
+    assert(J(f.cross.seen) === '["log","coach"]' && f.cross.tab === 'coach' && f.cross.shell.selected === 'coach' && f.cross.seq === f.cross.shell.seq
+      && f.cross.last[1].tab === 'coach' && J(f.cross.last[2]) === '{"ok":true,"tab":"coach"}', 'a crossing tap wins, and its tabs.select (no newer) changes nothing: ' + J(f.cross));
+    assert(f.tap.ans.ok && f.tap.ans.tab === 'settings' && f.tap.tab === 'settings' && f.tap.sel === 0 && !('again' in f.tap.msg) && f.tap.drawn,
+      'the owner\'s tap: switched with no selectTab, answered after Settings was drawn: ' + J(f.tap));
+    assert(J(f.older.ans) === '{"ok":true,"tab":"settings"}' && f.older.tab === 'settings' && f.older.seq === f.older.s0, 'an older tabs.select changes nothing: ' + J(f.older));
+    assert(f.again.ans.ok && f.again.msg.again === true && f.again.view === 'home', 'the re-tap of Coach (again) goes back to the hub: ' + J(f.again));
+    assert(f.againLoading.msg.again === true && f.againLoading.view === 'chat', '...but not while a reply is in flight: ' + J(f.againLoading));
+    assert(f.bad.every((x) => x.ok === false && x.error === 'bad-args') && f.afterBad.tab === f.afterBad.b0.tab && f.afterBad.seq === f.afterBad.b0.seq,
+      'bad-args for tab home, seq \'1\' or 1.5 or none, again 1: ' + J(f.bad));
+    assert(f.vis.n === 1 && !f.vis.covered && f.vis.args.state === 'visible' && typeof f.vis.args.at === 'number', 'visibility on a web tab in tabs mode: ' + J(f.vis));
+    // the bar's numbers in CSS px at the zoom (contract 7.2): h, safe, max(safe, 16), max(h, safe), the newest h above 0
+    const v = await ev(app, async () => {
+      const VARS = ['--fp-bar-h', '--fp-safe-b', '--fp-sheet-b', '--fp-clear', '--fp-bar-up'];
+      const vars = () => VARS.map((k) => document.documentElement.style.getPropertyValue(k).trim());
+      const steps = [];
+      const step = async (tag, z, args) => { const ans = args ? await FPScreens.call('tabs.bar', args) : null; steps.push({ tag, z, ans, vars: vars() }); };
+      await step('83/34 rev 2', 1, { h: 83, safe: 34, rev: 2 });
+      applyDynamicType(1.12); await step('zoom 1.12', 1.12);
+      applyDynamicType(1.25); await step('zoom 1.25', 1.25);
+      await step('hidden: h 0 rev 3', 1.25, { h: 0, safe: 34, rev: 3 });
+      await step('49/0 rev 4', 1.25, { h: 49, safe: 0, rev: 4 });
+      await step('rev 4 again', 1.25, { h: 90, safe: 40, rev: 4 });
+      await step('rev 1', 1.25, { h: 90, safe: 40, rev: 1 });
+      const bad = [];
+      for (const a of [{ h: 83.5, safe: 34, rev: 9 }, { h: '83', safe: 34, rev: 9 }, { h: 83, safe: -1, rev: 9 }, { h: 83, safe: 34 }]) bad.push(await FPScreens.call('tabs.bar', a));
+      await step('after bad-args', 1.25);
+      applyDynamicType(1); await step('zoom 1', 1);
+      return { steps, bad, rev: _fp.tabs.rev };
+    });
+    const want = [[83, 34, 34, 83, 83], [83, 34, 34, 83, 83], [83, 34, 34, 83, 83], [0, 34, 34, 34, 83], [49, 0, 16, 49, 49], [49, 0, 16, 49, 49],
+      [49, 0, 16, 49, 49], [49, 0, 16, 49, 49], [49, 0, 16, 49, 49]];
+    v.steps.forEach((s, i) => {
+      const ok = s.vars.every((x, k) => /px$/.test(x) && Math.abs(parseFloat(x) - want[i][k] / s.z) <= 0.011);
+      assert(ok && (s.ans === null || J(s.ans) === '{"ok":true}'), s.tag + ': ' + J(s.vars) + ' at zoom ' + s.z + ' (want ' + J(want[i].map((n) => Math.round(n / s.z * 100) / 100)) + ')');
+    });
+    assert(v.bad.every((x) => x.ok === false && x.error === 'bad-args') && v.rev === 4, 'tabs.bar: bad-args unless three whole numbers; older revs change nothing: ' + J(v));
+  } finally { await app.close(); }
+  // outside tabs mode (a 61 classic root): every tabs.* answers off once its arguments pass; visibility only while covered
+  const c = await pageBoot('coach61');
+  try {
+    await helloIn(c);
+    const o = await ev(c, async () => {
+      const r = { sel: await FPScreens.call('tabs.select', { tab: 'log', seq: 1 }), bar: await FPScreens.call('tabs.bar', { h: 83, safe: 34, rev: 1 }),
+        bad: await FPScreens.call('tabs.select', { tab: 'home', seq: 1 }), mode: _fp.tabs.mode };
+      const v0 = __fpShell.of('visibility').length;
+      document.dispatchEvent(new Event('visibilitychange')); await new Promise((z) => setTimeout(z, 10));
+      r.vis = __fpShell.of('visibility').length - v0;
+      return r;
+    });
+    assert(J(o.sel) === '{"ok":false,"error":"off"}' && J(o.bar) === '{"ok":false,"error":"off"}' && o.bad.error === 'bad-args' && !o.mode && o.vis === 0,
+      'coach61: tabs.* off, arguments first, no visibility while uncovered: ' + J(o));
+  } finally { await c.close(); }
+});
+
+serial('P2: covered in tabs mode is the Coach tab not web (contract 8.4): booted on Coach before hello it is waiting (toasts and confirms go to the shell, no scripted focus); Log never; after a hello without coachHome the web Coach, covered only by the shell\'s word, which _fpDown keeps', async () => {
+  const app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' },
+    init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1e9;' });
+  try {
+    const out = await ev(app, async () => {
+      const w = (ms) => new Promise((r) => setTimeout(r, ms));
+      const n = (k) => __fpShell.of(k).length;
+      const r = {};
+      r.boot = { tab: currentTab, route: _lastRenderedRoute, mode: _fpCoachMode(), covered: _fpCovered(), hello: _fp.hello };
+      // forwarded while covered: the web #toast stays down
+      let t0 = n('toast'), c0 = n('confirm');
+      showToast('Saved'); showUndoToast('Removed', function () {}); _ktConfirm({ title: 'Sure?', body: '', confirmLabel: 'Yes', onConfirm: function () {} });
+      r.fwd = { toasts: n('toast') - t0, confirms: n('confirm') - c0, undo: !!__fpShell.of('toast').slice(-1)[0].undo, web: document.getElementById('toast').classList.contains('show') };
+      // no scripted focus while covered: the chat's draft and the sheet observer
+      let focus = 0; const realFocus = HTMLElement.prototype.focus;
+      HTMLElement.prototype.focus = function () { focus++; return realFocus.apply(this, arguments); };
+      const draftAndSheet = async () => {
+        coachView = 'chat'; render(); await w(20);
+        const box = document.getElementById('coach-input'); box.value = 'draft'; realFocus.call(box);
+        focus = 0; render(); await w(20);
+        const d = { focus, value: document.getElementById('coach-input').value };
+        const btn = document.querySelector('#screen button'); realFocus.call(btn);
+        const sh = document.createElement('div'); sh.className = 'kt-sheet-overlay'; document.body.appendChild(sh); await w(10);
+        document.activeElement.blur(); focus = 0; sh.remove(); await w(30);
+        return { draft: d, sheet: { focus, back: document.activeElement === btn } };
+      };
+      r.covered = await draftAndSheet();
+      // Log is never covered, even before hello
+      switchTab('log'); await w(20);
+      t0 = n('toast'); showToast('Saved');
+      r.log = { covered: _fpCovered(), mode: _fpCoachMode(), fwd: n('toast') - t0, web: document.getElementById('toast').classList.contains('show') };
+      switchTab('coach'); await w(20); r.back = _fpCovered();
+      // hello answers (no coachHome in this page's screens): the Coach tab is the web's
+      window.__fpShellHelloSilent = false; _fpHello();
+      for (let i = 0; i < 100 && !_fp.hello; i++) await w(20);
+      await w(60);
+      r.after = { mode: _fpCoachMode(), covered: _fpCovered(), cov: _fp.covered, screens: _fp.hello.screens };
+      t0 = n('toast'); showToast('Saved');
+      r.after.fwd = n('toast') - t0; r.after.web = document.getElementById('toast').classList.contains('show');
+      r.uncovered = await draftAndSheet();
+      // the shell's word covers the web Coach; Log stays uncovered under it (and render gives a field its focus back)
+      await FPScreens.call('shell.covered', { on: true });
+      r.word = { coach: _fpCovered() };
+      switchTab('log'); switchLogSub('body'); await w(20);
+      const field = () => document.getElementById('bwVal');
+      realFocus.call(field()); focus = 0; render(); await w(20);
+      r.word.log = { covered: _fpCovered(), cov: _fp.covered, focus, refocused: document.activeElement === field() };
+      _fpDown('coach'); r.word.down = _fp.covered;
+      HTMLElement.prototype.focus = realFocus;
+      return r;
+    });
+    assert(out.boot.tab === 'coach' && out.boot.route === 'coach/home' && out.boot.mode === 'waiting' && out.boot.covered && out.boot.hello === null,
+      'booted on the flag\'s Coach, waiting and covered before hello: ' + J(out.boot));
+    assert(out.fwd.toasts === 2 && out.fwd.confirms === 1 && out.fwd.undo && !out.fwd.web, 'toasts, the Undo toast and the confirm go to the shell: ' + J(out.fwd));
+    assert(out.covered.draft.focus === 0 && out.covered.draft.value === 'draft' && out.covered.sheet.focus === 0 && !out.covered.sheet.back,
+      'no scripted focus while covered (the chat\'s draft, the sheet observer): ' + J(out.covered));
+    assert(!out.log.covered && out.log.mode === 'waiting' && out.log.fwd === 0 && out.log.web && out.back, 'Log is never covered: ' + J(out.log));
+    assert(out.after.mode === 'web' && !out.after.covered && out.after.cov === false && out.after.screens.indexOf('coachHome') < 0 && out.after.fwd === 0 && out.after.web,
+      'after a hello without coachHome: the web Coach, uncovered, the web toast: ' + J(out.after));
+    assert(out.uncovered.draft.focus > 0 && out.uncovered.sheet.focus > 0 && out.uncovered.sheet.back, 'uncovered, the draft and the sheet observer give focus back: ' + J(out.uncovered));
+    assert(out.word.coach && !out.word.log.covered && out.word.log.cov === true && out.word.log.focus > 0 && out.word.log.refocused && out.word.down === true,
+      'shell.covered covers the Coach tab only; _fpDown keeps the shell\'s word in tabs mode: ' + J(out.word));
+  } finally { await app.close(); }
+});
+
+serial('P2: the way out when the shell says so (a fallback, a hello without tabs, an off refusal): the page\'s own bar on the same tab, nothing sent back, selectTab no more, tabs.* off; a later hello naming tabs is ignored; other refusals change nothing', async () => {
+  // the scene falls back (policy): screens.off tabs
+  const app = await pageBoot('tabs');
+  try {
+    await helloIn(app);
+    await ev(app, () => switchTab('progress'));
+    await settle(app, 60);
+    await ev(app, () => window.__fpShell.fallBack('policy'));
+    await settle(app, 150);
+    let o = await look(app);
+    classicLook(o, 'fallBack');
+    assert(!o.mode && o.left && o.why === 'policy' && !o.told && o.tab === 'progress' && o.route === 'progress' && dismissTabs(o) === 0 && o.offCoach !== 'tabs',
+      'fallBack: out on the same tab, nothing sent back: ' + J(o));
+    const after = await ev(app, async () => {
+      const w = (ms) => new Promise((r) => setTimeout(r, ms));
+      const n0 = __fpShell.of('selectTab').length;
+      switchTab('settings'); await w(30);
+      const r = { sel: __fpShell.of('selectTab').length - n0, tab: currentTab,
+        select: await FPScreens.call('tabs.select', { tab: 'coach', seq: 99 }), bar: await FPScreens.call('tabs.bar', { h: 49, safe: 0, rev: 99 }) };
+      const v0 = __fpShell.of('visibility').length; document.dispatchEvent(new Event('visibilitychange')); await w(10);
+      r.vis = __fpShell.of('visibility').length - v0;
+      // a hello answer naming tabs, after the way out: read for its other pieces, its tabs ignored
+      Capacitor.Plugins.TrovoShell.hello = function (a) { __fpShell.calls.push(['hello', a]);
+        return Promise.resolve({ v: 1, screens: ['tabs'], tabs: { selected: 'coach', seq: 120, bar: { h: 49, safe: 0, rev: 120 } } }); };
+      _fp.hello = null; _fpHello(); await w(40);
+      r.late = { asked: __fpShell.of('hello').slice(-1)[0].screens, mode: _fp.tabs.mode, tab: currentTab, seq: _fp.tabs.seq, rev: _fp.tabs.rev, screens: _fp.hello.screens };
+      return r;
+    });
+    assert(after.sel === 0 && after.tab === 'settings' && J(after.select) === '{"ok":false,"error":"off"}' && J(after.bar) === '{"ok":false,"error":"off"}' && after.vis === 0,
+      'after the way out: switchTab sends nothing, tabs.* off, visibility only while covered: ' + J(after));
+    o = await look(app);
+    classicLook(o, 'a later hello');
+    assert(J(after.late.asked) === '["coach"]' && !after.late.mode && after.late.tab === 'settings' && after.late.seq < 120 && after.late.rev < 120 && dismissTabs(o) === 0,
+      'a later hello naming tabs is ignored: ' + J(after.late));
+  } finally { await app.close(); }
+  // hello's reply leaves tabs out (the policy turned it off): out at hello, nothing sent back
+  const off = await pageBoot('tabs', { init: 'window.__fpShellOff = ["tabs"];' });
+  try {
+    await helloIn(off); await settle(off, 60);
+    const o = await look(off);
+    classicLook(o, 'a reply without tabs');
+    assert(!o.mode && o.why === 'hello' && !o.told && dismissTabs(o) === 0 && o.offCoach !== 'tabs' && o.scene.scene.fellBack.why === 'policy',
+      'a reply without tabs: out, nothing sent back: ' + J(o));
+  } finally { await off.close(); }
+  // selectTab refused: another code is logged and changes nothing; off leaves tabs mode with nothing sent back
+  const ref = await pageBoot('tabs');
+  try {
+    await helloIn(ref);
+    const r = await ev(ref, async () => {
+      const w = (ms) => new Promise((z) => setTimeout(z, ms));
+      const out = {};
+      for (const words of ['bad-tab: progress is not a tab', 'bad message: selectTab']) {
+        __fpShell.refuse.selectTab = words;
+        switchTab(words.indexOf('bad-tab') === 0 ? 'progress' : 'settings'); await w(40);
+        out[words.split(':')[0]] = { mode: _fp.tabs.mode, tab: currentTab, cls: document.documentElement.classList.contains('fp-tabs'),
+          logged: __fpShell.of('log').some((l) => l.text.indexOf(words) >= 0) };
+      }
+      __fpShell.refuse.selectTab = 'off: no live tab root';
+      switchTab('coach'); await w(60);
+      out.off = { mode: _fp.tabs.mode, tab: currentTab, why: _fp.tabs.why };
+      return out;
+    });
+    assert(r['bad-tab'].mode && r['bad-tab'].cls && r['bad-tab'].tab === 'progress' && r['bad-tab'].logged, 'bad-tab: logged, still tabs mode: ' + J(r));
+    assert(r['bad message'].mode && r['bad message'].tab === 'settings' && r['bad message'].logged, 'build 60\'s words: no code acted on, still tabs mode: ' + J(r));
+    const o = await look(ref);
+    classicLook(o, 'off refusal');
+    assert(!r.off.mode && r.off.why === 'off' && r.off.tab === 'coach' && o.tab === 'coach' && dismissTabs(o) === 0 && o.offCoach !== 'tabs',
+      'selectTab refused off: out on the tab it switched to, nothing sent back: ' + J([r.off, o]));
+  } finally { await ref.close(); }
+});
+
+serial('P2: the way out on the page\'s own (a malformed reply, a rejected or thrown hello): one dismiss tabs, the scene falls back page, the chat stays off for the document (no present coach), the page\'s own bar (I14)', async () => {
+  const TRAP = 'Object.defineProperty(window, "__fpShell", { configurable: true, set: function (v) { v.refuse.hello = "error: hello refused";'
+    + ' Object.defineProperty(window, "__fpShell", { value: v, writable: true, configurable: true, enumerable: true }); } });';
+  const rows = [
+    ['a reply with tabs.selected home', 'window.__fpShellHelloTabs = { selected: "home", seq: 0, bar: { h: 83, safe: 34, rev: 0 } };', 'malformed'],
+    ['a reply with seq \'1\'', 'window.__fpShellHelloTabs = { selected: "log", seq: "1", bar: { h: 83, safe: 34, rev: 0 } };', 'malformed'],
+    ['a rejected hello', TRAP, 'hello-failed'],
+    ['a hello that throws', 'window.__fpShellThrow = ["hello"];', 'hello-failed'],
+  ];
+  for (const [tag, init, why] of rows) {
+    const app = await pageBoot('tabs', { init });
+    try {
+      await app.page.waitForFunction(() => window._fp && _fp.tabs.left, null, { timeout: 15000 });
+      await settle(app, 100);
+      const o = await look(app);
+      classicLook(o, tag);
+      assert(!o.mode && o.why === why && o.told && dismissTabs(o) === 1 && o.offCoach === 'tabs', tag + ': out on its own, one dismiss tabs, the chat off: ' + J(o));
+      fellBackPage(o, tag);
+    } finally { await app.close(); }
+  }
+  // the chat negotiated in a reply the page cannot use for tabs: the page left on its own, so it never presents it
+  const app = await pageBoot('tabs', { seed: { kt_apikey: 'sk-ant-test' } });
+  try {
+    await helloIn(app);
+    const r = await ev(app, async () => {
+      const w = (ms) => new Promise((z) => setTimeout(z, ms));
+      Capacitor.Plugins.TrovoShell.hello = function (a) { __fpShell.calls.push(['hello', a]);
+        return Promise.resolve({ v: 1, screens: ['coach', 'tabs'], tabs: { selected: 'home', seq: 1, bar: { h: 83, safe: 34, rev: 1 } } }); };
+      _fp.hello = null; _fpHello(); await w(40);
+      const p0 = __fpShell.of('present').length;
+      switchTab('coach'); openCoachChat(); await w(40);
+      return { mode: _fp.tabs.mode, why: _fp.tabs.why, negotiated: _fpNegotiated('coach'), off: _fp.off.coach, present: __fpShell.of('present').length - p0,
+        web: !!document.getElementById('coach-input') };
+    });
+    const o = await look(app);
+    assert(!r.mode && r.why === 'malformed' && r.negotiated && r.off === 'tabs' && r.present === 0 && r.web && dismissTabs(o) === 1,
+      'a negotiated chat stays web once the page left on its own: ' + J(r));
+  } finally { await app.close(); }
+});
+
+serial('P2: the failsafe: no hello answer in 16 s of visible time (hidden time does not count) and the page leaves on its own with one dismiss tabs; at 400 ms in real time, and the full 16 s on Playwright\'s clock', async () => {
+  const app = await pageBoot('tabs', { init: HIDDEN + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
+  try {
+    await settle(app, 1200);
+    const hidden = await look(app);
+    assert(hidden.mode && hidden.cls && dismissTabs(hidden) === 0, 'hidden for 1.2 s: still in tabs mode: ' + J(hidden));
+    await ev(app, () => { window.__vis = 'visible'; });
+    await app.page.waitForFunction(() => !_fp.tabs.mode, null, { timeout: 15000 });
+    await settle(app, 100);
+    const o = await look(app);
+    classicLook(o, 'the failsafe');
+    assert(o.why === 'no-hello' && o.told && dismissTabs(o) === 1 && o.offCoach === 'tabs', 'visible: out on its own, one dismiss tabs: ' + J(o));
+    fellBackPage(o, 'the failsafe');
+  } finally { await app.close(); }
+  // the full 16 s, on Playwright's clock (paused): hidden time does not count; in at 15.9 s of visible time, out at the
+  // next tick past 16 s (the failsafe ticks every 250 ms and never counts a stretch that ended hidden)
+  const c = await pageBoot('tabs', { clock: { time: Date.now() }, init: HIDDEN + 'window.__fpShellHelloSilent = true;' });
+  try {
+    const t = await ev(c, () => Date.now());
+    await c.page.clock.pauseAt(t + 1000);
+    await c.page.clock.runFor(30000);
+    const a = await look(c);
+    await ev(c, () => { window.__vis = 'visible'; });
+    await c.page.clock.runFor(15900);
+    const b = await look(c);
+    await c.page.clock.runFor(350);
+    const d = await look(c);
+    assert(a.mode && a.cls && dismissTabs(a) === 0, '30 s hidden: still in tabs mode: ' + J(a));
+    assert(b.mode && b.cls && dismissTabs(b) === 0, '15.9 s visible: still in tabs mode: ' + J(b));
+    assert(!d.mode && !d.cls && J(d.vars) === '{}' && d.why === 'no-hello' && dismissTabs(d) === 1, '16 s visible: out, one dismiss tabs: ' + J(d));
+  } finally { await c.close(); }
+});
+
+serial('P2: a broken page still drops the native bar (the head failsafe\'s own way out): the main script throws at its first statement, or does not parse; and a throw in the tabs boot block leaves tabs mode at boot while the first render and _bootDone still run', async () => {
+  const MAIN = '<script>\n// ── Hybrid loader: live update check';
+  const broken = [
+    ['the main script throws at its first statement', edited(MAIN, '<script>\nthrow new Error("boom: the main script\'s first statement");\n// ── Hybrid loader: live update check')],
+    ['the main script does not parse', edited(MAIN, '<script>function render(){}</script>\n<script>\n)(\n// ── Hybrid loader: live update check')],
+  ];
+  for (const [tag, html] of broken) {
+    const app = await pageBoot('tabs', { html, pageErrors: 'allow', init: 'window.__fpTabsFailsafeMs = 400;' });
+    try {
+      await app.page.waitForFunction(() => !document.documentElement.classList.contains('fp-tabs'), null, { timeout: 15000 });
+      await settle(app, 300);
+      const o = await ev(app, () => {
+        const r = document.documentElement, vars = [];
+        for (let i = 0; i < r.style.length; i++) if (r.style[i].indexOf('--fp-') === 0) vars.push(r.style[i]);
+        return { cls: r.classList.contains('fp-tabs'), vars, calls: __fpShell.calls.map((c) => [c[0], c[1]]), st: __fpShell.state(), fp: typeof window._fp };
+      });
+      assert(app.errors.length > 0 && o.fp === 'undefined', tag + ': the main script never set its state: ' + J([app.errors, o.fp]));
+      assert(!o.cls && o.vars.length === 0 && J(o.calls) === '[["dismiss",{"screen":"tabs"}]]', tag + ': class and variables gone, one dismiss tabs and nothing else: ' + J(o));
+      assert(o.st.scene.fellBack && o.st.scene.fellBack.why === 'page' && !o.st.live, tag + ': the scene fell back page: ' + J(o.st.scene));
+    } finally { await app.close(); }
+  }
+  // a throw at the start of the fp-tabs boot block (found by its marker comment)
+  const marker = PAGE.indexOf('// fp-tabs boot block'), at = PAGE.indexOf('\ntry{', marker);
+  assert(marker > 0 && PAGE.indexOf('// fp-tabs boot block', marker + 1) < 0 && at > marker && at - marker < 800, 'the boot block\'s marker and its try');
+  const html = (src) => src.slice(0, at + 5) + ' throw new Error("boom in the fp-tabs boot block");' + src.slice(at + 5);
+  const app = await pageBoot('tabs', { html, init: 'window.Capacitor.Plugins.TrovoOta = { confirm: function () { window.__otaConfirms = (window.__otaConfirms || 0) + 1; return Promise.resolve({}); } };' });
+  try {
+    await helloIn(app);
+    await settle(app, 100);
+    const o = await look(app);
+    const x = await ev(app, () => ({ confirms: window.__otaConfirms || 0, bootDone: __fpShell.of('bootDone').length, screen: document.getElementById('screen').children.length,
+      err: JSON.parse(localStorage.getItem('kt_err_log') || '[]').map((e) => e.m).join(' | '), order: __fpShell.calls.map((c) => c[0]) }));
+    classicLook(o, 'a throw in the boot block');
+    assert(!o.mode && o.left && o.why === 'boot' && o.told && dismissTabs(o) === 1 && o.tab === 'log' && routeTab(o) === 'log', 'the boot block threw: classic, one dismiss tabs: ' + J(o));
+    assert(J(o.hello.map((h) => h.screens)) === '[["coach"]]', 'hello names coach, as classic: ' + J(o.hello));
+    assert(x.confirms === 1 && x.bootDone === 1 && x.screen > 0 && /fp-tabs boot: boom in the fp-tabs boot block/.test(x.err) && x.order[0] === 'dismiss',
+      'the first render, the OTA confirm and bootDone still ran; the throw is in the error log: ' + J(x));
+  } finally { await app.close(); }
 });
