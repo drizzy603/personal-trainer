@@ -11,6 +11,7 @@
 #   - when the page's bridge to the native shell changed since main (an index.html line naming its flags, plugin,
 #     intents, models or --fp-* variables: BRIDGE below) or the harness did, the inert modes too, each green:
 #     FP_SHELL_INERT=1 (build 61's flag, no native screen up), then FP_SHELL_INERT=60 (build 60's)
+#   - next and the working tree must stay as they were while the suites run: what is pushed is the commit they tested
 # It never force-pushes and never touches the native shell or the App Store.
 #
 #   ./publish.sh            # test, merge, push, confirm the live stamp
@@ -31,8 +32,8 @@ BRIDGE='^[+-].*(FP_NATIVE|FP_TAB|FP_SCREENS|FP_CONTRACT|_FP_INTENTS|FPScreens|__
 # line comes early reads as no change (grep stops reading, git dies of SIGPIPE and the pipe's status is 141).
 bridge_changed(){
   local d rc=0
-  git diff --quiet origin/main next -- tests/lib/harness.js || return 0
-  d=$(git diff --no-color --no-ext-diff origin/main next -- index.html) || return 0
+  git diff --quiet origin/main "$SHA" -- tests/lib/harness.js || return 0
+  d=$(git diff --no-color --no-ext-diff origin/main "$SHA" -- index.html) || return 0
   LC_ALL=C grep -qE "$BRIDGE" <<<"$d" || rc=$?
   [ "$rc" -ne 1 ]                                  # 0: a bridge line changed; 2: grep failed, so they run
 }
@@ -40,10 +41,12 @@ bridge_changed(){
 [ "$(git branch --show-current)" = "next" ] || die "run this from branch next (you are on $(git branch --show-current))"
 [ -z "$(git status --porcelain)" ]            || die "working tree is not clean — commit first"
 git fetch origin --quiet
-[ "$(git rev-list --count origin/next..next)" = "0" ] || die "next has unpushed commits — push next first"
-git merge-base --is-ancestor origin/main next || die "main has commits next does not — not a fast-forward; look before merging"
+# The commit this run tests and publishes. A commit made on next while the suites run is never merged (see below).
+SHA=$(git rev-parse next)
+[ "$(git rev-list --count origin/next.."$SHA")" = "0" ] || die "next has unpushed commits — push next first"
+git merge-base --is-ancestor origin/main "$SHA" || die "main has commits next does not — not a fast-forward; look before merging"
 
-AHEAD=$(git rev-list --count origin/main..next)
+AHEAD=$(git rev-list --count origin/main.."$SHA")
 [ "$AHEAD" != "0" ] || { echo "${GRN}publish: main is already level with next — nothing to do${OFF}"; exit 0; }
 
 if [ "${1:-}" != "--no-tests" ]; then
@@ -52,7 +55,7 @@ if [ "${1:-}" != "--no-tests" ]; then
   grep -q 'All suites passed' /tmp/publish-tests.log || die "suite did not report a pass — not publishing"
   # The store matrix is made of the facade the shell injects, the mock native store and the harness: when any of
   # them changed since main, run every spec through them as well.
-  if ! git diff --quiet origin/main next -- ios/App/FPKit/Sources/FPStore/Resources/ktstore.js tests/lib/ktstore-mock.js tests/lib/harness.js; then
+  if ! git diff --quiet origin/main "$SHA" -- ios/App/FPKit/Sources/FPStore/Resources/ktstore.js tests/lib/ktstore-mock.js tests/lib/harness.js; then
     echo "${DIM}publish: the storage facade, the mock store or the harness changed — running the suite with STORE=shadow…${OFF}"
     STORE=shadow ./tests/run.sh >/tmp/publish-tests-shadow.log 2>&1 || { tail -20 /tmp/publish-tests-shadow.log; die "the store matrix (STORE=shadow) is red — not publishing"; }
     grep -q 'All suites passed' /tmp/publish-tests-shadow.log || die "the store matrix did not report a pass — not publishing"
@@ -69,14 +72,19 @@ if [ "${1:-}" != "--no-tests" ]; then
   fi
 fi
 
+# What is pushed must be what the suites tested: a commit made on next in this checkout while they ran was tested by
+# no one and never pushed to origin/next, and an edit or a new file in the tree means they may have read other files.
+[ "$(git branch --show-current)" = "next" ] && [ "$(git rev-parse next)" = "$SHA" ] && [ -z "$(git status --porcelain)" ] \
+  || die "next or the working tree changed while the suites ran — not publishing what they did not test; run it again"
+
 echo "${DIM}publish: fast-forwarding main by ${AHEAD} commit(s)…${OFF}"
-git log --oneline origin/main..next | sed 's/^/  /'
+git log --oneline origin/main.."$SHA" | sed 's/^/  /'
 git checkout main --quiet
-git merge next --ff-only --quiet
+git merge "$SHA" --ff-only --quiet
 git push origin main --quiet
 git checkout next --quiet
 
-STAMP=$(cat build.txt)
+STAMP=$(git show "$SHA":build.txt)
 echo "${DIM}publish: waiting for GitHub Pages to serve ${STAMP}…${OFF}"
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   LIVE=$(curl -s https://drizzy603.github.io/personal-trainer/build.txt | head -1)
