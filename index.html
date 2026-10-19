@@ -97,6 +97,72 @@ window.addEventListener('unhandledrejection', function(e){
     }
   }catch(e){}
 })();
+// ── Native tab bar (build 61, shell contract v1 2.3) ─────────────────────────
+// The page's off switches and its one tabs-mode test live here, ahead of #tabs and the first paint; the main script
+// calls the same _fpTabsTest(), so the two can never disagree. FP_NATIVE: every native screen (false gives every
+// shell the web screens again, by OTA); FP_TABS: the native tab bar alone. Without the shell's flag (the browser, the
+// PWA, shells up to 59) or with build 60's TrovoShell (no selectTab or sheets) nothing below does anything.
+var FP_NATIVE=true, FP_TABS=true, FP_TAB_IDS=['log','progress','coach','settings'];
+// The flag's tabs object when this document runs in tabs mode, else null (any throw is null).
+function _fpTabsTest(){
+  try{
+    if(!FP_NATIVE || !FP_TABS) return null;
+    var f=window.__FP_SHELL;
+    if(!f || typeof f!=='object' || (f.v|0)<1) return null;
+    var t=f.tabs, b=t && typeof t==='object' ? t.bar : null;
+    if(!t || typeof t!=='object' || FP_TAB_IDS.indexOf(t.selected)<0 || !b || typeof b!=='object') return null;
+    var ok=function(n){ return typeof n==='number' && isFinite(n) && n>=0; };
+    if(!ok(b.h) || !ok(b.safe)) return null;
+    var C=window.Capacitor;
+    if(!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform() && C.getPlatform && C.getPlatform()==='ios')) return null;
+    var P=C.Plugins && C.Plugins.TrovoShell;
+    if(!P || typeof P.selectTab!=='function' || typeof P.sheets!=='function') return null;
+    return t;
+  }catch(e){ return null; }
+}
+// The bar's numbers on <html> (contract 7.2), in CSS px = points / z (the Larger Text zoom), rounded to 0.01; the two
+// maxima are computed here, never with CSS max() (see the env()/min() trap noted at the tab bar's CSS). bar null
+// removes all five. up: the bar's height while shown (--fp-bar-up, never 0).
+function _fpBarVars(bar, up, z){
+  var st=document.documentElement.style, names=['--fp-bar-h','--fp-safe-b','--fp-sheet-b','--fp-clear','--fp-bar-up'];
+  if(!bar){ for(var i=0;i<names.length;i++) st.removeProperty(names[i]); return; }
+  z=(typeof z==='number' && z>0) ? z : 1;
+  var px=function(v){ return (Math.round((+v||0)/z*100)/100)+'px'; };
+  var h=+bar.h||0, s=+bar.safe||0;
+  st.setProperty('--fp-bar-h', px(h));
+  st.setProperty('--fp-safe-b', px(s));
+  st.setProperty('--fp-sheet-b', px(Math.max(s, 16)));
+  st.setProperty('--fp-clear', px(Math.max(h, s)));
+  st.setProperty('--fp-bar-up', px(up>0 ? up : 49+s));
+}
+// On a pass: html.fp-tabs and the bar's prediction before the first paint, and the failsafe: no hello answer within
+// 16 s of visible time (hidden time does not count, as the shell's own deadline counts foreground time only) and the
+// page leaves tabs mode on its own, telling the shell (dismiss tabs), so a page whose main script never got going
+// still ends with one bar, its own. Visible time is the time between two ticks that both saw the page visible: a
+// stretch with a hidden end never counts, so the page never leaves early (at most one tick late).
+(function(){
+  try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){}
+  var t=_fpTabsTest(); if(!t) return;
+  var root=document.documentElement;
+  try{ root.classList.add('fp-tabs'); _fpBarVars(t.bar, t.bar.h>0 ? t.bar.h : 49+t.bar.safe, 1); }catch(e){ return; }
+  var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
+  var vis=0, last=document.visibilityState==='visible' ? now() : null;
+  window.__fpTabsFailT=setInterval(function(){
+    if(window.__fpTabsAnswered){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; return; }
+    var at=now(), on=document.visibilityState==='visible';
+    if(on && last!==null) vis+=Math.max(0, at-last);
+    last=on ? at : null;
+    if(vis < (typeof window.__fpTabsFailsafeMs==='number' ? window.__fpTabsFailsafeMs : 16000)) return;
+    clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null;
+    // The main script's own way out when it got as far as its state (its function declarations exist even when it
+    // threw at run time, so only _fp says it ran); else, or when that throws, strip and tell the shell from here.
+    try{ if(window._fp && window._fp.tabs){ _fpTabsLeave('no-hello', true); return; } }catch(e){}
+    try{ root.classList.remove('fp-tabs'); _fpBarVars(null); }catch(e){}
+    try{
+      if(!window.__fpTabsTold){ window.__fpTabsTold=true; Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){}); }
+    }catch(e){}
+  }, 250);
+})();
 </script>
 <title>Fitness Programmer</title>
 <link rel="manifest" href="manifest.json"/>
@@ -2084,6 +2150,12 @@ html[data-room="heavyweight"] body:has(.kt-sheet-overlay) #toast{top:calc(max(en
    status bar it covered the Back row, the avatar poking out above it, and the top of the eyebrow.
    --toast-head, set by _toastPlace, is where the header ends inside #app. */
 html.kt-chat body #toast{top:calc(var(--vv-top,0px) + var(--toast-head,max(env(safe-area-inset-top),16px)) + 8px);bottom:auto;}
+/* NATIVE TAB BAR (tabs mode) */
+/* Build 61's tab root (shell contract v1 2.3, 7.3): the shell's bar is the tabs. Every rule here is scoped to
+   html.fp-tabs, which the head script sets before the first paint and the way out removes, so classic CSS stays
+   byte for byte. The page's own bar goes (and leaves the VoiceOver tree with it). */
+html.fp-tabs #tabs{display:none!important;}
+/* END NATIVE TAB BAR */
 </style>
 </head>
 <body>
@@ -2233,13 +2305,48 @@ var _cmpReturnFocus=null; // element focused when the sheet opened
 // Message ids (_mid, _coachMid): the native chat addresses a message by id, never by index (the
 // 60-message cap shifts every index by one). In memory only: saveCoachHistory keeps a whitelist.
 var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
-// Native screens (shell contract v1, plan task C3; the bridge is by _nativeJSON). FP_NATIVE is the
-// page's own off switch: false gives every shell the web screens again, by OTA. Nothing here acts
-// without the shell's flag (window.__FP_SHELL) and its TrovoShell plugin: the browser, the PWA and
-// every shell before 60 run the page exactly as before.
-var FP_NATIVE=true, FP_CONTRACT=1, FP_SCREENS=['coach'];
+// Native screens (shell contract v1, plan task C3; the bridge is by _nativeJSON). FP_NATIVE (the
+// page's own off switch: false gives every shell the web screens again, by OTA), FP_TABS and
+// FP_TAB_IDS live in the head script beside _fpTabsTest, which needs them before this script runs.
+// Nothing here acts without the shell's flag (window.__FP_SHELL) and its TrovoShell plugin: the
+// browser, the PWA and every shell before 60 run the page exactly as before. FP_SCREENS is what
+// hello names in tabs mode; classic mode names ['coach'] alone, as build 60's page did.
+var FP_CONTRACT=1, FP_SCREENS=['coach','tabs'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
-var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false};
+var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false,
+  declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0}};
+// fp-tabs boot block: tabs mode is decided once per document, by the head script's test (contract 2.3). On a pass the
+// page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
+// flag's; the flag's selection counts as seq 0 and its bar as rev 0. A throw here leaves tabs mode on its own and the
+// boot goes on in classic mode, so no tabs-only error stops the first render and the OTA confirm.
+try{
+  (function(){
+    var root=document.documentElement, t=_fpTabsTest();
+    if(!t){
+      if(root.classList.contains('fp-tabs')){ root.classList.remove('fp-tabs'); _fpBarVars(null); }
+      _fpFailStop();
+      return;
+    }
+    var T=_fp.tabs;
+    T.mode=true;
+    T.bar={h:+t.bar.h||0, safe:+t.bar.safe||0};
+    T.up=T.bar.h>0 ? T.bar.h : 49+T.bar.safe;
+    root.classList.add('fp-tabs'); _fpBarApply();   // as the head set them before the first paint
+    var saved=null;
+    try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
+    currentTab=FP_TAB_IDS.indexOf(saved)>=0 ? saved : t.selected;
+    _syncTabButtons(currentTab);
+  })();
+}catch(e){
+  try{ _trapErr('fp-tabs boot: '+((e && e.message) || e)); }catch(e2){}
+  try{
+    if(_fpTabsTest() || document.documentElement.classList.contains('fp-tabs')){ _fp.tabs.mode=true; _fpTabsLeave('boot', true, true); }
+    else _fpFailStop();
+  }catch(e2){   // the way out itself threw: strip and tell the shell as the head script's failsafe does
+    try{ document.documentElement.classList.remove('fp-tabs'); _fpBarVars(null); _fpFailStop(); }catch(e3){}
+    try{ if(!window.__fpTabsTold){ window.__fpTabsTold=true; Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){}); } }catch(e3){}
+  }
+}
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
 var coachLoading  = false;
 // Generation counter for the Stop button — bumping it makes any in-flight
@@ -5936,7 +6043,22 @@ function renderHealthQuickLog(compact){
 }
 
 // ── Tab & Week ────────────────────────────────────────────────────────────────
-function switchTab(tab) {
+// Every page path into a tab. In tabs mode the native bar is the tabs: the shell hears the selection first
+// (selectTab, with the intent the page is about to show in it: 'chat' or 'intake'), then the page switches at once.
+// tabs.select, hello's answer, a take-over and screens.off switch locally only (no echo, contract 3.3).
+function switchTab(tab, o) {
+  if(_fp.tabs.mode) _fpSelectTab(tab, o && o.intent);
+  _switchTabLocal(tab);
+}
+// The .tab buttons follow the tab (also while the native bar hides them, so the way out shows them right).
+function _syncTabButtons(tab){
+  document.querySelectorAll('.tab').forEach(function(t){
+    var _sel=t.getAttribute('data-tab')===tab;
+    t.classList.toggle('active', _sel);
+    if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
+  });
+}
+function _switchTabLocal(tab) {
   if(tab!=='progress' && (cmpOn || document.getElementById('cmpSheetOverlay'))) _cmpExit();
   // The day sheet belongs to Progress: the widget's Start (trovo://start) opened the Log tab and
   // the runner under it, with its Delete buttons mid-screen.
@@ -5949,16 +6071,14 @@ function switchTab(tab) {
   // The Coach tab opens on the hub (342bfd9), except over a reply still in flight: coming back to
   // it mid-reply showed the hub, with the answer out of sight.
   if(tab==='coach'&&!intakeMode&&!coachLoading) coachView='home';
-  document.querySelectorAll('.tab').forEach(function(t){
-    var _sel=t.getAttribute('data-tab')===tab;
-    t.classList.toggle('active', _sel);
-    if(_sel) t.setAttribute('aria-current','page'); else t.removeAttribute('aria-current');
-  });
+  _syncTabButtons(tab);
   if(tab==='log'&&logSubTab==='workout') requestWakeLock(); else releaseWakeLock();
   if(window._chatTypingOff) _chatTypingOff();
   // A draft captured with focus must not re-focus the box (and hide the dock)
   // when the chat is reopened later through a tab switch.
   if(tab!=='coach' && typeof _coachDraft==='object' && _coachDraft) _coachDraft.focus=false;
+  // In tabs mode a reload of this web view boots on the tab it showed (contract 2.4).
+  if(_fp.tabs.mode){ try{ sessionStorage.setItem('fp_tab', tab); }catch(e){} }
   render();
   paintRunner();
 }
@@ -23413,6 +23533,7 @@ function applyDynamicType(force){
   root.setAttribute('data-dyn-type', sc===1?'1':String(sc));
   // The zoom scales 100dvh as well: #app divides its height by --dt-z to stay one screen tall.
   if(sc===1) root.style.removeProperty('--dt-z'); else root.style.setProperty('--dt-z', String(sc));
+  if(window._fp && _fp.tabs && _fp.tabs.mode) _fpBarApply();   // the native bar's numbers in CSS px at the new zoom
   if(window._vvChatSync) _vvChatSync();   // keys up: --vv-h and --vv-top are in CSS px at the zoom
   // A smaller text size lowers the root zoom: fields raised for the larger one go up again.
   if(typeof _fieldFloor==='function' && document.body) _fieldFloor(document.body);
@@ -24147,8 +24268,10 @@ function _fpWant(s){
 function _fpWantAny(){ return FP_SCREENS.some(_fpWant); }
 // A native screen covers the page (the shell says so, or the page has one up): the page moves no
 // focus by script (render's refocus, the sheet observer, the chat's draft) and its toasts and
-// confirms show natively.
+// confirms show natively. In tabs mode exactly while Coach is the tab and the Coach tab is native or
+// still waiting for the page's word (contract 8.4): Log, Progress and Settings are always the web's.
 function _fpCovered(){
+  if(_fp.tabs.mode) return currentTab==='coach' && (_fpCoachMode()!=='web' || _fp.covered);
   if(_fp.covered) return true;
   for(var k in _fp.shown) if(_fp.shown[k]) return true;
   return false;
@@ -24157,15 +24280,116 @@ function _fpCovered(){
 // or its model could not be built. covered is the shell's word (shell.covered), but once nothing
 // native is up the page is uncovered whoever took the screen down: after its own dismiss it stayed
 // covered (toasts to a shell showing nothing, no refocus) until the shell spoke. The shell still sends
-// covered:false once its screen has gone, after every dismissal (the owner's and the page's).
+// covered:false once its screen has gone, after every dismissal (the owner's and the page's). Not in
+// tabs mode: a chat popped off the Coach tab leaves the native hub over the page (contract 8.4).
 function _fpDown(s){
   _fp.shown[s]=false;
   if(s==='coach') _fp.speech=null;   // a presentation never opens on words spoken before it
-  if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
+  if(!_fp.tabs.mode && !FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
 }
 // What stands in #screen under a native screen: an element, so the resume check (a #screen with no
 // element child reloads the page) never fires while it is up.
 function _fpPlaceholder(s){ return '<div class="kt-fp-ph" data-fp-screen="'+s+'" aria-hidden="true"></div>'; }
+// ── Tabs mode: the page's half of build 61's native tab bar (shell contract v1 2.3-2.4, 3.3, 4.1-4.3, 7, 8.4) ──
+// Decided once per document by the head script's _fpTabsTest(); the fp-tabs boot block (beside _fp) boots on the tab
+// this web view showed last. The shell's bar is then the tabs: every page path into a tab is switchTab, which tells the
+// shell first (_fpSelectTab) and switches at once; the shell's own selections (the owner's tap, a deep link) arrive as
+// tabs.select and switch locally only (no echo either way). The bar's numbers sit on <html> as CSS px. The page leaves
+// for the rest of the document when the shell has no live tab root any more (screens.off tabs, a hello reply without
+// tabs, an off refusal: nothing is sent back), or on its own (a malformed reply, a failed hello call, the failsafe, a
+// throw at boot: then it sends dismiss {screen:'tabs'} once, so the shell's bar goes and the page's own is the one bar).
+function _fpFailStop(){ try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){} }
+// A whole number >= 0: seq, rev and the bar's points cross the bridge as whole numbers (contract 7.1).
+function _fpUint(n){ return typeof n==='number' && isFinite(n) && n>=0 && Math.floor(n)===n; }
+// A refusal's code (contract 3.1): e.code when a plugin sets one, else the text before the first ':' of the message (the
+// plugin rejects with '<code>: <words>'; build 60's words, 'bad message: ...', give a code nothing acts on).
+function _fpRefusal(e){
+  if(e && typeof e.code==='string' && e.code) return e.code;
+  var m=String(e && e.message!=null ? e.message : (e==null ? '' : e)), i=m.indexOf(':');
+  return (i<0 ? m : m.slice(0, i)).trim();
+}
+function _fpTabsLive(){ return !!(_fp.tabs.mode && _fpNegotiated('tabs')); }
+// The Coach tab as the page sees it (contract 8.4, P-D3): null outside tabs mode; 'native' while the page's coachHome is
+// up; 'waiting' before hello's answer, and after it while coachHome is negotiated, on and not yet declared; else 'web'.
+function _fpCoachMode(){
+  if(!_fp.tabs.mode) return null;
+  if(_fp.shown.coachHome) return 'native';
+  if(!_fp.hello) return 'waiting';
+  if(_fpNegotiated('coachHome') && !_fp.off.coachHome && !_fp.declared.coachHome) return 'waiting';
+  return 'web';
+}
+// hello's tabs as the contract has it (selected one of the four; seq and the bar's h, safe and rev whole numbers), or null.
+function _fpTabsReply(t){
+  var b=(t && typeof t==='object') ? t.bar : null;
+  if(!b || typeof b!=='object' || FP_TAB_IDS.indexOf(t.selected)<0 || !_fpUint(t.seq) || !_fpUint(b.h) || !_fpUint(b.safe) || !_fpUint(b.rev)) return null;
+  return {selected:t.selected, seq:t.seq, bar:{h:b.h, safe:b.safe, rev:b.rev}};
+}
+// The bar measured at rev (hello's reply, a sheets answer, tabs.bar): applied only when newer, by the caller. up keeps
+// the newest h above 0, so --fp-bar-up never drops to 0 while a sheet hides the bar (P-D2).
+function _fpBarSet(bar, rev){
+  var T=_fp.tabs;
+  T.bar={h:bar.h, safe:bar.safe}; T.rev=rev;
+  if(bar.h>0) T.up=bar.h;
+  _fpBarApply();
+}
+// The bar's numbers on <html> at the Larger Text zoom (applyDynamicType calls it after every zoom change); none
+// outside tabs mode.
+function _fpBarApply(){
+  var T=_fp.tabs;
+  _fpBarVars(T.mode ? T.bar : null, T.up, parseFloat(document.documentElement.style.zoom) || 1);
+}
+// The page's own selection (switchTab, and only switchTab): the shell hears it before the page switches, with the intent
+// it is about to show there ('chat' or 'intake'). The answer {tab, seq} corrects the page only for its newest request
+// (P-D8), so two quick selections never bounce back to the first and a newer tabs.select already applied wins.
+function _fpSelectTab(tab, intent){
+  var P=_fpPlugin(); if(!P || typeof P.selectTab!=='function') return;
+  var n=++_fp.tabs.req, a={tab:tab};
+  if(intent==='chat' || intent==='intake') a.intent=intent;
+  try{
+    Promise.resolve(P.selectTab(a)).then(function(r){ _fpTabsAnswer(r, n); }, function(e){ _fpTabsRefused(e, 'selectTab'); });
+  }catch(e){ setTimeout(function(){ _fpTabsRefused(e, 'selectTab'); }, 0); }   // after the switch this call is part of
+}
+function _fpTabsAnswer(r, n){
+  var T=_fp.tabs;
+  if(!T.mode) return;
+  if(!r || typeof r!=='object' || FP_TAB_IDS.indexOf(r.tab)<0 || !_fpUint(r.seq)){ _fpLog('selectTab answer ignored: '+JSON.stringify(r), 'error'); return; }
+  if(r.seq<=T.seq) return;
+  T.seq=r.seq;
+  if(n===T.req && r.tab!==currentTab) _switchTabLocal(r.tab);
+}
+// selectTab or sheets refused: 'off' (no live tab root: the shell has fallen back and told the page what it does)
+// leaves tabs mode with nothing sent back; any other code (bad-tab, build 60's words) is logged and changes nothing.
+function _fpTabsRefused(e, what){
+  if(_fpRefusal(e)==='off'){ _fpTabsLeave('off'); return; }
+  _fpLog((what || 'tabs')+' refused: '+((e && e.message) || e), 'error');
+}
+// The way out (contract 2.3): the page's own bar on the same tab, the web Coach, for the rest of the document (nothing
+// re-enters tabs mode). tell: the page left on its own (the failsafe, a malformed reply, a failed hello call, a throw
+// at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page) and presents
+// the chat no more (the fallback turns off every piece negotiated under the tab root's rule, coach included). When
+// the shell told it, it sends nothing. atBoot: from the boot block, where the first render is still to come.
+function _fpTabsLeave(why, tell, atBoot){
+  var T=_fp.tabs;
+  if(!T.mode) return;
+  T.mode=false; T.left=true; T.why=String(why || '');
+  _fpFailStop();
+  document.documentElement.classList.remove('fp-tabs');
+  _fpBarVars(null);
+  if(tell){
+    if(!T.told && !window.__fpTabsTold){
+      T.told=true; window.__fpTabsTold=true;   // once per document, with the head script's own way out
+      var P=_fpPlugin();
+      if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:'tabs'})).catch(function(){}); }catch(e){} }
+    }
+    if(!_fp.off.coach) _fp.off.coach='tabs';
+  }
+  // the Coach tab is the web's for the document, with no message: the shell has fallen back, is about to, or never linked
+  _fp.off.coachHome='tabs'; _fpDown('coachHome'); _fp.declared.coachHome='dismiss';
+  if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
+  _syncTabButtons(currentTab);
+  _fpLog('tabs off: '+T.why, tell ? 'error' : 'info');
+  if(!atBoot) render();
+}
 // Every string the shell gets is cut in whole characters (_wellFormed), as for the watch and the
 // widget: models go through _nativeJSON, and toast, confirm and log text through this.
 function _fpText(s){ return _wellFormed(s==null ? '' : s); }
@@ -24176,21 +24400,40 @@ function _fpLog(text, level){
 // hello: the contract this page speaks and the screens it can hand over; the answer is what this
 // document may present. Sent once per document at boot; nothing is native before it answers. Only an
 // answer the page speaks counts (1 to FP_CONTRACT; FPCore never answers above the page's v): any
-// other is v0, no native screen.
+// other is v0, no native screen. Tabs mode names FP_SCREENS, classic the chat alone (as build 60's page
+// did), FP_NATIVE false none. In tabs mode the reply carries the shell's selection, seq and measured bar:
+// adopted when newer, then the take-over, as one step (contract 3.2); a reply without tabs, or one the page
+// cannot use, or a failed call ends tabs mode (contract 2.3). Every answer stops the head's failsafe.
 function _fpHello(){
   var P=_fpPlugin(); if(!P || !P.hello) return;
+  var T=_fp.tabs, screens=!FP_NATIVE ? [] : T.mode ? FP_SCREENS.slice() : ['coach'];
+  var answered=function(){ window.__fpTabsAnswered=true; _fpFailStop(); };
   try{
-    Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:FP_NATIVE ? FP_SCREENS.slice() : [], boot:_fpBoot})).then(function(r){
+    Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:screens, boot:_fpBoot})).then(function(r){
+      answered();
       var v=(r && typeof r==='object') ? (r.v|0) : 0;
+      // tabs is judged on the reply as it came, before a v this page does not speak is read as v0
+      var named=!!(r && typeof r==='object' && Array.isArray(r.screens) && r.screens.indexOf('tabs')>=0);
+      var tabs=(named && v>=1 && v<=FP_CONTRACT) ? _fpTabsReply(r.tabs) : null;
       if(v<0 || v>FP_CONTRACT){ _fpLog('hello v'+v+' is no contract this page speaks (v1 to v'+FP_CONTRACT+'): no native screens', 'error'); r={v:0, screens:[], why:'contract'}; v=0; }
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
       var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
-      if(up.length) _fpTakeOver(up);
+      // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs
+      if(T.mode && !named) _fpTabsLeave('hello');   // the shell fell back at this hello (a version refusal too)
+      else if(T.mode && !tabs) _fpTabsLeave('malformed', true);
+      if(T.mode){
+        _fp.taking=true;   // the adoption's render presents nothing until the take-over has read up
+        try{
+          if(tabs.seq>T.seq){ T.seq=tabs.seq; if(tabs.selected!==currentTab) _switchTabLocal(tabs.selected); }
+          if(tabs.bar.rev>T.rev) _fpBarSet(tabs.bar, tabs.bar.rev);
+          if(up.length) _fpTakeOver(up);
+        }finally{ _fp.taking=false; }
+      } else if(up.length) _fpTakeOver(up);
       if(_fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
-    }).catch(function(e){ _fp.hello={v:0, screens:[], why:'error'}; });
-  }catch(e){}
+    }).catch(function(e){ answered(); _fp.hello={v:0, screens:[], why:'error'}; _fpTabsLeave('hello-failed', true); });
+  }catch(e){ answered(); _fpTabsLeave('hello-failed', true); }
 }
 // A reload under a native screen (WebContent died, a Put back reload): the shell still shows it from
 // the document before and names it in hello's answer (up). The page takes over each one it can show
@@ -24422,6 +24665,25 @@ function _fpImage(v){ return !!v && typeof v==='object' && _fpStr(v.mediaType) &
 var _FP_BAD={ok:false, error:'bad-args'};
 var _FP_INTENTS={
   'ping':function(){ return {ok:true, v:FP_CONTRACT}; },
+  // The shell's own selection (the owner's tap, a deep link, a stray it redirected), newer than any the page has seen:
+  // the page switches locally (never selectTab back) and answers once the new tab is drawn, so VoiceOver's post on the
+  // answer reads it. again: the owner's re-tap of the selected tab, which runs the switch as the page's own button did
+  // (Coach goes back to the hub unless setup or a reply is in flight). An older one changes nothing.
+  'tabs.select':function(a){
+    if(FP_TAB_IDS.indexOf(a.tab)<0 || !_fpUint(a.seq) || (a.again!=null && typeof a.again!=='boolean')) return _FP_BAD;
+    var T=_fp.tabs;
+    if(!T.mode) return {ok:false, error:'off'};
+    if(a.seq>T.seq){ T.seq=a.seq; if(a.tab!==currentTab || a.again===true) _switchTabLocal(a.tab); }
+    return {ok:true, tab:currentTab};
+  },
+  // A geometry change the shell made on its own (a trait change; a return to a web tab with a sheet open): newer only.
+  'tabs.bar':function(a){
+    if(!_fpUint(a.h) || !_fpUint(a.safe) || !_fpUint(a.rev)) return _FP_BAD;
+    var T=_fp.tabs;
+    if(!T.mode) return {ok:false, error:'off'};
+    if(a.rev>T.rev) _fpBarSet({h:a.h, safe:a.safe}, a.rev);
+    return {ok:true};
+  },
   'shell.covered':function(a){
     if(typeof a.on!=='boolean') return _FP_BAD;
     _fp.covered=a.on;
@@ -24497,6 +24759,7 @@ var _FP_INTENTS={
   'screens.off':function(a){
     if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why))) return _FP_BAD;
     _fp.off[a.screen]=a.why || 'off';
+    if(a.screen==='tabs'){ _fpTabsLeave(a.why || 'off'); return {ok:true}; }   // the shell has fallen back: nothing back
     _fpDown(a.screen);   // the shell has taken it down: no dismiss; uncovered once nothing native is up
     _fpLog(a.screen+' off: '+(a.why || 'off'), 'error');
     render();   // the web screen again, for the rest of the document
@@ -24515,9 +24778,10 @@ if(_fpPlugin()){
   }};
   // A native screen goes over the page (.overFullScreen), so the page stays visible under it while the app is in use:
   // every visibilitychange while one covers the page goes to the shell, which counts a page hidden while the app was in
-  // use (Settings > About; leaving the app hides it by design, and the shell tells the two apart).
+  // use (Settings > About; leaving the app hides it by design, and the shell tells the two apart). In tabs mode every
+  // one goes (contract 3.8): a tab change that hid the page is counted too.
   document.addEventListener('visibilitychange', function(){
-    if(!_fpCovered()) return;
+    if(!_fp.tabs.mode && !_fpCovered()) return;
     var P=_fpPlugin(); if(!P || typeof P.visibility!=='function') return;
     try{ Promise.resolve(P.visibility({state:String(document.visibilityState||''), at:Date.now()})).catch(function(){}); }catch(e){}
   });
