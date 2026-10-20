@@ -130,29 +130,6 @@ final class CoachHomeViewTests: XCTestCase {
         """)
     }
 
-    /// The coachHome fixtures FPCoreTests decodes (`Tests/FPCoreTests/Fixtures/coachHome`), read from the source tree:
-    /// the hand-made ones now, the page-built ones as they land (the folder is listed, never named file by file).
-    enum HomeFixtures {
-        static let dir: URL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("FPCoreTests/Fixtures/coachHome", isDirectory: true)
-
-        static func names() throws -> [String] {
-            try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }.sorted()
-        }
-
-        /// The fixture in `room`: its own room keeps the file's tokens, another room takes that room's compiled defaults.
-        static func model(_ name: String, in room: Room) throws -> CoachHomeModel {
-            let json = try JSONText.parse(utf8: Data(contentsOf: dir.appendingPathComponent(name + ".json")))
-            let own = try CoachHomeModel(json: json)
-            guard own.room != room, case .object(var o) = json else { return own }
-            o["room"] = .string(room.id)
-            o["paper"] = .bool(room.isPaper ?? own.paper)
-            o["tokens"] = nil
-            return try CoachHomeModel(json: .object(o))
-        }
-    }
-
     // MARK: Hosting
 
     /// The hub on a phone screen: the safe areas replaced by an iPhone's (47 pt status bar, the 83 pt glass tab bar),
@@ -431,11 +408,11 @@ final class CoachHomeViewTests: XCTestCase {
     // MARK: Fixtures and routes
 
     func testEveryCoachHomeFixtureLaysOutInBothRooms() throws {
-        let names = try HomeFixtures.names()
+        let names = try CoachHomeFixtures.names()
         XCTAssertFalse(names.isEmpty, "the coachHome fixtures")
         for name in names {
             for (roomName, room) in Self.rooms {
-                let m = try HomeFixtures.model(name, in: room)
+                let m = try CoachHomeFixtures.model(name, in: room)
                 let what = "\(name) in \(roomName)"
                 let rec = Recorder()
                 // the tab as it is: one scroll view across the whole screen, its content inset by the bars, so the
@@ -459,7 +436,7 @@ final class CoachHomeViewTests: XCTestCase {
 
     func testAnUnknownRouteDrawsTheHubsLayoutWithTheConnectBlockLast() throws {
         // the hand-made forward-compat fixture: route "upsell", two groups left after the unknown rows, a connect block
-        let fc = try HomeFixtures.model("forward-compat", in: .heavyweight)
+        let fc = try CoachHomeFixtures.model("forward-compat", in: .heavyweight)
         XCTAssertEqual(fc.route, .other("upsell"))
         let column = Hosted(Phone(model: fc, host: Recorder().host(), unscrolledWidth: Self.screen.width), size: Self.screen)
         let got = column.elements
