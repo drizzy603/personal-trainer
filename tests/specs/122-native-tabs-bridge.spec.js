@@ -19,8 +19,8 @@
 //   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
 //   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
 //   off; selectTab's and sheets' refusals through one handler; at hello it renders after the take-over), the failsafe on
-//   visible time (real time and Playwright's clock; a suspension between a hide and a show adds nothing, no stretch more
-//   than 1 s), and a broken page still drops the bar (whatever state its main script reached).
+//   visible time (real time and Playwright's clock; on the clock, a suspension between a hide and a show adds nothing
+//   and no stretch counts more than 1 s), and a broken page still drops the bar (whatever state its main script reached).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -838,25 +838,35 @@ serial('P2: the failsafe: no hello answer in 16 s of visible time (hidden time d
 });
 
 serial('P2: the failsafe counts only time the page could see: a hide and a show with no tick between them (the app suspended) add nothing; a stretch no visibilitychange reported adds 1 s at most', async () => {
-  // performance.now() moved by hand (__skew): ten minutes pass inside one task, so no failsafe tick runs in them
-  const SKEW = 'window.__skew = 0; (function () { var pn = performance.now.bind(performance); performance.now = function () { return pn() + window.__skew; }; })();';
-  const app = await pageBoot('tabs', { init: HIDDEN + SKEW + 'window.__vis = "visible"; window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 8000;' });
+  // On Playwright's clock, paused once the page is up (hidden until then): the failsafe ticks only while the case runs
+  // the clock, so no real time counts (no wall-clock budget, however slow the machine) and each check sits at a known
+  // visible time against __fpTabsFailsafeMs = 8000. A suspension is ten minutes of performance.now() moved by hand
+  // (__skew, over the clock's own performance.now, so installed after boot) while the clock stands still: no tick
+  // between. Ticks fall every 250 ms of clock time, so a check reads the count of the last tick up to 250 ms before it.
+  const app = await pageBoot('tabs', { clock: { time: Date.now() }, init: HIDDEN + 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 8000;' });
   try {
-    await settle(app, 300);
+    const t = await ev(app, () => Date.now());
+    await app.page.clock.pauseAt(t + 1000);
+    const runFor = (ms) => app.page.clock.runFor(ms);
+    await ev(app, () => { window.__skew = 0; const pn = performance.now.bind(performance); performance.now = () => pn() + window.__skew;
+      window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    await runFor(3000);   // 3 s visible
     await ev(app, () => { window.__vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
       window.__skew += 600000; window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
-    await settle(app, 600);
+    await runFor(1000);   // 4 s, the ten minutes between the hide and the show uncounted
     const a = await look(app);
     await ev(app, () => { window.__skew += 600000; });   // visible all along, ten minutes in one stretch: a stall, a suspension
-    await settle(app, 600);
+    await runFor(1000);   // 5 s; that stretch counts 1 s, 0.75 s more than its own 250 ms of clock
     const b = await look(app);
-    assert(a.mode && a.cls && dismissTabs(a) === 0, 'ten minutes between a hide and a show: still in tabs mode: ' + J(a));
+    await runFor(2000);   // 7 s: 7.75 s counted at most
+    const c = await look(app);
+    await runFor(500);    // 7.5 s: past 8 s counted by its last tick
+    const d = await look(app);
+    assert(a.mode && a.cls && dismissTabs(a) === 0, 'ten minutes between a hide and a show (no tick between them): still in tabs mode: ' + J(a));
     assert(b.mode && b.cls && dismissTabs(b) === 0, 'an unreported ten minutes counts 1 s at most: still in tabs mode: ' + J(b));
-    await app.page.waitForFunction(() => !_fp.tabs.mode, null, { timeout: 20000 });
-    await settle(app, 100);
-    const o = await look(app);
-    classicLook(o, 'the failsafe after a suspension');
-    assert(o.why === 'no-hello' && o.told && dismissTabs(o) === 1, 'then out on its own after 8 s of visible time, one dismiss tabs: ' + J(o));
+    assert(c.mode && c.cls && dismissTabs(c) === 0, '7 s of visible time plus that 1 s: still in tabs mode (the suspension added nothing): ' + J(c));
+    classicLook(d, 'the failsafe after a suspension');
+    assert(!d.mode && d.why === 'no-hello' && d.told && dismissTabs(d) === 1, '7.5 s of visible time plus that 1 s: out on its own, one dismiss tabs: ' + J(d));
   } finally { await app.close(); }
 });
 
