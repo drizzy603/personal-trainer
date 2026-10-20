@@ -47,7 +47,8 @@ import Foundation
 //   every Coach entry and exit) counts for nothing at first; the link asks for a `ping` (`pingWhenIdle`).
 //   The first answer after it, the ping's or any queued intent's, drops the holds uncounted (a busy page,
 //   not a broken one); the ping's failure counts them and then itself, so a page that stopped answering
-//   still trips. A document start drops them. Every other failure counts as before.
+//   still trips. A document start drops them. A ping that ends with no answer at all (`pingLost`) lets the
+//   next hold ask again. Every other failure counts as before.
 
 /// What the host does after an event, in order.
 public enum LinkEffect: Equatable, Sendable {
@@ -76,7 +77,8 @@ public enum LinkEffect: Equatable, Sendable {
     case fellBack(FellBackWhy)
     /// A timeout of `tabs.select`, `tabs.bar` or `shell.covered` is held (contract 4.4, D41): send `ping` once the
     /// link is idle. Its answer, or any answer before it, drops the hold uncounted; its failure counts the hold and
-    /// then itself. Asked once until a ping's outcome comes back.
+    /// then itself. Asked once until a ping's outcome comes back (`intentFinished`), or the host reports that the ping
+    /// ended with no answer at all (`pingLost`).
     case pingWhenIdle
 }
 
@@ -420,6 +422,17 @@ public struct LinkState: Equatable, Sendable {
             held = []
             return Self.tidy(succeed(screens, kind: .intent))
         }
+    }
+
+    /// The ping asked for (`pingWhenIdle`) ended under `boot` with no answer at all: its document went, or none was
+    /// linked when it was sent (PageLink's `documentGone` or `notLinked`, which never reach `intentFinished`). Nothing
+    /// counts, and the next held timeout asks again; the holds wait as before for an answer or a ping's failure. A
+    /// document start does the same and more (it drops the holds); this covers a ping cut short while its document
+    /// stayed (a navigation that never committed). Not asking again here keeps a host whose link went out of step from
+    /// looping on pings that can never be sent.
+    public mutating func pingLost(boot: String) {
+        guard link?.boot == boot else { return }
+        pingAsked = false
     }
 
     /// The live pieces an intent of `piece` counts for (nil: the shell's own, every live piece).

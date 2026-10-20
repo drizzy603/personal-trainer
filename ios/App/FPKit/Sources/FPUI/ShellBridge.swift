@@ -603,8 +603,15 @@ public final class ShellBridge: NSObject {
                 // without animation, the Coach tab dropped); the screenOffs after it only tell the page (10.3)
                 Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public))")
             case .pingWhenIdle:
-                // a state intent's timeout is held (contract 4.4): the ping confirms it, at the end of the queue
-                send(.ping, b)
+                // a state intent's timeout is held (contract 4.4): the ping confirms it, at the end of the queue. An
+                // answer or a failure reaches the link through finished(); a ping that ends with neither (its document
+                // went, none linked) is told apart, so the next hold can ask again
+                let boot = b.link.link?.boot
+                send(.ping, b) { [weak b] outcome in
+                    guard let b, let boot else { return }
+                    if case .answered = outcome { return }
+                    b.link.pingLost(boot: boot)
+                }
             }
         }
     }

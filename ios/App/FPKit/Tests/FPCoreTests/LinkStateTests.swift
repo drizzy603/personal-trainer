@@ -867,6 +867,27 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(sixty.book.trip(screen: "coach", pageBuild: "P1")?.detail, "3 in a row: timeout, timeout, timeout", "build 60's scenario")
     }
 
+    /// A ping that ends with no answer at all (its document went, or none was linked: the host's `pingLost`) counts
+    /// nothing and lets the next hold ask again; the holds wait for an answer or a ping's failure as before. Another
+    /// boot's report changes nothing.
+    func testALostPingLetsTheNextHoldAskAgain() {
+        var s = linked61()
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2), [.pingWhenIdle])
+        XCTAssertEqual(s.intentFinished(.tabsBar(BarMetrics(h: 83, safe: 34, rev: 1)), boot: "b1", outcome: .failed(.timeout), at: t0 + 4), [], "asked once")
+        s.pingLost(boot: "b0")
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 5), [], "another boot's ping: still waiting for this one's")
+        s.pingLost(boot: "b1")
+        XCTAssertEqual(s.heldTimeouts, 3, "nothing counted, nothing dropped")
+        XCTAssertEqual(s.book, BreakerBook())
+        XCTAssertEqual(s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [.pingWhenIdle], "the next hold asks again")
+        XCTAssertEqual(s.heldTimeouts, 4)
+        // the new ping's answer drops every hold uncounted
+        XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: ok, at: t0 + 7), [])
+        XCTAssertEqual(s.heldTimeouts, 0)
+        XCTAssertEqual(s.book, BreakerBook())
+        XCTAssertEqual(s.liveScreens, all)
+    }
+
     /// Holds belong to their boot: a document start drops them uncounted, and the gone document's ping counts nothing.
     func testADocumentStartDropsTheHolds() {
         var s = linked61()

@@ -411,6 +411,136 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertEqual(bar["off"] as? String, "needs")
         XCTAssertEqual(bar["needs"] as? [String], ["root"], "iOS 26: its own checks pass, a classic root until one is adopted")
     }
+
+    /// A page whose `shell.covered` never answers (a state intent stalled in the page) and whose `ping` answers, never
+    /// answers (`window.__pingDead`), or starts a navigation that never commits (`window.__pingNavigates`, a URL).
+    static let stallPage = """
+        <!doctype html><meta charset="utf-8"><title>fp</title><script>
+        window.__got = [];
+        window.FPScreens = { v: 1, call: function (name, args) {
+          window.__got.push(name);
+          if (name === 'shell.covered') return new Promise(function () {});
+          if (name === 'ping') {
+            if (window.__pingNavigates) { location.href = window.__pingNavigates; return new Promise(function () {}); }
+            return window.__pingDead ? new Promise(function () {}) : Promise.resolve({ ok: true, v: 1 });
+          }
+          return Promise.resolve({ ok: true });
+        } };
+        </script>
+        """
+
+    /// A build 61 bridge under a classic root (no tab root before H7), linked to the stall page with the chat live: the
+    /// piece a shell intent counts for. Timeouts scaled by `scale`.
+    private func stalledBridge(_ setup: String = "0", scale: Double = 0.1) async throws -> (ShellBridge, ShellBridge.Binding) {
+        let b = bridge61()
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        let binding = try XCTUnwrap(b.binding)
+        binding.pageLink.timeoutScale = scale
+        webView.loadHTMLString(Self.stallPage, baseURL: URL(string: "https://fp.test/"))
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            if !webView.isLoading, (try? await webView.evaluateJavaScript("typeof window.FPScreens")) as? String == "object" { break }
+        }
+        _ = try await webView.evaluateJavaScript(setup + "; 0")
+        _ = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
+        XCTAssertEqual(binding.link.liveScreens, ["coach"], "a classic root: 60's overlay chat")
+        XCTAssertEqual(binding.pageLink.pending, 0, "nothing in the link before the test's own intents")
+        return (b, binding)
+    }
+
+    /// Fulfils `exp` when a ping record ends with `outcome` (PageLink's word), after the probe's own record hook.
+    private func onPing(_ binding: ShellBridge.Binding, ends outcome: String, _ exp: XCTestExpectation) {
+        let earlier = binding.pageLink.onRecord
+        binding.pageLink.onRecord = { r in
+            earlier?(r)
+            if r.name == "ping", r.outcome == outcome { exp.fulfill() }
+        }
+    }
+
+    /// Contract 4.4 (D41) through the bridge: two timed-out `shell.covered` are held, the link asks for one ping, the
+    /// bridge sends it after them, and its answer drops both uncounted (a busy page, not a broken one).
+    func testHeldTimeoutsSendOnePingWhoseAnswerDropsThem() async throws {
+        let (b, binding) = try await stalledBridge()
+        let pinged = expectation(description: "one ping, answered")
+        onPing(binding, ends: "done", pinged)
+        let first = expectation(description: "the first shell.covered times out")
+        let second = expectation(description: "the second shell.covered times out")
+        b.sendCounted(.shellCovered(on: true)) { outcome in
+            XCTAssertEqual(outcome, .answered(.failed(.timeout)))
+            first.fulfill()
+        }
+        b.sendCounted(.shellCovered(on: false)) { outcome in
+            XCTAssertEqual(outcome, .answered(.failed(.timeout)))
+            second.fulfill()
+        }
+        await fulfillment(of: [first, second, pinged], timeout: 10, enforceOrder: true)
+        let names = binding.pageLink.records.map(\.name)
+        XCTAssertEqual(names, ["shell.covered", "shell.covered", "ping"], "two holds, then one ping at the end of the queue")
+        XCTAssertEqual(binding.link.heldTimeouts, 0, "the ping's answer dropped them")
+        XCTAssertEqual(binding.link.book.screens["coach"]?.failures ?? 0, 0, "nothing counted")
+        XCTAssertTrue(binding.link.isLive("coach"))
+    }
+
+    /// The same page dead to the ping too: the ping's failure counts the held timeout, then itself, against the live
+    /// chat (two in a row: no trip yet).
+    func testAHeldTimeoutCountsWhenThePingFailsToo() async throws {
+        let (b, binding) = try await stalledBridge("window.__pingDead = true")
+        let pinged = expectation(description: "the ping times out")
+        onPing(binding, ends: "failed timeout", pinged)
+        let covered = expectation(description: "shell.covered times out")
+        b.sendCounted(.shellCovered(on: true)) { outcome in
+            XCTAssertEqual(outcome, .answered(.failed(.timeout)))
+            covered.fulfill()
+        }
+        await fulfillment(of: [covered, pinged], timeout: 10, enforceOrder: true)
+        XCTAssertEqual(binding.pageLink.records.map(\.name), ["shell.covered", "ping"])
+        XCTAssertEqual(binding.link.book.screens["coach"]?.failures, 2, "the hold, then the ping")
+        XCTAssertEqual(binding.link.book.screens["coach"]?.recent, ["timeout", "timeout"])
+        XCTAssertEqual(binding.link.heldTimeouts, 0)
+        XCTAssertTrue(binding.link.isLive("coach"), "two in a row: no trip yet")
+    }
+
+    /// A ping cut short with no answer: a navigation under way at its timeout ends it `documentGone`, though one that
+    /// never commits leaves the document in place. The bridge tells the link (`pingLost`), so the next held timeout
+    /// asks for a new ping instead of being held for good.
+    func testALostPingLetsTheNextHoldAskAgain() async throws {
+        // a web view whose fpwait:// loads never answer: a navigation there stays provisional until it is stopped
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(NeverAnswers(), forURLScheme: "fpwait")
+        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+        root.view = webView
+        let (b, binding) = try await stalledBridge("window.__pingNavigates = 'fpwait://hold'", scale: 0.5)
+        let lost = expectation(description: "the first ping ends unanswered")
+        onPing(binding, ends: "gone", lost)
+        let covered = expectation(description: "shell.covered times out")
+        b.sendCounted(.shellCovered(on: true)) { outcome in
+            XCTAssertEqual(outcome, .answered(.failed(.timeout)))
+            covered.fulfill()
+        }
+        await fulfillment(of: [covered, lost], timeout: 10, enforceOrder: true)
+        XCTAssertTrue(webView.isLoading, "the navigation is still under way")
+        let stopped = keyValueObservingExpectation(for: webView as Any, keyPath: "loading", expectedValue: false)
+        webView.stopLoading()
+        await fulfillment(of: [stopped], timeout: 5)
+        _ = try await webView.evaluateJavaScript("window.__pingNavigates = null; 0")
+        XCTAssertEqual(binding.link.link?.boot, "b1", "the same document, still linked")
+        XCTAssertEqual(binding.link.heldTimeouts, 1, "the hold waits")
+        let answered = expectation(description: "a second ping, answered")
+        onPing(binding, ends: "done", answered)
+        b.sendCounted(.shellCovered(on: false)) { _ in }
+        await fulfillment(of: [answered], timeout: 10)
+        XCTAssertEqual(binding.pageLink.records.filter { $0.name == "ping" }.map(\.outcome), ["gone", "done"])
+        XCTAssertEqual(binding.link.heldTimeouts, 0, "the second ping's answer dropped both holds")
+        XCTAssertEqual(binding.link.book.screens["coach"]?.failures ?? 0, 0)
+    }
+}
+
+/// A URL scheme handler that never answers: a load through it stays provisional until it is stopped.
+@MainActor
+private final class NeverAnswers: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {}
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
 }
 
 #endif
