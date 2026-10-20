@@ -72,7 +72,8 @@ public struct CoachHomeHost {
 
 /// Where the hub's meta row ends, in global (window) coordinates (contract 8.3, N-G10): the host's toast goes under
 /// it while the hub or the connect screen is on top, as it goes under the chat's header (`CoachHeaderBottomKey`). The
-/// row scrolls with the hub, so the value follows it (0 or less once it has scrolled away).
+/// row scrolls with the hub, so the value follows it: 0 or less once the row has scrolled above the window's top (the
+/// host then anchors under the status bar, as ScreenHost reads `y > 0` for the chat's header).
 public struct HubHeaderBottomKey: PreferenceKey {
     public static let defaultValue: CGFloat = 0
     public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
@@ -424,7 +425,7 @@ struct HomeRowButton: View {
     @Environment(\.roomTheme) private var t
 
     /// The web draws the chevron on the rows that open something (Open Chat, Build My Programme), none on Clear Chat
-    /// History and Disconnect (`index.html:21171`, `21186`; the Account rows have none).
+    /// History and Disconnect (`index.html:21171`, `21188`; the Account rows have none).
     static func chevron(_ action: CoachHomeModel.Row.Action) -> Bool {
         switch action {
         case .openChat, .startIntake: return true
