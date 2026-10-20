@@ -14,14 +14,14 @@
 //   FP_TABS or FP_NATIVE off by a getter or by the page an OTA ships): no fp-tabs, no --fp-* and its own #tabs, and a
 //   tour sends no selectTab, sheets, setSwitch or dismiss tabs; the class and the flag's bar are on <html> before #tabs
 //   is in and #tabs is hidden; the boot tab (the flag's, fp_tab, which gives way to hello's reply even at seq 0); hello
-//   names FP_SCREENS and adopts a newer selection and bar with no selectTab; the funnel (one selectTab per switchTab before the local switch, answers correct only the
-//   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
-//   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
-//   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
-//   off; selectTab's refusals, and their handler with sheets' label as a unit check until P5 sends sheets; at hello it
-//   renders after the leave and the take-over), the failsafe on visible time (real time and Playwright's clock; on the
-//   clock, a suspension between a hide and a show adds nothing and no stretch counts more than 1 s), and a broken page
-//   still drops the bar (whatever state its main script reached).
+//   names FP_SCREENS and adopts a newer selection and bar with no selectTab; the funnel (one selectTab per switchTab
+//   before the local switch, answers correct only the newest request, a crossing tap wins, no bounce back); tabs.select
+//   and tabs.bar (newer only, again, bad-args, off outside tabs mode); the variables at the Larger Text zooms; covered
+//   is the Coach tab not web; every visibilitychange forwarded; the way out (told by the shell: nothing sent; on its
+//   own: one dismiss tabs and the chat off; selectTab's refusals, and their handler with sheets' label as a unit check
+//   until P5 sends sheets; at hello it renders after the leave and the take-over), the failsafe on visible time (real
+//   time and Playwright's clock; on the clock, a suspension between a hide and a show adds nothing and no stretch
+//   counts more than 1 s), and a broken page still drops the bar (whatever state its main script reached).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
