@@ -18,9 +18,10 @@
 //   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
 //   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
 //   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
-//   off; selectTab's and sheets' refusals through one handler; at hello it renders after the take-over), the failsafe on
-//   visible time (real time and Playwright's clock; on the clock, a suspension between a hide and a show adds nothing
-//   and no stretch counts more than 1 s), and a broken page still drops the bar (whatever state its main script reached).
+//   off; selectTab's and sheets' refusals through one handler; at hello it renders after the leave and the take-over),
+//   the failsafe on visible time (real time and Playwright's clock; on the clock, a suspension between a hide and a show
+//   adds nothing and no stretch counts more than 1 s), and a broken page still drops the bar (whatever state its main
+//   script reached).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -741,26 +742,70 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
   } finally { await ref.close(); }
 });
 
-serial('P2: a way out at hello renders once the take-over has read up: a reply without tabs that negotiates the overlay chat and names it up takes it over (no present, no dismiss)', async () => {
-  // booted on Coach with the chat drawn before hello answers (the boot's hello stays silent; the case sends the one that
-  // answers); the policy turned tabs off, so the scene falls back at that hello and negotiates 60's overlay chat, and the
-  // mock names it up (__fpShellUp). A conforming shell pops the chat when it falls back (contract 10.3), so up is empty
-  // there; the page's order holds whatever up says: leave, take over, then render (contract 3.2)
-  const app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' },
-    init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1e9; window.__fpShellOff = ["tabs"]; window.__fpShellUp = ["coach"];' });
-  try {
-    const pre = await ev(app, () => { coachView = 'chat'; render(); const r = { hello: _fp.hello, mode: _fp.tabs.mode, tab: currentTab };
-      window.__fpShellHelloSilent = false; _fpHello(); return r; });
+serial('P2: a way out at hello renders after the leave, once the take-over has read up: a reply without tabs (the policy turned tabs off) that negotiates the overlay chat presents it once, after the leave (a conforming shell: no up), or takes it over when up names it (no present, no dismiss); with nothing wanted the page still renders on its own bar', async () => {
+  // Each boot's hello stays silent and the case sends the one that answers, with spies on render, present and dismiss
+  // that note whether the page was still in tabs mode at each call (contract 3.2's order: leave, take over, then
+  // render). The policy turned tabs off, so the scene falls back at that hello and negotiates 60's overlay chat.
+  const SILENT = 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1e9; window.__fpShellOff = ["tabs"];';
+  const answer = (app, chat) => ev(app, (chat) => {
+    if (chat) { coachView = 'chat'; render(); }
+    const r = { hello: _fp.hello, mode: _fp.tabs.mode, tab: currentTab, web: !!document.getElementById('coach-input') };
+    window.__order = [];
+    const P = Capacitor.Plugins.TrovoShell, present = P.present, dismiss = P.dismiss, paint = window.render;
+    P.present = function (a) { __order.push(['present', a && a.screen, _fp.tabs.mode]); return present.apply(this, arguments); };
+    P.dismiss = function (a) { __order.push(['dismiss', a && a.screen, _fp.tabs.mode]); return dismiss.apply(this, arguments); };
+    window.render = function () { __order.push(['render', null, _fp.tabs.mode]); return paint.apply(this, arguments); };
+    window.__fpShellHelloSilent = false; _fpHello();
+    return r;
+  }, chat);
+  const after = async (app) => {
     await helloIn(app);
     await settle(app, 100);
     const o = await look(app);
-    const r = await ev(app, () => ({ present: __fpShell.of('present'), dismiss: __fpShell.of('dismiss'), shown: !!_fp.shown.coach,
-      live: _fpLive('coach'), view: coachView, route: _lastRenderedRoute }));
-    assert(pre.hello === null && pre.mode && pre.tab === 'coach', 'the chat was drawn before hello answered: ' + J(pre));
-    classicLook(o, 'a reply without tabs, the chat up');
-    assert(!o.mode && o.why === 'hello' && !o.told && dismissTabs(o) === 0 && o.scene.scene.fellBack.why === 'policy', 'out at hello, nothing sent back: ' + J(o));
+    const r = await ev(app, () => ({ order: window.__order, present: __fpShell.of('present'), dismiss: __fpShell.of('dismiss'),
+      shown: !!_fp.shown.coach, live: _fpLive('coach'), want: _fpWantAny(), view: coachView }));
+    const of = (k) => r.order.filter((x) => x[0] === k);
+    Object.assign(r, { renders: of('render'), presents: of('present'), dismisses: of('dismiss'),
+      firstRender: r.order.findIndex((x) => x[0] === 'render'), firstPresent: r.order.findIndex((x) => x[0] === 'present') });
+    return [o, r];
+  };
+  const outAtHello = (o, r, tag) => {
+    classicLook(o, tag);
+    assert(!o.mode && o.why === 'hello' && !o.told && dismissTabs(o) === 0 && o.scene.scene.fellBack.why === 'policy', tag + ': out at hello, nothing sent back: ' + J(o));
+    assert(r.renders.length > 0 && r.renders.every((x) => x[2] === false), tag + ': rendered after the leave, and never in tabs mode once hello answered: ' + J(r.order));
+  };
+  // a conforming shell pops the chat when it falls back (contract 10.3), so its reply names no up: booted on Coach with
+  // the web chat drawn, the page leaves tabs mode and its render then presents 60's overlay chat, once
+  let app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' }, init: SILENT });
+  try {
+    const pre = await answer(app, true);
+    const [o, r] = await after(app);
+    assert(pre.hello === null && pre.mode && pre.tab === 'coach' && pre.web, 'the web chat was drawn before hello answered: ' + J(pre));
+    outAtHello(o, r, 'a conforming fallback at hello, the chat drawn');
+    assert(J(r.present) === '[{"screen":"coach"}]' && J(r.presents) === '[["present","coach",false]]' && r.firstRender >= 0 && r.firstRender < r.firstPresent
+      && r.dismiss.length === 0 && r.shown && r.live && r.view === 'chat' && o.scene.scene.pushed === true,
+      'the overlay chat presented once, by the render after the leave; no dismiss: ' + J(r));
+  } finally { await app.close(); }
+  // a reply that names the chat up (the mock's __fpShellUp; 10.3 rules it out for a conforming shell): the take-over
+  // reads up before the render, so the chat the shell still shows is taken over, not presented again
+  app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' }, init: SILENT + 'window.__fpShellUp = ["coach"];' });
+  try {
+    const pre = await answer(app, true);
+    const [o, r] = await after(app);
+    assert(pre.hello === null && pre.mode && pre.tab === 'coach' && pre.web, 'the web chat was drawn before hello answered: ' + J(pre));
+    outAtHello(o, r, 'a reply without tabs, the chat up');
     assert(r.present.length === 0 && r.dismiss.length === 0 && r.shown && r.live && r.view === 'chat',
       'the chat the shell still shows is taken over: no present, no dismiss: ' + J(r));
+  } finally { await app.close(); }
+  // nothing wanted (Log, no key): no take-over and no native screen, and the leave still renders the page on its own bar
+  app = await pageBoot('tabs', { init: SILENT });
+  try {
+    const pre = await answer(app, false);
+    const [o, r] = await after(app);
+    assert(pre.hello === null && pre.mode && pre.tab === 'log', 'in tabs mode on Log before hello answered: ' + J(pre));
+    outAtHello(o, r, 'a reply without tabs, nothing wanted');
+    assert(!r.want && r.presents.length === 0 && r.dismisses.length === 0 && r.present.length === 0 && r.dismiss.length === 0 && routeTab(o) === 'log',
+      'nothing wanted: no present, no dismiss, the same tab drawn: ' + J([r, o.route]));
   } finally { await app.close(); }
 });
 
