@@ -147,7 +147,7 @@ public final class CoachHomeStore: ObservableObject {
     /// newer model's update removes the field): ignored, so the flag never says "typed" over the hub or the ground.
     func fieldTyped(_ typed: Bool) {
         guard typed != keyFieldTyped else { return }
-        if typed, model.flatMap(CoachHomeView.connectKey) == nil {
+        if typed, !connectDrawn {
             note("a key field on its way out says it holds text: ignored, no field is drawn")
             return
         }
@@ -206,6 +206,11 @@ public final class CoachHomeStore: ObservableObject {
         Self.log.info("coachHome: \(line, privacy: .public)")
     }
 
+    /// Whether the model draws a connect block, and so the key field: CoachHomeView draws one only where `connectKey`
+    /// names it (the connect screen, or a newer page's route that carries a connect object), never on the hub, whatever
+    /// its model carries.
+    private var connectDrawn: Bool { model.flatMap(CoachHomeView.connectKey) != nil }
+
     /// What the probe reports (ScreenHost's `describe()` carries it): the model's rev, boot, route, `resume`, the rows'
     /// actions, whether a connect block and its starter link are drawn, `connecting`, the key field's flag ("empty" or
     /// "typed", never its text), the last outcome per intent name, the last 20 toasts asked for and the last 40 events.
@@ -214,7 +219,7 @@ public final class CoachHomeStore: ObservableObject {
             "rev": model?.rev ?? NSNull(), "boot": model?.boot ?? NSNull(),
             "route": model.map { Self.word($0.route) } ?? NSNull(), "resume": model?.resume ?? NSNull(),
             "rows": model?.groups.flatMap { $0.rows.map(\.action.rawValue) } ?? [],
-            "connect": model?.connect != nil, "starter": model?.connect?.starter != nil,
+            "connect": connectDrawn, "starter": connectDrawn && model?.connect?.starter != nil,
             "connecting": connecting, "keyField": keyFieldTyped ? "typed" : "empty",
             "outcomes": outcomes, "toasts": toasts, "events": Array(events.suffix(40)),
         ]

@@ -750,6 +750,43 @@ final class CoachHomeStoreTests: XCTestCase {
         tab.close()
     }
 
+    /// `describe()` says a connect block, and its starter link, is drawn exactly where the hosted root draws one: the
+    /// connect screen and a newer page's route that carries a connect object, never the hub, even when the hub's model
+    /// carries one (CoachHomeView draws the hub's groups alone); the starter link only inside a drawn block. The key
+    /// field's flag reads the same rule.
+    func testDescribeSaysAConnectBlockAndItsStarterLinkOnlyWhereTheRootDrawsThem() throws {
+        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true))
+        let rows = """
+        [{"head":"Conversation","rows":[{"do":"openChat","title":"Open Chat","sub":null,"icon":"chat"}]}]
+        """
+        let cases: [(what: String, model: CoachHomeModel, connect: Bool, starter: Bool)] = [
+            ("the hub", try model(rev: 1), false, false),
+            ("the connect screen with the starter link", try connect(rev: 2), true, true),
+            ("the connect screen without it", try model(CoachHomeViewTests.connectJSON(starter: false), rev: 3), true, false),
+            ("a hub whose model carries a connect object and a starter", try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 4), false, false),
+            ("a newer page's route with a connect block", try model(CoachHomeViewTests.otherJSON(), rev: 5), true, false),
+            ("a newer page's route with a connect block and a starter", try model(CoachHomeViewTests.connectJSON(route: "upsell", groups: rows), rev: 6), true, true),
+        ]
+        for c in cases {
+            XCTAssertTrue(store.apply(c.model), c.what)
+            tab.wait(0.3)
+            XCTAssertNotNil(tab.find(UIScrollView.self), "\(c.what): drawn")
+            XCTAssertEqual(tab.find(UITextField.self) != nil, c.connect, "\(c.what): a connect block (its key field) drawn or not")
+            let d = store.describe()
+            XCTAssertEqual(d["connect"] as? Bool, c.connect, "\(c.what): describe() says what is drawn")
+            XCTAssertEqual(d["starter"] as? Bool, c.starter, "\(c.what): the starter link, only inside a drawn block")
+        }
+        // the hub whose model carries a connect object draws no field: a report of text from one on its way out is
+        // ignored
+        XCTAssertTrue(store.apply(try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 7)))
+        tab.wait(0.3)
+        XCTAssertNil(tab.find(UITextField.self))
+        store.host.fieldTyped(true)
+        XCTAssertEqual(keyField(), "empty")
+        XCTAssertEqual(asked, [])
+        tab.close()
+    }
+
     // MARK: The root in the Coach stack
 
     /// The root as the shell hosts it (H4, H10): a hosting controller at the root of a navigation controller whose bar
