@@ -409,10 +409,14 @@ serial('the boot\'s first paint on the Coach tab draws the hub or the connect sc
   for (const key of ['sk-ant-api03-SPEC126-KEY', null]) {
     const app = await boot({ native: true, shell: flag, seed: key ? { kt_apikey: key } : {}, page: { timezoneId: 'UTC' } });
     try {
-      const d = await app.page.evaluate(() => ({ tab: currentTab, route: _lastRenderedRoute,
-        head: (document.querySelector('#screen .kt-hero-headline') || {}).textContent, model: _coachHomeModel(0).route }));
+      const d = await app.page.evaluate((HELPERS) => {
+        eval(HELPERS);
+        return { tab: currentTab, route: _lastRenderedRoute, head: (document.querySelector('#screen .kt-hero-headline') || {}).textContent,
+          model: __home(0).route, impure: __impure };
+      }, HELPERS);
       assert(d.tab === 'coach' && d.route === 'coach/home' && d.head === (key ? 'Coachready.' : 'Connectyour coach.') && d.model === (key ? 'hub' : 'connect'),
         'the first paint on Coach (' + (key ? 'a key' : 'no key') + '): ' + J(d) + ' ' + app.errors.join(' | '));
+      assert(d.impure.length === 0, 'the builder has no side effects: ' + d.impure.join(' | '));
       assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
     } finally { await app.close(); }
   }
