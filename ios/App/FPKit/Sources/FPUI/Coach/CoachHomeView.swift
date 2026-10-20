@@ -1,4 +1,5 @@
 #if os(iOS)
+import CoreText
 import SwiftUI
 import UIKit
 import FPCore
@@ -56,8 +57,9 @@ public struct CoachHomeHost {
     /// A `coachHome.setKey` is out: CONNECT and Return do nothing until it is answered (no second key overlaps).
     public var connecting: Bool
     /// Whether the key field holds text, reported when that changes (true once typed into, false once emptied or
-    /// once the model's route leaves the connect screen, which empties it): a flag for the store's `describe()`,
-    /// never the text.
+    /// once the model's route leaves the connect screen, which empties it) and whenever a field appears (false for a
+    /// new one): a flag for the store's `describe()`, never the text. When the whole view goes (no model), nothing is
+    /// reported: the store's own reset says the field is gone.
     public var fieldTyped: (Bool) -> Void
 
     public init(act: @escaping (CoachHomeAction) -> Void, connecting: Bool = false, fieldTyped: @escaping (Bool) -> Void = { _ in }) {
@@ -72,11 +74,20 @@ public struct CoachHomeHost {
 
 /// Where the hub's meta row ends, in global (window) coordinates (contract 8.3, N-G10): the host's toast goes under
 /// it while the hub or the connect screen is on top, as it goes under the chat's header (`CoachHeaderBottomKey`). The
-/// row scrolls with the hub, so the value follows it: 0 or less once the row has scrolled above the window's top (the
-/// host then anchors under the status bar, as ScreenHost reads `y > 0` for the chat's header).
+/// row scrolls with the hub, so the value follows it while the row's bottom lies at or below the safe area's top; once
+/// the row has gone under the status bar the value is 0, never a point inside the status bar's band, so a host that
+/// reads `y > 0 ? y : nil` (ScreenHost, for the chat's header) anchors under the status bar. Every scroll step inside
+/// the band where the row is still on screen publishes a new value (the row moves).
 public struct HubHeaderBottomKey: PreferenceKey {
     public static let defaultValue: CGFloat = 0
     public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+
+    /// What the meta row publishes: its bottom while it lies at or below `safeTop` (the safe area's top in window
+    /// coordinates; nil for the unscrolled column, which never moves), else 0.
+    static func value(bottom: CGFloat, safeTop: CGFloat?) -> CGFloat {
+        guard let safeTop else { return max(0, bottom) }
+        return bottom >= safeTop ? bottom : 0
+    }
 }
 
 /// What VoiceOver hears on the hub and the connect screen (contract 6.2's names, which the tools press by, T-G11):
@@ -172,11 +183,16 @@ public struct CoachHomeView: View {
         let theme = RoomTheme(home: model, system: systemSize)
         Group {
             if let width = options.unscrolledWidth {
-                column(theme, width: width)
+                column(theme, width: width, safeTop: nil)
             } else {
                 GeometryReader { geo in
+                    // the safe area's top in window coordinates, where a meta row's bottom above it is under the status
+                    // bar: the reader keeps the safe area, so its frame starts there (the scroll view reaches past it to
+                    // the screen's edges and insets its content by as much; the proxy's safeAreaInsets repeats the
+                    // inset its frame already starts below, probed on iOS 27.0 with window and padded safe areas alike)
+                    let safeTop = geo.frame(in: .global).minY
                     ScrollView(.vertical) {
-                        column(theme, width: geo.size.width)
+                        column(theme, width: geo.size.width, safeTop: safeTop)
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
@@ -188,8 +204,9 @@ public struct CoachHomeView: View {
         .environment(\.roomTheme, theme)
         .environment(\.colorScheme, theme.colorScheme)
         .dynamicTypeSize(ChatType.range(dynTypeOn: model.dynTypeOn))
-        // the connect block is made anew when its route changes, so the field it held is empty
-        .onChange(of: Self.connectKey(model)) { _, _ in host.fieldTyped(false) }
+        // the connect block is made anew when its route changes: the field it held is gone (a new one says it is empty
+        // when it appears)
+        .onChange(of: Self.connectKey(model)) { old, _ in if old != nil { host.fieldTyped(false) } }
     }
 
     // MARK: Geometry (the web's media queries read the screen's own width; the lengths they pick scale with the text)
@@ -211,6 +228,44 @@ public struct CoachHomeView: View {
         t.flavor == .paper ? 0 : (width <= 360 ? -2.1 : -2.6)
     }
 
+    /// A headline part as the browser lays out the h1's lines (`white-space: normal`, `overflow-wrap: break-word`,
+    /// `index.html:686`): its white space collapsed, broken at a space where the next word would pass `width`, inside
+    /// a word only when that word alone is wider; measured in the face drawn (`font`) with its tracking in points
+    /// (CSS letter-spacing, after every letter). The view stacks the lines one per text, so a wrapped part keeps the
+    /// CSS line pitch (SwiftUI cannot set a line spacing below the face's own line). The web's `text-wrap: balance`
+    /// (1516) changes nothing for the one- and two-word parts the page writes, so the break here is the greedy one.
+    static func headlineLines(_ text: String, font: UIFont, tracking: CGFloat, width: CGFloat) -> [String] {
+        // CSS white space (space, tab, line feed, carriage return, form feed) collapses to one space
+        let collapsed = text.split(whereSeparator: { " \t\n\r\u{0C}".contains($0) }).joined(separator: " ")
+        guard !collapsed.isEmpty else { return [] }
+        var attributes: [NSAttributedString.Key: Any] = [.font: font]
+        if tracking != 0 { attributes[.kern] = tracking }
+        let setter = CTTypesetterCreateWithAttributedString(NSAttributedString(string: collapsed, attributes: attributes))
+        let units = collapsed as NSString
+        let room = Double(max(1, width))
+        var lines: [String] = []
+        var at = 0
+        while at < units.length {
+            var take = CTTypesetterSuggestLineBreak(setter, at, room)
+            if take > 0 {
+                // a word alone wider than the column: broken between its letters (overflow-wrap: break-word)
+                let line = CTTypesetterCreateLine(setter, CFRange(location: at, length: take))
+                if CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line) > room + 0.5 {
+                    take = CTTypesetterSuggestClusterBreak(setter, at, room)
+                }
+            }
+            if take <= 0 { take = units.rangeOfComposedCharacterSequence(at: at).length }   // one letter, at the least
+            // the space a line ends on hangs (a no-break space is not white space to CSS: it stays)
+            let line = units.substring(with: NSRange(location: at, length: take)).trimmingCharacters(in: Self.cssSpace)
+            if !line.isEmpty { lines.append(line) }
+            at += take
+        }
+        return lines
+    }
+
+    /// The space a collapsed headline line may end on.
+    private static let cssSpace = CharacterSet(charactersIn: " ")
+
     /// The connect block's identity: its route, so a route that leaves the connect screen empties the key field.
     static func connectKey(_ model: CoachHomeModel) -> String? {
         guard model.connect != nil else { return nil }
@@ -223,9 +278,9 @@ public struct CoachHomeView: View {
 
     // MARK: The column
 
-    private func column(_ t: RoomTheme, width: CGFloat) -> some View {
+    private func column(_ t: RoomTheme, width: CGFloat, safeTop: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HomeMetaRow(meta: model.meta)
+            HomeMetaRow(meta: model.meta, safeTop: safeTop)
             HomeHero(hero: model.hero, width: width)
             switch model.route {
             case .hub:
@@ -265,9 +320,12 @@ public struct CoachHomeView: View {
 
 /// The meta row (`.kt-meta-row`, `index.html:1504-1511`): the room's dot and the label ("COACH · WK 06 / 12 ·
 /// STRENGTH": Lime's JetBrains Mono at .14em, Heavyweight's Archivo caps at .1em), the owner's initial on the right
-/// (hidden from VoiceOver). It publishes its bottom for the host's toast (`HubHeaderBottomKey`).
+/// (hidden from VoiceOver). It publishes its bottom for the host's toast (`HubHeaderBottomKey`), 0 once it has
+/// scrolled under the status bar.
 struct HomeMetaRow: View {
     let meta: CoachHomeModel.Meta
+    /// The safe area's top in window coordinates while the hub scrolls; nil for the unscrolled column.
+    var safeTop: CGFloat? = nil
     @Environment(\.roomTheme) private var t
 
     var body: some View {
@@ -295,7 +353,8 @@ struct HomeMetaRow: View {
         .padding(.top, t.px(17))
         .padding(.bottom, t.px(27))
         .background(GeometryReader { g in
-            Color.clear.preference(key: HubHeaderBottomKey.self, value: g.frame(in: .global).maxY)
+            Color.clear.preference(key: HubHeaderBottomKey.self,
+                                   value: HubHeaderBottomKey.value(bottom: g.frame(in: .global).maxY, safeTop: safeTop))
         })
     }
 }
@@ -323,9 +382,10 @@ struct HomeAvatar: View {
     }
 }
 
-/// The headline block (`.kt-hero`): the greet over the headline's two lines, title then accent, both in `text`
-/// (Heavyweight: Anton caps on a .9 line; Lime: Inter 800 on a .92 line, tracked in), then the body. The greet, the
-/// title and the accent are one header element for VoiceOver; the body is the next.
+/// The headline block (`.kt-hero`): the greet over the headline, title then accent, both in `text` (Heavyweight:
+/// Anton caps on a .9 line; Lime: Inter 800 on a .92 line, tracked in), every line on that pitch, a part that wraps
+/// included (the h1's line-height holds each of its lines), then the body. The greet, the title and the accent are one
+/// header element for VoiceOver; the body is the next.
 struct HomeHero: View {
     let hero: CoachHomeModel.Hero
     /// The screen's width (the headline's viewport factor and the narrow rule read it).
@@ -356,19 +416,25 @@ struct HomeHero: View {
         let greet = t.home(.homeGreet)
         let size = CoachHomeView.headlineSize(t, width: width)
         let paper = t.flavor == .paper
-        let line = InlineStyle(face: .display, size: size, weight: paper ? 400 : 800, color: .text,
-                               tracking: CoachHomeView.headlineTracking(t, width: width))
+        let tracking = CoachHomeView.headlineTracking(t, width: width)
+        let line = InlineStyle(face: .display, size: size, weight: paper ? 400 : 800, color: .text, tracking: tracking)
         let lineHeight: CGFloat = paper ? 0.9 : 0.92
+        // each part broken at the column's width, then one text per line, each on the CSS line box: a part that
+        // wraps keeps the pitch (one text of several lines would space them at the face's own line, Anton's 1.5 em)
+        let font = CoachInline.baseFont(line, theme: t)
+        let column = width - 2 * CoachHomeView.gutter(t, width: width)
+        let lines = [hero.title, hero.accent].flatMap {
+            CoachHomeView.headlineLines(paper ? $0.uppercased() : $0, font: font, tracking: t.px(tracking), width: column)
+        }
         return VStack(alignment: .leading, spacing: 0) {
             if !hero.greet.isEmpty {
                 PlainText(text: hero.greet, style: InlineStyle(size: greet, weight: 500, color: .lite, tracking: -0.011 * greet))
                     .padding(.bottom, (hero.title.isEmpty && hero.accent.isEmpty) ? 0 : t.px(paper ? 10 : 15))
             }
-            if !hero.title.isEmpty {
-                PlainText(text: hero.title, style: line, lineHeight: lineHeight, uppercase: paper)
-            }
-            if !hero.accent.isEmpty {
-                PlainText(text: hero.accent, style: line, lineHeight: lineHeight, uppercase: paper)
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, text in
+                // its own width: the break above is the line, never re-wrapped or cut
+                PlainText(text: text, style: line, lineHeight: lineHeight)
+                    .fixedSize()
             }
         }
         .accessibilityElement(children: .ignore)
@@ -417,8 +483,10 @@ struct HomeGroupCard: View {
     }
 }
 
-/// One hub row (`.settings-row`): the icon tile, the title over its sub (one line), the chevron where the web draws
-/// one; one button for VoiceOver, its title the label and its sub the value. Pressed, it washes with 5 % of `text`.
+/// One hub row (`.settings-row`): the icon tile, the title over its sub (wrapping on its 1.4 line as the web's does:
+/// `.settings-row-sub` has no nowrap, so Open Chat's "N exchanges · preview" takes two lines), the chevron where the
+/// web draws one; one button for VoiceOver, its title the label and its sub the value. Pressed, it washes with 5 % of
+/// `text`.
 struct HomeRowButton: View {
     let row: CoachHomeModel.Row
     let action: () -> Void
@@ -441,7 +509,7 @@ struct HomeRowButton: View {
                     PlainText(text: row.title, style: InlineStyle(size: t.home(.homeRowTitle), weight: 700, color: .text, tracking: -0.15))
                     if let sub = row.sub {
                         PlainText(text: sub, style: InlineStyle(size: t.home(.homeRowSub), weight: 500, color: .muted),
-                                  lineHeight: 1.4, lineLimit: 1)
+                                  lineHeight: 1.4)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -555,6 +623,19 @@ struct HomeGlyph: Shape {
 
 // MARK: The connect block
 
+/// The newest render's host, for the presses. Return's submit action is one SwiftUI's text field keeps from an earlier
+/// render, whose `host` is that render's: its `connecting` stale (a Return while a key was out still sent) and its
+/// `act` perhaps another host's. This box lives in the block's state, so every render's closures reach the same box,
+/// and each render puts its host in it: Return, like CONNECT, reads the current `connecting` and calls the current `act`.
+final class HomeHostBox {
+    private(set) var host: CoachHomeHost
+
+    init(_ host: CoachHomeHost) { self.host = host }
+
+    /// Called from `body` on every render (no SwiftUI state changes: the box is a plain reference).
+    func keep(_ newest: CoachHomeHost) { host = newest }
+}
+
 /// The connect screen's controls (`index.html:21105-21121`): the field's label (hidden from VoiceOver: the field
 /// carries it), the key field, CONNECT, the help, the starter link. Made anew for each route (its `.id`), so the key
 /// typed here stays while a key is out and after the page refuses it, and goes when the route leaves the connect
@@ -566,19 +647,18 @@ struct HomeConnectBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The key as typed: the only native copy (contract 5, K5).
     @State private var secret = ""
-    /// The host's `connecting`, kept current for the presses: Return's submit action is one SwiftUI's text field holds
-    /// from an earlier render, which read a stale `host.connecting` (a Return while a key was out still sent, and one
-    /// after the answer would not have); a state read is always the current one, whichever render made the closure.
-    @State private var keyOut: Bool
+    /// The newest render's host (see HomeHostBox): what every press reads.
+    @State private var live: HomeHostBox
     @FocusState private var focused: Bool
 
     init(connect: CoachHomeModel.Connect, host: CoachHomeHost) {
         self.connect = connect
         self.host = host
-        _keyOut = State(initialValue: host.connecting)
+        _live = State(initialValue: HomeHostBox(host))
     }
 
     var body: some View {
+        let _ = live.keep(host)
         VStack(alignment: .leading, spacing: 0) {
             fieldLabel
             field
@@ -599,14 +679,18 @@ struct HomeConnectBlock: View {
                     .padding(.top, t.px(22))
             }
         }
-        .onChange(of: secret.isEmpty) { _, empty in host.fieldTyped(!empty) }
-        .onChange(of: host.connecting) { _, now in keyOut = now }
+        // a field that appears says what it holds: a new one (the whole view gone and back, the tab returned to)
+        // nothing, so the store's flag never stays "typed" over an empty field
+        .onAppear { live.host.fieldTyped(!secret.isEmpty) }
+        .onChange(of: secret.isEmpty) { _, empty in live.host.fieldTyped(!empty) }
     }
 
-    /// CONNECT or Return: once per press, never while a key is out, with exactly what the field holds.
+    /// CONNECT or Return: once per press, never while a key is out, with exactly what the field holds, to the newest
+    /// render's host.
     private func connectPressed() {
-        guard !keyOut else { return }
-        host.act(.connect(secret: secret))
+        let newest = live.host
+        guard !newest.connecting else { return }
+        newest.act(.connect(secret: secret))
     }
 
     // .field label: Lime's JetBrains Mono at .1em, Heavyweight's Archivo caps at .06em, muted, 7 px above the field
@@ -621,13 +705,19 @@ struct HomeConnectBlock: View {
             .accessibilityHidden(true)
     }
 
-    /// The key field (`#coach-key-input`): a secure field in the system's monospaced face at `homeField`, on Lime's
-    /// `card2` (radius 16) or Heavyweight's `card` (radius 10); focused, Lime's edge turns `lite` and Heavyweight's the
-    /// action blue with its 3 px `accentDim` ring. No autocorrection, no capitals, the ASCII keyboard, no content type
-    /// at all (so iOS has no password to offer to save), hidden from snapshots (`privacySensitive`), Go on the keys.
+    /// The key field (`#coach-key-input`): a secure field at `homeField` (the web's inline `font-family: monospace`,
+    /// the system monospace, in Lime; Heavyweight's room sets Archivo with tabular figures over it, `index.html:2065`,
+    /// the board having no monospace), on Lime's `card2` (radius 16) or Heavyweight's `card` (radius 10); focused,
+    /// Lime's edge turns `lite` and Heavyweight's the action blue with its 3 px `accentDim` ring. No autocorrection, no
+    /// capitals, the ASCII keyboard, no content type at all (so iOS has no password to offer to save), marked private
+    /// (`privacySensitive`: SwiftUI redacts it only where the privacy reason applies, a locked widget for one; on
+    /// screen and in the app switcher's snapshot the secure field's own dots are what hide the key), Go on the keys.
+    /// The whole drawn box focuses it, as the web's input owns its padding: a tap in the padding lands on
+    /// `HomeFieldTapArea`, under the field, which gives the field the focus (the owner's tap).
     private var field: some View {
         let paper = t.flavor == .paper
-        let font = UIFont.monospacedSystemFont(ofSize: t.type(.homeField), weight: .medium)
+        let font = paper ? t.uiFont(.mono, t.home(.homeField), 500)
+                         : UIFont.monospacedSystemFont(ofSize: t.type(.homeField), weight: .medium)
         let radius = t.px(paper ? 10 : 16)
         let shape = RoundedRectangle(cornerRadius: radius, style: .circular)
         return SecureField(text: $secret, prompt: Text(verbatim: connect.placeholder).foregroundStyle(t.color(.muted))) {
@@ -647,8 +737,9 @@ struct HomeConnectBlock: View {
         .padding(.vertical, t.px(13))
         .padding(.horizontal, t.px(14))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HomeFieldTapArea { focused = true }.accessibilityHidden(true))
         .background(shape.fill(t.color(paper ? .card : .card2)))
-        .overlay(shape.strokeBorder(t.color(focused ? (paper ? .accent : .lite) : .border), lineWidth: 1))
+        .overlay(shape.strokeBorder(t.color(focused ? (paper ? .accent : .lite) : .border), lineWidth: 1).allowsHitTesting(false))
         .overlay {
             if focused && paper {
                 // box-shadow: 0 0 0 3px var(--accent-dim), outside the border
@@ -721,6 +812,38 @@ struct HomeConnectBlock: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
+
+/// The key field's drawn box behind the field (`.field input{padding:13px 14px}`: on the web the padding is the
+/// input's own, so a tap anywhere in the box focuses it). SwiftUI's padding lies outside the field's text view, where a
+/// tap would reach nothing; this view fills the box under the field, so a tap there lands here and gives the field the
+/// focus, while the field's own taps (the caret, a selection) go to the field and never reach this view. A UIKit view
+/// with a plain tap recogniser, hidden from VoiceOver (the field is the element).
+struct HomeFieldTapArea: UIViewRepresentable {
+    let tap: () -> Void
+
+    final class TapView: UIView {
+        var tap: () -> Void = {}
+        let recognizer = UITapGestureRecognizer()
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isAccessibilityElement = false
+            accessibilityElementsHidden = true
+            recognizer.addTarget(self, action: #selector(tapped))
+            addGestureRecognizer(recognizer)
+        }
+
+        required init?(coder: NSCoder) { return nil }
+
+        /// The recogniser's action: the owner tapped the box.
+        @objc func tapped() { tap() }
+    }
+
+    func makeUIView(context: Context) -> TapView { TapView(frame: .zero) }
+
+    func updateUIView(_ view: TapView, context: Context) { view.tap = tap }
 }
 
 /// CONNECT's pressed state (`.kt-cta:active`): opacity .9 and a .985 scale over .15 s; under Reduce Motion the
