@@ -1339,6 +1339,30 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
+    /// The page's dismiss while Coach is not selected pops without animation (nothing shows the stack) and is done at
+    /// once. The case lets UIKit end its push first, so that only the selection decides, whatever UIKit's coordinator did.
+    func testStackAPopWhileCoachIsAwayIsNotAnimated() async throws {
+        let r = try await makeStack()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        select(coach: false)
+        let over = try await until { r.nav.transitionCoordinator == nil }
+        XCTAssertTrue(over, "UIKit's push over")
+        host.dismiss("coach")
+        XCTAssertFalse(busy(), "done at once: UIKit says nothing while the tab is away")
+        XCTAssertEqual(r.nav.log, ["push animated", "pop still"], "no slide where nobody sees the stack")
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(posts.count, 1, "VoiceOver stays where the owner is: only the push on the selected tab was heard")
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(owner, [])
+        select(coach: true)
+        XCTAssertTrue(r.nav.topViewController === r.home, "the home on top when Coach is back")
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
     /// A held push (Today's Ask, a resume, a warm share: the root keeps the home blank for it) is heard once, when UIKit
     /// has shown the chat: ScreenHost's post is the one (the root's release posts nothing: StackState's rule), and the
     /// hold ends right after the push, the chat already on top, so no frame of the home shows between.
@@ -1576,10 +1600,13 @@ final class ScreenHostTests: XCTestCase {
     }
 
     /// H5 test 11: a push whose slot leaves the window mid-animation completes (after `stackOpTimeout` when nobody says
-    /// so, at once when the root's selection is told) and the queue goes on; a dismissal queued behind a push not yet
-    /// started cancels both, and a present queued behind a dismissal not yet started keeps the chat.
+    /// so, at once when the root's selection is told) and the queue goes on, the pop behind it still (Coach is not
+    /// selected; the coordinator UIKit keeps for a while after the cut is the stack's own and changes nothing); a dismissal
+    /// queued behind a push not yet started cancels both, and a present queued behind a dismissal not yet started keeps
+    /// the chat. The wait is 2 s here, so a loaded machine's late wake-up still checks it before it runs out.
     func testStackAPushWhoseSlotLeavesTheWindowCompletes() async throws {
         let r = try await makeStack()
+        host.stackOpTimeout = 2
         host.update("coach", model: try model())
         host.present("coach")
         XCTAssertEqual(r.nav.log, ["push animated"])
