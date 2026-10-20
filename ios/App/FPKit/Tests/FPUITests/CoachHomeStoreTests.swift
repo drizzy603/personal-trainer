@@ -68,6 +68,11 @@ final class CoachHomeStoreTests: XCTestCase {
 
     private func keyField() -> String? { store.describe()["keyField"] as? String }
 
+    /// CI's slack for every timing bound here (CoachModelTests' rule; contract 12: timing bounds take CI's 10x slack):
+    /// GitHub's shared Macs are several times slower and stall at random, and xcodebuild hands TEST_RUNNER_CI to the
+    /// simulator's test process as CI.
+    static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
+
     // MARK: The store: models
 
     func testModelsGoInRevOrderAndAnotherDocumentsReplacesWhateverItsRev() throws {
@@ -654,12 +659,6 @@ final class CoachHomeStoreTests: XCTestCase {
 
     // MARK: The fade
 
-    /// CI's slack for a timing bound (CoachModelTests' rule): GitHub's shared Macs are several times slower and stall at
-    /// random, and xcodebuild hands TEST_RUNNER_CI to the simulator's test process as CI. No bound on a render inside
-    /// the fade can outlast the fade itself, so a fade test stretches the fade by the slack too (`fadeSeconds`, the
-    /// internal initialiser's), keeping the render's place in it: 0.12 s of 0.2 s here, 1.2 s of 2 s on CI.
-    static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
-
     /// How the hub came in over the ground: the ground; right after the model landed (one layout pass and a render,
     /// no time to speak of) whether the hub was in the hierarchy, the window as drawn and how long after the model that
     /// render ended; and the window once the fade had run its course.
@@ -688,7 +687,9 @@ final class CoachHomeStoreTests: XCTestCase {
         return FadeIn(ground: ground, inserted: inserted, now: now, took: took, settled: settled)
     }
 
-    /// The bound on a render inside a fade: 0.12 s, three fifths of the 0.2 s fade, with CI's slack.
+    /// The bound on a render inside a fade: 0.12 s, three fifths of the 0.2 s fade, with CI's slack. No bound on a render
+    /// inside the fade can outlast the fade itself, so a fade test stretches the fade by the slack too (`fadeSeconds`,
+    /// the internal initialiser's), keeping the render's place in it: 0.12 s of 0.2 s here, 1.2 s of 2 s on CI.
     static var insideFade: TimeInterval { 0.12 * slack }
 
     /// A render inside the fade: one that ended `insideFade` or later after the model (a machine too busy for it) is
@@ -908,10 +909,11 @@ final class CoachHomeStoreTests: XCTestCase {
             settle(2)
         }
 
-        /// Turns the run loop until `done` holds, for at most `seconds` (false if it never did), then settles: a
-        /// transition or an update waited for by what it does, not by a guess at how long it takes on a busy machine.
+        /// Turns the run loop until `done` holds, for at most `seconds` (5 s, with CI's slack; false if it never did),
+        /// then settles: a transition or an update waited for by what it does, not by a guess at how long it takes on a
+        /// busy machine.
         @discardableResult
-        func settle(until done: () -> Bool, within seconds: TimeInterval = 5) -> Bool {
+        func settle(until done: () -> Bool, within seconds: TimeInterval = 5 * CoachHomeStoreTests.slack) -> Bool {
             let end = Date().addingTimeInterval(seconds)
             while !done() {
                 if Date() >= end { return false }
