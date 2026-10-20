@@ -39,12 +39,12 @@ public struct StackState {
 ///   (contract 8.4), so a pop never uncovers. While attached, ScreenHost is the stack's navigation delegate and its
 ///   interactive pop's delegate (the pop begins only where the edge pan would); iOS 26's content pop (a pan anywhere in
 ///   the chat, which would pop it in setup too) is off meanwhile, so the edge is the one interactive pop. UIKit's
-///   `didShow` comes late (only once
-///   the Coach tab is in the window again), can come twice, and comes on every return to Coach with no push or pop (H0
-///   question 6): a push or pop is done at the first `didShow` of the controller it shows, at once while the stack is out
-///   of the window, or after `stackOpTimeout` with a log line, and everything hung on `didShow` is idempotent. Only
-///   ScreenHost pushes or pops the chat: a pop it did not make (the owner's interactive pop, anyone else's) is the
-///   owner's Back once it has finished, and nothing when it is cancelled.
+///   `didShow` comes late (only once the Coach tab is in the window again), can come twice, and comes on every return to
+///   Coach with no push or pop (H0 question 6): a push or pop is done at the first `didShow` of the controller it shows,
+///   at once while the stack is out of the window or when `selectionChanged()` finds it left, or after `stackOpTimeout`
+///   with a log line, and everything hung on `didShow` is idempotent. Only ScreenHost pushes or pops the chat: a pop it
+///   did not make (the owner's interactive pop, anyone else's) is the owner's Back once it has finished, and nothing
+///   when it is cancelled.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
 ///   queued right behind a present that has not started cancels both.
