@@ -24388,8 +24388,9 @@ function _fpTabsRefused(e, what){
 // re-enters tabs mode). tell: the page left on its own (the failsafe, a malformed reply, a failed hello call, a throw
 // at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page) and presents
 // the chat no more (the fallback turns off every piece negotiated under the tab root's rule, coach included). When
-// the shell told it, it sends nothing. atBoot: from the boot block, where the first render is still to come.
-function _fpTabsLeave(why, tell, atBoot){
+// the shell told it, it sends nothing. later: the caller renders (the boot block, before the first render; hello, once
+// its take-over has read up, so no render here presents a screen the shell still shows).
+function _fpTabsLeave(why, tell, later){
   var T=_fp.tabs;
   if(!T.mode) return;
   T.mode=false; T.left=true; T.why=String(why || '');
@@ -24409,7 +24410,7 @@ function _fpTabsLeave(why, tell, atBoot){
   if(!FP_SCREENS.some(function(x){ return _fp.shown[x]; })) _fp.covered=false;
   _syncTabButtons(currentTab);
   _fpLog('tabs off: '+T.why, tell ? 'error' : 'info');
-  if(!atBoot) render();
+  if(!later) render();
 }
 // Every string the shell gets is cut in whole characters (_wellFormed), as for the watch and the
 // widget: models go through _nativeJSON, and toast, confirm and log text through this.
@@ -24441,9 +24442,11 @@ function _fpHello(){
       _fp.v=v;
       _fpLog('hello v'+v+' '+(_fp.hello.screens.join(',') || 'no screens')+(_fp.hello.why ? ' ('+_fp.hello.why+')' : ''));
       var up=(v>=1 && r && Array.isArray(r.up)) ? r.up.filter(function(s){ return typeof s==='string'; }) : [];
-      // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs
-      if(T.mode && !named) _fpTabsLeave('hello');   // the shell fell back at this hello (a version refusal too)
-      else if(T.mode && !tabs) _fpTabsLeave('malformed', true);
+      // a page that left tabs mode already reads the reply for its other pieces and ignores its tabs; one that leaves
+      // here renders below, after the take-over (classic's) has read up
+      var left=false;
+      if(T.mode && !named){ _fpTabsLeave('hello', false, true); left=true; }   // the shell fell back at this hello (a version refusal too)
+      else if(T.mode && !tabs){ _fpTabsLeave('malformed', true, true); left=true; }
       if(T.mode){
         _fp.taking=true;   // the adoption's render presents nothing until the take-over has read up
         try{
@@ -24454,7 +24457,7 @@ function _fpHello(){
           if(up.length) _fpTakeOver(up);
         }finally{ _fp.taking=false; }
       } else if(up.length) _fpTakeOver(up);
-      if(_fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
+      if(left || _fpWantAny()) render(); else _fpSync();   // the chat already on screen goes native
     }).catch(function(e){ answered(); _fp.hello={v:0, screens:[], why:'error'}; _fpTabsLeave('hello-failed', true); });
   }catch(e){ answered(); _fpTabsLeave('hello-failed', true); }
 }

@@ -707,6 +707,26 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
   } finally { await ref.close(); }
 });
 
+serial('P2: a way out at hello renders once the take-over has read up: a reply without tabs that negotiates the overlay chat and names it up takes it over (no present, no dismiss)', async () => {
+  // booted on Coach with the chat drawn before hello answers; the policy turned tabs off, so the scene falls back at this
+  // hello and negotiates 60's overlay chat, which the shell still shows from the document before
+  const app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' },
+    init: 'window.__fpShellHelloDelay = 1500; window.__fpShellOff = ["tabs"]; window.__fpShellUp = ["coach"];' });
+  try {
+    const pre = await ev(app, () => { coachView = 'chat'; render(); return { hello: _fp.hello, mode: _fp.tabs.mode, tab: currentTab }; });
+    await helloIn(app);
+    await settle(app, 100);
+    const o = await look(app);
+    const r = await ev(app, () => ({ present: __fpShell.of('present'), dismiss: __fpShell.of('dismiss'), shown: !!_fp.shown.coach,
+      live: _fpLive('coach'), view: coachView, route: _lastRenderedRoute }));
+    assert(pre.hello === null && pre.mode && pre.tab === 'coach', 'the chat was drawn before hello answered: ' + J(pre));
+    classicLook(o, 'a reply without tabs, the chat up');
+    assert(!o.mode && o.why === 'hello' && !o.told && dismissTabs(o) === 0 && o.scene.scene.fellBack.why === 'policy', 'out at hello, nothing sent back: ' + J(o));
+    assert(r.present.length === 0 && r.dismiss.length === 0 && r.shown && r.live && r.view === 'chat',
+      'the chat the shell still shows is taken over: no present, no dismiss: ' + J(r));
+  } finally { await app.close(); }
+});
+
 serial('P2: the way out on the page\'s own (a malformed reply, a rejected or thrown hello): one dismiss tabs, the scene falls back page, the chat stays off for the document (no present coach), the page\'s own bar (I14)', async () => {
   const TRAP = 'Object.defineProperty(window, "__fpShell", { configurable: true, set: function (v) { v.refuse.hello = "error: hello refused";'
     + ' Object.defineProperty(window, "__fpShell", { value: v, writable: true, configurable: true, enumerable: true }); } });';
