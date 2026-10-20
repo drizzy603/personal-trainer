@@ -625,28 +625,39 @@ final class CoachHomeStoreTests: XCTestCase {
     /// The hub comes in over the ground with a 0.2 s cross-fade, and at once under Reduce Motion: right after the model
     /// lands (one layout pass, no time to speak of), the hub is in the hierarchy either way; under Reduce Motion it is
     /// already drawn as it settles, and without it not yet (it is fading in). The second half reads the clock: a render
-    /// that comes 0.2 s or more after the layout pass (a machine under heavy load) would find the fade over.
+    /// that comes late (a machine under heavy load) would find the fade over, so a render taken 0.12 s or more after
+    /// the model is taken again.
     func testTheHubFadesInOverTheGroundAndAtOnceUnderReduceMotion() throws {
         XCTAssertNil(CoachHomeRoot.fade(reduceMotion: true), "Reduce Motion: no fade")
         XCTAssertEqual(CoachHomeRoot.fade(reduceMotion: false), .easeInOut(duration: 0.2), "a 0.2 s cross-fade")
-        func renders(reduceMotion: Bool) throws -> (ground: UIImage, inserted: Bool, now: UIImage, settled: UIImage) {
+        func renders(reduceMotion: Bool) throws -> (ground: UIImage, inserted: Bool, now: UIImage, took: TimeInterval, settled: UIImage) {
             let s = CoachHomeStore()
             let tab = HostedRoot(RootPhone(store: s, room: .heavyweight, paper: true, reduceMotion: reduceMotion))
             let ground = tab.image()
+            let start = Date()
             s.apply(try model(rev: 1))
             tab.flush()
             let inserted = tab.find(UIScrollView.self) != nil
             let now = tab.image()
+            let took = Date().timeIntervalSince(start)
             tab.wait(0.6)
             let settled = tab.image()
             tab.close()
-            return (ground, inserted, now, settled)
+            return (ground, inserted, now, took, settled)
         }
         let still = try renders(reduceMotion: true)
         XCTAssertTrue(still.inserted, "Reduce Motion: the layout pass took the model")
         XCTAssertGreaterThan(CoachRenderTests.difference(still.ground, still.settled), 0.05, "Reduce Motion: the hub draws")
         XCTAssertLessThan(CoachRenderTests.difference(still.now, still.settled), 0.001, "Reduce Motion: the hub at once, no fade")
-        let moving = try renders(reduceMotion: false)
+        // the first render shows the fade only when it comes well inside its 0.2 s: on a machine too busy for that, the
+        // render is taken again (at most five times), and a machine that never gives one says so
+        var moving = try renders(reduceMotion: false)
+        var tries = 1
+        while moving.took >= 0.12, tries < 5 {
+            moving = try renders(reduceMotion: false)
+            tries += 1
+        }
+        XCTAssertLessThan(moving.took, 0.12, "a render inside the fade (\(tries) tries; the machine was too busy for one)")
         XCTAssertTrue(moving.inserted, "the layout pass took the model: the hub is there")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.ground, moving.settled), 0.05, "the hub draws")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.now, moving.settled), 0.05, "the hub is there but not yet drawn: it fades in")
@@ -761,12 +772,28 @@ final class CoachHomeStoreTests: XCTestCase {
             }
         }
 
-        /// Lets `seconds` pass with the run loop turning (a transition runs its course), then settles.
+        /// Lets `seconds` pass with the run loop turning, then settles.
         func wait(_ seconds: TimeInterval) {
             let end = Date().addingTimeInterval(seconds)
             while Date() < end { settle(1) }
             settle(2)
         }
+
+        /// Turns the run loop until `done` holds, for at most `seconds` (false if it never did), then settles: a
+        /// transition or an update waited for by what it does, not by a guess at how long it takes on a busy machine.
+        @discardableResult
+        func settle(until done: () -> Bool, within seconds: TimeInterval = 5) -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while !done() {
+                if Date() >= end { return false }
+                settle(1)
+            }
+            settle(2)
+            return true
+        }
+
+        /// The stack at rest with `top` on top: no transition under way.
+        func rests(on top: UIViewController?) -> Bool { nav.transitionCoordinator == nil && nav.topViewController === top }
 
         /// Whether the Coach stack is in the window (its slot selected).
         var inWindow: Bool { nav.view.window != nil }
@@ -799,6 +826,7 @@ final class CoachHomeStoreTests: XCTestCase {
         let key = CoachHomeViewTests.canary()
         var bottoms: [CGFloat] = []
         let stack = HostedStack(RootPhone(store: store, room: .heavyweight, paper: true, onBottom: { bottoms.append($0) }))
+        let root = stack.nav.topViewController
         stack.select(1)
         XCTAssertTrue(stack.inWindow, "Coach selected: the stack is in the window")
         XCTAssertNil(stack.find(UIScrollView.self), "Coach selected before a model: the ground")
@@ -808,7 +836,7 @@ final class CoachHomeStoreTests: XCTestCase {
         XCTAssertTrue(store.apply(try connect()))
         stack.settle()
         stack.select(1)
-        stack.wait(0.5)
+        stack.settle(until: { stack.find(UITextField.self) != nil })
         let field = try XCTUnwrap(stack.find(UITextField.self), "Coach selected again: the connect screen")
         XCTAssertGreaterThan(bottoms.last ?? 0, 0, "the meta row's bottom, for the toast anchor (\(bottoms))")
         type(key, into: field, then: { stack.settle() })
@@ -818,22 +846,23 @@ final class CoachHomeStoreTests: XCTestCase {
         let chat = UIViewController()
         chat.view.backgroundColor = .black
         stack.nav.pushViewController(chat, animated: true)
-        stack.wait(0.7)
-        XCTAssertTrue(stack.nav.topViewController === chat)
+        XCTAssertTrue(stack.settle(until: { stack.rests(on: chat) }), "the push ran its course")
         XCTAssertNil(stack.find(UITextField.self), "the chat on top")
         stack.nav.popViewController(animated: true)
-        stack.wait(0.7)
+        XCTAssertTrue(stack.settle(until: { stack.rests(on: root) }), "the pop ran its course")
         XCTAssertEqual(stack.find(UITextField.self)?.text, key, "the key stays in the field across a push and a pop")
         XCTAssertEqual(keyField(), "typed", "and the flag says so")
         // a push made while away (it completes at once; its didShow waits for Coach), a newer model of the same route
         // while away, and the pop made on return
         stack.select(0)
-        stack.nav.pushViewController(UIViewController(), animated: false)
+        let away = UIViewController()
+        stack.nav.pushViewController(away, animated: false)
+        XCTAssertTrue(stack.nav.topViewController === away, "a push made out of the window is on top at once")
         XCTAssertTrue(store.apply(try connect(rev: 5)), "the model of a refused key, while away")
         stack.settle()
         stack.select(1)
         stack.nav.popViewController(animated: false)
-        stack.wait(0.3)
+        XCTAssertTrue(stack.settle(until: { stack.rests(on: root) }), "the pop ran its course")
         XCTAssertEqual(stack.find(UITextField.self)?.text, key, "the same route: the same field, its key kept")
         XCTAssertEqual(keyField(), "typed")
         // the key saved while away: the hub on return, with no field
@@ -841,9 +870,9 @@ final class CoachHomeStoreTests: XCTestCase {
         XCTAssertTrue(store.apply(try model(rev: 6)))
         XCTAssertEqual(keyField(), "empty", "the route left the connect screen: the field went")
         stack.select(1)
-        stack.wait(0.5)
+        XCTAssertTrue(stack.settle(until: { stack.find(UITextField.self) == nil }), "no field on the hub")
+        stack.wait(0.3)
         XCTAssertNotNil(stack.find(UIScrollView.self), "the hub")
-        XCTAssertNil(stack.find(UITextField.self), "no field on the hub")
         XCTAssertEqual(keyField(), "empty")
         // the field on its way out said nothing as the stack came back (CoachHomeView), so the store had nothing to
         // ignore either
@@ -875,17 +904,20 @@ final class CoachHomeStoreTests: XCTestCase {
         let rec = CoachHomeViewTests.Recorder()
         let box = ModelBox(try connect())
         let stack = HostedStack(BoxedHome(box: box, host: rec.host()))
+        let root = stack.nav.topViewController
         stack.select(1)
-        stack.wait(0.3)
+        stack.settle(until: { stack.find(UITextField.self) != nil })
         let field = try XCTUnwrap(stack.find(UITextField.self), "the connect screen")
         XCTAssertEqual(rec.typed, [false], "a field that appears empty says so")
         type(CoachHomeViewTests.canary(), into: field, then: { stack.settle() })
         XCTAssertEqual(rec.typed, [false, true], "typed into")
         stack.window.endEditing(true)
-        stack.nav.pushViewController(UIViewController(), animated: true)
-        stack.wait(0.7)
+        let chat = UIViewController()
+        stack.nav.pushViewController(chat, animated: true)
+        XCTAssertTrue(stack.settle(until: { stack.rests(on: chat) }), "the push ran its course")
         stack.nav.popViewController(animated: true)
-        stack.wait(0.7)
+        XCTAssertTrue(stack.settle(until: { stack.rests(on: root) }), "the pop ran its course")
+        stack.wait(0.3)
         XCTAssertNotNil(stack.find(UITextField.self), "the field back on top")
         XCTAssertEqual(rec.typed, [false, true], "back from under the chat: nothing more")
         stack.select(0)
@@ -897,8 +929,8 @@ final class CoachHomeStoreTests: XCTestCase {
         box.model = try model(rev: 6)
         stack.settle()
         stack.select(1)
-        stack.wait(0.5)
-        XCTAssertNil(stack.find(UITextField.self), "the hub, no field")
+        XCTAssertTrue(stack.settle(until: { stack.find(UITextField.self) == nil }), "the hub, no field")
+        stack.wait(0.3)
         XCTAssertEqual(rec.typed, [false, true, false], "the route left the connect screen, and nothing after it")
         XCTAssertEqual(rec.actions, [])
         stack.close()
