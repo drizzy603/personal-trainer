@@ -726,12 +726,15 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
 });
 
 serial('P2: a way out at hello renders once the take-over has read up: a reply without tabs that negotiates the overlay chat and names it up takes it over (no present, no dismiss)', async () => {
-  // booted on Coach with the chat drawn before hello answers; the policy turned tabs off, so the scene falls back at this
-  // hello and negotiates 60's overlay chat, which the shell still shows from the document before
+  // booted on Coach with the chat drawn before hello answers (the boot's hello stays silent; the case sends the one that
+  // answers); the policy turned tabs off, so the scene falls back at that hello and negotiates 60's overlay chat, and the
+  // mock names it up (__fpShellUp). A conforming shell pops the chat when it falls back (contract 10.3), so up is empty
+  // there; the page's order holds whatever up says: leave, take over, then render (contract 3.2)
   const app = await pageBoot(TABS({ bar: BAR, selected: 'coach' }), { seed: { kt_apikey: 'sk-ant-test' },
-    init: 'window.__fpShellHelloDelay = 1500; window.__fpShellOff = ["tabs"]; window.__fpShellUp = ["coach"];' });
+    init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 1e9; window.__fpShellOff = ["tabs"]; window.__fpShellUp = ["coach"];' });
   try {
-    const pre = await ev(app, () => { coachView = 'chat'; render(); return { hello: _fp.hello, mode: _fp.tabs.mode, tab: currentTab }; });
+    const pre = await ev(app, () => { coachView = 'chat'; render(); const r = { hello: _fp.hello, mode: _fp.tabs.mode, tab: currentTab };
+      window.__fpShellHelloSilent = false; _fpHello(); return r; });
     await helloIn(app);
     await settle(app, 100);
     const o = await look(app);
