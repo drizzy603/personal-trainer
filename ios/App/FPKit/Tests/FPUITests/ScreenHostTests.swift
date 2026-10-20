@@ -38,11 +38,63 @@ final class SilentPresenting: ScreenPresenting {
     }
 }
 
+/// Stands in for UIKit's coordinator of the owner's interactive pop, which no unit test can make (it takes a finger):
+/// ScreenHost follows the transition through it, and the case says how it ends.
+@MainActor
+final class StandInCoordinator: NSObject, UIViewControllerTransitionCoordinator {
+    private var ends: [(UIViewControllerTransitionCoordinatorContext) -> Void] = []
+    private var cancelledEnd = false
+
+    /// The transition ends: finished, or cancelled (the owner let go early).
+    func end(cancelled: Bool) {
+        cancelledEnd = cancelled
+        let e = ends
+        ends = []
+        e.forEach { $0(self) }
+    }
+
+    func animate(alongsideTransition animation: ((UIViewControllerTransitionCoordinatorContext) -> Void)?,
+                 completion: ((UIViewControllerTransitionCoordinatorContext) -> Void)?) -> Bool {
+        if let completion { ends.append(completion) }
+        return true
+    }
+
+    func animateAlongsideTransition(in view: UIView?, animation: ((UIViewControllerTransitionCoordinatorContext) -> Void)?,
+                                    completion: ((UIViewControllerTransitionCoordinatorContext) -> Void)?) -> Bool {
+        if let completion { ends.append(completion) }
+        return true
+    }
+
+    func notifyWhenInteractionEnds(_ handler: @escaping (UIViewControllerTransitionCoordinatorContext) -> Void) {}
+    func notifyWhenInteractionChanges(_ handler: @escaping (UIViewControllerTransitionCoordinatorContext) -> Void) {}
+
+    var isAnimated: Bool { true }
+    var presentationStyle: UIModalPresentationStyle { .none }
+    var initiallyInteractive: Bool { true }
+    var isInterruptible: Bool { false }
+    var isInteractive: Bool { true }
+    var isCancelled: Bool { cancelledEnd }
+    var transitionDuration: TimeInterval { 0.35 }
+    var percentComplete: CGFloat { 0.5 }
+    var completionVelocity: CGFloat { 1 }
+    var completionCurve: UIView.AnimationCurve { .easeOut }
+    func viewController(forKey key: UITransitionContextViewControllerKey) -> UIViewController? { nil }
+    func view(forKey key: UITransitionContextViewKey) -> UIView? { nil }
+    var containerView: UIView { UIView() }
+    var targetTransform: CGAffineTransform { .identity }
+}
+
 /// A navigation controller that records how each push, pop and replacement was asked for (animated or still).
 @MainActor
 final class StackRecordingNav: UINavigationController {
     private(set) var log: [String] = []
     var recording = false
+    /// A coordinator standing in for UIKit's while a case makes the owner's interactive pop (StandInCoordinator).
+    var standInCoordinator: UIViewControllerTransitionCoordinator?
+
+    override var transitionCoordinator: UIViewControllerTransitionCoordinator? {
+        standInCoordinator ?? super.transitionCoordinator
+    }
 
     override func pushViewController(_ viewController: UIViewController, animated: Bool) {
         if recording { log.append(animated ? "push animated" : "push still") }
@@ -88,6 +140,8 @@ final class StackRig {
     var releases = 0
     /// The interactive pop's delegate before ScreenHost took it.
     var popDelegateBefore: AnyObject?
+    /// Whether iOS 26's content pop was on before ScreenHost turned it off (nil below iOS 26).
+    var contentPopBefore: Bool?
 
     init() {
         web.view = webView
@@ -131,7 +185,8 @@ final class StackRig {
 /// The stack's cases (`testStack...`, 11-shell.md H5 tests 1-14) run on a real UINavigationController as a tab of a
 /// UITabBarController in the window (`StackRig`), with a stand-in StackState: UIKit's own pushes and pops complete in
 /// this host, and its didShow comes late or not at all exactly as H0's probe measured, so every case waits on the queue
-/// going idle, never on a fixed time.
+/// going idle, never on a fixed time. The owner's interactive pop takes a finger, so its coordinator is stood in
+/// (`StandInCoordinator`) on a stack out of the window, where UIKit adds no word of its own.
 @MainActor
 final class ScreenHostTests: XCTestCase {
     private var window: UIWindow!
@@ -574,6 +629,7 @@ final class ScreenHostTests: XCTestCase {
         h.postScreenChanged = { [weak self] in self?.posts.append(($0 as AnyObject?) ?? NSNull()) }
         h.hooks = recordingHooks()
         r.popDelegateBefore = r.nav.interactivePopGestureRecognizer?.delegate
+        if #available(iOS 26.0, *) { r.contentPopBefore = r.nav.interactiveContentPopGestureRecognizer?.isEnabled }
         h.attachStack(r.nav, state: r.state)
         host = h
         rig = r
@@ -659,6 +715,8 @@ final class ScreenHostTests: XCTestCase {
         let r = try await makeStack()
         host.update("coach", model: try model())
         XCTAssertTrue(host.present("coach"))
+        host.navigationController(r.nav, didShow: r.home, animated: true)   // another controller's didShow: not the push's
+        XCTAssertTrue(busy(), "the push waits for the chat's own didShow")
         try await idle()
         let chat = try XCTUnwrap(r.nav.topViewController as? ScreenHostingController, "the chat on top of the stack")
         XCTAssertEqual(r.nav.viewControllers.count, 2)
@@ -700,6 +758,7 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(s["selected"] as? Bool, true)
         XCTAssertEqual(s["held"] as? Bool, false)
         XCTAssertEqual(s["interactivePop"] as? Bool, true)
+        if #available(iOS 26.0, *) { XCTAssertEqual(s["contentPop"] as? Bool, false) }
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
@@ -816,6 +875,12 @@ final class ScreenHostTests: XCTestCase {
         let pop = try XCTUnwrap(r.nav.interactivePopGestureRecognizer)
         XCTAssertTrue(pop.delegate === host, "ScreenHost decides where the owner's finger may begin")
         XCTAssertTrue(r.nav.delegate === host)
+        if #available(iOS 26.0, *) {
+            // a leading pan anywhere in the content would pop the chat in setup and mid-transition too
+            let content = try XCTUnwrap(r.nav.interactiveContentPopGestureRecognizer, "iOS 26's content pop")
+            XCTAssertEqual(r.contentPopBefore, true, "on in a navigation controller of its own")
+            XCTAssertFalse(content.isEnabled, "off while attached: the edge is the one interactive pop")
+        }
         XCTAssertFalse(host.gestureRecognizerShouldBegin(pop), "never at the stack's root")
         var intake = try model("intake")
         intake.boot = "b-intake"
@@ -863,6 +928,79 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(owner, ["coach"], "nothing for a cancelled pop")
         XCTAssertTrue(host.isUp("coach"))
         XCTAssertEqual(r.nav.viewControllers.count, 2)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// H5 test 5, the owner's finger: an interactive pop ScreenHost did not make (UIKit's coordinator stands in, since no
+    /// unit test has a finger; the stack is out of the window so UIKit adds no word of its own) holds the queue while it
+    /// runs and ends as UIKit says, whichever word comes first, the coordinator's end or `didShow`: finished, it is the
+    /// owner's Back once (a page's dismiss queued meanwhile then closes the latch); cancelled, nothing, also when the
+    /// chat's `didShow` comes before UIKit has put the chat back in the stack's array.
+    func testStackTheOwnersInteractivePopEndsAsUIKitSays() async throws {
+        let r = try await makeStack(selected: false)
+        let pop = try XCTUnwrap(r.nav.interactivePopGestureRecognizer)
+        host.update("coach", model: try model())
+        /// UIKit's order for the owner's pop: the chat leaves the array, then willShow with an interactive coordinator
+        /// (stood in only for that call, so UIKit's own work on the array never reads it).
+        func beginPop() throws -> (chat: UIViewController, coordinator: StandInCoordinator) {
+            let chat = try XCTUnwrap(r.nav.topViewController as? ScreenHostingController, "the chat on top")
+            let c = StandInCoordinator()
+            r.nav.setViewControllers([r.home], animated: false)
+            r.nav.standInCoordinator = c
+            host.navigationController(r.nav, willShow: r.home, animated: true)
+            r.nav.standInCoordinator = nil
+            XCTAssertTrue(busy(), "the queue waits for the owner's finger")
+            XCTAssertTrue(host.isUp("coach"), "nothing decided while the finger is down")
+            XCTAssertFalse(host.gestureRecognizerShouldBegin(pop), "one pop at a time")
+            XCTAssertEqual((host.describe()["stack"] as? [String: Any])?["foreignPop"] as? String, "interactive")
+            return (chat, c)
+        }
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertFalse(busy(), "pushed at once out of the window")
+        // cancelled: the chat's didShow first, before UIKit has put it back in the array; the coordinator's end after
+        var (chat, c) = try beginPop()
+        host.navigationController(r.nav, didShow: chat, animated: true)
+        XCTAssertFalse(busy(), "ended: the queue goes on")
+        XCTAssertEqual(host.transitions.last, "edge back cancelled coach")
+        XCTAssertEqual(owner, [])
+        XCTAssertTrue(host.isUp("coach"))
+        r.nav.setViewControllers([r.home, chat], animated: false)
+        c.end(cancelled: true)
+        XCTAssertEqual(owner, [], "nothing more")
+        // cancelled: the coordinator's word alone, UIKit's didShow after it
+        (chat, c) = try beginPop()
+        r.nav.setViewControllers([r.home, chat], animated: false)
+        c.end(cancelled: true)
+        XCTAssertFalse(busy())
+        host.navigationController(r.nav, didShow: chat, animated: true)
+        XCTAssertEqual(owner, [])
+        XCTAssertTrue(host.isUp("coach"))
+        XCTAssertEqual(host.transitions.filter { $0 == "edge back cancelled coach" }.count, 2)
+        // finished: the coordinator's end first; a page's dismiss queued behind the finger closes the latch after it
+        (chat, c) = try beginPop()
+        host.dismiss("coach")
+        XCTAssertEqual(host.describe()["ops"] as? Int, 1, "queued behind the owner's finger")
+        c.end(cancelled: false)
+        XCTAssertFalse(busy())
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(owner, ["coach"], "the owner's Back")
+        XCTAssertEqual(host.transitions.last, "edge back coach")
+        XCTAssertEqual(host.latched, [], "the page's dismiss, queued meanwhile, closed the latch")
+        host.navigationController(r.nav, didShow: r.home, animated: true)
+        host.navigationController(r.nav, didShow: r.home, animated: true)
+        XCTAssertEqual(owner, ["coach"], "once")
+        // finished: didShow of the controller below first, the coordinator's end after
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertFalse(busy())
+        (chat, c) = try beginPop()
+        host.navigationController(r.nav, didShow: r.home, animated: true)
+        XCTAssertFalse(busy())
+        XCTAssertEqual(owner, ["coach", "coach"])
+        XCTAssertEqual(host.latched, ["coach"])
+        c.end(cancelled: false)
+        XCTAssertEqual(owner, ["coach", "coach"], "once")
+        XCTAssertEqual(markerLines(), [], "Coach not selected: never a marker")
+        XCTAssertEqual(r.tabs.selectedIndex, 0)
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
@@ -1093,6 +1231,12 @@ final class ScreenHostTests: XCTestCase {
         r.held = false
         host.selectionChanged()
         XCTAssertEqual(host.overlay.anchor, a)
+        r.native = false   // the tab turned WEB with the chat still on the stack: no stack shows
+        host.selectionChanged()
+        XCTAssertNil(host.overlay.anchor, "WEB: under the status bar")
+        r.native = true
+        host.selectionChanged()
+        XCTAssertEqual(host.overlay.anchor, a)
         let c = ConfirmRequest(id: "c1.b1", title: "Restore previous programme?", body: nil, confirm: "Restore", cancel: nil, tone: nil)
         host.confirm(c)
         XCTAssertTrue(r.nav.view.accessibilityElementsHidden, "the stack stands down under the confirm")
@@ -1183,6 +1327,34 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
+    /// A pop ScreenHost did not make takes the chat while its push still waits for UIKit (no willShow counts then): the
+    /// owner left mid-push and nobody said so, and the chat went out of the window, where UIKit says nothing. Once the
+    /// push is done the chat is gone, and the page hears the owner's Back, never a chat counted up that is not there.
+    func testStackAChatTakenWhileItsPushWaitsIsTheOwnersBack() async throws {
+        let r = try await makeStack()
+        host.stackOpTimeout = 0.5
+        host.update("coach", model: try model())
+        XCTAssertTrue(host.present("coach"))   // in the window: waits for the chat's didShow
+        try await settle(0.05)
+        r.tabs.selectedIndex = 0   // the owner leaves mid-push, and nobody says so
+        XCTAssertTrue(busy(), "still waiting for UIKit")
+        r.nav.setViewControllers([r.home], animated: false)   // another takes the chat, out of the window
+        XCTAssertEqual(r.nav.viewControllers.count, 1, "out of the window the stack changes at once")
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"), "gone, as the stack says")
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertEqual(owner, ["coach"], "the page hears coach.back")
+        XCTAssertEqual(host.latched, ["coach"])
+        XCTAssertEqual(host.transitions, ["present coach", "back coach"])
+        XCTAssertEqual(markerLines(), [], "the marker goes with it")
+        host.dismiss("coach")
+        XCTAssertEqual(host.latched, [], "the page's dismiss closes the latch")
+        XCTAssertTrue(host.present("coach"), "and the chat can go up again")
+        try await idle()
+        XCTAssertTrue(r.nav.topViewController is ScreenHostingController)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
     /// H5 test 12: leaving the stack (the fallback) pops the chat without animation, gives the stack its delegates back
     /// and leaves no marker; the next present is build 60's `.overFullScreen` overlay.
     func testStackDetachPopsAndTheNextChatIsTheOverlay() async throws {
@@ -1198,6 +1370,9 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(markerLines(), [], "no marker left")
         XCTAssertNil(r.nav.delegate, "the stack's delegates given back")
         XCTAssertTrue(r.nav.interactivePopGestureRecognizer?.delegate === r.popDelegateBefore)
+        if #available(iOS 26.0, *) {
+            XCTAssertEqual(r.nav.interactiveContentPopGestureRecognizer?.isEnabled, r.contentPopBefore, "the content pop as it was")
+        }
         XCTAssertFalse(host.stackAttached)
         XCTAssertEqual(host.describe()["mode"] as? String, "overlay")
         XCTAssertEqual(owner, [], "no Back for the page: the bridge's screens.off tells it")

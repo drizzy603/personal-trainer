@@ -37,7 +37,9 @@ public struct StackState {
 ///   (D9). A push or pop animates only while Coach is selected and the root not held, and a held push releases the hold.
 ///   Nothing here presents, covers or uncovers: the root owns the web view, its accessibility and `shell.covered`
 ///   (contract 8.4), so a pop never uncovers. While attached, ScreenHost is the stack's navigation delegate and its
-///   interactive pop's delegate (the pop begins only where the edge pan would). UIKit's `didShow` comes late (only once
+///   interactive pop's delegate (the pop begins only where the edge pan would); iOS 26's content pop (a pan anywhere in
+///   the chat, which would pop it in setup too) is off meanwhile, so the edge is the one interactive pop. UIKit's
+///   `didShow` comes late (only once
 ///   the Coach tab is in the window again), can come twice, and comes on every return to Coach with no push or pop (H0
 ///   question 6): a push or pop is done at the first `didShow` of the controller it shows, at once while the stack is out
 ///   of the window, or after `stackOpTimeout` with a log line, and everything hung on `didShow` is idempotent. Only
@@ -160,6 +162,8 @@ public final class ScreenHost: NSObject {
         let state: StackState
         weak var navDelegateWas: UINavigationControllerDelegate?
         weak var popDelegateWas: UIGestureRecognizerDelegate?
+        /// Whether iOS 26's content pop was on before ScreenHost turned it off (nil below iOS 26).
+        var contentPopWas: Bool?
         init(nav: UINavigationController, state: StackState, navDelegateWas: UINavigationControllerDelegate?,
              popDelegateWas: UIGestureRecognizerDelegate?) {
             self.nav = nav
@@ -557,13 +561,20 @@ public final class ScreenHost: NSObject {
     // MARK: The Coach tab's stack (build 61)
 
     /// Under a live tab root (H7 calls it when it adopts the root): the chat goes in the Coach tab's navigation stack from
-    /// now on. ScreenHost becomes the stack's navigation delegate and its interactive pop's delegate; the delegates it had
-    /// come back when the stack is left. `state` answers for the root and must not keep it alive.
+    /// now on. ScreenHost becomes the stack's navigation delegate and its interactive pop's delegate, and turns iOS 26's
+    /// content pop off (a leading pan anywhere in the content pops the top: in setup, with no Back, and mid-transition,
+    /// where the edge pan's rule allows none); the delegates it had and the content pop's state come back when the stack
+    /// is left. `state` answers for the root and must not keep it alive.
     public func attachStack(_ nav: UINavigationController, state: StackState) {
         if stack != nil { leaveStack(why: "another stack attached") }
         let pop = nav.interactivePopGestureRecognizer
-        stack = Stack(nav: nav, state: state, navDelegateWas: nav.delegate === self ? nil : nav.delegate,
+        let s = Stack(nav: nav, state: state, navDelegateWas: nav.delegate === self ? nil : nav.delegate,
                       popDelegateWas: pop?.delegate === self ? nil : pop?.delegate)
+        if #available(iOS 26.0, *), let content = nav.interactiveContentPopGestureRecognizer {
+            s.contentPopWas = content.isEnabled
+            content.isEnabled = false
+        }
+        stack = s
         nav.delegate = self
         pop?.delegate = self
         Self.log.info("screens: the chat goes in the Coach tab's stack (depth \(nav.viewControllers.count))")
@@ -620,8 +631,14 @@ public final class ScreenHost: NSObject {
         let token = waitForStack(expect: u.host, what: "push " + screen) { [weak self, weak u] in
             guard let self else { return }
             if let u, self.up[screen] === u {
-                u.presented = true
-                self.announceStackTop()
+                if self.inStack(u) {
+                    u.presented = true
+                    self.announceStackTop()
+                } else {
+                    // another pop took the chat before UIKit showed it (no willShow counts while a push waits): as every
+                    // pop ScreenHost did not make, the owner's Back, so the page never thinks a chat is up that is gone
+                    self.foreignPopped(u, interactive: false)
+                }
             }
             self.refreshStack()
             self.opDone()
@@ -722,11 +739,11 @@ public final class ScreenHost: NSObject {
         stackMarker = want
     }
 
-    /// The toast's anchor (contract 8.3): under the chat's header while it is on top of the selected Coach tab and the
-    /// root not held, else under the status bar.
+    /// The toast's anchor (contract 8.3): under the chat's header while it is on top of the selected NATIVE Coach tab and
+    /// the root not held, else under the status bar (WAITING and WEB show no stack; held; Coach not selected).
     private func refreshStackAnchor() {
         guard let s = stack else { return }
-        let chatShown = stackTop() == "coach" && s.state.selected() && !s.state.held()
+        let chatShown = stackTop() == "coach" && s.state.selected() && s.state.native() && !s.state.held()
         overlay.setAnchor(chatShown ? chatHeaderBottom : nil)
     }
 
@@ -778,17 +795,25 @@ public final class ScreenHost: NSObject {
         if let w = stackWait {
             if w.expect === vc { finishStackWait(w.token, why: nil) }
         } else if let f = foreignPop {
-            foreignPopEnded(f.token, cancelled: !chatLeftStack())
+            // the chat shown again is a cancelled pop, whatever the stack's array says by then (UIKit puts the chat back
+            // as the cancel ends); another controller shown with the chat gone is a finished one
+            let chatAgain = up["coach"].map { $0.host === vc } ?? false
+            foreignPopEnded(f.token, cancelled: chatAgain || !chatLeftStack())
         } else if let u = up["coach"], u.kind == .stack, u.presented, chatLeftStack() {
             foreignPopped(u, interactive: false)
         }
         refreshStack()
     }
 
+    /// Whether a screen's controller is in the stack now.
+    private func inStack(_ u: Up) -> Bool {
+        stack?.nav?.viewControllers.contains { $0 === u.host } ?? false
+    }
+
     /// The pushed chat is no longer in the stack (or none is up).
     private func chatLeftStack() -> Bool {
-        guard let nav = stack?.nav, let u = up["coach"], u.kind == .stack else { return true }
-        return !nav.viewControllers.contains { $0 === u.host }
+        guard let u = up["coach"], u.kind == .stack else { return true }
+        return !inStack(u)
     }
 
     private func foreignPopEnded(_ token: Int, cancelled: Bool) {
@@ -814,7 +839,8 @@ public final class ScreenHost: NSObject {
     }
 
     /// The stack is left (the fallback, the teardown): the chat popped without animation, the queue emptied, the latch
-    /// gone (a refused Back must not bring the chat back as the overlay), the marker removed, the delegates given back.
+    /// gone (a refused Back must not bring the chat back as the overlay), the marker removed, the delegates and the
+    /// content pop's state given back.
     private func leaveStack(why: String) {
         guard let s = stack else { return }
         if stackWait != nil || foreignPop?.holdsQueue == true { busy = false }
@@ -837,6 +863,9 @@ public final class ScreenHost: NSObject {
         if let nav {
             if nav.delegate === self { nav.delegate = s.navDelegateWas }
             if let pop = nav.interactivePopGestureRecognizer, pop.delegate === self { pop.delegate = s.popDelegateWas }
+            if #available(iOS 26.0, *), let was = s.contentPopWas, let content = nav.interactiveContentPopGestureRecognizer {
+                content.isEnabled = was
+            }
             if stackStoodDown { nav.view.accessibilityElementsHidden = false }
         }
         stackStoodDown = false
@@ -1063,15 +1092,19 @@ public final class ScreenHost: NSObject {
     }
 
     /// The stack's state for the probe: `selected`, `held`, `depth`, `top` (`coach` with the chat on top, `root` for the
-    /// stack's root), `interactivePop` (whether it would begin now), and what is under way.
+    /// stack's root), `interactivePop` (whether it would begin now), `contentPop` (iOS 26's content pop on: false while
+    /// attached, null below iOS 26), and what is under way.
     private func describeStack() -> Any {
         guard let s = stack else { return NSNull() }
         let nav = s.nav
         var top: Any = NSNull()
         if let t = stackTop() { top = t } else if nav?.topViewController != nil { top = "root" }
+        var contentPop: Any = NSNull()
+        if #available(iOS 26.0, *), let content = nav?.interactiveContentPopGestureRecognizer { contentPop = content.isEnabled }
         return [
             "selected": s.state.selected(), "native": s.state.native(), "held": s.state.held(),
             "depth": nav?.viewControllers.count ?? 0, "top": top, "interactivePop": stackPopAllowed(),
+            "contentPop": contentPop,
             "inWindow": nav?.view.window != nil, "waiting": stackWait?.what ?? NSNull(),
             "foreignPop": foreignPop.map { $0.interactive ? "interactive" : "pop" } ?? NSNull(),
             "standingDown": stackStoodDown,
