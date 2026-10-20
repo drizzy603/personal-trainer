@@ -10,13 +10,13 @@ import FPCore
 /// Coach tab is NATIVE (WAITING and WEB have no visible stack to push onto, contract 1.4); whether the root keeps the
 /// tab blank for a push on its way (the hold, contract 8.1); and how to end that hold.
 public struct StackState {
-    public var selected: () -> Bool
-    public var native: () -> Bool
-    public var held: () -> Bool
-    public var releaseHold: () -> Void
+    public var selected: @MainActor () -> Bool
+    public var native: @MainActor () -> Bool
+    public var held: @MainActor () -> Bool
+    public var releaseHold: @MainActor () -> Void
 
-    public init(selected: @escaping () -> Bool, native: @escaping () -> Bool, held: @escaping () -> Bool,
-                releaseHold: @escaping () -> Void) {
+    public init(selected: @escaping @MainActor () -> Bool, native: @escaping @MainActor () -> Bool,
+                held: @escaping @MainActor () -> Bool, releaseHold: @escaping @MainActor () -> Void) {
         self.selected = selected
         self.native = native
         self.held = held
