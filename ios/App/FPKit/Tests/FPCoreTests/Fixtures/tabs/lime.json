@@ -1,0 +1,31 @@
+{
+ "v": 1,
+ "rev": 4,
+ "boot": "b1791561600000-c3",
+ "room": "dark",
+ "paper": false,
+ "tint": "#f4f4f1",
+ "idle": "#8c8c91",
+ "items": [
+  {
+   "id": "log",
+   "title": "Log",
+   "a11y": "Log"
+  },
+  {
+   "id": "progress",
+   "title": "Progress",
+   "a11y": "Progress"
+  },
+  {
+   "id": "coach",
+   "title": "Coach",
+   "a11y": "Coach"
+  },
+  {
+   "id": "settings",
+   "title": "Settings",
+   "a11y": "Settings"
+  }
+ ]
+}
