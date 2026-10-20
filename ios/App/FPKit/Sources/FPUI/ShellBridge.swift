@@ -595,6 +595,12 @@ public final class ShellBridge: NSObject {
                 Self.log.info("shell: a new page build (\(page, privacy: .public)) starts the screens' breakers clean")
             case .bookChanged:
                 saveBook(b.link.book)
+            case .fellBack(let why):
+                // no scene adopts a tab root before H7, so the link never falls one back yet; H8 hides the bar here
+                Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public))")
+            case .pingWhenIdle:
+                // a state intent's timeout is held (contract 4.4): the ping confirms it, at the end of the queue
+                send(.ping, b)
             }
         }
     }
@@ -702,6 +708,8 @@ public final class ShellBridge: NSObject {
         case .screenOff(let s, let r): return "screenOff \(s) \(r.code)"
         case .breakersReset(let p): return "breakersReset \(p)"
         case .bookChanged: return "bookChanged"
+        case .fellBack(let why): return "fellBack \(why.rawValue)"
+        case .pingWhenIdle: return "pingWhenIdle"
         }
     }
 

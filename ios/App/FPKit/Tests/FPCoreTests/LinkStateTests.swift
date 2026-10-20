@@ -400,5 +400,375 @@ final class LinkStateTests: XCTestCase {
         let failures = ScreenOffReason.tripped(Trip(reason: .failures, at: t0, detail: "3 in a row: timeout, timeout, timeout"))
         XCTAssertEqual([noHello.code, failures.code, ScreenOffReason.withdrawn.code], ["no-hello", "failures", "withdrawn"])
         XCTAssertEqual(Intent.screensOff(screen: "coach", why: ScreenOffReason.withdrawn.code).arguments, ["screen": "coach", "why": "withdrawn"])
+        XCTAssertEqual(ScreenOffReason.needs(["coachHome"]).code, "needs", "build 61: a piece it needs went off (contract 4.2)")
+    }
+
+    // MARK: Build 61: pieces that depend on each other (contract 2.2, 3.2, 10.3, I12)
+
+    private let shell61 = ShellContract(shell: "61")
+    private let all = ShellContract.binaryScreens
+    private let select = Intent.tabsSelect(tab: "progress", seq: 1, again: nil)
+
+    /// A document of build 61 linked under the root by a hello naming all three, with `base` passing its own checks.
+    private func linked61(base: [String] = ShellContract.binaryScreens, tabsRoot: Bool = true) -> LinkState {
+        var s = LinkState(shell: shell61)
+        _ = s.setTabsRoot(tabsRoot)
+        _ = s.documentStarted(pageBuild: "P1", at: t0)
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: base, at: t0 + 1)
+        return s
+    }
+
+    private func offs(_ fx: [LinkEffect]) -> [NegotiationTable.Off] { fx.compactMap(NegotiationTable.Off.init) }
+
+    private func fellBack(_ fx: [LinkEffect]) -> [FellBackWhy] {
+        fx.compactMap { if case .fellBack(let w) = $0 { return w } else { return nil } }
+    }
+
+    private func tripped(_ s: LinkState) -> [String] { all.filter { s.book.trip(screen: $0, pageBuild: "P1") != nil } }
+
+    /// Every hello row of negotiation.json through the link: the reply, the declines in the book, the fallback's effect
+    /// and the rule after it, and the gate's `needs` on the link's book; under a live tab root coach and coachHome are
+    /// both live or both off (I12), and a fallback at a hello turns nothing off (nothing was live yet).
+    func testEveryHelloRowThroughTheLink() throws {
+        for row in try NegotiationTable.rows("hello") {
+            let tag = row["case"]?.string ?? "?"
+            let base = NegotiationTable.strings(row["base"])
+            let os = try XCTUnwrap(row["os"]?.int, tag)
+            let root = try XCTUnwrap(row["root"]?.string, tag)
+            let want = try XCTUnwrap(row["want"], tag)
+            var s = LinkState(shell: shell61)
+            _ = s.setTabsRoot(root == "tabs")
+            _ = s.documentStarted(pageBuild: "P1", at: t0)
+            let deviceOff = Set(all).subtracting(base)
+            let gate = ScreenGate.base(binary: all, deviceOff: deviceOff, policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1", os: os)
+            let hello = HelloRequest(v: try XCTUnwrap(row["hello"]?["v"]?.int, tag), page: "P1",
+                                     screens: NegotiationTable.strings(row["hello"]?["screens"]), boot: "b1")
+            let (reply, fx) = s.hello(hello, available: gate.on, at: t0 + 1)
+            XCTAssertEqual(reply.v, want["v"]?.int, "\(tag): v")
+            XCTAssertEqual(reply.why, want["why"]?.string, "\(tag): why")
+            XCTAssertEqual(reply.screens, NegotiationTable.strings(want["screens"]), "\(tag): screens")
+            XCTAssertEqual(s.liveScreens, reply.screens, "\(tag): live")
+            XCTAssertEqual(all.filter { s.book.declined(piece: $0, page: "P1") }, NegotiationTable.strings(want["declined"]), "\(tag): declined")
+            XCTAssertEqual(fellBack(fx).map(\.rawValue), want["fellBack"]?.string.map { [$0] } ?? [], "\(tag): fellBack")
+            XCTAssertEqual(s.tabsRoot, root == "tabs" && want["fellBack"]?.string == nil, "\(tag): the rule after the hello")
+            XCTAssertEqual(offs(fx), [], "\(tag): nothing was live")
+            if !NegotiationTable.strings(want["declined"]).isEmpty { XCTAssertEqual(fx.last, .bookChanged, "\(tag): the declines are kept") }
+            if s.tabsRoot { XCTAssertEqual(s.isLive("coach"), s.isLive("coachHome"), "\(tag): joint (I12)") }
+            let after = ScreenGate.evaluate(binary: all, deviceOff: deviceOff, policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1",
+                                            tabsRoot: s.tabsRoot, os: os)
+            XCTAssertEqual(NegotiationTable.needs(of: after.off), NegotiationTable.needs(want["needs"]), "\(tag): needs")
+        }
+    }
+
+    /// Every cascade row of negotiation.json: the pieces that go off with the event, in the order the page hears it,
+    /// which of them carry a breaker record (a cascade never does), and the fallback the link starts.
+    func testEveryCascadeRow() throws {
+        for row in try NegotiationTable.rows("cascade") {
+            let tag = row["case"]?.string ?? "?"
+            let root = try XCTUnwrap(row["root"]?.string, tag)
+            let live = NegotiationTable.strings(row["live"])
+            let event = try XCTUnwrap(row["event"], tag)
+            let want = try XCTUnwrap(row["want"], tag)
+            var s = linked61(base: live, tabsRoot: root == "tabs")
+            XCTAssertEqual(s.liveScreens, live, "\(tag): set up")
+            var fx: [LinkEffect] = []
+            if let piece = event["trip"]?.string {
+                // three failures in a row of the piece's own intents (errors: counted at once)
+                let own: Intent = piece == "tabs" ? select : piece == "coachHome" ? .coachHomeOpenChat : .coachStop
+                XCTAssertEqual(own.screen, piece, tag)
+                for i in 0 ..< 3 { fx += s.intentFinished(own, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 2 + Double(i)) }
+            } else if event["tripShell"]?.bool == true {
+                for i in 0 ..< 3 { fx += s.intentFinished(.toastUndo(id: "t"), boot: "b1", outcome: .failed(.javascript("x")), at: t0 + 2 + Double(i)) }
+            } else if let piece = event["withdraw"]?.string {
+                fx = s.withdraw([piece])
+            } else {
+                XCTFail("\(tag): an event this test does not know: \(event)")
+            }
+            let gone = NegotiationTable.offs(want["off"])
+            XCTAssertEqual(offs(fx), gone, "\(tag): off")
+            XCTAssertEqual(tripped(s), NegotiationTable.strings(want["trips"]), "\(tag): trips")
+            XCTAssertEqual(fellBack(fx).map(\.rawValue), want["fellBack"]?.string.map { [$0] } ?? [], "\(tag): fellBack")
+            XCTAssertEqual(s.tabsRoot, root == "tabs" && want["fellBack"]?.string == nil, "\(tag): the rule after")
+            for o in gone where o.why == "needs" { XCTAssertNil(s.book.trip(screen: o.screen, pageBuild: "P1"), "\(tag): \(o.screen) has no trip") }
+            XCTAssertEqual(s.liveScreens, live.filter { p in !gone.contains { $0.screen == p } }, "\(tag): the rest stays live")
+            // what went off stays off for the document, even for a second hello of it
+            let again = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: live, at: t0 + 9).reply.screens
+            XCTAssertEqual(again, live.filter { p in !gone.contains { $0.screen == p } }, "\(tag): not back within the document")
+        }
+    }
+
+    /// Every root-change row of negotiation.json: the host's own fallback (`dismiss tabs`, the policy, the switch) turns
+    /// off every piece negotiated under the tab root's rule, coach included, with `needs` (tabs silently, the host's to
+    /// tell); before a link it changes only the rule; later documents negotiate on the classic rule.
+    func testEveryRootChangeRow() throws {
+        for row in try NegotiationTable.rows("rootChange") {
+            let tag = row["case"]?.string ?? "?"
+            let root = try XCTUnwrap(row["root"]?.string, tag)
+            let base = NegotiationTable.strings(row["base"])
+            let want = try XCTUnwrap(row["want"], tag)
+            var s = LinkState(shell: shell61)
+            _ = s.setTabsRoot(root == "tabs")
+            _ = s.documentStarted(pageBuild: "P1", at: t0)
+            let hello = HelloRequest(v: 1, page: "P1", screens: all, boot: "b1")
+            if row["linked"]?.bool == true { _ = s.hello(hello, available: base, at: t0 + 1) }
+            XCTAssertEqual(s.liveScreens, NegotiationTable.strings(row["live"]), "\(tag): set up")
+            let before = s.book
+            let fx = s.setTabsRoot(false)
+            XCTAssertEqual(offs(fx), NegotiationTable.offs(want["off"]), "\(tag): off")
+            XCTAssertEqual(fellBack(fx), [], "\(tag): the host's fallback: no fellBack from the link")
+            XCTAssertFalse(s.tabsRoot, tag)
+            XCTAssertEqual(s.book, before, "\(tag): a root change writes no record")
+            if root == "tabs" { XCTAssertEqual(s.liveScreens, [], "\(tag): tabs went too, silently") }
+            let same = s.hello(hello, available: base, at: t0 + 2).reply.screens
+            XCTAssertEqual(same, NegotiationTable.strings(want["sameDocument"]), "\(tag): same document")
+            _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
+            let next = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: base, at: t0 + 11).reply.screens
+            XCTAssertEqual(next, NegotiationTable.strings(want["nextDocument"]), "\(tag): next document")
+        }
+    }
+
+    func testTheTabRootIsTheHostsToAdopt() {
+        // false at init; a binary without tabs never has one
+        var sixty = LinkState(shell: shell)
+        XCTAssertFalse(sixty.tabsRoot)
+        XCTAssertEqual(sixty.setTabsRoot(true), [])
+        XCTAssertFalse(sixty.tabsRoot, "build 60's binary has no tab root")
+        var s = LinkState(shell: shell61)
+        XCTAssertFalse(s.tabsRoot)
+        XCTAssertEqual(s.setTabsRoot(true), [])
+        XCTAssertTrue(s.tabsRoot)
+        XCTAssertEqual(s.setTabsRoot(true), [])
+        XCTAssertEqual(s.setTabsRoot(false), [], "before a link only the rule changes")
+        XCTAssertFalse(s.tabsRoot)
+        XCTAssertEqual(s.setTabsRoot(false), [], "once")
+        // the rule follows the root: classic from now on, for every later document of the scene
+        _ = s.documentStarted(pageBuild: "P1", at: t0)
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: all, at: t0 + 1).reply.screens, ["coach"])
+    }
+
+    /// Three failed `tabs.select` trip `tabs` and nothing else: coach and coachHome go off with `needs` and no record of
+    /// their own, the page hears them before the bar, and the root falls back; the next document is classic.
+    func testThreeFailedTabsSelectTripTheBarAlone() throws {
+        var s = linked61()
+        var fx: [LinkEffect] = []
+        for i in 0 ..< 3 { fx = s.intentFinished(select, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 2 + Double(i)) }
+        let trip = try XCTUnwrap(s.book.trip(screen: "tabs", pageBuild: "P1"))
+        XCTAssertEqual(trip.detail, "3 in a row: page exception, page exception, page exception")
+        XCTAssertEqual(fx, [.screenOff(screen: "coach", reason: .needs(["coachHome"])), .screenOff(screen: "coachHome", reason: .needs(["tabs"])),
+                            .screenOff(screen: "tabs", reason: .tripped(trip)), .fellBack(.failures), .bookChanged])
+        XCTAssertNil(s.book.screens["coach"], "a cascade writes no record")
+        XCTAssertNil(s.book.screens["coachHome"])
+        XCTAssertEqual(s.liveScreens, [])
+        XCTAssertFalse(s.tabsRoot)
+        XCTAssertEqual(s.intentFinished(.coachStop, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "off for the document: nothing counts")
+        // the next document: tabs tripped for the page build, the classic rule: 60's overlay chat
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
+        let gate = ScreenGate.base(binary: all, deviceOff: [], policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1")
+        XCTAssertEqual(gate.on, ["coach", "coachHome"])
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: gate.on, at: t0 + 11).reply.screens, ["coach"])
+    }
+
+    /// Three failed `shell.covered` count against every live piece, `tabs` included (D13): all three trip.
+    func testThreeFailedShellCoveredTripEveryLivePiece() {
+        var s = linked61()
+        var fx: [LinkEffect] = []
+        for i in 0 ..< 3 { fx = s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.javascript("x")), at: t0 + 2 + Double(i)) }
+        XCTAssertEqual(tripped(s), all)
+        XCTAssertEqual(offs(fx).map(\.description), ["coach failures", "coachHome failures", "tabs failures"])
+        XCTAssertEqual(fellBack(fx), [.failures])
+    }
+
+    /// No hello in time under a live tab root: every piece trips (no hello) and the root falls back, at a tick or at a
+    /// late hello, once.
+    func testNoHelloUnderATabRootFallsBack() {
+        var s = LinkState(shell: shell61)
+        _ = s.setTabsRoot(true)
+        _ = s.documentStarted(pageBuild: "P1", at: t0)
+        let fx = s.tick(at: t0 + 15)
+        XCTAssertEqual(trips(fx).map(\.reason), [.noHello, .noHello, .noHello])
+        XCTAssertEqual(offs(fx).map(\.screen), all)
+        XCTAssertEqual(fx.suffix(2), [.fellBack(.noHello), .bookChanged])
+        XCTAssertFalse(s.tabsRoot)
+        XCTAssertEqual(s.tick(at: t0 + 30), [], "once")
+        var late = LinkState(shell: shell61)
+        _ = late.setTabsRoot(true)
+        _ = late.documentStarted(pageBuild: "P1", at: t0)
+        let (reply, lfx) = late.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: all, at: t0 + 16)
+        XCTAssertEqual(reply.screens, [])
+        XCTAssertEqual(fellBack(lfx), [.noHello], "one fallback, with no hello's word")
+        XCTAssertFalse(late.tabsRoot)
+    }
+
+    /// Three undecodable TabsModels trip the bar (contract 10.1), and a trip put in the book does the same.
+    func testUndecodableTabsModelsAndABookTripFallBack() throws {
+        var s = linked61()
+        var r: (verdict: ModelVerdict, effects: [LinkEffect]) = (.apply, [])
+        for rev in 1 ... 3 { r = s.modelReceived(screen: "tabs", rev: rev, boot: nil, decoded: false, at: t0 + 2) }
+        XCTAssertEqual(r.verdict, .undecodable)
+        XCTAssertEqual(s.book.trip(screen: "tabs", pageBuild: "P1")?.detail,
+                       "3 in a row: undecodable model rev 1, undecodable model rev 2, undecodable model rev 3")
+        XCTAssertEqual(offs(r.effects).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs failures"])
+        XCTAssertEqual(fellBack(r.effects), [.failures])
+        var e = linked61()
+        let fx = e.editBook { _ = $0.trip(screen: "tabs", pageBuild: "P1", reason: .failures, detail: "set by hand", at: self.t0) }
+        XCTAssertEqual(offs(fx).map(\.screen), all)
+        XCTAssertEqual(fx.suffix(2), [.fellBack(.failures), .bookChanged])
+        // a crash verdict or a decline put in the book waits for the next hello (ScreenGate reads them)
+        var d = linked61()
+        XCTAssertEqual(d.editBook { $0.decline(piece: "tabs", page: "P1") }, [.bookChanged])
+        XCTAssertEqual(d.liveScreens, all)
+        XCTAssertTrue(d.tabsRoot)
+    }
+
+    /// `withdraw` of tabs (the host calls setTabsRoot(false) for its fallbacks): the pieces that need it follow; the
+    /// link starts no fallback of its own, since it cannot tell the host's word.
+    func testWithdrawingTheBarTakesItsDependentsButStartsNoFallback() {
+        var s = linked61()
+        let fx = s.withdraw(["tabs"])
+        XCTAssertEqual(offs(fx).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs withdrawn"])
+        XCTAssertEqual(fellBack(fx), [])
+        XCTAssertTrue(s.tabsRoot)
+        XCTAssertEqual(s.book, BreakerBook())
+    }
+
+    // MARK: Build 61: held timeouts (contract 4.4, D41, I15)
+
+    /// A busy page: three taps' `tabs.select` and a `shell.covered` time out while it is stalled. They are held, one ping
+    /// is asked for, and the first answer drops them uncounted (a busy page, not a broken one).
+    func testABusyPagesTimeoutsAreHeldAndAnAnswerDropsThem() {
+        var s = linked61()
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2), [.pingWhenIdle])
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 4), [], "asked once")
+        XCTAssertEqual(s.intentFinished(.tabsBar(BarMetrics(h: 83, safe: 34, rev: 1)), boot: "b1", outcome: .failed(.timeout), at: t0 + 5), [])
+        XCTAssertEqual(s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [])
+        XCTAssertEqual(s.heldTimeouts, 4)
+        XCTAssertEqual(s.book, BreakerBook(), "nothing counted yet")
+        XCTAssertEqual(s.liveScreens, all)
+        // the page is free at 6.5 s: the ping's answer drops every hold uncounted and counts as the success it is
+        XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: ok, at: t0 + 6.5), [])
+        XCTAssertEqual(s.heldTimeouts, 0)
+        XCTAssertEqual(s.book, BreakerBook())
+        // a later stall asks again; any queued intent's answer drops it too, a refusal included
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 10), [.pingWhenIdle])
+        XCTAssertEqual(s.intentFinished(.coachHomeClearChat, boot: "b1", outcome: .refused("empty"), at: t0 + 11), [])
+        XCTAssertEqual(s.heldTimeouts, 0)
+        // the ping asked for still comes back: a hold meanwhile waits for it, with no second ask
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 12), [])
+        XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: ok, at: t0 + 13), [])
+        XCTAssertEqual(s.heldTimeouts, 0)
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 15), [.pingWhenIdle], "asked again after the ping came back")
+        // an answer resets a run counted earlier, as before
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 16)
+        XCTAssertEqual(s.book.screens["tabs"]?.failures, 1)
+        XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: ok, at: t0 + 17), [.bookChanged])
+        XCTAssertEqual(s.book.screens["tabs"]?.failures, 0)
+    }
+
+    /// A page that stopped answering still trips: the ping's failure counts every held timeout, then itself, against
+    /// every live piece (two holds and a failed ping trip the bar); one hold and a failed ping twice do too (about 8 s
+    /// for a tap and its restate).
+    func testThePingsFailureCountsTheHoldsThenItself() throws {
+        var s = linked61()
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2)
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 4)
+        let fx = s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 6)
+        let trip = try XCTUnwrap(s.book.trip(screen: "tabs", pageBuild: "P1"))
+        XCTAssertEqual(trip.detail, "3 in a row: timeout, timeout, timeout")
+        XCTAssertEqual(trip.at, t0 + 6)
+        XCTAssertEqual(offs(fx).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs failures"])
+        XCTAssertEqual(fx.suffix(2), [.fellBack(.failures), .bookChanged])
+        XCTAssertEqual(s.book.screens["coach"]?.failures, 1, "the ping counted for coach before the bar took it along")
+        XCTAssertNil(s.book.trip(screen: "coach", pageBuild: "P1"))
+        XCTAssertEqual(s.heldTimeouts, 0)
+        // a tap, then its restate, into a dead page
+        var d = linked61()
+        XCTAssertEqual(d.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2), [.pingWhenIdle])
+        XCTAssertEqual(d.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 4), [.bookChanged])
+        XCTAssertEqual(d.book.screens["tabs"]?.failures, 2)
+        XCTAssertEqual(d.book.screens["coach"]?.failures, 1)
+        XCTAssertEqual(d.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [.pingWhenIdle], "the restate's own hold")
+        let dead = d.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 8)
+        XCTAssertEqual(fellBack(dead), [.failures])
+        XCTAssertEqual(tripped(d), ["tabs"], "the bar trips first; the others go with it")
+    }
+
+    /// A held `shell.covered` counts against every live piece, `tabs` included, when the ping fails.
+    func testAHeldShellCoveredCountsForEveryLivePiece() {
+        var s = linked61()
+        XCTAssertEqual(s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.timeout), at: t0 + 2), [.pingWhenIdle])
+        _ = s.intentFinished(.ping, boot: "b1", outcome: .failed(.javascript("stalled")), at: t0 + 4)
+        for p in all {
+            XCTAssertEqual(s.book.screens[p]?.failures, 2, p)
+            XCTAssertEqual(s.book.screens[p]?.recent, ["timeout", "script error: stalled"], p)
+        }
+        // under a classic root, build 60's overlay: held for coach
+        var c = linked61(base: ["coach"], tabsRoot: false)
+        XCTAssertEqual(c.liveScreens, ["coach"])
+        XCTAssertEqual(c.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2), [], "tabs is not live: nothing to hold")
+        XCTAssertEqual(c.heldTimeouts, 0)
+        XCTAssertEqual(c.intentFinished(.shellCovered(on: false), boot: "b1", outcome: .failed(.timeout), at: t0 + 3), [.pingWhenIdle])
+        XCTAssertEqual(c.book, BreakerBook())
+    }
+
+    /// Inside a stall every other failure counts as before: a thrown error, a malformed answer and `bad-args` at once;
+    /// a timeout of `coach.*`, of the snapshots and of the ping itself at once (build 60's breaker scenario trips on
+    /// three timed-out pings).
+    func testEverythingElseCountsAtOnce() throws {
+        var s = linked61()
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2)
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.javascript("x")), at: t0 + 3)
+        _ = s.intentFinished(.tabsBar(BarMetrics(h: 83, safe: 34, rev: 2)), boot: "b1", outcome: .failed(.malformedReply("no ok")), at: t0 + 3.5)
+        XCTAssertEqual(s.book.screens["tabs"]?.failures, 2)
+        XCTAssertEqual(s.heldTimeouts, 1, "the hold still waits for an answer or the ping")
+        let fx = s.intentFinished(select, boot: "b1", outcome: .failed(.page("bad-args")), at: t0 + 4)
+        XCTAssertEqual(s.book.trip(screen: "tabs", pageBuild: "P1")?.detail, "3 in a row: script error: x, bad answer: no ok, page bad-args")
+        XCTAssertEqual(fellBack(fx), [.failures])
+        XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "nothing live is left to count for")
+        // coach.* keeps build 60's rule: three timeouts in a row trip coach (and the Coach tab goes with it)
+        var c = linked61()
+        var cfx: [LinkEffect] = []
+        for i in 0 ..< 3 { cfx = c.intentFinished(send, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
+        XCTAssertEqual(c.book.trip(screen: "coach", pageBuild: "P1")?.detail, "3 in a row: timeout, timeout, timeout")
+        XCTAssertEqual(offs(cfx).map(\.description), ["coach failures", "coachHome needs [\"coach\"]"])
+        XCTAssertFalse(cfx.contains(.pingWhenIdle))
+        XCTAssertEqual(c.heldTimeouts, 0)
+        var snap = linked61()
+        for i in 0 ..< 3 { _ = snap.intentFinished(.coachHomeSnapshot, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
+        XCTAssertNotNil(snap.book.trip(screen: "coachHome", pageBuild: "P1"))
+        // three timed-out pings trip every live piece
+        var p = linked61()
+        var pfx: [LinkEffect] = []
+        for i in 0 ..< 3 { pfx = p.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
+        XCTAssertEqual(tripped(p), all)
+        XCTAssertEqual(fellBack(pfx), [.failures])
+        var sixty = linked()
+        for i in 0 ..< 3 { _ = sixty.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
+        XCTAssertEqual(sixty.book.trip(screen: "coach", pageBuild: "P1")?.detail, "3 in a row: timeout, timeout, timeout", "build 60's scenario")
+    }
+
+    /// Holds belong to their boot: a document start drops them uncounted, and the gone document's ping counts nothing.
+    func testADocumentStartDropsTheHolds() {
+        var s = linked61()
+        _ = s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 2)
+        _ = s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.timeout), at: t0 + 4)
+        XCTAssertEqual(s.documentStarted(pageBuild: "P1", at: t0 + 5), [.documentGone(boot: "b1")])
+        XCTAssertEqual(s.heldTimeouts, 0)
+        XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "the gone document's ping")
+        XCTAssertEqual(s.book, BreakerBook())
+        XCTAssertTrue(s.tabsRoot, "a document start changes no root")
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: all, at: t0 + 7)
+        XCTAssertEqual(s.liveScreens, all)
+        XCTAssertEqual(s.intentFinished(select, boot: "b2", outcome: .failed(.timeout), at: t0 + 9), [.pingWhenIdle], "the new document asks for its own")
+        // a hello from a new boot with no document start seen drops them too
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b3"), available: all, at: t0 + 10)
+        XCTAssertEqual(s.heldTimeouts, 0)
+    }
+}
+
+extension NegotiationTable.Off {
+    /// A `screenOff` effect as a row of the table.
+    init?(_ effect: LinkEffect) {
+        guard case .screenOff(let s, let r) = effect else { return nil }
+        if case .needs(let n) = r { self.init(screen: s, why: r.code, needs: n) } else { self.init(screen: s, why: r.code) }
     }
 }
