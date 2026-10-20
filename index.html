@@ -2336,8 +2336,10 @@ var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, co
 var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
 // fp-tabs boot block: tabs mode is decided once per document, by the head script's test (contract 2.3). On a pass the
 // page boots on the tab this web view showed last (fp_tab, written by every local switch in tabs mode), else the
-// flag's; the flag's selection counts as seq 0 and its bar as rev 0. A throw here leaves tabs mode on its own and the
-// boot goes on in classic mode, so no tabs-only error stops the first render and the OTA confirm.
+// flag's; the flag's selection counts as seq 0 and its bar as rev 0. Booted on an fp_tab that is not the flag's tab,
+// the page has seen no seq for the tab it shows (-1), so hello's reply wins even at seq 0 (contract 2.4): the shell
+// still shows the flag's tab when that fp_tab's selectTab never reached it. A throw here leaves tabs mode on its own
+// and the boot goes on in classic mode, so no tabs-only error stops the first render and the OTA confirm.
 try{
   (function(){
     var root=document.documentElement, t=_fpTabsTest();
@@ -2354,6 +2356,7 @@ try{
     var saved=null;
     try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
     currentTab=FP_TAB_IDS.indexOf(saved)>=0 ? saved : t.selected;
+    if(currentTab!==t.selected) T.seq=-1;
     _syncTabButtons(currentTab);
   })();
 }catch(e){

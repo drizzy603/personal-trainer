@@ -13,8 +13,8 @@
 //   flag (no shell, build 60's, 61's classic roots, the flag with no TrovoShell or 60's methods, a malformed tabs,
 //   FP_TABS or FP_NATIVE off by a getter or by the page an OTA ships): no fp-tabs, no --fp-* and its own #tabs, and a
 //   tour sends no selectTab, sheets, setSwitch or dismiss tabs; the class and the flag's bar are on <html> before #tabs
-//   is in and #tabs is hidden; the boot tab (the flag's, fp_tab); hello names FP_SCREENS and adopts a newer selection
-//   and bar with no selectTab; the funnel (one selectTab per switchTab before the local switch, answers correct only the
+//   is in and #tabs is hidden; the boot tab (the flag's, fp_tab, which gives way to hello's reply even at seq 0); hello
+//   names FP_SCREENS and adopts a newer selection and bar with no selectTab; the funnel (one selectTab per switchTab before the local switch, answers correct only the
 //   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
 //   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
 //   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
@@ -402,12 +402,17 @@ serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the pa
   }
 });
 
-serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #tabs is in; #tabs hidden); hello names FP_SCREENS; a reply at seq 0 moves nothing and its newer bar sets the variables; the boot tab is fp_tab when it names a tab', async () => {
+serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #tabs is in; #tabs hidden); hello names FP_SCREENS; a reply at seq 0 moves nothing and its newer bar sets the variables; the boot tab is fp_tab when it names a tab, and hello\'s reply then wins (a stale fp_tab gives way to the scene\'s seq 0)', async () => {
   const FIRST = '(function () { window.__ff = null; new MutationObserver(function (ms) { ms.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) {'
     + ' if (n.id === "tabs" && !window.__ff) { var r = document.documentElement; window.__ff = { cls: r.classList.contains("fp-tabs"), h: r.style.getPropertyValue("--fp-bar-h"),'
     + ' up: r.style.getPropertyValue("--fp-bar-up"), main: "_fp" in window }; } }); }); }).observe(document, { childList: true, subtree: true }); })();';
-  const app = await pageBoot('tabs', { init: FIRST + 'window.__fpShellHelloTabs = { selected: "progress", seq: 0, bar: { h: 49, safe: 0, rev: 1 } };'
-    + 'if (!sessionStorage.getItem("__p2")) { sessionStorage.setItem("__p2", "1"); sessionStorage.setItem("fp_tab", "home"); }' });
+  // The first document: fp_tab 'home' (no tab) and a reply at seq 0 that names Progress, with a measured bar (rev 1).
+  // Later documents get the mock's own reply (its scene); while __p2quiet is set the boot's hello stays silent and the
+  // case sends the one that answers, so the boot tab is seen before hello's reply.
+  const app = await pageBoot('tabs', { init: FIRST
+    + 'if (!sessionStorage.getItem("__p2")) { sessionStorage.setItem("__p2", "1"); sessionStorage.setItem("fp_tab", "home");'
+    + ' window.__fpShellHelloTabs = { selected: "progress", seq: 0, bar: { h: 49, safe: 0, rev: 1 } }; }'
+    + 'if (sessionStorage.getItem("__p2quiet")) window.__fpShellHelloSilent = true;' });
   try {
     await helloIn(app);
     await settle(app, 100);
@@ -421,19 +426,30 @@ serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #
     assert(o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.tabsCalls.length === 0, 'fp_tab home is no tab: the flag\'s Log; seq 0 moves nothing: ' + J(o));
     assert(J(o.vars) === J({ '--fp-bar-h': '49px', '--fp-safe-b': '0px', '--fp-sheet-b': '16px', '--fp-clear': '49px', '--fp-bar-up': '49px' }),
       'the reply\'s bar (rev 1) sets the variables: ' + J(o.vars));
-    // fp_tab: written by every local switch in tabs mode; a reload boots on it
-    await ev(app, () => { sessionStorage.setItem('fp_tab', 'settings'); });
-    await app.reload(); await helloIn(app); await settle(app, 60);
+    // fp_tab, written by every local switch in tabs mode: a reload boots on it. Written here with no selectTab (as when a
+    // local switch's selectTab never reached the shell) it is stale: the scene still shows the flag's Log at seq 0, and
+    // hello's reply wins although its seq is 0 (contract 2.4: the page saw no seq for the tab it booted on)
+    await ev(app, () => { sessionStorage.setItem('fp_tab', 'settings'); sessionStorage.setItem('__p2quiet', '1'); });
+    await app.reload(); await settle(app, 60);
     o = await look(app);
-    let ends = await ev(app, () => ({ bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
-    assert(o.mode && o.tab === 'settings' && o.route === 'settings' && o.active === 'settings' && o.current === 'settings', 'fp_tab settings: the boot tab: ' + J(o));
+    let ends = await ev(app, () => ({ hello: _fp.hello, bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
+    assert(o.mode && ends.hello === null && o.tab === 'settings' && o.route === 'settings' && o.active === 'settings' && o.current === 'settings',
+      'fp_tab settings: the boot tab, before hello answers: ' + J([o, ends.hello]));
     assert(ends.bootDone === 1 && ends.errors === 0 && app.errors.length === 0, 'booted on Settings, the boot ran to its end (bootDone) with no error: ' + J([ends, app.errors]));
+    await ev(app, () => { sessionStorage.removeItem('__p2quiet'); window.__fpShellHelloSilent = false; _fpHello(); });
+    await helloIn(app); await settle(app, 60);
+    o = await look(app);
+    const kept = await ev(app, () => sessionStorage.getItem('fp_tab'));
+    assert(o.mode && o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.current === 'log' && o.tabsCalls.length === 0
+      && o.scene.scene.selected === 'log' && o.scene.scene.seq === 0 && kept === 'log',
+      'a stale fp_tab gives way to hello\'s reply at seq 0 (the scene\'s Log), with no selectTab: ' + J([o, kept]));
     const sw = await ev(app, async () => { switchTab('progress'); await new Promise((r) => setTimeout(r, 30)); return sessionStorage.getItem('fp_tab'); });
     assert(sw === 'progress', 'a local switch writes fp_tab: ' + sw);
     await app.reload(); await helloIn(app); await settle(app, 60);
     o = await look(app);
     ends = await ev(app, () => ({ bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
-    assert(o.tab === 'progress' && o.route === 'progress' && o.active === 'progress', 'a reload boots on the tab it showed: ' + J(o));
+    assert(o.tab === 'progress' && o.route === 'progress' && o.active === 'progress' && o.tabsCalls.length === 0 && o.scene.scene.seq === 1,
+      'a reload boots on the tab it showed, which hello\'s reply (the scene\'s seq 1) keeps: ' + J(o));
     assert(ends.bootDone === 1 && ends.errors === 0 && app.errors.length === 0, 'booted on Progress, the boot ran to its end: ' + J([ends, app.errors]));
   } finally { await app.close(); }
 });
