@@ -2,9 +2,11 @@
 // dump-coach-home.js: the page's own Coach home and tab bar models, written as FPCore's golden fixtures (build 61,
 // plan task P6, contract 6.4).
 //
-//   node tests/golden/dump-coach-home.js            write ios/App/FPKit/Tests/FPCoreTests/Fixtures/{coachHome,tabs}/<name>.json
-//   node tests/golden/dump-coach-home.js --check    exit 1 when a fixture differs from what the page builds now, or when
-//                                                   the chat's models built under the tabs shell differ from Fixtures/coach
+//   node tests/golden/dump-coach-home.js          write the page-built files of ios/App/FPKit/Tests/FPCoreTests/
+//                                                 Fixtures/coachHome and Fixtures/tabs
+//   node tests/golden/dump-coach-home.js --check  exit 1 when a fixture differs from what the page builds now, or
+//                                                 when the chat's models built under the tabs shell differ from
+//                                                 Fixtures/coach
 //
 // Each fixture is _coachHomeModel(rev) (CoachHomeModel v1, contract 6.2) or _tabsModel(rev) (TabsModel v1, 6.1) as the
 // page hands it to the shell (_nativeJSON), built in Chromium under build 61's tabs shell, on the test seed, in UTC, on
@@ -15,9 +17,9 @@
 // (kt_intake seeded with no programme, so the page boots in setup: the one model with resume true). The tabs files:
 // both rooms. FPCoreTests decodes every one (CoachHomeModelTests, TabsModelTests; tests/golden/check.sh).
 // forward-compat.json, lone-surrogates.json and minimal.json are not the page's: ios/App/FPKit/Tools/
-// coach-home-fixtures.js and tabs-fixtures.js write those by hand. Nothing here writes under Fixtures/coach: the --check
-// reads it, comparing tests/golden/dump-coach.js's chat states built under the tabs shell (one CoachModel whichever
-// host draws it, contract 6.3).
+// coach-home-fixtures.js and tabs-fixtures.js write those by hand. Nothing here writes under Fixtures/coach: the
+// --check reads it, comparing tests/golden/dump-coach.js's chat states built under the tabs shell (one CoachModel
+// whichever host draws it, contract 6.3).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -39,7 +41,8 @@ async function build(resume) {
   const raw = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
   const routine = lsGet('kt_routine');   // the seed's programme: twelve weeks, week 6's block BUILD
   const fix = () => { _midSeq = 0; _midTag = 'g'; _fpBoot = 'b1791561600000-c3'; };
-  // a scenario's state: a key and the name Kalani unless it says otherwise, the seed's programme, Heavyweight, the hub view
+  // a scenario's state: a key and the name Kalani unless it says otherwise, the seed's programme, Heavyweight, the
+  // hub view
   const set = (o) => {
     raw('kt_apikey', o.key === undefined ? 'sk-ant-golden' : o.key);
     raw('kt_user_name', o.name === undefined ? 'Kalani' : o.name);
