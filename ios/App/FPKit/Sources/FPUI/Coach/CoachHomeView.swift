@@ -57,9 +57,10 @@ public struct CoachHomeHost {
     /// A `coachHome.setKey` is out: CONNECT and Return do nothing until it is answered (no second key overlaps).
     public var connecting: Bool
     /// Whether the key field holds text, reported when that changes (true once typed into, false once emptied or
-    /// once the model's route leaves the connect screen, which empties it) and whenever a field appears (false for a
-    /// new one): a flag for the store's `describe()`, never the text. When the whole view goes (no model), nothing is
-    /// reported: the store's own reset says the field is gone.
+    /// once the model's route leaves the connect screen, which empties it) and when a field appears empty (a new one):
+    /// a flag for the store's `describe()`, never the text. A field that appears holding text says nothing (it was
+    /// reported when typed into). When the whole view goes (no model), nothing is reported: the store's own reset says
+    /// the field is gone.
     public var fieldTyped: (Bool) -> Void
 
     public init(act: @escaping (CoachHomeAction) -> Void, connecting: Bool = false, fieldTyped: @escaping (Bool) -> Void = { _ in }) {
@@ -679,9 +680,12 @@ struct HomeConnectBlock: View {
                     .padding(.top, t.px(22))
             }
         }
-        // a field that appears says what it holds: a new one (the whole view gone and back, the tab returned to)
-        // nothing, so the store's flag never stays "typed" over an empty field
-        .onAppear { live.host.fieldTyped(!secret.isEmpty) }
+        // a field that appears empty says so: a new one (the whole view gone and back, the tab returned to) holds
+        // nothing, so the store's flag never stays "typed" over an empty field. One that appears holding text says
+        // nothing: it is a field already reported, back in the window, or one on its way out, whose appearance UIKit
+        // can deliver late (a stack that re-enters the window replays it before the newer model's update removes the
+        // field: H0's probe, finding 6), when its text is no longer the store's to report
+        .onAppear { if secret.isEmpty { live.host.fieldTyped(false) } }
         .onChange(of: secret.isEmpty) { _, empty in live.host.fieldTyped(!empty) }
     }
 

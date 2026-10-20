@@ -9,11 +9,12 @@ import FPCore
 /// rooms; an unknown route draws the hub's layout; VoiceOver hears the page's strings in the web's order with the right
 /// traits, at the large size and at .xxLarge; the key field is a secure field that autocorrects nothing, offers no
 /// content type and takes no focus by itself; CONNECT and Return send one action per press and none while a key is
-/// out, and reach the newest host; the field reports only whether it holds text, and says so whenever it appears; a
-/// tap anywhere in its drawn box focuses it; it draws in the room's face; a typed canary leaves no trace in
-/// UserDefaults or the app's files; the meta row publishes its bottom, follows the scroll and says 0 under the status
-/// bar; the help's two paragraphs are two lines; a wrapped headline keeps the CSS line pitch; CONNECT does not shrink
-/// under Reduce Motion; a 320 pt screen takes the narrow gutter and Lime's 41 pt headline.
+/// out, and reach the newest host; the field reports only whether it holds text, and an empty one says so when it
+/// appears (CoachHomeStoreTests holds, in a Coach stack, that one coming back holding text says nothing); a tap
+/// anywhere in its drawn box focuses it; it draws in the room's face; a typed canary leaves no trace in UserDefaults or
+/// the app's files; the meta row publishes its bottom, follows the scroll and says 0 under the status bar; the help's
+/// two paragraphs are two lines; a wrapped headline keeps the CSS line pitch; CONNECT does not shrink under Reduce
+/// Motion; a 320 pt screen takes the narrow gutter and Lime's 41 pt headline.
 ///
 /// How this host is driven (probed on iOS 27.0's simulator): SwiftUI vends its accessibility elements to a test only
 /// outside a scroll view (inside one it vends none without an accessibility client such as VoiceOver), so the walks

@@ -4,12 +4,14 @@ import SwiftUI
 import os.log
 import FPCore
 
-// The native Coach tab's store and root (build 61; contract 15.2, plan task N8): N's side of the seam between the shell,
-// which hosts, and the tab's insides, which N draws. ScreenHost (H10) makes one CoachHomeStore per web view binding
-// beside the chat's CoachStore, wires its hooks, hands it every coachHome model it decodes and hosts CoachHomeRoot once
-// as the Coach stack's root. Nothing here sees PageLink (only the outcome its hooks hand back), ShellBridge, the root,
-// the web view or a navigation controller, and nothing here decides a rule of the page's (when a row shows, whether a
-// key is good, what Back does in setup): the store holds the page's newest model and sends what the owner pressed.
+// The native Coach tab's store and root (build 61; contract 15.2, plan task N8): N's side of the seam between the
+// shell, which hosts, and the tab's insides, which N draws. ScreenHost (H10) makes one CoachHomeStore per web view
+// binding beside the chat's CoachStore, wires its hooks, hands it every coachHome model it decodes and hosts
+// CoachHomeRoot once as the Coach stack's root. Nothing here sees PageLink (only the outcome its hooks hand back),
+// ShellBridge, the root, the web view or a navigation controller, and nothing here decides a rule of the page's (when a
+// row shows, whether a key is good, what Back does in setup): the store holds the page's newest model and sends what
+// the owner pressed. Nothing here waits on a navigation callback either (UIKit's didShow comes late and twice, H0's
+// probe): a model, a press and an answer each act at once.
 
 /// The page's newest CoachHomeModel and where the hub's presses go, between the page's models and the owner's hands.
 /// ScreenHost keeps one per web view binding, so it outlives every document and every visit to the Coach tab.
@@ -139,9 +141,16 @@ public final class CoachHomeStore: ObservableObject {
         }
     }
 
-    /// The key field says whether it holds text (when that changes, and whenever a field appears).
+    /// The key field says whether it holds text (when that changes, and when a field appears empty). While the model
+    /// draws no field (none, or a route without a connect block), a field that says it holds text is one on its way
+    /// out, reporting late (an appearance UIKit replays as the Coach stack comes back into the window, before the
+    /// newer model's update removes the field): ignored, so the flag never says "typed" over the hub or the ground.
     func fieldTyped(_ typed: Bool) {
         guard typed != keyFieldTyped else { return }
+        if typed, model.flatMap(CoachHomeView.connectKey) == nil {
+            note("a key field on its way out says it holds text: ignored, no field is drawn")
+            return
+        }
         keyFieldTyped = typed
         note(typed ? "the key field holds text" : "the key field is empty")
     }
@@ -217,10 +226,10 @@ public final class CoachHomeStore: ObservableObject {
 /// publishes none, so the anchor falls under the status bar until the hub draws.
 ///
 /// The ground is the first frame's room (`room`, `paper`: what the shell read before any model, contract 6.1), drawn
-/// edge to edge. The hub fades in over it in 0.2 s, at once under Reduce Motion. The root holds nothing back for the hold
-/// (the shell keeps its view at alpha 0, H4), presents nothing, takes no focus and sets no `overrideUserInterfaceStyle`
-/// (the shell puts the room's on the Coach stack's navigation controller): the hub draws its room through the
-/// environment alone.
+/// edge to edge. The hub fades in over it in 0.2 s, at once under Reduce Motion. The root holds nothing back for the
+/// hold (the shell keeps its view at alpha 0, H4), presents nothing, takes no focus and sets no
+/// `overrideUserInterfaceStyle` (the shell puts the room's on the Coach stack's navigation controller): the hub draws its
+/// room through the environment alone.
 public struct CoachHomeRoot: View {
     @ObservedObject var store: CoachHomeStore
     let room: Room
@@ -244,7 +253,8 @@ public struct CoachHomeRoot: View {
     /// The ground: the room's background, from its compiled defaults (no model has come to override them).
     static func ground(room: Room, paper: Bool) -> RGBA { Tokens.defaults(for: room, paper: paper).color(.bg) }
 
-    /// How the hub comes in over the ground (and goes, should its model go): a 0.2 s cross-fade, none under Reduce Motion.
+    /// How the hub comes in over the ground (and goes, should its model go): a 0.2 s cross-fade, none under Reduce
+    /// Motion.
     static func fade(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : .easeInOut(duration: 0.2) }
 
     public var body: some View {
