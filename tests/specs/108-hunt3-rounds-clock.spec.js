@@ -1449,8 +1449,10 @@ run('T49: a Carry forward offered before a held round swapped in is not written 
       const wait = ms => new Promise(res => setTimeout(res, ms));
       const bench = (w) => { const e = (getCustomRoutine().weeks[w].push || []).find(x => x.name === 'Bench Press'); return e ? { w: e.weight, edited: e.rec !== undefined } : null; };
       await wait(1500);
-      // A slow bridge: the queue answers 400 ms after the finish, after the sheet has painted.
-      Capacitor.Plugins.TrovoWatch.getPendingSessions = () => new Promise(res => setTimeout(() => res({ sessions: [] }), 400));
+      // A slow bridge: the queue answers only when the case lets it, after the sheet has painted and been read (a
+      // 400 ms timer raced the read on a slow runner: the finish's own work outlasted the case's 200 ms wait).
+      const answers = [];
+      Capacitor.Plugins.TrovoWatch.getPendingSessions = () => new Promise(res => answers.push(() => res({ sessions: [] })));
       switchTab('log'); switchLogSub('workout'); await wait(20);
       openDeckRunner('Push', true); await wait(20);
       // Round 2 comes due under the workout (set for this Monday, before it): held.
@@ -1464,7 +1466,8 @@ run('T49: a Carry forward offered before a held round swapped in is not written 
       const btn = [...document.querySelectorAll('.kt-carry-row button')][0];
       r.offer = btn ? btn.textContent : null;
       r.cycleAtOffer = getCustomRoutine().cycle || 1;
-      await wait(900);   // round 2 swaps in under the sheet
+      answers.splice(0).forEach(a => a());
+      await wait(900);   // the queue has answered: round 2 swaps in under the sheet
       r.swapped = [getCustomRoutine().cycle || 1, currentWeek];
       r.before = bench(11); r.scope0 = localStorage.getItem('kt_routine_backup_scope');
       const b2 = [...document.querySelectorAll('.kt-carry-row button')][0];
