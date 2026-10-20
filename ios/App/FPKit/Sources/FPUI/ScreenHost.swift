@@ -13,6 +13,10 @@ public struct StackState {
     public var selected: @MainActor () -> Bool
     public var native: @MainActor () -> Bool
     public var held: @MainActor () -> Bool
+    /// Ends the hold. ScreenHost calls it right after a held push, so no frame of the home shows between the hold and
+    /// the chat. The root posts no `.screenChanged` for a hold ended this way: ScreenHost posts the chat once UIKit has
+    /// shown it, so VoiceOver hears the change once, when it is done (probe61: one post per change, on the op's
+    /// completion). A hold the root ends itself (its 0.5 s) is the root's to announce.
     public var releaseHold: @MainActor () -> Void
 
     public init(selected: @escaping @MainActor () -> Bool, native: @escaping @MainActor () -> Bool,
@@ -34,17 +38,17 @@ public struct StackState {
 ///   of the bridge controller or a second bridge would hide it; none is ever made here.
 /// - **The stack**: the chat is pushed on the Coach tab's UINavigationController (its system bar hidden: the chat draws
 ///   its own header) whether or not Coach is selected, never changing the selection (D18), with the tab bar left over it
-///   (D9). A push or pop animates only while Coach is selected and the root not held, and a held push releases the hold.
-///   Nothing here presents, covers or uncovers: the root owns the web view, its accessibility and `shell.covered`
-///   (contract 8.4), so a pop never uncovers. While attached, ScreenHost is the stack's navigation delegate and its
-///   interactive pop's delegate (the pop begins only where the edge pan would); iOS 26's content pop (a pan anywhere in
-///   the chat, which would pop it in setup too) is off meanwhile, so the edge is the one interactive pop. UIKit's
-///   `didShow` comes late (only once the Coach tab is in the window again), can come twice, and comes on every return to
-///   Coach with no push or pop (H0 question 6): a push or pop is done at the first `didShow` of the controller it shows,
-///   at once while the stack is out of the window or when `selectionChanged()` finds it left, or after `stackOpTimeout`
-///   with a log line, and everything hung on `didShow` is idempotent. Only ScreenHost pushes or pops the chat: a pop it
-///   did not make (the owner's interactive pop, anyone else's) is the owner's Back once it has finished, and nothing
-///   when it is cancelled.
+///   (D9). A push or pop animates only while Coach is selected, the tab NATIVE and the root not held, and a held push
+///   releases the hold. Nothing here presents, covers or uncovers: the root owns the web view, its accessibility and
+///   `shell.covered` (contract 8.4), so a pop never uncovers. While attached, ScreenHost is the stack's navigation
+///   delegate and its interactive pop's delegate (the pop begins only where the edge pan would); iOS 26's content pop (a
+///   pan anywhere in the chat, which would pop it in setup too) is off meanwhile, so the edge is the one interactive pop.
+///   UIKit's `didShow` comes late (only once the Coach tab is in the window again), can come twice, and comes on every
+///   return to Coach with no push or pop (H0 question 6): a push or pop is done at the first `didShow` of the controller
+///   it shows, at once while the stack is out of the window or when `selectionChanged()` finds it left, or after
+///   `stackOpTimeout` with a log line, and everything hung on `didShow` is idempotent. Only ScreenHost pushes or pops the
+///   chat: a pop it did not make (the owner's interactive pop, anyone else's) is the owner's Back once it has finished,
+///   and nothing when it is cancelled.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
 ///   queued right behind a present that has not started cancels both.
@@ -57,7 +61,8 @@ public struct StackState {
 ///   the stack, editing ends in the stack's view before a push (a focused native field on the hub).
 /// - **VoiceOver** reads an overlay alone: the web view is hidden from it while covered, and the screen is modal. The
 ///   pushed chat is not modal (the tab bar stays reachable); VoiceOver hears `.screenChanged` with the stack's new top
-///   after each push and pop while Coach is selected (entering the tab, the root posts its own).
+///   after each push and pop while Coach is selected and NATIVE (entering the tab, turning it WEB and ending a hold by
+///   its own time, the root posts its own; a hold a push ends, ScreenHost's post is the one).
 /// - **The room, not the phone**: every hosting controller and the toast window take `overrideUserInterfaceStyle` from
 ///   the model's `paper` (light for Heavyweight, dark for Lime), so the keyboard, the photo picker and menus match.
 /// - **Crash markers**: while an overlay is up and the app is active, `presenting <screen>@<page build> shell <shell
@@ -151,7 +156,7 @@ public final class ScreenHost: NSObject {
     /// pop), `drop` (the stack left with the chat on it).
     public private(set) var transitions: [String] = []
     /// Slides in and out (the edge pan always animates). In the stack, pushes and pops animate only while Coach is selected
-    /// and the root not held.
+    /// and NATIVE and the root not held.
     var animated = true
     /// VoiceOver's screen change (tests record it).
     var postScreenChanged: (Any?) -> Void = { UIAccessibility.post(notification: .screenChanged, argument: $0) }
@@ -663,7 +668,8 @@ public final class ScreenHost: NSObject {
         }
         let onTop = i == nav.viewControllers.count - 1, shown = stackShown(s)
         let below = i > 0 ? nav.viewControllers[i - 1] : nil
-        let animate = animated && shown && onTop
+        // animated only where the owner sees the stack: a WEB tab hides it (coachHome off with the chat up pops it)
+        let animate = animated && shown && onTop && s.state.native()
         Self.log.info("screens: popping \(screen, privacy: .public) (\(animate ? "animated" : "without animation", privacy: .public)\(shown ? "" : ", Coach not shown", privacy: .public))")
         let token = waitForStack(expect: below, what: "pop " + screen) { [weak self] in
             self?.removed(screen, user: user)
@@ -706,10 +712,11 @@ public final class ScreenHost: NSObject {
         w.done()
     }
 
-    /// VoiceOver hears the stack's new top after a push or pop, while the stack is on screen (entering the tab, the root
-    /// posts its own).
+    /// VoiceOver hears the stack's new top after a push or pop, while the owner sees the stack: Coach selected, its slot
+    /// in the window and the tab NATIVE (a WEB tab hides the stack and the root shows the web view; entering the tab, the
+    /// root posts its own).
     private func announceStackTop() {
-        guard let s = stack, stackShown(s), let top = s.nav?.topViewController?.viewIfLoaded else { return }
+        guard let s = stack, stackShown(s), s.state.native(), let top = s.nav?.topViewController?.viewIfLoaded else { return }
         postScreenChanged(top)
     }
 

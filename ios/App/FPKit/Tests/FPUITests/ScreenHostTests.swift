@@ -138,6 +138,8 @@ final class StackRig {
     var native = true
     var held = false
     var releases = 0
+    /// The stack's top when the hold was last released.
+    var topAtRelease: UIViewController?
     /// The interactive pop's delegate before ScreenHost took it.
     var popDelegateBefore: AnyObject?
     /// Whether iOS 26's content pop was on before ScreenHost turned it off (nil below iOS 26).
@@ -164,7 +166,8 @@ final class StackRig {
         nav.recording = true
     }
 
-    /// What the root answers: Coach selected, the tab NATIVE, the hold, its release.
+    /// What the root answers: Coach selected, the tab NATIVE, the hold, its release (which posts nothing to VoiceOver:
+    /// StackState's rule for a hold a push ends).
     var state: StackState {
         StackState(selected: { [weak self] in self?.tabs.selectedIndex == 1 },
                    native: { [weak self] in self?.native ?? false },
@@ -172,6 +175,7 @@ final class StackRig {
                    releaseHold: { [weak self] in
                        self?.releases += 1
                        self?.held = false
+                       self?.topAtRelease = self?.nav.topViewController
                    })
     }
 }
@@ -814,6 +818,45 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
+    /// VoiceOver hears the stack's new top only while the owner sees the stack. coachHome going off with the chat up
+    /// takes the chat's screen off first (its pop starts on the NATIVE tab), then turns the tab WEB (the root hides the
+    /// stack and shows the web view, contract 8.3): that pop ends unheard, never announcing the hub from a hidden stack. A
+    /// pop asked while the tab is WEB is made without animation (nothing shows it) and is not heard either.
+    func testStackAPopUnderAWebTabIsNotHeardNorAnimated() async throws {
+        let r = try await makeStack()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        XCTAssertEqual(posts.count, 1, "the push is heard")
+        host.dismiss("coach")   // the chat's screen off: its pop starts on the NATIVE tab
+        r.native = false        // then the tab turns WEB, the stack hidden as H4 draws WEB
+        r.nav.view.isHidden = true
+        host.selectionChanged()
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertEqual(posts.count, 1, "nothing posted into the hidden stack")
+        // NATIVE again and the chat pushed; then the tab WEB with the chat still on its stack, and the page's dismiss
+        r.native = true
+        r.nav.view.isHidden = false
+        host.selectionChanged()
+        host.present("coach")
+        try await idle()
+        XCTAssertEqual(posts.count, 2, "the push is heard")
+        r.native = false
+        r.nav.view.isHidden = true
+        host.selectionChanged()
+        host.dismiss("coach")
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertEqual(r.nav.log, ["push animated", "pop animated", "push animated", "pop still"], "the pop under WEB is still")
+        XCTAssertEqual(posts.count, 2, "nothing posted")
+        XCTAssertEqual(owner, [])
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
     /// H5 test 4: the owner's Back pops, latched: the page hears coach.back once; its dismiss then closes the latch; a
     /// refusal pushes the chat again; the chat's own Back control takes the same way. Exactly one control is labelled
     /// "Back" with the chat on top (the system bar is hidden), none in setup, where Cancel stands in its place.
@@ -1072,6 +1115,33 @@ final class ScreenHostTests: XCTestCase {
         try await idle()
         XCTAssertEqual(r.nav.log, ["push still", "pop animated", "push still", "pop animated", "push animated"])
         XCTAssertEqual(r.releases, 1)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// A held push (Today's Ask, a resume, a warm share: the root keeps the home blank for it) is heard once, when UIKit
+    /// has shown the chat: ScreenHost's post is the one (the root's release posts nothing: StackState's rule), and the
+    /// hold ends right after the push, the chat already on top, so no frame of the home shows between.
+    func testStackAHeldPushIsHeardOnceWhenItIsDone() async throws {
+        let r = try await makeStack()
+        var placed: [Bool] = []
+        host.postScreenChanged = { [weak self] arg in
+            self?.posts.append((arg as AnyObject?) ?? NSNull())
+            placed.append((arg as? UIView)?.window != nil)
+        }
+        host.update("coach", model: try model())
+        r.held = true
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertEqual(r.releases, 1, "the push ends the hold")
+        XCTAssertTrue(r.topAtRelease is ScreenHostingController, "the chat already on top when the hold ends")
+        XCTAssertEqual(posts.count, 0, "nothing heard before UIKit has shown the chat")
+        try await idle()
+        let chat = try XCTUnwrap(r.nav.topViewController as? ScreenHostingController)
+        XCTAssertEqual(posts.count, 1, "heard once")
+        XCTAssertTrue(posts.first === chat.view, "the chat")
+        XCTAssertEqual(placed, [true], "posted once UIKit has placed the chat in the window")
+        host.navigationController(r.nav, didShow: chat, animated: false)   // UIKit's didShow again
+        XCTAssertEqual(posts.count, 1)
+        XCTAssertEqual(r.nav.log, ["push still"])
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
