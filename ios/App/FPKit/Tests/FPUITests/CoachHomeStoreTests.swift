@@ -438,16 +438,19 @@ final class CoachHomeStoreTests: XCTestCase {
         let store: CoachHomeStore
         let room: Room
         let paper: Bool
-        /// nil: the public initialiser (the system's Reduce Motion).
+        /// Reduce Motion as the test sets it (nil: the system's).
         var reduceMotion: Bool?
+        /// The fade's length as the test sets it (nil: the root's own). With neither set, the public initialiser.
+        var fadeSeconds: TimeInterval?
         var onBottom: ((CGFloat) -> Void)?
 
         var body: some View {
             Group {
-                if let reduceMotion {
-                    CoachHomeRoot(store: store, room: room, paper: paper, reduceMotion: reduceMotion)
-                } else {
+                if reduceMotion == nil, fadeSeconds == nil {
                     CoachHomeRoot(store: store, room: room, paper: paper)
+                } else {
+                    CoachHomeRoot(store: store, room: room, paper: paper, reduceMotion: reduceMotion,
+                                  fadeSeconds: fadeSeconds ?? CoachHomeRoot.fadeSeconds)
                 }
             }
             .safeAreaPadding(.top, CoachHomeViewTests.safeTop)
@@ -643,42 +646,77 @@ final class CoachHomeStoreTests: XCTestCase {
         }
     }
 
+    // MARK: The fade
+
+    /// CI's slack for a timing bound (CoachModelTests' rule): GitHub's shared Macs are several times slower and stall at
+    /// random, and xcodebuild hands TEST_RUNNER_CI to the simulator's test process as CI. No bound on a render inside
+    /// the fade can outlast the fade itself, so a fade test stretches the fade by the slack too (`fadeSeconds`, the
+    /// internal initialiser's), keeping the render's place in it: 0.12 s of 0.2 s here, 1.2 s of 2 s on CI.
+    static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
+
+    /// How the hub came in over the ground: the ground; right after the model landed (one layout pass and a render,
+    /// no time to speak of) whether the hub was in the hierarchy, the window as drawn and how long after the model that
+    /// render ended; and the window once the fade had run its course.
+    struct FadeIn {
+        let ground: UIImage
+        let inserted: Bool
+        let now: UIImage
+        let took: TimeInterval
+        let settled: UIImage
+    }
+
+    /// Hosts `root`, lands the hub's model on its store and renders as FadeIn says; `fade` is the longest the fade can
+    /// run.
+    private func fadeIn(_ root: RootPhone, fade: TimeInterval) throws -> FadeIn {
+        let tab = HostedRoot(root)
+        let ground = tab.image()
+        let start = Date()
+        root.store.apply(try model(rev: 1))
+        tab.flush()
+        let inserted = tab.find(UIScrollView.self) != nil
+        let now = tab.image()
+        let took = Date().timeIntervalSince(start)
+        tab.wait(fade + 0.4)
+        let settled = tab.image()
+        tab.close()
+        return FadeIn(ground: ground, inserted: inserted, now: now, took: took, settled: settled)
+    }
+
+    /// The bound on a render inside a fade: 0.12 s, three fifths of the 0.2 s fade, with CI's slack.
+    static var insideFade: TimeInterval { 0.12 * slack }
+
+    /// A render inside the fade: one that ended `insideFade` or later after the model (a machine too busy for it) is
+    /// taken again on a new root, at most five times; the last is returned with the number of tries.
+    private func fadeInside(_ root: () -> RootPhone, fade: TimeInterval) throws -> (FadeIn, Int) {
+        var r = try fadeIn(root(), fade: fade)
+        var tries = 1
+        while r.took >= Self.insideFade, tries < 5 {
+            r = try fadeIn(root(), fade: fade)
+            tries += 1
+        }
+        return (r, tries)
+    }
+
     /// The hub comes in over the ground with a 0.2 s cross-fade, and at once under Reduce Motion: right after the model
     /// lands (one layout pass, no time to speak of), the hub is in the hierarchy either way; under Reduce Motion it is
     /// already drawn as it settles, and without it not yet (it is fading in). The second half reads the clock: a render
-    /// that comes late (a machine under heavy load) would find the fade over, so a render taken 0.12 s or more after
-    /// the model is taken again.
+    /// inside the fade must end within 0.12 s of the model, and on CI the fade and that bound both take the slack; one
+    /// that comes late anyway (a machine under heavy load would find the fade over) is taken again.
     func testTheHubFadesInOverTheGroundAndAtOnceUnderReduceMotion() throws {
         XCTAssertNil(CoachHomeRoot.fade(reduceMotion: true), "Reduce Motion: no fade")
         XCTAssertEqual(CoachHomeRoot.fade(reduceMotion: false), .easeInOut(duration: 0.2), "a 0.2 s cross-fade")
-        func renders(reduceMotion: Bool) throws -> (ground: UIImage, inserted: Bool, now: UIImage, took: TimeInterval, settled: UIImage) {
-            let s = CoachHomeStore()
-            let tab = HostedRoot(RootPhone(store: s, room: .heavyweight, paper: true, reduceMotion: reduceMotion))
-            let ground = tab.image()
-            let start = Date()
-            s.apply(try model(rev: 1))
-            tab.flush()
-            let inserted = tab.find(UIScrollView.self) != nil
-            let now = tab.image()
-            let took = Date().timeIntervalSince(start)
-            tab.wait(0.6)
-            let settled = tab.image()
-            tab.close()
-            return (ground, inserted, now, took, settled)
+        XCTAssertEqual(CoachHomeRoot.fadeSeconds, 0.2)
+        XCTAssertEqual(CoachHomeRoot.fade(reduceMotion: false, seconds: 2), .easeInOut(duration: 2), "a fade of a test's length")
+        let fade = CoachHomeRoot.fadeSeconds * Self.slack
+        func root(reduceMotion: Bool) -> RootPhone {
+            RootPhone(store: CoachHomeStore(), room: .heavyweight, paper: true, reduceMotion: reduceMotion, fadeSeconds: fade)
         }
-        let still = try renders(reduceMotion: true)
+        let still = try fadeIn(root(reduceMotion: true), fade: fade)
         XCTAssertTrue(still.inserted, "Reduce Motion: the layout pass took the model")
         XCTAssertGreaterThan(CoachRenderTests.difference(still.ground, still.settled), 0.05, "Reduce Motion: the hub draws")
         XCTAssertLessThan(CoachRenderTests.difference(still.now, still.settled), 0.001, "Reduce Motion: the hub at once, no fade")
-        // the first render shows the fade only when it comes well inside its 0.2 s: on a machine too busy for that, the
-        // render is taken again (at most five times), and a machine that never gives one says so
-        var moving = try renders(reduceMotion: false)
-        var tries = 1
-        while moving.took >= 0.12, tries < 5 {
-            moving = try renders(reduceMotion: false)
-            tries += 1
-        }
-        XCTAssertLessThan(moving.took, 0.12, "a render inside the fade (\(tries) tries; the machine was too busy for one)")
+        let (moving, tries) = try fadeInside({ root(reduceMotion: false) }, fade: fade)
+        XCTAssertLessThan(moving.took, Self.insideFade, "a render inside the \(fade) s fade (\(tries) tries; the machine was too busy for one)")
         XCTAssertTrue(moving.inserted, "the layout pass took the model: the hub is there")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.ground, moving.settled), 0.05, "the hub draws")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.now, moving.settled), 0.05, "the hub is there but not yet drawn: it fades in")

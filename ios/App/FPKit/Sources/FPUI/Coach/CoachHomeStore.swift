@@ -242,6 +242,9 @@ public struct CoachHomeRoot: View {
     let paper: Bool
     /// Reduce Motion as a test sets it (nil: the system's).
     let reduceMotion: Bool?
+    /// The fade's length: `fadeSeconds`, or a test's (stretched by CI's slack, so a render can land inside it on a
+    /// slow machine).
+    let fadeSeconds: TimeInterval
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
 
     /// `room`, `paper`: the first frame's (contract 6.1), for the ground before the page's first model.
@@ -249,19 +252,26 @@ public struct CoachHomeRoot: View {
         self.init(store: store, room: room, paper: paper, reduceMotion: nil)
     }
 
-    init(store: CoachHomeStore, room: Room, paper: Bool, reduceMotion: Bool?) {
+    init(store: CoachHomeStore, room: Room, paper: Bool, reduceMotion: Bool?,
+         fadeSeconds: TimeInterval = CoachHomeRoot.fadeSeconds) {
         self.store = store
         self.room = room
         self.paper = paper
         self.reduceMotion = reduceMotion
+        self.fadeSeconds = fadeSeconds
     }
 
     /// The ground: the room's background, from its compiled defaults (no model has come to override them).
     static func ground(room: Room, paper: Bool) -> RGBA { Tokens.defaults(for: room, paper: paper).color(.bg) }
 
-    /// How the hub comes in over the ground (and goes, should its model go): a 0.2 s cross-fade, none under Reduce
-    /// Motion.
-    static func fade(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : .easeInOut(duration: 0.2) }
+    /// The hub's cross-fade over the ground, in seconds.
+    static let fadeSeconds: TimeInterval = 0.2
+
+    /// How the hub comes in over the ground (and goes, should its model go): a cross-fade of `seconds` (0.2 s), none
+    /// under Reduce Motion.
+    static func fade(reduceMotion: Bool, seconds: TimeInterval = CoachHomeRoot.fadeSeconds) -> Animation? {
+        reduceMotion ? nil : .easeInOut(duration: seconds)
+    }
 
     public var body: some View {
         ZStack {
@@ -272,7 +282,7 @@ public struct CoachHomeRoot: View {
             }
         }
         // only the hub's coming and going fades: a newer model of a hub already drawn changes at once
-        .animation(Self.fade(reduceMotion: reduceMotion ?? systemReduceMotion), value: store.model != nil)
+        .animation(Self.fade(reduceMotion: reduceMotion ?? systemReduceMotion, seconds: fadeSeconds), value: store.model != nil)
     }
 }
 #endif
