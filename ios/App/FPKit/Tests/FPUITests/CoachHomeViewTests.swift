@@ -15,11 +15,12 @@ import FPCore
 ///
 /// How this host is driven (probed on iOS 27.0's simulator): SwiftUI vends its accessibility elements to a test only
 /// outside a scroll view (inside one it vends none without an accessibility client such as VoiceOver), so the walks
-/// lay the same column out unscrolled (`CoachHomeOptions.unscrolledWidth`). UIKit's own accessibility is not loaded
-/// in a test host, so the secure field shows up in the walk as its `UITextField` (the platform view SwiftUI hands
-/// VoiceOver), its label unread. A press goes through `accessibilityActivate()`, as the probe's `press` does; keys and
-/// Return reach SwiftUI's text field as UIKit delivers them, the field's editing-changed and primary actions sent to
-/// their targets (`UIControl.sendActions` does not reach them in this host).
+/// lay the same column out unscrolled (`CoachHomeOptions.unscrolledWidth`), with the accessibility switches on for
+/// the class (below). UIKit's own accessibility is not loaded in a test host, so the secure field shows up in the walk
+/// as its `UITextField` (the platform view SwiftUI hands VoiceOver), its label unread. A press goes through
+/// `accessibilityActivate()`, as the probe's `press` does; keys and Return reach SwiftUI's text field as UIKit delivers
+/// them, the field's editing-changed and primary actions sent to their targets (`UIControl.sendActions` does not reach
+/// them in this host).
 @MainActor
 final class CoachHomeViewTests: XCTestCase {
     static let screen = CGSize(width: 390, height: 844)
@@ -31,33 +32,39 @@ final class CoachHomeViewTests: XCTestCase {
 
     // MARK: The accessibility runtime
 
-    /// The switches that make SwiftUI vend its elements in this process (ShellProbe.enableAccessibility turns the same
-    /// ones on in the app), set for each test and put back as they were.
-    private var axWas: [(String, Int32)] = []
-    private static let axSwitches = [("_AXSSetAutomationEnabled", "_AXSAutomationEnabled"),
-                                     ("_AXSApplicationAccessibilitySetEnabled", "_AXSApplicationAccessibilityEnabled")]
+    /// The switches that make SwiftUI build its elements in this process (ShellProbe.enableAccessibility turns the same
+    /// ones on in the app). The simulator keeps them, and the automation switch drags application accessibility on with
+    /// it, so they are read once, before this class sets them, and put back as they were when its last test is done.
+    private nonisolated static let axSwitches = [("_AXSSetAutomationEnabled", "_AXSAutomationEnabled"),
+                                                 ("_AXSApplicationAccessibilitySetEnabled", "_AXSApplicationAccessibilityEnabled")]
+    private nonisolated(unsafe) static var axWas: [(setter: String, value: Int32)] = []
+
+    private nonisolated static func axSet(_ setter: String, _ value: Int32) {
+        typealias Set = @convention(c) (Int32) -> Void
+        guard let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW), let f = dlsym(lib, setter) else { return }
+        unsafeBitCast(f, to: Set.self)(value)
+    }
+
+    nonisolated override class func setUp() {
+        super.setUp()
+        typealias Get = @convention(c) () -> Int32
+        guard let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
+        axWas = axSwitches.compactMap { setter, getter in
+            dlsym(lib, getter).map { (setter, unsafeBitCast($0, to: Get.self)()) }
+        }
+        for (setter, _) in axSwitches { axSet(setter, 1) }
+    }
+
+    nonisolated override class func tearDown() {
+        // the automation switch first: application accessibility follows it
+        for (setter, value) in axWas { axSet(setter, value) }
+        axWas = []
+        super.tearDown()
+    }
 
     override func setUp() async throws {
         try await super.setUp()
         FPFonts.register()
-        guard let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) else { return }
-        typealias Get = @convention(c) () -> Int32
-        typealias Set = @convention(c) (Int32) -> Void
-        for (setter, getter) in Self.axSwitches {
-            guard let set = dlsym(lib, setter) else { continue }
-            let was = dlsym(lib, getter).map { unsafeBitCast($0, to: Get.self)() } ?? 0
-            axWas.append((setter, was))
-            unsafeBitCast(set, to: Set.self)(1)
-        }
-    }
-
-    override func tearDown() async throws {
-        if let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW) {
-            typealias Set = @convention(c) (Int32) -> Void
-            for (setter, was) in axWas { if let set = dlsym(lib, setter) { unsafeBitCast(set, to: Set.self)(was) } }
-        }
-        axWas = []
-        try await super.tearDown()
     }
 
     // MARK: Models
