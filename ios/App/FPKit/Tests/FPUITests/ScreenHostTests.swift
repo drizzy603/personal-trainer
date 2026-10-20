@@ -91,18 +91,34 @@ final class StackRecordingNav: UINavigationController {
     var recording = false
     /// A coordinator standing in for UIKit's while a case makes the owner's interactive pop (StandInCoordinator).
     var standInCoordinator: UIViewControllerTransitionCoordinator?
+    /// UIKit dropping a push or pop without a word (as it drops an animated one while another transition runs), stood
+    /// in: the next one of that kind ("push", "pop") is recorded as dropped and never made.
+    var dropNext: String?
+    /// A UIKit that says willShow and didShow inside a still replacement of the array, stood in (iOS 27 says both on a
+    /// later turn, ZP3 of the H5 review round's probes).
+    var speaksInside = false
 
     override var transitionCoordinator: UIViewControllerTransitionCoordinator? {
         standInCoordinator ?? super.transitionCoordinator
     }
 
     override func pushViewController(_ viewController: UIViewController, animated: Bool) {
+        if dropNext == "push" {
+            dropNext = nil
+            log.append("push dropped")
+            return
+        }
         if recording { log.append(animated ? "push animated" : "push still") }
         super.pushViewController(viewController, animated: animated)
     }
 
     @discardableResult
     override func popViewController(animated: Bool) -> UIViewController? {
+        if dropNext == "pop" {
+            dropNext = nil
+            log.append("pop dropped")
+            return nil
+        }
         if recording { log.append(animated ? "pop animated" : "pop still") }
         return super.popViewController(animated: animated)
     }
@@ -110,6 +126,10 @@ final class StackRecordingNav: UINavigationController {
     override func setViewControllers(_ viewControllers: [UIViewController], animated: Bool) {
         if recording { log.append(animated ? "set animated" : "set still") }
         super.setViewControllers(viewControllers, animated: animated)
+        if speaksInside, !animated, let top = topViewController {
+            delegate?.navigationController?(self, willShow: top, animated: false)
+            delegate?.navigationController?(self, didShow: top, animated: false)
+        }
     }
 }
 
@@ -677,6 +697,20 @@ final class ScreenHostTests: XCTestCase {
     }
 
     private func markerLines() -> [String] { ScreenMarkers(folder: folder).lines() }
+
+    /// A transition over the tab root under way in this turn, as the chat's photo picker or a share sheet makes, going up
+    /// or down: UIKit's transition coordinator reaches the Coach stack while it runs. (This host has no window scene, so
+    /// a presentation never ends and the first one stays under way; where one ends, its dismissal is the next.)
+    private func transitionOverTheRoot(_ r: StackRig, line: UInt = #line) {
+        if r.nav.transitionCoordinator == nil {
+            if let shown = r.container.presentedViewController {
+                shown.dismiss(animated: true)
+            } else {
+                r.container.present(UIViewController(), animated: true)
+            }
+        }
+        XCTAssertNotNil(r.nav.transitionCoordinator, "a transition under way over the Coach tab", line: line)
+    }
 
     /// How many accessibility elements in the window carry each label, SwiftUI's own included (the probe's accessibility
     /// runtime is on meanwhile, as in the app: SwiftUI vends its elements only then).
@@ -1422,6 +1456,122 @@ final class ScreenHostTests: XCTestCase {
         XCTAssertTrue(host.present("coach"), "and the chat can go up again")
         try await idle()
         XCTAssertTrue(r.nav.topViewController is ScreenHostingController)
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// UIKit drops an animated push or pop asked while another transition runs over the Coach tab (a presentation going
+    /// up or down: the chat's photo picker, a share sheet), without a word, and takes a still one at once. So each goes
+    /// without animation then, and the stack and ScreenHost agree: no chat left on screen counted down (no marker, a
+    /// dead Back, no edge pop, a second chat pushed over it), no push the page hears as the owner's Back.
+    func testStackAPushOrPopDuringAnotherTransitionGoesWithoutAnimation() async throws {
+        let r = try await makeStack()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        transitionOverTheRoot(r)
+        host.dismiss("coach")   // the page's
+        XCTAssertEqual(r.nav.log.last, "pop still")
+        XCTAssertEqual(r.nav.viewControllers.count, 1, "the chat off the stack at once")
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(owner, [])
+        transitionOverTheRoot(r)
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertEqual(r.nav.log.last, "push still")
+        XCTAssertTrue(r.nav.topViewController is ScreenHostingController, "pushed at once")
+        try await idle()
+        XCTAssertTrue(host.isUp("coach"))
+        XCTAssertEqual(owner, [], "nobody pressed Back")
+        XCTAssertEqual(failedScreens, [])
+        XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"])
+        transitionOverTheRoot(r)
+        host.coach.handle(.coachBack)   // the chat's own Back
+        XCTAssertEqual(r.nav.log.last, "pop still")
+        try await idle()
+        XCTAssertEqual(r.nav.viewControllers.count, 1, "the chat off the stack")
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(owner, ["coach"], "the page hears coach.back")
+        XCTAssertEqual(host.latched, ["coach"])
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// A pop UIKit leaves undone all the same (stood in) still takes the chat off: at the wait's end the chat left in the
+    /// stack comes off without animation, its record gone first, so UIKit's word on that change (inside the call, stood
+    /// in, or after it, as iOS 27 says it) is nobody's Back; the owner's Back the same way is the owner's, once; the next
+    /// chat goes up alone.
+    func testStackAPopUIKitDropsStillTakesTheChatOff() async throws {
+        let r = try await makeStack()
+        host.stackOpTimeout = 0.3
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        r.nav.dropNext = "pop"
+        r.nav.speaksInside = true
+        host.dismiss("coach")
+        XCTAssertEqual(r.nav.viewControllers.count, 2, "UIKit made nothing of it")
+        XCTAssertTrue(host.isUp("coach"), "until the wait ends")
+        try await idle()
+        r.nav.speaksInside = false
+        try await settle(0.2)   // UIKit's own word on the change comes after it
+        XCTAssertEqual(r.nav.log, ["push animated", "pop dropped", "set still"])
+        XCTAssertEqual(r.nav.viewControllers.count, 1, "the chat taken off")
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(owner, [], "the page's own dismiss: nobody's Back")
+        XCTAssertEqual(host.latched, [])
+        XCTAssertEqual(host.transitions, ["present coach", "dismiss coach"])
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertTrue(posts.last === r.home.view, "VoiceOver hears the stack's new top")
+        host.present("coach")
+        try await idle()
+        r.nav.dropNext = "pop"
+        host.userBack("coach")
+        try await idle()
+        try await settle(0.2)
+        XCTAssertEqual(r.nav.viewControllers.count, 1)
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(owner, ["coach"], "the owner's Back, once")
+        XCTAssertEqual(host.latched, ["coach"])
+        host.dismiss("coach")
+        XCTAssertTrue(host.present("coach"))
+        try await idle()
+        XCTAssertEqual(r.nav.viewControllers.filter { $0 is ScreenHostingController }.count, 1, "one chat")
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// A push UIKit never takes (stood in) is refused, as an overlay UIKit refuses: not up, the page told it could not go
+    /// up (it shows its own), and never the owner's Back; the queue goes on and the next present goes up. Out of the
+    /// window the push is done at once, and refused at once.
+    func testStackAPushUIKitDropsIsRefusedNotTheOwnersBack() async throws {
+        let r = try await makeStack()
+        host.stackOpTimeout = 0.3
+        host.update("coach", model: try model())
+        r.nav.dropNext = "push"
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertTrue(busy(), "waiting for UIKit's word")
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(failedScreens, ["coach"], "the page shows its own")
+        XCTAssertEqual(owner, [], "nobody pressed Back")
+        XCTAssertEqual(host.latched, [])
+        XCTAssertEqual(host.transitions, ["present coach", "refused coach"])
+        XCTAssertEqual(markerLines(), [])
+        XCTAssertEqual(posts.count, 0)
+        XCTAssertTrue(host.present("coach"))
+        try await idle()
+        XCTAssertTrue(host.isUp("coach"))
+        XCTAssertTrue(r.nav.topViewController is ScreenHostingController)
+        XCTAssertEqual(r.nav.log, ["push dropped", "push animated"])
+        XCTAssertEqual(posts.count, 1, "VoiceOver hears the chat that went up")
+        host.dismiss("coach")
+        try await idle()
+        select(coach: false)
+        r.nav.dropNext = "push"
+        XCTAssertTrue(host.present("coach"))
+        XCTAssertFalse(busy(), "done at once out of the window")
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(failedScreens, ["coach", "coach"])
+        XCTAssertEqual(owner, [])
         XCTAssertEqual(r.webView.leftWindow, 0)
     }
 

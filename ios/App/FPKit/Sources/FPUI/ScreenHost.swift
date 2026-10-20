@@ -38,17 +38,20 @@ public struct StackState {
 ///   of the bridge controller or a second bridge would hide it; none is ever made here.
 /// - **The stack**: the chat is pushed on the Coach tab's UINavigationController (its system bar hidden: the chat draws
 ///   its own header) whether or not Coach is selected, never changing the selection (D18), with the tab bar left over it
-///   (D9). A push or pop animates only while Coach is selected, the tab NATIVE and the root not held, and a held push
-///   releases the hold. Nothing here presents, covers or uncovers: the root owns the web view, its accessibility and
-///   `shell.covered` (contract 8.4), so a pop never uncovers. While attached, ScreenHost is the stack's navigation
-///   delegate and its interactive pop's delegate (the pop begins only where the edge pan would); iOS 26's content pop (a
-///   pan anywhere in the chat, which would pop it in setup too) is off meanwhile, so the edge is the one interactive pop.
-///   UIKit's `didShow` comes late (only once the Coach tab is in the window again), can come twice, and comes on every
-///   return to Coach with no push or pop (H0 question 6): a push or pop is done at the first `didShow` of the controller
-///   it shows, at once while the stack is out of the window or when `selectionChanged()` finds it left, or after
-///   `stackOpTimeout` with a log line, and everything hung on `didShow` is idempotent. Only ScreenHost pushes or pops the
-///   chat: a pop it did not make (the owner's interactive pop, anyone else's) is the owner's Back once it has finished,
-///   and nothing when it is cancelled.
+///   (D9). A push or pop animates only while Coach is selected, the tab NATIVE, the root not held and no other transition
+///   runs over the tab (UIKit drops an animated one asked meanwhile, without a word, and takes a still one at once), and
+///   a held push releases the hold. A pop UIKit leaves undone all the same takes the chat off without animation at its
+///   end, and a push UIKit never took is refused (the page shows its own), never the owner's Back. Nothing here
+///   presents, covers or uncovers: the root owns the web view, its accessibility and `shell.covered` (contract 8.4), so a
+///   pop never uncovers. While attached, ScreenHost is the stack's navigation delegate and its interactive pop's
+///   delegate (the pop begins only where the edge pan would); iOS 26's content pop (a pan anywhere in the chat, which
+///   would pop it in setup too) is off meanwhile, so the edge is the one interactive pop. UIKit's `didShow` comes late
+///   (only once the Coach tab is in the window again), can come twice, and comes on every return to Coach with no push
+///   or pop (H0 question 6): a push or pop is done at the first `didShow` of the controller it shows, at once while the
+///   stack is out of the window or when `selectionChanged()` finds it left, or after `stackOpTimeout` with a log line,
+///   and everything hung on `didShow` is idempotent. Only ScreenHost pushes or pops the chat: a pop it did not make (the
+///   owner's interactive pop, anyone else's) is the owner's Back once it has finished, and nothing when it is
+///   cancelled.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
 ///   queued right behind a present that has not started cancels both.
@@ -153,10 +156,10 @@ public final class ScreenHost: NSObject {
     private var interactive: (screen: String, transition: UIPercentDrivenInteractiveTransition)?
     /// Presentations and dismissals made (for the probe), pushes and pops in the stack under the same words: `present`,
     /// `dismiss` (the page's), `back` (the owner's), `edge back` and `edge back cancelled` (the edge pan, the interactive
-    /// pop), `drop` (the stack left with the chat on it).
+    /// pop), `refused` (UIKit did not present or push it), `drop` (the stack left with the chat on it).
     public private(set) var transitions: [String] = []
     /// Slides in and out (the edge pan always animates). In the stack, pushes and pops animate only while Coach is selected
-    /// and NATIVE and the root not held.
+    /// and NATIVE, the root not held and no other transition under way.
     var animated = true
     /// VoiceOver's screen change (tests record it).
     var postScreenChanged: (Any?) -> Void = { UIAccessibility.post(notification: .screenChanged, argument: $0) }
@@ -542,14 +545,7 @@ public final class ScreenHost: NSObject {
     /// still hide the page.
     private func removed(_ screen: String, user: Bool) {
         guard let u = up.removeValue(forKey: screen) else { return }
-        if u.kind == .stack {
-            chatHeaderBottom = nil   // the toast's anchor resets with the pop (contract 8.3)
-            refreshStack()
-            announceStackTop()
-            Self.log.info("screens: \(screen, privacy: .public) popped (\(user ? "the owner's back" : "the page's dismiss", privacy: .public))")
-            if user { hooks.userDismissed(screen) }
-            return
-        }
+        if u.kind == .stack { return chatPopped(u, user: user) }
         markers.remove(screen)
         // a toast forwarded just before the chat went leaves the chat header's place (it sat over the next screen's
         // content there): under the status bar, where the overlay puts toasts with no chat up
@@ -561,6 +557,16 @@ public final class ScreenHost: NSObject {
         postScreenChanged(nil)
         Self.log.info("screens: \(screen, privacy: .public) down (\(user ? "the owner's back" : "the page's dismiss", privacy: .public))")
         if user { hooks.userDismissed(screen) }
+    }
+
+    /// The pushed chat is off the stack and its record gone: the toast's anchor resets, the marker follows the new top,
+    /// VoiceOver hears it, and the page hears the owner's back.
+    private func chatPopped(_ u: Up, user: Bool) {
+        chatHeaderBottom = nil   // the toast's anchor resets with the pop (contract 8.3)
+        refreshStack()
+        announceStackTop()
+        Self.log.info("screens: \(u.name, privacy: .public) popped (\(user ? "the owner's back" : "the page's dismiss", privacy: .public))")
+        if user { hooks.userDismissed(u.name) }
     }
 
     // MARK: The Coach tab's stack (build 61)
@@ -630,25 +636,32 @@ public final class ScreenHost: NSObject {
         let u = makeUp(screen, model: model, kind: .stack)
         u.host.hidesBottomBarWhenPushed = false   // D9: the tab bar stays over the chat
         up[screen] = u
-        let animate = animated && shown && !held
+        // no animation while another transition runs over the tab (a presentation going up or down: the chat's photo
+        // picker, a share sheet; or UIKit's own, still running when the last op's wait ran out): UIKit drops an animated
+        // push then, without a word, and takes a still one at once
+        let animate = animated && shown && !held && nav.transitionCoordinator == nil
         transitions.append("present " + screen)
         Self.log.info("screens: pushing \(screen, privacy: .public) (rev \(model.rev), \(model.paper ? "paper" : "dark", privacy: .public), \(animate ? "animated" : "without animation", privacy: .public)\(shown ? "" : ", Coach not shown", privacy: .public)\(held ? ", held" : "", privacy: .public))")
+        var entered = false   // UIKit took the push: the chat was in the stack's array once the call returned
         let token = waitForStack(expect: u.host, what: "push " + screen) { [weak self, weak u] in
             guard let self else { return }
             if let u, self.up[screen] === u {
                 if self.inStack(u) {
                     u.presented = true
                     self.announceStackTop()
-                } else {
+                } else if entered {
                     // another pop took the chat before UIKit showed it (no willShow counts while a push waits): as every
                     // pop ScreenHost did not make, the owner's Back, so the page never thinks a chat is up that is gone
                     self.foreignPopped(u, interactive: false)
+                } else {
+                    self.pushRefused(u)
                 }
             }
             self.refreshStack()
             self.opDone()
         }
         nav.pushViewController(u.host, animated: animate)
+        entered = inStack(u)
         if held { s.state.releaseHold() }   // after the push: no frame of the home between the hold and the chat
         refreshStack()
         if !shown { finishStackWait(token, why: nil) }   // out of the window UIKit says nothing until the tab is back
@@ -668,12 +681,19 @@ public final class ScreenHost: NSObject {
         }
         let onTop = i == nav.viewControllers.count - 1, shown = stackShown(s)
         let below = i > 0 ? nav.viewControllers[i - 1] : nil
-        // animated only where the owner sees the stack: a WEB tab hides it (coachHome off with the chat up pops it)
-        let animate = animated && shown && onTop && s.state.native()
+        // animated only where the owner sees the stack (a WEB tab hides it: coachHome off with the chat up pops it) and
+        // no other transition runs over the tab: UIKit drops an animated pop asked meanwhile, without a word, and takes a
+        // still one at once
+        let animate = animated && shown && onTop && s.state.native() && nav.transitionCoordinator == nil
         Self.log.info("screens: popping \(screen, privacy: .public) (\(animate ? "animated" : "without animation", privacy: .public)\(shown ? "" : ", Coach not shown", privacy: .public))")
-        let token = waitForStack(expect: below, what: "pop " + screen) { [weak self] in
-            self?.removed(screen, user: user)
-            self?.opDone()
+        let token = waitForStack(expect: below, what: "pop " + screen) { [weak self, weak u] in
+            guard let self else { return }
+            if let u, self.up[screen] === u, self.inStack(u) {
+                self.takeOff(u, user: user)   // UIKit left the pop undone
+            } else {
+                self.removed(screen, user: user)
+            }
+            self.opDone()
         }
         if onTop, below != nil {
             nav.popViewController(animated: animate)
@@ -710,6 +730,32 @@ public final class ScreenHost: NSObject {
         stackTimer = nil
         if let why { Self.log.notice("screens: \(w.what, privacy: .public) taken as done (\(why, privacy: .public))") }
         w.done()
+    }
+
+    /// A pop UIKit left undone (it drops an animated one asked while another transition runs over the tab, without a
+    /// word): the chat comes off now without animation, so ScreenHost never counts down a chat the owner still sees (no
+    /// marker, a dead Back, no edge pop, a second chat pushed over it later). Its record goes first, as at the stack's
+    /// leaving: UIKit's word on this change, inside the call or after it, finds no chat to call the owner's.
+    private func takeOff(_ u: Up, user: Bool) {
+        guard up[u.name] === u else { return }
+        up.removeValue(forKey: u.name)
+        if let nav = stack?.nav, nav.viewControllers.contains(where: { $0 === u.host }) {
+            Self.log.error("screens: UIKit left \(u.name, privacy: .public) in the Coach tab's stack after its pop: taken off without animation")
+            nav.setViewControllers(nav.viewControllers.filter { $0 !== u.host }, animated: false)
+        }
+        chatPopped(u, user: user)
+    }
+
+    /// UIKit never took the push (it drops an animated one asked while another transition runs over the tab, without a
+    /// word): the chat is not up and the page shows its own (the bridge's `screens.off`), as for a presentation UIKit
+    /// refused. Nobody pressed Back, so the page never hears `coach.back` for it.
+    private func pushRefused(_ u: Up) {
+        guard up[u.name] === u else { return }
+        up.removeValue(forKey: u.name)
+        chatHeaderBottom = nil
+        transitions.append("refused " + u.name)
+        Self.log.error("screens: UIKit did not push \(u.name, privacy: .public): the page shows its own")
+        hooks.failed(u.name, "UIKit refused the push")
     }
 
     /// VoiceOver hears the stack's new top after a push or pop, while the owner sees the stack: Coach selected, its slot
