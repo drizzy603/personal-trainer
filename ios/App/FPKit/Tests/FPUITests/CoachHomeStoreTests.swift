@@ -223,6 +223,27 @@ final class CoachHomeStoreTests: XCTestCase {
         XCTAssertEqual(store.toasts, Array(repeating: CoachHomeStore.notSaved, count: never.count), "the probe sees the store's toasts")
     }
 
+    /// The store lives as long as its web view binding, through every document, so the probe's list of its toasts
+    /// keeps the last 20 (as `events` keeps the last 80): every key that never reached the page still shows its toast,
+    /// and `describe()` carries no more than the 20.
+    func testTheProbesListOfToastsKeepsTheLastTwenty() throws {
+        store.apply(try connect())
+        for i in 0..<25 {
+            store.handle(.connect(secret: "sk-ant-key-\(i)"))
+            answer("coachHome.setKey", .notLinked)
+        }
+        XCTAssertEqual(toasts.count, 25, "each key that never reached the page shows its toast")
+        XCTAssertEqual(store.toasts, Array(repeating: CoachHomeStore.notSaved, count: 20), "the probe's list keeps the last 20")
+        XCTAssertEqual(store.describe()["toasts"] as? [String], store.toasts, "describe() carries those 20")
+        // a document goes and the next one comes: the binding, its store and the cap stay
+        store.documentGone(keep: false)
+        store.apply(try connect(boot: "b2", rev: 1))
+        store.handle(.connect(secret: "sk-ant-key-next"))
+        answer("coachHome.setKey", .documentGone)
+        XCTAssertEqual(toasts.count, 26, "its toast shown")
+        XCTAssertEqual(store.toasts.count, 20, "still the last 20")
+    }
+
     /// Unwired, the hooks are CoachStore's: `ask` answers `.notLinked` at once, `toast` shows nothing.
     func testUnwiredHooksAnswerNotLinked() throws {
         let bare = CoachHomeStore()

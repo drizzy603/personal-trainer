@@ -57,7 +57,7 @@ public final class CoachHomeStore: ObservableObject {
     /// The last outcome of each intent sent, by intent name (PageLink's word: done, refused <why>, failed <why>, gone,
     /// not linked).
     public private(set) var outcomes: [String: String] = [:]
-    /// The toasts the store asked for (the probe's).
+    /// The toasts the store asked for, the last 20 (the probe's; the store lives as long as its binding).
     public private(set) var toasts: [String] = []
     /// Bumped by `tearDown`: an answer to an intent sent before it is ignored.
     private var era = 0
@@ -183,6 +183,7 @@ public final class CoachHomeStore: ObservableObject {
         case .answered(.failed), .documentGone, .notLinked:
             let t = ToastRequest(text: Self.notSaved, style: "err", undo: nil)
             toasts.append(t.text)
+            if toasts.count > 20 { toasts.removeFirst(toasts.count - 20) }
             note("the key never reached the page: a toast")
             hooks.toast(t)
         }
@@ -207,7 +208,7 @@ public final class CoachHomeStore: ObservableObject {
 
     /// What the probe reports (ScreenHost's `describe()` carries it): the model's rev, boot, route, `resume`, the rows'
     /// actions, whether a connect block and its starter link are drawn, `connecting`, the key field's flag ("empty" or
-    /// "typed", never its text), the last outcome per intent name, the toasts asked for and the last 40 events.
+    /// "typed", never its text), the last outcome per intent name, the last 20 toasts asked for and the last 40 events.
     public func describe() -> [String: Any] {
         [
             "rev": model?.rev ?? NSNull(), "boot": model?.boot ?? NSNull(),
