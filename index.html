@@ -21214,14 +21214,14 @@ function _coachDayMeta(){
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
 }
 // ── The Coach tab's models (build 61, contract 6.1-6.2): the page builds them, the native bar and the native Coach
-// tab draw them, and the web hub and connect screen are drawn from the same model (_coachHomeHTML), as the chat's HTML
-// is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects: boot is
-// this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
+// tab draw them, and the web hub and connect screen are drawn from the same content (_coachHomeHTML), as the chat's
+// HTML is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects:
+// boot is this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
 // The hub's type sizes (contract 6.2, D33): 16 flat home* sizes per room, at the large text size, from the room CSS.
 // CoachHomeModel's tokens.type carries them beside the chat's sizes, in a copy: _COACH_TOKENS and every CoachModel stay
 // as they are. FPCore compiles the same values (Tokens.swift); spec 126 holds the page to the contract's table. Two of
-// them are not today's Heavyweight CSS, which draws the group heads and the CTA label at 10 px (the room's font-size:10px
-// rule): they change with the contract and FPCore, together.
+// them are not today's Heavyweight CSS, which draws the group heads and the CTA label at 10 px (the room's
+// font-size:10px rule): they change with the contract and FPCore, together.
 var _COACH_HOME_TYPE={
   heavyweight:{homeMeta:10, homeAvatar:13, homeGreet:15, homeTitle:74, homeTitleMin:54, homeBody:15, homeGroupHead:9,
     homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
@@ -21247,24 +21247,21 @@ function _coachHomePreview(msg){
   }).join(' '));
   return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
 }
-// Coach home model v1 (contract 6.2; FPCore CoachHomeModel.swift reads it): the Coach tab's root as renderCoach() draws
-// it, the connect screen with no key (even during setup), else the hub. resume: the page will push the chat when Coach
-// is next selected (setup with a key, or a reply in flight on the chat view: switchTab keeps the view then and
-// _fpWant('coach') wants the chat), so the shell holds the hub off screen for that tap (contract 8.1). Text is raw (the
-// web builder escapes) and never the key or its masked form.
-function _coachHomeModel(rev){
-  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', key=!!getApiKey(), k;
-  var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}
-  var tokens=_coachTokens(room), type={}, home=_COACH_HOME_TYPE[room]||_COACH_HOME_TYPE.heavyweight;
-  for(k in tokens.type) type[k]=tokens.type[k];
-  for(k in home) type[k]=home[k];
-  tokens.type=type;
+// What the Coach tab's root shows, the content of the Coach home model below: the connect screen with no key (even
+// during setup), else the hub. renderCoach() draws the web hub and connect screen from it (_coachHomeHTML) and the
+// model wraps it in the room's colours and type, so web and native cannot disagree. renderCoach() never builds the
+// whole model: its tokens read _COACH_TOKENS, which the script defines after the boot's first paint (a first paint on
+// the Coach tab threw). resume: the page will push the chat when Coach is next selected (setup with a key, or a reply
+// in flight on the chat view: switchTab keeps the view then and _fpWant('coach') wants the chat), so the shell holds
+// the hub off screen for that tap (contract 8.1). Text is raw (the web builder escapes) and never the key or its
+// masked form. No side effects.
+function _coachHomeScreen(){
+  var key=!!getApiKey();
   // getWkData()'s week, without its write (it clamps currentWeek to the programme; renderCoach still calls it)
   var cr=getCustomRoutine(), wk=currentWeek, wd=null;
   if(cr){ wk=Math.min(currentWeek, cr.weeks.length); wd=cr.weeks[Math.max(0, wk-1)]||cr.weeks[0]; }
   var name=getUserFirstName(), n=coachMessages.length, ex=Math.ceil(n/2), exs=ex+' exchange'+(ex===1?'':'s');
-  var m={v:1, rev:rev, boot:_fpBoot, room:room, paper:!!THEMES[room].paper, dynTypeOn:dyn, tokens:tokens,
-    route:key ? 'hub' : 'connect', resume:key && (!!intakeMode || (!!coachLoading && coachView==='chat')),
+  var s={route:key ? 'hub' : 'connect', resume:key && (!!intakeMode || (!!coachLoading && coachView==='chat')),
     meta:{label:'COACH · WK '+String(wk).padStart(2,'0')+' / '+getTotalWeeks()+(wd && wd.bName ? ' · '+String(wd.bName).toUpperCase() : ''),
       avatar:(_graphemes(String(name||'').trim())[0]||'?').toUpperCase()},
     hero:{greet:name ? 'Hi '+name+'.' : 'Welcome.', title:key ? 'Coach' : 'Connect', accent:key ? 'ready.' : 'your coach.',
@@ -21273,18 +21270,31 @@ function _coachHomeModel(rev){
         : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.'},
     connect:null, groups:[]};
   if(!key){
-    m.connect={label:'Anthropic API Key', placeholder:'sk-ant-...', cta:{label:'CONNECT', title:'Save key & start coaching'},
+    s.connect={label:'Anthropic API Key', placeholder:'sk-ant-...', cta:{label:'CONNECT', title:'Save key & start coaching'},
       help:'Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.\n'+
         'Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.',
       starter:cr ? null : {label:'No key? Build a starter plan instead →'}};
-    return m;
+    return s;
   }
-  m.groups.push({head:'Conversation', rows:[{'do':'openChat', title:'Open Chat',
+  s.groups.push({head:'Conversation', rows:[{'do':'openChat', title:'Open Chat',
     sub:coachLoading ? 'Coach is replying…' : n ? exs+' · '+_coachHomePreview(coachMessages[n-1]) : 'No messages yet — tap to start', icon:'chat'}]});
-  if(!cr) m.groups.push({head:'Programme', rows:[{'do':'startIntake', title:'Build My Programme', sub:'Generate a custom training plan', icon:'programme'}]});
-  m.groups.push({head:'Account', rows:(n ? [{'do':'clearChat', title:'Clear Chat History', sub:null, icon:'trash'}] : [])
+  if(!cr) s.groups.push({head:'Programme', rows:[{'do':'startIntake', title:'Build My Programme', sub:'Generate a custom training plan', icon:'programme'}]});
+  s.groups.push({head:'Account', rows:(n ? [{'do':'clearChat', title:'Clear Chat History', sub:null, icon:'trash'}] : [])
     .concat([{'do':'disconnect', title:'Disconnect', sub:null, icon:'disconnect'}])});
-  return m;
+  return s;
+}
+// Coach home model v1 (contract 6.2; FPCore CoachHomeModel.swift reads it): the screen above in the room's colours and
+// type (tokens.type: the chat's sizes and the hub's, in a copy). Top-level with no side effects: boot is this
+// document's, rev the caller's.
+function _coachHomeModel(rev){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', s=_coachHomeScreen(), k;
+  var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}
+  var tokens=_coachTokens(room), type={}, home=_COACH_HOME_TYPE[room]||_COACH_HOME_TYPE.heavyweight;
+  for(k in tokens.type) type[k]=tokens.type[k];
+  for(k in home) type[k]=home[k];
+  tokens.type=type;
+  return {v:1, rev:rev, boot:_fpBoot, room:room, paper:!!THEMES[room].paper, dynTypeOn:dyn, tokens:tokens,
+    route:s.route, resume:s.resume, meta:s.meta, hero:s.hero, connect:s.connect, groups:s.groups};
 }
 // The web hub's rows by action: the handler, the tile and its icon (room CSS overrides the tiles' hex).
 var _COACH_HOME_ROWS={
@@ -21297,9 +21307,10 @@ var _COACH_HOME_ROWS={
   disconnect:{on:'clearApiKey()', bg:'#1a1a2e', stroke:'#a78bfa', chev:false,
     svg:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'}
 };
-// The web Coach hub and connect screen, drawn from the model: the markup renderCoach() wrote before build 61, byte for
-// byte (tests/golden/coach-html.json, the homes group). Text nodes through _escT and the key field's placeholder
-// through _esc (plan P-D4: a quote in a name is written ' where it was &#39;, and reads the same).
+// The web Coach hub and connect screen, drawn from _coachHomeScreen() (or a whole model): the markup renderCoach()
+// wrote before build 61, byte for byte (tests/golden/coach-html.json, the homes group). Text nodes through _escT and
+// the key field's placeholder through _esc (plan P-D4: a quote in a name is written ' where it was &#39;, and reads
+// the same).
 function _coachHomeHTML(m){
   var c=m.connect;
   var h='<div class="kt-meta-row">'+
@@ -21362,7 +21373,7 @@ function renderCoach(){
   var apiKey=getApiKey();
   getWkData();   // clamps currentWeek to the programme, as this paint always has (the chat header's WK reads it)
   // ── No API key: the connect screen (even during setup); the hub ─────────────
-  if(!apiKey || (coachView==='home' && !intakeMode)) return _coachHomeHTML(_coachHomeModel(0));
+  if(!apiKey || (coachView==='home' && !intakeMode)) return _coachHomeHTML(_coachHomeScreen());
   var _msw=_coachModelSwitch();
   var modelNext=_msw.next;
   var modelLabel=_msw.label, modelSwitch=_msw.a11y;
