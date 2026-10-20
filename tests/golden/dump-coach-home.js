@@ -20,6 +20,11 @@
 // coach-home-fixtures.js and tabs-fixtures.js write those by hand. Nothing here writes under Fixtures/coach: the
 // --check reads it, comparing tests/golden/dump-coach.js's chat states built under the tabs shell (one CoachModel
 // whichever host draws it, contract 6.3).
+//
+// Exports SCENARIOS, each fixture's state as data, and applyScenario, which sets one in a booted page: the dump builds
+// every fixture through them, spec 126 holds each coachHome state's model to the web screen drawn from it, and N14's
+// web shots (ios/App/FPKit/Tools/chat-contact/web-shots.js) replay them (all but hub-resume), so the three read one
+// definition.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -30,85 +35,106 @@ const coach = require('./dump-coach');
 const ROOT = path.resolve(__dirname, '..', '..');
 const FIXTURES = path.join(ROOT, 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'Fixtures');
 const check = process.argv.includes('--check');
-// The page-built files, as <folder>/<name> under FIXTURES.
-const NAMES = ['coachHome/connect-heavyweight', 'coachHome/connect-lime', 'coachHome/connect-starter', 'coachHome/hub-empty',
-  'coachHome/hub-history', 'coachHome/hub-replying', 'coachHome/hub-programme', 'coachHome/hub-resume', 'tabs/heavyweight', 'tabs/lime'];
 
-// Runs in the page: every scenario's model, as _nativeJSON text, keyed by <folder>/<name>. resume: only the boot that
-// starts in setup builds hub-resume (and nothing else).
-async function build(resume) {
-  const day = (n, hh) => new Date(addDays(todayISO(), n) + 'T' + hh + ':00').getTime();
-  const raw = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
-  const routine = lsGet('kt_routine');   // the seed's programme: twelve weeks, week 6's block BUILD
-  const fix = () => { _midSeq = 0; _midTag = 'g'; _fpBoot = 'b1791561600000-c3'; };
-  // a scenario's state: a key and the name Kalani unless it says otherwise, the seed's programme, Heavyweight, the
-  // hub view
-  const set = (o) => {
-    raw('kt_apikey', o.key === undefined ? 'sk-ant-golden' : o.key);
-    raw('kt_user_name', o.name === undefined ? 'Kalani' : o.name);
-    if (o.routine === null) lsDel('kt_routine'); else if (routine) lsSet('kt_routine', routine);
-    try { if (o.dynOff) localStorage.setItem('kt_dyn_type', '0'); else localStorage.removeItem('kt_dyn_type'); } catch (e) {}
-    currentTheme = o.room || 'heavyweight';
-    coachMessages = (o.msgs || []).map((m) => JSON.parse(JSON.stringify(m)));
-    _coachMids(coachMessages);
-    coachLoading = !!o.loading; _runningTools = []; pendingImage = null; coachView = o.view || 'home';
-    if (o.intake !== undefined) intakeMode = o.intake;
-    fix();
-  };
-  const json = (m) => _nativeJSON(m);
-  const out = {};
-  if (resume) {
-    // setup persisted across a relaunch: the page booted in setup (kt_intake, no programme) and shows the hub
-    if (!intakeMode || hasCustomRoutine()) throw new Error('hub-resume: the page did not boot in setup');
-    set({ routine: null, msgs: [
-      { role: 'user', content: 'I want to generate my training programme.', _seed: 'Programme setup', at: day(0, '09:00') },
-      { role: 'assistant', content: 'How many days a week can you train, and for how long each time?', at: day(0, '09:00') },
-    ] });
-    out['coachHome/hub-resume'] = json(_coachHomeModel(18));
-    return out;
-  }
-  // the newest reply's 65th character is an emoji, after a %% line the preview drops
-  const before = 'Great work this week: every session done and the squat is moving';
-  if (before.length !== 64) throw new Error('hub-history: the emoji must be the 65th character');
-  const chat = () => [
-    { role: 'user', content: 'How was my week?', at: day(-1, '18:00') },
-    { role: 'assistant', content: 'Four sessions logged.', at: day(-1, '18:01') },
-    { role: 'user', content: 'And the runs?', at: day(0, '07:30') },
-    { role: 'assistant', content: '%%type: Week review\n' + before + '💪 and the runs are easy.\n%%takeaway: Keep the deload in week 8.', at: day(0, '07:31') },
-  ];
-  set({ key: null, intake: false });
-  out['coachHome/connect-heavyweight'] = json(_coachHomeModel(11));
-  set({ key: null, intake: false, room: 'dark', dynOff: true });
-  out['coachHome/connect-lime'] = json(_coachHomeModel(12));
-  set({ key: null, intake: false, name: null, routine: null });
-  out['coachHome/connect-starter'] = json(_coachHomeModel(13));
-  set({ intake: false });
-  out['coachHome/hub-empty'] = json(_coachHomeModel(14));
-  set({ intake: false, msgs: chat() });
-  out['coachHome/hub-history'] = json(_coachHomeModel(15));
+// The conversation of hub-history: the newest reply's 65th character is an emoji, after a %% line the preview drops.
+const BEFORE = 'Great work this week: every session done and the squat is moving';
+if (BEFORE.length !== 64) throw new Error('hub-history: the emoji must be the 65th character');
+const HISTORY = [
+  { role: 'user', content: 'How was my week?', at: [-1, '18:00'] },
+  { role: 'assistant', content: 'Four sessions logged.', at: [-1, '18:01'] },
+  { role: 'user', content: 'And the runs?', at: [0, '07:30'] },
+  { role: 'assistant', content: '%%type: Week review\n' + BEFORE + '💪 and the runs are easy.\n%%takeaway: Keep the deload in week 8.', at: [0, '07:31'] },
+];
+
+// Each page-built fixture's state, by <folder>/<name> under FIXTURES, as plain data (applyScenario sets it):
+//   model, rev  what the dump builds: _coachHomeModel(rev) or _tabsModel(rev)
+//   key         kt_apikey: 'sk-ant-golden' unless given; null: no key
+//   name        kt_user_name: 'Kalani' unless given; null: none (the programme's name gives the first name, if any)
+//   routine     kt_routine: the seed's programme unless given; null: none; an object: the seed's with those fields
+//   room        currentTheme: 'heavyweight' unless given ('dark' is Lime); dynOff: kt_dyn_type '0' (Larger Text off)
+//   intake, loading, view   intakeMode, coachLoading (false unless given) and coachView ('home' unless given)
+//   msgs        coachMessages; each at is [days from today, 'hh:mm'] on the page's clock, or a time in ms
+//   boot        keys the document must boot with on top of the dump's seed (hub-resume: kt_intake with no programme,
+//               so intakeMode is set at boot, index.html's boot read of kt_intake)
+// The Coach tab's hub shows each coachHome state but hub-resume, whose page draws the setup chat over the hub.
+const SCENARIOS = {
+  'coachHome/connect-heavyweight': { model: 'coachHome', rev: 11, key: null },
+  'coachHome/connect-lime': { model: 'coachHome', rev: 12, key: null, room: 'dark', dynOff: true },
+  'coachHome/connect-starter': { model: 'coachHome', rev: 13, key: null, name: null, routine: null },
+  'coachHome/hub-empty': { model: 'coachHome', rev: 14 },
+  'coachHome/hub-history': { model: 'coachHome', rev: 15, msgs: HISTORY },
   // a reply in flight with the hub showing (the owner went Back): the chat is not pushed on the next tap
-  set({ intake: false, msgs: chat().slice(0, 3), loading: true });
-  out['coachHome/hub-replying'] = json(_coachHomeModel(16));
+  'coachHome/hub-replying': { model: 'coachHome', rev: 16, msgs: HISTORY.slice(0, 3), loading: true },
   // no programme (Build My Programme) and a conversation (Clear Chat History): every row the hub has
-  set({ intake: false, routine: null, msgs: chat().slice(0, 2) });
-  out['coachHome/hub-programme'] = json(_coachHomeModel(17));
-  set({ intake: false });
-  out['tabs/heavyweight'] = json(_tabsModel(3));
-  set({ intake: false, room: 'dark' });
-  out['tabs/lime'] = json(_tabsModel(4));
+  'coachHome/hub-programme': { model: 'coachHome', rev: 17, routine: null, msgs: HISTORY.slice(0, 2) },
+  // setup persisted across a relaunch: the page booted in setup and the hub sits under the setup chat (resume)
+  'coachHome/hub-resume': { model: 'coachHome', rev: 18, boot: { kt_intake: '1', kt_routine: '' }, intake: true, routine: null, msgs: [
+    { role: 'user', content: 'I want to generate my training programme.', _seed: 'Programme setup', at: [0, '09:00'] },
+    { role: 'assistant', content: 'How many days a week can you train, and for how long each time?', at: [0, '09:00'] },
+  ] },
+  'tabs/heavyweight': { model: 'tabs', rev: 3 },
+  'tabs/lime': { model: 'tabs', rev: 4, room: 'dark' },
+};
+const NAMES = Object.keys(SCENARIOS);
+
+// Sets one scenario's state in a booted page. It runs in the page (Playwright sends it as text: it reads nothing of
+// this module) and draws nothing: to see the state, show the Coach tab (if (currentTab !== 'coach') switchTab('coach');
+// else render(); switchTab leaves the view the scenario set, since it moves to the hub only outside setup and a reply
+// in flight). The keys go through the page's own writers (kt_apikey, kt_user_name and kt_dyn_type raw, as the page
+// writes them; kt_routine through lsSet/lsDel), so STORE=shadow's drift check stays clean. The seed's programme is read
+// once per document, at the first call, and every scenario that keeps a programme starts from it.
+function applyScenario(s) {
+  const raw = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
+  const at = (a) => (Array.isArray(a) ? new Date(addDays(todayISO(), a[0]) + 'T' + a[1] + ':00').getTime() : a);
+  if (!('__scenarioRoutine' in window)) window.__scenarioRoutine = lsGet('kt_routine');
+  const seed = window.__scenarioRoutine;
+  raw('kt_apikey', s.key === undefined ? 'sk-ant-golden' : s.key);
+  raw('kt_user_name', s.name === undefined ? 'Kalani' : s.name);
+  if (s.routine === null) lsDel('kt_routine');
+  else if (seed) lsSet('kt_routine', s.routine ? Object.assign({}, seed, s.routine) : seed);
+  try { if (s.dynOff) localStorage.setItem('kt_dyn_type', '0'); else localStorage.removeItem('kt_dyn_type'); } catch (e) {}
+  currentTheme = s.room || 'heavyweight';
+  coachMessages = (s.msgs || []).map((m) => {
+    const c = JSON.parse(JSON.stringify(m));
+    if (m.at !== undefined) c.at = at(m.at);
+    return c;
+  });
+  _coachMids(coachMessages);
+  coachLoading = !!s.loading; _runningTools = []; pendingImage = null; coachView = s.view || 'home'; intakeMode = !!s.intake;
+}
+
+// Runs in the page: each named scenario set (applyScenario's text) and its model built, as _nativeJSON text, with ids,
+// boot and revs fixed. A scenario that boots in setup must find the page in setup before it is set.
+async function build(arg) {
+  const apply = eval('(' + arg.apply + ')');
+  const out = {};
+  for (const name of arg.names) {
+    const s = arg.scenarios[name];
+    if (s.boot && s.boot.kt_intake && (!intakeMode || hasCustomRoutine())) throw new Error(name + ': the page did not boot in setup');
+    apply(s);
+    _midSeq = 0; _midTag = 'g'; _fpBoot = 'b1791561600000-c3';
+    out[name] = _nativeJSON(s.model === 'tabs' ? _tabsModel(s.rev) : _coachHomeModel(s.rev));
+  }
   return out;
 }
 
-// The page's models now, as the text each fixture file holds: {'<folder>/<name>': text}.
+// The page's models now, as the text each fixture file holds: {'<folder>/<name>': text}. One boot for the scenarios
+// on the dump's seed, and one for each set of boot keys a scenario names.
 async function pageModels() {
   const base = { native: true, shell: 'tabs', page: { timezoneId: 'UTC' }, init: CLOCK_INIT };
+  const groups = [];
+  for (const name of NAMES) {
+    const keys = SCENARIOS[name].boot || null, id = JSON.stringify(keys);
+    let g = groups.find((x) => x.id === id);
+    if (!g) groups.push(g = { id, keys, names: [] });
+    g.names.push(name);
+  }
   const out = {};
-  for (const resume of [false, true]) {
-    const seed = resume ? { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]', kt_intake: '1', kt_routine: '' }
-      : { kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]' };
+  for (const g of groups) {
+    const seed = Object.assign({ kt_apikey: 'sk-ant-golden', kt_coach_msgs: '[]' }, g.keys || {});
     const app = await boot(Object.assign({ seed }, base));
     try {
-      Object.assign(out, await app.page.evaluate(build, resume));
+      Object.assign(out, await app.page.evaluate(build, { names: g.names, scenarios: SCENARIOS, apply: applyScenario.toString() }));
       if (app.errors.length) throw new Error('page errors: ' + app.errors.join(' | '));
     } finally { await app.close(); }
   }
@@ -136,7 +162,7 @@ async function drift() {
   }
   return bad;
 }
-module.exports = { pageModels, drift, NAMES, FIXTURES };
+module.exports = { pageModels, drift, NAMES, FIXTURES, SCENARIOS, applyScenario };
 
 if (require.main === module) {
   (async () => {
