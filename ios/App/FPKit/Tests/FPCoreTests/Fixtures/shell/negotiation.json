@@ -1,0 +1,245 @@
+{
+  "about": [
+    "Build 61's pieces that depend on each other (contract 2.2, 3.2, 10.1, 10.3; D42), written by hand. FPCore's PiecesTests and LinkStateTests read every row; the page's mock (tests/lib/harness.js MOCK_RULES) is held to the same rows (P13).",
+    "Pieces in the binary's order: coach, coachHome, tabs. Every list below is in that order. One page build, P1.",
+    "resolve: base = the pieces whose own checks pass; tabsRoot = the scene's root is a live tab root (one that has not fallen back). on = the pieces on; needs = each piece of base off only because of another, with what it needs ('root' for tabs under a root that is not a live tab root). A piece off for its own reason never reports needs.",
+    "hello: base = the pieces whose own checks pass at the hello for P1 (device switch, policy, crash verdict, breaker, decline: ScreenGate.base), the OS step left to os (below 26 tabs is off 'os' and the root is classic). root = 'tabs' (a live tab root), 'classic' (built classic: iOS 17/18, the gate, or no launch values) or 'fellBack' (a tab root that fell back earlier in the scene: the classic rule, and never a second fallback). hello = the page's {v, screens}. want.v and want.why = the reply's version and refusal word; want.screens = the reply's screens; want.tabs = the reply carries tabs (tabs negotiated); want.declined = the pieces recorded as declined for P1; want.fellBack = the fallback this hello triggers (the scene falls back first, then this same hello is negotiated on the classic rule); want.needs = ScreenGate.evaluate's needs after the hello (its declines recorded, on the root after it).",
+    "cascade: a linked document under root, set up by a hello naming all three with base = live. event: {trip: piece} three failures in a row of the piece's own intents or models; {tripShell: true} three failed shell intents (ping, shell.covered, confirm, toast.undo, screens.off), which count against every live piece; {withdraw: piece} the host turned it off for the document (the policy file, a device switch). want.off = the screens.off the page hears, in order ({screen, why, needs?}); want.trips = the pieces with a breaker record (a cascade is never a trip); want.fellBack = the fallback the link starts (a tabs trip under a live tab root).",
+    "rootChange: setTabsRoot(false) from the host (a fallback it starts itself: dismiss {screen:'tabs'}, the policy file, the device switch), the document set up as in cascade by a hello with base (linked) or awaiting its hello (not linked). want.off = the screens.off for the pieces negotiated under the tab root's rule (coach included, whose stack is gone: by root change, not by the classic rule); tabs itself goes off in the document silently, the host telling the page with its own word, or not at all after dismiss tabs. want.sameDocument = what the same hello negotiates in this document afterwards (the awaited hello when not linked); want.nextDocument = what it negotiates in the scene's next document (the classic rule)."
+  ],
+  "pieces": ["coach", "coachHome", "tabs"],
+  "resolve": [
+    { "base": [], "tabsRoot": true, "on": [], "needs": {} },
+    { "base": ["coach"], "tabsRoot": true, "on": [], "needs": { "coach": ["coachHome"] } },
+    { "base": ["coachHome"], "tabsRoot": true, "on": [], "needs": { "coachHome": ["tabs", "coach"] } },
+    { "base": ["tabs"], "tabsRoot": true, "on": ["tabs"], "needs": {} },
+    { "base": ["coach", "coachHome"], "tabsRoot": true, "on": [], "needs": { "coach": ["coachHome"], "coachHome": ["tabs"] } },
+    { "base": ["coach", "tabs"], "tabsRoot": true, "on": ["tabs"], "needs": { "coach": ["coachHome"] } },
+    { "base": ["coachHome", "tabs"], "tabsRoot": true, "on": ["tabs"], "needs": { "coachHome": ["coach"] } },
+    { "base": ["coach", "coachHome", "tabs"], "tabsRoot": true, "on": ["coach", "coachHome", "tabs"], "needs": {} },
+    { "base": [], "tabsRoot": false, "on": [], "needs": {} },
+    { "base": ["coach"], "tabsRoot": false, "on": ["coach"], "needs": {} },
+    { "base": ["coachHome"], "tabsRoot": false, "on": [], "needs": { "coachHome": ["tabs", "coach"] } },
+    { "base": ["tabs"], "tabsRoot": false, "on": [], "needs": { "tabs": ["root"] } },
+    { "base": ["coach", "coachHome"], "tabsRoot": false, "on": ["coach"], "needs": { "coachHome": ["tabs"] } },
+    { "base": ["coach", "tabs"], "tabsRoot": false, "on": ["coach"], "needs": { "tabs": ["root"] } },
+    { "base": ["coachHome", "tabs"], "tabsRoot": false, "on": [], "needs": { "coachHome": ["tabs", "coach"], "tabs": ["root"] } },
+    { "base": ["coach", "coachHome", "tabs"], "tabsRoot": false, "on": ["coach"], "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+  ],
+  "hello": [
+    {
+      "case": "tab root: a tabs-mode page names all three",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach", "coachHome", "tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "tab root: coach and tabs named, coachHome left out: tabs alone, coachHome declined, coach needs it",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": ["coachHome"], "fellBack": null, "needs": { "coach": ["coachHome"] } }
+    },
+    {
+      "case": "tab root: tabs alone named: coachHome declined",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": ["coachHome"], "fellBack": null, "needs": { "coach": ["coachHome"] } }
+    },
+    {
+      "case": "tab root: coachHome and tabs named, coach left out: tabs alone, nothing declined",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "tab root: a classic-mode page (coach alone): falls back, tabs declined, 60's overlay chat at once",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": ["tabs"], "fellBack": "page", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "tab root: coachHome and coach named, tabs left out: falls back, tabs declined, coach alone",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": ["tabs"], "fellBack": "page", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "tab root: FP_NATIVE false (nothing named): falls back, tabs declined",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": [] },
+      "want": { "v": 1, "why": null, "screens": [], "tabs": false, "declined": ["tabs"], "fellBack": "page", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "tab root: a version refusal: falls back (refused), tabs declined",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 0, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 0, "why": "no-version", "screens": [], "tabs": false, "declined": ["tabs"], "fellBack": "refused", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "tab root: a newer page speaks v1",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 2, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach", "coachHome", "tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "tab root: a screen this binary lacks is ignored",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs", "settings"] },
+      "want": { "v": 1, "why": null, "screens": ["coach", "coachHome", "tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "tab root, the Coach tab off by its own checks: the chat goes with it (joint)",
+      "base": ["coach", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": { "coach": ["coachHome"] } }
+    },
+    {
+      "case": "tab root, the chat off by its own checks: the Coach tab goes with it",
+      "base": ["coachHome", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": { "coachHome": ["coach"] } }
+    },
+    {
+      "case": "tab root, only tabs passes its checks: the bar over the web Coach",
+      "base": ["tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "tab root, the Coach tab off, a classic-mode page: falls back, and the classic rule gives 60's overlay",
+      "base": ["coach", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": ["tabs"], "fellBack": "page", "needs": {} }
+    },
+    {
+      "case": "tab root, only tabs passes, a classic-mode page: falls back with nothing native",
+      "base": ["tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": [], "tabs": false, "declined": ["tabs"], "fellBack": "page", "needs": {} }
+    },
+    {
+      "case": "tab root, the policy turned tabs off before the hello: falls back (policy), nothing declined, coach alone",
+      "base": ["coach", "coachHome"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": "policy", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "tab root, tabs off by the policy and a classic-mode page: the policy's word, nothing declined",
+      "base": ["coach", "coachHome"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": "policy", "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "iOS 18: the classic root and 60's overlay; tabs off os, the Coach tab needs it",
+      "base": ["coach", "coachHome", "tabs"], "os": 18, "root": "classic", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "iOS 17: a page naming all three still gets coach alone",
+      "base": ["coach", "coachHome", "tabs"], "os": 17, "root": "classic", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "iOS 26 builds the tab root",
+      "base": ["coach", "coachHome", "tabs"], "os": 26, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach", "coachHome", "tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": {} }
+    },
+    {
+      "case": "a classic root on iOS 27 (built without the launch values): coach as 60, tabs needs the root",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "classic", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+    },
+    {
+      "case": "a classic root: a page naming all three gets coach alone, nothing declined",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "classic", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+    },
+    {
+      "case": "a classic root: a version refusal declines nothing",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "classic", "hello": { "v": 0, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 0, "why": "no-version", "screens": [], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+    },
+    {
+      "case": "a classic root, the chat off by its own checks: nothing native; the Coach tab needs tabs and coach",
+      "base": ["coachHome", "tabs"], "os": 27, "root": "classic", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": [], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs", "coach"], "tabs": ["root"] } }
+    },
+    {
+      "case": "fallen back earlier in the scene (tabs declined): the next document gets coach, never a second fallback",
+      "base": ["coach", "coachHome"], "os": 27, "root": "fellBack", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"] } }
+    },
+    {
+      "case": "fallen back, tabs passing its checks again: tabs needs the root (back from the next launch)",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "fellBack", "hello": { "v": 1, "screens": ["coach"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+    },
+    {
+      "case": "fallen back: a page naming all three gets coach alone",
+      "base": ["coach", "coachHome", "tabs"], "os": 27, "root": "fellBack", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["coach"], "tabs": false, "declined": [], "fellBack": null, "needs": { "coachHome": ["tabs"], "tabs": ["root"] } }
+    }
+  ],
+  "cascade": [
+    {
+      "case": "tab root: tabs trips; coach and coachHome follow by dependency, then the fallback",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "trip": "tabs" },
+      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }, { "screen": "tabs", "why": "failures" }], "trips": ["tabs"], "fellBack": "failures" }
+    },
+    {
+      "case": "tab root: the policy withdraws coach; the Coach tab follows (joint)",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "withdraw": "coach" },
+      "want": { "off": [{ "screen": "coach", "why": "withdrawn" }, { "screen": "coachHome", "why": "needs", "needs": ["coach"] }], "trips": [], "fellBack": null }
+    },
+    {
+      "case": "tab root: the policy withdraws coachHome; the chat follows (joint)",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "withdraw": "coachHome" },
+      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "withdrawn" }], "trips": [], "fellBack": null }
+    },
+    {
+      "case": "tab root: three failed coach intents trip coach; the Coach tab follows",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "trip": "coach" },
+      "want": { "off": [{ "screen": "coach", "why": "failures" }, { "screen": "coachHome", "why": "needs", "needs": ["coach"] }], "trips": ["coach"], "fellBack": null }
+    },
+    {
+      "case": "tab root: three failed coachHome intents trip coachHome; the chat follows",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "trip": "coachHome" },
+      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "failures" }], "trips": ["coachHome"], "fellBack": null }
+    },
+    {
+      "case": "tab root: three failed shell intents trip every live piece, tabs included",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "tripShell": true },
+      "want": { "off": [{ "screen": "coach", "why": "failures" }, { "screen": "coachHome", "why": "failures" }, { "screen": "tabs", "why": "failures" }], "trips": ["coach", "coachHome", "tabs"], "fellBack": "failures" }
+    },
+    {
+      "case": "tab root, the Coach tab web (tabs alone live): tabs trips, nothing follows",
+      "root": "tabs", "live": ["tabs"], "event": { "trip": "tabs" },
+      "want": { "off": [{ "screen": "tabs", "why": "failures" }], "trips": ["tabs"], "fellBack": "failures" }
+    },
+    {
+      "case": "tab root, tabs alone live: three failed shell intents",
+      "root": "tabs", "live": ["tabs"], "event": { "tripShell": true },
+      "want": { "off": [{ "screen": "tabs", "why": "failures" }], "trips": ["tabs"], "fellBack": "failures" }
+    },
+    {
+      "case": "classic root: coach trips alone",
+      "root": "classic", "live": ["coach"], "event": { "trip": "coach" },
+      "want": { "off": [{ "screen": "coach", "why": "failures" }], "trips": ["coach"], "fellBack": null }
+    },
+    {
+      "case": "classic root: the policy withdraws coach",
+      "root": "classic", "live": ["coach"], "event": { "withdraw": "coach" },
+      "want": { "off": [{ "screen": "coach", "why": "withdrawn" }], "trips": [], "fellBack": null }
+    },
+    {
+      "case": "classic root: three failed shell intents trip coach",
+      "root": "classic", "live": ["coach"], "event": { "tripShell": true },
+      "want": { "off": [{ "screen": "coach", "why": "failures" }], "trips": ["coach"], "fellBack": null }
+    }
+  ],
+  "rootChange": [
+    {
+      "case": "a fallback mid-document: coach and coachHome go off with needs; tabs is the host's to tell",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach", "coachHome", "tabs"],
+      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }], "sameDocument": [], "nextDocument": ["coach"] }
+    },
+    {
+      "case": "a fallback with the Coach tab web (tabs alone live): nothing more to tell",
+      "root": "tabs", "base": ["tabs"], "linked": true, "live": ["tabs"],
+      "want": { "off": [], "sameDocument": [], "nextDocument": [] }
+    },
+    {
+      "case": "before a link (awaiting the hello): only the rule changes",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": false, "live": [],
+      "want": { "off": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+    },
+    {
+      "case": "a classic root: nothing changes",
+      "root": "classic", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach"],
+      "want": { "off": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+    }
+  ]
+}

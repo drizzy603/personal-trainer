@@ -689,6 +689,9 @@ public final class ShellBridge: NSObject {
         case .policy: return "policy file"
         case .crashMarker(let d): return d.why
         case .breaker(let t): return "breaker: " + t.detail
+        case .os: return "needs iOS \(ScreenGate.tabsMinOS) or later"
+        case .declined(let page): return "declined by page build \(page)"
+        case .needs(let pieces): return "needs " + pieces.joined(separator: ", ")
         }
     }
 

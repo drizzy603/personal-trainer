@@ -284,7 +284,8 @@ public enum Negotiation: Equatable, Sendable {
     }
 }
 
-/// Which of this binary's screens are on for a page build, and why the others are off.
+/// Which of this binary's screens are on for a page build, and why the others are off: each piece's own checks
+/// (`base`), then the pieces that depend on each other for the scene's root (`evaluate`, ShellPieces).
 public enum ScreenGate {
     public enum Off: Equatable, Sendable {
         /// The device switch (Settings > About).
@@ -295,20 +296,48 @@ public enum ScreenGate {
         case crashMarker(DisabledPair)
         /// The native breaker tripped for this page build.
         case breaker(Trip)
+        /// `tabs` below iOS 26 (contract 2.2, D39): the classic root on iOS 17 and 18.
+        case os
+        /// The page build being served declined the piece (it left `tabs` out of its hello although the flag offered
+        /// it, a version refusal, a `dismiss {screen:'tabs'}`, or `coachHome` left out while naming `tabs`; 10.1).
+        case declined(page: String)
+        /// Off only because of another piece (ShellPieces): the pieces it needs, or `["root"]`.
+        case needs([String])
     }
 
-    public static func evaluate(binary: [String], deviceOff: Set<String>, policy: Policy, book: BreakerBook,
-                                shellBuild: String, pageBuild: String?) -> (on: [String], off: [String: Off]) {
+    /// The first OS major version that builds the tab root (contract 2.2, D39).
+    public static let tabsMinOS = 26
+
+    /// The piece's own checks, in the contract's order: the OS (for `tabs` alone), the device switch, the policy file,
+    /// a crash verdict for the (shell, page) pair, the native breaker for the page build, a decline by the page build.
+    /// The root decision reads `tabs` here (contract 2.2: the tab root iff base(`tabs`) is on).
+    public static func base(binary: [String], deviceOff: Set<String>, policy: Policy, book: BreakerBook,
+                            shellBuild: String, pageBuild: String?, os: Int = .max) -> (on: [String], off: [String: Off]) {
         var on: [String] = []
         var off: [String: Off] = [:]
         for s in binary {
-            if deviceOff.contains(s) { off[s] = .deviceSwitch }
+            if s == "tabs", os < tabsMinOS { off[s] = .os }
+            else if deviceOff.contains(s) { off[s] = .deviceSwitch }
             else if !policy.screenOn(s) { off[s] = .policy }
             else if let d = book.disabled(piece: s, shell: shellBuild, page: pageBuild) { off[s] = .crashMarker(d) }
             else if let t = book.trip(screen: s, pageBuild: pageBuild) { off[s] = .breaker(t) }
+            else if let p = pageBuild, book.declined(piece: s, page: p) { off[s] = .declined(page: p) }
             else { on.append(s) }
         }
         return (on, off)
+    }
+
+    /// `base`, then the dependencies (ShellPieces) for the scene's root: `tabsRoot` true for a live tab root (one that
+    /// has not fallen back; below iOS 26, or for a binary without `tabs`, there is none). Only a piece whose own checks
+    /// pass can be off `needs`. The defaults are a classic root on an OS that allows tabs: build 60's semantics for
+    /// `coach`, and `tabs`, whose checks pass, needs the root.
+    public static func evaluate(binary: [String], deviceOff: Set<String>, policy: Policy, book: BreakerBook,
+                                shellBuild: String, pageBuild: String?, tabsRoot: Bool = false, os: Int = .max) -> (on: [String], off: [String: Off]) {
+        let b = base(binary: binary, deviceOff: deviceOff, policy: policy, book: book, shellBuild: shellBuild, pageBuild: pageBuild, os: os)
+        let r = ShellPieces.resolve(b.on, tabsRoot: tabsRoot && os >= tabsMinOS && binary.contains("tabs"))
+        var off = b.off
+        for s in b.on where !r.on.contains(s) { off[s] = .needs(r.needs[s] ?? []) }
+        return (r.on, off)
     }
 }
 
