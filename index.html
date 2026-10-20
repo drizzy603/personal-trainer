@@ -21296,15 +21296,16 @@ function _coachHomeModel(rev){
   return {v:1, rev:rev, boot:_fpBoot, room:room, paper:!!THEMES[room].paper, dynTypeOn:dyn, tokens:tokens,
     route:s.route, resume:s.resume, meta:s.meta, hero:s.hero, connect:s.connect, groups:s.groups};
 }
-// The web hub's rows by action: the handler, the tile and its icon (room CSS overrides the tiles' hex).
+// The web hub's rows by action: the handler, the tile and its icon (room CSS overrides the tiles' hex). Each handler is
+// written as its whole onclick attribute, so verify.sh's inline-handler check still finds the function it names.
 var _COACH_HOME_ROWS={
-  openChat:{on:'openCoachChat()', bg:'#1a2a1f', stroke:'var(--accent)', chev:true,
+  openChat:{on:'onclick="openCoachChat()"', bg:'#1a2a1f', stroke:'var(--accent)', chev:true,
     svg:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'},
-  startIntake:{on:'startRoutineIntake()', bg:'#1e1a0d', stroke:'#f59e0b', chev:true,
+  startIntake:{on:'onclick="startRoutineIntake()"', bg:'#1e1a0d', stroke:'#f59e0b', chev:true,
     svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
-  clearChat:{on:'_confirmClearChat()', bg:'#2a1a1a', stroke:'#f97316', chev:false,
+  clearChat:{on:'onclick="_confirmClearChat()"', bg:'#2a1a1a', stroke:'#f97316', chev:false,
     svg:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'},
-  disconnect:{on:'clearApiKey()', bg:'#1a1a2e', stroke:'#a78bfa', chev:false,
+  disconnect:{on:'onclick="clearApiKey()"', bg:'#1a1a2e', stroke:'#a78bfa', chev:false,
     svg:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'}
 };
 // The web Coach hub and connect screen, drawn from _coachHomeScreen() (or a whole model): the markup renderCoach()
@@ -21346,7 +21347,7 @@ function _coachHomeHTML(m){
     g.rows.forEach(function(r){
       var d=_COACH_HOME_ROWS[r['do']];
       if(!d) return;
-      h+='<div class="settings-row" onclick="'+d.on+'">'+
+      h+='<div class="settings-row" '+d.on+'>'+
           '<div class="settings-row-ic" style="background:'+d.bg+';">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="'+d.stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+d.svg+'</svg>'+
           '</div>'+
