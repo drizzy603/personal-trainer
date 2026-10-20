@@ -18,7 +18,9 @@
 //   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
 //   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
 //   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
-//   off), the failsafe on visible time (real time and Playwright's clock), and a broken page still drops the bar.
+//   off; selectTab's and sheets' refusals through one handler; at hello it renders after the take-over), the failsafe on
+//   visible time (real time and Playwright's clock; a suspension between a hide and a show adds nothing, no stretch more
+//   than 1 s), and a broken page still drops the bar (whatever state its main script reached).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -704,6 +706,22 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
     classicLook(o, 'off refusal');
     assert(!r.off.mode && r.off.why === 'off' && r.off.tab === 'coach' && o.tab === 'coach' && dismissTabs(o) === 0 && o.offCoach !== 'tabs',
       'selectTab refused off: out on the tab it switched to, nothing sent back: ' + J([r.off, o]));
+    // sheets the same, through the one handler of both refusals (P5's announcer calls it): the next document is in tabs
+    // mode again (a refusal is no fallback); another code is logged and changes nothing, off leaves with nothing sent back
+    await ref.reload(); await helloIn(ref);
+    const s = await ev(ref, async () => {
+      const w = (ms) => new Promise((z) => setTimeout(z, ms));
+      const out = { mode0: _fp.tabs.mode };
+      _fpTabsRefused(new Error('bad message: sheets'), 'sheets'); await w(20);
+      out.other = { mode: _fp.tabs.mode, logged: __fpShell.of('log').some((l) => l.text.indexOf('sheets refused: bad message: sheets') >= 0) };
+      _fpTabsRefused(new Error('off: no live tab root'), 'sheets'); await w(40);
+      out.off = { mode: _fp.tabs.mode, why: _fp.tabs.why, told: _fp.tabs.told };
+      return out;
+    });
+    const so = await look(ref);
+    classicLook(so, 'sheets refused off');
+    assert(s.mode0 && s.other.mode && s.other.logged && !s.off.mode && s.off.why === 'off' && !s.off.told && dismissTabs(so) === 0 && so.offCoach !== 'tabs',
+      'sheets: another code is logged, off leaves with nothing sent back: ' + J([s, so.tabsCalls]));
   } finally { await ref.close(); }
 });
 
