@@ -320,13 +320,14 @@ public struct LinkState: Equatable, Sendable {
 
     // MARK: Hello
 
-    /// The page's hello. `available`: the pieces whose own checks pass for the hello's page build (ScreenGate's `base`:
-    /// the device switch, the policy file, crash verdicts, the breaker, declines); the link takes out those off in this
-    /// document and applies the dependency rule for the scene's root before and after negotiating (ScreenGate's
-    /// `evaluate` gives the same answer, except that a fallback at this hello can then not bring back a piece the tab
-    /// root's rule had kept off). Under a live tab root an answer that leaves `tabs` out falls back first (`fellBack`)
-    /// and is negotiated on the classic rule, and the page build's declines are recorded (contract 3.2, 10.3).
-    public mutating func hello(_ h: HelloRequest, available: [String], at now: Date) -> (reply: HelloReply, effects: [LinkEffect]) {
+    /// The page's hello. `ownChecks`: `ScreenGate.base` for the hello's page build, the pieces whose own checks pass
+    /// (the OS, the device switch, the policy file, crash verdicts, the breaker, declines), never `evaluate`'s answer:
+    /// the link takes out those off in this document and applies the dependency rule itself, for the root as this hello
+    /// leaves it, before and after negotiating (contract 3.2). So under a live tab root an answer that leaves `tabs` out
+    /// falls back first (`fellBack`) and is then negotiated on the classic rule, which can bring back a piece the tab
+    /// root's rule kept off (60's overlay chat at once, contract 10.3); `evaluate`'s answer would have lost it. The
+    /// page build's declines are recorded in the book.
+    public mutating func hello(_ h: HelloRequest, ownChecks: ScreenGate.Base, at now: Date) -> (reply: HelloReply, effects: [LinkEffect]) {
         var fx: [LinkEffect] = []
         if phase == .idle {
             fx += documentStarted(pageBuild: nil, at: now)
@@ -340,7 +341,7 @@ public struct LinkState: Equatable, Sendable {
         if case .unlinked(.noHello) = phase { late = true } else { late = (waitedForHello(at: now) ?? 0) >= config.helloDeadline }
         fx += setPageBuild(h.page)
         if late { fx += missHello(at: now) }   // under a live tab root that is the no-hello fallback
-        let live = available.filter { !offInDocument.contains($0) && book.trip(screen: $0, pageBuild: pageBuild) == nil }
+        let live = ownChecks.on.filter { !offInDocument.contains($0) && book.trip(screen: $0, pageBuild: pageBuild) == nil }
         let o = ShellPieces.hello(h, shell: shell, available: live, tabsRoot: tabsRoot)
         var declined = false
         if !h.page.isEmpty {

@@ -148,6 +148,8 @@ public final class ShellBridge: NSObject {
     var activeSince: Date?
     /// Whether the app is in use now (tests set their own).
     var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
+    /// The system's major version, for the gate's iOS 26 floor of `tabs` (contract 2.2, D39; tests set their own).
+    var osMajor: () -> Int = { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
     #if DEBUG
     var debug = ShellDebug()
     /// Debug builds: what the App target lets the scenario runner do that FPUI cannot reach itself (ShellProbe's `hook`
@@ -468,8 +470,8 @@ public final class ShellBridge: NSObject {
     }
 
     private func hello(_ h: HelloRequest, _ b: Binding, at now: Date) -> (reply: [String: Any], after: () -> Void) {
-        let available = gate(page: h.page, book: b.link.book).on
-        let answer = b.link.hello(h, available: available, at: now)
+        // the pieces' own checks for the hello's page build: the link applies the dependency rule for its root (3.2)
+        let answer = b.link.hello(h, ownChecks: ownChecks(page: h.page, book: b.link.book), at: now)
         let reply = answer.reply.takingOver(b.screens.shown)
         let fx = answer.effects
         apply(fx, b)
@@ -658,9 +660,15 @@ public final class ShellBridge: NSObject {
 
     func gate(page: String?, book: BreakerBook) -> (on: [String], off: [String: ScreenGate.Off]) {
         // The device switch for the native chat is the page's own (Settings > About, kt_native_off): a page with it on
-        // never presents. The shell keeps none of its own in build 60.
+        // never presents. The shell keeps none of its own in build 60. A classic root until H7 adopts a tab root.
         ScreenGate.evaluate(binary: shell.screens, deviceOff: [], policy: environment.policy(), book: book,
-                            shellBuild: shell.shell, pageBuild: page)
+                            shellBuild: shell.shell, pageBuild: page, os: osMajor())
+    }
+
+    /// The pieces' own checks for a page build (ScreenGate.base, the OS included): what a hello is negotiated from.
+    func ownChecks(page: String?, book: BreakerBook) -> ScreenGate.Base {
+        ScreenGate.base(binary: shell.screens, deviceOff: [], policy: environment.policy(), book: book,
+                        shellBuild: shell.shell, pageBuild: page, os: osMajor())
     }
 
     private func saveBook(_ book: BreakerBook) {

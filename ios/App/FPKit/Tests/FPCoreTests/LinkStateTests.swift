@@ -17,7 +17,7 @@ final class LinkStateTests: XCTestCase {
     private func linked(_ page: String = "P1", boot: String = "b1") -> LinkState {
         var s = LinkState(shell: shell)
         _ = s.documentStarted(pageBuild: page, at: t0)
-        _ = s.hello(hello(page, boot: boot), available: ["coach"], at: t0 + 1)
+        _ = s.hello(hello(page, boot: boot), ownChecks: ["coach"], at: t0 + 1)
         return s
     }
 
@@ -34,7 +34,7 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.phase, .awaitingHello)
         XCTAssertEqual(s.waitedForHello(at: t0 + 5), 5)
         XCTAssertEqual(s.helloDeadline(from: t0 + 5), t0 + 15)
-        let (reply, fx) = s.hello(hello(), available: ["coach"], at: t0 + 2)
+        let (reply, fx) = s.hello(hello(), ownChecks: ["coach"], at: t0 + 2)
         XCTAssertEqual(reply, HelloReply(v: 1, screens: ["coach"]))
         let link = LinkState.Link(boot: "b1", bootFromPage: true, v: 1, page: "P1", screens: ["coach"])
         XCTAssertEqual(fx, [.linked(link)])
@@ -57,7 +57,7 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.book.trip(screen: "coach", pageBuild: "P1")?.detail, "no hello within 15 s")
         XCTAssertEqual(s.tick(at: t0 + 30), [], "once")
         // a hello after the trip forms the link with no screens
-        let (reply, _) = s.hello(hello(), available: ["coach"], at: t0 + 20)
+        let (reply, _) = s.hello(hello(), ownChecks: ["coach"], at: t0 + 20)
         XCTAssertEqual(reply.screens, [])
         XCTAssertEqual(reply.v, 1)
         XCTAssertFalse(s.isLive("coach"))
@@ -92,7 +92,7 @@ final class LinkStateTests: XCTestCase {
     func testLateHelloIsAMissEvenWithoutATick() {
         var s = LinkState(shell: shell)
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        let (reply, fx) = s.hello(hello(), available: ["coach"], at: t0 + 16)
+        let (reply, fx) = s.hello(hello(), ownChecks: ["coach"], at: t0 + 16)
         XCTAssertEqual(trips(fx).map(\.reason), [.noHello])
         XCTAssertEqual(reply.screens, [])
         XCTAssertEqual(s.link?.screens, [])
@@ -106,7 +106,7 @@ final class LinkStateTests: XCTestCase {
         _ = s.documentStarted(pageBuild: nil, at: t0)
         XCTAssertEqual(trips(s.tick(at: t0 + 15)).count, 1)
         XCTAssertNotNil(s.book.trip(screen: "coach", pageBuild: nil))
-        let (reply, fx) = s.hello(hello("P1"), available: ["coach"], at: t0 + 16)
+        let (reply, fx) = s.hello(hello("P1"), ownChecks: ["coach"], at: t0 + 16)
         XCTAssertEqual(reply.screens, [])
         XCTAssertFalse(fx.contains(.breakersReset(pageBuild: "P1")), "the page's own trip is not another build's")
         XCTAssertEqual(trips(fx).map(\.reason), [.noHello])
@@ -117,7 +117,7 @@ final class LinkStateTests: XCTestCase {
 
     func testHelloBeforeAnyDocumentStartAndWithoutABoot() {
         var s = LinkState(shell: shell)
-        let (reply, _) = s.hello(hello(boot: nil), available: ["coach"], at: t0)
+        let (reply, _) = s.hello(hello(boot: nil), ownChecks: ["coach"], at: t0)
         XCTAssertEqual(reply.screens, ["coach"])
         XCTAssertEqual(s.documents, 1)
         XCTAssertEqual(s.link?.boot, "doc-1")
@@ -126,14 +126,14 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 1, boot: "b-anything", decoded: true, at: t0).verdict, .apply,
                        "a link whose hello named no boot cannot tell a model's")
         XCTAssertEqual(s.documentStarted(pageBuild: "P1", at: t0 + 5), [.documentGone(boot: "doc-1")])
-        XCTAssertEqual(s.hello(hello(boot: nil), available: ["coach"], at: t0 + 6).effects.last, .linked(LinkState.Link(
+        XCTAssertEqual(s.hello(hello(boot: nil), ownChecks: ["coach"], at: t0 + 6).effects.last, .linked(LinkState.Link(
             boot: "doc-2", bootFromPage: false, v: 1, page: "P1", screens: ["coach"])))
     }
 
     func testRefusedContract() {
         var s = LinkState(shell: shell)
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        let (reply, fx) = s.hello(hello(v: 0), available: ["coach"], at: t0 + 1)
+        let (reply, fx) = s.hello(hello(v: 0), ownChecks: ["coach"], at: t0 + 1)
         XCTAssertEqual(reply, HelloReply(v: 0, screens: [], why: "no-version"))
         XCTAssertEqual(fx, [])
         XCTAssertEqual(s.phase, .unlinked(.refused(.noVersion)))
@@ -158,7 +158,7 @@ final class LinkStateTests: XCTestCase {
         let fx = missed.documentStarted(pageBuild: "P1", at: t0 + 20)
         XCTAssertEqual(trips(fx).map(\.reason), [.noHello])
         XCTAssertEqual(missed.phase, .awaitingHello)
-        XCTAssertEqual(missed.hello(hello(boot: "b2"), available: ["coach"], at: t0 + 21).reply.screens, [], "the page build tripped")
+        XCTAssertEqual(missed.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 21).reply.screens, [], "the page build tripped")
 
         var custom = LinkState(shell: shell, config: LinkState.Config(helloDeadline: 0.5))
         _ = custom.documentStarted(pageBuild: "P1", at: t0)
@@ -265,16 +265,16 @@ final class LinkStateTests: XCTestCase {
 
         var relaunch = LinkState(shell: shell, book: BreakerBook.decoded(saved))
         XCTAssertEqual(relaunch.documentStarted(pageBuild: "P1", at: t0 + 100), [], "the same page build: the trip stays")
-        XCTAssertEqual(relaunch.hello(hello(), available: ["coach"], at: t0 + 101).reply.screens, [])
+        XCTAssertEqual(relaunch.hello(hello(), ownChecks: ["coach"], at: t0 + 101).reply.screens, [])
 
         var update = LinkState(shell: shell, book: BreakerBook.decoded(saved))
         XCTAssertEqual(update.documentStarted(pageBuild: "P2", at: t0 + 200), [.breakersReset(pageBuild: "P2"), .bookChanged])
-        XCTAssertEqual(update.hello(hello("P2"), available: ["coach"], at: t0 + 201).reply.screens, ["coach"])
+        XCTAssertEqual(update.hello(hello("P2"), ownChecks: ["coach"], at: t0 + 201).reply.screens, ["coach"])
         XCTAssertTrue(update.isLive("coach"))
 
         var unknownAtStart = LinkState(shell: shell, book: BreakerBook.decoded(saved))
         XCTAssertEqual(unknownAtStart.documentStarted(pageBuild: nil, at: t0 + 300), [], "an unknown build clears nothing")
-        let (reply, fx) = unknownAtStart.hello(hello("P2"), available: ["coach"], at: t0 + 301)
+        let (reply, fx) = unknownAtStart.hello(hello("P2"), ownChecks: ["coach"], at: t0 + 301)
         XCTAssertEqual(fx.first, .breakersReset(pageBuild: "P2"))
         XCTAssertEqual(fx.last, .bookChanged)
         XCTAssertEqual(reply.screens, ["coach"])
@@ -305,19 +305,19 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.documentStarted(pageBuild: "P1", at: t0 + 10), [.documentGone(boot: "b1")])
         XCTAssertEqual(s.phase, .awaitingHello)
         XCTAssertFalse(s.isLive("coach"))
-        _ = s.hello(hello(boot: "b2"), available: ["coach"], at: t0 + 11)
+        _ = s.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 11)
         XCTAssertEqual(s.intentFinished(.coachStop, boot: "b1", outcome: .failed(.timeout), at: t0 + 12), [], "the old document's answer")
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 99, boot: "b1", decoded: true, at: t0 + 12).verdict, .otherBoot)
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 1, boot: "b2", decoded: true, at: t0 + 12).verdict, .apply, "revs start again per boot")
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 7, boot: "b2", decoded: true, at: t0 + 12).verdict, .apply)
         // a new boot that came without a document start seen: a new document all the same
-        let (_, fx) = s.hello(hello(boot: "b3"), available: ["coach"], at: t0 + 20)
+        let (_, fx) = s.hello(hello(boot: "b3"), ownChecks: ["coach"], at: t0 + 20)
         XCTAssertEqual(fx, [.documentGone(boot: "b2"), .linked(LinkState.Link(boot: "b3", bootFromPage: true, v: 1, page: "P1", screens: ["coach"]))])
         XCTAssertEqual(s.link?.boot, "b3")
         XCTAssertEqual(s.documents, 3)
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 1, boot: "b3", decoded: true, at: t0 + 21).verdict, .apply)
         // the same boot again is a resync, not a new document
-        XCTAssertEqual(s.hello(hello(boot: "b3"), available: ["coach"], at: t0 + 22).effects.count, 1)
+        XCTAssertEqual(s.hello(hello(boot: "b3"), ownChecks: ["coach"], at: t0 + 22).effects.count, 1)
         XCTAssertEqual(s.documents, 3)
         XCTAssertEqual(s.modelReceived(screen: "coach", rev: 1, boot: "b3", decoded: true, at: t0 + 23).verdict, .stale)
     }
@@ -328,15 +328,15 @@ final class LinkStateTests: XCTestCase {
         XCTAssertFalse(s.isLive("coach"))
         XCTAssertEqual(s.withdraw(["coach"]), [])
         XCTAssertEqual(s.book, BreakerBook(), "a switch is not a fault")
-        XCTAssertEqual(s.hello(hello(), available: ["coach"], at: t0 + 2).reply.screens, [], "not back within the document")
+        XCTAssertEqual(s.hello(hello(), ownChecks: ["coach"], at: t0 + 2).reply.screens, [], "not back within the document")
         _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
-        XCTAssertEqual(s.hello(hello(boot: "b2"), available: ["coach"], at: t0 + 11).reply.screens, ["coach"])
+        XCTAssertEqual(s.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 11).reply.screens, ["coach"])
         XCTAssertTrue(s.isLive("coach"))
         // withdrawing before the hello: the screen does not link in this document
         var early = LinkState(shell: shell)
         _ = early.documentStarted(pageBuild: "P1", at: t0)
         XCTAssertEqual(early.withdraw(["coach"]), [], "nothing was live")
-        XCTAssertEqual(early.hello(hello(), available: ["coach"], at: t0 + 1).reply.screens, [])
+        XCTAssertEqual(early.hello(hello(), ownChecks: ["coach"], at: t0 + 1).reply.screens, [])
     }
 
     /// The page was told screens.off: the screen stays off for the document even when the book changes
@@ -347,9 +347,9 @@ final class LinkStateTests: XCTestCase {
         XCTAssertFalse(s.isLive("coach"))
         XCTAssertEqual(s.editBook { $0.screens["coach"] = nil }, [.bookChanged])
         XCTAssertFalse(s.isLive("coach"))
-        XCTAssertEqual(s.hello(hello(), available: ["coach"], at: t0 + 2).reply.screens, [])
+        XCTAssertEqual(s.hello(hello(), ownChecks: ["coach"], at: t0 + 2).reply.screens, [])
         _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
-        XCTAssertEqual(s.hello(hello(boot: "b2"), available: ["coach"], at: t0 + 11).reply.screens, ["coach"])
+        XCTAssertEqual(s.hello(hello(boot: "b2"), ownChecks: ["coach"], at: t0 + 11).reply.screens, ["coach"])
     }
 
     /// The store breaker and crash markers change the same book, through the link.
@@ -362,10 +362,10 @@ final class LinkStateTests: XCTestCase {
         XCTAssertNil(s.book.store.armed)
         let marker = CrashMarker(piece: .screen("coach"), pageBuild: "P1", shellBuild: "60")
         XCTAssertEqual(s.editBook { $0.recordStaleMarkers([marker], at: self.t0) }, [.bookChanged])
-        let gate = ScreenGate.evaluate(binary: shell.screens, deviceOff: [], policy: .defaults, book: s.book, shellBuild: shell.shell, pageBuild: "P1")
+        let gate = ScreenGate.base(binary: shell.screens, deviceOff: [], policy: .defaults, book: s.book, shellBuild: shell.shell, pageBuild: "P1", os: 27)
         XCTAssertEqual(gate.on, [])
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        XCTAssertEqual(s.hello(hello(), available: gate.on, at: t0 + 1).reply.screens, [])
+        XCTAssertEqual(s.hello(hello(), ownChecks: gate, at: t0 + 1).reply.screens, [])
         XCTAssertEqual(s.book.disabled.count, 1, "a crash verdict is not a page build's breaker record")
         _ = s.documentStarted(pageBuild: "P2", at: t0 + 10)
         XCTAssertEqual(s.book.disabled.count, 1, "and a new build leaves it alone: it names its own pair")
@@ -388,9 +388,9 @@ final class LinkStateTests: XCTestCase {
     func testAvailableScreensComeFromTheGate() {
         var s = LinkState(shell: shell)
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        let gate = ScreenGate.evaluate(binary: shell.screens, deviceOff: [], policy: Policy(screens: ["coach": .off]),
-                                       book: s.book, shellBuild: shell.shell, pageBuild: "P1")
-        XCTAssertEqual(s.hello(hello(), available: gate.on, at: t0 + 1).reply.screens, [])
+        let gate = ScreenGate.base(binary: shell.screens, deviceOff: [], policy: Policy(screens: ["coach": .off]),
+                                   book: s.book, shellBuild: shell.shell, pageBuild: "P1", os: 27)
+        XCTAssertEqual(s.hello(hello(), ownChecks: gate, at: t0 + 1).reply.screens, [])
         XCTAssertFalse(s.isLive("coach"))
     }
 
@@ -414,7 +414,7 @@ final class LinkStateTests: XCTestCase {
         var s = LinkState(shell: shell61)
         _ = s.setTabsRoot(tabsRoot)
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: base, at: t0 + 1)
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: base), at: t0 + 1)
         return s
     }
 
@@ -443,7 +443,7 @@ final class LinkStateTests: XCTestCase {
             let gate = ScreenGate.base(binary: all, deviceOff: deviceOff, policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1", os: os)
             let hello = HelloRequest(v: try XCTUnwrap(row["hello"]?["v"]?.int, tag), page: "P1",
                                      screens: NegotiationTable.strings(row["hello"]?["screens"]), boot: "b1")
-            let (reply, fx) = s.hello(hello, available: gate.on, at: t0 + 1)
+            let (reply, fx) = s.hello(hello, ownChecks: gate, at: t0 + 1)
             XCTAssertEqual(reply.v, want["v"]?.int, "\(tag): v")
             XCTAssertEqual(reply.why, want["why"]?.string, "\(tag): why")
             XCTAssertEqual(reply.screens, NegotiationTable.strings(want["screens"]), "\(tag): screens")
@@ -458,6 +458,29 @@ final class LinkStateTests: XCTestCase {
                                             tabsRoot: s.tabsRoot, os: os)
             XCTAssertEqual(NegotiationTable.needs(of: after.off), NegotiationTable.needs(want["needs"]), "\(tag): needs")
         }
+    }
+
+    /// The hello is negotiated from the pieces' own checks (`ScreenGate.base`), never from `evaluate`'s answer (contract
+    /// 3.2, 10.3): under a tab root whose Coach tab is off by its own checks, a classic-mode page falls the root back and
+    /// gets 60's overlay chat at once. `evaluate`'s answer for the tab root (the bar alone) would have lost the chat; its
+    /// own type keeps it from being handed in by mistake, so only a deliberate wrap can (as the last line does).
+    func testTheHelloIsNegotiatedFromThePiecesOwnChecks() {
+        let own = ScreenGate.base(binary: all, deviceOff: ["coachHome"], policy: .defaults, book: BreakerBook(), shellBuild: "61",
+                                  pageBuild: "P1", os: 27)
+        XCTAssertEqual(own.on, ["coach", "tabs"])
+        let ruled = ScreenGate.evaluate(binary: all, deviceOff: ["coachHome"], policy: .defaults, book: BreakerBook(), shellBuild: "61",
+                                        pageBuild: "P1", tabsRoot: true, os: 27)
+        XCTAssertEqual(ruled.on, ["tabs"], "the tab root's rule keeps the chat off with the Coach tab (joint)")
+        func classicPage(_ checks: ScreenGate.Base) -> (reply: HelloReply, effects: [LinkEffect]) {
+            var s = LinkState(shell: shell61)
+            _ = s.setTabsRoot(true)
+            _ = s.documentStarted(pageBuild: "P1", at: t0)
+            return s.hello(HelloRequest(v: 1, page: "P1", screens: ["coach"], boot: "b1"), ownChecks: checks, at: t0 + 1)
+        }
+        let r = classicPage(own)
+        XCTAssertEqual(r.reply.screens, ["coach"], "fallen back, the classic rule gives 60's overlay chat at once")
+        XCTAssertEqual(fellBack(r.effects), [.page])
+        XCTAssertEqual(classicPage(ScreenGate.Base(on: ruled.on)).reply.screens, [], "what the dependency-applied gate would have given")
     }
 
     /// Every cascade row of negotiation.json: the pieces that go off with the event, in the order the page hears it,
@@ -492,7 +515,7 @@ final class LinkStateTests: XCTestCase {
             for o in gone where o.why == "needs" { XCTAssertNil(s.book.trip(screen: o.screen, pageBuild: "P1"), "\(tag): \(o.screen) has no trip") }
             XCTAssertEqual(s.liveScreens, live.filter { p in !gone.contains { $0.screen == p } }, "\(tag): the rest stays live")
             // what went off stays off for the document, even for a second hello of it
-            let again = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: live, at: t0 + 9).reply.screens
+            let again = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: live), at: t0 + 9).reply.screens
             XCTAssertEqual(again, live.filter { p in !gone.contains { $0.screen == p } }, "\(tag): not back within the document")
         }
     }
@@ -510,7 +533,7 @@ final class LinkStateTests: XCTestCase {
             _ = s.setTabsRoot(root == "tabs")
             _ = s.documentStarted(pageBuild: "P1", at: t0)
             let hello = HelloRequest(v: 1, page: "P1", screens: all, boot: "b1")
-            if row["linked"]?.bool == true { _ = s.hello(hello, available: base, at: t0 + 1) }
+            if row["linked"]?.bool == true { _ = s.hello(hello, ownChecks: ScreenGate.Base(on: base), at: t0 + 1) }
             XCTAssertEqual(s.liveScreens, NegotiationTable.strings(row["live"]), "\(tag): set up")
             let before = s.book
             let fx = s.setTabsRoot(false)
@@ -519,10 +542,10 @@ final class LinkStateTests: XCTestCase {
             XCTAssertFalse(s.tabsRoot, tag)
             XCTAssertEqual(s.book, before, "\(tag): a root change writes no record")
             if root == "tabs" { XCTAssertEqual(s.liveScreens, [], "\(tag): tabs went too, silently") }
-            let same = s.hello(hello, available: base, at: t0 + 2).reply.screens
+            let same = s.hello(hello, ownChecks: ScreenGate.Base(on: base), at: t0 + 2).reply.screens
             XCTAssertEqual(same, NegotiationTable.strings(want["sameDocument"]), "\(tag): same document")
             _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
-            let next = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: base, at: t0 + 11).reply.screens
+            let next = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), ownChecks: ScreenGate.Base(on: base), at: t0 + 11).reply.screens
             XCTAssertEqual(next, NegotiationTable.strings(want["nextDocument"]), "\(tag): next document")
         }
     }
@@ -543,7 +566,7 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.setTabsRoot(false), [], "once")
         // the rule follows the root: classic from now on, for every later document of the scene
         _ = s.documentStarted(pageBuild: "P1", at: t0)
-        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: all, at: t0 + 1).reply.screens, ["coach"])
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: all), at: t0 + 1).reply.screens, ["coach"])
     }
 
     /// Three failed `tabs.select` trip `tabs` and nothing else: coach and coachHome go off with `needs` and no record of
@@ -563,9 +586,9 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.intentFinished(.coachStop, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "off for the document: nothing counts")
         // the next document: tabs tripped for the page build, the classic rule: 60's overlay chat
         _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
-        let gate = ScreenGate.base(binary: all, deviceOff: [], policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1")
+        let gate = ScreenGate.base(binary: all, deviceOff: [], policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1", os: 27)
         XCTAssertEqual(gate.on, ["coach", "coachHome"])
-        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: gate.on, at: t0 + 11).reply.screens, ["coach"])
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), ownChecks: gate, at: t0 + 11).reply.screens, ["coach"])
     }
 
     /// Three failed `shell.covered` count against every live piece, `tabs` included (D13): all three trip.
@@ -593,7 +616,7 @@ final class LinkStateTests: XCTestCase {
         var late = LinkState(shell: shell61)
         _ = late.setTabsRoot(true)
         _ = late.documentStarted(pageBuild: "P1", at: t0)
-        let (reply, lfx) = late.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), available: all, at: t0 + 16)
+        let (reply, lfx) = late.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: all), at: t0 + 16)
         XCTAssertEqual(reply.screens, [])
         XCTAssertEqual(fellBack(lfx), [.noHello], "one fallback, with no hello's word")
         XCTAssertFalse(late.tabsRoot)
@@ -756,11 +779,11 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "the gone document's ping")
         XCTAssertEqual(s.book, BreakerBook())
         XCTAssertTrue(s.tabsRoot, "a document start changes no root")
-        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), available: all, at: t0 + 7)
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), ownChecks: ScreenGate.Base(on: all), at: t0 + 7)
         XCTAssertEqual(s.liveScreens, all)
         XCTAssertEqual(s.intentFinished(select, boot: "b2", outcome: .failed(.timeout), at: t0 + 9), [.pingWhenIdle], "the new document asks for its own")
         // a hello from a new boot with no document start seen drops them too
-        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b3"), available: all, at: t0 + 10)
+        _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b3"), ownChecks: ScreenGate.Base(on: all), at: t0 + 10)
         XCTAssertEqual(s.heldTimeouts, 0)
     }
 }

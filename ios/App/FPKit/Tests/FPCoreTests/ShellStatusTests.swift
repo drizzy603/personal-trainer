@@ -12,7 +12,7 @@ final class ShellStatusTests: XCTestCase {
 
     private func status(book: BreakerBook = BreakerBook(), policy: Policy = .defaults, deviceOff: Set<String> = [], page: String? = "P1",
                         live: [String] = [], counters: ShellCounters = ShellCounters(), launch: LaunchCounts = LaunchCounts()) -> JSONValue {
-        let gate = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page)
+        let gate = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page, os: 27)
         return ScreenStatus.json(shell: "60", page: page, binary: ["coach"], gate: gate, live: live, book: book, counters: counters, launch: launch)
     }
 

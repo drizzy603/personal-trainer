@@ -219,7 +219,7 @@ final class ContractTests: XCTestCase {
     func testScreenGate() {
         var book = BreakerBook()
         func gate(deviceOff: Set<String> = [], policy: Policy = .defaults, page: String? = "P1") -> ([String], ScreenGate.Off?) {
-            let r = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page)
+            let r = ScreenGate.evaluate(binary: ["coach"], deviceOff: deviceOff, policy: policy, book: book, shellBuild: "60", pageBuild: page, os: 27)
             return (r.on, r.off["coach"])
         }
         XCTAssertEqual(gate().0, ["coach"])
@@ -296,8 +296,10 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(homeOff.on, ["tabs"])
         // the classic root: coach as 60, the bar and the Coach tab say what they need
         XCTAssertEqual(gate(tabsRoot: false).on, ["coach"])
-        // the defaults are build 60's semantics for a 60 binary
-        XCTAssertEqual(ScreenGate.evaluate(binary: ["coach"], deviceOff: [], policy: .defaults, book: book, shellBuild: "60", pageBuild: "P1").on, ["coach"])
+        // the classic root (tabsRoot's default) is build 60's semantics for a 60 binary, on every OS (the floor is tabs')
+        for os in [17, 18, 26, 27] {
+            XCTAssertEqual(ScreenGate.evaluate(binary: ["coach"], deviceOff: [], policy: .defaults, book: book, shellBuild: "60", pageBuild: "P1", os: os).on, ["coach"])
+        }
     }
 
     func testStoreGate() {

@@ -155,7 +155,7 @@ final class PiecesTests: XCTestCase {
         let o = ShellPieces.hello(HelloRequest(v: 1, page: "P1", screens: ["coach"]), shell: shell60, available: ["coach"], tabsRoot: true)
         XCTAssertEqual(o, ShellPieces.HelloOutcome(negotiation: .linked(v: 1, screens: ["coach"])))
         let gate = ScreenGate.evaluate(binary: ["coach"], deviceOff: [], policy: .defaults, book: BreakerBook(), shellBuild: "60",
-                                       pageBuild: "P1", tabsRoot: true)
+                                       pageBuild: "P1", tabsRoot: true, os: 27)
         XCTAssertEqual(gate.on, ["coach"])
         XCTAssertEqual(gate.off, [:])
     }

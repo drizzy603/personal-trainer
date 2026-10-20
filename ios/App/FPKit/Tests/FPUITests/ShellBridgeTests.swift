@@ -381,6 +381,36 @@ final class ShellBridgeTests: XCTestCase {
         let fresh = try await message(b, "status", ["refresh": true]).get()
         XCTAssertEqual(Set(((fresh["screens"] as? [String: Any]) ?? [:]).keys), ["coach", "coachHome", "tabs"])
     }
+
+    /// The iOS 26 floor (contract 2.2, 10.5, D39) reaches the gate through the bridge: below 26 the status says `tabs`
+    /// is off `os` (no switch, no Try again) and the Coach tab needs it; the flag's screens and the hello give build 60's
+    /// overlay chat alone, whatever the page names. From 26 the bar's own checks pass and it needs a tab root.
+    func testBelowIOS26TheBarIsOffForTheOS() async throws {
+        let b = bridge61()
+        b.osMajor = { 18 }
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        try await loadPage()
+        let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coachHome", "coach", "tabs"], "boot": "b1"]).get()
+        XCTAssertEqual(hello["screens"] as? [String], ["coach"])
+        XCTAssertNil(hello["tabs"], "no tabs negotiated below iOS 26")
+        let st = try await message(b, "status", [:]).get()
+        let screens = try XCTUnwrap(st["screens"] as? [String: Any])
+        let tabs = try XCTUnwrap(screens["tabs"] as? [String: Any])
+        XCTAssertEqual(tabs["off"] as? String, "os")
+        XCTAssertEqual(tabs["canReset"] as? Bool, false, "the binary's own rule: no Try again")
+        XCTAssertNil(tabs["needs"])
+        let home = try XCTUnwrap(screens["coachHome"] as? [String: Any])
+        XCTAssertEqual(home["off"] as? String, "needs")
+        XCTAssertEqual(home["needs"] as? [String], ["tabs"])
+        let coach = try XCTUnwrap(screens["coach"] as? [String: Any])
+        XCTAssertEqual(coach["on"] as? Bool, true)
+        XCTAssertEqual(coach["live"] as? Bool, true, "60's overlay chat")
+        b.osMajor = { 26 }
+        let later = try await message(b, "status", [:]).get()
+        let bar = try XCTUnwrap((later["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(bar["off"] as? String, "needs")
+        XCTAssertEqual(bar["needs"] as? [String], ["root"], "iOS 26: its own checks pass, a classic root until one is adopted")
+    }
 }
 
 #endif

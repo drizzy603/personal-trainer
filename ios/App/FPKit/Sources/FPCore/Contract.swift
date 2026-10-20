@@ -285,7 +285,8 @@ public enum Negotiation: Equatable, Sendable {
 }
 
 /// Which of this binary's screens are on for a page build, and why the others are off: each piece's own checks
-/// (`base`), then the pieces that depend on each other for the scene's root (`evaluate`, ShellPieces).
+/// (`base`, what a hello is negotiated from), then the pieces that depend on each other for the scene's root
+/// (`evaluate`, ShellPieces: the flag, the root's screens, Settings > About).
 public enum ScreenGate {
     public enum Off: Equatable, Sendable {
         /// The device switch (Settings > About).
@@ -308,11 +309,32 @@ public enum ScreenGate {
     /// The first OS major version that builds the tab root (contract 2.2, D39).
     public static let tabsMinOS = 26
 
+    /// The pieces whose own checks pass for a page build (`base`), before the dependency rule, and why the others are
+    /// off. A hello is negotiated from this, never from `evaluate`'s answer (LinkState.hello `ownChecks`): the rule is
+    /// applied there for the root as the hello leaves it, so a fallback at that hello can still bring back what the tab
+    /// root's rule kept off (contract 3.2, 10.3: 60's overlay chat at once). Its own type, so `evaluate`'s `on` cannot be
+    /// handed in by mistake; an array literal makes one (tests, a hand-made list).
+    public struct Base: Equatable, Sendable, ExpressibleByArrayLiteral {
+        public var on: [String]
+        public var off: [String: Off]
+
+        public init(on: [String], off: [String: Off] = [:]) {
+            self.on = on
+            self.off = off
+        }
+
+        public init(arrayLiteral pieces: String...) {
+            self.init(on: pieces)
+        }
+    }
+
     /// The piece's own checks, in the contract's order: the OS (for `tabs` alone), the device switch, the policy file,
     /// a crash verdict for the (shell, page) pair, the native breaker for the page build, a decline by the page build.
-    /// The root decision reads `tabs` here (contract 2.2: the tab root iff base(`tabs`) is on).
+    /// The root decision reads `tabs` here (contract 2.2: the tab root iff base(`tabs`) is on). `os` is the system's
+    /// major version (ProcessInfo's, passed by the host; tests choose it): there is no default, so no caller can leave
+    /// the iOS 26 floor out (D39).
     public static func base(binary: [String], deviceOff: Set<String>, policy: Policy, book: BreakerBook,
-                            shellBuild: String, pageBuild: String?, os: Int = .max) -> (on: [String], off: [String: Off]) {
+                            shellBuild: String, pageBuild: String?, os: Int) -> Base {
         var on: [String] = []
         var off: [String: Off] = [:]
         for s in binary {
@@ -324,15 +346,15 @@ public enum ScreenGate {
             else if let p = pageBuild, book.declined(piece: s, page: p) { off[s] = .declined(page: p) }
             else { on.append(s) }
         }
-        return (on, off)
+        return Base(on: on, off: off)
     }
 
     /// `base`, then the dependencies (ShellPieces) for the scene's root: `tabsRoot` true for a live tab root (one that
     /// has not fallen back; below iOS 26, or for a binary without `tabs`, there is none). Only a piece whose own checks
-    /// pass can be off `needs`. The defaults are a classic root on an OS that allows tabs: build 60's semantics for
-    /// `coach`, and `tabs`, whose checks pass, needs the root.
+    /// pass can be off `needs`. `tabsRoot` defaults to a classic root: build 60's semantics for `coach`, and `tabs`,
+    /// whose checks pass, needs the root. `os` as in `base`, never defaulted.
     public static func evaluate(binary: [String], deviceOff: Set<String>, policy: Policy, book: BreakerBook,
-                                shellBuild: String, pageBuild: String?, tabsRoot: Bool = false, os: Int = .max) -> (on: [String], off: [String: Off]) {
+                                shellBuild: String, pageBuild: String?, tabsRoot: Bool = false, os: Int) -> (on: [String], off: [String: Off]) {
         let b = base(binary: binary, deviceOff: deviceOff, policy: policy, book: book, shellBuild: shellBuild, pageBuild: pageBuild, os: os)
         let r = ShellPieces.resolve(b.on, tabsRoot: tabsRoot && os >= tabsMinOS && binary.contains("tabs"))
         var off = b.off
