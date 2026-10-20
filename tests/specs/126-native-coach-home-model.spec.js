@@ -310,6 +310,23 @@ serial('the tabs model: the web bar\'s colours and labels per room; its room fol
   } finally { await app.close(); }
 });
 
+// A document that starts on the Coach tab (the flag's selected tab, as a reload under the native bar does) paints the hub
+// or the connect screen before the script has defined _COACH_TOKENS: the web screen is drawn from _coachHomeScreen(),
+// never the whole model, whose tokens would throw there (and under a 61 flag close() fails on any page error).
+serial('the boot\'s first paint on the Coach tab draws the hub or the connect screen', async () => {
+  const flag = Object.assign({}, SHELLS.tabsWeb, { tabs: Object.assign({}, SHELLS.tabsWeb.tabs, { selected: 'coach' }) });
+  for (const key of ['sk-ant-api03-SPEC126-KEY', null]) {
+    const app = await boot({ native: true, shell: flag, seed: key ? { kt_apikey: key } : {}, page: { timezoneId: 'UTC' } });
+    try {
+      const d = await app.page.evaluate(() => ({ tab: currentTab, route: _lastRenderedRoute,
+        head: (document.querySelector('#screen .kt-hero-headline') || {}).textContent, model: _coachHomeModel(0).route }));
+      assert(d.tab === 'coach' && d.route === 'coach/home' && d.head === (key ? 'Coachready.' : 'Connectyour coach.') && d.model === (key ? 'hub' : 'connect'),
+        'the first paint on Coach (' + (key ? 'a key' : 'no key') + '): ' + J(d) + ' ' + app.errors.join(' | '));
+      assert(app.errors.length === 0, 'no page errors: ' + app.errors.join(' | '));
+    } finally { await app.close(); }
+  }
+});
+
 serial('golden: the page-built coachHome and tabs fixtures are what the page builds, and the chat under tabs is Fixtures/coach', async () => {
   const bad = await require('../golden/dump-coach-home').drift();
   assert(bad.length === 0, 'the page builds different models for ' + bad.join(', ') + ': run node tests/golden/dump-coach-home.js, then swift test');
