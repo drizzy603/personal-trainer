@@ -104,9 +104,10 @@ final class CoachRenderTests: XCTestCase {
 
     /// Draws a view in a window with the phone's light or dark setting, at 2×: `size`, or `width`
     /// (the screen's, when nil) wide and as tall as the view (nil). `prepare` runs on the hosting view
-    /// after each layout pass (a scroll moved to its end, CoachHomeRenderTests).
+    /// after each layout pass (a scroll moved to its end, CoachHomeRenderTests). At most `passes`
+    /// layout passes wait for two captures to agree: a chat whose Thinking dots pulse never agrees.
     static func render<V: View>(_ view: V, size: CGSize?, phone style: UIUserInterfaceStyle, width: CGFloat? = nil,
-                                prepare: ((UIView) -> Void)? = nil) -> UIImage {
+                                passes: Int = 20, prepare: ((UIView) -> Void)? = nil) -> UIImage {
         let host = UIHostingController(rootView: view)
         host.safeAreaRegions = []
         let target = size ?? {
@@ -139,7 +140,7 @@ final class CoachRenderTests: XCTestCase {
         // settle: the text view lays a draft out a pass late and images arrive a turn late, so draw
         // until two captures agree
         var image = capture()
-        for _ in 0..<20 {
+        for _ in 0..<passes {
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             prepare?(host.view)
@@ -287,6 +288,9 @@ final class CoachRenderTests: XCTestCase {
     func testTheChatOverTheGlassTabBarKeepsItsComposerAboveTheBar() throws {
         FPFonts.register()
         let bar = Self.screen.height - Self.glassBar
+        // setup's Thinking dots pulse for good, so `intake` never draws two captures alike: its column is laid out by the
+        // first pass, as every other chat's is (they agree at once), and five passes are enough where 20 cost a minute
+        let passes = 5
         var count = 0
         for name in Self.barFixtures {
             let base = try CoachFixtures.model(name)
@@ -297,8 +301,9 @@ final class CoachRenderTests: XCTestCase {
                     let theme = RoomTheme(model: model, system: size)
                     var header: CGFloat = 0
                     let light = Self.render(Phone(model: model, size: size, safeBottom: Self.glassBar, onHeader: { header = $0 }),
-                                            size: Self.screen, phone: .light)
-                    let dark = Self.render(Phone(model: model, size: size, safeBottom: Self.glassBar), size: Self.screen, phone: .dark)
+                                            size: Self.screen, phone: .light, passes: passes)
+                    let dark = Self.render(Phone(model: model, size: size, safeBottom: Self.glassBar), size: Self.screen, phone: .dark,
+                                           passes: passes)
                     XCTAssertEqual(light.size, Self.screen, what)
                     XCTAssertLessThan(Self.difference(light, dark), 0.001, "\(what): the chat wears its room whatever the phone's setting")
                     // a point in the field right of its placeholder and left of Send, in either room at every size
