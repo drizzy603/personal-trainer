@@ -1086,6 +1086,13 @@ html[data-room="dark"] .kt-chat-prog-btn{color:var(--lite);text-decoration:under
    over --t-swap while the sheet springs up over --t-move. */
 .kt-sheet-overlay,.kt-close-sheet,.ex-modal-bg,#runner-ex-edit-modal{animation:ktFadeIn var(--t-swap) ease-out;}
 .kt-sheet,.kt-close-sheet-inner,.ex-modal-sheet,#runner-ex-edit-sheet{animation:ktSheetIn var(--t-move) var(--ease-spring);}
+/* Build 61's hold (shell contract v1 3.4): under the native tab bar an overlay that hides the bar waits at its first
+   keyframe for the shell's answer (50 ms at most), so the bar is gone before the sheet's first frame. Unseen and
+   untouchable, never display or visibility: openers focus their title at once, and a hidden element cannot keep focus.
+   _fpSheetsSync puts fp-hold on the overlay's root and _fpSheetsRelease takes it off; the spring then plays from its
+   start. */
+html.fp-tabs .fp-hold{opacity:0!important;pointer-events:none!important;}
+html.fp-tabs .fp-hold,html.fp-tabs .fp-hold *{animation-play-state:paused!important;}
 /* M-02 tab-crossfade + M-03 statement-settle + M-04 bars-grow — all gated by
    the kt-tab-in class render() sets on #screen only when the route changed,
    so in-tab repaints never replay them. Hero first, stat band 60ms later
@@ -14216,6 +14223,7 @@ function closeProgrammeModal(){
 
 function showManualCopy(txt) {
   var overlay=document.createElement('div');
+  overlay.className='kt-manual-copy';   // under the native tab bar it hides the bar (_FP_COVER_SEL); no rule styles it
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
   overlay.innerHTML='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:400px;">'+
     '<p style="color:var(--lite);font-size:13px;margin-bottom:10px;">Select all and copy:</p>'+
@@ -21692,6 +21700,83 @@ if(window.MutationObserver) new MutationObserver(function(muts){
   if(_fpCovered()) return;   // under a native screen the page moves no focus (the shell owns it)
   try{ t.focus({preventScroll:true}); }catch(err){}
 }).observe(document.body, {childList:true});
+// ── Overlays announced (build 61, shell contract v1 3.4): sheets {open} ──────────────────────────────────────────────
+// Under the native tab bar (tabs mode) the shell hides its bar while an overlay that covers the page's own #tabs in
+// classic mode is up, and shows it again once the last one has gone: every _SHEETS_SEL sheet, #starterOverlay,
+// showManualCopy's overlay, and How it works and the privacy page while shown. Never the runner: #runner-root sits under
+// the bar on purpose, so the native bar stays over it too (contract D8). _FP_COVER_SEL is a selector of its own, since
+// _SHEETS_SEL drives Escape and the focus return. The state is per document: the shell starts every document closed and
+// the page sends its own once at the end of boot (_bootDone, whatever it is), then only a net change, at most one call
+// per task (a microtask), so a sheet closed and another opened in one task sends nothing. On a closed-to-open change
+// the overlays up are held at their first keyframe (fp-hold, CSS beside the sheet spring) until the shell answers,
+// refuses, or 50 ms pass, so the bar is gone before the sheet's first frame; the answer brings the bar's new numbers.
+// A refusal 'off' (no live tab root) leaves tabs mode with nothing sent back; leaving releases the hold and ends this.
+var _FP_COVER_SEL=_SHEETS_SEL+', #starterOverlay, .kt-manual-copy';
+var _fpSh={last:null, q:false, gen:0, held:[], heldGen:0, t:null};
+// The overlays up that hide the bar: every _FP_COVER_SEL node, and the two static pages while displayed.
+function _fpSheetsNodes(){
+  var out=Array.prototype.slice.call(document.querySelectorAll(_FP_COVER_SEL));
+  ['wf-view', 'pp-view'].forEach(function(id){ var el=document.getElementById(id); if(el && el.style.display==='block') out.push(el); });
+  return out;
+}
+function _fpSheetsOpen(){ return _fpSheetsNodes().length>0; }
+// One _fpSheetsSync for this task, as a microtask: it runs once the task's own code is done and before the next frame,
+// so it sees the task's net state. Called by the observer below (an overlay added or removed) and by the static pages.
+function _fpSheetsSoon(){
+  if(!_fp.tabs.mode || _fpSh.q) return;
+  _fpSh.q=true;
+  Promise.resolve().then(function(){
+    _fpSh.q=false;
+    try{ _fpSheetsSync(); }catch(e){ _fpLog('sheets: '+((e && e.message) || e), 'error'); }
+  });
+}
+// Sends the state when it differs from the last one sent (at boot the last is null, so the baseline always goes). A
+// closed-to-open change holds every overlay up: the bar showed until now, so each of them came in during this task (an
+// overlay taken away and put back while the state stays open is never held). The hold is the call's own: its answer, its
+// refusal or its 50 ms end it, never an older call's answer.
+function _fpSheetsSync(){
+  if(!_fp.tabs.mode) return;
+  var P=_fpPlugin(); if(!P || typeof P.sheets!=='function') return;
+  var nodes=_fpSheetsNodes(), open=nodes.length>0, was=_fpSh.last;
+  if(open===was) return;
+  _fpSh.last=open;
+  var g=0;
+  if(open && was===false){
+    _fpSheetsRelease();   // an older hold's nodes, should one come back
+    g=++_fpSh.gen;
+    nodes.forEach(function(n){ n.classList.add('fp-hold'); });
+    _fpSh.held=nodes; _fpSh.heldGen=g;
+    _fpSh.t=setTimeout(function(){ _fpSheetsRelease(g); }, 50);
+  }
+  try{
+    Promise.resolve(P.sheets({open:open})).then(function(r){ _fpSheetsRelease(g); _fpSheetsAnswer(r); },
+      function(e){ _fpSheetsRelease(g); _fpTabsRefused(e, 'sheets'); });
+  }catch(e){ _fpSheetsRelease(g); setTimeout(function(){ _fpTabsRefused(e, 'sheets'); }, 0); }
+}
+// Ends the hold that call g made (no g: any hold, as leaving tabs mode does). Safe before this block has run: the boot
+// block's way out can come first.
+function _fpSheetsRelease(g){
+  if(!_fpSh || !_fpSh.heldGen || (g!==undefined && g!==_fpSh.heldGen)) return;
+  if(_fpSh.t){ clearTimeout(_fpSh.t); _fpSh.t=null; }
+  _fpSh.held.forEach(function(n){ n.classList.remove('fp-hold'); });
+  _fpSh.held=[]; _fpSh.heldGen=0;
+}
+// The answer {bar: {h, safe, rev}}: the bar as the change left it (h 0 while hidden), applied when newer; --fp-bar-up
+// keeps the bar's height while shown (_fpBarSet).
+function _fpSheetsAnswer(r){
+  if(!_fp.tabs.mode) return;
+  var b=(r && typeof r==='object') ? r.bar : null;
+  if(!b || typeof b!=='object' || !_fpUint(b.h) || !_fpUint(b.safe) || !_fpUint(b.rev)){ _fpLog('sheets answer ignored: '+JSON.stringify(r), 'error'); return; }
+  if(b.rev>_fp.tabs.rev) _fpBarSet({h:b.h, safe:b.safe}, b.rev);
+}
+// Every overlay is put up and taken away as a child of <body> (spec 124 scans the sources for it).
+if(window.MutationObserver) new MutationObserver(function(muts){
+  if(!_fp.tabs.mode) return;
+  var hit=function(n){ return n.nodeType===1 && !!n.matches && n.matches(_FP_COVER_SEL); };
+  for(var i=0;i<muts.length;i++){
+    if(Array.prototype.some.call(muts[i].addedNodes, hit) || Array.prototype.some.call(muts[i].removedNodes, hit)){ _fpSheetsSoon(); return; }
+  }
+}).observe(document.body, {childList:true});
 // Swipe-to-dismiss for the shared sheet shell. The grabber + header are the
 // drag zone (body content keeps normal scrolling); drag past 90px or flick
 // to dismiss. Animates the sheet element itself, which is created once per
@@ -21765,6 +21850,7 @@ function openWorkflow(){
   var el=document.getElementById('wf-view');
   if(!el)return;
   el.style.display='block';
+  _fpSheetsSoon();   // under the native tab bar the page hides the bar (shown, not added: no observer sees it)
   el.setAttribute('aria-hidden','false');
   el.scrollTop=0;
   document.body.style.overflow='hidden';
@@ -21773,6 +21859,7 @@ function closeWorkflow(){
   var el=document.getElementById('wf-view');
   if(!el)return;
   el.style.display='none';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','true');
   document.body.style.overflow='';
 }
@@ -21780,6 +21867,7 @@ function openPrivacy(){
   var el=document.getElementById('pp-view');
   if(!el)return;
   el.style.display='block';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','false');
   el.scrollTop=0;
   document.body.style.overflow='hidden';
@@ -21788,6 +21876,7 @@ function closePrivacy(){
   var el=document.getElementById('pp-view');
   if(!el)return;
   el.style.display='none';
+  _fpSheetsSoon();
   el.setAttribute('aria-hidden','true');
   document.body.style.overflow='';
 }
@@ -24422,6 +24511,7 @@ function _fpTabsLeave(why, tell, later){
   if(!T.mode) return;
   T.mode=false; T.left=true; T.why=String(why || '');
   _fpFailStop();
+  _fpSheetsRelease();   // an overlay held for the shell's answer shows now; nothing is announced any more
   document.documentElement.classList.remove('fp-tabs');
   _fpBarVars(null);
   if(tell){
@@ -25937,6 +26027,10 @@ function _bootDone(){
   _otaConfirm();
   var P=_fpPlugin();
   if(P && P.bootDone){ try{ Promise.resolve(P.bootDone({page:APP_BUILD})).catch(function(){}); }catch(e){} }
+  // Under the native tab bar the shell starts every document with no overlay up: the page's state goes once now,
+  // whatever it is (the sheets baseline, contract 3.4), last and in a try of its own, so nothing of tabs mode comes
+  // between the boot and the OTA confirm.
+  try{ if(_fp.tabs.mode) _fpSheetsSync(); }catch(e){}
 }
 _bootDone();
 </script>

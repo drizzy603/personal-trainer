@@ -338,6 +338,8 @@ const look = (app) => ev(app, () => {
     scene: window.__fpShell ? window.__fpShell.state() : null, build: APP_BUILD };
 });
 const dismissTabs = (o) => (o.tabsCalls || []).filter((c) => c[0] === 'dismiss').length;
+// The one tabs call a tabs-mode document makes at boot of its own: the sheets baseline (P5, contract 3.4).
+const BASELINE = J([['sheets', { open: false }]]);
 // Back in classic: no class, no variable, the page's own bar with the tab it shows lit (aria-current too once the page
 // has set it: a classic boot leaves it to the first switch, as before).
 const classicLook = (o, tag, current) => {
@@ -424,7 +426,7 @@ serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #
     assert(o.cls && o.display === 'none' && !o.own, '#tabs is hidden in tabs mode: ' + J(o));
     assert(o.hello.length === 1 && J(o.hello[0].screens) === J(screens) && screens.indexOf('coach') >= 0 && screens.indexOf('tabs') >= 0,
       'hello names FP_SCREENS (coach and tabs among them): ' + J(o.hello));
-    assert(o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.tabsCalls.length === 0, 'fp_tab home is no tab: the flag\'s Log; seq 0 moves nothing: ' + J(o));
+    assert(o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && J(o.tabsCalls) === BASELINE, 'fp_tab home is no tab: the flag\'s Log; seq 0 moves nothing: ' + J(o));
     assert(J(o.vars) === J({ '--fp-bar-h': '49px', '--fp-safe-b': '0px', '--fp-sheet-b': '16px', '--fp-clear': '49px', '--fp-bar-up': '49px' }),
       'the reply\'s bar (rev 1) sets the variables: ' + J(o.vars));
     // fp_tab, written by every local switch in tabs mode: a reload boots on it. Written here with no selectTab (as when a
@@ -441,7 +443,7 @@ serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #
     await helloIn(app); await settle(app, 60);
     o = await look(app);
     const kept = await ev(app, () => sessionStorage.getItem('fp_tab'));
-    assert(o.mode && o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.current === 'log' && o.tabsCalls.length === 0
+    assert(o.mode && o.tab === 'log' && routeTab(o) === 'log' && o.active === 'log' && o.current === 'log' && J(o.tabsCalls) === BASELINE
       && o.scene.scene.selected === 'log' && o.scene.scene.seq === 0 && kept === 'log',
       'a stale fp_tab gives way to hello\'s reply at seq 0 (the scene\'s Log), with no selectTab: ' + J([o, kept]));
     const sw = await ev(app, async () => { switchTab('progress'); await new Promise((r) => setTimeout(r, 30)); return sessionStorage.getItem('fp_tab'); });
@@ -449,7 +451,7 @@ serial('P2: the first frame (html.fp-tabs and the flag\'s bar on <html> before #
     await app.reload(); await helloIn(app); await settle(app, 60);
     o = await look(app);
     ends = await ev(app, () => ({ bootDone: __fpShell.of('bootDone').length, errors: JSON.parse(localStorage.getItem('kt_err_log') || '[]').length }));
-    assert(o.tab === 'progress' && o.route === 'progress' && o.active === 'progress' && o.tabsCalls.length === 0 && o.scene.scene.seq === 1,
+    assert(o.tab === 'progress' && o.route === 'progress' && o.active === 'progress' && J(o.tabsCalls) === BASELINE && o.scene.scene.seq === 1,
       'a reload boots on the tab it showed, which hello\'s reply (the scene\'s seq 1) keeps: ' + J(o));
     assert(ends.bootDone === 1 && ends.errors === 0 && app.errors.length === 0, 'booted on Progress, the boot ran to its end: ' + J([ends, app.errors]));
   } finally { await app.close(); }
@@ -461,7 +463,7 @@ serial('P2: hello adopts a newer selection with no selectTab; the funnel (one se
     await helloIn(app);
     await settle(app, 100);
     const a = await look(app);
-    assert(a.tab === 'progress' && a.route === 'progress' && a.active === 'progress' && a.tabsCalls.length === 0, 'hello\'s newer selection, adopted with no selectTab: ' + J(a));
+    assert(a.tab === 'progress' && a.route === 'progress' && a.active === 'progress' && J(a.tabsCalls) === BASELINE, 'hello\'s newer selection, adopted with no selectTab: ' + J(a));
     const f = await ev(app, async () => {
       const w = (ms) => new Promise((r) => setTimeout(r, ms));
       const r = {};
