@@ -1396,6 +1396,7 @@ final class ScreenHostTests: XCTestCase {
         host.dismiss("coach")                  // the pop under way
         XCTAssertTrue(host.present("coach"))   // queued behind it
         host.detachStack()
+        XCTAssertEqual(host.describe()["ops"] as? Int, 0, "nothing left in the queue for a later turn to run")
         try await settle()
         XCTAssertEqual(stand.log, [], "the queued push did not come back as the overlay")
         XCTAssertFalse(host.isUp("coach"))
