@@ -18,10 +18,10 @@
 //   newest request, a crossing tap wins, no bounce back); tabs.select and tabs.bar (newer only, again, bad-args, off
 //   outside tabs mode); the variables at the Larger Text zooms; covered is the Coach tab not web; every
 //   visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own: one dismiss tabs and the chat
-//   off; selectTab's and sheets' refusals through one handler; at hello it renders after the leave and the take-over),
-//   the failsafe on visible time (real time and Playwright's clock; on the clock, a suspension between a hide and a show
-//   adds nothing and no stretch counts more than 1 s), and a broken page still drops the bar (whatever state its main
-//   script reached).
+//   off; selectTab's refusals, and their handler with sheets' label as a unit check until P5 sends sheets; at hello it
+//   renders after the leave and the take-over), the failsafe on visible time (real time and Playwright's clock; on the
+//   clock, a suspension between a hide and a show adds nothing and no stretch counts more than 1 s), and a broken page
+//   still drops the bar (whatever state its main script reached).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -723,7 +723,9 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
     classicLook(o, 'off refusal');
     assert(!r.off.mode && r.off.why === 'off' && r.off.tab === 'coach' && o.tab === 'coach' && dismissTabs(o) === 0 && o.offCoach !== 'tabs',
       'selectTab refused off: out on the tab it switched to, nothing sent back: ' + J([r.off, o]));
-    // sheets the same, through the one handler of both refusals (P5's announcer calls it): the next document is in tabs
+    // A unit check of _fpTabsRefused, the handler P5's sheets announcer will share with selectTab, called here with sheets'
+    // label: P2 sends no sheets call, so this cannot hold the sheets path. The acceptance for sheets refused 'off: no live
+    // tab root' is P5's spec 124 case, which drives the real call (10-page.md P5, The hold). The next document is in tabs
     // mode again (a refusal is no fallback); another code is logged and changes nothing, off leaves with nothing sent back
     await ref.reload(); await helloIn(ref);
     const s = await ev(ref, async () => {
@@ -736,9 +738,9 @@ serial('P2: the way out when the shell says so (a fallback, a hello without tabs
       return out;
     });
     const so = await look(ref);
-    classicLook(so, 'sheets refused off');
+    classicLook(so, 'the refusal handler, off with sheets\' label');
     assert(s.mode0 && s.other.mode && s.other.logged && !s.off.mode && s.off.why === 'off' && !s.off.told && dismissTabs(so) === 0 && so.offCoach !== 'tabs',
-      'sheets: another code is logged, off leaves with nothing sent back: ' + J([s, so.tabsCalls]));
+      'the refusal handler with sheets\' label (a unit check: the sheets call is P5\'s): another code is logged, off leaves with nothing sent back: ' + J([s, so.tabsCalls]));
   } finally { await ref.close(); }
 });
 
