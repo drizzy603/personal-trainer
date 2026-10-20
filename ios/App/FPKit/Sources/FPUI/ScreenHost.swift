@@ -38,10 +38,11 @@ public struct StackState {
 ///   of the bridge controller or a second bridge would hide it; none is ever made here.
 /// - **The stack**: the chat is pushed on the Coach tab's UINavigationController (its system bar hidden: the chat draws
 ///   its own header) whether or not Coach is selected, never changing the selection (D18), with the tab bar left over it
-///   (D9). A push or pop animates only while Coach is selected, the tab NATIVE, the root not held and no other transition
-///   runs over the tab (UIKit drops an animated one asked meanwhile, without a word, and takes a still one at once), and
-///   a held push releases the hold. A pop UIKit leaves undone all the same takes the chat off without animation at its
-///   end, and a push UIKit never took is refused (the page shows its own), never the owner's Back. Nothing here
+///   (D9). A push or pop animates only while Coach is selected, the tab NATIVE, the root not held and nothing is
+///   presented over the tab, up or on its way (UIKit drops an animated one asked during a presentation, without a word,
+///   and takes a still one at once; the stack's own push or pop under way is no such transition), and a held push
+///   releases the hold. A pop UIKit leaves undone all the same takes the chat off without animation at its end, and a
+///   push UIKit never took is refused (the page shows its own), never the owner's Back. Nothing here
 ///   presents, covers or uncovers: the root owns the web view, its accessibility and `shell.covered` (contract 8.4), so a
 ///   pop never uncovers. While attached, ScreenHost is the stack's navigation delegate and its interactive pop's
 ///   delegate (the pop begins only where the edge pan would); iOS 26's content pop (a pan anywhere in the chat, which
@@ -54,7 +55,9 @@ public struct StackState {
 ///   cancelled.
 /// - **One transition at a time**: present and dismiss requests (pushes and pops in the stack) queue and run in order,
 ///   each after the one before has finished (UIKit refuses a presentation while another is under way); a dismissal
-///   queued right behind a present that has not started cancels both.
+///   queued right behind a present that has not started cancels both. In the stack the next one runs a turn after the
+///   one before ended, never inside UIKit's word on it nor in the turn of a still change of the stack: UIKit puts off an
+///   animated push or pop asked inside `didShow`, and drops one asked in the turn of a still change, without a word.
 /// - **The owner's dismissal is latched**: Back or the edge pan (the interactive pop) takes the screen down at once and
 ///   the page hears `coach.back`. The page's own dismiss that follows finds it gone. If the page did not leave the
 ///   screen (Back refused, or the bridge failed), it goes up again, since the page still shows its placeholder under it.
@@ -159,7 +162,7 @@ public final class ScreenHost: NSObject {
     /// pop), `refused` (UIKit did not present or push it), `drop` (the stack left with the chat on it).
     public private(set) var transitions: [String] = []
     /// Slides in and out (the edge pan always animates). In the stack, pushes and pops animate only while Coach is selected
-    /// and NATIVE, the root not held and no other transition under way.
+    /// and NATIVE, the root not held and nothing presented over the tab.
     var animated = true
     /// VoiceOver's screen change (tests record it).
     var postScreenChanged: (Any?) -> Void = { UIAccessibility.post(notification: .screenChanged, argument: $0) }
@@ -209,6 +212,8 @@ public final class ScreenHost: NSObject {
     private var stackTimer: DispatchWorkItem?
     private var foreignPop: ForeignPop?
     private var stackToken = 0
+    /// The turn the next queued op waits for after a push or pop of the stack ended (its token), nil when none is due.
+    private var stackNext: Int?
     private var stackMarker: MarkerKey?
     /// Where the pushed chat's header ends, as it last reported (the toast's anchor while it is on top of the selected tab).
     private var chatHeaderBottom: CGFloat?
@@ -636,10 +641,9 @@ public final class ScreenHost: NSObject {
         let u = makeUp(screen, model: model, kind: .stack)
         u.host.hidesBottomBarWhenPushed = false   // D9: the tab bar stays over the chat
         up[screen] = u
-        // no animation while another transition runs over the tab (a presentation going up or down: the chat's photo
-        // picker, a share sheet; or UIKit's own, still running when the last op's wait ran out): UIKit drops an animated
-        // push then, without a word, and takes a still one at once
-        let animate = animated && shown && !held && nav.transitionCoordinator == nil
+        // no animation while something is presented over the tab (the chat's photo picker, a share sheet): UIKit drops an
+        // animated push then, without a word, and takes a still one at once
+        let animate = animated && shown && !held && !presentationOverTheTab(nav)
         transitions.append("present " + screen)
         Self.log.info("screens: pushing \(screen, privacy: .public) (rev \(model.rev), \(model.paper ? "paper" : "dark", privacy: .public), \(animate ? "animated" : "without animation", privacy: .public)\(shown ? "" : ", Coach not shown", privacy: .public)\(held ? ", held" : "", privacy: .public))")
         var entered = false   // UIKit took the push: the chat was in the stack's array once the call returned
@@ -658,7 +662,7 @@ public final class ScreenHost: NSObject {
                 }
             }
             self.refreshStack()
-            self.opDone()
+            self.stackOpDone()
         }
         nav.pushViewController(u.host, animated: animate)
         entered = inStack(u)
@@ -682,9 +686,8 @@ public final class ScreenHost: NSObject {
         let onTop = i == nav.viewControllers.count - 1, shown = stackShown(s)
         let below = i > 0 ? nav.viewControllers[i - 1] : nil
         // animated only where the owner sees the stack (a WEB tab hides it: coachHome off with the chat up pops it) and
-        // no other transition runs over the tab: UIKit drops an animated pop asked meanwhile, without a word, and takes a
-        // still one at once
-        let animate = animated && shown && onTop && s.state.native() && nav.transitionCoordinator == nil
+        // nothing is presented over the tab: UIKit drops an animated pop then, without a word, and takes a still one at once
+        let animate = animated && shown && onTop && s.state.native() && !presentationOverTheTab(nav)
         Self.log.info("screens: popping \(screen, privacy: .public) (\(animate ? "animated" : "without animation", privacy: .public)\(shown ? "" : ", Coach not shown", privacy: .public))")
         let token = waitForStack(expect: below, what: "pop " + screen) { [weak self, weak u] in
             guard let self else { return }
@@ -693,7 +696,7 @@ public final class ScreenHost: NSObject {
             } else {
                 self.removed(screen, user: user)
             }
-            self.opDone()
+            self.stackOpDone()
         }
         if onTop, below != nil {
             nav.popViewController(animated: animate)
@@ -732,9 +735,41 @@ public final class ScreenHost: NSObject {
         w.done()
     }
 
-    /// A pop UIKit left undone (it drops an animated one asked while another transition runs over the tab, without a
-    /// word): the chat comes off now without animation, so ScreenHost never counts down a chat the owner still sees (no
-    /// marker, a dead Back, no edge pop, a second chat pushed over it later). Its record goes first, as at the stack's
+    /// A push or pop of the stack is over (UIKit showed it, its wait ran out, the stack left the window, the owner's pop
+    /// that held the queue ended): the next queued op runs on the next turn of the main queue, the queue busy until then.
+    /// Never at once: inside UIKit's `didShow` UIKit puts an animated push or pop off until after it (the chat is not in
+    /// the stack's array when the call returns), and in the turn of a still change of the stack (the take-off, a
+    /// replacement) it drops an animated one without a word. A turn later it takes either at once.
+    private func stackOpDone() {
+        guard !ops.isEmpty else { return opDone() }
+        stackToken += 1
+        let token = stackToken
+        stackNext = token
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.stackNext == token else { return }   // the stack was left meanwhile
+                self.stackNext = nil
+                self.opDone()
+            }
+        }
+    }
+
+    /// Whether something is presented over the Coach tab, up or on its way (the chat's photo picker, a share sheet, a
+    /// plugin's alert: UIKit presents each from the tab root, whichever controller asks), or a transition other than the
+    /// stack's own reaches it. UIKit drops an animated push or pop asked during a presentation, without a word, and takes
+    /// a still one at once. The stack's own push or pop (no presentation style, the controller it shows the stack's own) is
+    /// no such transition, as it runs or as UIKit keeps its coordinator after a push cut out of the window: UIKit takes an
+    /// animated op asked during it at once, ending the one under way.
+    private func presentationOverTheTab(_ nav: UINavigationController) -> Bool {
+        if nav.presentedViewController != nil { return true }
+        guard let c = nav.transitionCoordinator else { return false }
+        return c.presentationStyle != .none || c.viewController(forKey: .to)?.parent !== nav
+    }
+
+    /// A pop UIKit left undone (it drops an animated one asked during a presentation over the tab or in the turn of a
+    /// still change of the stack, without a word; the still rule and the next op's turn keep both away, so this is the
+    /// last resort): the chat comes off now without animation, so ScreenHost never counts down a chat the owner still sees
+    /// (no marker, a dead Back, no edge pop, a second chat pushed over it later). Its record goes first, as at the stack's
     /// leaving: UIKit's word on this change, inside the call or after it, finds no chat to call the owner's.
     private func takeOff(_ u: Up, user: Bool) {
         guard up[u.name] === u else { return }
@@ -746,9 +781,9 @@ public final class ScreenHost: NSObject {
         chatPopped(u, user: user)
     }
 
-    /// UIKit never took the push (it drops an animated one asked while another transition runs over the tab, without a
-    /// word): the chat is not up and the page shows its own (the bridge's `screens.off`), as for a presentation UIKit
-    /// refused. Nobody pressed Back, so the page never hears `coach.back` for it.
+    /// UIKit never took the push (as a pop UIKit leaves undone, the last resort): the chat is not up and the page shows its
+    /// own (the bridge's `screens.off`), as for a presentation UIKit refused. Nobody pressed Back, so the page never hears
+    /// `coach.back` for it.
     private func pushRefused(_ u: Up) {
         guard up[u.name] === u else { return }
         up.removeValue(forKey: u.name)
@@ -879,7 +914,7 @@ public final class ScreenHost: NSObject {
             foreignPopped(u, interactive: f.interactive)
         }
         refreshStack()
-        if f.holdsQueue { opDone() }
+        if f.holdsQueue { stackOpDone() }   // a turn after UIKit's word on the pop's end, as after every push and pop
     }
 
     /// The chat left the stack and ScreenHost did not take it: the owner's Back, latched.
@@ -896,11 +931,12 @@ public final class ScreenHost: NSObject {
     /// content pop's state given back.
     private func leaveStack(why: String) {
         guard let s = stack else { return }
-        if stackWait != nil || foreignPop?.holdsQueue == true { busy = false }
+        if stackWait != nil || foreignPop?.holdsQueue == true || stackNext != nil { busy = false }
         stackWait = nil
         stackTimer?.cancel()
         stackTimer = nil
         foreignPop = nil
+        stackNext = nil   // the next op's turn goes with the queue
         ops.removeAll()
         latched.removeAll()
         acked.removeAll()
