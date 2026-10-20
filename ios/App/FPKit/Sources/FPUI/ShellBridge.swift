@@ -598,7 +598,9 @@ public final class ShellBridge: NSObject {
             case .bookChanged:
                 saveBook(b.link.book)
             case .fellBack(let why):
-                // no scene adopts a tab root before H7, so the link never falls one back yet; H8 hides the bar here
+                // no scene adopts a tab root before H7, so the link never falls one back yet. H8 runs the root's
+                // fallback here, first among the event's effects (the bar hidden, the web view shown, the chat popped
+                // without animation, the Coach tab dropped); the screenOffs after it only tell the page (10.3)
                 Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public))")
             case .pingWhenIdle:
                 // a state intent's timeout is held (contract 4.4): the ping confirms it, at the end of the queue
@@ -610,7 +612,8 @@ public final class ShellBridge: NSObject {
     // MARK: The policy file (FPHost FPPolicy.changed, through the App)
 
     /// The policy file moved these screens' switches: one turned off goes down now, for the rest of the document (the
-    /// page shows its own); one turned on is back from the next document.
+    /// page shows its own); one turned on is back from the next document. `tabs` turned off under a live tab root falls
+    /// the root back at once (LinkState's withdraw: `fellBack(.policy)` first, then `screens.off` for the pieces).
     public func policyChanged(screens: [String]) {
         guard let b = binding else { return }
         let policy = environment.policy()

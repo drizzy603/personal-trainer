@@ -401,6 +401,8 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual([noHello.code, failures.code, ScreenOffReason.withdrawn.code], ["no-hello", "failures", "withdrawn"])
         XCTAssertEqual(Intent.screensOff(screen: "coach", why: ScreenOffReason.withdrawn.code).arguments, ["screen": "coach", "why": "withdrawn"])
         XCTAssertEqual(ScreenOffReason.needs(["coachHome"]).code, "needs", "build 61: a piece it needs went off (contract 4.2)")
+        XCTAssertEqual(FellBackWhy.allCases.map { ScreenOffReason.fellBack($0).code }, ["page", "refused", "no-hello", "failures", "policy", "switch"],
+                       "build 61: tabs gone with its root carries the fallback's word (contract 4.2)")
     }
 
     // MARK: Build 61: pieces that depend on each other (contract 2.2, 3.2, 10.3, I12)
@@ -412,7 +414,7 @@ final class LinkStateTests: XCTestCase {
     /// A document of build 61 linked under the root by a hello naming all three, with `base` passing its own checks.
     private func linked61(base: [String] = ShellContract.binaryScreens, tabsRoot: Bool = true) -> LinkState {
         var s = LinkState(shell: shell61)
-        _ = s.setTabsRoot(tabsRoot)
+        if tabsRoot { s.adoptTabRoot() }
         _ = s.documentStarted(pageBuild: "P1", at: t0)
         _ = s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: base), at: t0 + 1)
         return s
@@ -426,6 +428,14 @@ final class LinkStateTests: XCTestCase {
 
     private func tripped(_ s: LinkState) -> [String] { all.filter { s.book.trip(screen: $0, pageBuild: "P1") != nil } }
 
+    /// Contract 10.3: the host runs the fallback before it tells the page anything, so `fellBack` comes before every
+    /// `screenOff` of its event (an in-order host would otherwise pop the chat, animated, outside the fallback's turn).
+    private func assertFellBackFirst(_ fx: [LinkEffect], _ tag: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let i = fx.firstIndex(where: { if case .fellBack = $0 { return true } else { return false } }) else { return }
+        XCTAssertFalse(fx[..<i].contains { if case .screenOff = $0 { return true } else { return false } },
+                       "\(tag): fellBack before every screenOff: \(fx)", file: file, line: line)
+    }
+
     /// Every hello row of negotiation.json through the link: the reply, the declines in the book, the fallback's effect
     /// and the rule after it, and the gate's `needs` on the link's book; under a live tab root coach and coachHome are
     /// both live or both off (I12), and a fallback at a hello turns nothing off (nothing was live yet).
@@ -437,7 +447,7 @@ final class LinkStateTests: XCTestCase {
             let root = try XCTUnwrap(row["root"]?.string, tag)
             let want = try XCTUnwrap(row["want"], tag)
             var s = LinkState(shell: shell61)
-            _ = s.setTabsRoot(root == "tabs")
+            if root == "tabs" { s.adoptTabRoot() }
             _ = s.documentStarted(pageBuild: "P1", at: t0)
             let deviceOff = Set(all).subtracting(base)
             let gate = ScreenGate.base(binary: all, deviceOff: deviceOff, policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1", os: os)
@@ -450,8 +460,10 @@ final class LinkStateTests: XCTestCase {
             XCTAssertEqual(s.liveScreens, reply.screens, "\(tag): live")
             XCTAssertEqual(all.filter { s.book.declined(piece: $0, page: "P1") }, NegotiationTable.strings(want["declined"]), "\(tag): declined")
             XCTAssertEqual(fellBack(fx).map(\.rawValue), want["fellBack"]?.string.map { [$0] } ?? [], "\(tag): fellBack")
+            XCTAssertEqual(s.fellBackWhy?.rawValue, want["fellBack"]?.string, "\(tag): latched")
             XCTAssertEqual(s.tabsRoot, root == "tabs" && want["fellBack"]?.string == nil, "\(tag): the rule after the hello")
             XCTAssertEqual(offs(fx), [], "\(tag): nothing was live")
+            if let why = fellBack(fx).first { XCTAssertEqual(fx.first, .fellBack(why), "\(tag): the fallback before anything else") }
             if !NegotiationTable.strings(want["declined"]).isEmpty { XCTAssertEqual(fx.last, .bookChanged, "\(tag): the declines are kept") }
             if s.tabsRoot { XCTAssertEqual(s.isLive("coach"), s.isLive("coachHome"), "\(tag): joint (I12)") }
             let after = ScreenGate.evaluate(binary: all, deviceOff: deviceOff, policy: .defaults, book: s.book, shellBuild: "61", pageBuild: "P1",
@@ -473,7 +485,7 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(ruled.on, ["tabs"], "the tab root's rule keeps the chat off with the Coach tab (joint)")
         func classicPage(_ checks: ScreenGate.Base) -> (reply: HelloReply, effects: [LinkEffect]) {
             var s = LinkState(shell: shell61)
-            _ = s.setTabsRoot(true)
+            s.adoptTabRoot()
             _ = s.documentStarted(pageBuild: "P1", at: t0)
             return s.hello(HelloRequest(v: 1, page: "P1", screens: ["coach"], boot: "b1"), ownChecks: checks, at: t0 + 1)
         }
@@ -511,6 +523,8 @@ final class LinkStateTests: XCTestCase {
             XCTAssertEqual(offs(fx), gone, "\(tag): off")
             XCTAssertEqual(tripped(s), NegotiationTable.strings(want["trips"]), "\(tag): trips")
             XCTAssertEqual(fellBack(fx).map(\.rawValue), want["fellBack"]?.string.map { [$0] } ?? [], "\(tag): fellBack")
+            assertFellBackFirst(fx, tag)
+            XCTAssertFalse(gone.contains { $0.screen == "tabs" && $0.why == "withdrawn" }, "\(tag): every off of tabs is a fallback's word")
             XCTAssertEqual(s.tabsRoot, root == "tabs" && want["fellBack"]?.string == nil, "\(tag): the rule after")
             for o in gone where o.why == "needs" { XCTAssertNil(s.book.trip(screen: o.screen, pageBuild: "P1"), "\(tag): \(o.screen) has no trip") }
             XCTAssertEqual(s.liveScreens, live.filter { p in !gone.contains { $0.screen == p } }, "\(tag): the rest stays live")
@@ -520,28 +534,40 @@ final class LinkStateTests: XCTestCase {
         }
     }
 
-    /// Every root-change row of negotiation.json: the host's own fallback (`dismiss tabs`, the policy, the switch) turns
-    /// off every piece negotiated under the tab root's rule, coach included, with `needs` (tabs silently, the host's to
-    /// tell); before a link it changes only the rule; later documents negotiate on the classic rule.
+    /// Every root-change row of negotiation.json: a fallback the host starts (`dismiss tabs` with `pageAsked`, the policy,
+    /// the switch) opens with `fellBack`, then turns off every piece negotiated under the tab root's rule, coach included,
+    /// with `needs`, and `tabs` with the fallback's word unless the page asked; `dismiss tabs` records the page build's
+    /// decline; before a link it changes only the rule; once per scene; later documents negotiate on the classic rule.
     func testEveryRootChangeRow() throws {
         for row in try NegotiationTable.rows("rootChange") {
             let tag = row["case"]?.string ?? "?"
             let root = try XCTUnwrap(row["root"]?.string, tag)
             let base = NegotiationTable.strings(row["base"])
+            let why = try XCTUnwrap(row["why"]?.string.flatMap(FellBackWhy.init(rawValue:)), tag)
+            let pageAsked = try XCTUnwrap(row["pageAsked"]?.bool, tag)
             let want = try XCTUnwrap(row["want"], tag)
             var s = LinkState(shell: shell61)
-            _ = s.setTabsRoot(root == "tabs")
+            if root == "tabs" { s.adoptTabRoot() }
             _ = s.documentStarted(pageBuild: "P1", at: t0)
             let hello = HelloRequest(v: 1, page: "P1", screens: all, boot: "b1")
             if row["linked"]?.bool == true { _ = s.hello(hello, ownChecks: ScreenGate.Base(on: base), at: t0 + 1) }
             XCTAssertEqual(s.liveScreens, NegotiationTable.strings(row["live"]), "\(tag): set up")
             let before = s.book
-            let fx = s.setTabsRoot(false)
+            let fx = s.fallBack(why, pageAsked: pageAsked)
+            let fell = want["fellBack"]?.string
+            XCTAssertEqual(fellBack(fx).map(\.rawValue), fell.map { [$0] } ?? [], "\(tag): fellBack")
+            if fell != nil { XCTAssertEqual(fx.first, .fellBack(why), "\(tag): first of all") }
             XCTAssertEqual(offs(fx), NegotiationTable.offs(want["off"]), "\(tag): off")
-            XCTAssertEqual(fellBack(fx), [], "\(tag): the host's fallback: no fellBack from the link")
             XCTAssertFalse(s.tabsRoot, tag)
-            XCTAssertEqual(s.book, before, "\(tag): a root change writes no record")
-            if root == "tabs" { XCTAssertEqual(s.liveScreens, [], "\(tag): tabs went too, silently") }
+            XCTAssertEqual(s.fellBackWhy?.rawValue, fell, "\(tag): latched")
+            let declined = NegotiationTable.strings(want["declined"])
+            XCTAssertEqual(all.filter { s.book.declined(piece: $0, page: "P1") }, declined, "\(tag): declined")
+            var expected = before
+            for p in declined { _ = expected.decline(piece: p, page: "P1") }
+            XCTAssertEqual(s.book, expected, "\(tag): a root change writes no record but the page build's decline")
+            XCTAssertEqual(fx.last == .bookChanged, !declined.isEmpty, "\(tag): the decline is kept")
+            if root == "tabs" { XCTAssertEqual(s.liveScreens, [], "\(tag): nothing native is left in the document") }
+            XCTAssertEqual(s.fallBack(.policy), [], "\(tag): once per scene")
             let same = s.hello(hello, ownChecks: ScreenGate.Base(on: base), at: t0 + 2).reply.screens
             XCTAssertEqual(same, NegotiationTable.strings(want["sameDocument"]), "\(tag): same document")
             _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
@@ -550,23 +576,65 @@ final class LinkStateTests: XCTestCase {
         }
     }
 
-    func testTheTabRootIsTheHostsToAdopt() {
-        // false at init; a binary without tabs never has one
+    /// The tab root is the host's to adopt, before the scene's first hello, and it falls back at most once per scene
+    /// (contract 1.3): no later adoption brings it back, whoever started the fallback; a binary without tabs never has
+    /// one, and a linked document never changes rule but by a fallback.
+    func testTheTabRootIsTheHostsToAdoptAndFallsBackOnce() {
         var sixty = LinkState(shell: shell)
-        XCTAssertFalse(sixty.tabsRoot)
-        XCTAssertEqual(sixty.setTabsRoot(true), [])
+        sixty.adoptTabRoot()
         XCTAssertFalse(sixty.tabsRoot, "build 60's binary has no tab root")
+        XCTAssertEqual(sixty.fallBack(.policy), [])
         var s = LinkState(shell: shell61)
         XCTAssertFalse(s.tabsRoot)
-        XCTAssertEqual(s.setTabsRoot(true), [])
+        XCTAssertNil(s.fellBackWhy)
+        s.adoptTabRoot()
         XCTAssertTrue(s.tabsRoot)
-        XCTAssertEqual(s.setTabsRoot(true), [])
-        XCTAssertEqual(s.setTabsRoot(false), [], "before a link only the rule changes")
+        s.adoptTabRoot()
+        XCTAssertTrue(s.tabsRoot)
+        XCTAssertEqual(s.fallBack(.switch), [.fellBack(.switch)], "before a link only the rule changes, and fellBack says so")
         XCTAssertFalse(s.tabsRoot)
-        XCTAssertEqual(s.setTabsRoot(false), [], "once")
-        // the rule follows the root: classic from now on, for every later document of the scene
+        XCTAssertEqual(s.fellBackWhy, .switch)
+        XCTAssertEqual(s.fallBack(.policy), [], "once per scene")
+        XCTAssertEqual(s.fellBackWhy, .switch, "the first word stays")
+        s.adoptTabRoot()
+        XCTAssertFalse(s.tabsRoot, "no adoption brings a fallen-back root back")
+        // the rule follows the root: classic for every later document of the scene
         _ = s.documentStarted(pageBuild: "P1", at: t0)
         XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: all), at: t0 + 1).reply.screens, ["coach"])
+        XCTAssertEqual(s.withdraw(["tabs"]), [], "tabs is not live under the classic rule: nothing to fall back")
+        // a linked document under the classic rule (60's overlay chat): an adoption now is ignored
+        var c = linked61(tabsRoot: false)
+        XCTAssertEqual(c.liveScreens, ["coach"])
+        c.adoptTabRoot()
+        XCTAssertFalse(c.tabsRoot, "adopted while linked: ignored")
+        XCTAssertEqual(c.withdraw(["tabs"]), [])
+        XCTAssertEqual(c.liveScreens, ["coach"], "the overlay chat stays")
+        // a fallback the link started latches the same way: after a tabs trip, no adoption is taken
+        var t = linked61()
+        for i in 0 ..< 3 { _ = t.intentFinished(select, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 2 + Double(i)) }
+        XCTAssertEqual(t.fellBackWhy, .failures)
+        _ = t.documentStarted(pageBuild: "P2", at: t0 + 10)   // a new page build starts the breakers clean, not the root
+        t.adoptTabRoot()
+        XCTAssertFalse(t.tabsRoot)
+        XCTAssertEqual(t.hello(HelloRequest(v: 1, page: "P2", screens: all, boot: "b2"), ownChecks: ScreenGate.Base(on: all), at: t0 + 11).reply.screens, ["coach"])
+    }
+
+    /// A second hello of a linked document that leaves `tabs` out: the root falls back mid-document, so the pieces it
+    /// negotiated go off for the document with `needs` (the answer tells the page about tabs: no `screens.off` for it),
+    /// and the reply names none of them, though the classic rule alone would give the chat back.
+    func testASecondHelloWithoutTabsFallsBackMidDocument() {
+        var s = linked61()
+        XCTAssertEqual(s.liveScreens, all)
+        let (reply, fx) = s.hello(HelloRequest(v: 1, page: "P1", screens: ["coach"], boot: "b1"), ownChecks: ScreenGate.Base(on: all), at: t0 + 2)
+        XCTAssertEqual(reply.screens, [], "coach went with the root change: not back within the document")
+        XCTAssertEqual(fx, [.fellBack(.page), .screenOff(screen: "coach", reason: .needs(["coachHome"])), .screenOff(screen: "coachHome", reason: .needs(["tabs"])),
+                            .linked(LinkState.Link(boot: "b1", bootFromPage: true, v: 1, page: "P1", screens: [])), .bookChanged])
+        XCTAssertEqual(s.liveScreens, [])
+        XCTAssertTrue(s.book.declined(piece: "tabs", page: "P1"), "the page build declines tabs")
+        XCTAssertEqual(s.fellBackWhy, .page)
+        // the scene's next document: the classic rule gives 60's overlay chat
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: ["coach"], boot: "b2"), ownChecks: ["coach", "coachHome"], at: t0 + 11).reply.screens, ["coach"])
     }
 
     /// Three failed `tabs.select` trip `tabs` and nothing else: coach and coachHome go off with `needs` and no record of
@@ -577,8 +645,9 @@ final class LinkStateTests: XCTestCase {
         for i in 0 ..< 3 { fx = s.intentFinished(select, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 2 + Double(i)) }
         let trip = try XCTUnwrap(s.book.trip(screen: "tabs", pageBuild: "P1"))
         XCTAssertEqual(trip.detail, "3 in a row: page exception, page exception, page exception")
-        XCTAssertEqual(fx, [.screenOff(screen: "coach", reason: .needs(["coachHome"])), .screenOff(screen: "coachHome", reason: .needs(["tabs"])),
-                            .screenOff(screen: "tabs", reason: .tripped(trip)), .fellBack(.failures), .bookChanged])
+        XCTAssertEqual(fx, [.fellBack(.failures), .screenOff(screen: "coach", reason: .needs(["coachHome"])),
+                            .screenOff(screen: "coachHome", reason: .needs(["tabs"])), .screenOff(screen: "tabs", reason: .tripped(trip)), .bookChanged],
+                       "the fallback first (the host pops the chat inside it), then the page hears coach, coachHome, tabs")
         XCTAssertNil(s.book.screens["coach"], "a cascade writes no record")
         XCTAssertNil(s.book.screens["coachHome"])
         XCTAssertEqual(s.liveScreens, [])
@@ -599,26 +668,29 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(tripped(s), all)
         XCTAssertEqual(offs(fx).map(\.description), ["coach failures", "coachHome failures", "tabs failures"])
         XCTAssertEqual(fellBack(fx), [.failures])
+        XCTAssertEqual(fx.first, .fellBack(.failures))
     }
 
     /// No hello in time under a live tab root: every piece trips (no hello) and the root falls back, at a tick or at a
     /// late hello, once.
     func testNoHelloUnderATabRootFallsBack() {
         var s = LinkState(shell: shell61)
-        _ = s.setTabsRoot(true)
+        s.adoptTabRoot()
         _ = s.documentStarted(pageBuild: "P1", at: t0)
         let fx = s.tick(at: t0 + 15)
         XCTAssertEqual(trips(fx).map(\.reason), [.noHello, .noHello, .noHello])
         XCTAssertEqual(offs(fx).map(\.screen), all)
-        XCTAssertEqual(fx.suffix(2), [.fellBack(.noHello), .bookChanged])
+        XCTAssertEqual(fx.first, .fellBack(.noHello))
+        XCTAssertEqual(fx.last, .bookChanged)
         XCTAssertFalse(s.tabsRoot)
         XCTAssertEqual(s.tick(at: t0 + 30), [], "once")
         var late = LinkState(shell: shell61)
-        _ = late.setTabsRoot(true)
+        late.adoptTabRoot()
         _ = late.documentStarted(pageBuild: "P1", at: t0)
         let (reply, lfx) = late.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ScreenGate.Base(on: all), at: t0 + 16)
         XCTAssertEqual(reply.screens, [])
         XCTAssertEqual(fellBack(lfx), [.noHello], "one fallback, with no hello's word")
+        assertFellBackFirst(lfx, "late hello")
         XCTAssertFalse(late.tabsRoot)
     }
 
@@ -632,10 +704,12 @@ final class LinkStateTests: XCTestCase {
                        "3 in a row: undecodable model rev 1, undecodable model rev 2, undecodable model rev 3")
         XCTAssertEqual(offs(r.effects).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs failures"])
         XCTAssertEqual(fellBack(r.effects), [.failures])
+        XCTAssertEqual(r.effects.first, .fellBack(.failures))
         var e = linked61()
         let fx = e.editBook { _ = $0.trip(screen: "tabs", pageBuild: "P1", reason: .failures, detail: "set by hand", at: self.t0) }
         XCTAssertEqual(offs(fx).map(\.screen), all)
-        XCTAssertEqual(fx.suffix(2), [.fellBack(.failures), .bookChanged])
+        XCTAssertEqual(fx.first, .fellBack(.failures))
+        XCTAssertEqual(fx.last, .bookChanged)
         // a crash verdict or a decline put in the book waits for the next hello (ScreenGate reads them)
         var d = linked61()
         XCTAssertEqual(d.editBook { $0.decline(piece: "tabs", page: "P1") }, [.bookChanged])
@@ -643,15 +717,38 @@ final class LinkStateTests: XCTestCase {
         XCTAssertTrue(d.tabsRoot)
     }
 
-    /// `withdraw` of tabs (the host calls setTabsRoot(false) for its fallbacks): the pieces that need it follow; the
-    /// link starts no fallback of its own, since it cannot tell the host's word.
-    func testWithdrawingTheBarTakesItsDependentsButStartsNoFallback() {
+    /// Every off of `tabs` under a live tab root is the fallback (contract 10.1, 10.3): a `withdraw` (the policy file's
+    /// door) falls the root back with the policy's word, first; coach and coachHome follow with `needs`, and the page
+    /// hears `screens.off {screen:'tabs', why:'policy'}`, never `withdrawn`. Before a link it falls back at once, so the
+    /// hello that follows is negotiated on the classic rule with no second fallback.
+    func testWithdrawingTheBarFallsTheRootBack() {
         var s = linked61()
         let fx = s.withdraw(["tabs"])
-        XCTAssertEqual(offs(fx).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs withdrawn"])
-        XCTAssertEqual(fellBack(fx), [])
-        XCTAssertTrue(s.tabsRoot)
-        XCTAssertEqual(s.book, BreakerBook())
+        XCTAssertEqual(fx, [.fellBack(.policy), .screenOff(screen: "coach", reason: .needs(["coachHome"])),
+                            .screenOff(screen: "coachHome", reason: .needs(["tabs"])), .screenOff(screen: "tabs", reason: .fellBack(.policy))])
+        XCTAssertEqual(offs(fx).map(\.why), ["needs", "needs", "policy"], "never withdrawn for tabs")
+        XCTAssertFalse(s.tabsRoot)
+        XCTAssertEqual(s.fellBackWhy, .policy)
+        XCTAssertEqual(s.liveScreens, [])
+        XCTAssertEqual(s.book, BreakerBook(), "a policy withdraw leaves no record (10.3)")
+        XCTAssertEqual(s.withdraw(["tabs"]), [], "once")
+        _ = s.documentStarted(pageBuild: "P1", at: t0 + 10)
+        XCTAssertEqual(s.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b2"), ownChecks: ScreenGate.Base(on: all), at: t0 + 11).reply.screens,
+                       ["coach"], "the scene's next document: the classic rule")
+        // the policy turning coach and tabs off together: coach withdrawn, the Coach tab needs both, tabs the policy's word
+        var both = linked61()
+        let bfx = both.withdraw(["coach", "tabs"])
+        XCTAssertEqual(bfx.first, .fellBack(.policy))
+        XCTAssertEqual(offs(bfx).map(\.description), ["coach withdrawn", "coachHome needs [\"tabs\", \"coach\"]", "tabs policy"])
+        // before a link (awaiting the hello): the root falls back now; the hello finds the classic rule, no second fallback
+        var early = LinkState(shell: shell61)
+        early.adoptTabRoot()
+        _ = early.documentStarted(pageBuild: "P1", at: t0)
+        XCTAssertEqual(early.withdraw(["tabs"]), [.fellBack(.policy)])
+        let (reply, hfx) = early.hello(HelloRequest(v: 1, page: "P1", screens: all, boot: "b1"), ownChecks: ["coach", "coachHome"], at: t0 + 1)
+        XCTAssertEqual(reply.screens, ["coach"], "60's overlay chat at once")
+        XCTAssertEqual(fellBack(hfx), [], "no second fallback")
+        XCTAssertEqual(all.filter { early.book.declined(piece: $0, page: "P1") }, [], "nothing declined: no tab root at this hello")
     }
 
     // MARK: Build 61: held timeouts (contract 4.4, D41, I15)
@@ -699,7 +796,8 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(trip.detail, "3 in a row: timeout, timeout, timeout")
         XCTAssertEqual(trip.at, t0 + 6)
         XCTAssertEqual(offs(fx).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs failures"])
-        XCTAssertEqual(fx.suffix(2), [.fellBack(.failures), .bookChanged])
+        XCTAssertEqual(fx.first, .fellBack(.failures))
+        XCTAssertEqual(fx.last, .bookChanged)
         XCTAssertEqual(s.book.screens["coach"]?.failures, 1, "the ping counted for coach before the bar took it along")
         XCTAssertNil(s.book.trip(screen: "coach", pageBuild: "P1"))
         XCTAssertEqual(s.heldTimeouts, 0)

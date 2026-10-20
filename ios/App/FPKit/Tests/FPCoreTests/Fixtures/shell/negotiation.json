@@ -4,8 +4,8 @@
     "Pieces in the binary's order: coach, coachHome, tabs. Every list below is in that order. One page build, P1.",
     "resolve: base = the pieces whose own checks pass; tabsRoot = the scene's root is a live tab root (one that has not fallen back). on = the pieces on; needs = each piece of base off only because of another, with what it needs ('root' for tabs under a root that is not a live tab root). A piece off for its own reason never reports needs.",
     "hello: base = the pieces whose own checks pass at the hello for P1 (device switch, policy, crash verdict, breaker, decline: ScreenGate.base), the OS step left to os (below 26 tabs is off 'os' and the root is classic). root = 'tabs' (a live tab root), 'classic' (built classic: iOS 17/18, the gate, or no launch values) or 'fellBack' (a tab root that fell back earlier in the scene: the classic rule, and never a second fallback). hello = the page's {v, screens}. want.v and want.why = the reply's version and refusal word; want.screens = the reply's screens; want.tabs = the reply carries tabs (tabs negotiated); want.declined = the pieces recorded as declined for P1; want.fellBack = the fallback this hello triggers (the scene falls back first, then this same hello is negotiated on the classic rule); want.needs = ScreenGate.evaluate's needs after the hello (its declines recorded, on the root after it).",
-    "cascade: a linked document under root, set up by a hello naming all three with base = live. event: {trip: piece} three failures in a row of the piece's own intents or models; {tripShell: true} three failed shell intents (ping, shell.covered, confirm, toast.undo, screens.off), which count against every live piece; {withdraw: piece} the host turned it off for the document (the policy file, a device switch). want.off = the screens.off the page hears, in order ({screen, why, needs?}); want.trips = the pieces with a breaker record (a cascade is never a trip); want.fellBack = the fallback the link starts (a tabs trip under a live tab root).",
-    "rootChange: setTabsRoot(false) from the host (a fallback it starts itself: dismiss {screen:'tabs'}, the policy file, the device switch), the document set up as in cascade by a hello with base (linked) or awaiting its hello (not linked). want.off = the screens.off for the pieces negotiated under the tab root's rule (coach included, whose stack is gone: by root change, not by the classic rule); tabs itself goes off in the document silently, the host telling the page with its own word, or not at all after dismiss tabs. want.sameDocument = what the same hello negotiates in this document afterwards (the awaited hello when not linked); want.nextDocument = what it negotiates in the scene's next document (the classic rule)."
+    "cascade: a linked document under root, set up by a hello naming all three with base = live. event: {trip: piece} three failures in a row of the piece's own intents or models; {tripShell: true} three failed shell intents (ping, shell.covered, confirm, toast.undo, screens.off), which count against every live piece; {withdraw: piece} the host turned it off for the document (the policy file; LinkState.withdraw): every off of tabs under a live tab root is the root's fallback, with the policy's word, never withdrawn. want.off = the screens.off the page hears, in order ({screen, why, needs?}); want.trips = the pieces with a breaker record (a cascade is never a trip); want.fellBack = the fallback the event brings (a tabs trip or a withdraw of tabs under a live tab root), whose effect comes before every screenOff of the event.",
+    "rootChange: a fallback the host starts, LinkState.fallBack(why, pageAsked): the page's dismiss {screen:'tabs'} (why 'page', pageAsked: the page left tabs mode itself, and its page build declines tabs), the policy file ('policy'; withdraw(['tabs']) is the same door) or the device switch ('switch'); the document set up as in cascade by a hello with base (linked) or awaiting its hello (not linked). want.fellBack = the fallback's effect, before everything else (null: nothing happens, there is no live tab root); want.off = the screens.off that follow it, in order: the pieces negotiated under the tab root's rule (coach included, whose stack is gone: by root change, not by the classic rule) with needs, then tabs with the fallback's word unless the page asked; want.declined = the pieces recorded as declined for P1; want.sameDocument = what the same hello negotiates in this document afterwards (the awaited hello when not linked); want.nextDocument = what it negotiates in the scene's next document (the classic rule)."
   ],
   "pieces": ["coach", "coachHome", "tabs"],
   "resolve": [
@@ -80,6 +80,11 @@
     {
       "case": "tab root, the Coach tab off by its own checks: the chat goes with it (joint)",
       "base": ["coach", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coachHome", "coach", "tabs"] },
+      "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": { "coach": ["coachHome"] } }
+    },
+    {
+      "case": "tab root, the Coach tab off by its own checks, a page naming coach and tabs: tabs alone, nothing declined (coachHome was not on offer)",
+      "base": ["coach", "tabs"], "os": 27, "root": "tabs", "hello": { "v": 1, "screens": ["coach", "tabs"] },
       "want": { "v": 1, "why": null, "screens": ["tabs"], "tabs": true, "declined": [], "fellBack": null, "needs": { "coach": ["coachHome"] } }
     },
     {
@@ -180,6 +185,16 @@
       "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "withdrawn" }], "trips": [], "fellBack": null }
     },
     {
+      "case": "tab root: the policy withdraws tabs; the root falls back (policy), coach and coachHome follow with needs, tabs gets the policy's word",
+      "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "withdraw": "tabs" },
+      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }, { "screen": "tabs", "why": "policy" }], "trips": [], "fellBack": "policy" }
+    },
+    {
+      "case": "tab root, tabs alone live: the policy withdraws tabs",
+      "root": "tabs", "live": ["tabs"], "event": { "withdraw": "tabs" },
+      "want": { "off": [{ "screen": "tabs", "why": "policy" }], "trips": [], "fellBack": "policy" }
+    },
+    {
       "case": "tab root: three failed coach intents trip coach; the Coach tab follows",
       "root": "tabs", "live": ["coach", "coachHome", "tabs"], "event": { "trip": "coach" },
       "want": { "off": [{ "screen": "coach", "why": "failures" }, { "screen": "coachHome", "why": "needs", "needs": ["coach"] }], "trips": ["coach"], "fellBack": null }
@@ -215,6 +230,11 @@
       "want": { "off": [{ "screen": "coach", "why": "withdrawn" }], "trips": [], "fellBack": null }
     },
     {
+      "case": "classic root: the policy withdraws tabs, which is not live there: nothing",
+      "root": "classic", "live": ["coach"], "event": { "withdraw": "tabs" },
+      "want": { "off": [], "trips": [], "fellBack": null }
+    },
+    {
       "case": "classic root: three failed shell intents trip coach",
       "root": "classic", "live": ["coach"], "event": { "tripShell": true },
       "want": { "off": [{ "screen": "coach", "why": "failures" }], "trips": ["coach"], "fellBack": null }
@@ -222,24 +242,49 @@
   ],
   "rootChange": [
     {
-      "case": "a fallback mid-document: coach and coachHome go off with needs; tabs is the host's to tell",
-      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach", "coachHome", "tabs"],
-      "want": { "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }], "sameDocument": [], "nextDocument": ["coach"] }
+      "case": "the policy turns tabs off mid-document: coach and coachHome go off with needs, then tabs with the policy's word",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach", "coachHome", "tabs"], "why": "policy", "pageAsked": false,
+      "want": { "fellBack": "policy", "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }, { "screen": "tabs", "why": "policy" }], "declined": [], "sameDocument": [], "nextDocument": ["coach"] }
     },
     {
-      "case": "a fallback with the Coach tab web (tabs alone live): nothing more to tell",
-      "root": "tabs", "base": ["tabs"], "linked": true, "live": ["tabs"],
-      "want": { "off": [], "sameDocument": [], "nextDocument": [] }
+      "case": "the device switch turns the bar off mid-document: tabs with the switch's word",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach", "coachHome", "tabs"], "why": "switch", "pageAsked": false,
+      "want": { "fellBack": "switch", "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }, { "screen": "tabs", "why": "switch" }], "declined": [], "sameDocument": [], "nextDocument": ["coach"] }
     },
     {
-      "case": "before a link (awaiting the hello): only the rule changes",
-      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": false, "live": [],
-      "want": { "off": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+      "case": "the page's dismiss tabs mid-document: no screens.off for tabs (the page asked), and its page build declines tabs",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach", "coachHome", "tabs"], "why": "page", "pageAsked": true,
+      "want": { "fellBack": "page", "off": [{ "screen": "coach", "why": "needs", "needs": ["coachHome"] }, { "screen": "coachHome", "why": "needs", "needs": ["tabs"] }], "declined": ["tabs"], "sameDocument": [], "nextDocument": ["coach"] }
     },
     {
-      "case": "a classic root: nothing changes",
-      "root": "classic", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach"],
-      "want": { "off": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+      "case": "a fallback with the Coach tab web (tabs alone live): tabs with the policy's word",
+      "root": "tabs", "base": ["tabs"], "linked": true, "live": ["tabs"], "why": "policy", "pageAsked": false,
+      "want": { "fellBack": "policy", "off": [{ "screen": "tabs", "why": "policy" }], "declined": [], "sameDocument": [], "nextDocument": [] }
+    },
+    {
+      "case": "dismiss tabs with the Coach tab web: nothing to tell, the decline kept",
+      "root": "tabs", "base": ["tabs"], "linked": true, "live": ["tabs"], "why": "page", "pageAsked": true,
+      "want": { "fellBack": "page", "off": [], "declined": ["tabs"], "sameDocument": [], "nextDocument": [] }
+    },
+    {
+      "case": "before a link (awaiting the hello): fellBack says so, and only the rule changes",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": false, "live": [], "why": "policy", "pageAsked": false,
+      "want": { "fellBack": "policy", "off": [], "declined": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+    },
+    {
+      "case": "dismiss tabs before the hello (the page left tabs mode before saying hello): the rule changes, the decline kept",
+      "root": "tabs", "base": ["coach", "coachHome", "tabs"], "linked": false, "live": [], "why": "page", "pageAsked": true,
+      "want": { "fellBack": "page", "off": [], "declined": ["tabs"], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+    },
+    {
+      "case": "a classic root: nothing happens",
+      "root": "classic", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach"], "why": "policy", "pageAsked": false,
+      "want": { "fellBack": null, "off": [], "declined": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
+    },
+    {
+      "case": "a classic root, dismiss tabs: ok and nothing else, nothing declined",
+      "root": "classic", "base": ["coach", "coachHome", "tabs"], "linked": true, "live": ["coach"], "why": "page", "pageAsked": true,
+      "want": { "fellBack": null, "off": [], "declined": [], "sameDocument": ["coach"], "nextDocument": ["coach"] }
     }
   ]
 }

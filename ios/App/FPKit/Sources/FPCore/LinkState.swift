@@ -31,14 +31,18 @@ import Foundation
 // - The pieces depend on each other (ShellPieces): the hello applies the rule for the scene's root before
 //   and after negotiating, and every way a piece goes off in a document (a trip, a withdraw, the book)
 //   takes the live pieces that depend on it along, off `needs` for the rest of the document; a cascade is
-//   never a trip. Effects of one event come in the binary's order (coach, coachHome, tabs), the order the
-//   page hears `screens.off` in.
-// - `tabsRoot`: the root is a live tab root (the host's `setTabsRoot(true)` when it adopts one). It falls
-//   back for good when the link sees a reason (`fellBack`): a hello whose answer leaves `tabs` out (the
-//   page's decline, a version refusal, the policy), no hello in time, or a `tabs` trip. The host's own
-//   triggers (`dismiss tabs`, the policy file, the device switch) call `setTabsRoot(false)`. Either way
-//   every piece negotiated under the tab root's rule goes off for the document, and later documents of
-//   the scene negotiate on the classic rule. A hello records the page build's declines in the book.
+//   never a trip. The `screenOff`s of one event come in the binary's order (coach, coachHome, tabs), the
+//   order the page hears `screens.off` in.
+// - `tabsRoot`: the root is a live tab root (the host's `adoptTabRoot()`, before the scene's first hello).
+//   It falls back once per scene (`fellBackWhy`, latched: the classic rule from then on, whatever the host
+//   says later), for a reason the link sees (a hello whose answer leaves `tabs` out: the page's decline, a
+//   version refusal, the policy; no hello in time; a `tabs` trip; a `withdraw` of `tabs`, the policy file's
+//   door) or one the host starts (`fallBack(_:pageAsked:)`: `dismiss tabs`, the device switch). Every
+//   fallback's effects open with `fellBack(why)`, so the host hides the bar, shows the web view, pops the
+//   chat and drops the native Coach tab before anything else; then every piece negotiated under the tab
+//   root's rule goes off for the document (`coach` and `coachHome` with `needs`, `tabs` with the fallback's
+//   own word unless the page knows already: it asked, or a hello's answer tells it). Later documents of the
+//   scene negotiate on the classic rule. The page build's declines go in the book (a hello's, `dismiss tabs`).
 // - Held timeouts (D41): a timeout of `tabs.select`, `tabs.bar` or `shell.covered` (sent on every tap and
 //   every Coach entry and exit) counts for nothing at first; the link asks for a `ping` (`pingWhenIdle`).
 //   The first answer after it, the ping's or any queued intent's, drops the holds uncounted (a busy page,
@@ -61,11 +65,14 @@ public enum LinkEffect: Equatable, Sendable {
     case breakersReset(pageBuild: String)
     /// The breaker book changed: store it (`BreakerBook.encoded()`).
     case bookChanged
-    /// The live tab root fell back for a reason the link saw (contract 10.3): a hello whose answer left `tabs` out
-    /// (`page`, `refused`, `policy`: nothing was live yet, and the hello was negotiated on the classic rule), no hello
-    /// in time (`no-hello`) or a `tabs` trip (`failures`). The rule is the classic one from now on. The host hides the
-    /// bar for the rest of the scene and drops the native Coach tab; the pieces that went off came first, as
-    /// `screenOff`. Its own triggers (`dismiss tabs`, the policy file, the device switch) go through `setTabsRoot`.
+    /// The live tab root fell back (contract 10.3), once per scene: the rule is the classic one from now on. It comes
+    /// first among its event's effects, so the host runs the fallback in one turn inside the `tabs` section before
+    /// anything else: the bar hidden for the rest of the scene, the web view shown, the chat popped without animation,
+    /// the native Coach tab dropped. The `screenOff`s that follow (`coach` and `coachHome` with `needs`, then `tabs`
+    /// with the fallback's word unless the page knows already) find nothing native left to take down and only tell the
+    /// page, in contract 10.3's order. `why`: `page`, `refused` or `policy` at a hello (nothing live yet; the hello is
+    /// negotiated on the classic rule), `no-hello`, `failures`, `policy` (a `withdraw` of `tabs`), or the word the host
+    /// passed to `fallBack(_:pageAsked:)`.
     case fellBack(FellBackWhy)
     /// A timeout of `tabs.select`, `tabs.bar` or `shell.covered` is held (contract 4.4, D41): send `ping` once the
     /// link is idle. Its answer, or any answer before it, drops the hold uncounted; its failure counts the hold and
@@ -81,13 +88,19 @@ public enum ScreenOffReason: Equatable, Sendable {
     /// A piece it needs went off (contract 2.2, 4.2): the pieces, as ShellPieces names them. Never a trip, kept for
     /// the rest of the document only.
     case needs([String])
+    /// `tabs` alone: its tab root fell back for a reason that is no trip of its own (contract 4.2, 10.3), and
+    /// `screens.off {screen: 'tabs', why}` carries the fallback's word (`policy`, `switch`). A trip keeps `tripped`,
+    /// whose words (`failures`, `no-hello`) are the fallback's too. Never `withdrawn`: every off of `tabs` under a live
+    /// tab root is the fallback (10.1).
+    case fellBack(FellBackWhy)
 
-    /// What `screens.off` tells the page: "no-hello", "failures", "withdrawn" or "needs".
+    /// What `screens.off` tells the page: "no-hello", "failures", "withdrawn", "needs", or a fallback's word for `tabs`.
     public var code: String {
         switch self {
         case .tripped(let t): return t.reason.rawValue
         case .withdrawn: return "withdrawn"
         case .needs: return "needs"
+        case .fellBack(let why): return why.rawValue
         }
     }
 }
@@ -171,6 +184,9 @@ public struct LinkState: Equatable, Sendable {
     public private(set) var foreground: Bool
     /// The scene's root is a live tab root (contract 1.3, 2.2): false at init (a classic root) and from a fallback on.
     public private(set) var tabsRoot = false
+    /// The scene's tab root fell back, and why (contract 1.3, 10.3): at most once per scene, and the classic rule from
+    /// then on, whatever the host says later. Nil while it has not (or there was no tab root).
+    public private(set) var fellBackWhy: FellBackWhy?
 
     private var foregroundSince: Date?
     private var waited: TimeInterval = 0
@@ -212,20 +228,27 @@ public struct LinkState: Equatable, Sendable {
 
     // MARK: The root
 
-    /// The host adopted a tab root (`true`, before the scene's first hello: it changes the rule the next hello
-    /// negotiates on), or fell back for a reason of its own (`false`: `dismiss tabs`, the policy file, the device
-    /// switch). A fallback while linked turns off, for the rest of the document, every piece negotiated under the tab
-    /// root's rule: `coachHome` and `coach` (whose stack is gone, though the classic rule alone would keep the chat)
-    /// with `needs`, and `tabs` silently (the host tells the page with its own word, or not at all after `dismiss
-    /// tabs`). Before a link it changes only the rule; later documents of the scene negotiate on the classic rule.
-    /// A binary without `tabs` never has a tab root.
-    public mutating func setTabsRoot(_ on: Bool) -> [LinkEffect] {
-        if on {
-            if shell.screens.contains("tabs") { tabsRoot = true }
-            return []
-        }
+    /// The host adopted a tab root (contract 1.3, 2.2), before the scene's first hello: the hello negotiates on the tab
+    /// root's rule. Ignored by a binary without `tabs`, while a document is linked (the rule never changes under live
+    /// pieces except by a fallback), and once the scene has fallen back (a root falls back at most once per scene).
+    public mutating func adoptTabRoot() {
+        guard shell.screens.contains("tabs"), fellBackWhy == nil, link == nil else { return }
+        tabsRoot = true
+    }
+
+    /// A fallback the host starts (contract 10.3): the page's `dismiss {screen:'tabs'}` (`.page` with `pageAsked`: the
+    /// page left tabs mode itself, so it hears no `screens.off` for `tabs`, and the page build being served declines
+    /// `tabs`, D32, as a hello without `tabs` does), the device switch (`.switch`) or the policy file (`.policy`, as
+    /// `withdraw(["tabs"])`). Only under a live tab root, once per scene; anything else returns nothing. The effects
+    /// open with `fellBack(why)`; then, for the rest of the document, every piece negotiated under the tab root's rule
+    /// goes off: `coach` and `coachHome` with `needs` (coach's stack is gone, though the classic rule alone would keep
+    /// the chat), then `tabs` with `why` unless the page asked. Before a link only the rule changes (and `fellBack`
+    /// says so): later documents of the scene negotiate on the classic rule.
+    public mutating func fallBack(_ why: FellBackWhy, pageAsked: Bool = false) -> [LinkEffect] {
         guard tabsRoot else { return [] }
-        return ordered(rootChange())
+        var fx = withFallBack([:], why: why, tellTabs: !pageAsked)
+        if pageAsked, let p = pageBuild, book.decline(piece: "tabs", page: p) { fx.append(.bookChanged) }
+        return fx
     }
 
     // MARK: Documents and the hello deadline
@@ -294,8 +317,7 @@ public struct LinkState: Equatable, Sendable {
                 offs[s] = .tripped(t)
             }
         }
-        var fx = ordered(offs)
-        if tabsRoot { fx += fallBack(.noHello) }   // nothing linked: only the rule changes
+        var fx = withFallBack(offs, why: .noHello, tellTabs: true)   // under a live tab root: nothing linked, nothing to tell
         if !offs.isEmpty { fx.append(.bookChanged) }
         return fx
     }
@@ -349,8 +371,9 @@ public struct LinkState: Equatable, Sendable {
         }
         var n = o.negotiation
         if let why = o.fellBack {
-            fx += fallBack(why)
-            // a second hello of a linked document: what the fallback took off stays off for the document
+            // the answer tells the page about tabs; a first hello finds nothing live, a second one of a linked document
+            // takes its live pieces off for the document
+            fx += withFallBack([:], why: why, tellTabs: false)
             if case .linked(let v, let screens) = n { n = .linked(v: v, screens: screens.filter { !offInDocument.contains($0) }) }
         }
         switch n {
@@ -417,27 +440,33 @@ public struct LinkState: Equatable, Sendable {
         return (.apply, effects)
     }
 
-    /// The host turned screens off for this document (the policy file, the device switch): not a fault,
-    /// not kept; back on from the next document, if the gate allows it then. The live pieces that need
-    /// them go too (`needs`). For `tabs` under a live tab root the host calls `setTabsRoot(false)`: the
-    /// root falls back with it.
+    /// The host turned screens off for this document (the policy file; a native screen that could not go up):
+    /// not a fault, not kept; back on from the next document, if the gate allows it then. The live pieces
+    /// that need them go too (`needs`). Every off of `tabs` under a live tab root is the fallback (contract
+    /// 10.1, 10.3), whether or not a document is linked: this is the policy file's door, so its word is
+    /// `policy` (`fellBack(.policy)` first, then the other pieces withdrawn, the rest of the tab root's with
+    /// `needs`, and `tabs` with `policy`, never `withdrawn`); the host's other triggers call
+    /// `fallBack(_:pageAsked:)` with their own words.
     public mutating func withdraw(_ screens: [String]) -> [LinkEffect] {
+        let rootFalls = tabsRoot && screens.contains("tabs")
         var offs: [String: ScreenOffReason] = [:]
-        for s in screens where !offInDocument.contains(s) {
+        for s in screens where !offInDocument.contains(s) && !(rootFalls && s == "tabs") {
             let wasLive = isLive(s)
             offInDocument.insert(s)
             if wasLive { offs[s] = .withdrawn }
         }
+        if rootFalls { return withFallBack(offs, why: .policy, tellTabs: true) }
         if !offs.isEmpty { offs.merge(cascade()) { own, _ in own } }
         return ordered(offs)
     }
 
     /// Changes the book outside the link's own rules: the store breaker (launch, document start,
-    /// bootDone), crash markers found at launch, the owner turning a piece back on in Settings > About,
-    /// a page build's decline. A trip it adds for the page build turns that live screen off at once
-    /// (`screenOff`, the pieces that need it along, and the fallback for `tabs` under a live tab root);
-    /// anything else waits for the next hello: a crash verdict or a decline is read by ScreenGate then, and
-    /// a screen that went off stays off for the document even when its trip is cleared.
+    /// bootDone), crash markers found at launch, the owner turning a piece back on in Settings > About.
+    /// A trip it adds for the page build turns that live screen off at once (`screenOff`, the pieces that
+    /// need it along, and for `tabs` under a live tab root the fallback, `fellBack` first); anything else
+    /// waits for the next hello: a crash verdict or a decline is read by ScreenGate then, and a screen that
+    /// went off stays off for the document even when its trip is cleared. (A hello's declines and
+    /// `dismiss tabs`'s are recorded by `hello` and `fallBack(_:pageAsked:)`.)
     public mutating func editBook(_ edit: (inout BreakerBook) -> Void) -> [LinkEffect] {
         let before = book
         let wasLive = liveScreens
@@ -452,8 +481,7 @@ public struct LinkState: Equatable, Sendable {
             }
         }
         if !offs.isEmpty { offs.merge(cascade()) { own, _ in own } }
-        var fx = ordered(offs)
-        if let t = tabsTrip, tabsRoot { fx += fallBack(t.reason == .noHello ? .noHello : .failures) }
+        var fx = withFallBack(offs, why: tabsTrip.map { $0.reason == .noHello ? .noHello : .failures }, tellTabs: true)
         if book != before { fx.append(.bookChanged) }
         return fx
     }
@@ -468,8 +496,7 @@ public struct LinkState: Equatable, Sendable {
             }
         }
         if !offs.isEmpty { offs.merge(cascade()) { own, _ in own } }
-        var fx = ordered(offs)
-        if offs["tabs"] != nil, tabsRoot { fx += fallBack(.failures) }
+        var fx = withFallBack(offs, why: offs["tabs"] != nil ? .failures : nil, tellTabs: true)
         if book != before { fx.append(.bookChanged) }
         return fx
     }
@@ -489,23 +516,30 @@ public struct LinkState: Equatable, Sendable {
         return offs
     }
 
-    /// The root is no longer a live tab root: every piece negotiated under its rule goes off for the document, `tabs`
-    /// silently and the others with what they needed under that rule (`coachHome` needs `tabs`, `coach` needs
-    /// `coachHome`), never by the classic rule, which would keep the chat (contract 2.2, 10.3).
-    private mutating func rootChange() -> [String: ScreenOffReason] {
+    /// The root is no longer a live tab root, for good in this scene (`fellBackWhy` latched): every piece still live that
+    /// was negotiated under its rule goes off for the document, `coachHome` and `coach` with what they needed under that
+    /// rule (`coachHome` needs `tabs`, `coach` needs `coachHome`), never by the classic rule, which would keep the chat
+    /// (contract 2.2, 10.3), and `tabs` with the fallback's word when the page has to be told (`tellTabs`).
+    private mutating func rootChange(_ why: FellBackWhy, tellTabs: Bool) -> [String: ScreenOffReason] {
         tabsRoot = false
+        fellBackWhy = why
         let live = liveScreens.filter(ShellPieces.all.contains)
-        guard !live.isEmpty else { return [:] }
         for s in live { offInDocument.insert(s) }
         let r = ShellPieces.resolve(live.filter { $0 != "tabs" }, tabsRoot: true)
         var offs: [String: ScreenOffReason] = [:]
         for s in live where s != "tabs" { offs[s] = .needs(r.needs[s] ?? []) }
+        if tellTabs, live.contains("tabs") { offs["tabs"] = .fellBack(why) }
         return offs
     }
 
-    /// A fallback the link starts: the root change, then `fellBack`.
-    private mutating func fallBack(_ why: FellBackWhy) -> [LinkEffect] {
-        ordered(rootChange()) + [.fellBack(why)]
+    /// One event's effects, with the tab root's fallback when `why` is given under a live tab root: `fellBack(why)`
+    /// first (the host hides the bar, shows the web view and pops the chat before it tells the page anything), then the
+    /// event's own offs and the root change's together, in the binary's order. Without a fallback, the event's offs.
+    private mutating func withFallBack(_ own: [String: ScreenOffReason], why: FellBackWhy?, tellTabs: Bool) -> [LinkEffect] {
+        guard let why, tabsRoot else { return ordered(own) }
+        var offs = own
+        offs.merge(rootChange(why, tellTabs: tellTabs)) { own, _ in own }
+        return [.fellBack(why)] + ordered(offs)
     }
 
     /// One event's `screenOff`s in the binary's order (the order the page hears `screens.off` in).
