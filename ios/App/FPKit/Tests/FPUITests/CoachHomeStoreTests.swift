@@ -442,6 +442,8 @@ final class CoachHomeStoreTests: XCTestCase {
         var reduceMotion: Bool?
         /// The fade's length as the test sets it (nil: the root's own). With neither set, the public initialiser.
         var fadeSeconds: TimeInterval?
+        /// The system's Reduce Motion as the environment carries it to the root (nil: the simulator's own setting).
+        var systemReduceMotion: Bool?
         var onBottom: ((CGFloat) -> Void)?
 
         var body: some View {
@@ -452,6 +454,10 @@ final class CoachHomeStoreTests: XCTestCase {
                     CoachHomeRoot(store: store, room: room, paper: paper, reduceMotion: reduceMotion,
                                   fadeSeconds: fadeSeconds ?? CoachHomeRoot.fadeSeconds)
                 }
+            }
+            // `accessibilityReduceMotion` is read-only; SwiftUI's settable twin sets what it reads
+            .transformEnvironment(\._accessibilityReduceMotion) { [systemReduceMotion] on in
+                if let systemReduceMotion { on = systemReduceMotion }
             }
             .safeAreaPadding(.top, CoachHomeViewTests.safeTop)
             .safeAreaPadding(.bottom, CoachHomeViewTests.safeBottom)
@@ -720,6 +726,33 @@ final class CoachHomeStoreTests: XCTestCase {
         XCTAssertTrue(moving.inserted, "the layout pass took the model: the hub is there")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.ground, moving.settled), 0.05, "the hub draws")
         XCTAssertGreaterThan(CoachRenderTests.difference(moving.now, moving.settled), 0.05, "the hub is there but not yet drawn: it fades in")
+    }
+
+    /// The public root's fade as a render test hosts it: the public initialiser itself (nil), or on CI, where the fade
+    /// must stretch by the slack and the public initialiser has no length to stretch, the path it takes (Reduce Motion
+    /// nil: the system's) with the stretched length.
+    static var publicFade: TimeInterval? { slack == 1 ? nil : CoachHomeRoot.fadeSeconds * slack }
+
+    /// The shipped path: the public `CoachHomeRoot(store:room:paper:)` reads the system's Reduce Motion (the
+    /// environment's `accessibilityReduceMotion`) and fades in 0.2 s. Hosted under Reduce Motion on, it draws the hub at
+    /// once; under it off, the hub fades in (a render inside the fade, as the internal initialiser's case takes it).
+    func testThePublicRootFollowsTheSystemsReduceMotion() throws {
+        let pub = CoachHomeRoot(store: CoachHomeStore(), room: .heavyweight, paper: true)
+        XCTAssertNil(pub.reduceMotion, "the public root reads the system's Reduce Motion")
+        XCTAssertEqual(pub.fadeSeconds, 0.2, "and fades in 0.2 s")
+        let still = try fadeIn(RootPhone(store: CoachHomeStore(), room: .heavyweight, paper: true, systemReduceMotion: true),
+                               fade: CoachHomeRoot.fadeSeconds)
+        XCTAssertTrue(still.inserted, "Reduce Motion on: the layout pass took the model")
+        XCTAssertGreaterThan(CoachRenderTests.difference(still.ground, still.settled), 0.05, "Reduce Motion on: the hub draws")
+        XCTAssertLessThan(CoachRenderTests.difference(still.now, still.settled), 0.001, "Reduce Motion on: the public root draws the hub at once")
+        let fade = Self.publicFade ?? CoachHomeRoot.fadeSeconds
+        let (moving, tries) = try fadeInside({
+            RootPhone(store: CoachHomeStore(), room: .heavyweight, paper: true, fadeSeconds: Self.publicFade, systemReduceMotion: false)
+        }, fade: fade)
+        XCTAssertLessThan(moving.took, Self.insideFade, "Reduce Motion off: a render inside the \(fade) s fade (\(tries) tries; the machine was too busy for one)")
+        XCTAssertTrue(moving.inserted, "Reduce Motion off: the layout pass took the model")
+        XCTAssertGreaterThan(CoachRenderTests.difference(moving.ground, moving.settled), 0.05, "Reduce Motion off: the hub draws")
+        XCTAssertGreaterThan(CoachRenderTests.difference(moving.now, moving.settled), 0.05, "Reduce Motion off: the hub fades in")
     }
 
     // MARK: The root on the store
