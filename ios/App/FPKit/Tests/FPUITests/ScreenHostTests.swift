@@ -954,8 +954,10 @@ final class ScreenHostTests: XCTestCase {
             host.isActive = { active }
             host.update("coach", model: try model())
             var trail: [String] = []
-            for _ in 0..<30 {
-                let step = steps[next(steps.count)]
+            // a fixed start that meets every rule once (WEB with the chat on top of the selected tab, away, back), then
+            // thirty random steps
+            let fixed = ["select", "push", "web", "native", "deselect", "select", "resign", "active", "pop", "push"]
+            for step in fixed + (0..<30).map({ _ in steps[next(steps.count)] }) {
                 trail.append(step)
                 switch step {
                 case "select": select(coach: true)
@@ -980,13 +982,15 @@ final class ScreenHostTests: XCTestCase {
                 let want = active && r.tabs.selectedIndex == 1 && r.native && chatOnTop ? ["presenting coach@P1 shell 61"] : []
                 XCTAssertEqual(markerLines(), want, "seed \(seed): \(trail)")
             }
-            if next(2) == 0 {
+            r.webView.accessibilityElementsHidden = true   // as the root leaves it behind a native Coach tab
+            if (seed == 7 ? 0 : seed == 61 ? 1 : next(2)) == 0 {   // one seed ends each way, the last at random
                 host.tearDown()
                 trail.append("teardown")
             } else {
                 host.detachStack()
                 trail.append("detach")
             }
+            XCTAssertTrue(r.webView.accessibilityElementsHidden, "the web view's accessibility stays the root's: seed \(seed)")
             XCTAssertEqual(markerLines(), [], "seed \(seed): \(trail)")
             XCTAssertFalse(r.nav.topViewController is ScreenHostingController, "the chat popped: seed \(seed)")
             active = true
@@ -996,6 +1000,72 @@ final class ScreenHostTests: XCTestCase {
             XCTAssertEqual(markerLines(), [], "none comes back: seed \(seed): \(trail)")
             XCTAssertEqual(r.webView.leftWindow, 0, "seed \(seed)")
         }
+    }
+
+    /// The marker follows the app's activity in the stack too: `willResignActive` comes while the app still reads active,
+    /// and a kill from the app switcher is no crash; back in use with the chat on top, the marker is back.
+    func testStackTheMarkerFollowsTheAppsActivity() async throws {
+        let r = try await makeStack()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"])
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+        XCTAssertEqual(markerLines(), [], "resigning: no marker (the app still reads active then)")
+        select(coach: false)
+        select(coach: true)
+        XCTAssertEqual(markerLines(), [], "still away: a selection writes none")
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        XCTAssertEqual(markerLines(), ["presenting coach@P1 shell 61"], "back with the chat on top")
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertEqual(markerLines(), [], "the background takes it away too")
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        r.native = false   // the Coach tab turned WEB with the chat still on the stack
+        host.selectionChanged()
+        XCTAssertEqual(markerLines(), [], "none in WEB")
+        XCTAssertEqual(r.webView.leftWindow, 0)
+    }
+
+    /// VoiceOver's escape on the pushed chat goes back as the overlay's does (Back, latched; Cancel in setup, the page
+    /// asking first), and an escape the chat does not take goes no further: the navigation controller's own would pop a
+    /// chat that offers no Back.
+    func testStackVoiceOversEscapeGoesBackAndNoFurther() async throws {
+        let r = try await makeStack()
+        host.update("coach", model: try model())
+        host.present("coach")
+        try await idle()
+        XCTAssertTrue(try XCTUnwrap(r.nav.topViewController).accessibilityPerformEscape(), "escape goes back")
+        try await idle()
+        XCTAssertFalse(host.isUp("coach"))
+        XCTAssertEqual(owner, ["coach"], "the page hears coach.back")
+        XCTAssertEqual(host.latched, ["coach"])
+        host.dismiss("coach")
+        var intake = try model("intake")
+        intake.boot = "b-intake"
+        host.update("coach", model: intake)
+        host.present("coach")
+        try await idle()
+        XCTAssertTrue(try XCTUnwrap(r.nav.topViewController).accessibilityPerformEscape(), "escape during setup is Cancel")
+        XCTAssertEqual(sent.last, .coachCancelIntake, "the page asks first")
+        try await settle(0.1)
+        XCTAssertTrue(host.isUp("coach"), "the chat stays until the page says")
+        host.dismiss("coach")
+        try await idle()
+        var neither = try model()
+        neither.boot = "b-neither"
+        neither.header.back = false
+        neither.header.cancel = false
+        host.update("coach", model: neither)
+        host.present("coach")
+        try await idle()
+        let before = sent.count
+        XCTAssertTrue(try XCTUnwrap(r.nav.topViewController).accessibilityPerformEscape(), "taken, and nothing more")
+        try await settle(0.2)
+        XCTAssertTrue(host.isUp("coach"), "no Back offered: the chat stays")
+        XCTAssertEqual(r.nav.viewControllers.count, 2)
+        XCTAssertEqual(owner, ["coach"])
+        XCTAssertEqual(sent.count, before)
+        XCTAssertEqual(r.webView.leftWindow, 0)
     }
 
     /// H5 test 9: the toast's anchor is the chat header's bottom while the chat is on top of the selected, unheld Coach
