@@ -70,8 +70,10 @@ final class CoachHomeStoreTests: XCTestCase {
 
     /// CI's slack for every timing bound here (CoachModelTests' rule; contract 12: timing bounds take CI's 10x slack):
     /// GitHub's shared Macs are several times slower and stall at random, and xcodebuild hands TEST_RUNNER_CI to the
-    /// simulator's test process as CI.
-    static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
+    /// simulator's test process as CI. Nonisolated (a Double, set once), as CoachHomeViewTests.help is: a default
+    /// argument reads it (HostedStack.settle(until:within:)), and the package's Swift 5 mode checks a default argument
+    /// as nonisolated, where reading a main-actor static is a concurrency warning.
+    nonisolated static let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
 
     // MARK: The store: models
 
