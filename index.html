@@ -21213,147 +21213,159 @@ function _coachDayMeta(){
     ? 'WK 01 · STARTS MON'
     : 'WK '+String(currentWeek).padStart(2,'0')+' · DAY '+dayIdx;
 }
-function renderCoach(){
-  var apiKey=getApiKey();
-  var wd3=getWkData();
-  var _msw=_coachModelSwitch();
-  var modelNext=_msw.next;
-  var modelLabel=_msw.label, modelSwitch=_msw.a11y;
-  var firstNameC = getUserFirstName();
-  var crC = getCustomRoutine();
-  var avSeedC = firstNameC || '?';
-  var avInitialC = _initialOf(avSeedC);
-  var totalWksC = getTotalWeeks();
-  var weekdayC = ['MON','TUE','WED','THU','FRI','SAT','SUN'][(new Date().getDay()+6)%7];
-  // Editorial header: mono eyebrow + lime-gradient avatar.
-  var header = '<div class="kt-meta-row">'+
-    '<div class="kt-meta-label">COACH · WK '+
-      String(currentWeek).padStart(2,'0')+' / '+totalWksC+
-      (wd3 && wd3.bName ? ' · '+_esc(String(wd3.bName).toUpperCase()) : '')+
+// ── The Coach tab's models (build 61, contract 6.1-6.2): the page builds them, the native bar and the native Coach
+// tab draw them, and the web hub and connect screen are drawn from the same model (_coachHomeHTML), as the chat's HTML
+// is drawn from _cmbModel, so web and native cannot disagree. Both builders are top-level with no side effects: boot is
+// this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
+// The hub's type sizes (contract 6.2, D33): 16 flat home* sizes per room, at the large text size, from the room CSS.
+// CoachHomeModel's tokens.type carries them beside the chat's sizes, in a copy: _COACH_TOKENS and every CoachModel stay
+// as they are. FPCore compiles the same values (Tokens.swift); spec 126 holds the page to the contract's table. Two of
+// them are not today's Heavyweight CSS, which draws the group heads and the CTA label at 10 px (the room's font-size:10px
+// rule): they change with the contract and FPCore, together.
+var _COACH_HOME_TYPE={
+  heavyweight:{homeMeta:10, homeAvatar:13, homeGreet:15, homeTitle:74, homeTitleMin:54, homeBody:15, homeGroupHead:9,
+    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
+    homeHelp:12, homeLink:14},
+  dark:{homeMeta:10, homeAvatar:13, homeGreet:14, homeTitle:56, homeTitleMin:43, homeBody:14, homeGroupHead:9,
+    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
+    homeHelp:12, homeLink:14}
+};
+// Text for an HTML text node: & < > (a quote reads the same unescaped; _esc escapes quotes too, for attributes).
+function _escT(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// The hub's line for the newest message: its text (a photo alone reads [Image]), %% marker lines dropped (a structured
+// reply's grammar is not prose), cut at 65 characters with an ellipsis. Whole characters: an emoji is never split (the
+// 65-unit slice before build 61 could leave half of one), and ASCII text is cut where that slice cut it.
+function _coachHomePreview(msg){
+  var s='';
+  if(msg && typeof msg.content==='string') s=msg.content;
+  else if(msg && Array.isArray(msg.content)){
+    var tb=msg.content.find(function(b){ return b && b.type==='text'; });
+    s=tb ? String(tb.text==null ? '' : tb.text) : '[Image]';
+  }
+  var ch=_chars(s.split('\n').filter(function(l){
+    return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
+  }).join(' '));
+  return ch.length>65 ? ch.slice(0,65).join('')+'…' : ch.join('');
+}
+// Coach home model v1 (contract 6.2; FPCore CoachHomeModel.swift reads it): the Coach tab's root as renderCoach() draws
+// it, the connect screen with no key (even during setup), else the hub. resume: the page will push the chat when Coach
+// is next selected (setup with a key, or a reply in flight on the chat view: switchTab keeps the view then and
+// _fpWant('coach') wants the chat), so the shell holds the hub off screen for that tap (contract 8.1). Text is raw (the
+// web builder escapes) and never the key or its masked form.
+function _coachHomeModel(rev){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', key=!!getApiKey(), k;
+  var dyn=true; try{ dyn=localStorage.getItem('kt_dyn_type')!=='0'; }catch(e){}
+  var tokens=_coachTokens(room), type={}, home=_COACH_HOME_TYPE[room]||_COACH_HOME_TYPE.heavyweight;
+  for(k in tokens.type) type[k]=tokens.type[k];
+  for(k in home) type[k]=home[k];
+  tokens.type=type;
+  // getWkData()'s week, without its write (it clamps currentWeek to the programme; renderCoach still calls it)
+  var cr=getCustomRoutine(), wk=currentWeek, wd=null;
+  if(cr){ wk=Math.min(currentWeek, cr.weeks.length); wd=cr.weeks[Math.max(0, wk-1)]||cr.weeks[0]; }
+  var name=getUserFirstName(), n=coachMessages.length, ex=Math.ceil(n/2), exs=ex+' exchange'+(ex===1?'':'s');
+  var m={v:1, rev:rev, boot:_fpBoot, room:room, paper:!!THEMES[room].paper, dynTypeOn:dyn, tokens:tokens,
+    route:key ? 'hub' : 'connect', resume:key && (!!intakeMode || (!!coachLoading && coachView==='chat')),
+    meta:{label:'COACH · WK '+String(wk).padStart(2,'0')+' / '+getTotalWeeks()+(wd && wd.bName ? ' · '+String(wd.bName).toUpperCase() : ''),
+      avatar:(_graphemes(String(name||'').trim())[0]||'?').toUpperCase()},
+    hero:{greet:name ? 'Hi '+name+'.' : 'Welcome.', title:key ? 'Coach' : 'Connect', accent:key ? 'ready.' : 'your coach.',
+      body:!key ? 'Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log.'
+        : n ? exs+' so far. Pick up where you left off, or start a new thread.'
+        : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.'},
+    connect:null, groups:[]};
+  if(!key){
+    m.connect={label:'Anthropic API Key', placeholder:'sk-ant-...', cta:{label:'CONNECT', title:'Save key & start coaching'},
+      help:'Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.\n'+
+        'Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.',
+      starter:cr ? null : {label:'No key? Build a starter plan instead →'}};
+    return m;
+  }
+  m.groups.push({head:'Conversation', rows:[{'do':'openChat', title:'Open Chat',
+    sub:coachLoading ? 'Coach is replying…' : n ? exs+' · '+_coachHomePreview(coachMessages[n-1]) : 'No messages yet — tap to start', icon:'chat'}]});
+  if(!cr) m.groups.push({head:'Programme', rows:[{'do':'startIntake', title:'Build My Programme', sub:'Generate a custom training plan', icon:'programme'}]});
+  m.groups.push({head:'Account', rows:(n ? [{'do':'clearChat', title:'Clear Chat History', sub:null, icon:'trash'}] : [])
+    .concat([{'do':'disconnect', title:'Disconnect', sub:null, icon:'disconnect'}])});
+  return m;
+}
+// The web hub's rows by action: the handler, the tile and its icon (room CSS overrides the tiles' hex).
+var _COACH_HOME_ROWS={
+  openChat:{on:'openCoachChat()', bg:'#1a2a1f', stroke:'var(--accent)', chev:true,
+    svg:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'},
+  startIntake:{on:'startRoutineIntake()', bg:'#1e1a0d', stroke:'#f59e0b', chev:true,
+    svg:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'},
+  clearChat:{on:'_confirmClearChat()', bg:'#2a1a1a', stroke:'#f97316', chev:false,
+    svg:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'},
+  disconnect:{on:'clearApiKey()', bg:'#1a1a2e', stroke:'#a78bfa', chev:false,
+    svg:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'}
+};
+// The web Coach hub and connect screen, drawn from the model: the markup renderCoach() wrote before build 61, byte for
+// byte (tests/golden/coach-html.json, the homes group). Text nodes through _escT and the key field's placeholder
+// through _esc (plan P-D4: a quote in a name is written ' where it was &#39;, and reads the same).
+function _coachHomeHTML(m){
+  var c=m.connect;
+  var h='<div class="kt-meta-row">'+
+      '<div class="kt-meta-label">'+_escT(m.meta.label)+'</div>'+
+      '<div class="kt-meta-ava">'+_escT(m.meta.avatar)+'</div>'+
     '</div>'+
-    '<div class="kt-meta-ava">'+avInitialC+'</div>'+
+    '<div class="kt-hero"><div class="kt-hero-greet">'+_escT(m.hero.greet)+'</div>'+
+      '<h1 class="kt-hero-headline">'+_escT(m.hero.title)+'<span class="kt-line2 accent">'+_escT(m.hero.accent)+'</span></h1>'+
+      '<div class="kt-hero-body">'+_escT(m.hero.body)+'</div>'+
     '</div>';
-
-  // ── No API key: setup screen ─────────────────────────────────────────────
-  if(!apiKey){
-    var greetNoKey = firstNameC
-      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
-      : '<div class="kt-hero-greet">Welcome.</div>';
-    return header +
-      '<div class="kt-hero">'+greetNoKey+
-        '<h1 class="kt-hero-headline">Connect<span class="kt-line2 accent">your coach.</span></h1>'+
-        '<div class="kt-hero-body">Plug in your Claude API key and the coach can talk through sessions, build a custom programme, and react to what you log.</div>'+
-      '</div>'+
+  if(c){
+    return h+
       '<div class="field" style="margin-bottom:14px;">'+
-        '<label>Anthropic API Key</label>'+
-        '<input type="password" id="coach-key-input" placeholder="sk-ant-..." autocomplete="off" style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
+        '<label>'+_escT(c.label)+'</label>'+
+        '<input type="password" id="coach-key-input" placeholder="'+_esc(c.placeholder)+'" autocomplete="off" style="font-family:monospace;font-size:16px;" onkeydown="if(event.key===\'Enter\')saveApiKey()"/>'+
       '</div>'+
       '<button class="kt-cta" onclick="saveApiKey()">'+
         '<div style="text-align:left;">'+
-          '<div class="kt-cta-label">CONNECT</div>'+
-          '<div class="kt-cta-title">Save key &amp; start coaching</div>'+
+          '<div class="kt-cta-label">'+_escT(c.cta.label)+'</div>'+
+          '<div class="kt-cta-title">'+_escT(c.cta.title)+'</div>'+
         '</div>'+
         '<div class="kt-cta-arrow">→</div>'+
       '</button>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.55;">Get a key from your Anthropic account: console.anthropic.com → API Keys → Create key, then paste it here.<br>Anthropic bills usage to your own account — typically a few cents per chat. A Claude subscription does not include API access.</p>'+
-      (!hasCustomRoutine()
+      '<p style="font-size:12px;color:var(--muted);margin-top:14px;text-align:center;line-height:1.55;">'+_escT(c.help).replace(/\n/g, '<br>')+'</p>'+
+      (c.starter
         ? '<div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">'+
-            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">No key? Build a starter plan instead →</button>'+
+            '<button onclick="openStarterIntake()" style="background:none;border:none;padding:8px;color:var(--accent-ink);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">'+_escT(c.starter.label)+'</button>'+
           '</div>'
         : '');
   }
-
-  // ── Home menu ─────────────────────────────────────────────────────────────
-  if(coachView==='home'&&!intakeMode){
-    var msgCount=coachMessages.length;
-    var lastMsg=msgCount?coachMessages[msgCount-1]:null;
-    var lastPreview='';
-    if(lastMsg){
-      // Image messages store content as an array of {type,...} blocks;
-      // extract the text block (if any) for the preview line.
-      var contentStr='';
-      if(typeof lastMsg.content==='string') contentStr=lastMsg.content;
-      else if(Array.isArray(lastMsg.content)){
-        var tb=lastMsg.content.find(function(b){return b&&b.type==='text';});
-        contentStr=tb?tb.text:'[Image]';
-      }
-      // Structured replies carry %%-marker lines — the preview shows the
-      // first plain sentence, never the raw grammar.
-      var raw=contentStr.split('\n').filter(function(l){
-        return l.trim() && !/^%%(type|metric|takeaway|action):/.test(l.trim());
-      }).join(' ');
-      lastPreview=raw.length>65?raw.slice(0,65)+'…':raw;
-    }
-    var statusLine=wd3?'Week '+currentWeek+' · '+wd3.bName+' Block':'Online';
-
-    var greetHome = firstNameC
-      ? '<div class="kt-hero-greet">Hi '+_esc(firstNameC)+'.</div>'
-      : '<div class="kt-hero-greet">Welcome.</div>';
-    var heroBody = msgCount
-      ? Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' so far. Pick up where you left off, or start a new thread.'
-      : 'Your coach is wired in. Ask about today\'s session, your form, your programme — anything from your data is fair game.';
-    return header+
-      '<div class="kt-hero">'+greetHome+
-        '<h1 class="kt-hero-headline">Coach<span class="kt-line2 accent">ready.</span></h1>'+
-        '<div class="kt-hero-body">'+heroBody+'</div>'+
-      '</div>'+
-
-      '<div class="settings-group">'+
-        '<div class="settings-group-hd">Conversation</div>'+
-        '<div class="settings-row" onclick="openCoachChat()">'+
-          '<div class="settings-row-ic" style="background:#1a2a1f;">'+
-            '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-              '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>'+
-            '</svg>'+
+  m.groups.forEach(function(g){
+    h+='<div class="settings-group"><div class="settings-group-hd">'+_escT(g.head)+'</div>';
+    g.rows.forEach(function(r){
+      var d=_COACH_HOME_ROWS[r['do']];
+      if(!d) return;
+      h+='<div class="settings-row" onclick="'+d.on+'">'+
+          '<div class="settings-row-ic" style="background:'+d.bg+';">'+
+            '<svg viewBox="0 0 24 24" fill="none" stroke="'+d.stroke+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+d.svg+'</svg>'+
           '</div>'+
-          '<div class="settings-row-body">'+
-            '<div class="settings-row-title">Open Chat</div>'+
-            '<div class="settings-row-sub">'+(coachLoading?'Coach is replying…':msgCount?Math.ceil(msgCount/2)+' exchange'+(Math.ceil(msgCount/2)===1?'':'s')+' · '+_esc(lastPreview):'No messages yet — tap to start')+'</div>'+
-          '</div>'+
-          '<span class="settings-row-chev">›</span>'+
-        '</div>'+
-      '</div>'+
-
-      (!hasCustomRoutine()?
-        '<div class="settings-group">'+
-          '<div class="settings-group-hd">Programme</div>'+
-          '<div class="settings-row" onclick="startRoutineIntake()">'+
-            '<div class="settings-row-ic" style="background:#1e1a0d;">'+
-              '<svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-                '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'+
-              '</svg>'+
-            '</div>'+
-            '<div class="settings-row-body">'+
-              '<div class="settings-row-title">Build My Programme</div>'+
-              '<div class="settings-row-sub">Generate a custom training plan</div>'+
-            '</div>'+
-            '<span class="settings-row-chev">›</span>'+
-          '</div>'+
-        '</div>'
-      :'')+
-
-      '<div class="settings-group">'+
-        '<div class="settings-group-hd">Account</div>'+
-        (msgCount?
-          '<div class="settings-row" onclick="_confirmClearChat()">'+
-            '<div class="settings-row-ic" style="background:#2a1a1a;">'+
-              '<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-                '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>'+
-              '</svg>'+
-            '</div>'+
-            '<div class="settings-row-body"><div class="settings-row-title">Clear Chat History</div></div>'+
-          '</div>'
-        :'')+
-        '<div class="settings-row" onclick="clearApiKey()">'+
-          '<div class="settings-row-ic" style="background:#1a1a2e;">'+
-            '<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17">'+
-              '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'+
-            '</svg>'+
-          '</div>'+
-          '<div class="settings-row-body"><div class="settings-row-title">Disconnect</div></div>'+
-        '</div>'+
-      '</div>';
-  }
+          '<div class="settings-row-body"><div class="settings-row-title">'+_escT(r.title)+'</div>'+
+            (r.sub!=null ? '<div class="settings-row-sub">'+_escT(r.sub)+'</div>' : '')+'</div>'+
+          (d.chev ? '<span class="settings-row-chev">›</span>' : '')+
+        '</div>';
+    });
+    h+='</div>';
+  });
+  return h;
+}
+// Tabs model v1 (contract 6.1; FPCore TabsModel.swift reads it): the native bar in the room's colours as the web bar
+// draws them (the selected tab Heavyweight's --accent or Lime's neutral --text, the others --muted) and the four items'
+// titles and accessibility labels, #tabs' own (the tools find a bar item by its a11y). No side effects; rev is the
+// caller's, as _coachHomeModel's.
+var _FP_TAB_TITLES={log:'Log', progress:'Progress', coach:'Coach', settings:'Settings'};
+function _tabsModel(rev){
+  var room=THEMES[currentTheme] ? currentTheme : 'heavyweight', t=THEMES[room], paper=!!t.paper;
+  return {v:1, rev:rev, boot:_fpBoot, room:room, paper:paper, tint:paper ? t.accent : t.text, idle:t.muted,
+    items:FP_TAB_IDS.map(function(id){ return {id:id, title:_FP_TAB_TITLES[id], a11y:_FP_TAB_TITLES[id]}; })};
+}
+function renderCoach(){
+  var apiKey=getApiKey();
+  getWkData();   // clamps currentWeek to the programme, as this paint always has (the chat header's WK reads it)
+  // ── No API key: the connect screen (even during setup); the hub ─────────────
+  if(!apiKey || (coachView==='home' && !intakeMode)) return _coachHomeHTML(_coachHomeModel(0));
+  var _msw=_coachModelSwitch();
+  var modelNext=_msw.next;
+  var modelLabel=_msw.label, modelSwitch=_msw.a11y;
 
   // ── Chat view ─────────────────────────────────────────────────────────────
   // Drawn natively from the coach model when the shell has the native chat (FPScreens): an element
