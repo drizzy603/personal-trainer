@@ -3,10 +3,11 @@
 // - CoachHomeModel v1 (_coachHomeModel) is the web Coach hub and connect screen it draws (_coachHomeHTML): in every
 //   state the meta label and avatar, the hero, the key field's label and placeholder, the CTA, the help's lines, the
 //   starter link, and the groups and rows (order, actions, titles, subs) equal the textContent of the elements on
-//   screen; rows appear exactly when the web shows them (Build My Programme without a programme, Clear Chat History
-//   with messages, Disconnect always; the starter link only without a programme) and Open Chat's sub has its three
-//   lines; resume is true with a key in setup and with a key, a reply in flight and the chat view, false for a reply in
-//   flight on the hub, with no key in setup (route connect) and in every page-built fixture but hub-resume.
+//   screen, drawn with no shell and under the native bar (tabsWeb), one screen in both; rows appear exactly when the
+//   web shows them (Build My Programme without a programme, Clear Chat History with messages, Disconnect always; the
+//   starter link only without a programme) and Open Chat's sub has its three lines; resume is true with a key in
+//   setup and with a key, a reply in flight and the chat view, false for a reply in flight on the hub, with no key in
+//   setup (route connect) and in every page-built fixture but hub-resume.
 // - The builders have no side effects (rev the caller's, boot the document's, _fp.rev and currentWeek untouched).
 // - tokens.type is the chat's sizes plus the 16 home* sizes of the per-room table (contract 6.2), in a copy:
 //   _COACH_TOKENS.type and every CoachModel (built now, and Fixtures/coach) hold none; connect.help is the two
@@ -99,89 +100,102 @@ function sameAsScreen(name, m, d) {
   }
 }
 
-serial('the Coach home model is the web hub and connect screen drawn from it; rows, Open Chat\'s sub-lines and resume', async () => {
-  const app = await boot({ native: true, shell: 'tabsWeb', page: { timezoneId: 'UTC' }, seed: { kt_coach_msgs: '[]' } });
-  try {
-    const out = await app.page.evaluate((HELPERS) => {
-      eval(HELPERS);
-      const day = (n, hh) => new Date(addDays(todayISO(), n) + 'T' + hh + ':00').getTime();
-      const chat = [
-        { role: 'user', content: 'How was my week?', at: day(-1, '18:00') },
-        { role: 'assistant', content: '%%type: Week review\nSolid week.\n%%metric: RUNS | 2 | of 3 | -1 | warn\n\nFour sessions and two runs, all done.\n%%action: Plan week 7 | Plan my week 7', at: day(-1, '18:01') },
-        { role: 'user', content: 'And the runs?', at: day(0, '07:30') },
-      ];
-      const states = {
-        'connect': { key: null },
-        'connect-starter': { key: null, name: null, routine: null },
-        'connect-intake': { key: null, intake: true },
-        'connect-noname': { key: null, name: null, routine: Object.assign({}, lsGet('kt_routine'), { name: 'Custom Plan' }) },
-        'hub-empty': {},
-        'hub-history': { msgs: chat.slice(0, 2) },
-        'hub-odd': { msgs: chat },
-        'hub-replying': { msgs: chat, loading: true },
-        'hub-programme': { routine: null, msgs: chat.slice(0, 2) },
-        'hub-programme-empty': { routine: null },
-        'hub-image': { msgs: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'R0lGODlhAQABAAAAACw=' } }], at: day(0, '07:40') }] },
-      };
-      const res = {};
-      for (const name of Object.keys(states)) {
-        __state(states[name]);
-        const rev = _fp.rev, wk = currentWeek;
-        const m = _coachHomeModel(7);
-        res[name] = { m, d: __read(), msgs: coachMessages.length, programme: hasCustomRoutine(), pure: _fp.rev === rev && currentWeek === wk && m.rev === 7 && m.boot === _fpBoot && m.v === 1 };
+// Drawn twice: with no shell (the browser, the PWA and every shell before 60: the page as it always was) and under
+// build 61's bar over the web Coach tab ('tabsWeb'). The model is the screen in each, and the two screens are the same.
+serial('the Coach home model is the web hub and connect screen drawn from it, with no shell and under the native bar; rows, Open Chat\'s sub-lines and resume', async () => {
+  const drawn = {};
+  for (const shell of ['none', 'tabsWeb']) {
+    const app = await boot({ native: true, shell, page: { timezoneId: 'UTC' }, seed: { kt_coach_msgs: '[]' } });
+    try {
+      const out = await app.page.evaluate((HELPERS) => {
+        eval(HELPERS);
+        const day = (n, hh) => new Date(addDays(todayISO(), n) + 'T' + hh + ':00').getTime();
+        const chat = [
+          { role: 'user', content: 'How was my week?', at: day(-1, '18:00') },
+          { role: 'assistant', content: '%%type: Week review\nSolid week.\n%%metric: RUNS | 2 | of 3 | -1 | warn\n\nFour sessions and two runs, all done.\n%%action: Plan week 7 | Plan my week 7', at: day(-1, '18:01') },
+          { role: 'user', content: 'And the runs?', at: day(0, '07:30') },
+        ];
+        const states = {
+          'connect': { key: null },
+          'connect-starter': { key: null, name: null, routine: null },
+          'connect-intake': { key: null, intake: true },
+          'connect-noname': { key: null, name: null, routine: Object.assign({}, lsGet('kt_routine'), { name: 'Custom Plan' }) },
+          'hub-empty': {},
+          'hub-history': { msgs: chat.slice(0, 2) },
+          'hub-odd': { msgs: chat },
+          'hub-replying': { msgs: chat, loading: true },
+          'hub-programme': { routine: null, msgs: chat.slice(0, 2) },
+          'hub-programme-empty': { routine: null },
+          'hub-image': { msgs: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'R0lGODlhAQABAAAAACw=' } }], at: day(0, '07:40') }] },
+        };
+        const res = {};
+        for (const name of Object.keys(states)) {
+          __state(states[name]);
+          const rev = _fp.rev, wk = currentWeek;
+          const m = _coachHomeModel(7);
+          res[name] = { m, d: __read(), msgs: coachMessages.length, programme: hasCustomRoutine(), pure: _fp.rev === rev && currentWeek === wk && m.rev === 7 && m.boot === _fpBoot && m.v === 1 };
+        }
+        // resume: the page pushes the chat on the next Coach selection exactly when its own rule would
+        const resume = {};
+        const at = (name, o) => { __state(o); resume[name] = { resume: _coachHomeModel(0).resume, route: _coachHomeModel(0).route }; };
+        at('key, setup', { intake: true });
+        at('key, a reply in flight, the chat view', { msgs: chat, loading: true, view: 'chat' });
+        at('key, a reply in flight, the hub', { msgs: chat, loading: true, view: 'home' });
+        at('no key, setup', { key: null, intake: true });
+        at('key, the chat view, nothing in flight', { msgs: chat, view: 'chat' });
+        // no side effects even where getWkData() would clamp: currentWeek past the programme's end is read, not written
+        __state({});
+        const was = currentWeek; currentWeek = 99;
+        const past = _coachHomeModel(0).meta.label, after = currentWeek;
+        currentWeek = was;
+        __state({ msgs: [] });
+        return { res, resume, past, after, total: getTotalWeeks(), flag: !!_fpShellFlag() };
+      }, HELPERS);
+      const S = shell + ': ';
+      assert(out.flag === (shell !== 'none'), S + 'the boot runs under its shell (a flag only under tabsWeb)');
+      drawn[shell] = {};
+      for (const name of Object.keys(out.res)) {
+        const { m, d, msgs, programme, pure } = out.res[name];
+        drawn[shell][name] = d;
+        sameAsScreen(S + name, m, d);
+        assert(pure, S + name + ': the builder has no side effects (rev the caller\'s, boot the document\'s, _fp.rev and currentWeek untouched)');
+        // rows exactly when the web shows them
+        const rows = m.groups.flatMap((g) => g.rows.map((r) => r.do));
+        if (m.route === 'hub') {
+          assert(J(m.groups.map((g) => g.head)) === J(['Conversation'].concat(programme ? [] : ['Programme'], ['Account'])), S + name + ': the groups ' + J(m.groups.map((g) => g.head)));
+          assert(J(rows) === J(['openChat'].concat(programme ? [] : ['startIntake'], msgs ? ['clearChat'] : [], ['disconnect'])), S + name + ': the rows ' + J(rows));
+          assert(m.groups.every((g) => g.rows.every((r) => (r.do === 'openChat' || r.do === 'startIntake') === (typeof r.sub === 'string'))), S + name + ': only Open Chat and Build My Programme have a sub');
+        } else {
+          assert(J(m.groups) === '[]' && (m.connect.starter === null) === programme, S + name + ': the starter link only without a programme ' + J(m.connect.starter));
+        }
       }
-      // resume: the page pushes the chat on the next Coach selection exactly when its own rule would
-      const resume = {};
-      const at = (name, o) => { __state(o); resume[name] = { resume: _coachHomeModel(0).resume, route: _coachHomeModel(0).route }; };
-      at('key, setup', { intake: true });
-      at('key, a reply in flight, the chat view', { msgs: chat, loading: true, view: 'chat' });
-      at('key, a reply in flight, the hub', { msgs: chat, loading: true, view: 'home' });
-      at('no key, setup', { key: null, intake: true });
-      at('key, the chat view, nothing in flight', { msgs: chat, view: 'chat' });
-      // no side effects even where getWkData() would clamp: currentWeek past the programme's end is read, not written
-      __state({});
-      const was = currentWeek; currentWeek = 99;
-      const past = _coachHomeModel(0).meta.label, after = currentWeek;
-      currentWeek = was;
-      __state({ msgs: [] });
-      return { res, resume, past, after, total: getTotalWeeks() };
-    }, HELPERS);
-    for (const name of Object.keys(out.res)) {
-      const { m, d, msgs, programme, pure } = out.res[name];
-      sameAsScreen(name, m, d);
-      assert(pure, name + ': the builder has no side effects (rev the caller\'s, boot the document\'s, _fp.rev and currentWeek untouched)');
-      // rows exactly when the web shows them
-      const rows = m.groups.flatMap((g) => g.rows.map((r) => r.do));
-      if (m.route === 'hub') {
-        assert(J(m.groups.map((g) => g.head)) === J(['Conversation'].concat(programme ? [] : ['Programme'], ['Account'])), name + ': the groups ' + J(m.groups.map((g) => g.head)));
-        assert(J(rows) === J(['openChat'].concat(programme ? [] : ['startIntake'], msgs ? ['clearChat'] : [], ['disconnect'])), name + ': the rows ' + J(rows));
-        assert(m.groups.every((g) => g.rows.every((r) => (r.do === 'openChat' || r.do === 'startIntake') === (typeof r.sub === 'string'))), name + ': only Open Chat and Build My Programme have a sub');
-      } else {
-        assert(J(m.groups) === '[]' && (m.connect.starter === null) === programme, name + ': the starter link only without a programme ' + J(m.connect.starter));
-      }
-    }
-    const sub = (name) => out.res[name].m.groups[0].rows[0].sub;
-    assert(sub('hub-replying') === 'Coach is replying…', 'a reply in flight: ' + sub('hub-replying'));
-    assert(sub('hub-empty') === 'No messages yet — tap to start' && sub('hub-programme-empty') === sub('hub-empty'), 'no messages: ' + sub('hub-empty'));
-    assert(sub('hub-history') === '1 exchange · Solid week. Four sessions and two runs, all done.', 'one exchange, %% lines dropped: ' + sub('hub-history'));
-    assert(sub('hub-odd') === '2 exchanges · And the runs?' && out.res['hub-odd'].m.hero.body === '2 exchanges so far. Pick up where you left off, or start a new thread.', 'three messages are two exchanges: ' + sub('hub-odd'));
-    assert(sub('hub-image') === '1 exchange · [Image]', 'a photo alone: ' + sub('hub-image'));
-    assert(out.res['connect-intake'].m.route === 'connect' && J(out.res['connect-intake'].d) === J(out.res.connect.d), 'no key during setup: the connect screen wins');
-    assert(out.res['connect-noname'].m.hero.greet === 'Welcome.' && out.res['connect-noname'].m.meta.avatar === '?', 'no name: Welcome. and ?');
-    const want = { 'key, setup': true, 'key, a reply in flight, the chat view': true, 'key, a reply in flight, the hub': false, 'no key, setup': false, 'key, the chat view, nothing in flight': false };
-    for (const k of Object.keys(want)) assert(out.resume[k].resume === want[k], 'resume ' + k + ': ' + J(out.resume[k]));
-    assert(out.resume['no key, setup'].route === 'connect' && out.resume['key, setup'].route === 'hub', 'routes: ' + J(out.resume));
-    for (const name of Object.keys(out.res)) assert(out.res[name].m.resume === false, name + ': resume false on the hub view with nothing in setup');
-    assert(out.past === 'COACH · WK ' + out.total + ' / ' + out.total + ' · DELOAD' && out.after === 99, 'a week past the end reads as the last, unwritten: ' + J([out.past, out.after]));
-    // every page-built fixture: resume a boolean, true only in hub-resume
-    const built = fs.readdirSync(path.join(FIXTURES, 'coachHome')).filter((f) => HAND_MADE.indexOf(f) < 0);
-    assert(built.length === 8, 'eight page-built coachHome fixtures: ' + J(built));
-    for (const f of built) {
-      const m = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'coachHome', f), 'utf8'));
-      assert(typeof m.resume === 'boolean' && m.resume === (f === 'hub-resume.json'), f + ': resume ' + J(m.resume));
-      assert(m.route === (/^connect-/.test(f) ? 'connect' : 'hub'), f + ': route ' + m.route);
-    }
-  } finally { await app.close(); }
+      const sub = (name) => out.res[name].m.groups[0].rows[0].sub;
+      assert(sub('hub-replying') === 'Coach is replying…', S + 'a reply in flight: ' + sub('hub-replying'));
+      assert(sub('hub-empty') === 'No messages yet — tap to start' && sub('hub-programme-empty') === sub('hub-empty'), S + 'no messages: ' + sub('hub-empty'));
+      assert(sub('hub-history') === '1 exchange · Solid week. Four sessions and two runs, all done.', S + 'one exchange, %% lines dropped: ' + sub('hub-history'));
+      assert(sub('hub-odd') === '2 exchanges · And the runs?' && out.res['hub-odd'].m.hero.body === '2 exchanges so far. Pick up where you left off, or start a new thread.', S + 'three messages are two exchanges: ' + sub('hub-odd'));
+      assert(sub('hub-image') === '1 exchange · [Image]', S + 'a photo alone: ' + sub('hub-image'));
+      assert(out.res['connect-intake'].m.route === 'connect' && J(out.res['connect-intake'].d) === J(out.res.connect.d), S + 'no key during setup: the connect screen wins');
+      assert(out.res['connect-noname'].m.hero.greet === 'Welcome.' && out.res['connect-noname'].m.meta.avatar === '?', S + 'no name: Welcome. and ?');
+      const want = { 'key, setup': true, 'key, a reply in flight, the chat view': true, 'key, a reply in flight, the hub': false, 'no key, setup': false, 'key, the chat view, nothing in flight': false };
+      for (const k of Object.keys(want)) assert(out.resume[k].resume === want[k], S + 'resume ' + k + ': ' + J(out.resume[k]));
+      assert(out.resume['no key, setup'].route === 'connect' && out.resume['key, setup'].route === 'hub', S + 'routes: ' + J(out.resume));
+      for (const name of Object.keys(out.res)) assert(out.res[name].m.resume === false, S + name + ': resume false on the hub view with nothing in setup');
+      assert(out.past === 'COACH · WK ' + out.total + ' / ' + out.total + ' · DELOAD' && out.after === 99, S + 'a week past the end reads as the last, unwritten: ' + J([out.past, out.after]));
+    } finally { await app.close(); }
+  }
+  // one screen whichever host draws the bar: the web hub and connect screen do not depend on the shell
+  for (const name of Object.keys(drawn.none)) {
+    assert(J(drawn.none[name]) === J(drawn.tabsWeb[name]), name + ': the same screen with no shell and under the native bar ' + J([drawn.none[name].html.slice(0, 200), drawn.tabsWeb[name].html.slice(0, 200)]));
+  }
+  // every page-built fixture: resume a boolean, true only in hub-resume
+  const built = fs.readdirSync(path.join(FIXTURES, 'coachHome')).filter((f) => HAND_MADE.indexOf(f) < 0);
+  assert(built.length === 8, 'eight page-built coachHome fixtures: ' + J(built));
+  for (const f of built) {
+    const m = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'coachHome', f), 'utf8'));
+    assert(typeof m.resume === 'boolean' && m.resume === (f === 'hub-resume.json'), f + ': resume ' + J(m.resume));
+    assert(m.route === (/^connect-/.test(f) ? 'connect' : 'hub'), f + ': route ' + m.route);
+  }
 });
 
 serial('tokens.type is the chat\'s plus the home* table, in a copy; whole-character previews; escaping; never the key', async () => {
@@ -310,9 +324,10 @@ serial('the tabs model: the web bar\'s colours and labels per room; its room fol
   } finally { await app.close(); }
 });
 
-// A document that starts on the Coach tab (the flag's selected tab, as a reload under the native bar does) paints the hub
-// or the connect screen before the script has defined _COACH_TOKENS: the web screen is drawn from _coachHomeScreen(),
-// never the whole model, whose tokens would throw there (and under a 61 flag close() fails on any page error).
+// A document that starts on the Coach tab (the flag's selected tab, as a reload under the native bar does) paints the
+// hub or the connect screen before the script has defined _COACH_TOKENS: the web screen is drawn from
+// _coachHomeScreen(), never the whole model, whose tokens would throw there (and under a 61 flag close() fails on any
+// page error).
 serial('the boot\'s first paint on the Coach tab draws the hub or the connect screen', async () => {
   const flag = Object.assign({}, SHELLS.tabsWeb, { tabs: Object.assign({}, SHELLS.tabsWeb.tabs, { selected: 'coach' }) });
   for (const key of ['sk-ant-api03-SPEC126-KEY', null]) {
