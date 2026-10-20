@@ -138,8 +138,11 @@ function _fpBarVars(bar, up, z){
 // On a pass: html.fp-tabs and the bar's prediction before the first paint, and the failsafe: no hello answer within
 // 16 s of visible time (hidden time does not count, as the shell's own deadline counts foreground time only) and the
 // page leaves tabs mode on its own, telling the shell (dismiss tabs), so a page whose main script never got going
-// still ends with one bar, its own. Visible time is the time between two ticks that both saw the page visible: a
-// stretch with a hidden end never counts, so the page never leaves early (at most one tick late).
+// still ends with one bar, its own. Visible time runs from a tick or a visibilitychange that saw the page visible to
+// the next tick that sees it visible, or to the visibilitychange that hides it; a stretch whose end is hidden never
+// counts. No stretch counts more than 1 s (four ticks): a suspension that no visibilitychange reported, or a tick a busy
+// page held back, only makes the failsafe later. Leaving early would cost the native bar for this page build (the
+// shell records the decline), so the count errs late.
 (function(){
   try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){}
   var t=_fpTabsTest(); if(!t) return;
@@ -147,19 +150,32 @@ function _fpBarVars(bar, up, z){
   try{ root.classList.add('fp-tabs'); _fpBarVars(t.bar, t.bar.h>0 ? t.bar.h : 49+t.bar.safe, 1); }catch(e){ return; }
   var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
   var vis=0, last=document.visibilityState==='visible' ? now() : null;
+  var add=function(at){ if(last!==null) vis+=Math.min(1000, Math.max(0, at-last)); };
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if(!window.__fpTabsFailT) return;
+      var at=now();
+      if(document.visibilityState==='visible'){ if(last===null) last=at; }
+      else { add(at); last=null; }
+    });
+  }catch(e){}
   window.__fpTabsFailT=setInterval(function(){
     if(window.__fpTabsAnswered){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; return; }
-    var at=now(), on=document.visibilityState==='visible';
-    if(on && last!==null) vis+=Math.max(0, at-last);
-    last=on ? at : null;
+    var at=now();
+    if(document.visibilityState==='visible'){ add(at); last=at; } else last=null;
     if(vis < (typeof window.__fpTabsFailsafeMs==='number' ? window.__fpTabsFailsafeMs : 16000)) return;
     clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null;
     // The main script's own way out when it got as far as its state (its function declarations exist even when it
-    // threw at run time, so only _fp says it ran); else, or when that throws, strip and tell the shell from here.
-    try{ if(window._fp && window._fp.tabs){ _fpTabsLeave('no-hello', true); return; } }catch(e){}
+    // threw at run time, so only _fp says it ran). Whatever that did (it may have had nothing to leave, or thrown), the
+    // class and the variables go and the shell hears dismiss tabs once, from here when the way out did not send it.
+    try{ if(window._fp && window._fp.tabs) _fpTabsLeave('no-hello', true); }catch(e){}
     try{ root.classList.remove('fp-tabs'); _fpBarVars(null); }catch(e){}
     try{
-      if(!window.__fpTabsTold){ window.__fpTabsTold=true; Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){}); }
+      if(!window.__fpTabsTold){
+        window.__fpTabsTold=true;
+        try{ if(window._fp && _fp.off && !_fp.off.coach) _fp.off.coach='tabs'; }catch(e){}   // the fallback takes the chat too
+        Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){});
+      }
     }catch(e){}
   }, 250);
 })();

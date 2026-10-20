@@ -780,7 +780,30 @@ serial('P2: the failsafe: no hello answer in 16 s of visible time (hidden time d
   } finally { await c.close(); }
 });
 
-serial('P2: a broken page still drops the native bar (the head failsafe\'s own way out): the main script throws at its first statement, or does not parse; and a throw in the tabs boot block leaves tabs mode at boot while the first render and _bootDone still run', async () => {
+serial('P2: the failsafe counts only time the page could see: a hide and a show with no tick between them (the app suspended) add nothing; a stretch no visibilitychange reported adds 1 s at most', async () => {
+  // performance.now() moved by hand (__skew): ten minutes pass inside one task, so no failsafe tick runs in them
+  const SKEW = 'window.__skew = 0; (function () { var pn = performance.now.bind(performance); performance.now = function () { return pn() + window.__skew; }; })();';
+  const app = await pageBoot('tabs', { init: HIDDEN + SKEW + 'window.__vis = "visible"; window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 8000;' });
+  try {
+    await settle(app, 300);
+    await ev(app, () => { window.__vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
+      window.__skew += 600000; window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    await settle(app, 600);
+    const a = await look(app);
+    await ev(app, () => { window.__skew += 600000; });   // visible all along, ten minutes in one stretch: a stall, a suspension
+    await settle(app, 600);
+    const b = await look(app);
+    assert(a.mode && a.cls && dismissTabs(a) === 0, 'ten minutes between a hide and a show: still in tabs mode: ' + J(a));
+    assert(b.mode && b.cls && dismissTabs(b) === 0, 'an unreported ten minutes counts 1 s at most: still in tabs mode: ' + J(b));
+    await app.page.waitForFunction(() => !_fp.tabs.mode, null, { timeout: 20000 });
+    await settle(app, 100);
+    const o = await look(app);
+    classicLook(o, 'the failsafe after a suspension');
+    assert(o.why === 'no-hello' && o.told && dismissTabs(o) === 1, 'then out on its own after 8 s of visible time, one dismiss tabs: ' + J(o));
+  } finally { await app.close(); }
+});
+
+serial('P2: a broken page still drops the native bar (the head failsafe\'s own way out): the main script throws at its first statement, or does not parse, or reached its state with tabs mode never started; and a throw in the tabs boot block leaves tabs mode at boot while the first render and _bootDone still run', async () => {
   const MAIN = '<script>\n// ── Hybrid loader: live update check';
   const broken = [
     ['the main script throws at its first statement', edited(MAIN, '<script>\nthrow new Error("boom: the main script\'s first statement");\n// ── Hybrid loader: live update check')],
@@ -801,6 +824,19 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
       assert(o.st.scene.fellBack && o.st.scene.fellBack.why === 'page' && !o.st.live, tag + ': the scene fell back page: ' + J(o.st.scene));
     } finally { await app.close(); }
   }
+  // the main script got as far as its state but tabs mode never started (its boot block never ran): the main script's way
+  // out has nothing to leave, so the head strips the class and the variables and tells the shell itself
+  const skipped = edited('try{\n  (function(){\n    var root=document.documentElement, t=_fpTabsTest();',
+    'try{\n  (function(){ return;\n    var root=document.documentElement, t=_fpTabsTest();');
+  const sk = await pageBoot('tabs', { html: skipped, init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
+  try {
+    await sk.page.waitForFunction(() => !document.documentElement.classList.contains('fp-tabs'), null, { timeout: 15000 });
+    await settle(sk, 300);
+    const o = await look(sk);
+    classicLook(o, 'tabs mode never started', false);
+    assert(!o.mode && dismissTabs(o) === 1 && o.offCoach === 'tabs' && o.tabsCalls.length === 1, 'tabs mode never started: one dismiss tabs, the chat off: ' + J(o));
+    fellBackPage(o, 'tabs mode never started');
+  } finally { await sk.close(); }
   // a throw at the start of the fp-tabs boot block (found by its marker comment)
   const marker = PAGE.indexOf('// fp-tabs boot block'), at = PAGE.indexOf('\ntry{', marker);
   assert(marker > 0 && PAGE.indexOf('// fp-tabs boot block', marker + 1) < 0 && at > marker && at - marker < 800, 'the boot block\'s marker and its try');
