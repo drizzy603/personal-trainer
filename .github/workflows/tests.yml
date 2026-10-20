@@ -1,34 +1,60 @@
 name: Web regression tests
 
+# The page's Playwright suite in its five modes (tests/run.sh), each mode in two shards (SHARD=1/2 and SHARD=2/2:
+# every other spec of the sorted list), so ten jobs, each inside its own 15 minutes:
+#   classic           the page as the browser, the PWA and every shell before 60 run it
+#   shadow            STORE=shadow: every document starts with build 60's storage (the shipped facade over a mock
+#                     native store), and each browser close checks the store, WebKit and the page's reads for drift
+#   inert61           FP_SHELL_INERT=1: every native boot that names no shell runs under build 61's flag with no
+#                     native screen up
+#   shadow + inert61  STORE=shadow FP_SHELL_INERT=1: both at once
+#   inert60           FP_SHELL_INERT=60: build 60's flag with no native screen up, while a build 60 can be installed
+# Same specs, same results: per-spec results in every mode equal the classic run's. The six jobs of the three inert
+# modes skip the specs marked `// fp-spec: self-shelled` (tests/run.sh skips them whenever FP_SHELL_INERT is set): they
+# name their shell on every native boot, so their classic and shadow runs already cover the inert modes.
+
+# Pushes to main and next, and pull requests, on the same paths: the page and its service worker, the tests, the
+# storage facade the shell injects, FPCore's test folder (the specs read intents.json, the shared fixtures and
+# page-grammar.json there) and TrovoShellPlugin.swift (for spec 122's drift case, which P13 adds: it will read the
+# plugin's method names).
 on:
   push:
-    branches: [main]
+    branches: [main, next]
     paths:
       - 'index.html'
       - 'sw.js'
       - 'tests/**'
       - 'ios/App/FPKit/Sources/FPStore/Resources/ktstore.js'
+      - 'ios/App/FPKit/Tests/FPCoreTests/**'
+      - 'ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoShellPlugin.swift'
       - '.github/workflows/tests.yml'
   pull_request:
     paths:
       - 'index.html'
+      - 'sw.js'
       - 'tests/**'
       - 'ios/App/FPKit/Sources/FPStore/Resources/ktstore.js'
+      - 'ios/App/FPKit/Tests/FPCoreTests/**'
+      - 'ios/App/CapApp-SPM/Sources/CapApp-SPM/TrovoShellPlugin.swift'
+      - '.github/workflows/tests.yml'
   workflow_dispatch:
 
+# One run per ref: a newer push to main or next cancels the run still going for the older one.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # Separate jobs, each inside its own 15 minutes: the classic run (the browser, the PWA and every shell before
-  # 60); the store matrix (STORE=shadow: every document starts with build 60's storage, the shipped facade over a
-  # mock native store, and each browser close checks for drift); the contract run (FP_SHELL_INERT=1: every native
-  # boot under build 60's shell flag with no native screen); and both at once (build 60 with no native screen up).
-  # Same specs, same results.
   playwright:
-    name: Playwright suites (${{ matrix.mode }})
+    name: Playwright suites (${{ matrix.mode }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        mode: [classic, shadow, inert61, 'shadow + inert61', inert60]
+        shard: ['1/2', '2/2']
+        # Each mode's settings, added to both of its shards.
         include:
           - mode: classic
             store: ''
@@ -36,15 +62,22 @@ jobs:
           - mode: shadow
             store: shadow
             inert: ''
-          - mode: inert
+          - mode: inert61
             store: ''
             inert: '1'
-          - mode: shadow + inert
+          - mode: 'shadow + inert61'
             store: shadow
             inert: '1'
+          - mode: inert60
+            store: ''
+            inert: '60'
 
     steps:
+      # The whole history: BASE_PAGE() (tests/lib/harness.js) reads index.html at 91708ae, the page before the tabs
+      # half, which a shallow checkout does not have.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -65,6 +98,7 @@ jobs:
         env:
           STORE: ${{ matrix.store }}
           FP_SHELL_INERT: ${{ matrix.inert }}
+          SHARD: ${{ matrix.shard }}
         run: |
           set -o pipefail
           ./tests/run.sh 2>&1 | tee suite.log
