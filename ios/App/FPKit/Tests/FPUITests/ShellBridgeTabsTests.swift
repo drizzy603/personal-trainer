@@ -593,6 +593,22 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(failures(s, "tabs"), 0, "held, then dropped by the ping's answer")
         XCTAssertEqual(b.link.heldTimeouts, 0)
 
+        // a failed tabs.select with a newer one queued behind it: nothing goes before the link is idle, and the newer
+        // one's answer leaves nothing to restate (the page has the newest selection)
+        await setHow(s, "tabs.select", ["never", "ok"])
+        tap(s, "settings")
+        tap(s, "log")
+        try await expect("both taps' tabs.select and the second ping ended") {
+            b.pageLink.pending == 0 && b.pageLink.records.filter { $0.name == "ping" }.count == 2
+        }
+        try await sleep(0.3)
+        let queued = await calls(s, "tabs.select")
+        XCTAssertEqual(queued.map(\.tab), ["progress", "progress", "settings", "log"], "no restate after the newer answer")
+        XCTAssertEqual(queued.map(\.seq), [1, 2, 3, 4])
+        XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.select" }.map(\.outcome), ["failed timeout", "done", "failed timeout", "done"])
+        XCTAssertEqual(root.seq, 4)
+        XCTAssertEqual(failures(s, "tabs"), 0)
+
         // the bar: on a NATIVE Coach tab with a sheet open, then back to Log, the root hides it and says so
         root.setHome(s.home)
         _ = try await message(s, "selectTab", ["tab": "coach"]).get()
@@ -606,7 +622,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(bars[1].rev, (bars[0].rev ?? 0) + 1, "the restate takes a new rev")
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.bar" }.map(\.outcome), ["failed timeout", "done"])
         let selects = await calls(s, "tabs.select")
-        XCTAssertEqual(selects.count, 3, "the tap's own tabs.select went once and was answered: no restate for it")
+        XCTAssertEqual(selects.count, 5, "the tap's own tabs.select went once and was answered: no restate for it")
         XCTAssertEqual(failures(s, "tabs"), 0)
         XCTAssertTrue(b.link.isLive("tabs"))
     }
@@ -829,6 +845,43 @@ final class ShellBridgeTabsTests: XCTestCase {
         return refs
     }
 
+    /// The same holds while the binding lives on: a window that lets the root go before any `sceneDisconnected` (nothing
+    /// tore the stack down or reset the root's hooks) frees the root, its slots, the web controller and the web view,
+    /// so no strong capture in the stack state or the root's hooks (a cycle with the root) can hide behind the teardown.
+    func test11bWithTheBindingAliveNothingTheBridgeKeepsHoldsTheRoot() async throws {
+        let bridge = makeBridge()
+        let refs = try await sceneLetGoWithoutTeardown(bridge)
+        let freed = try await until(6) { refs.allSatisfy { $0.1.object == nil } }
+        XCTAssertTrue(freed, "still alive: \(refs.filter { $0.1.object != nil }.map(\.0))")
+        XCTAssertNotNil(bridge.binding, "the binding outlived them")
+        XCTAssertEqual(bridge.binding?.screens.stackAttached, true, "the stack was never detached")
+        bridge.sceneDisconnected(webView: nil)
+        XCTAssertNil(bridge.binding)
+    }
+
+    /// Test 11b's scene: driven (the chat pushed), then let go by the window alone.
+    private func sceneLetGoWithoutTeardown(_ bridge: ShellBridge) async throws -> [(String, Weak)] {
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        let refs: [(String, Weak)] = [("root", Weak(root)), ("nav", Weak(root.coachSlot.nav))]
+            + root.slots.enumerated().map { ("slot \($0.offset)", Weak($0.element)) }
+            + [("web controller", Weak(s.web)), ("web view", Weak(s.webView))]
+        tap(s, "progress")
+        root.setHome(s.home)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "selectTab", ["tab": "coach"]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle") { bridge.binding?.pageLink.pending == 0 && bridge.binding?.screens.describe()["busy"] as? Bool == false }
+        autoreleasepool {
+            s.webView.live = false
+            s.window.isHidden = true
+            s.window.rootViewController = nil
+            scenes.removeAll { $0 === s }
+        }
+        return refs
+    }
+
     // MARK: 12. VoiceOver
 
     /// Contract 8.1 step 7, I17, G22: a tap to a web tab posts `.screenChanged` with the web view only once the page has
@@ -838,8 +891,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.25   // 2 s -> 0.5 s
-        await setHow(s, "tabs.select", ["late:400", "never"])
+        b.pageLink.timeoutScale = 0.5   // 2 s -> 1 s: every "not yet" below has most of a second to spare
+        await setHow(s, "tabs.select", ["late:1000", "never"])
         tap(s, "progress")
         XCTAssertEqual(s.posts, [], "nothing in the funnel's turn")
         try await sleep(0.15)
