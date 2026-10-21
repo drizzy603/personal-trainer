@@ -372,9 +372,9 @@ const OTA = 'window.Capacitor.Plugins.TrovoOta = { confirm: function () { window
 // (null with no TrovoShell).
 const bootEnds = (app) => ev(app, () => ({ err: JSON.parse(localStorage.getItem('kt_err_log') || '[]').map((e) => e.m),
   confirms: window.__otaConfirms || 0, bootDone: window.__fpShell ? __fpShell.of('bootDone').length : null }));
-// A boot whose hello stayed silent (__fpShellHelloSilent): the case sends the hello that answers (the mock negotiates it
-// on its scene as it stands then), then opens the chat with a key saved: the reply, the chat's state and what the page
-// presented.
+// A boot whose hello stayed silent (__fpShellHelloSilent): the case sends the hello that answers (the mock negotiates
+// it on its scene as it stands then), then opens the chat with a key saved: the reply, the chat's state and what the
+// page presented.
 const chatAfter = (app) => ev(app, async () => {
   const w = (ms) => new Promise((z) => setTimeout(z, ms));
   window.__fpShellHelloSilent = false; _fp.hello = null; _fpHello();
@@ -954,10 +954,10 @@ serial('P2: the failsafe counts only time the page could see: a hide and a show 
 serial('P2: the chat after a way out on the page\'s own once its hello asked for tabs (the failsafe): off while the shell may have negotiated it under the tab root\'s rule; a late reply naming tabs keeps it off, a late reply without tabs (the classic rule) gives it back', async () => {
   // Each boot's hello names tabs and stays silent, so the failsafe (400 ms of visible time) leaves tabs mode with one
   // dismiss tabs and the chat off; then the case sends the reply that comes late. A reply naming tabs was negotiated
-  // under the tab root's rule, and the page's dismiss reached the shell after it, a fallback mid-document that takes the
-  // chat off (contract 2.2, 10.3: a stand-in reply, as the mock's scene has fallen back by then). A reply without tabs
-  // was negotiated on the classic rule (here the mock's own, the scene having fallen back at the page's dismiss), which
-  // no later fallback changes: 60's overlay chat.
+  // under the tab root's rule, and the page's dismiss reached the shell after it, a fallback mid-document that takes
+  // the chat off (contract 2.2, 10.3: a stand-in reply, as the mock's scene has fallen back by then). A reply without
+  // tabs was negotiated on the classic rule (here the mock's own, the scene having fallen back at the page's dismiss),
+  // which no later fallback changes: 60's overlay chat.
   const INIT = 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;';
   const out = async (app, tag) => {
     await app.page.waitForFunction(() => window._fp && _fp.tabs.left, null, { timeout: 15000 });
@@ -1014,11 +1014,11 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
       assert(o.st.scene.fellBack && o.st.scene.fellBack.why === 'page' && !o.st.live, tag + ': the scene fell back page: ' + J(o.st.scene));
     } finally { await app.close(); }
   }
-  // In the next two cases (tabs mode never started; a throw in the boot block) the page leaves before any hello asks for
-  // tabs, and its hello names coach alone: the shell falls back at the page's dismiss with nothing negotiated, and the
-  // hello is then negotiated on the classic rule (contract 10.3, 2.2), so the chat stays the page's to present (60's
-  // overlay). The boot's hello stays silent until the case has read that the chat was never turned off, then the case
-  // sends the one that answers.
+  // In the next two cases (tabs mode never started; a throw in the boot block) the page leaves before any hello asks
+  // for tabs, and its hello names coach alone: the shell falls back at the page's dismiss with nothing negotiated, and
+  // the hello is then negotiated on the classic rule (contract 10.3, 2.2), so the chat stays the page's to present
+  // (60's overlay). The boot's hello stays silent until the case has read that the chat was never turned off, then
+  // the case sends the one that answers.
   // the main script got as far as its state but tabs mode never started (its boot block never ran): the main script's way
   // out has nothing to leave, so the head strips the class and the variables and tells the shell itself
   const skipped = edited('try{\n  (function(){\n    var root=document.documentElement, t=_fpTabsTest();',
@@ -1058,8 +1058,8 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
     assert(J(c.screens) === '["coach"]' && c.off === null && c.live && J(c.present) === '[{"screen":"coach"}]' && c.shown,
       'the boot block threw: the hello negotiated on the classic rule, and the chat presents once (60\'s overlay): ' + J(c));
   } finally { await app.close(); }
-  // the boot block throws and so does its way out (past the point where it left tabs mode): the catch strips the class and
-  // the variables and tells the shell itself, and _fp.tabs.told says so
+  // the boot block throws and so does its way out (past the point where it left tabs mode): the catch strips the class
+  // and the variables and tells the shell itself, and _fp.tabs.told says so
   const wayOutThrows = edited('T.mode=false; T.left=true; T.why=String(why || \'\');\n  _fpFailStop();',
     'T.mode=false; T.left=true; T.why=String(why || \'\');\n  _fpFailStop(); if(why===\'boot\') throw new Error("boom in the way out");');
   const tw = await pageBoot('tabs', { html: (src) => wayOutThrows(html(src)), init: OTA + 'window.__fpShellHelloSilent = true;' });
