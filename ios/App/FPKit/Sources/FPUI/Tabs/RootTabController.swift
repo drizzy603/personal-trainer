@@ -124,6 +124,18 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         let safe: Int
     }
 
+    /// The end of an animated show's section, said once by whichever comes first.
+    @MainActor
+    private final class SectionEnd {
+        private var hooks: Hooks?
+        init(_ hooks: Hooks) { self.hooks = hooks }
+        func fire() {
+            guard let h = hooks else { return }
+            hooks = nil
+            h.section(false)
+        }
+    }
+
     static let log = Logger(subsystem: "app.kt.trainer", category: "tabs")
 
     /// The SuperoViewController (FPUI cannot name its type). Its view is the web view.
@@ -556,20 +568,28 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         return barMetrics()
     }
 
-    /// A hide or show of the bar inside the `tabs` section, a show until its animation completes (contract 10.2).
+    /// How long an animated show keeps the `tabs` section open at most. UIKit's show is a fade of the bar's opacity, at
+    /// 95 % after 0.25 s and whole after about 0.4 s on iOS 26.5 and 27.0 (measured on the simulators); the transaction
+    /// that carries it completes after about 1 s on 27.0 and never on 26.5, where the glass lens adds an animation of
+    /// infinite duration to it. A section must never stay open past its window (any later crash would be blamed on the
+    /// bar), so it ends at the transaction's completion or after this, whichever comes first.
+    static let showSection: TimeInterval = 0.5
+
+    /// A hide or show of the bar inside the `tabs` section, a show until its animation is done (contract 10.2).
     private func changeBar(animated: Bool) {
         let hide = barShouldHide
         guard hide != isTabBarHidden else { return }
         inBarChange = true
         defer { inBarChange = false }
         let animate = animated && !hide && !reduceMotion()
-        let hooks = self.hooks
         hooks.section(true)
         if animate {
+            let end = SectionEnd(hooks)
             CATransaction.begin()
-            CATransaction.setCompletionBlock { hooks.section(false) }
+            CATransaction.setCompletionBlock { MainActor.assumeIsolated { end.fire() } }
             setBar(hidden: false, animated: true)
             CATransaction.commit()
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.showSection) { MainActor.assumeIsolated { end.fire() } }
         } else {
             setBar(hidden: hide, animated: false)
         }

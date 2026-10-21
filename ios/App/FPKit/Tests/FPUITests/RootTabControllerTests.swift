@@ -722,12 +722,17 @@ final class RootTabControllerTests: XCTestCase {
         r.slot("progress").additionalSafeAreaInsets.bottom = 0
         r.root.view.layoutIfNeeded()
 
-        // the show animates, except under Reduce Motion
+        // the show animates, its section open until the animation is done and never past RootTabController.showSection
+        // (on iOS 26.5 the transaction carrying UIKit's fade never completes), except under Reduce Motion
         r.root.setSheets(open: true)
         r.root.setSheets(open: false)
         XCTAssertEqual(r.root.barCalls.last?.hidden, false)
         XCTAssertEqual(r.root.barCalls.last?.animated, true, "the show animates")
+        XCTAssertEqual(r.openSections, 1, "the show's section is open while it animates")
+        let shownAt = Date()
         try await settleSections(r)
+        XCTAssertLessThan(Date().timeIntervalSince(shownAt), RootTabController.showSection + 0.5 * Self.slack, "and closed in time")
+        XCTAssertEqual(r.sections.filter { !$0 }.count, r.sections.filter { $0 }.count, "once")
         r.reduceMotion = true
         r.root.setSheets(open: true)
         r.root.setSheets(open: false)
