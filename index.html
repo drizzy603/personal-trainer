@@ -168,12 +168,14 @@ function _fpBarVars(bar, up, z){
     // The main script's own way out when it got as far as its state (its function declarations exist even when it
     // threw at run time, so only _fp says it ran). Whatever that did (it may have had nothing to leave, or thrown), the
     // class and the variables go and the shell hears dismiss tabs once, from here when the way out did not send it.
+    // Then _fp.tabs.told says so too, and the chat goes off with the fallback only when this document's hello asked
+    // for tabs (_fp.tabs.asked; _fpTabsLeave says why).
     try{ if(window._fp && window._fp.tabs) _fpTabsLeave('no-hello', true); }catch(e){}
     try{ root.classList.remove('fp-tabs'); _fpBarVars(null); }catch(e){}
     try{
       if(!window.__fpTabsTold){
         window.__fpTabsTold=true;
-        try{ if(window._fp && _fp.off && !_fp.off.coach) _fp.off.coach='tabs'; }catch(e){}   // the fallback takes the chat too
+        try{ if(window._fp && _fp.tabs){ _fp.tabs.told=true; if(_fp.tabs.asked && _fp.off && !_fp.off.coach) _fp.off.coach='tabs'; } }catch(e){}
         Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){});
       }
     }catch(e){}
@@ -2337,7 +2339,7 @@ var _midSeq=0, _midTag=(Math.random().toString(36).slice(2,6)||'m0');
 var FP_CONTRACT=1, FP_SCREENS=['coach','tabs'];
 var _fpBoot='b'+Date.now()+'-'+_midTag;   // this document: a reload is a new boot, and its ids and confirms are new
 var _fp={hello:null, v:0, off:{}, shown:{}, covered:false, rev:0, pushT:null, confirms:{}, undos:{}, seq:0, speech:null, draft:null, taking:false,
-  declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0, pend:0}};
+  declared:{}, sig:{}, tabs:{mode:false, left:false, told:false, why:'', seq:0, rev:0, bar:null, up:0, req:0, pend:0, asked:false}};
 // Settings > About's Native Coach row (_fpAboutRow): its status, here ahead of the first render, which in tabs mode can be
 // Settings (the boot tab, contract 2.4): declared beside the row, it was still undefined there and the boot stopped.
 var _fpChat={st:null, at:0, busy:false, cbs:[], html:null};
@@ -2373,7 +2375,12 @@ try{
     else _fpFailStop();
   }catch(e2){   // the way out itself threw: strip and tell the shell as the head script's failsafe does
     try{ document.documentElement.classList.remove('fp-tabs'); _fpBarVars(null); _fpFailStop(); }catch(e3){}
-    try{ if(!window.__fpTabsTold){ window.__fpTabsTold=true; Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){}); } }catch(e3){}
+    try{
+      if(!window.__fpTabsTold){
+        window.__fpTabsTold=true; try{ _fp.tabs.told=true; }catch(e4){}
+        Promise.resolve(window.Capacitor.Plugins.TrovoShell.dismiss({screen:'tabs'})).catch(function(){});
+      }
+    }catch(e3){}
   }
 }
 var coachMessages    = (function(){try{var s=localStorage.getItem('kt_coach_msgs');return _coachMids(s?JSON.parse(s):[]);}catch(e){return [];}}());
@@ -24502,10 +24509,14 @@ function _fpTabsRefused(e, what){
 }
 // The way out (contract 2.3): the page's own bar on the same tab, the web Coach, for the rest of the document (nothing
 // re-enters tabs mode). tell: the page left on its own (the failsafe, a malformed reply, a failed hello call, a throw
-// at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page) and presents
-// the chat no more (the fallback turns off every piece negotiated under the tab root's rule, coach included). When
-// the shell told it, it sends nothing. later: the caller renders (the boot block, before the first render; hello, once
-// its take-over has read up, so no render here presents a screen the shell still shows).
+// at boot); then it sends dismiss {screen:'tabs'} once (the shell's fallback answers it, fellBack page), and once its
+// hello has asked for tabs (T.asked) it presents the chat no more: the shell may have negotiated it under the tab
+// root's rule, and the fallback turns off every piece negotiated under that rule, coach included (2.2, 10.3). A page
+// that leaves before its hello asks (a throw at boot) keeps the chat: its hello names coach alone and the shell, fallen
+// back already, negotiates it on the classic rule (60's overlay, as after a fallback at a hello, 10.3); a reply without
+// tabs gives it back in the same way (_fpHello). When the shell told it, it sends nothing. later: the caller renders
+// (the boot block, before the first render; hello, once its take-over has read up, so no render here presents a screen
+// the shell still shows).
 function _fpTabsLeave(why, tell, later){
   var T=_fp.tabs;
   if(!T.mode) return;
@@ -24520,7 +24531,7 @@ function _fpTabsLeave(why, tell, later){
       var P=_fpPlugin();
       if(P && P.dismiss){ try{ Promise.resolve(P.dismiss({screen:'tabs'})).catch(function(){}); }catch(e){} }
     }
-    if(!_fp.off.coach) _fp.off.coach='tabs';
+    if(T.asked && !_fp.off.coach) _fp.off.coach='tabs';
   }
   // the Coach tab is the web's for the document, with no message: the shell has fallen back, is about to, or never linked
   _fp.off.coachHome='tabs'; _fpDown('coachHome'); _fp.declared.coachHome='dismiss';
@@ -24547,6 +24558,8 @@ function _fpHello(){
   var P=_fpPlugin(); if(!P || !P.hello) return;
   var T=_fp.tabs, screens=!FP_NATIVE ? [] : T.mode ? FP_SCREENS.slice() : ['coach'];
   var answered=function(){ window.__fpTabsAnswered=true; _fpFailStop(); };
+  // from here the shell may negotiate under the tab root's rule, so a way out on the page's own takes the chat off
+  if(screens.indexOf('tabs')>=0) T.asked=true;
   try{
     Promise.resolve(P.hello({v:FP_CONTRACT, page:APP_BUILD, screens:screens, boot:_fpBoot})).then(function(r){
       answered();
@@ -24554,6 +24567,10 @@ function _fpHello(){
       // tabs is judged on the reply as it came, before a v this page does not speak is read as v0
       var named=!!(r && typeof r==='object' && Array.isArray(r.screens) && r.screens.indexOf('tabs')>=0);
       var tabs=(named && v>=1 && v<=FP_CONTRACT) ? _fpTabsReply(r.tabs) : null;
+      // a reply that leaves tabs out was negotiated on the classic rule (the shell fell back at or before this hello,
+      // 10.3), which no later fallback changes: a chat the page's own way out took off before it came (the failsafe)
+      // is the reply's again
+      if(!named && _fp.off.coach==='tabs') delete _fp.off.coach;
       if(v<0 || v>FP_CONTRACT){ _fpLog('hello v'+v+' is no contract this page speaks (v1 to v'+FP_CONTRACT+'): no native screens', 'error'); r={v:0, screens:[], why:'contract'}; v=0; }
       _fp.hello={v:v, screens:(r && Array.isArray(r.screens)) ? r.screens.filter(function(s){ return typeof s==='string'; }) : [], why:(r && r.why) || ''};
       _fp.v=v;

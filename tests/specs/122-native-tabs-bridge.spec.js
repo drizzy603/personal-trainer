@@ -19,10 +19,11 @@
 //   the local switch, answers correct only the newest request, a crossing tap wins, no bounce back); tabs.select and
 //   tabs.bar (newer only, again, bad-args, off outside tabs mode); the variables at the Larger Text zooms; covered is
 //   the Coach tab not web; every visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own:
-//   one dismiss tabs and the chat off; selectTab's refusals, and their handler with sheets' label as a unit check
-//   until P5 sends sheets; at hello it renders after the leave and the take-over), the failsafe on visible time (real
-//   time and Playwright's clock; on the clock, a suspension between a hide and a show adds nothing and no stretch
-//   counts more than 1 s), and a broken page still drops the bar (whatever state its main script reached).
+//   one dismiss tabs, told, and the chat off once its hello asked for tabs, until a reply without tabs; selectTab's
+//   refusals, and their handler with sheets' label as a unit check until P5 sends sheets; at hello it renders after the
+//   leave and the take-over), the failsafe on visible time (real time and Playwright's clock; on the clock, a
+//   suspension between a hide and a show adds nothing and no stretch counts more than 1 s), and a broken page still
+//   drops the bar (whatever state its main script reached; told, and the chat kept when no hello asked for tabs).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
 const { boot, assert, run, SHELLS, SHELL_METHODS, MOCK_RULES, BASE_PAGE, shellFlag } = require('../lib/harness');
 
@@ -371,6 +372,18 @@ const OTA = 'window.Capacitor.Plugins.TrovoOta = { confirm: function () { window
 // (null with no TrovoShell).
 const bootEnds = (app) => ev(app, () => ({ err: JSON.parse(localStorage.getItem('kt_err_log') || '[]').map((e) => e.m),
   confirms: window.__otaConfirms || 0, bootDone: window.__fpShell ? __fpShell.of('bootDone').length : null }));
+// A boot whose hello stayed silent (__fpShellHelloSilent): the case sends the hello that answers (the mock negotiates it
+// on its scene as it stands then), then opens the chat with a key saved: the reply, the chat's state and what the page
+// presented.
+const chatAfter = (app) => ev(app, async () => {
+  const w = (ms) => new Promise((z) => setTimeout(z, ms));
+  window.__fpShellHelloSilent = false; _fp.hello = null; _fpHello();
+  for (let i = 0; i < 100 && !_fp.hello; i++) await w(20);
+  const r = { screens: _fp.hello && _fp.hello.screens, off: _fp.off.coach || null, live: _fpLive('coach') };
+  const p0 = __fpShell.of('present').length;
+  switchTab('coach'); openCoachChat(); await w(60);
+  return Object.assign(r, { present: __fpShell.of('present').slice(p0), shown: !!_fp.shown.coach, web: !!document.getElementById('coach-input') });
+});
 
 serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the page\'s own #tabs; a tour sends no selectTab, sheets, setSwitch or dismiss tabs; hello names coach ([] without FP_NATIVE); a 61 tab root falls back page at that hello', async () => {
   const OTA_NO_TABS = edited('var FP_NATIVE=true, FP_TABS=true,', 'var FP_NATIVE=true, FP_TABS=false,');
@@ -938,7 +951,49 @@ serial('P2: the failsafe counts only time the page could see: a hide and a show 
   } finally { await app.close(); }
 });
 
-serial('P2: a broken page still drops the native bar (the head failsafe\'s own way out): the main script throws at its first statement, or does not parse, or reached its state with tabs mode never started; and a throw in the tabs boot block leaves tabs mode at boot while the first render and _bootDone still run', async () => {
+serial('P2: the chat after a way out on the page\'s own once its hello asked for tabs (the failsafe): off while the shell may have negotiated it under the tab root\'s rule; a late reply naming tabs keeps it off, a late reply without tabs (the classic rule) gives it back', async () => {
+  // Each boot's hello names tabs and stays silent, so the failsafe (400 ms of visible time) leaves tabs mode with one
+  // dismiss tabs and the chat off; then the case sends the reply that comes late. A reply naming tabs was negotiated
+  // under the tab root's rule, and the page's dismiss reached the shell after it, a fallback mid-document that takes the
+  // chat off (contract 2.2, 10.3: a stand-in reply, as the mock's scene has fallen back by then). A reply without tabs
+  // was negotiated on the classic rule (here the mock's own, the scene having fallen back at the page's dismiss), which
+  // no later fallback changes: 60's overlay chat.
+  const INIT = 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;';
+  const out = async (app, tag) => {
+    await app.page.waitForFunction(() => window._fp && _fp.tabs.left, null, { timeout: 15000 });
+    await settle(app, 100);
+    const o = await look(app);
+    classicLook(o, tag);
+    assert(!o.mode && o.why === 'no-hello' && o.told && dismissTabs(o) === 1 && o.hello.length === 1 && o.hello[0].screens.indexOf('tabs') >= 0 && o.offCoach === 'tabs',
+      tag + ': its hello asked for tabs, the failsafe left with one dismiss tabs and the chat off: ' + J(o));
+    fellBackPage(o, tag);
+  };
+  let app = await pageBoot('tabs', { seed: { kt_apikey: 'sk-ant-test' }, init: INIT });
+  try {
+    await out(app, 'a late reply naming tabs');
+    const r = await ev(app, async () => {
+      const w = (ms) => new Promise((z) => setTimeout(z, ms));
+      Capacitor.Plugins.TrovoShell.hello = function (a) { __fpShell.calls.push(['hello', a]);
+        return Promise.resolve({ v: 1, screens: ['coach', 'coachHome', 'tabs'], tabs: { selected: 'log', seq: 0, bar: { h: 83, safe: 34, rev: 0 } } }); };
+      _fp.hello = null; _fpHello(); await w(40);
+      const p0 = __fpShell.of('present').length;
+      switchTab('coach'); openCoachChat(); await w(60);
+      return { screens: _fp.hello.screens, mode: _fp.tabs.mode, off: _fp.off.coach || null, negotiated: _fpNegotiated('coach'),
+        present: __fpShell.of('present').length - p0, web: !!document.getElementById('coach-input') };
+    });
+    assert(J(r.screens) === '["coach","coachHome","tabs"]' && !r.mode && r.off === 'tabs' && r.negotiated && r.present === 0 && r.web,
+      'a late reply naming tabs: its tabs ignored, the chat stays off and the web chat shows: ' + J(r));
+  } finally { await app.close(); }
+  app = await pageBoot('tabs', { seed: { kt_apikey: 'sk-ant-test' }, init: INIT });
+  try {
+    await out(app, 'a late reply without tabs');
+    const c = await chatAfter(app);
+    assert(J(c.screens) === '["coach"]' && c.off === null && c.live && J(c.present) === '[{"screen":"coach"}]' && c.shown,
+      'a late reply without tabs: the chat is the reply\'s again and presents once (60\'s overlay): ' + J(c));
+  } finally { await app.close(); }
+});
+
+serial('P2: a broken page still drops the native bar (the head failsafe\'s own way out): the main script throws at its first statement, or does not parse, or reached its state with tabs mode never started; and a throw in the tabs boot block (and in its way out too) leaves tabs mode at boot while the first render and _bootDone still run; told either way, and the chat stays on when no hello asked for tabs', async () => {
   const MAIN = '<script>\n// ── Hybrid loader: live update check';
   const broken = [
     ['the main script throws at its first statement', edited(MAIN, '<script>\nthrow new Error("boom: the main script\'s first statement");\n// ── Hybrid loader: live update check')],
@@ -959,26 +1014,36 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
       assert(o.st.scene.fellBack && o.st.scene.fellBack.why === 'page' && !o.st.live, tag + ': the scene fell back page: ' + J(o.st.scene));
     } finally { await app.close(); }
   }
+  // In the next two cases (tabs mode never started; a throw in the boot block) the page leaves before any hello asks for
+  // tabs, and its hello names coach alone: the shell falls back at the page's dismiss with nothing negotiated, and the
+  // hello is then negotiated on the classic rule (contract 10.3, 2.2), so the chat stays the page's to present (60's
+  // overlay). The boot's hello stays silent until the case has read that the chat was never turned off, then the case
+  // sends the one that answers.
   // the main script got as far as its state but tabs mode never started (its boot block never ran): the main script's way
   // out has nothing to leave, so the head strips the class and the variables and tells the shell itself
   const skipped = edited('try{\n  (function(){\n    var root=document.documentElement, t=_fpTabsTest();',
     'try{\n  (function(){ return;\n    var root=document.documentElement, t=_fpTabsTest();');
-  const sk = await pageBoot('tabs', { html: skipped, init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
+  const sk = await pageBoot('tabs', { html: skipped, seed: { kt_apikey: 'sk-ant-test' }, init: 'window.__fpShellHelloSilent = true; window.__fpTabsFailsafeMs = 400;' });
   try {
     await sk.page.waitForFunction(() => !document.documentElement.classList.contains('fp-tabs'), null, { timeout: 15000 });
     await settle(sk, 300);
     const o = await look(sk);
     classicLook(o, 'tabs mode never started', false);
-    assert(!o.mode && dismissTabs(o) === 1 && o.offCoach === 'tabs' && o.tabsCalls.length === 1, 'tabs mode never started: one dismiss tabs, the chat off: ' + J(o));
+    assert(!o.mode && o.told && dismissTabs(o) === 1 && o.tabsCalls.length === 1 && J(o.hello.map((h) => h.screens)) === '[["coach"]]',
+      'tabs mode never started: one dismiss tabs, told: ' + J(o));
+    assert(o.offCoach === null, 'tabs mode never started: its hello named coach alone, so the chat stays on: ' + J(o));
     fellBackPage(o, 'tabs mode never started');
+    const c = await chatAfter(sk);
+    assert(J(c.screens) === '["coach"]' && c.off === null && c.live && J(c.present) === '[{"screen":"coach"}]' && c.shown,
+      'tabs mode never started: the hello negotiated on the classic rule, and the chat presents once (60\'s overlay): ' + J(c));
   } finally { await sk.close(); }
   // a throw at the start of the fp-tabs boot block (found by its marker comment)
   const marker = PAGE.indexOf('// fp-tabs boot block'), at = PAGE.indexOf('\ntry{', marker);
   assert(marker > 0 && PAGE.indexOf('// fp-tabs boot block', marker + 1) < 0 && at > marker && at - marker < 800, 'the boot block\'s marker and its try');
   const html = (src) => src.slice(0, at + 5) + ' throw new Error("boom in the fp-tabs boot block");' + src.slice(at + 5);
-  const app = await pageBoot('tabs', { html, init: 'window.Capacitor.Plugins.TrovoOta = { confirm: function () { window.__otaConfirms = (window.__otaConfirms || 0) + 1; return Promise.resolve({}); } };' });
+  const app = await pageBoot('tabs', { html, seed: { kt_apikey: 'sk-ant-test' }, init: OTA + 'window.__fpShellHelloSilent = true;' });
   try {
-    await helloIn(app);
+    await app.page.waitForFunction(() => window.__fpShell && __fpShell.of('bootDone').length === 1, null, { timeout: 15000 });
     await settle(app, 100);
     const o = await look(app);
     const x = await ev(app, () => ({ confirms: window.__otaConfirms || 0, bootDone: __fpShell.of('bootDone').length, screen: document.getElementById('screen').children.length,
@@ -988,5 +1053,25 @@ serial('P2: a broken page still drops the native bar (the head failsafe\'s own w
     assert(J(o.hello.map((h) => h.screens)) === '[["coach"]]', 'hello names coach, as classic: ' + J(o.hello));
     assert(x.confirms === 1 && x.bootDone === 1 && x.screen > 0 && /fp-tabs boot: boom in the fp-tabs boot block/.test(x.err) && x.order[0] === 'dismiss',
       'the first render, the OTA confirm and bootDone still ran; the throw is in the error log: ' + J(x));
+    assert(o.offCoach === null, 'the boot block threw before hello asked for tabs: the chat stays on: ' + J(o));
+    const c = await chatAfter(app);
+    assert(J(c.screens) === '["coach"]' && c.off === null && c.live && J(c.present) === '[{"screen":"coach"}]' && c.shown,
+      'the boot block threw: the hello negotiated on the classic rule, and the chat presents once (60\'s overlay): ' + J(c));
   } finally { await app.close(); }
+  // the boot block throws and so does its way out (past the point where it left tabs mode): the catch strips the class and
+  // the variables and tells the shell itself, and _fp.tabs.told says so
+  const wayOutThrows = edited('T.mode=false; T.left=true; T.why=String(why || \'\');\n  _fpFailStop();',
+    'T.mode=false; T.left=true; T.why=String(why || \'\');\n  _fpFailStop(); if(why===\'boot\') throw new Error("boom in the way out");');
+  const tw = await pageBoot('tabs', { html: (src) => wayOutThrows(html(src)), init: OTA + 'window.__fpShellHelloSilent = true;' });
+  try {
+    await tw.page.waitForFunction(() => window.__fpShell && __fpShell.of('bootDone').length === 1, null, { timeout: 15000 });
+    await settle(tw, 100);
+    const o = await look(tw);
+    const e = await bootEnds(tw);
+    classicLook(o, 'the way out threw at boot', false);
+    assert(!o.mode && o.left && o.why === 'boot' && o.told && dismissTabs(o) === 1 && o.offCoach === null && J(o.hello.map((h) => h.screens)) === '[["coach"]]',
+      'the way out threw at boot: classic, one dismiss tabs, told: ' + J(o));
+    fellBackPage(o, 'the way out threw at boot');
+    assert(e.confirms === 1 && e.bootDone === 1 && tw.errors.length === 0, 'the way out threw at boot: the OTA confirm and bootDone still ran: ' + J([e, tw.errors]));
+  } finally { await tw.close(); }
 });
