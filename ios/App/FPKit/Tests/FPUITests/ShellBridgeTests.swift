@@ -438,10 +438,13 @@ final class ShellBridgeTests: XCTestCase {
         binding.pageLink.timeoutScale = scale
         webView.loadHTMLString(Self.stallPage, baseURL: URL(string: "https://fp.test/"))
         let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline {
+        var ready = false
+        while !ready, Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
-            if !webView.isLoading, (try? await webView.evaluateJavaScript("typeof window.FPScreens")) as? String == "object" { break }
+            if !webView.isLoading, (try? await webView.evaluateJavaScript("typeof window.FPScreens")) as? String == "object" { ready = true }
         }
+        // stop here, not at a 10 s expectation timeout further on that blames the ping
+        guard ready else { throw StallPageDidNotLoad() }
         _ = try await webView.evaluateJavaScript(setup + "; 0")
         _ = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
         XCTAssertEqual(binding.link.liveScreens, ["coach"], "a classic root: 60's overlay chat")
@@ -534,6 +537,11 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertEqual(binding.link.heldTimeouts, 0, "the second ping's answer dropped both holds")
         XCTAssertEqual(binding.link.book.screens["coach"]?.failures ?? 0, 0)
     }
+}
+
+/// The stall page never came up (ShellBridgeTests.stalledBridge): the test fails there, saying so.
+private struct StallPageDidNotLoad: Error, CustomStringConvertible {
+    var description: String { "the stall page did not load within 10 s" }
 }
 
 /// A URL scheme handler that never answers: a load through it stays provisional until it is stopped.
