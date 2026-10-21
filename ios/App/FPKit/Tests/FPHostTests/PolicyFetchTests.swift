@@ -238,5 +238,38 @@ final class PolicyFetchTests: XCTestCase {
         XCTAssertEqual(next.fetches, 0, "not due: the stamp came back from the file")
         XCTAssertFalse(next.effective.screenOn("tabs"))
     }
+
+    /// `fetchIfDue(force:done:)` for ShellBridge's `status {refresh: true}` (contract 3.10; 11-shell.md H8): `done` runs
+    /// once the fetch has ended, after its `changed` (so the bridge's `policyChanged` has run when the status is read);
+    /// at once when no fetch is made (not due; `-fpOffline`); for a fetch that changes nothing too.
+    func testDoneRunsOnceTheFetchHasEndedAfterItsChange() throws {
+        final class Order: @unchecked Sendable { var items: [String] = [] }   // read and written on the main thread only
+        try write(#"{"v":1}"#)
+        let p = started()
+        let order = Order()
+        let token = NotificationCenter.default.addObserver(forName: FPPolicy.changed, object: p, queue: nil) { _ in
+            order.items.append("changed")
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        try write(#"{"v":1,"screens":{"tabs":"off"}}"#)
+        p.fetchIfDue(force: true) { order.items.append("done") }
+        XCTAssertEqual(order.items, ["changed", "done"], "a local file is read at once: its change, then done")
+        XCTAssertFalse(p.effective.screenOn("tabs"))
+        XCTAssertEqual(p.fetches, 2)
+        p.fetchIfDue { order.items.append("not due") }
+        XCTAssertEqual(order.items, ["changed", "done", "not due"], "no fetch: done at once")
+        XCTAssertEqual(p.fetches, 2)
+        p.fetchIfDue(force: true) { order.items.append("unchanged") }
+        XCTAssertEqual(order.items, ["changed", "done", "not due", "unchanged"], "a fetch that changes nothing ends too")
+        XCTAssertEqual(p.fetches, 3)
+        #if DEBUG
+        let offline = FPPolicy(defaults: defaults, folder: shell)
+        offline.start(arguments: ["App", "-fpOffline"])
+        var ran = false
+        offline.fetchIfDue(force: true) { ran = true }
+        XCTAssertTrue(ran, "-fpOffline: nothing fetched, done at once")
+        XCTAssertEqual(offline.fetches, 0)
+        #endif
+    }
 }
 #endif

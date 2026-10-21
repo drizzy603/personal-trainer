@@ -53,6 +53,8 @@ public final class FPPolicy {
     public private(set) var fetches = 0
     private var started = false
     private var fetching = false
+    /// The `done`s of `fetchIfDue` calls waiting for the fetch under way to end.
+    private var waiting: [() -> Void] = []
     private let defaults: UserDefaults
     /// The folder the copy's file lives in: `Application Support/FPShell` (tests pass their own).
     let folder: URL
@@ -103,11 +105,19 @@ public final class FPPolicy {
         fetchIfDue()
     }
 
-    /// Fetches when 15 minutes have passed since the last attempt (or `force`). A local file is read at once.
-    public func fetchIfDue(force: Bool = false) {
-        if source == .offline { return }
+    /// Fetches when 15 minutes have passed since the last attempt (or `force`). A local file is read at once. `done` runs
+    /// once this call's fetch has ended (after `changed`, when it changed anything), at once when none is made, or with
+    /// the fetch already under way: Settings > About's "Check the switches now" answers with the status after it
+    /// (ShellBridge's `status {refresh: true}`, contract 3.10).
+    public func fetchIfDue(force: Bool = false, done: (() -> Void)? = nil) {
+        if source == .offline { done?(); return }
+        if fetching {
+            if let done { waiting.append(done) }
+            return
+        }
         let now = Date()
-        guard !fetching, force || state.shouldFetch(at: now, interval: interval) else { return }
+        guard force || state.shouldFetch(at: now, interval: interval) else { done?(); return }
+        if let done { waiting.append(done) }
         state.fetchStarted(at: now)
         save()
         fetching = true
@@ -149,9 +159,13 @@ public final class FPPolicy {
         save()
         let p = state.effective
         Self.log.info("policy: \(self.state.lastResult ?? "-", privacy: .public); facade \(p.facade.rawValue, privacy: .public), repair \(p.repair.rawValue, privacy: .public), screens off \(p.screens.keys.sorted().joined(separator: ","), privacy: .public)")
-        guard change.any else { return }
-        NotificationCenter.default.post(name: Self.changed, object: self,
-                                        userInfo: ["screens": change.screens, "store": change.store])
+        if change.any {
+            NotificationCenter.default.post(name: Self.changed, object: self,
+                                            userInfo: ["screens": change.screens, "store": change.store])
+        }
+        let ended = waiting
+        waiting = []
+        for d in ended { d() }
     }
 
     /// The last good file as JSON (for the store's meta and Storage), nil before any.
