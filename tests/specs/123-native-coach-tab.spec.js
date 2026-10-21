@@ -9,23 +9,26 @@
 //   the first declaration, or at a later check) ends in dismiss and the page's web Coach; a forced present of the chat
 //   refused not-native does too (the chat and the Coach tab go together); under tabsWeb no coachHome message at all.
 // - The placeholder: with the Coach tab native, #screen holds only .kt-fp-ph[data-fp-screen="coachHome"] (no key field
-//   with no key); under tabsWeb the web hub.
+//   with no key); under tabsWeb the web hub; on the Coach tab the About switch's own paint follows the wish (the web
+//   hub at off, the placeholder at on).
 // - Pushes on change: renders with nothing new push nothing; a message, a reply in flight, a new name and applyTheme
-//   each push one model with a higher rev (the bar's room follows the theme); revs rise across the three screens.
+//   each push one model with a higher rev (the bar's room follows the theme); revs rise across the three screens; a
+//   snapshot is the model now with a new rev and counts as its push; classic mode sets no models check.
 // - The joint rule: the chat is presented only while the Coach tab is native (tabs); 60's rule under coach61.
 // - Covered (8.4): the native Coach tab covers the page, still after Back pops the chat (a toast is forwarded); Log
 //   never; screens.off coachHome turns the Coach tab web with nothing sent back.
 // - The take-over (3.2, I13): up naming both with Coach selected and a key: no present, both shown, the chat view, the
 //   models pushed, no selectTab; the same after a reload under the mock's own scene (up from it, no 3 s WEB); with Log
-//   selected the chat is dismissed; with no key the chat is dismissed and the connect route is the model's.
+//   selected the chat is dismissed; with no key the chat is dismissed and the connect route is the model's; with
+//   kt_native_off both are dismissed once each and the web Coach drawn.
 // - screens.off (4.2): coachHome needs; coach with a draft taken by the putBack rule (every case of the shared vectors,
 //   Fixtures/draft/putback.json, through the handler) and answered took; a draft off coach ignored; a numeric draft
 //   bad-args; the mock's composer cleared only after took.
 // - The words survive (P-D15, I16): kt_coach_handover is written before the took answer, is device-only bookkeeping
 //   (no backup carries it), comes back after a reload in the fallen-back scene and after a relaunch, goes back to a
-//   native chat as its draft and leaves on coach.draftTaken, follows the box (a render, the page hidden), and leaves
-//   on a send from either composer and on an emptied box; a failed write answers without took and changes nothing;
-//   under STORE=shadow the native copy has the key.
+//   native chat as its draft and leaves on coach.draftTaken with the web copy (one composer at a time, a trailing line
+//   too), follows the box (a render, the page hidden), and leaves on a send from either composer and on an emptied
+//   box; a failed write answers without took and changes nothing; under STORE=shadow the native copy has the key.
 // - confirm and toast.undo answer before their action runs (D14); a spent id answers stale.
 // - Setup keeps its answers: the setup chat has Cancel and no Back, a tab change dismisses it with setup kept and the
 //   Coach tab's model saying resume, and Coach presents it again; the intake error says "top left".
@@ -111,6 +114,11 @@ serial('the declaration under tabs: after hello the Coach tab\'s model, then one
       coachLoading = false; render(); await __w(40);
       r.name = await step(() => { localStorage.setItem('kt_user_name', 'Zed'); render(); });
       r.greet = __last('coachHome').hero.greet;
+      // the shell's snapshot answers the model as it is now and counts as its push: the next check sends nothing more
+      localStorage.setItem('kt_user_name', 'Ann');
+      const snap = await FPScreens.call('coachHome.snapshot', {}), sm = JSON.parse(snap.json);
+      n = __n(); render(); await __w(40);
+      r.snap = { ok: snap.ok, greet: sm.hero.greet, rev: sm.rev, before: r.name.revs[0], after: __decl(n) };
       r.theme = await step(() => { applyTheme('dark'); });
       r.rooms = { tabs: __last('tabs').room, home: __last('coachHome').room };
       // the Coach tab: only the placeholder, covered; the chat pushed on it; Back pops it and the tab stays covered
@@ -139,8 +147,12 @@ serial('the declaration under tabs: after hello the Coach tab\'s model, then one
       n = __n();
       toggleNativeChat(); await __w(40);
       r.on = { decl: __decl(n), mode: _fpCoachMode(), declared: _fp.declared.coachHome };
-      // screens.off coachHome (a piece it needs went off): the Coach tab is the web's, nothing sent back
+      // on the Coach tab the switch redraws in its own paint, keyed on the wish: off draws the web hub before the
+      // dismiss goes, on puts the placeholder back before the present
       switchTab('coach'); await __w(30);
+      toggleNativeChat(); r.offNow = __screen(); await __w(40);
+      toggleNativeChat(); r.onNow = __screen(); await __w(40);
+      // screens.off coachHome (a piece it needs went off): the Coach tab is the web's, nothing sent back
       n = __n();
       r.off2 = { answer: await FPScreens.call('screens.off', { screen: 'coachHome', why: 'needs' }) };
       await __w(40);
@@ -161,6 +173,8 @@ serial('the declaration under tabs: after hello the Coach tab\'s model, then one
       assert(J(s.decl) === '["model coachHome"]' && s.revs.length === 1 && s.revs[0] > s.rev0, k + ': one Coach tab model with a higher rev: ' + J(s));
     }
     assert(out.sub === 'Coach is replying…' && out.greet === 'Hi Zed.', 'the models carry the change: ' + J([out.sub, out.greet]));
+    assert(out.snap.ok && out.snap.greet === 'Hi Ann.' && out.snap.rev > out.snap.before && out.snap.after.length === 0,
+      'a snapshot is the model now, with a new rev, and counts as its push: ' + J(out.snap));
     assert(out.theme.decl.length === 2 && out.theme.decl.indexOf('model coachHome') >= 0 && out.theme.decl.indexOf('model tabs') >= 0
       && out.theme.revs.every((v) => v > out.theme.rev0) && out.rooms.tabs === 'dark' && out.rooms.home === 'dark',
       'applyTheme: one model of each, in the new room: ' + J([out.theme, out.rooms]));
@@ -176,6 +190,8 @@ serial('the declaration under tabs: after hello the Coach tab\'s model, then one
       'the About switch off: one dismiss: ' + J(out.off));
     assert(J(out.on.decl) === '["model coachHome","present coachHome"]' && out.on.mode === 'native' && out.on.declared === 'present',
       'the About switch on: the model first, then the present: ' + J(out.on));
+    assert(out.offNow.hub && out.offNow.kids.indexOf('kt-fp-ph/coachHome') < 0 && J(out.onNow.kids) === '["kt-fp-ph/coachHome"]',
+      'on the Coach tab the switch\'s own paint follows the wish: the web hub at off, the placeholder at on: ' + J([out.offNow, out.onNow]));
     const o2 = out.off2;
     assert(J(o2.answer) === '{"ok":true}' && o2.decl.length === 0 && o2.mode === 'web' && o2.declared === 'dismiss' && o2.off === 'needs'
       && o2.screen.hub && o2.screen.kids.indexOf('kt-fp-ph/coachHome') < 0 && J(o2.snapshot) === '{"ok":false,"error":"off"}',
@@ -248,6 +264,8 @@ serial('the joint rule: under tabs the chat is presented only while the Coach ta
     await ready(app);
     const out = await ev(app, async () => {
       const r = {};
+      render(); r.timer = _fp.modelsT !== null;   // tabs mode: each render's pass sets one models check for its task
+      await __w(20);
       switchTab('coach'); openCoachChat(); await __w(40);
       r.native = { decl: __decl().slice(-2), shown: !!_fp.shown.coach };
       switchTab('log'); await __w(40);
@@ -260,6 +278,7 @@ serial('the joint rule: under tabs the chat is presented only while the Coach ta
       r.web = { decl: __decl(n), shown: !!_fp.shown.coach, screen: __screen() };
       return r;
     });
+    assert(out.timer, 'tabs: a render sets the models check');
     assert(J(out.native.decl) === '["model coach","present coach"]' && out.native.shown, 'the chat on the native Coach tab: ' + J(out.native));
     assert(J(out.broken.decl) === '["dismiss coachHome"]' && out.broken.off === 'model' && out.broken.declared === 'dismiss' && out.broken.mode === 'web' && out.broken.coachLive,
       'a Coach tab model that throws at a later check: the dismiss: ' + J(out.broken));
@@ -286,8 +305,11 @@ serial('the joint rule: under tabs the chat is presented only while the Coach ta
     await ready(app);
     const out = await ev(app, async () => {
       switchTab('coach'); openCoachChat(); await __w(40);
-      return { hello: __fpShell.of('hello').map((h) => h.screens), decl: __decl(), shown: !!_fp.shown.coach, mode: _fpCoachMode() };
+      // classic mode has no Coach tab or bar model to check: a render sets no models timer
+      render(); const timer = _fp.modelsT;
+      return { hello: __fpShell.of('hello').map((h) => h.screens), decl: __decl(), shown: !!_fp.shown.coach, mode: _fpCoachMode(), timer };
     });
+    assert(out.timer === null, 'coach61: a render schedules no models check: ' + J(out.timer));
     assert(J(out.hello) === '[["coach"]]' && J(out.decl) === '["model coach","present coach"]' && out.shown && out.mode === null,
       'coach61: hello names coach, and the chat presents on 60\'s rule: ' + J(out));
   } finally { await app.close(); }
@@ -328,6 +350,9 @@ serial('the take-over (3.2, I13): up naming the Coach tab and the chat with Coac
       snaps: __fpShell.sent.filter((s) => /snapshot$/.test(s[0])).map((s) => [s[0], !!(s[2] && s[2].ok && s[2].json)]),
       log: __fpShell.of('log').map((l) => l.text).filter((t) => /taken over|not taken over/.test(t)) };
   });
+  // the take-over's own words, in its order: the Coach tab first, then the chat
+  const BOTH = ['fp: coachHome taken over from the document before', 'fp: coach taken over from the document before'];
+  const HOME_ONLY = ['fp: coachHome taken over from the document before', 'fp: coach not taken over: dismissed'];
   // a fresh document on the hub view: the page adopts the chat view the shell shows
   let app = await pageBoot('tabs', { init: UP + PRE });
   try {
@@ -338,7 +363,7 @@ serial('the take-over (3.2, I13): up naming the Coach tab and the chat with Coac
     assert(t.decl.filter((d) => /^(present|dismiss)/.test(d)).length === 0 && t.select === 0, 'no present, no dismiss, no selectTab: ' + J(t));
     assert(['model coachHome', 'model coach', 'model tabs'].every((d) => t.decl.indexOf(d) >= 0) && J(t.screen.kids) === '["kt-fp-ph/coachHome"]',
       'the models pushed; the placeholder: ' + J([t.decl, t.screen]));
-    assert(J(t.snaps) === J([['coachHome.snapshot', true], ['coach.snapshot', true]]) && t.log.length === 2, 'the resync\'s snapshots answered: ' + J([t.snaps, t.log]));
+    assert(J(t.snaps) === J([['coachHome.snapshot', true], ['coach.snapshot', true]]) && J(t.log) === J(BOTH), 'the resync\'s snapshots answered: ' + J([t.snaps, t.log]));
   } finally { await app.close(); }
   // the mock's own scene: the chat presented in the first document; a reload's hello names both from the scene
   app = await pageBoot('tabs');
@@ -349,7 +374,8 @@ serial('the take-over (3.2, I13): up naming the Coach tab and the chat with Coac
     await ready(app);
     const t = await taken(app);
     assert(t.tab === 'coach' && t.view === 'chat' && t.shown.coachHome && t.shown.coach && t.declared === 'present' && t.mode === 'native'
-      && t.decl.filter((d) => /^(present|dismiss)/.test(d)).length === 0 && t.select === 0, 'a reload under the native chat: taken over from the scene: ' + J(t));
+      && t.decl.filter((d) => /^(present|dismiss)/.test(d)).length === 0 && t.select === 0 && J(t.log) === J(BOTH),
+      'a reload under the native chat: taken over from the scene: ' + J(t));
     await settle(app, 3300);   // past the WAITING tab's 3 s net, which a taken-over NATIVE tab never starts
     const s = await ev(app, () => ({ scene: __fpShell.state().scene.coach, pushed: __fpShell.state().scene.pushed, off: __fpShell.sent.filter((x) => x[0] === 'shell.covered' && !x[1].on).length,
       shown: !!_fp.shown.coachHome, up: __fpShell.of('hello').length }));
@@ -360,17 +386,30 @@ serial('the take-over (3.2, I13): up naming the Coach tab and the chat with Coac
   try {
     await ready(app);
     const t = await taken(app);
-    assert(t.tab === 'log' && t.shown.coachHome && !t.shown.coach && t.declared === 'present' && J(t.decl.filter((d) => /^(present|dismiss)/.test(d))) === '["dismiss coach"]'
-      && t.select === 0, 'Log selected: the Coach tab taken over, the chat dismissed, still on Log: ' + J(t));
+    assert(t.tab === 'log' && t.view === 'home' && t.shown.coachHome && !t.shown.coach && t.declared === 'present' && J(t.decl.filter((d) => /^(present|dismiss)/.test(d))) === '["dismiss coach"]'
+      && t.select === 0 && J(t.log) === J(HOME_ONLY),
+      'Log selected: the Coach tab taken over, the chat dismissed (never taken), still on Log: ' + J(t));
   } finally { await app.close(); }
   // no key: the chat dismissed, the Coach tab taken over on its connect route; #screen holds only the placeholder
   app = await pageBoot('tabs', { init: UP + PRE, seed: { kt_apikey: '' } });
   try {
     await ready(app);
     const t = await taken(app);
-    assert(t.tab === 'coach' && t.shown.coachHome && !t.shown.coach && J(t.decl.filter((d) => /^(present|dismiss)/.test(d))) === '["dismiss coach"]'
+    assert(t.tab === 'coach' && t.view === 'home' && t.shown.coachHome && !t.shown.coach && J(t.decl.filter((d) => /^(present|dismiss)/.test(d))) === '["dismiss coach"]'
+      && J(t.log) === J(HOME_ONLY)
       && t.home && t.home.route === 'connect' && J(t.screen.kids) === '["kt-fp-ph/coachHome"]' && !t.screen.key && !t.screen.hub,
       'no key: the chat dismissed, the connect route, only the placeholder (no key field): ' + J(t));
+  } finally { await app.close(); }
+  // the About switch off on this iPhone: the page cannot take the Coach tab over, so both are dismissed, the Coach
+  // tab's dismiss is its declaration (sent once), and the page draws its web Coach
+  app = await pageBoot('tabs', { init: UP + PRE, seed: { kt_native_off: '1' } });
+  try {
+    await ready(app);
+    const t = await taken(app);
+    assert(t.tab === 'coach' && !t.shown.coachHome && !t.shown.coach && t.declared === 'dismiss' && t.mode === 'web'
+      && J(t.decl.filter((d) => /^(present|dismiss)/.test(d))) === '["dismiss coachHome","dismiss coach"]' && t.select === 0
+      && J(t.log) === J(['fp: coachHome not taken over: dismissed', 'fp: coach not taken over: dismissed']) && t.screen.hub,
+      'kt_native_off: both dismissed once, the web Coach: ' + J(t));
   } finally { await app.close(); }
 });
 
@@ -504,6 +543,31 @@ serial('the words survive (I16): the mock\'s fallback hands the composer\'s word
       return { before, a: a.ok, key: __key(), draft: _coachDraft.v, model: __last('coach').composer.draft };
     }, WORDS);
     assert(sent.before === WORDS && sent.a && sent.key === null && sent.draft === '' && sent.model === null, 'a send from the native composer spends the words: ' + J(sent));
+  } finally { await app.close(); }
+  // one composer at a time: the About switch off, the web chat shows the words and the owner adds a line (the key
+  // follows); switched on, the native chat gets them as its draft (sent trimmed) and draftTaken lets the key and the
+  // web copy go; switched off again, the web composer is empty (no words come back twice)
+  app = await pageBoot('tabs', { seed: { kt_coach_handover: WORDS, kt_native_off: '1' } });
+  try {
+    await ready(app);
+    const out = await ev(app, async (WORDS) => {
+      switchTab('coach'); openCoachChat(); await __w(40);
+      const r = { web: __screen().input, home: _fp.declared.coachHome };
+      document.getElementById('coach-input').value = WORDS + '\n'; render(); await __w(20);
+      r.followed = __key();
+      const n = __n();
+      toggleNativeChat(); await __w(60);
+      const m = __last('coach'), d = m && m.composer.draft;
+      r.on = { draft: d, decl: __decl(n).filter((x) => /^(present|dismiss)/.test(x)) };
+      r.taken = { a: d ? await FPScreens.call('coach.draftTaken', { nonce: d.nonce }) : null, key: __key(), web: _coachDraft.v };
+      toggleNativeChat(); await __w(60);
+      r.off = { input: __screen().input, key: __key(), shown: !!_fp.shown.coach };
+      return r;
+    }, WORDS);
+    assert(out.web === WORDS && out.home === 'dismiss' && out.followed === WORDS + '\n', 'the web chat with the words, the key following the box: ' + J(out));
+    assert(out.on.draft && out.on.draft.text === WORDS && J(out.on.decl) === '["present coachHome","present coach"]', 'switched on: the native chat gets them as its draft: ' + J(out.on));
+    assert(out.taken.a && out.taken.a.ok && out.taken.key === null && out.taken.web === '', 'draftTaken: the key and the web copy (with its line) go: ' + J(out.taken));
+    assert(out.off.input === '' && out.off.key === null && !out.off.shown, 'switched off again: the web composer is empty: ' + J(out.off));
   } finally { await app.close(); }
 });
 
