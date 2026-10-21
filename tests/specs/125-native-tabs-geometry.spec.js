@@ -41,7 +41,10 @@ const J = (x) => JSON.stringify(x);
 const sorted = (o) => JSON.stringify(Object.keys(o).sort().reduce((a, k) => { a[k] = o[k]; return a; }, {}));
 const near = (a, b, tol) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) <= (tol === undefined ? 0.02 : tol);
 const r2 = (n) => Math.round(n * 100) / 100;
-const helloIn = (app) => app.page.waitForFunction(() => window._fp && _fp.hello, null, { timeout: 15000 });
+// Hello answered (under a flag) and the boot's last render in: with a key saved the morning card's fetch fails here and
+// repaints Log a beat after the boot, which would move what a case measures under it.
+const ready = (app, flag) => app.page.waitForFunction((flag) => (!flag || (window._fp && _fp.hello)) && typeof coachCardLoading !== 'undefined'
+  && !coachCardLoading, flag !== false, { timeout: 15000 }).then(() => app.page.waitForTimeout(60));
 // WebKit's env(safe-area-inset-bottom) under the tab root is the bar's cover (83) while the bar shows and the window's
 // inset (34 or 0) while it is hidden, and it moves late (contract 7.4). Chromium's is 0 unless DevTools overrides it:
 // a case sets it as the phone would, so a tabs-mode surface that read it would move. __env(bottom) sets it in the page.
@@ -116,7 +119,7 @@ const FIRST = '(function () { window.__ff = null; new MutationObserver(function 
 serial('the fallback is the glass bar\'s 83 (delta 14.1): a flag predicting h 0 and safe 0 gives --fp-bar-up and _fp.tabs.up 83 from the head\'s first frame on, the page 83 + 24 clear (P2 gave 49 + safe); a measured 0 keeps the last height, a measured h replaces it, at every zoom', async () => {
   const app = await pageBoot(FLAG('tabs', { h: 0, safe: 0 }), { init: FIRST });
   try {
-    await helloIn(app);
+    await ready(app);
     await app.page.waitForTimeout(80);
     const ff = await ev(app, () => window.__ff);
     assert(ff && ff.cls && ff.up === '83px' && ff.h === '0px' && ff.pb === '107px' && ff.main === false,
@@ -155,13 +158,14 @@ async function clearances(app, web) {
       switchTab('log'); await __w(60);
       for (const z of [1, 1.12, 1.25]) {
         applyDynamicType(z); await __w(30);
-        // Log's last content, the page scrolled to its end
-        sc.scrollTop = sc.scrollHeight; await __w(20);
+        // Log's last content, the page scrolled to its end (read in the same task as the scroll)
+        __fin(); sc.scrollTop = sc.scrollHeight;
         let end = 0;
         sc.querySelectorAll('*').forEach((e) => { const b = e.getBoundingClientRect(); if (b.height > 1 && b.width > 1) end = Math.max(end, b.bottom); });
+        const atEnd = sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 1;
         sc.scrollTop = 0;
         showToast('Saved'); await __w(20); __fin();
-        const row = { room, z, ih: innerHeight, up: __v('--fp-bar-up'), screen: __cs(sc, 'paddingBottom'), end, toast: __cs(toast, 'bottom'), toastR: __R(toast) };
+        const row = { room, z, ih: innerHeight, up: __v('--fp-bar-up'), screen: __cs(sc, 'paddingBottom'), end, atEnd, toast: __cs(toast, 'bottom'), toastR: __R(toast) };
         // over a .kt-sheet-overlay the sheet-open rule still wins: the toast at the top
         openThemeSheet(); await __w(100); showToast('Saved'); await __w(20); __fin(); row.toastSheet = __R(toast);
         closeThemeSheet(); await __w(100);
@@ -197,7 +201,7 @@ serial('every in-flow clearance is --fp-bar-up plus classic\'s gap (scroll end +
       const tag = shell + ' ' + ph.size.width + 'x' + ph.size.height + ' ';
       const app = await pageBoot(FLAG(shell, { h: ph.h, safe: ph.safe }), { page: { viewport: ph.size } });
       try {
-        await helloIn(app);
+        await ready(app);
         await (await insets(app))(83);   // env() as WebKit has it while the bar shows: nothing below may read it
         const rows = await clearances(app, shell === 'tabsWeb');
         assert(rows.length === 6, tag + 'two rooms, three zooms: ' + rows.length);
@@ -212,7 +216,7 @@ serial('every in-flow clearance is --fp-bar-up plus classic\'s gap (scroll end +
           assert(r.strip && r.strip.bottom <= r.rootR.bottom - 8 * r.z, t + 'the runner\'s strip clears the bar by its 14: ' + J([r.strip, r.rootR]));
           if (r.z === 1) assert(r.cardOverflow === 0 && r.footClipped !== null && r.footClipped <= 0, t + 'the card is whole: ' + J([r.cardOverflow, r.footClipped]));
           assert(near(r.toastR.bottom, top - gap * r.z, 0.6), t + 'a shown toast sits ' + gap + ' above the bar: ' + J([r.toastR, top]));
-          assert(r.end > 0 && r.end <= top - 24 * r.z + 0.5, t + 'Log\'s content ends 24 above the bar: ' + J([r.end, top]));
+          assert(r.atEnd && r.end > 0 && r.end <= top - 24 * r.z + 0.5, t + 'Log\'s content ends 24 above the bar: ' + J([r.atEnd, r.end, top]));
           assert(near(r.toastSheet.top, 24 * r.z, 0.6), t + 'over a sheet the toast shows at the top: ' + J(r.toastSheet));
           if (shell === 'tabsWeb') {
             const c = r.chat;
@@ -232,7 +236,7 @@ serial('I7: hiding the bar re-lays out nothing: on every tab innerHeight, #scree
   for (const shell of ['tabs', 'tabsWeb']) {
     const app = await pageBoot(shell);
     try {
-      await helloIn(app);
+      await ready(app);
       await (await insets(app))(83);
       const ihs = [];
       for (const tab of ['log', 'progress', 'coach', 'settings']) {
@@ -292,7 +296,7 @@ serial('overlays pad from --fp-sheet-b and --fp-safe-b, never env() (P-D14): eac
     const tag = shell + ' ' + ph.h + '/' + ph.safe + ' ';
     const app = await pageBoot(FLAG(shell, { h: ph.h, safe: ph.safe }), { page: { viewport: ph.size }, init: STORE_PLUGIN });
     try {
-      await helloIn(app);
+      await ready(app);
       await insets(app);
       const out = await ev(app, async (safe) => {
         const rows = [];
@@ -341,7 +345,7 @@ serial('overlays pad from --fp-sheet-b and --fp-safe-b, never env() (P-D14): eac
 serial('a hardware keyboard (spec 58\'s twin, tabsWeb): chat-typing without kb-open leaves the composer 8 above the native bar, which never slides away, and the conversation as tall; the blur changes nothing either, in both rooms', async () => {
   const app = await pageBoot('tabsWeb');
   try {
-    await helloIn(app);
+    await ready(app);
     const out = await ev(app, async () => {
       const rows = [];
       for (const room of ['heavyweight', 'dark']) {
@@ -391,7 +395,7 @@ const FAKE_VV = `(() => {
 serial('the keys up (spec 117 M2\'s twin, tabsWeb on a touch screen): the column keeps classic\'s 8 above the keys, #app over the visual viewport; with the keys down the composer is back 8 above the bar, in both rooms', async () => {
   const app = await pageBoot('tabsWeb', { page: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, init: FAKE_VV });
   try {
-    await helloIn(app);
+    await ready(app);
     const out = await ev(app, async () => {
       const KB = 336, rows = [];
       for (const room of ['heavyweight', 'dark']) {
@@ -428,7 +432,7 @@ serial('the keys up (spec 117 M2\'s twin, tabsWeb on a touch screen): the column
 serial('a shared photo under tabsWeb (spec 106 R22\'s twin) lands on Coach through one selectTab {tab:\'coach\'}: the day sheet closed, COMPARE left, the chat with the photo, the Coach tab lit in the hidden #tabs', async () => {
   const app = await pageBoot('tabsWeb');
   try {
-    await helloIn(app);
+    await ready(app);
     const out = await ev(app, async () => {
       const D = addDays(todayISO(), -3);
       lsSet('kt_runs', getRuns().concat([{ id: 2201, date: D, distance: 5, time: '25:00', type: 'easy', note: '' }]));
@@ -520,12 +524,12 @@ serial('classic (none, coach61): the values classic computes today (scroll end 1
     const app = await pageBoot(shell, o);
     let a, b;
     try {
-      if (shell !== 'none') await helloIn(app);
+      await ready(app, shell !== 'none');
       a = await classic(app);
     } finally { await app.close(); }
     const app2 = await pageBoot(shell, Object.assign({ html: strip }, o));
     try {
-      if (shell !== 'none') await helloIn(app2);
+      await ready(app2, shell !== 'none');
       b = await classic(app2);
     } finally { await app2.close(); }
     assert(J(a) === J(b), shell + ': every value and box equals the page\'s with the block cut out: ' + J(a).slice(0, 600) + ' vs ' + J(b).slice(0, 600));
