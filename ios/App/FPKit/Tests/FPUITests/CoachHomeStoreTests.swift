@@ -11,14 +11,14 @@ import FPCore
 /// tab is NATIVE; `tearDown` drops the model, ends `connecting` and ignores answers still on their way; each row sends
 /// its intent and the starter link `coachHome.openStarter`; CONNECT sends the key once and nothing more until the page
 /// answers; a toast only for a key that never reached the page, none for the page's refusals; the key field's flag
-/// follows the field and goes with it; `describe()` says what the probe needs; no 6-character piece of a typed canary
-/// in the events, `describe()` or any stored property; and CoachHomeRoot in a window draws the first frame's ground
-/// until a model, then the hub in the model's room (fading in, at once under Reduce Motion), publishes
-/// `HubHeaderBottomKey` only with the hub, presents nothing, takes no focus, sets no interface style, carries the
-/// owner's key to the store once, makes the key field anew whenever the route leaves the connect screen (even when
-/// SwiftUI never draws that model), and, as the root of a navigation stack in a tab bar, takes models that land while
-/// the stack is out of the window and keeps the key field across pushes and pops, waiting on no navigation callback
-/// (H0's probe: UIKit's didShow comes late and twice).
+/// follows the field and goes with it; `describe()` says what the probe needs, the rows and the connect block only
+/// where the root draws them; no 6-character piece of a typed canary in the events, `describe()` or any stored
+/// property; and CoachHomeRoot in a window draws the first frame's ground until a model, then the hub in the model's
+/// room (fading in, at once under Reduce Motion), publishes `HubHeaderBottomKey` only with the hub, presents nothing,
+/// takes no focus, sets no interface style, carries the owner's key to the store once, makes the key field anew
+/// whenever the route leaves the connect screen (even when SwiftUI never draws that model), and, as the root of a
+/// navigation stack in a tab bar, takes models that land while the stack is out of the window and keeps the key field
+/// across pushes and pops, waiting on no navigation callback (H0's probe: UIKit's didShow comes late and twice).
 @MainActor
 final class CoachHomeStoreTests: XCTestCase {
     private var store: CoachHomeStore!
@@ -938,36 +938,50 @@ final class CoachHomeStoreTests: XCTestCase {
         tab.close()
     }
 
-    /// `describe()` says a connect block, and its starter link, is drawn exactly where the hosted root draws one: the
-    /// connect screen and a newer page's route that carries a connect object, never the hub, even when the hub's model
-    /// carries one (CoachHomeView draws the hub's groups alone); the starter link only inside a drawn block. The key
-    /// field's flag reads the same rule.
-    func testDescribeSaysAConnectBlockAndItsStarterLinkOnlyWhereTheRootDrawsThem() throws {
-        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true))
+    /// `describe()` says the rows, a connect block and its starter link exactly where the hosted root draws them: the
+    /// rows of the hub and of a newer page's route, none on the connect screen even when its model carries groups
+    /// (CoachHomeView draws the connect block alone there: the screen draws exactly as it does without them); a connect
+    /// block on the connect screen and a newer page's route that carries a connect object, never the hub, even when the
+    /// hub's model carries one (CoachHomeView draws the hub's groups alone); the starter link only inside a drawn block.
+    /// The key field's flag reads the same rule. Hosted under Reduce Motion: the hub comes in as soon as a layout pass
+    /// takes the first model, so every render compared is settled.
+    func testDescribeSaysTheRowsAConnectBlockAndItsStarterLinkOnlyWhereTheRootDrawsThem() throws {
+        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true, reduceMotion: true))
         let rows = """
         [{"head":"Conversation","rows":[{"do":"openChat","title":"Open Chat","sub":null,"icon":"chat"}]}]
         """
-        let cases: [(what: String, model: CoachHomeModel, connect: Bool, starter: Bool)] = [
-            ("the hub", try model(rev: 1), false, false),
-            ("the connect screen with the starter link", try connect(rev: 2), true, true),
-            ("the connect screen without it", try model(CoachHomeViewTests.connectJSON(starter: false), rev: 3), true, false),
-            ("a hub whose model carries a connect object and a starter", try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 4), false, false),
-            ("a newer page's route with a connect block", try model(CoachHomeViewTests.otherJSON(), rev: 5), true, false),
-            ("a newer page's route with a connect block and a starter", try model(CoachHomeViewTests.connectJSON(route: "upsell", groups: rows), rev: 6), true, true),
+        let hubRows = ["openChat", "startIntake", "clearChat", "disconnect"]
+        let connectScreen = "the connect screen with the starter link"
+        let connectWithGroups = "a connect screen whose model carries groups"
+        let cases: [(what: String, model: CoachHomeModel, rows: [String], connect: Bool, starter: Bool)] = [
+            ("the hub", try model(rev: 1), hubRows, false, false),
+            (connectScreen, try connect(rev: 2), [], true, true),
+            ("the connect screen without it", try model(CoachHomeViewTests.connectJSON(starter: false), rev: 3), [], true, false),
+            (connectWithGroups, try model(CoachHomeViewTests.connectJSON(groups: rows), rev: 4), [], true, true),
+            ("a hub whose model carries a connect object and a starter", try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 5), ["openChat"], false, false),
+            ("a newer page's route with a connect block", try model(CoachHomeViewTests.otherJSON(), rev: 6), ["openChat", "disconnect"], true, false),
+            ("a newer page's route with a connect block and a starter", try model(CoachHomeViewTests.connectJSON(route: "upsell", groups: rows), rev: 7), ["openChat"], true, true),
         ]
+        var drawn: [String: UIImage] = [:]
         for c in cases {
             XCTAssertTrue(store.apply(c.model), c.what)
-            tab.wait(0.3)
+            tab.settle()
             XCTAssertNotNil(tab.find(UIScrollView.self), "\(c.what): drawn")
             XCTAssertEqual(tab.find(UITextField.self) != nil, c.connect, "\(c.what): a connect block (its key field) drawn or not")
             let d = store.describe()
+            XCTAssertEqual(d["rows"] as? [String], c.rows, "\(c.what): describe() says the rows drawn")
             XCTAssertEqual(d["connect"] as? Bool, c.connect, "\(c.what): describe() says what is drawn")
             XCTAssertEqual(d["starter"] as? Bool, c.starter, "\(c.what): the starter link, only inside a drawn block")
+            drawn[c.what] = tab.image()
         }
+        // the connect screen draws none of its model's groups: with them it draws exactly as it does without
+        let plain = try XCTUnwrap(drawn[connectScreen]), grouped = try XCTUnwrap(drawn[connectWithGroups])
+        XCTAssertGreaterThan(CoachRenderTests.inked(plain, background: RoomTheme.defaults(.heavyweight).rgba(.bg)), 0.01, "the connect screen is inked")
+        XCTAssertLessThan(CoachRenderTests.difference(plain, grouped), 0.001, "a connect screen draws no rows, whatever its model carries")
         // the hub whose model carries a connect object draws no field: a report of text from one on its way out is
         // ignored
-        XCTAssertTrue(store.apply(try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 7)))
-        tab.wait(0.3)
+        XCTAssertTrue(store.apply(try model(CoachHomeViewTests.connectJSON(route: "hub", groups: rows), rev: 8)))
+        tab.settle()
         XCTAssertNil(tab.find(UITextField.self))
         store.host.fieldTyped(true)
         XCTAssertEqual(keyField(), "empty")

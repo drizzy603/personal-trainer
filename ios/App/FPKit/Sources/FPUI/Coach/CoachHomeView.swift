@@ -292,12 +292,23 @@ public struct CoachHomeView: View {
         let generation: Int
     }
 
+    /// Whether the column draws the model's groups: on the hub and on a newer page's route (the hub's layout), never on
+    /// the connect screen, whatever groups its model carries (as `column` lays it out; the store's `describe()` reads
+    /// it, so the probe's rows are the rows on screen).
+    static func drawsGroups(_ model: CoachHomeModel) -> Bool {
+        switch model.route {
+        case .hub, .other: return true
+        case .connect: return false
+        }
+    }
+
     // MARK: The column
 
     private func column(_ t: RoomTheme, width: CGFloat, safeTop: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HomeMetaRow(meta: model.meta, safeTop: safeTop)
             HomeHero(hero: model.hero, width: width)
+            // the groups exactly where `drawsGroups` says (the probe's rows read it)
             switch model.route {
             case .hub:
                 groups(t)

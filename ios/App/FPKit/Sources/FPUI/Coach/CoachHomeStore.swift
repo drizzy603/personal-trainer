@@ -227,14 +227,22 @@ public final class CoachHomeStore: ObservableObject {
     /// its model carries.
     private var connectDrawn: Bool { model.flatMap(CoachHomeView.connectKey) != nil }
 
-    /// What the probe reports (ScreenHost's `describe()` carries it): the model's rev, boot, route, `resume`, the rows'
-    /// actions, whether a connect block and its starter link are drawn, `connecting`, the key field's flag ("empty" or
-    /// "typed", never its text), the last outcome per intent name, the last 20 toasts asked for and the last 40 events.
+    /// The actions of the rows CoachHomeView draws: the groups' on the hub and on a newer page's route, none on the
+    /// connect screen, whatever groups its model carries (`CoachHomeView.drawsGroups`).
+    private var drawnRows: [String] {
+        guard let model, CoachHomeView.drawsGroups(model) else { return [] }
+        return model.groups.flatMap { $0.rows.map(\.action.rawValue) }
+    }
+
+    /// What the probe reports (ScreenHost's `describe()` carries it): the model's rev, boot, route, `resume`, the
+    /// actions of the rows drawn, whether a connect block and its starter link are drawn, `connecting`, the key field's
+    /// flag ("empty" or "typed", never its text), the last outcome per intent name, the last 20 toasts asked for and the
+    /// last 40 events.
     public func describe() -> [String: Any] {
         [
             "rev": model?.rev ?? NSNull(), "boot": model?.boot ?? NSNull(),
             "route": model.map { Self.word($0.route) } ?? NSNull(), "resume": model?.resume ?? NSNull(),
-            "rows": model?.groups.flatMap { $0.rows.map(\.action.rawValue) } ?? [],
+            "rows": drawnRows,
             "connect": connectDrawn, "starter": connectDrawn && model?.connect?.starter != nil,
             "connecting": connecting, "keyField": keyFieldTyped ? "typed" : "empty",
             "outcomes": outcomes, "toasts": toasts, "events": Array(events.suffix(40)),
