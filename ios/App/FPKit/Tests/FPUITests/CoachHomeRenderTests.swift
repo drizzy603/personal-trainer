@@ -17,11 +17,11 @@ import FPCore
 ///
 /// Every render draws exactly when its model has something to draw (a model with nothing draws the room's bare ground)
 /// and the phone's setting never changes it; with the app's Larger Text on the column grows at each size and stops at
-/// .xxLarge (the web zoom's cap), with it off every size draws as .large; the column scrolled to its end stops above
-/// the bar; every string a render draws is the model's at its place, and every string the model shows is drawn there
-/// (I10, read off the renders by Vision's text recognition: `DrawnText`; the avatar, a lone letter, by its tile).
-/// With FPUI_SHOTS set (xcodebuild passes TEST_RUNNER_FPUI_SHOTS) the renders are written there for the contact
-/// sheets (plan task N14):
+/// .xxLarge (the web zoom's cap), with it off every size draws as .large; the column scrolled to its end ends at the
+/// bar, its drawing exactly its last block's height above that end (no space of its own after it); every string a
+/// render draws is the model's at its place, and every string the model shows is drawn there (I10, read off the
+/// renders by Vision's text recognition: `DrawnText`; the avatar, a lone letter, by its tile). With FPUI_SHOTS set
+/// (xcodebuild passes TEST_RUNNER_FPUI_SHOTS) the renders are written there for the contact sheets (plan task N14):
 ///
 ///     native/home/<fixture>/<room>-<light|dark>-<size>.png   the tab as the 390 × 844 phone shows it
 ///     native/home/<fixture>/<room>-full-<size>.png           the whole column, unscrolled, 390 wide
@@ -192,25 +192,38 @@ final class CoachHomeRenderTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(count, sources.count * Self.rooms.count * Self.screens.count * Self.sizes.count)
     }
 
-    /// The tab scrolled to its end at the largest text, where the column is tallest: it stops above the glass bar, its last
-    /// block at least the column's own 24 px clear of the bar's 83 pt (the scroll view keeps the bar's inset, so the end
-    /// of the hub is never under the glass). On both phones, in both rooms; on the 320 pt phone the connect screen and the
-    /// hub with its groups are taller than the screen, so some fixture's end is scrolled to.
+    /// The tab scrolled to its end at the largest text, where the column is tallest: the scroll view keeps the glass
+    /// bar's inset, so a column taller than the screen ends exactly at the bar's top (and a shorter one above it),
+    /// never under the glass; and the drawing ends exactly where the column's last block does, the column's own 24 px
+    /// above its end (`endGap`), so neither a block cut under the bar nor space of the view's own after its last block
+    /// passes. On both phones, in both rooms; on the 320 pt phone the connect screen and the hub with its groups are
+    /// taller than the screen, so some fixture's end is scrolled to.
     func testTheTabScrolledToItsEndStopsAboveTheBar() throws {
-        var scrolled = 0
+        var scrolled = 0, ends = 0
         for (name, json) in try Self.sources() {
             for (roomName, _, model) in try Self.models(json) {
                 for screen in Self.screens {
                     let what = "\(name) \(roomName) \(screen.name) at its end"
                     let size = DynamicTypeSize.xxLarge
                     let theme = RoomTheme(home: model, system: size)
-                    var moved = false
+                    var column: (taller: Bool, end: CGFloat)?
                     let image = CoachRenderTests.render(Phone(model: model, size: size, screen: screen), size: screen.size, phone: .light,
-                                                        prepare: { if Self.scrollToEnd($0) { moved = true } })
-                    if moved { scrolled += 1 }
-                    if let end = CoachRenderTests.lowestInk(image, background: theme.rgba(.bg)) {
-                        let bar = screen.size.height - screen.bottom
-                        XCTAssertLessThanOrEqual(end, bar - theme.px(24) + 0.5, "\(what): the column's end clears the bar (\(bar))")
+                                                        prepare: { column = Self.scrollToEnd($0) })
+                    let bar = screen.size.height - screen.bottom
+                    let end = try XCTUnwrap(column, "\(what): the hub's scroll view").end
+                    if column?.taller == true {
+                        scrolled += 1
+                        XCTAssertEqual(end, bar, accuracy: 0.5, "\(what): scrolled to its end, the column ends at the bar's top")
+                    } else {
+                        XCTAssertLessThan(end, bar + 0.5, "\(what): a column shorter than the screen ends above the bar")
+                    }
+                    if let ink = CoachRenderTests.lowestInk(image, background: theme.rgba(.bg)) {
+                        XCTAssertLessThanOrEqual(ink, bar - theme.px(24) + 0.5, "\(what): the drawing ends the column's 24 px above the bar (\(bar))")
+                        if let gap = Self.endGap(model, theme) {
+                            XCTAssertTrue(gap.contains(end - ink),
+                                          "\(what): the drawing ends \(end - ink) pt above the column's end, where its last block ends (\(gap))")
+                            ends += 1
+                        }
                     } else {
                         XCTAssertTrue(Self.shown(model).isEmpty, "\(what): drawn")
                     }
@@ -219,21 +232,48 @@ final class CoachHomeRenderTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(scrolled, 0, "some fixture's column is taller than a screen at .xxLarge and was scrolled to its end")
+        XCTAssertGreaterThan(ends, 0, "the column's end was held where its last block is")
     }
 
-    /// Moves the hub's scroll view to its end; true when that is not where it was (the column is taller than the screen).
-    static func scrollToEnd(_ view: UIView) -> Bool {
+    /// Moves the hub's scroll view to its end. `taller`: the column is taller than the screen (so it moved); `end`:
+    /// where the column ends, in the hosting view's points (its content's end as the scroll view shows it). Nil without
+    /// a scroll view.
+    static func scrollToEnd(_ view: UIView) -> (taller: Bool, end: CGFloat)? {
         func find(_ v: UIView) -> UIScrollView? {
             if let s = v as? UIScrollView { return s }
             for sub in v.subviews { if let s = find(sub) { return s } }
             return nil
         }
-        guard let scroll = find(view) else { return false }
+        guard let scroll = find(view) else { return nil }
         let inset = scroll.adjustedContentInset
-        let end = max(-inset.top, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
-        guard end > -inset.top + 0.5 else { return false }
-        if abs(scroll.contentOffset.y - end) > 0.5 { scroll.setContentOffset(CGPoint(x: 0, y: end), animated: false) }
-        return true
+        let last = max(-inset.top, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
+        let taller = last > -inset.top + 0.5
+        if taller, abs(scroll.contentOffset.y - last) > 0.5 { scroll.setContentOffset(CGPoint(x: 0, y: last), animated: false) }
+        return (taller, scroll.convert(CGPoint(x: 0, y: scroll.contentSize.height), to: view).y)
+    }
+
+    /// How far above the column's end its drawing ends, in points (the web's CSS for each last block, at the theme's
+    /// size): the column's own 24 px, then the last block's own end. A group card (the hub's, and a newer page's route
+    /// without a connect block) is drawn to its edge, 18 px of margin under it; the connect block ends with its starter
+    /// link (8 px under the link's line) or its help (half the 1.55 line's leading under the last line's face), whose
+    /// drawing ends between the line's baseline and the face's descent; or with CONNECT, drawn to its edge. A point of
+    /// rounding either way. Nil when the hero is the column's last block (no fixture's is).
+    static func endGap(_ m: CoachHomeModel, _ t: RoomTheme) -> ClosedRange<CGFloat>? {
+        let pad = t.px(24)
+        func edge(_ v: CGFloat, descent: CGFloat = 0) -> ClosedRange<CGFloat> { (v - 1)...(v + descent + 1) }
+        if let c = m.connect, CoachHomeView.connectKey(m) != nil {
+            if c.starter != nil {
+                return edge(pad + t.px(8), descent: -HomeConnectBlock.linkFont(t).descender)
+            }
+            if !c.help.isEmpty {
+                let size = t.home(.homeHelp)
+                let face = CoachInline.baseFont(InlineStyle(size: size, weight: 400, color: .muted), theme: t)
+                return edge(pad + (t.px(size * 1.55) - face.lineHeight) / 2, descent: -face.descender)
+            }
+            return edge(pad)
+        }
+        if CoachHomeView.drawsGroups(m), !m.groups.isEmpty { return edge(pad + t.px(18)) }
+        return nil
     }
 
     // MARK: I10: what a render draws
