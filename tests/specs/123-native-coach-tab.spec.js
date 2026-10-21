@@ -25,7 +25,8 @@
 //   Fixtures/draft/putback.json, through the handler) and answered took; a draft off coach ignored; a numeric draft
 //   bad-args; the mock's composer cleared only after took.
 // - The words survive (P-D15, I16): kt_coach_handover is written before the took answer, is device-only bookkeeping
-//   (no backup carries it), comes back after a reload in the fallen-back scene and after a relaunch, goes back to a
+//   (no backup carries it), comes back after a reload in the fallen-back scene, after a relaunch and in the first
+//   paint of a reload on the Coach tab in setup (then to the native setup chat as its draft), goes back to a
 //   native chat as its draft and leaves on coach.draftTaken with the web copy (one composer at a time, a trailing line
 //   too), follows the box (a render, the page hidden), and leaves on a send from either composer and on an emptied
 //   box; a failed write answers without took and changes nothing; under STORE=shadow the native copy has the key.
@@ -553,6 +554,24 @@ serial('the words survive (I16): the mock\'s fallback hands the composer\'s word
       return { before, a: a.ok, key: __key(), draft: _coachDraft.v, model: __last('coach').composer.draft };
     }, WORDS);
     assert(sent.before === WORDS && sent.a && sent.key === null && sent.draft === '' && sent.model === null, 'a send from the native composer spends the words: ' + J(sent));
+  } finally { await app.close(); }
+  // a reload on the Coach tab in setup (tabs mode): the first paint, before hello, draws the web setup chat, and its
+  // box starts with the words (the boot render runs before _coachDraft's own line), so the next render's capture keeps
+  // them and the native setup chat gets them as its draft
+  app = await pageBoot('tabs', { init: 'sessionStorage.setItem("fp_tab", "coach"); window.__fpShellPre = { selected: "coach", seq: 1 };'
+    + 'window.__firstBox = null; new MutationObserver(function () { var b = document.getElementById("coach-input"); if (b && window.__firstBox === null) window.__firstBox = b.value; })'
+    + '.observe(document, { childList: true, subtree: true });',
+  seed: { kt_coach_handover: WORDS, kt_intake: '1', kt_routine: '' } });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      await __w(40);
+      const m = __last('coach');
+      return { tab: currentTab, intake: intakeMode, first: window.__firstBox, shown: !!_fp.shown.coach, draft: m && m.composer.draft ? m.composer.draft.text : null,
+        key: __key(), screen: __screen().kids };
+    });
+    assert(out.tab === 'coach' && out.intake && out.first === WORDS && out.shown && out.draft === WORDS && out.key === WORDS && J(out.screen) === '["kt-fp-ph/coachHome"]',
+      'a reload in setup: the first paint\'s box holds the words, and the native setup chat gets them as its draft: ' + J(out));
   } finally { await app.close(); }
   // one composer at a time: the About switch off, the web chat shows the words and the owner adds a line (the key
   // follows); switched on, the native chat gets them as its draft (sent trimmed) and draftTaken lets the key and the
