@@ -11,14 +11,15 @@
 //   flag a page error fails close() unless pageErrors: 'allow'; status {refresh: true} is recorded and answered.
 // - Tabs mode (P2; contract 2.3-2.4, 3.2-3.3, 3.8, 4.1-4.3, 7.2, 8.4, I8, I14): the page is inert without a usable tabs
 //   flag (no shell, build 60's, 61's classic roots, the flag with no TrovoShell or 60's methods, a malformed tabs,
-//   FP_TABS or FP_NATIVE off by a getter or by the page an OTA ships): no fp-tabs, no --fp-* and its own #tabs, and a
-//   tour sends no selectTab, sheets, setSwitch or dismiss tabs; the class and the flag's bar are on <html> before #tabs
-//   is in and #tabs is hidden; the boot tab (the flag's, fp_tab, which gives way to hello's reply even at seq 0); hello
-//   names FP_SCREENS and adopts a newer selection and bar with no selectTab; the funnel (one selectTab per switchTab
-//   before the local switch, answers correct only the newest request, a crossing tap wins, no bounce back); tabs.select
-//   and tabs.bar (newer only, again, bad-args, off outside tabs mode); the variables at the Larger Text zooms; covered
-//   is the Coach tab not web; every visibilitychange forwarded; the way out (told by the shell: nothing sent; on its
-//   own: one dismiss tabs and the chat off; selectTab's refusals, and their handler with sheets' label as a unit check
+//   FP_TABS or FP_NATIVE off by a getter or by the page an OTA ships): no fp-tabs, no --fp-* and its own #tabs, a
+//   tour sends no selectTab, sheets, setSwitch or dismiss tabs, and boot and tour leave the error log empty with no
+//   page error, one OTA confirm and bootDone once; the class and the flag's bar are on <html> before #tabs is in and
+//   #tabs is hidden; the boot tab (the flag's, fp_tab, which gives way to hello's reply even at seq 0); hello names
+//   FP_SCREENS and adopts a newer selection and bar with no selectTab; the funnel (one selectTab per switchTab before
+//   the local switch, answers correct only the newest request, a crossing tap wins, no bounce back); tabs.select and
+//   tabs.bar (newer only, again, bad-args, off outside tabs mode); the variables at the Larger Text zooms; covered is
+//   the Coach tab not web; every visibilitychange forwarded; the way out (told by the shell: nothing sent; on its own:
+//   one dismiss tabs and the chat off; selectTab's refusals, and their handler with sheets' label as a unit check
 //   until P5 sends sheets; at hello it renders after the leave and the take-over), the failsafe on visible time (real
 //   time and Playwright's clock; on the clock, a suspension between a hide and a show adds nothing and no stretch
 //   counts more than 1 s), and a broken page still drops the bar (whatever state its main script reached).
@@ -363,6 +364,13 @@ async function TOUR() {
 }
 const GETTER = (name) => 'Object.defineProperty(window, "' + name + '", { configurable: true, get: function () { return false; } });';
 const HIDDEN = 'window.__vis = "hidden"; Object.defineProperty(document, "visibilityState", { configurable: true, get: function () { return window.__vis; } });';
+// TrovoOta.confirm counted in window.__otaConfirms (opts.init, after the harness's native Capacitor): the OTA confirm
+// _bootDone sends once per document, which the one-strike breaker waits for on a phone.
+const OTA = 'window.Capacitor.Plugins.TrovoOta = { confirm: function () { window.__otaConfirms = (window.__otaConfirms || 0) + 1; return Promise.resolve({}); } };';
+// The end of the boot as the owner's phone sees it: the error log (Settings > About), the OTA confirms and bootDone
+// (null with no TrovoShell).
+const bootEnds = (app) => ev(app, () => ({ err: JSON.parse(localStorage.getItem('kt_err_log') || '[]').map((e) => e.m),
+  confirms: window.__otaConfirms || 0, bootDone: window.__fpShell ? __fpShell.of('bootDone').length : null }));
 
 serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the page\'s own #tabs; a tour sends no selectTab, sheets, setSwitch or dismiss tabs; hello names coach ([] without FP_NATIVE); a 61 tab root falls back page at that hello', async () => {
   const OTA_NO_TABS = edited('var FP_NATIVE=true, FP_TABS=true,', 'var FP_NATIVE=true, FP_TABS=false,');
@@ -383,16 +391,27 @@ serial('P2: inert without a usable tabs flag (I8): no fp-tabs, no --fp-*, the pa
     ['FP_NATIVE false (a getter)', { shell: 'tabs', init: GETTER('FP_NATIVE') }, [], true],
     ['FP_NATIVE false (the page an OTA ships)', { shell: 'tabs', html: OTA_NO_NATIVE }, [], true],
   ];
-  for (const [tag, o, names, falls] of rows) {
+  // The boot block runs on every boot of every browser, shell 41-59 and build 60 phone, and its catch writes a throw to
+  // the owner's error log and boots on: each row must boot and tour with the log empty, no page error, one OTA confirm
+  // (every row is native) and bootDone once wherever a TrovoShell exists.
+  const clean = async (app, tag, o) => {
+    const e = await bootEnds(app);
+    assert(e.err.length === 0 && app.errors.length === 0, tag + ': nothing in the error log, no page error: ' + J([e.err, app.errors]));
+    assert(e.confirms === 1 && e.bootDone === (o.shell === 'none' ? null : 1), tag + ': one OTA confirm, bootDone once with a TrovoShell: ' + J(e));
+  };
+  for (const [tag, o0, names, falls] of rows) {
+    const o = Object.assign({}, o0, { init: OTA + (o0.init || '') });
     const app = await pageBoot(o.shell, o);
     try {
       if (names) await helloIn(app);
       const first = await look(app);
       classicLook(first, tag + ' (boot)', false);
+      await clean(app, tag + ' (boot)', o);
       await app.page.evaluate(TOUR);
       const out = await look(app);
       classicLook(out, tag + ' (after the tour)');
-      assert(!out.mode && !out.left, tag + ': never in tabs mode: ' + J(out));
+      await clean(app, tag + ' (after the tour)', o);
+      assert(!out.mode && !out.left && !out.told && out.offCoach === null, tag + ': never in tabs mode: ' + J(out));
       assert(out.tabsCalls === null ? names === null : out.tabsCalls.length === 0, tag + ': no selectTab, sheets, setSwitch or dismiss tabs: ' + J(out.tabsCalls));
       if (names === null) assert(out.hello === null || out.hello.length === 0, tag + ': no hello: ' + J(out.hello));
       else assert(out.hello.length === 1 && J(out.hello[0].screens) === J(names), tag + ': hello names ' + J(names) + ': ' + J(out.hello));
