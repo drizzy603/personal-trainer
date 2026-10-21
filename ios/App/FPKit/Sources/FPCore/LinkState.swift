@@ -46,9 +46,10 @@ import Foundation
 // - Held timeouts (D41): a timeout of `tabs.select`, `tabs.bar` or `shell.covered` (sent on every tap and
 //   every Coach entry and exit) counts for nothing at first; the link asks for a `ping` (`pingWhenIdle`).
 //   The first answer after it, the ping's or any queued intent's, drops the holds uncounted (a busy page,
-//   not a broken one); the ping's failure counts them and then itself, so a page that stopped answering
-//   still trips. A document start drops them. A ping that ends with no answer at all (`pingLost`) lets the
-//   next hold ask again. Every other failure counts as before.
+//   not a broken one); the ping's failure counts them and then itself, as one event (one fallback at most,
+//   `fellBack` first), so a page that stopped answering still trips. A document start drops them. A ping
+//   that ends with no answer at all (`pingLost`) lets the next hold ask again. Every other failure counts
+//   as before.
 
 /// What the host does after an event, in order.
 public enum LinkEffect: Equatable, Sendable {
@@ -76,9 +77,9 @@ public enum LinkEffect: Equatable, Sendable {
     /// passed to `fallBack(_:pageAsked:)`.
     case fellBack(FellBackWhy)
     /// A timeout of `tabs.select`, `tabs.bar` or `shell.covered` is held (contract 4.4, D41): send `ping` once the
-    /// link is idle. Its answer, or any answer before it, drops the hold uncounted; its failure counts the hold and
-    /// then itself. Asked once until a ping's outcome comes back (`intentFinished`), or the host reports that the ping
-    /// ended with no answer at all (`pingLost`).
+    /// link is idle. Its answer, or any answer before it, drops the hold uncounted; its failure counts the holds and
+    /// then itself, as one event. Asked once until a ping's outcome comes back (`intentFinished`), or the host reports
+    /// that the ping ended with no answer at all (`pingLost`).
     case pingWhenIdle
 }
 
@@ -408,14 +409,19 @@ public struct LinkState: Equatable, Sendable {
             return [.pingWhenIdle]
         case .failed(let f):
             guard isPing else { return Self.tidy(fail(screens, kind: .intent, detail: Self.describe(f), at: now)) }
-            // the confirming ping failed (or a ping of the host's own): every held timeout counts, then the ping
+            // the confirming ping failed (or a ping of the host's own): every held timeout counts, then the ping, in turn
+            // (a piece an earlier count took off counts nothing more), and what they turn off goes out as one event: one
+            // fallback at most, `fellBack` before every `screenOff`, the offs in the binary's order
             pingAsked = false
             let holds = held
             held = []
-            var fx: [LinkEffect] = []
-            for piece in holds { fx += fail(liveScreens(for: piece), kind: .intent, detail: Self.describe(.timeout), at: now) }
-            fx += fail(liveScreens(for: nil), kind: .intent, detail: Self.describe(f), at: now)
-            return Self.tidy(fx)
+            let before = book
+            var offs: [String: ScreenOffReason] = [:]
+            for piece in holds {
+                offs.merge(count(liveScreens(for: piece), kind: .intent, detail: Self.describe(.timeout), at: now)) { first, _ in first }
+            }
+            offs.merge(count(liveScreens(for: nil), kind: .intent, detail: Self.describe(f), at: now)) { first, _ in first }
+            return Self.tidy(failed(offs, since: before))
         case .done, .refused:
             // an answer: the page is busy, not broken; the holds go uncounted
             if isPing { pingAsked = false }
@@ -499,9 +505,17 @@ public struct LinkState: Equatable, Sendable {
         return fx
     }
 
+    /// One failure of `kind` for each of `screens`, as one event.
     private mutating func fail(_ screens: [String], kind: FailureKind, detail: String, at now: Date) -> [LinkEffect] {
-        var offs: [String: ScreenOffReason] = [:]
         let before = book
+        return failed(count(screens, kind: kind, detail: detail, at: now), since: before)
+    }
+
+    /// Counts one failure of `kind` for each of `screens`: a piece that trips goes off for the document, and the live
+    /// pieces that need it go with it (`needs`), so a later count of the same event finds them off. Returns what went
+    /// off; the event's effects come from `failed`, once, whatever the number of counts.
+    private mutating func count(_ screens: [String], kind: FailureKind, detail: String, at now: Date) -> [String: ScreenOffReason] {
+        var offs: [String: ScreenOffReason] = [:]
         for s in screens {
             if let t = book.recordFailure(screen: s, pageBuild: pageBuild, kind: kind, detail: detail, at: now, limit: config.failureLimit) {
                 offInDocument.insert(s)
@@ -509,6 +523,13 @@ public struct LinkState: Equatable, Sendable {
             }
         }
         if !offs.isEmpty { offs.merge(cascade()) { own, _ in own } }
+        return offs
+    }
+
+    /// The effects of one event's failures: under a live tab root a `tabs` trip falls the root back (`fellBack(.failures)`
+    /// before every `screenOff`), then what went off in the binary's order; `bookChanged` when the book moved since
+    /// `before`.
+    private mutating func failed(_ offs: [String: ScreenOffReason], since before: BreakerBook) -> [LinkEffect] {
         var fx = withFallBack(offs, why: offs["tabs"] != nil ? .failures : nil, tellTabs: true)
         if book != before { fx.append(.bookChanged) }
         return fx

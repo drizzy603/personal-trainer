@@ -797,6 +797,7 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(trip.at, t0 + 6)
         XCTAssertEqual(offs(fx).map(\.description), ["coach needs [\"coachHome\"]", "coachHome needs [\"tabs\"]", "tabs failures"])
         XCTAssertEqual(fx.first, .fellBack(.failures))
+        assertFellBackFirst(fx, "two holds and the ping")
         XCTAssertEqual(fx.last, .bookChanged)
         XCTAssertEqual(s.book.screens["coach"]?.failures, 1, "the ping counted for coach before the bar took it along")
         XCTAssertNil(s.book.trip(screen: "coach", pageBuild: "P1"))
@@ -810,7 +811,44 @@ final class LinkStateTests: XCTestCase {
         XCTAssertEqual(d.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [.pingWhenIdle], "the restate's own hold")
         let dead = d.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 8)
         XCTAssertEqual(fellBack(dead), [.failures])
+        assertFellBackFirst(dead, "a tap and its restate")
         XCTAssertEqual(tripped(d), ["tabs"], "the bar trips first; the others go with it")
+    }
+
+    /// The ping's failure is one event, however many holds it counts (contract 10.3): coach two failures short of its trip
+    /// and the bar one, a held `shell.covered` (in the second pass a held `tabs.select` after it), and the ping fails. The
+    /// first hold trips coach and the Coach tab goes with it; the ping (or the second hold) trips the bar. One fallback
+    /// comes out, `fellBack` first, so the host pops the chat inside the fallback's turn and never through coach's own
+    /// `screenOff` (animated while Coach is selected, outside the `tabs@` section); then coach, the Coach tab and the bar
+    /// in the order the page hears them. The counts are taken in turn: a piece an earlier count took off counts nothing.
+    func testAPingFailureCountingSeveralHoldsIsOneEvent() throws {
+        for secondHold in [false, true] {
+            let tag = secondHold ? "shell.covered, then tabs.select held" : "shell.covered held"
+            var s = linked61()
+            for i in 0 ..< 2 { _ = s.intentFinished(.coachStop, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 2 + Double(i)) }
+            _ = s.intentFinished(select, boot: "b1", outcome: .failed(.page("exception")), at: t0 + 4)
+            XCTAssertEqual(s.book.screens["coach"]?.failures, 2, tag)
+            XCTAssertEqual(s.book.screens["tabs"]?.failures, 1, tag)
+            XCTAssertEqual(s.intentFinished(.shellCovered(on: true), boot: "b1", outcome: .failed(.timeout), at: t0 + 5), [.pingWhenIdle], tag)
+            if secondHold { XCTAssertEqual(s.intentFinished(select, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], tag) }
+            XCTAssertEqual(s.liveScreens, all, "\(tag): nothing counted before the ping's outcome")
+            let fx = s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 8)
+            let coach = try XCTUnwrap(s.book.trip(screen: "coach", pageBuild: "P1"), tag)
+            let bar = try XCTUnwrap(s.book.trip(screen: "tabs", pageBuild: "P1"), tag)
+            XCTAssertEqual(coach.detail, "3 in a row: page exception, page exception, timeout", tag)
+            XCTAssertEqual(bar.detail, "3 in a row: page exception, timeout, timeout", tag)
+            XCTAssertEqual(fx, [.fellBack(.failures), .screenOff(screen: "coach", reason: .tripped(coach)),
+                                .screenOff(screen: "coachHome", reason: .needs(["coach"])), .screenOff(screen: "tabs", reason: .tripped(bar)),
+                                .bookChanged],
+                           "\(tag): one fallback, first, then coach, the Coach tab and the bar")
+            assertFellBackFirst(fx, tag)
+            XCTAssertEqual(s.book.screens["coachHome"]?.failures, 1, "\(tag): the hold counted for the Coach tab; once off with coach, nothing more")
+            XCTAssertNil(s.book.trip(screen: "coachHome", pageBuild: "P1"), "\(tag): a cascade is never a trip")
+            XCTAssertEqual(s.fellBackWhy, .failures, tag)
+            XCTAssertFalse(s.tabsRoot, tag)
+            XCTAssertEqual(s.liveScreens, [], tag)
+            XCTAssertEqual(s.heldTimeouts, 0, tag)
+        }
     }
 
     /// A held `shell.covered` counts against every live piece, `tabs` included, when the ping fails.
@@ -844,6 +882,7 @@ final class LinkStateTests: XCTestCase {
         let fx = s.intentFinished(select, boot: "b1", outcome: .failed(.page("bad-args")), at: t0 + 4)
         XCTAssertEqual(s.book.trip(screen: "tabs", pageBuild: "P1")?.detail, "3 in a row: script error: x, bad answer: no ok, page bad-args")
         XCTAssertEqual(fellBack(fx), [.failures])
+        assertFellBackFirst(fx, "bad-args inside a stall")
         XCTAssertEqual(s.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + 6), [], "nothing live is left to count for")
         // coach.* keeps build 60's rule: three timeouts in a row trip coach (and the Coach tab goes with it)
         var c = linked61()
@@ -862,6 +901,7 @@ final class LinkStateTests: XCTestCase {
         for i in 0 ..< 3 { pfx = p.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
         XCTAssertEqual(tripped(p), all)
         XCTAssertEqual(fellBack(pfx), [.failures])
+        assertFellBackFirst(pfx, "three timed-out pings")
         var sixty = linked()
         for i in 0 ..< 3 { _ = sixty.intentFinished(.ping, boot: "b1", outcome: .failed(.timeout), at: t0 + Double(i)) }
         XCTAssertEqual(sixty.book.trip(screen: "coach", pageBuild: "P1")?.detail, "3 in a row: timeout, timeout, timeout", "build 60's scenario")
