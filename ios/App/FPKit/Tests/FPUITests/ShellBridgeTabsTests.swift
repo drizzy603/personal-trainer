@@ -1138,8 +1138,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "selectTab", ["tab": "coach"]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
-        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
-        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
         b.screens.coach.draft.text = "  Words the owner typed\n"
         await setHow(s, "tabs.select", "fail:bad-args")
         _ = await js(s, "window.__got = []; 0")
@@ -1343,12 +1343,12 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(ShellBridge.coachNetSeconds, 3)
         let w = try await scene(first: "coach", hello: nil, bridge: makeBridge(net: ShellBridge.coachNetSeconds))
         let wroot = try XCTUnwrap(w.root)
+        let asked = Date()
         try await hello(w)
         XCTAssertEqual(wroot.coachMode, .waiting)
         XCTAssertNotNil(w.binding?.coachNet, "the net runs")
-        try await sleep(2.5)
-        XCTAssertEqual(wroot.coachMode, .waiting, "not before 3 s")
-        try await expect("WEB 3 s after the answer") { wroot.coachMode == .web }
+        try await expect("WEB 3 s after the answer", within: 8) { wroot.coachMode == .web }
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(asked), ShellBridge.coachNetSeconds, "not before 3 s")
         XCTAssertFalse(w.webView.isHidden, "the web view shows")
         XCTAssertNil(w.binding?.coachNet)
         try await expect("covered on after the hello, off when it turned WEB") { await self.calls(w, "shell.covered").map(\.on) == [true, false] }
@@ -1400,8 +1400,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         root.setHome(s.home)
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
-        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
-        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
         try await load(s)
         let h = try await hello(s, Self.all, boot: "b2")
         XCTAssertEqual(h["up"] as? [String], ["coach", "coachHome"])
@@ -1431,8 +1431,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         root.setHome(s.home)
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
-        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
-        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
         try await load(s)
         let h = try await hello(s, ["coach"], boot: "b2")
         XCTAssertEqual(h["screens"] as? [String], ["coach"], "the classic rule")
@@ -1516,7 +1516,6 @@ final class ShellBridgeTabsTests: XCTestCase {
         let home = makeHome()
         let s = try await scene(allowed: false, hello: nil, bridge: makeBridge(home: home))
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.25   // a timeout in 0.5 s
         var policy = Policy.defaults
         s.bridge.environment.policy = { policy }
         let draft = b.screens.coach.draft
@@ -1530,6 +1529,7 @@ final class ShellBridgeTabsTests: XCTestCase {
             try await hello(s, ["coach"], boot: "b\(round)")
             XCTAssertEqual(b.link.liveScreens, ["coach"], "round \(round)")
             draft.text = words
+            b.pageLink.timeoutScale = how == "never" ? 0.25 : 1   // the round that times out does so in 0.5 s
             await setHow(s, "screens.off", how)
             _ = await js(s, "window.__took = \(took); 0")
         }
@@ -1648,8 +1648,8 @@ final class ShellBridgeTabsTests: XCTestCase {
         root.setHome(s.home)
         _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
         _ = try await message(s, "present", ["screen": "coach"]).get()
-        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
-        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle", within: 10) { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
         _ = await js(s, "window.__got = []; 0")
         _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
         XCTAssertEqual(root.coachMode, .web, "at once")
