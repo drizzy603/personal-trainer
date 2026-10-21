@@ -39,6 +39,11 @@ import FPCore
 ///   root's hooks to the page through weak captures); `selectTab` and `sheets` drive it; `tabs.select` and `tabs.bar`
 ///   are restated once the link is idle, never resent; the TabsModel decodes inside `model tabs@`; `deepLink(_:)` is the
 ///   one warm deep-link entry for both roots (the URL an argument of `_trovoOpen`).
+/// - ShellBridge II (build 61, H8): hello's `tabs {selected, seq, bar}`, the declines and the Coach tab's modes per scene
+///   (WEB, the 3 s WAITING net, a NATIVE tab taken over); the fallback on the link's `fellBack` (the root's half, the
+///   stack left, `screens.off` in order, covered off, `dropTabsScript` for the scene's later documents) from each trigger
+///   (a hello, `dismiss tabs`, no hello, a trip, the policy, `setSwitch`); the status's root, fallback, switches and
+///   policy check, `status {refresh}`; the composer's words on every `screens.off` for the chat, cleared on `took`.
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {
