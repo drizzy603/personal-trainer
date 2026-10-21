@@ -23,7 +23,7 @@
 //   answer never undoes a newer one. Leaving tabs mode mid-hold releases at once and ends the announcing.
 // - The baseline: exactly one sheets {open:false} at boot in tabs mode, none under no shell, coach61 or build 60's
 //   chat; a reload with a sheet open sends it again (the shell's state is per document); a dev.nav sheet is announced
-//   before hello's answer.
+//   under a shell that never answers hello, so before hello's answer by construction.
 // - The OTA confirm first: booting on Log and on Coach (a first paint on the coach route), TrovoOta.confirm goes once,
 //   before the first sheets and the first selectTab; a baseline call that throws leaves the confirm sent and the boot
 //   whole.
@@ -565,7 +565,7 @@ serial('leaving tabs mode mid-hold releases the overlay at once and ends the ann
 });
 
 // ── The baseline ───────────────────────────────────────────────────────────────────────────────────────────────────
-serial('the baseline: one sheets {open:false} at boot in tabs mode, none under no shell, coach61 or build 60\'s chat; a reload with a sheet open sends it again (the shell\'s state is per document); a dev.nav sheet is announced before hello\'s answer', async () => {
+serial('the baseline: one sheets {open:false} at boot in tabs mode, none under no shell, coach61 or build 60\'s chat; a reload with a sheet open sends it again (the shell\'s state is per document); a dev.nav sheet is announced while hello is unanswered (a shell that never answers it)', async () => {
   // tabs: exactly the baseline, then a sheet; a reload sends the baseline again and the shell's bar shows
   const app = await pageBoot('tabs');
   try {
@@ -591,21 +591,21 @@ serial('the baseline: one sheets {open:false} at boot in tabs mode, none under n
       assert(!r.mode && (shell === 'none' ? r.sheets === null && !r.plugin : r.sheets === 0), shell + ': no sheets call: ' + J(r));
     } finally { await o.close(); }
   }
-  // dev.nav modal/routines with hello's answer held back: the sheet is announced before it
+  // dev.nav modal/routines under a shell that asks hello and never answers it: the sheet is announced all the same, so
+  // it goes before hello's answer by construction, whatever the machine's speed (the head's failsafe leaves tabs mode
+  // only after 16 s of visible time with no answer; this reads well before that)
   const nav = await pageBoot(TABS({ dev: { nav: 'modal/routines' } }), {
-    init: 'window.__fpShellHelloDelay = 1500; window.__navAt = null; new MutationObserver(function (ms) { ms.forEach(function (m) {'
+    init: 'window.__fpShellHelloSilent = true; window.__navAt = null; new MutationObserver(function (ms) { ms.forEach(function (m) {'
       + ' Array.prototype.forEach.call(m.addedNodes, function (n) { if (n.id === "routinesOverlay" && !window.__navAt)'
       + ' window.__navAt = { hello: !!(window._fp && _fp.hello), mode: !!(window._fp && _fp.tabs.mode) }; }); }); })'
       + '.observe(document, { childList: true, subtree: true });' });
   try {
     await nav.page.waitForFunction(() => window.__navAt, null, { timeout: 15000 });
     await settle(nav, 30);
-    const before = await ev(nav, () => ({ at: window.__navAt, hello: _fp.hello, calls: __fpShell.of('sheets') }));
-    await helloIn(nav);
-    // the sheet went up before hello had answered, and the observer's call goes in that same microtask checkpoint,
-    // before any task (hello's answer is one) can run
-    assert(before.at.mode && !before.at.hello && J(before.calls) === '[{"open":false},{"open":true}]',
-      'dev.nav\'s sheet is announced before hello\'s answer: ' + J(before));
+    const o = await ev(nav, () => ({ at: window.__navAt, asked: __fpShell.of('hello').length, hello: _fp.hello, mode: _fp.tabs.mode,
+      calls: __fpShell.of('sheets'), up: !!document.getElementById('routinesOverlay') }));
+    assert(o.asked === 1 && o.hello === null && o.mode && o.at.mode && !o.at.hello && o.up && J(o.calls) === '[{"open":false},{"open":true}]',
+      'dev.nav\'s sheet is announced while hello is unanswered: ' + J(o));
   } finally { await nav.close(); }
 });
 
