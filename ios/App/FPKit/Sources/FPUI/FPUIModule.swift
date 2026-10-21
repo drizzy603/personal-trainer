@@ -29,6 +29,11 @@ import FPCore
 /// - ScreenHost's stack mode (build 61, H5): under a live tab root the chat is pushed in the Coach tab's navigation
 ///   stack (`attachStack`, the root's answers as a `StackState`), never presented; the overlay stays for a classic root
 ///   and after the fallback (`detachStack`).
+/// - `ShellMarkers.swift` (build 61, H6): `SectionMarker`, the short-section crash markers in `Application
+///   Support/FPShell` beside 60's `presenting.<screen>.marker`: `section.tabs.marker` (the tab root's construction and
+///   its own sections) and `model.<screen>.marker` (every model's decode and apply), a state byte flipped by `pwrite`
+///   around each section, read at the next launch. `ShellSwitches.swift`: the shell's own device switches (the tab
+///   bar's), `switches.json` read first and a UserDefaults copy.
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {
