@@ -341,6 +341,7 @@ final class CoachHomeRenderTests: XCTestCase {
         let model = try room.map { try CoachHomeFixtures.model(swapped, in: $0) } ?? CoachHomeModel(json: swapped)
         let again = CoachRenderTests.render(Phone(model: model, size: size, screen: screen, unscrolled: true), size: nil,
                                             phone: .light, width: screen.size.width)
+        XCTAssertEqual(again.size, drawn.size, "\(what): another avatar letter leaves the column's size as it is", file: file, line: line)
         let t = RoomTheme(home: model, system: size)
         let side = t.px(38)
         let right = screen.size.width - CoachHomeView.gutter(t, width: screen.size.width)
