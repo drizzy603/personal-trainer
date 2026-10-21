@@ -30,6 +30,10 @@ import FPCore
 /// - **The key** exists here only inside `handle` and in the intent handed to `hooks.ask` (contract 5, K1-K5): no
 ///   property, event, outcome, toast, `describe()` or log line holds it or any part of it. The key field reports only
 ///   whether it holds text (`keyFieldTyped`), never what.
+/// - **The key field goes** when the route leaves the connect screen (K5: its text clears), with a document that goes
+///   while the tab is not NATIVE, and at `tearDown`: the store bumps `keyFieldGeneration`, which the connect block's
+///   identity carries, so the next field is new and empty whether or not SwiftUI drew the model in between (two models
+///   handled in one turn of the main queue are drawn as one).
 @MainActor
 public final class CoachHomeStore: ObservableObject {
     static let log = Logger(subsystem: "app.kt.trainer", category: "coachHome")
@@ -50,6 +54,10 @@ public final class CoachHomeStore: ObservableObject {
     @Published public private(set) var connecting = false
     /// Whether the key field holds text, as the field reports it (never the text): false with no field.
     public private(set) var keyFieldTyped = false
+    /// The key field's generation (`CoachHomeHost.fieldGeneration`, which the connect block's identity carries): bumped
+    /// wherever the field must be made anew, so the view makes a new, empty one even when SwiftUI never draws the model
+    /// that took the old one away. It changes only with `model`, whose publishing redraws the root.
+    private(set) var keyFieldGeneration = 0
     public var hooks = Hooks()
 
     /// What happened, for the log and the probe (the last 80 lines).
@@ -67,10 +75,10 @@ public final class CoachHomeStore: ObservableObject {
 
     public init() {}
 
-    /// The hub's host: every press through `handle`, whether a key is out, and the key field's flag.
+    /// The hub's host: every press through `handle`, whether a key is out, the key field's flag and its generation.
     public var host: CoachHomeHost {
         CoachHomeHost(act: { [weak self] in self?.handle($0) }, connecting: connecting,
-                      fieldTyped: { [weak self] in self?.fieldTyped($0) })
+                      fieldTyped: { [weak self] in self?.fieldTyped($0) }, fieldGeneration: keyFieldGeneration)
     }
 
     // MARK: Models
@@ -84,11 +92,15 @@ public final class CoachHomeStore: ObservableObject {
             return false
         }
         if let cur = model, cur.boot != m.boot { note("a new document's model (rev \(m.rev))") }
-        // the view makes the key field anew when its block's identity changes (the route leaves the connect screen):
-        // the new field is empty, so the flag follows it here too, drawn or not
-        if keyFieldTyped, model.flatMap(CoachHomeView.connectKey) != CoachHomeView.connectKey(m) {
-            keyFieldTyped = false
-            note("the key field went with its route")
+        // the route's connect block changes (it leaves the connect screen, K5): the field goes. A new generation goes
+        // into the block's identity, so the view makes a new, empty field even when SwiftUI never draws this model (a
+        // hub model and the next connect model handled in one turn are drawn as one), and the flag follows it
+        if model.flatMap(CoachHomeView.connectKey) != CoachHomeView.connectKey(m) {
+            keyFieldGeneration += 1
+            if keyFieldTyped {
+                keyFieldTyped = false
+                note("the key field went with its route")
+            }
         }
         model = m
         note("model rev \(m.rev): \(Self.word(m.route))\(m.resume ? ", resume" : "")")
@@ -97,7 +109,8 @@ public final class CoachHomeStore: ObservableObject {
 
     /// The page's document went (a reload, a WebContent restart). `keep` (the tab is NATIVE): the model stays drawn
     /// until the next document's takeover and snapshot; otherwise it goes with its document, and the hub with its key
-    /// field. An answer still on its way ends as `documentGone` (PageLink): see `handle`.
+    /// field (a new generation: the next connect model's field is new, whether or not SwiftUI draws the ground in
+    /// between). An answer still on its way ends as `documentGone` (PageLink): see `handle`.
     public func documentGone(keep: Bool) {
         if keep {
             note("the page's document went: its model stays drawn until the next one's (the tab is native)")
@@ -105,16 +118,19 @@ public final class CoachHomeStore: ObservableObject {
         }
         model = nil
         keyFieldTyped = false
+        keyFieldGeneration += 1
         note("the page's document went: its model goes with it")
     }
 
-    /// The binding is going (its scene went, or the scene fell back to the classic root): the model goes, no key is out
-    /// any more, and an answer still on its way is ignored (no toast: no one is looking).
+    /// The binding is going (its scene went, or the scene fell back to the classic root): the model goes with the key
+    /// field (a new generation, as `documentGone`), no key is out any more, and an answer still on its way is ignored
+    /// (no toast: no one is looking).
     public func tearDown() {
         era += 1
         model = nil
         connecting = false
         keyFieldTyped = false
+        keyFieldGeneration += 1
         note("torn down: the model gone, answers still on their way ignored")
     }
 

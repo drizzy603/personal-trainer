@@ -62,11 +62,18 @@ public struct CoachHomeHost {
     /// reported when typed into). When the whole view goes (no model), nothing is reported: the store's own reset says
     /// the field is gone.
     public var fieldTyped: (Bool) -> Void
+    /// The key field's generation: the connect block, and the field with what it holds, is made anew whenever it
+    /// changes, as it is when the route changes. A host bumps it where the field must go though SwiftUI may never draw
+    /// the model that took it away (the store: a hub model and the next connect model handled in one turn of the main
+    /// queue are drawn as one, and K5's text must clear all the same); 0 for a host that never does (previews, tests).
+    public var fieldGeneration: Int
 
-    public init(act: @escaping (CoachHomeAction) -> Void, connecting: Bool = false, fieldTyped: @escaping (Bool) -> Void = { _ in }) {
+    public init(act: @escaping (CoachHomeAction) -> Void, connecting: Bool = false, fieldTyped: @escaping (Bool) -> Void = { _ in },
+                fieldGeneration: Int = 0) {
         self.act = act
         self.connecting = connecting
         self.fieldTyped = fieldTyped
+        self.fieldGeneration = fieldGeneration
     }
 
     /// A host that does nothing (previews).
@@ -206,7 +213,7 @@ public struct CoachHomeView: View {
         .environment(\.colorScheme, theme.colorScheme)
         .dynamicTypeSize(ChatType.range(dynTypeOn: model.dynTypeOn))
         // the connect block is made anew when its route changes: the field it held is gone (a new one says it is empty
-        // when it appears)
+        // when it appears, as does one made anew for the host's next field generation)
         .onChange(of: Self.connectKey(model)) { old, _ in if old != nil { host.fieldTyped(false) } }
     }
 
@@ -267,7 +274,8 @@ public struct CoachHomeView: View {
     /// The space a collapsed headline line may end on.
     private static let cssSpace = CharacterSet(charactersIn: " ")
 
-    /// The connect block's identity: its route, so a route that leaves the connect screen empties the key field.
+    /// The route part of the connect block's identity (`ConnectID`): a route that leaves the connect screen empties the
+    /// key field. Nil where no block is drawn (no connect object, or the hub).
     static func connectKey(_ model: CoachHomeModel) -> String? {
         guard model.connect != nil else { return nil }
         switch model.route {
@@ -275,6 +283,13 @@ public struct CoachHomeView: View {
         case .connect: return "connect"
         case .other(let r): return "other:" + r
         }
+    }
+
+    /// The connect block's identity: its route (`connectKey`) and the host's field generation, so the block, and the
+    /// key field with what it holds, is made anew when either changes, whether or not SwiftUI drew the models between.
+    struct ConnectID: Hashable {
+        let route: String
+        let generation: Int
     }
 
     // MARK: The column
@@ -312,7 +327,7 @@ public struct CoachHomeView: View {
     @ViewBuilder private var connectBlock: some View {
         if let connect = model.connect, let key = Self.connectKey(model) {
             HomeConnectBlock(connect: connect, host: host)
-                .id(key)
+                .id(ConnectID(route: key, generation: host.fieldGeneration))
         }
     }
 }
@@ -638,9 +653,9 @@ final class HomeHostBox {
 }
 
 /// The connect screen's controls (`index.html:21105-21121`): the field's label (hidden from VoiceOver: the field
-/// carries it), the key field, CONNECT, the help, the starter link. Made anew for each route (its `.id`), so the key
-/// typed here stays while a key is out and after the page refuses it, and goes when the route leaves the connect
-/// screen.
+/// carries it), the key field, CONNECT, the help, the starter link. Made anew for each route and each field generation
+/// of its host (its `.id`, `CoachHomeView.ConnectID`), so the key typed here stays while a key is out and after the
+/// page refuses it, and goes when the route leaves the connect screen, whether or not SwiftUI drew the model that left.
 struct HomeConnectBlock: View {
     let connect: CoachHomeModel.Connect
     let host: CoachHomeHost

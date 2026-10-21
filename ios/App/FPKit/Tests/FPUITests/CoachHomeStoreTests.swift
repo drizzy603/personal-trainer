@@ -15,7 +15,8 @@ import FPCore
 /// in the events, `describe()` or any stored property; and CoachHomeRoot in a window draws the first frame's ground
 /// until a model, then the hub in the model's room (fading in, at once under Reduce Motion), publishes
 /// `HubHeaderBottomKey` only with the hub, presents nothing, takes no focus, sets no interface style, carries the
-/// owner's key to the store once, and, as the root of a navigation stack in a tab bar, takes models that land while
+/// owner's key to the store once, makes the key field anew whenever the route leaves the connect screen (even when
+/// SwiftUI never draws that model), and, as the root of a navigation stack in a tab bar, takes models that land while
 /// the stack is out of the window and keeps the key field across pushes and pops, waiting on no navigation callback
 /// (H0's probe: UIKit's didShow comes late and twice).
 @MainActor
@@ -301,6 +302,48 @@ final class CoachHomeStoreTests: XCTestCase {
         XCTAssertEqual(keyField(), "empty", "torn down")
     }
 
+    /// The store's half of K5, without a window: the field generation its host hands the view (the connect block's
+    /// identity carries it) moves wherever the key field must go, whatever SwiftUI draws (the route leaves the connect
+    /// screen, a document goes while the tab is not NATIVE, a teardown), and stays wherever the field keeps what it
+    /// holds (a newer model of the same route, a stale model, a document gone while the tab is NATIVE and the next
+    /// document's connect screen, a newer hub).
+    func testTheFieldGenerationMovesWhereTheFieldMustGoAndStaysWhereItStays() throws {
+        var generation: Int { store.host.fieldGeneration }
+        store.apply(try connect(rev: 4))
+        var last = generation
+        func moved(_ what: String) {
+            XCTAssertNotEqual(generation, last, "\(what): the field goes")
+            last = generation
+        }
+        func stayed(_ what: String) {
+            XCTAssertEqual(generation, last, "\(what): the field stays")
+            last = generation
+        }
+        store.apply(try connect(rev: 5))
+        stayed("a newer model of the same route")
+        store.apply(try connect(rev: 5))
+        stayed("a stale model")
+        store.documentGone(keep: true)
+        stayed("a document gone while the tab is NATIVE")
+        store.apply(try connect(boot: "b2", rev: 1))
+        stayed("the next document's connect screen")
+        store.apply(try model(boot: "b2", rev: 2))
+        moved("the hub (the key saved)")
+        store.apply(try model(boot: "b2", rev: 3))
+        stayed("a newer hub")
+        store.apply(try connect(boot: "b2", rev: 4))
+        last = generation
+        store.apply(try model(CoachHomeViewTests.otherJSON(), boot: "b2", rev: 5))
+        moved("a newer page's route")
+        store.documentGone(keep: false)
+        moved("a document gone while the tab is not NATIVE")
+        store.apply(try connect(boot: "b3", rev: 1))
+        last = generation
+        store.tearDown()
+        moved("a teardown")
+        XCTAssertEqual(asked, [])
+    }
+
     /// A field on its way out can say it holds text after the model that removes it (an appearance UIKit replays late,
     /// as the Coach stack comes back into the window): with no field to draw (no model, the hub, the ground after a
     /// document went or a teardown) such a report is ignored, so the flag never says "typed" where no field is.
@@ -507,6 +550,19 @@ final class CoachHomeStoreTests: XCTestCase {
             let end = Date().addingTimeInterval(seconds)
             while Date() < end { settle(1) }
             settle(2)
+        }
+
+        /// Turns the run loop until `done` holds, for at most `seconds` (5 s, with CI's slack; false if it never did),
+        /// then settles, as HostedStack's does: blocks on the main queue waited for by what they do.
+        @discardableResult
+        func settle(until done: () -> Bool, within seconds: TimeInterval = 5 * CoachHomeStoreTests.slack) -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while !done() {
+                if Date() >= end { return false }
+                settle(1)
+            }
+            settle(2)
+            return true
         }
 
         /// One layout pass and one turn of the run loop that waits for nothing: SwiftUI takes a change, and no time to
@@ -821,6 +877,64 @@ final class CoachHomeStoreTests: XCTestCase {
         tab.wait(0.5)
         XCTAssertNil(tab.find(UIScrollView.self), "the ground, no hub")
         XCTAssertEqual(asked.count, 2, "two presses answered, two keys sent: nothing resent")
+        tab.close()
+    }
+
+    /// K5 holds whatever SwiftUI draws: the key field's text clears when the model's route leaves the connect screen,
+    /// and the flag follows the field. A hub model and the next connect model handled in one turn of the main queue
+    /// (SwiftUI draws only the second), whether in one block or in two (TrovoShellPlugin.forward hands each page
+    /// message to the main queue as a block of its own), make the field anew, as they do a turn apart; so do a document
+    /// that goes while the tab is not NATIVE and a teardown, each followed in the same turn by a connect model. A newer
+    /// model of the same route (a refusal) and, while the tab is NATIVE, the next document's keep the field and its key.
+    func testTheKeyFieldIsMadeAnewWhenTheRouteLeavesConnectThoughThatModelIsNeverDrawn() throws {
+        let key = CoachHomeViewTests.canary()
+        store.apply(try connect())
+        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true, reduceMotion: true))
+        func field(_ what: String) throws -> UITextField { try XCTUnwrap(tab.find(UITextField.self), "\(what): the key field") }
+        func typeKey(_ what: String) throws {
+            type(key, into: try field(what), then: { tab.settle() })
+            XCTAssertEqual(try field(what).text, key, "\(what): the key typed")
+            XCTAssertEqual(keyField(), "typed", "\(what): the flag says so")
+        }
+        func madeAnew(_ what: String) throws {
+            XCTAssertEqual(try field(what).text ?? "", "", "\(what): a new, empty field")
+            XCTAssertEqual(keyField(), "empty", "\(what): and the flag says so")
+        }
+        try typeKey("one block")
+        // the key saved (the hub) and Disconnect (the connect screen again), handled in one block
+        XCTAssertTrue(store.apply(try model(rev: 5)))
+        XCTAssertTrue(store.apply(try connect(rev: 6)))
+        tab.settle()
+        try madeAnew("one block")
+        // the same two models as two blocks of the main queue, both run before SwiftUI draws again
+        try typeKey("two blocks")
+        let s = try XCTUnwrap(store)
+        let hub = try model(rev: 7), back = try connect(rev: 8)
+        DispatchQueue.main.async { MainActor.assumeIsolated { _ = s.apply(hub) } }
+        DispatchQueue.main.async { MainActor.assumeIsolated { _ = s.apply(back) } }
+        XCTAssertTrue(tab.settle(until: { s.model?.rev == 8 }), "two blocks: both models handled")
+        try madeAnew("two blocks")
+        // the document goes while the tab is not NATIVE, and the next document's connect screen comes in the same turn
+        try typeKey("a document gone")
+        store.documentGone(keep: false)
+        XCTAssertTrue(store.apply(try connect(boot: "b2", rev: 1)))
+        tab.settle()
+        try madeAnew("a document gone")
+        // a teardown, and a connect model in the same turn
+        try typeKey("a teardown")
+        store.tearDown()
+        XCTAssertTrue(store.apply(try connect(boot: "b3", rev: 1)))
+        tab.settle()
+        try madeAnew("a teardown")
+        // the same route throughout keeps the field: a refusal's model, and the next document's while the tab is NATIVE
+        try typeKey("the same route")
+        XCTAssertTrue(store.apply(try connect(boot: "b3", rev: 2)))
+        store.documentGone(keep: true)
+        XCTAssertTrue(store.apply(try connect(boot: "b4", rev: 1)))
+        tab.settle()
+        XCTAssertEqual(try field("the same route").text, key, "the same route: the same field, its key kept")
+        XCTAssertEqual(keyField(), "typed")
+        XCTAssertEqual(asked, [], "nothing sent: no press was made")
         tab.close()
     }
 
