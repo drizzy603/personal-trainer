@@ -27,6 +27,12 @@ import FPCore
 /// - **Crash markers.** ScreenHost keeps `presenting <screen>@<page> shell <shell>` on disk while a screen is up and
 ///   the app is active; the next launch finds a marker only after a death on screen, records the verdict (that screen
 ///   is off for that shell and page build: the page shows its web screen) and removes the file, so it acts once.
+///   Build 61 adds the short sections (SectionMarker, contract 10.2), written whatever the app's state: `section(_:_:)`
+///   around the tab root's construction and its own sections (`tabs@<page> shell <n>`: a verdict gives the classic
+///   root), and every model's decode and apply inside `model <screen>@<page> shell <n>` (a verdict turns that piece off
+///   for the pair). The launch reads and removes them with the screen markers.
+/// - **The device switches** the shell keeps itself (ShellSwitches, `FPShell/switches.json`: the tab bar's, contract
+///   3.5) reach the gate as `deviceOff`; the native chat's stays the page's `kt_native_off`.
 ///
 /// - **Settings > About** asks `status` (FPCore ScreenStatus: every screen of this binary, on or off and why, whether the
 ///   owner can try it again) and `reset` ("Try the native chat again": the screen's crash verdicts and breaker record go
@@ -140,6 +146,13 @@ public final class ShellBridge: NSObject {
     private var foundMarkers: [CrashMarker] = []
     /// Their lines, for Settings and the probe.
     public private(set) var markersFound: [String] = []
+    /// This launch's short-section markers (contract 10.2), by file name, each opened at its kind's first section.
+    private var sections: [String: SectionMarker] = [:]
+    /// The kinds whose marker file could not be written this launch (said once in the log).
+    private var sectionsUnwritten: Set<String> = []
+    /// The shell's own device switches (`FPShell/switches.json`, contract 3.5), read at their first use: the launch's
+    /// first gate.
+    private(set) lazy var switches = ShellSwitches(folder: folder, defaults: defaults)
     /// Settings > About's counters: the totals kept across launches, and this launch's.
     public private(set) var counters = ShellCounters()
     public private(set) var launchCounts = LaunchCounts()
@@ -152,6 +165,8 @@ public final class ShellBridge: NSObject {
     var osMajor: () -> Int = { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
     #if DEBUG
     var debug = ShellDebug()
+    /// The launch arguments the launch reads (tests set their own).
+    var launchArguments: () -> [String] = { ProcessInfo.processInfo.arguments }
     /// Debug builds: what the App target lets the scenario runner do that FPUI cannot reach itself (ShellProbe's `hook`
     /// step), by name: "policy" writes a local policy file and fetches it (FPHost FPPolicy).
     public static var debugHooks: [String: ([String: Any]) -> Void] = [:]
@@ -169,12 +184,13 @@ public final class ShellBridge: NSObject {
 
     // MARK: Launch
 
-    /// Once per process, before the first web view binds: the Debug options, the book, the markers the last launch left.
+    /// Once per process, before the first web view binds and before this launch's first short section: the Debug
+    /// options, the book, the markers the last launch left (the screens', then the short sections' left at `1`).
     private func launch() {
         guard !launched else { return }
         launched = true
         #if DEBUG
-        debug = ShellDebug(arguments: ProcessInfo.processInfo.arguments)
+        debug = ShellDebug(arguments: launchArguments())
         #endif
         storedBook = Self.loadBook(folder: folder, defaults: defaults)
         counters = ShellCounters.decoded(defaults.data(forKey: Self.countersKey))
@@ -196,6 +212,21 @@ public final class ShellBridge: NSObject {
             Self.log.error("shell: crash marker found (\(marker.line, privacy: .public)): that screen is off for this shell and page build")
             foundMarkers.append(marker)
         }
+        // the short sections (contract 10.2): a file left at 1 is a death inside one; one at 0 says nothing and is
+        // rewritten by this launch's first section of its kind
+        for (url, marker) in SectionMarker.stale(folder: folder) {
+            try? FileManager.default.removeItem(at: url)   // a marker acts once
+            markersFound.append(marker.line)
+            #if DEBUG
+            if debug.ignoreMarker {
+                Self.log.error("shell: crash marker found (\(marker.line, privacy: .public)), ignored (-fpIgnoreMarker)")
+                continue
+            }
+            #endif
+            let what = marker.piece == .tabs ? "the classic root" : "\(marker.piece.name) off"
+            Self.log.error("shell: crash marker found (\(marker.line, privacy: .public)): \(what, privacy: .public) for this shell and page build")
+            foundMarkers.append(marker)
+        }
         launchCounts.markersFound = markersFound
         activeSince = appActive() ? Date() : nil
         let nc = NotificationCenter.default
@@ -204,7 +235,7 @@ public final class ShellBridge: NSObject {
         nc.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         #if DEBUG
-        ShellProbe.startIfAsked(bridge: self, arguments: ProcessInfo.processInfo.arguments)
+        ShellProbe.startIfAsked(bridge: self, arguments: launchArguments())
         ShellProbe.shared?.event("launch", ["shell": shell.shell, "markersFound": markersFound, "ignored": debug.ignoreMarker,
                                             "book": Self.bookJSON(storedBook)])
         #endif
@@ -494,7 +525,8 @@ public final class ShellBridge: NSObject {
     }
 
     /// A screen still up from the document before: the page has taken it over; it hears it is covered again and the
-    /// screen draws this document's model (a snapshot). Nothing from the document before is sent again.
+    /// screen draws this document's model (a snapshot, decoded and applied inside its model marker, as a push is).
+    /// Nothing from the document before is sent again.
     private func resync(_ screen: String, _ b: Binding) {
         send(.shellCovered(on: true), b)
         guard screen == "coach" else { return }
@@ -502,24 +534,38 @@ public final class ShellBridge: NSObject {
             guard let self, let b else { return }
             self.finished(.coachSnapshot, outcome, b)
             guard case .answered(.done(let reply)) = outcome, let json = reply.value["json"]?.string else { return }
-            let model = try? CoachModel.decode(json)
-            let (verdict, fx) = b.link.modelReceived(screen: screen, rev: model?.rev ?? 0, boot: model?.boot, decoded: model != nil, at: Date())
-            if verdict == .apply, let model { b.screens.update(screen, model: model) }
+            let (boot, verdict, fx) = self.modelSection(screen, b) { () -> (String?, ModelVerdict, [LinkEffect]) in
+                let model = try? CoachModel.decode(json)
+                let (verdict, fx) = b.link.modelReceived(screen: screen, rev: model?.rev ?? 0, boot: model?.boot, decoded: model != nil, at: Date())
+                if verdict == .apply, let model { b.screens.update(screen, model: model) }
+                return (model?.boot, verdict, fx)
+            }
             self.apply(fx, b)
-            Self.log.info("shell: \(screen, privacy: .public) resynced on boot \(model?.boot ?? "?", privacy: .public) (\(String(describing: verdict), privacy: .public))")
+            Self.log.info("shell: \(screen, privacy: .public) resynced on boot \(boot ?? "?", privacy: .public) (\(String(describing: verdict), privacy: .public))")
         }
     }
 
+    /// A model the page pushed, decoded and applied inside `model <screen>` (contract 3.7, 10.2): a crash there leaves
+    /// the marker at `1` and the next launch turns that piece off for its pair, where build 60 caught none and a model
+    /// pushed after every hello would crash every launch. Only this binary's screens: any other can never be live (the
+    /// link drops it unread), and its name never reaches a file. The link's effects go after the section.
     private func model(_ push: ModelPush, _ b: Binding, at now: Date) {
-        let decoded: CoachModel?
-        do {
-            decoded = try CoachModel.decode(push.json)
-        } catch {
-            decoded = nil
-            Self.log.error("shell: \(push.screen, privacy: .public) model rev \(push.rev) did not decode: \(String(describing: error), privacy: .public)")
+        guard shell.screens.contains(push.screen) else {
+            Self.log.error("shell: a \(push.screen, privacy: .public) model (rev \(push.rev)) for no screen of this binary: dropped")
+            return
         }
-        let (verdict, fx) = b.link.modelReceived(screen: push.screen, rev: push.rev, boot: decoded?.boot, decoded: decoded != nil, at: now)
-        if verdict == .apply, let decoded { b.screens.update(push.screen, model: decoded) }
+        let fx = modelSection(push.screen, b) { () -> [LinkEffect] in
+            let decoded: CoachModel?
+            do {
+                decoded = try CoachModel.decode(push.json)
+            } catch {
+                decoded = nil
+                Self.log.error("shell: \(push.screen, privacy: .public) model rev \(push.rev) did not decode: \(String(describing: error), privacy: .public)")
+            }
+            let (verdict, fx) = b.link.modelReceived(screen: push.screen, rev: push.rev, boot: decoded?.boot, decoded: decoded != nil, at: now)
+            if verdict == .apply, let decoded { b.screens.update(push.screen, model: decoded) }
+            return fx
+        }
         apply(fx, b)
     }
 
@@ -630,6 +676,65 @@ public final class ShellBridge: NSObject {
         apply(b.link.withdraw(off), b)
     }
 
+    // MARK: Short sections (contract 10.2)
+
+    /// Runs `body` as one short section of `kind`, whose marker file holds `1` until it returns. `tabs`, the only kind in
+    /// 61: the tab root's construction in SceneDelegate's synchronous build (H9: from RootTabController's init to the end
+    /// of its first layout pass, never until its first viewDidAppear, which a scene connected in the background can wait
+    /// long for) and the root's own sections (H7). A death inside gives the classic root at the next launch for this
+    /// shell and page build. Written whatever the app's state.
+    public func section<T>(_ kind: String, _ body: () throws -> T) rethrows -> T {
+        section(kind, entering: true)
+        defer { section(kind, entering: false) }
+        return try body()
+    }
+
+    /// The same section entered and left apart: the root's hook, whose animated bar show ends when its animation does.
+    /// Every enter needs its leave; nested sections of a kind hold the byte until the last one leaves.
+    public func section(_ kind: String, entering: Bool) {
+        guard let piece = Self.sectionPiece(kind) else {
+            Self.log.fault("shell: \(kind, privacy: .public) is no short section's kind: not marked")
+            return
+        }
+        mark(piece, page: binding.flatMap { $0.link.pageBuild ?? $0.pageBuild }, entering: entering)
+    }
+
+    /// A short section's kind by its name: `tabs` (contract 10.2).
+    nonisolated static func sectionPiece(_ kind: String) -> CrashMarker.Piece? {
+        kind == "tabs" ? .tabs : nil
+    }
+
+    /// `body` as a model's decode and apply for `screen`, inside `model <screen>@<page> shell <n>` (contract 3.7, 10.2):
+    /// every decoder of the binary's screens runs in one (H7's TabsModel and H10's CoachHomeModel too; N writes none).
+    func modelSection<T>(_ screen: String, _ b: Binding, _ body: () throws -> T) rethrows -> T {
+        let piece = CrashMarker.Piece.model(screen)
+        mark(piece, page: b.link.pageBuild ?? b.pageBuild, entering: true)
+        defer { mark(piece, page: nil, entering: false) }
+        return try body()
+    }
+
+    /// One kind's marker into or out of a section; the page build the line names is the one being served.
+    private func mark(_ piece: CrashMarker.Piece, page: String?, entering: Bool) {
+        launch()   // the last launch's markers are read (and removed) before this launch writes its own
+        guard let name = SectionMarker.fileName(piece) else { return }
+        guard entering else {
+            sections[name]?.leave()
+            return
+        }
+        let m: SectionMarker
+        if let open = sections[name] {
+            m = open
+        } else {
+            guard let made = SectionMarker(folder: folder, piece: piece) else { return }
+            sections[name] = made
+            m = made
+        }
+        if !m.begin(shell: shell.shell, page: page ?? "unknown"), sectionsUnwritten.insert(name).inserted {
+            Self.log.error("shell: \(name, privacy: .public) could not be written: those sections go unmarked")
+        }
+        m.enter()
+    }
+
     // MARK: Settings > About
 
     /// TrovoShell `status` (FPCore ScreenStatus): every screen of this binary for the page build being served, on or off
@@ -669,15 +774,17 @@ public final class ShellBridge: NSObject {
     // MARK: Gate and book
 
     func gate(page: String?, book: BreakerBook) -> (on: [String], off: [String: ScreenGate.Off]) {
-        // The device switch for the native chat is the page's own (Settings > About, kt_native_off): a page with it on
-        // never presents. The shell keeps none of its own in build 60. A classic root until H7 adopts a tab root.
-        ScreenGate.evaluate(binary: shell.screens, deviceOff: [], policy: environment.policy(), book: book,
+        // The device switch for the native chat (and the Coach tab) is the page's own (Settings > About, kt_native_off):
+        // a page with it on never presents. The shell's own are the tab bar's (ShellSwitches, contract 3.5). A classic
+        // root until H7 adopts a tab root.
+        ScreenGate.evaluate(binary: shell.screens, deviceOff: switches.deviceOff, policy: environment.policy(), book: book,
                             shellBuild: shell.shell, pageBuild: page, os: osMajor())
     }
 
-    /// The pieces' own checks for a page build (ScreenGate.base, the OS included): what a hello is negotiated from.
+    /// The pieces' own checks for a page build (ScreenGate.base, the OS and the shell's device switches included): what
+    /// a hello is negotiated from, and what the root decision reads for `tabs`.
     func ownChecks(page: String?, book: BreakerBook) -> ScreenGate.Base {
-        ScreenGate.base(binary: shell.screens, deviceOff: [], policy: environment.policy(), book: book,
+        ScreenGate.base(binary: shell.screens, deviceOff: switches.deviceOff, policy: environment.policy(), book: book,
                         shellBuild: shell.shell, pageBuild: page, os: osMajor())
     }
 

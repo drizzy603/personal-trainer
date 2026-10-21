@@ -1,4 +1,5 @@
 #if os(iOS)
+import Combine
 import Foundation
 import UIKit
 import WebKit
@@ -536,6 +537,264 @@ final class ShellBridgeTests: XCTestCase {
         XCTAssertEqual(binding.pageLink.records.filter { $0.name == "ping" }.map(\.outcome), ["gone", "done"])
         XCTAssertEqual(binding.link.heldTimeouts, 0, "the second ping's answer dropped both holds")
         XCTAssertEqual(binding.link.book.screens["coach"]?.failures ?? 0, 0)
+    }
+
+    // MARK: Build 61's short sections, model markers and the shell's switch file (11-shell.md H6)
+
+    private func markerURL(_ name: String) -> URL { folder.appendingPathComponent(name) }
+    private func stateByte(_ name: String) -> UInt8? { (try? Data(contentsOf: markerURL(name)))?.last }
+    private func exists(_ name: String) -> Bool { FileManager.default.fileExists(atPath: markerURL(name).path) }
+    private func text(_ name: String) throws -> String { String(decoding: try Data(contentsOf: markerURL(name)), as: UTF8.self) }
+
+    /// The file a launch that died inside a section of `piece` leaves behind.
+    private func leftOpen(_ piece: CrashMarker.Piece, shell: String = "61", page: String = "P1") throws {
+        let m = try XCTUnwrap(SectionMarker(folder: folder, piece: piece))
+        XCTAssertTrue(m.begin(shell: shell, page: page))
+        m.enter()   // and the process dies here
+    }
+
+    /// Build 61's bridge on a system that builds tab roots (the bar's own checks can pass).
+    private func bridge61(os: Int) -> ShellBridge {
+        let b = bridge61()
+        b.osMajor = { os }
+        return b
+    }
+
+    /// Tests 1 and 3 (`tabs@`): a death inside the tab root's section leaves its file at 1; the next launch (a new bridge
+    /// on the same folder) records one verdict, counted, for that shell and page build, and removes the file; the root
+    /// decision then reads `tabs` off (H9 builds the classic root). The launch after finds nothing and keeps the verdict;
+    /// another page build is clean; a section that ended (0) gives none.
+    func testASectionLeftOpenGivesOneVerdictAtTheNextLaunchAndTheFileGoes() async throws {
+        try leftOpen(.tabs)
+        let b = bridge61(os: 27)
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"], "60's overlay chat on a classic root")
+        XCTAssertEqual(b.markersFound, ["tabs@P1 shell 61"])
+        XCTAssertFalse(exists("section.tabs.marker"), "the marker acts once")
+        XCTAssertEqual(ShellBridge.loadBook(folder: folder, defaults: defaults).disabled.map { "\($0.piece) \($0.shell) \($0.page)" }, ["tabs 61 P1"])
+        XCTAssertEqual(b.launchCounts.markers, 1)
+        XCTAssertEqual(b.counters.markers.total, 1)
+        let checks = b.ownChecks(page: "P1", book: try XCTUnwrap(b.binding).link.book)
+        guard case .crashMarker(let d)? = checks.off["tabs"] else {
+            return XCTFail("the root decision reads tabs off: \(checks.off)")
+        }
+        XCTAssertEqual(d.why, "crash marker: the app closed during a tab change")
+        let st = try await message(b, "status", [:]).get()
+        let tabs = try XCTUnwrap((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(tabs["off"] as? String, "crash")
+        XCTAssertEqual(tabs["canReset"] as? Bool, true)
+        let markers = try XCTUnwrap((st["counters"] as? [String: Any])?["markers"] as? [String: Any])
+        XCTAssertEqual(markers["found"] as? [String], ["tabs@P1 shell 61"])
+        XCTAssertEqual(markers["launch"] as? Int, 1)
+        // the next launch: no marker, no second verdict, the verdict kept for the pair
+        let next = bridge61(os: 27)
+        next.install(webView: webView, presenter: root, pageBuild: "P1")
+        XCTAssertEqual(next.markersFound, [])
+        XCTAssertEqual(next.launchCounts.markers, 0)
+        XCTAssertEqual(next.counters.markers.total, 1, "the total is kept across launches")
+        XCTAssertEqual(ShellBridge.loadBook(folder: folder, defaults: defaults).disabled.count, 1)
+        if case .crashMarker? = next.ownChecks(page: "P1", book: try XCTUnwrap(next.binding).link.book).off["tabs"] {} else {
+            XCTFail("the verdict holds for its pair")
+        }
+        // another page build: the bar's own checks pass (on a classic root it then needs a tab root)
+        let other = bridge61(os: 27)
+        other.install(webView: webView, presenter: root, pageBuild: "P2")
+        XCTAssertEqual(other.ownChecks(page: "P2", book: try XCTUnwrap(other.binding).link.book).on, ["coach", "coachHome", "tabs"])
+        // a section that ended leaves 0: no verdict at the next launch, and the file stays for that launch to rewrite
+        do {
+            let m = try XCTUnwrap(SectionMarker(folder: folder, piece: .tabs))
+            m.begin(shell: "61", page: "P3")
+            m.around {}
+        }
+        let after = bridge61(os: 27)
+        after.install(webView: webView, presenter: root, pageBuild: "P3")
+        XCTAssertEqual(after.markersFound, [])
+        XCTAssertEqual(after.ownChecks(page: "P3", book: try XCTUnwrap(after.binding).link.book).on, ["coach", "coachHome", "tabs"])
+        XCTAssertEqual(stateByte("section.tabs.marker"), SectionMarker.outside)
+    }
+
+    /// Test 3: a model marker left at 1 turns that piece off for its (shell, page) pair only: the chat for `model
+    /// coach@P1 shell 61`, the Coach tab for `model coachHome@...`; another page build or shell build keeps it.
+    func testAModelMarkerTurnsItsPieceOffForItsPairOnly() async throws {
+        try leftOpen(.model("coach"))
+        let b = bridge61(os: 27)
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), [], "no native chat for this pair")
+        XCTAssertEqual(b.markersFound, ["model coach@P1 shell 61"])
+        XCTAssertFalse(exists("model.coach.marker"), "the marker acts once")
+        let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
+        XCTAssertEqual(hello["screens"] as? [String], [])
+        let st = try await message(b, "status", [:]).get()
+        let screens = try XCTUnwrap(st["screens"] as? [String: Any])
+        let coach = try XCTUnwrap(screens["coach"] as? [String: Any])
+        XCTAssertEqual(coach["off"] as? String, "crash")
+        XCTAssertEqual(coach["why"] as? String, "crash marker: the app closed while reading a native coach model")
+        XCTAssertEqual(coach["canReset"] as? Bool, true)
+        XCTAssertEqual((screens["coachHome"] as? [String: Any])?["needs"] as? [String], ["tabs", "coach"], "the Coach tab needs the chat")
+        XCTAssertEqual((screens["tabs"] as? [String: Any])?["needs"] as? [String], ["root"], "the bar is not that piece")
+        // another page build, or another shell build, on the same book: the chat is on
+        XCTAssertEqual(bridge61(os: 27).install(webView: webView, presenter: root, pageBuild: "P2"), ["coach"])
+        let shell62 = ShellBridge(defaults: defaults, folder: folder, shellBuild: "62")
+        shell62.osMajor = { 27 }
+        XCTAssertEqual(shell62.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        // a Coach tab model's marker turns the Coach tab off, and nothing else
+        try leftOpen(.model("coachHome"), page: "P2")
+        let home = bridge61(os: 27)
+        home.install(webView: webView, presenter: root, pageBuild: "P2")
+        XCTAssertEqual(home.markersFound, ["model coachHome@P2 shell 61"])
+        let checks = home.ownChecks(page: "P2", book: try XCTUnwrap(home.binding).link.book)
+        if case .crashMarker? = checks.off["coachHome"] {} else { XCTFail("coachHome off: \(checks.off)") }
+        XCTAssertEqual(checks.on, ["coach", "tabs"])
+    }
+
+    #if DEBUG
+    /// Test 5: `-fpIgnoreMarker` (the tools end the app with simctl terminate) reports the short sections' markers and
+    /// records nothing: the lines are found, no verdict, no count, and the files still go.
+    func testIgnoreMarkerReportsTheShortSectionsAndRecordsNothing() async throws {
+        try leftOpen(.tabs)
+        try leftOpen(.model("coachHome"))
+        let b = bridge61(os: 27)
+        b.launchArguments = { ["App", "-fpIgnoreMarker"] }
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        XCTAssertEqual(b.markersFound, ["model coachHome@P1 shell 61", "tabs@P1 shell 61"], "reported")
+        XCTAssertTrue(ShellBridge.loadBook(folder: folder, defaults: defaults).disabled.isEmpty, "no verdict recorded")
+        XCTAssertEqual(b.launchCounts.markers, 0)
+        XCTAssertEqual(b.counters.markers.total, 0)
+        XCTAssertFalse(exists("section.tabs.marker"))
+        XCTAssertFalse(exists("model.coachHome.marker"))
+        XCTAssertEqual(b.ownChecks(page: "P1", book: try XCTUnwrap(b.binding).link.book).on, ["coach", "coachHome", "tabs"])
+        let st = try await message(b, "status", [:]).get()
+        let markers = try XCTUnwrap((st["counters"] as? [String: Any])?["markers"] as? [String: Any])
+        XCTAssertEqual(markers["found"] as? [String], ["model coachHome@P1 shell 61", "tabs@P1 shell 61"])
+        XCTAssertEqual(markers["launch"] as? Int, 0)
+    }
+    #endif
+
+    /// The gate's `deviceOff` is the shell's switch file (contract 3.5, D5): `{"tabs": false}` turns the bar off on this
+    /// device (the root decision reads it; Settings > About says so) and the Coach tab with it, while the chat keeps
+    /// 60's overlay. The UserDefaults copy counts only when the file does not read.
+    func testTheShellsSwitchFileTurnsTheBarOffInTheGate() async throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(#"{"tabs":false}"#.utf8).write(to: markerURL("switches.json"))
+        defaults.set(Data(#"{"tabs":true}"#.utf8), forKey: ShellSwitches.defaultsKey)
+        let b = bridge61(os: 27)
+        XCTAssertEqual(b.install(webView: webView, presenter: root, pageBuild: "P1"), ["coach"])
+        XCTAssertEqual(b.switches.deviceOff, ["tabs"])
+        XCTAssertEqual(b.ownChecks(page: "P1", book: try XCTUnwrap(b.binding).link.book).off["tabs"], ScreenGate.Off.deviceSwitch, "the root decision reads it")
+        let st = try await message(b, "status", [:]).get()
+        let screens = try XCTUnwrap(st["screens"] as? [String: Any])
+        XCTAssertEqual((screens["tabs"] as? [String: Any])?["off"] as? String, "device")
+        XCTAssertEqual((screens["coachHome"] as? [String: Any])?["needs"] as? [String], ["tabs"])
+        XCTAssertEqual((screens["coach"] as? [String: Any])?["on"] as? Bool, true)
+        // no file: the copy (off here); a file that says on wins over a copy that says off
+        try FileManager.default.removeItem(at: markerURL("switches.json"))
+        defaults.set(Data(#"{"tabs":false}"#.utf8), forKey: ShellSwitches.defaultsKey)
+        let copyOnly = bridge61(os: 27)
+        copyOnly.install(webView: webView, presenter: root, pageBuild: "P1")
+        XCTAssertEqual(copyOnly.ownChecks(page: "P1", book: try XCTUnwrap(copyOnly.binding).link.book).off["tabs"], ScreenGate.Off.deviceSwitch)
+        try Data(#"{"tabs":true}"#.utf8).write(to: markerURL("switches.json"))
+        let fileOn = bridge61(os: 27)
+        fileOn.install(webView: webView, presenter: root, pageBuild: "P1")
+        XCTAssertEqual(fileOn.ownChecks(page: "P1", book: try XCTUnwrap(fileOn.binding).link.book).on, ["coach", "coachHome", "tabs"])
+    }
+
+    /// `model()` decodes and applies every pushed model inside `model <screen>@<page> shell <n>` (contract 3.7, 10.2):
+    /// when the chat's store takes the model the file reads 1, and 0 after; the line names the page build being served.
+    /// A model for a screen this binary does not have is dropped unread, so its name never reaches a file.
+    func testAModelIsDecodedAndAppliedInsideItsMarker() async throws {
+        let b = bridge61(os: 27)
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        _ = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"]).get()
+        let store = try XCTUnwrap(b.binding).screens.coach
+        var during: [UInt8?] = []
+        let watch = store.$model.dropFirst().sink { _ in during.append(self.stateByte("model.coach.marker")) }
+        _ = try await message(b, "model", ["screen": "coach", "rev": 1, "json": try modelJSON(boot: "b1", rev: 1)]).get()
+        watch.cancel()
+        XCTAssertEqual(store.model?.rev, 1, "applied")
+        XCTAssertEqual(during, [SectionMarker.inside], "applied inside its section")
+        XCTAssertEqual(try text("model.coach.marker"), "model coach@P1 shell 61\n0")
+        // a model that does not decode is read inside the same marker, which ends
+        _ = try await message(b, "model", ["screen": "coach", "rev": 2, "json": #"{"not":"a model"}"#]).get()
+        XCTAssertEqual(stateByte("model.coach.marker"), SectionMarker.outside)
+        XCTAssertEqual(store.model?.rev, 1)
+        // every screen of the binary has its own file (the bar's, not negotiated here: the link drops it after the read)
+        _ = try await message(b, "model", ["screen": "tabs", "rev": 3, "json": "{}"]).get()
+        XCTAssertEqual(try text("model.tabs.marker"), "model tabs@P1 shell 61\n0")
+        // a screen this binary does not have: dropped, no file named after it
+        for screen in ["settings", "../escape", "coach home"] {
+            _ = try await message(b, "model", ["screen": screen, "rev": 4, "json": try modelJSON(boot: "b1", rev: 4)]).get()
+        }
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".marker") }.sorted()
+        XCTAssertEqual(names, ["model.coach.marker", "model.tabs.marker"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.deletingLastPathComponent().appendingPathComponent("escape.marker").path))
+        XCTAssertEqual(store.model?.rev, 1, "nothing else applied")
+    }
+
+    /// The resync's snapshot (a new document under the chat) is decoded and applied inside the chat's model marker too.
+    func testTheResyncsSnapshotIsReadInsideTheModelMarker() async throws {
+        let b = bridge61(os: 27)
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        let screens = try XCTUnwrap(b.binding?.screens)
+        screens.presenting = stand
+        try await loadReloadPage(marking: false)
+        _ = await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b1"])
+        _ = await message(b, "model", ["screen": "coach", "rev": 5, "json": try modelJSON(boot: "b1", rev: 5)])
+        _ = try await message(b, "present", ["screen": "coach"]).get()
+        let up = Date().addingTimeInterval(4)
+        while stand.shown.last == nil, Date() < up { try await Task.sleep(nanoseconds: 30_000_000) }
+        _ = try await webView.evaluateJavaScript("window.__snap = \(Self.jsString(try modelJSON(boot: "b2", rev: 1))); 0")
+        var during: [UInt8?] = []
+        let watch = screens.coach.$model.dropFirst().sink { m in
+            if m?.boot == "b2" { during.append(self.stateByte("model.coach.marker")) }
+        }
+        // the next document says hello with the chat still up: the shell draws it from the page's snapshot
+        let hello = try await message(b, "hello", ["v": 1, "page": "P1", "screens": ["coach"], "boot": "b2"]).get()
+        XCTAssertEqual(hello["up"] as? [String], ["coach"])
+        let drawn = Date().addingTimeInterval(4)
+        while screens.coach.model?.boot != "b2", Date() < drawn { try await Task.sleep(nanoseconds: 30_000_000) }
+        watch.cancel()
+        XCTAssertEqual(screens.coach.model?.boot, "b2")
+        XCTAssertEqual(during, [SectionMarker.inside], "the snapshot applied inside its section")
+        XCTAssertEqual(stateByte("model.coach.marker"), SectionMarker.outside)
+        screens.tearDown()
+    }
+
+    /// `section(_:_:)` (H9's construction) and `section(_:entering:)` (the root's hook, H7): the tab root's file holds 1
+    /// while a section runs, nested sections hold it, and its line names the page build being served. A name that is no
+    /// section's kind runs its body unmarked.
+    func testTheTabsSectionHoldsItsMarkerWhileItRuns() throws {
+        let b = bridge61(os: 27)
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        var inside: UInt8?
+        let seven = b.section("tabs") { () -> Int in
+            inside = stateByte("section.tabs.marker")
+            return 7
+        }
+        XCTAssertEqual(seven, 7)
+        XCTAssertEqual(inside, SectionMarker.inside)
+        XCTAssertEqual(try text("section.tabs.marker"), "tabs@P1 shell 61\n0")
+        b.section("tabs", entering: true)
+        b.section("tabs", entering: true)   // a bar change inside a funnel run
+        b.section("tabs", entering: false)
+        XCTAssertEqual(stateByte("section.tabs.marker"), SectionMarker.inside)
+        b.section("tabs", entering: false)
+        XCTAssertEqual(stateByte("section.tabs.marker"), SectionMarker.outside)
+        XCTAssertEqual(b.section("sheets") { 3 }, 3)
+        b.section("sheets", entering: true)
+        XCTAssertFalse(exists("section.sheets.marker"))
+    }
+
+    /// The last launch's sections are read before this launch writes its own: a section that came before the first
+    /// install (H9 installs first, but no order may lose a verdict) finds the stale file first.
+    func testTheLastLaunchsSectionIsReadBeforeThisLaunchWritesItsOwn() throws {
+        try leftOpen(.tabs)
+        let b = bridge61(os: 27)
+        b.section("tabs") {}
+        XCTAssertEqual(b.markersFound, ["tabs@P1 shell 61"])
+        XCTAssertEqual(try text("section.tabs.marker"), "tabs@unknown shell 61\n0", "this launch's own file (no page known yet)")
+        b.install(webView: webView, presenter: root, pageBuild: "P1")
+        if case .crashMarker? = b.ownChecks(page: "P1", book: try XCTUnwrap(b.binding).link.book).off["tabs"] {} else {
+            XCTFail("the verdict reached the book")
+        }
+        XCTAssertEqual(b.launchCounts.markers, 1)
     }
 }
 
