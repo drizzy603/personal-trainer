@@ -69,7 +69,9 @@ private final class Weak {
 /// state (restated once the link is idle, never resent), the TabsModel and the interim `coachHome` drop, deep links (the
 /// URL an argument, never source), covered, the breaker's attribution, a hidden page on a web tab, the teardown that
 /// frees the root and the web view, VoiceOver's screen change after the page's answer, and a busy page against a dead
-/// one (held timeouts, contract 4.4). The fallback that a trip or a decline starts is H8's: these cases stop at the link.
+/// one (held timeouts, contract 4.4). From test 14 on, 11-shell.md H8 (contract 1.4, 2.3, 3.2, 3.5, 3.6, 3.10, 4.2, 10.1,
+/// 10.3, 10.5, D17, D21, D32, I13, I14): hello with `tabs` and the declines, the fallback and each of its triggers, the
+/// Coach tab's modes per scene, the shell's switch, the status, the composer's words handed over, `status {refresh}`.
 @available(iOS 26.0, *)
 @MainActor
 final class ShellBridgeTabsTests: XCTestCase {
@@ -88,10 +90,11 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// those taken one per call (then `ok`); `window.__silent` leaves every call unanswered. An unanswered call's promise
     /// is kept in `window.__pending`: WebKit fails a call whose promise the page's garbage collector took ("Completion
     /// handler for function call is no longer reachable", a script error), where a page that does not answer must time
-    /// out. `_trovoOpen` records its argument in `window.__opened`.
+    /// out. `throw` throws (a script error); `window.__took` makes `screens.off` with a `draft` answer `took: true`, as
+    /// the page does once it holds the words durably. `_trovoOpen` records its argument in `window.__opened`.
     static let page = """
         <!doctype html><meta charset="utf-8"><title>fp</title><script>
-        window.__got = []; window.__opened = []; window.__how = {}; window.__silent = false; window.__pending = [];
+        window.__got = []; window.__opened = []; window.__how = {}; window.__silent = false; window.__pending = []; window.__took = false;
         window.__never = function () { var p = new Promise(function () {}); window.__pending.push(p); return p; };
         window.__tab = 'log'; window.__seq = 0;
         window.FPScreens = { v: 1, call: function (name, args) {
@@ -103,8 +106,10 @@ final class ShellBridgeTabsTests: XCTestCase {
           if (window.__silent) return window.__never();
           var plan = window.__how[name], how = 'ok';
           if (Array.isArray(plan)) { how = plan.length ? plan.shift() : 'ok'; } else if (typeof plan === 'string') { how = plan; }
-          var reply = name === 'tabs.select' ? { ok: true, tab: window.__tab } : name === 'ping' ? { ok: true, v: 1 } : { ok: true };
+          var reply = name === 'tabs.select' ? { ok: true, tab: window.__tab } : name === 'ping' ? { ok: true, v: 1 }
+            : name === 'screens.off' && args.draft != null && window.__took ? { ok: true, took: true } : { ok: true };
           if (how === 'never') return window.__never();
+          if (how === 'throw') throw new Error('thrown by the stand-in page');
           if (how.indexOf('fail:') === 0) return Promise.resolve({ ok: false, error: how.slice(5) });
           if (how.indexOf('refuse:') === 0) return Promise.resolve({ ok: false, error: how.slice(7) });
           if (how.indexOf('late:') === 0) {
@@ -136,25 +141,52 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     // MARK: Helpers
 
-    /// A build 61 bridge with its own folder and defaults, on iOS 27, the app in use.
-    private func makeBridge() -> ShellBridge {
+    /// Where a bridge keeps its book, switches, counters and the composer's words: a new bridge on the same home is the
+    /// next launch.
+    private struct Home {
+        let folder: URL
+        let defaults: UserDefaults
+    }
+
+    private func makeHome() -> Home {
         let suite = "fp.shell.tabs.tests.\(UUID().uuidString)"
         suites.append(suite)
-        let b = ShellBridge(defaults: UserDefaults(suiteName: suite)!, folder: base.appendingPathComponent(UUID().uuidString, isDirectory: true),
-                            shellBuild: "61")
+        return Home(folder: base.appendingPathComponent(UUID().uuidString, isDirectory: true), defaults: UserDefaults(suiteName: suite)!)
+    }
+
+    /// A build 61 bridge (a new home unless one is given), on iOS 27, the app in use. `net`: the WAITING Coach tab's net;
+    /// a minute unless a case is about it (`ShellBridge.coachNetSeconds`, 3 s), since the stand-in page never declares
+    /// `coachHome` and the cases before H8's would otherwise see the tab turn WEB under them.
+    private func makeBridge(home: Home? = nil, linkConfig: LinkState.Config = LinkState.Config(), net: TimeInterval = 60) -> ShellBridge {
+        let h = home ?? makeHome()
+        let b = ShellBridge(defaults: h.defaults, folder: h.folder, shellBuild: "61", linkConfig: linkConfig)
         b.osMajor = { 27 }
         b.appActive = { true }
+        b.coachNetSeconds = net
         return b
     }
 
+    /// The root decision a scene connect makes for `page` (H9's install, no page loaded): whether it builds a tab root.
+    private func decidesTabRoot(_ bridge: ShellBridge, page: String = "P1") -> Bool {
+        let s = TabsScene(bridge: bridge)
+        scenes.append(s)
+        return bridge.install(webView: s.webView, presenter: s.web, pageBuild: page,
+                              launch: ShellLaunch(tabRootAllowed: true, first: "log", barGuess: (83, 34))).tabsRoot
+    }
+
     /// A scene as SceneDelegate builds it (H9), its page loaded and, unless `hello` is nil, linked with those screens.
+    /// `flag`: the App's `window.__FP_SHELL` script goes in after the install, as `capacitorDidLoad` adds it.
     private func scene(first: String = "log", allowed: Bool = true, hello screens: [String]? = ShellBridgeTabsTests.all,
-                       bridge: ShellBridge? = nil) async throws -> TabsScene {
+                       bridge: ShellBridge? = nil, flag: Bool = false) async throws -> TabsScene {
         let s = TabsScene(bridge: bridge ?? makeBridge())
         scenes.append(s)
-        s.installed = s.bridge.install(webView: s.webView, presenter: s.web, pageBuild: "P1",
-                                       launch: ShellLaunch(tabRootAllowed: allowed, first: first,
-                                                           barGuess: RootTabController.predicted(screen: s.window.bounds.size)))
+        let launch = ShellLaunch(tabRootAllowed: allowed, first: first, barGuess: RootTabController.predicted(screen: s.window.bounds.size))
+        s.installed = s.bridge.install(webView: s.webView, presenter: s.web, pageBuild: "P1", launch: launch)
+        if flag {
+            let f = ShellFlag(contract: s.bridge.shell, screens: s.installed.screens, tabs: s.installed.tabsRoot ? launch.flag : nil)
+            s.webView.configuration.userContentController.addUserScript(WKUserScript(source: f.script, injectionTime: .atDocumentStart,
+                                                                                     forMainFrameOnly: true))
+        }
         if s.installed.tabsRoot {
             s.bridge.section("tabs") {
                 let root = RootTabController(web: s.web, webView: s.webView, first: first, look: TabsModel.defaults(for: .heavyweight))
@@ -463,7 +495,7 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// Contract 3.1, 3.6: every refusal new in 61 reads `<code>: <words>`: `off` with no live tab root, `bad-tab`,
     /// `not-presentable` for the bar and (without a live root, and in the interim before H10 with one) the Coach tab,
     /// `not-native` for the chat off a NATIVE Coach tab (WAITING or WEB); build 60's words for a piece not live; `dismiss
-    /// tabs` answered.
+    /// tabs` answered under a classic root (under a live one it is the fallback: test 19).
     func test03RefusalsCarryTheirCode() async throws {
         // a classic root
         let c = try await scene(allowed: false, hello: ["coach"])
@@ -496,7 +528,6 @@ final class ShellBridgeTabsTests: XCTestCase {
         root.setCoachMode(.web)
         why = await refusal(s, "present", ["screen": "coach"])
         XCTAssertEqual(why, "not-native: the Coach tab is not native", "WEB")
-        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()
         XCTAssertEqual(s.binding?.screens.shown, [], "nothing presented")
 
         // build 60's words for a piece not live: a new document whose hello names the bar alone
@@ -506,7 +537,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         why = await refusal(s, "present", ["screen": "coach"])
         XCTAssertEqual(why, "the coach screen is not on for this document", "build 60's words, no code")
 
-        // after the root's own fallback (its UI half; H8 runs it): off
+        // a root that fell back on its own (its UI half alone, which the bridge runs for every fallback) is no live root
         root.fallBack(why: .switch, at: Date())
         why = await refusal(s, "selectTab", ["tab": "progress"])
         XCTAssertEqual(why, "off: no live tab root")
@@ -515,12 +546,14 @@ final class ShellBridgeTabsTests: XCTestCase {
     }
 
     /// The link's fallback (a hello that leaves `tabs` out: the page's decline, contract 3.2) ends the live root too:
-    /// `selectTab` and `sheets` are refused `off` from then on.
+    /// the root falls back with it, and `selectTab` and `sheets` are refused `off` from then on.
     func test03bAfterTheLinksFallbackSelectTabAndSheetsAreRefusedOff() async throws {
         let s = try await scene(first: "log", hello: nil)
         _ = try await message(s, "selectTab", ["tab": "progress"]).get()   // live before the hello
         try await hello(s, ["coach"])
         XCTAssertEqual(s.binding?.link.fellBackWhy, .page)
+        XCTAssertEqual(s.root?.fellBack?.why, .page, "the root's half ran with it")
+        XCTAssertEqual(s.root?.isTabBarHidden, true)
         var why = await refusal(s, "selectTab", ["tab": "log"])
         XCTAssertEqual(why, "off: no live tab root")
         why = await refusal(s, "sheets", ["open": true])
@@ -631,7 +664,7 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     /// Contract 3.7, 6.1, 15.2: a TabsModel repaints the bar (tint, idle, titles, labels, style) inside `model tabs@`;
     /// a stale rev is dropped; `coachHome` models are dropped unread and uncounted until H10, whatever their number; three
-    /// that do not decode trip `tabs` for the page build (the fallback that follows is H8's).
+    /// that do not decode trip `tabs` for the page build, and the scene falls back (`failures`).
     func test06ATabsModelRepaintsTheBarAndUndecodableOnesTripTheBar() async throws {
         let s = try await scene(first: "log")
         let root = try XCTUnwrap(s.root)
@@ -674,7 +707,9 @@ final class ShellBridgeTabsTests: XCTestCase {
         let trip = try XCTUnwrap(b.link.book.trip(screen: "tabs", pageBuild: "P1"))
         XCTAssertEqual(trip.reason, .failures)
         XCTAssertFalse(b.link.isLive("tabs"))
-        XCTAssertEqual(b.link.fellBackWhy, .failures, "the link fell back (the root's half is H8's)")
+        XCTAssertEqual(b.link.fellBackWhy, .failures, "the link fell back")
+        XCTAssertEqual(root.fellBack?.why, .failures, "and the root with it")
+        XCTAssertTrue(root.isTabBarHidden)
         XCTAssertEqual(css(root.tabBar.tintColor), "#f4f4f1", "nothing undecodable applied")
     }
 
@@ -919,7 +954,7 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// G17 as contract 4.4 (D41) settled it, I15: a page busy for 5.25 s while three taps queue (timeouts scaled to
     /// 1.5 s): the three `tabs.select` time out and are held, the ping sent after them is answered once the page is free,
     /// nothing counts, nothing trips, and the restate leaves page and shell on the last tapped tab; the same page dead to
-    /// every call trips `tabs` (`failures`) once the ping fails (the fallback that follows is H8's).
+    /// every call trips `tabs` (`failures`) once the ping fails, and the scene falls back.
     func test13ABusyPageNeverTripsTheBarAndADeadOneDoes() async throws {
         let s = try await scene(first: "settings")
         let root = try XCTUnwrap(s.root)
@@ -960,7 +995,608 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "ping" }.map(\.outcome), ["done", "failed timeout"], "the second ping failed")
         XCTAssertEqual(b.link.book.trip(screen: "tabs", pageBuild: "P1")?.reason, .failures)
         XCTAssertEqual(b.link.fellBackWhy, .failures)
+        XCTAssertEqual(root.fellBack?.why, .failures)
         XCTAssertFalse(b.link.isLive("tabs"))
+    }
+
+    // MARK: 14. Hello with tabs; a hello without them (H8 test 1)
+
+    /// H8 test 1 (contract 3.2, 10.1, 10.3, D6): a hello naming `tabs` gets `tabs {selected, seq, bar}`: the shell's tab,
+    /// the scene's seq and the bar as measured, and no `tabs.select`. A classic-mode page (`coach` alone) under a live tab
+    /// root falls the scene back at its hello (`page`), records the decline for its page build (saved) and gets 60's
+    /// overlay chat at once; the next launch decides the classic root for that page build and the tab root for another.
+    func test14AHelloNamingTabsGetsTheSelectionAndTheBarAndOneWithoutFallsBackAndDeclines() async throws {
+        let s = try await scene(first: "progress", hello: nil)
+        let root = try XCTUnwrap(s.root)
+        _ = try await message(s, "selectTab", ["tab": "settings"]).get()
+        let h = try await hello(s)
+        XCTAssertEqual(h["screens"] as? [String], ["coach", "coachHome", "tabs"])
+        let tabs = try XCTUnwrap(h["tabs"] as? [String: Any], "tabs negotiated: the reply carries it")
+        XCTAssertEqual(tabs["selected"] as? String, "settings")
+        XCTAssertEqual(tabs["seq"] as? Int, 1)
+        let bar = try XCTUnwrap(tabs["bar"] as? [String: Int])
+        XCTAssertGreaterThan(bar["h"] ?? 0, 0)
+        XCTAssertEqual(bar["h"], cover(s), "the bar frame's cover")
+        XCTAssertEqual(bar["safe"], Int(s.window.safeAreaInsets.bottom.rounded()))
+        XCTAssertEqual(bar["rev"], root.barRev)
+        XCTAssertNil(root.fellBack)
+        try await sleep(0.3)
+        let selects = await calls(s, "tabs.select")
+        XCTAssertEqual(selects.count, 0, "the reply carries the selection: no tabs.select")
+
+        // a classic-mode page under a live tab root
+        let home = makeHome()
+        let c = try await scene(first: "log", hello: nil, bridge: makeBridge(home: home))
+        let croot = try XCTUnwrap(c.root)
+        let ch = try await hello(c, ["coach"])
+        XCTAssertEqual(ch["screens"] as? [String], ["coach"], "negotiated on the classic rule: 60's overlay chat at once")
+        XCTAssertNil(ch["tabs"])
+        XCTAssertEqual(croot.fellBack?.why, .page)
+        XCTAssertTrue(croot.isTabBarHidden)
+        XCTAssertEqual(c.binding?.screens.stackAttached, false, "a present goes over the page from now on")
+        XCTAssertEqual(c.binding?.link.book.declined["tabs"], "P1")
+        XCTAssertEqual(ShellBridge.loadBook(folder: home.folder, defaults: home.defaults).declined["tabs"], "P1", "saved")
+        XCTAssertFalse(decidesTabRoot(makeBridge(home: home)), "the next launch: the classic root for P1")
+        XCTAssertTrue(decidesTabRoot(makeBridge(home: home), page: "P2"), "another page build: the tab root")
+    }
+
+    // MARK: 15. coachHome left out (H8 test 2)
+
+    /// H8 test 2 (contract 1.4, 3.2): a page that names `coach` and `tabs` but not `coachHome` gets the bar alone, its page
+    /// build declines `coachHome`, and the Coach tab turns WEB at once: the web view shown and, Coach being selected, the
+    /// page uncovered; the resync covers nothing.
+    func test15ATabsHelloWithoutCoachHomeGetsTheBarAloneAndTheCoachTabTurnsWeb() async throws {
+        let s = try await scene(first: "coach", hello: nil)
+        let root = try XCTUnwrap(s.root)
+        XCTAssertEqual(root.coachMode, .waiting)
+        XCTAssertTrue(s.webView.isHidden, "WAITING: the web view waits behind the room's ground")
+        let h = try await hello(s, ["coach", "tabs"])
+        XCTAssertEqual(h["screens"] as? [String], ["tabs"])
+        XCTAssertNotNil(h["tabs"])
+        XCTAssertEqual(s.binding?.link.book.declined["coachHome"], "P1")
+        XCTAssertNil(s.binding?.link.book.declined["tabs"])
+        XCTAssertEqual(root.coachMode, .web, "WEB at once")
+        XCTAssertFalse(s.webView.isHidden)
+        XCTAssertNil(root.fellBack, "the bar stays")
+        XCTAssertNil(s.binding?.coachNet, "no net for a WEB tab")
+        try await expect("covered off") { await self.calls(s, "shell.covered").map(\.on) == [false] }
+        try await sleep(0.3)
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [false], "once")
+    }
+
+    // MARK: 16. A version refusal; the policy before the hello (H8 test 3)
+
+    /// H8 test 3 (contract 3.2, 10.1, 10.3): a version refusal under a live tab root falls back (`refused`) and declines
+    /// `tabs` for the page build (About: `off: page`); the policy file turning `tabs` off before the hello falls back with
+    /// `policy`, declines nothing, and negotiates the classic rule (60's overlay chat).
+    func test16AVersionRefusalDeclinesTabsAndThePolicyBeforeTheHelloFallsBackWithPolicy() async throws {
+        let s = try await scene(first: "log", hello: nil)
+        let h = try await message(s, "hello", ["v": 0, "page": "P1", "screens": Self.all, "boot": "b1"]).get()
+        XCTAssertEqual(h["v"] as? Int, 0)
+        XCTAssertEqual(h["why"] as? String, "no-version")
+        XCTAssertNil(h["tabs"])
+        XCTAssertEqual(s.root?.fellBack?.why, .refused)
+        XCTAssertEqual(s.root?.isTabBarHidden, true)
+        XCTAssertEqual(s.binding?.link.book.declined["tabs"], "P1")
+        let st = try await message(s, "status", [:]).get()
+        XCTAssertEqual((st["fellBack"] as? [String: Any])?["why"] as? String, "refused")
+        XCTAssertEqual(((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])?["off"] as? String, "page")
+
+        let p = try await scene(first: "log", hello: nil)
+        p.bridge.environment.policy = { Policy(screens: ["tabs": .off]) }
+        let ph = try await hello(p)
+        XCTAssertEqual(ph["screens"] as? [String], ["coach"], "the classic rule: 60's overlay chat")
+        XCTAssertNil(ph["tabs"])
+        XCTAssertEqual(p.root?.fellBack?.why, .policy)
+        XCTAssertEqual(p.root?.isTabBarHidden, true)
+        XCTAssertNil(p.binding?.link.book.declined["tabs"], "the policy, not the page: no decline")
+    }
+
+    // MARK: 17. No hello (H8 test 4)
+
+    /// H8 test 4 (contract 2.3, 10.3): no hello within the deadline (1 s here) falls the scene back (`no-hello`): the bar
+    /// hidden, the WAITING Coach tab WEB with the web view shown, every piece tripped for the page build, and nothing sent
+    /// (no link to send on). The page's failsafe `dismiss tabs` after it finds the scene fallen back: ok, nothing changes.
+    func test17NoHelloWithinTheDeadlineFallsBackAndSendsNothing() async throws {
+        let s = try await scene(first: "coach", hello: nil, bridge: makeBridge(linkConfig: LinkState.Config(helloDeadline: 1)))
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        XCTAssertEqual(root.coachMode, .waiting)
+        try await expect("the no-hello fallback", within: 6) { root.fellBack != nil }
+        XCTAssertEqual(root.fellBack?.why, .noHello)
+        XCTAssertEqual(b.link.fellBackWhy, .noHello)
+        XCTAssertTrue(root.isTabBarHidden)
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertFalse(s.webView.isHidden)
+        XCTAssertEqual(b.link.book.trip(screen: "tabs", pageBuild: "P1")?.reason, .noHello)
+        XCTAssertFalse(b.screens.stackAttached)
+        try await sleep(0.3)
+        XCTAssertEqual(b.pageLink.records.count, 0, "no link: no screens.off, no covered")
+        let inPage = await got(s)
+        XCTAssertEqual(inPage.count, 0)
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()   // the page's failsafe
+        XCTAssertEqual(root.fellBack?.why, .noHello, "nothing changes")
+        XCTAssertNil(b.link.book.declined["tabs"])
+        XCTAssertEqual(b.pageLink.records.count, 0)
+        let st = try await message(s, "status", [:]).get()
+        XCTAssertEqual((st["fellBack"] as? [String: Any])?["why"] as? String, "no-hello")
+    }
+
+    // MARK: 18. A tabs trip (H8 test 5)
+
+    /// H8 test 5 (contract 4.2, 4.4, 10.3, D21): three failed `tabs.select` in a row (the owner's re-tap and its two
+    /// restates, each answered `bad-args`) trip the bar and the scene falls back (`failures`) in one turn: the chat
+    /// popped, the bar hidden, the web view shown. Then the page hears `screens.off` for `coach` (`needs`, with the
+    /// composer's words), `coachHome` (`needs`) and `tabs` (`failures`), in that order, and `shell.covered {on:false}`
+    /// (the NATIVE Coach tab was selected). It answers without `took`: the words stay native.
+    func test18ThreeFailedTabsSelectsTripTheBarAndTheFallbackTellsThePageInOrder() async throws {
+        let s = try await scene(first: "log")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        root.setHome(s.home)   // NATIVE (H10 gives N's hub)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "selectTab", ["tab": "coach"]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        b.screens.coach.draft.text = "  Words the owner typed\n"
+        await setHow(s, "tabs.select", "fail:bad-args")
+        _ = await js(s, "window.__got = []; 0")
+        tap(s, "coach")   // a re-tap: its tabs.select fails, and so do the two restates after it
+        try await expect("the bar tripped and the root fell back") { root.fellBack != nil }
+        XCTAssertEqual(root.fellBack?.why, .failures)
+        XCTAssertEqual(b.link.book.trip(screen: "tabs", pageBuild: "P1")?.reason, .failures)
+        XCTAssertEqual(root.coachSlot.nav.viewControllers.count, 1, "the chat popped")
+        XCTAssertEqual(b.screens.shown, [])
+        XCTAssertFalse(b.screens.stackAttached, "a later present is 60's overlay")
+        XCTAssertTrue(root.isTabBarHidden)
+        XCTAssertEqual(root.coachMode, .web)
+        XCTAssertFalse(s.webView.isHidden)
+        try await expect("the page told, then uncovered") { await self.calls(s, "shell.covered").count == 1 }
+        try await expect("the link idle again") { b.pageLink.pending == 0 }
+        let told = await got(s).filter { $0.name == "screens.off" || $0.name == "shell.covered" }
+        XCTAssertEqual(told.map(\.name), ["screens.off", "screens.off", "screens.off", "shell.covered"])
+        XCTAssertEqual(told.map { $0.args["screen"] as? String }, ["coach", "coachHome", "tabs", nil])
+        XCTAssertEqual(told.map { $0.args["why"] as? String }, ["needs", "needs", "failures", nil])
+        XCTAssertEqual(told.first?.args["draft"] as? String, "Words the owner typed", "the composer's words, trimmed")
+        XCTAssertEqual(told.dropFirst().compactMap { $0.args["draft"] as? String }, [], "a draft goes with coach alone")
+        XCTAssertEqual(told.last?.on, false)
+        XCTAssertEqual(b.screens.coach.draft.text, "  Words the owner typed\n", "no took: the words stay native")
+        let selects = await calls(s, "tabs.select")
+        XCTAssertEqual(selects.count, 3, "the re-tap's and two restates; none after the fallback")
+        XCTAssertEqual(RecordingWebView.nilMovesWhileLive(of: s.webView), 0)
+    }
+
+    // MARK: 19. dismiss tabs (H8 test 6)
+
+    /// H8 test 6 (contract 2.3, 3.6, 10.3, D32, I14): the page's `dismiss {screen:'tabs'}` under a live tab root falls
+    /// the scene back within that one message (`page`: never two bars), declines `tabs` for the page build, and the page
+    /// hears `screens.off` for its live `coach` and `coachHome` (`needs`) but none for `tabs`; sent again (the page's
+    /// failsafe), and under a classic root, it is answered and changes nothing.
+    func test19DismissTabsFallsBackDeclinesAndSendsNoScreensOffForTabs() async throws {
+        let s = try await scene(first: "settings")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()
+        XCTAssertEqual(root.fellBack?.why, .page)
+        XCTAssertTrue(root.isTabBarHidden, "hidden by the answer: never two bars (I14)")
+        XCTAssertEqual(b.link.fellBackWhy, .page)
+        XCTAssertEqual(b.link.book.declined["tabs"], "P1")
+        XCTAssertEqual(b.link.liveScreens, [])
+        try await expect("the live pieces' screens.off") { await self.calls(s, "screens.off").count == 2 }
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()
+        try await sleep(0.3)
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.map { $0.args["screen"] as? String }, ["coach", "coachHome"], "none for tabs, nothing for the second dismiss")
+        XCTAssertEqual(offs.map { $0.args["why"] as? String }, ["needs", "needs"])
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.count, 0, "Settings was selected: nothing to uncover")
+        XCTAssertEqual(root.selected, "settings")
+
+        let c = try await scene(allowed: false, hello: ["coach"])
+        _ = try await message(c, "dismiss", ["screen": "tabs"]).get()
+        XCTAssertEqual(c.binding?.link.liveScreens, ["coach"], "a classic root: nothing changes")
+        XCTAssertNil(c.binding?.link.book.declined["tabs"])
+        XCTAssertNil(c.binding?.link.fellBackWhy)
+    }
+
+    // MARK: 20. The policy file (H8 test 7)
+
+    /// H8 test 7 (contract 8.3, 10.1, 10.3): the policy file turning `coachHome` off turns the Coach tab WEB at once (the
+    /// web view shown and, Coach being selected, the page uncovered) and takes the chat with it (`needs`: joint), the bar
+    /// staying; turning `tabs` off then falls the scene back at once (`policy`), with no decline.
+    func test20ThePolicyTurnsTheCoachTabWebAndThenTheBarOff() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        var policy = Policy.defaults
+        s.bridge.environment.policy = { policy }
+        XCTAssertEqual(root.coachMode, .waiting)
+        try await expect("covered on after the hello (a WAITING Coach tab)") { await self.calls(s, "shell.covered").map(\.on) == [true] }
+        policy = Policy(screens: ["coachHome": .off])
+        s.bridge.policyChanged(screens: ["coachHome"])
+        XCTAssertEqual(root.coachMode, .web, "at once")
+        XCTAssertFalse(s.webView.isHidden)
+        XCTAssertNil(root.fellBack)
+        XCTAssertTrue(b.link.isLive("tabs"), "the bar stays")
+        XCTAssertFalse(b.link.isLive("coach"), "joint: the chat goes with the Coach tab")
+        try await expect("covered off and the two offs") {
+            let offs = await self.calls(s, "screens.off").count
+            let covered = await self.calls(s, "shell.covered").count
+            return offs == 2 && covered == 2
+        }
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [true, false])
+        let offs = await calls(s, "screens.off")
+        XCTAssertEqual(offs.map { $0.args["screen"] as? String }, ["coach", "coachHome"])
+        XCTAssertEqual(offs.map { $0.args["why"] as? String }, ["needs", "withdrawn"])
+
+        policy = Policy(screens: ["coachHome": .off, "tabs": .off])
+        s.bridge.policyChanged(screens: ["tabs"])
+        XCTAssertEqual(root.fellBack?.why, .policy)
+        XCTAssertTrue(root.isTabBarHidden)
+        XCTAssertNil(b.link.book.declined["tabs"], "no decline: on again from the launch after the policy says so")
+        try await expect("tabs off with the policy's word") { await self.calls(s, "screens.off").count == 3 }
+        let last = await calls(s, "screens.off").last
+        XCTAssertEqual(last?.args["screen"] as? String, "tabs")
+        XCTAssertEqual(last?.args["why"] as? String, "policy")
+        try await sleep(0.3)
+        let after = await calls(s, "shell.covered")
+        XCTAssertEqual(after.count, 2, "the Coach tab was WEB already: nothing more to uncover")
+    }
+
+    // MARK: 21. The shell's switch (H8 test 8)
+
+    /// H8 test 8 (contract 3.5, 10.1, D5): `setSwitch {tabs, on:false}` falls the scene back now (`switch`), answers the
+    /// status (`switches.tabs` false) and holds at the next launch (the classic root); under that classic root `on:true`
+    /// is accepted, changes nothing in the launch (`needs: ["root"]`) and gives the tab root from the next launch;
+    /// `no-switch` for any other piece.
+    func test21SetSwitchOffFallsBackNowAndHoldsOnActsFromTheNextLaunch() async throws {
+        let home = makeHome()
+        let s = try await scene(first: "progress", bridge: makeBridge(home: home))
+        let root = try XCTUnwrap(s.root)
+        var why = await refusal(s, "setSwitch", ["screen": "coach", "on": false])
+        XCTAssertEqual(why, "no-switch: this binary keeps no switch for coach")
+        why = await refusal(s, "setSwitch", ["screen": "coachHome", "on": false])
+        XCTAssertEqual(code(why), "no-switch")
+        XCTAssertNil(root.fellBack)
+        let st = try await message(s, "setSwitch", ["screen": "tabs", "on": false]).get()
+        XCTAssertEqual(root.fellBack?.why, .switch)
+        XCTAssertTrue(root.isTabBarHidden)
+        XCTAssertEqual(st["switches"] as? [String: Bool], ["tabs": false])
+        XCTAssertEqual(st["root"] as? String, "tabs")
+        XCTAssertEqual((st["fellBack"] as? [String: Any])?["why"] as? String, "switch")
+        XCTAssertEqual(((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])?["off"] as? String, "device")
+        try await expect("tabs off with the switch's word") { await self.calls(s, "screens.off").last?.args["why"] as? String == "switch" }
+        XCTAssertFalse(decidesTabRoot(makeBridge(home: home)), "the next launch: the classic root")
+
+        let c = try await scene(hello: ["coach"], bridge: makeBridge(home: home))
+        XCTAssertNil(c.root, "the switch holds: a classic root")
+        let on = try await message(c, "setSwitch", ["screen": "tabs", "on": true]).get()
+        XCTAssertEqual(on["switches"] as? [String: Bool], ["tabs": true])
+        XCTAssertEqual(on["root"] as? String, "classic")
+        XCTAssertTrue(on["fellBack"] is NSNull)
+        let bar = try XCTUnwrap((on["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(bar["off"] as? String, "needs")
+        XCTAssertEqual(bar["needs"] as? [String], ["root"], "on from the next launch")
+        XCTAssertEqual(c.binding?.link.liveScreens, ["coach"], "nothing changes in this launch")
+        XCTAssertTrue(decidesTabRoot(makeBridge(home: home)), "the next launch: the tab root")
+    }
+
+    // MARK: 22. After a fallback (H8 test 9)
+
+    /// H8 test 9 (contract 2.3, 3.3, 3.4, 10.3, H-G3): after a fallback `selectTab` and `sheets` are refused `off`; the
+    /// web view's user scripts hold the document-start script that deletes the flag's `tabs`, after the flag's own, so
+    /// the scene's next document boots with no `tabs` in its flag (the rest of it kept); its hello gets the classic rule,
+    /// `tabs` and `coachHome` left out, and no `tabs` in the reply.
+    func test22AfterAFallbackLaterDocumentsHaveNoTabsAndHellosAreClassic() async throws {
+        let s = try await scene(first: "log", flag: true)
+        let root = try XCTUnwrap(s.root)
+        let first = await js(s, "JSON.stringify(window.__FP_SHELL.tabs)") as? String
+        XCTAssertEqual(first, #"{"bar":{"h":83,"safe":34},"selected":"log"}"#, "the tab root's flag")
+        let ucc = s.webView.configuration.userContentController
+        XCTAssertFalse(ucc.userScripts.contains { $0.source == ShellBridge.dropTabsScript })
+        _ = try await message(s, "setSwitch", ["screen": "tabs", "on": false]).get()
+        XCTAssertNotNil(root.fellBack)
+        var why = await refusal(s, "selectTab", ["tab": "progress"])
+        XCTAssertEqual(why, "off: no live tab root")
+        why = await refusal(s, "sheets", ["open": true])
+        XCTAssertEqual(why, "off: no live tab root")
+        let scripts = ucc.userScripts.map(\.source)
+        let flagAt = try XCTUnwrap(scripts.firstIndex { $0.hasPrefix("window.__FP_SHELL = ") })
+        let dropAt = try XCTUnwrap(scripts.firstIndex(of: ShellBridge.dropTabsScript), "the delete script is in")
+        XCTAssertLessThan(flagAt, dropAt, "after the flag's")
+        XCTAssertEqual(scripts.filter { $0 == ShellBridge.dropTabsScript }.count, 1)
+        XCTAssertTrue(ucc.userScripts[dropAt].isForMainFrameOnly)
+        XCTAssertEqual(ucc.userScripts[dropAt].injectionTime, .atDocumentStart)
+
+        try await load(s)   // the scene's next document
+        let tabs = await js(s, "typeof window.__FP_SHELL.tabs") as? String
+        XCTAssertEqual(tabs, "undefined", "no tabs in its flag: the page boots classic")
+        let binary = await js(s, "JSON.stringify(window.__FP_SHELL.binary)") as? String
+        XCTAssertEqual(binary, #"["coach","coachHome","tabs"]"#, "the rest of the flag stays")
+        let h = try await hello(s, Self.all, boot: "b2")
+        XCTAssertEqual(h["screens"] as? [String], ["coach"], "tabs and coachHome left out: the classic rule (60's overlay chat)")
+        XCTAssertNil(h["tabs"])
+        XCTAssertEqual(s.binding?.screens.stackAttached, false)
+        XCTAssertEqual(root.selected, "log", "the selection never moved")
+    }
+
+    // MARK: 23. The Coach tab's modes (H8 test 10)
+
+    /// H8 test 10 (contract 1.4, 3.6, 8.3, D17, I13): the Coach tab's modes belong to the scene. A WAITING tab turns WEB
+    /// 3 s after the hello's answer (not before), shows the web view and uncovers the page while selected, and stays WEB
+    /// across a reload with no net; a WAITING tab turns WEB at once on `dismiss coachHome`, after which no reload brings
+    /// WAITING or the net back; a NATIVE tab across a reload is named in `up`, taken over with no net, and stays NATIVE.
+    func test23TheCoachTabsModesBelongToTheScene() async throws {
+        XCTAssertEqual(ShellBridge.coachNetSeconds, 3)
+        let w = try await scene(first: "coach", hello: nil, bridge: makeBridge(net: ShellBridge.coachNetSeconds))
+        let wroot = try XCTUnwrap(w.root)
+        try await hello(w)
+        XCTAssertEqual(wroot.coachMode, .waiting)
+        XCTAssertNotNil(w.binding?.coachNet, "the net runs")
+        try await sleep(2.5)
+        XCTAssertEqual(wroot.coachMode, .waiting, "not before 3 s")
+        try await expect("WEB 3 s after the answer") { wroot.coachMode == .web }
+        XCTAssertFalse(w.webView.isHidden, "the web view shows")
+        XCTAssertNil(w.binding?.coachNet)
+        try await expect("covered on after the hello, off when it turned WEB") { await self.calls(w, "shell.covered").map(\.on) == [true, false] }
+        try await load(w)
+        try await hello(w, Self.all, boot: "b2")
+        XCTAssertEqual(wroot.coachMode, .web, "WEB stays WEB across a reload")
+        XCTAssertNil(w.binding?.coachNet, "no net for a WEB tab")
+
+        let d = try await scene(first: "coach", bridge: makeBridge(net: ShellBridge.coachNetSeconds))
+        let droot = try XCTUnwrap(d.root)
+        XCTAssertEqual(droot.coachMode, .waiting)
+        _ = try await message(d, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(droot.coachMode, .web, "at once")
+        XCTAssertFalse(d.webView.isHidden)
+        XCTAssertNil(d.binding?.coachNet, "the net went")
+        try await expect("covered on, then off") { await self.calls(d, "shell.covered").map(\.on) == [true, false] }
+        try await load(d)
+        try await hello(d, Self.all, boot: "b2")
+        XCTAssertEqual(droot.coachMode, .web, "after the scene's first declaration no reload brings WAITING back")
+        XCTAssertNil(d.binding?.coachNet, "nor the net")
+        droot.setCoachMode(.waiting)
+        XCTAssertEqual(droot.coachMode, .web, "WAITING never returns in the scene")
+
+        let n = try await scene(first: "coach", hello: nil, bridge: makeBridge(net: ShellBridge.coachNetSeconds))
+        let nroot = try XCTUnwrap(n.root)
+        nroot.setHome(n.home)   // NATIVE (from H10: the page's present coachHome)
+        try await hello(n)
+        XCTAssertNil(n.binding?.coachNet, "a NATIVE tab runs no net")
+        try await load(n)
+        let h = try await hello(n, Self.all, boot: "b2")
+        XCTAssertEqual(h["up"] as? [String], ["coachHome"], "the NATIVE tab named in up: the new document takes it over")
+        XCTAssertNil(n.binding?.coachNet, "taken over: no present, no net")
+        try await sleep(3.3)
+        XCTAssertEqual(nroot.coachMode, .native, "still NATIVE after 3 s")
+        XCTAssertTrue(n.webView.isHidden)
+        let covered = await calls(n, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [true], "the new document is covered after its hello")
+    }
+
+    // MARK: 24. A reload on a NATIVE Coach tab (H8 test 11)
+
+    /// H8 test 11 (contract 3.2, 4.3, I3): a reload with Coach selected, NATIVE and the chat pushed: the hello's `up`
+    /// names both, the reply carries the selection, and the resync covers the page and asks for the chat's snapshot, with
+    /// no `tabs.select`; the NATIVE tab and the chat stay for the page to take over.
+    func test24AReloadOnANativeCoachTabCoversThePageAndSendsNoTabsSelect() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        root.setHome(s.home)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await load(s)
+        let h = try await hello(s, Self.all, boot: "b2")
+        XCTAssertEqual(h["up"] as? [String], ["coach", "coachHome"])
+        XCTAssertEqual((h["tabs"] as? [String: Any])?["selected"] as? String, "coach")
+        try await expect("covered on and the snapshot asked for") {
+            let covered = await self.calls(s, "shell.covered").map(\.on)
+            let snapshots = await self.calls(s, "coach.snapshot").count
+            return covered == [true] && snapshots == 1
+        }
+        try await sleep(0.3)
+        let selects = await calls(s, "tabs.select")
+        XCTAssertEqual(selects.count, 0, "never tabs.select at the resync")
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.count, 1)
+        XCTAssertEqual(root.coachMode, .native)
+        XCTAssertEqual(root.coachSlot.nav.viewControllers.count, 2, "the chat stays for the page to take over")
+        XCTAssertEqual(b.screens.shown, ["coach"])
+    }
+
+    // MARK: 25. Status (H8 test 12)
+
+    /// H8 test 12 (contract 3.10, 10.5): the status names the root built at scene connect (`tabs`, still after a
+    /// fallback; `classic`), the fallback's word and time, the shell's switches, the policy file's last check, the strays
+    /// and `leftAny` counters, and the pieces' offs: `page` for a decline (Try again clears it), `needs` with the pieces
+    /// needed, `["root"]` for the bar whose checks pass with no live tab root.
+    func test25TheStatusNamesTheRootTheFallbackTheSwitchesAndTheOffs() async throws {
+        let s = try await scene(first: "log")
+        let root = try XCTUnwrap(s.root)
+        var state = PolicyState()
+        state.record(.body(Data(#"{"v":1}"#.utf8)), at: Date(timeIntervalSince1970: 1_700_000_000))
+        s.bridge.environment.policyState = { state }
+        var st = try await message(s, "status", [:]).get()
+        XCTAssertEqual(st["root"] as? String, "tabs")
+        XCTAssertTrue(st["fellBack"] is NSNull)
+        XCTAssertEqual(st["switches"] as? [String: Bool], ["tabs": true])
+        let policy = try XCTUnwrap(st["policy"] as? [String: Any])
+        XCTAssertEqual((policy["at"] as? NSNumber)?.doubleValue, 1_700_000_000_000, "the last check, in ms")
+        XCTAssertEqual(policy["result"] as? String, "unchanged", "its result (a file that leaves the defaults)")
+        XCTAssertNotNil((st["counters"] as? [String: Any])?["leftAny"] as? [String: Any])
+        XCTAssertEqual(((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])?["live"] as? Bool, true)
+        root.selectedIndex = ShellTabs.ids.firstIndex(of: "progress")!   // a stray
+        _ = try await message(s, "dismiss", ["screen": "tabs"]).get()
+        st = try await message(s, "status", [:]).get()
+        XCTAssertEqual(((st["counters"] as? [String: Any])?["strays"] as? [String: Any])?["launch"] as? Int, 1)
+        XCTAssertEqual(st["root"] as? String, "tabs", "a fallen-back tab root stays tabs")
+        let fell = try XCTUnwrap(st["fellBack"] as? [String: Any])
+        XCTAssertEqual(fell["why"] as? String, "page")
+        XCTAssertEqual((fell["at"] as? NSNumber)?.doubleValue ?? 0, Date().timeIntervalSince1970 * 1000, accuracy: 5000)
+        let screens = try XCTUnwrap(st["screens"] as? [String: Any])
+        let bar = try XCTUnwrap(screens["tabs"] as? [String: Any])
+        XCTAssertEqual(bar["off"] as? String, "page")
+        XCTAssertEqual(bar["canReset"] as? Bool, true)
+        XCTAssertEqual(bar["live"] as? Bool, false)
+        let home = try XCTUnwrap(screens["coachHome"] as? [String: Any])
+        XCTAssertEqual(home["off"] as? String, "needs")
+        XCTAssertEqual(home["needs"] as? [String], ["tabs"])
+        let coach = try XCTUnwrap(screens["coach"] as? [String: Any])
+        XCTAssertEqual(coach["on"] as? Bool, true, "the next document's: 60's overlay chat")
+        XCTAssertEqual(coach["live"] as? Bool, false, "off for this document")
+        // Try again clears the decline: the bar's own checks pass again and it needs a tab root (the next launch)
+        let reset = try await message(s, "reset", ["screen": "tabs"]).get()
+        let again = try XCTUnwrap((reset["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(again["off"] as? String, "needs")
+        XCTAssertEqual(again["needs"] as? [String], ["root"])
+        XCTAssertEqual((reset["fellBack"] as? [String: Any])?["why"] as? String, "page", "the scene's fallback stays")
+
+        let c = try await scene(allowed: false, hello: ["coach"])
+        let cst = try await message(c, "status", [:]).get()
+        XCTAssertEqual(cst["root"] as? String, "classic")
+        XCTAssertTrue(cst["fellBack"] is NSNull)
+        XCTAssertEqual(cst["switches"] as? [String: Bool], ["tabs": true])
+        XCTAssertTrue(cst["policy"] is NSNull, "no policy state from this host")
+        let cbar = try XCTUnwrap((cst["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(cbar["off"] as? String, "needs")
+        XCTAssertEqual(cbar["needs"] as? [String], ["root"])
+    }
+
+    // MARK: 26. The composer's words (H8 test 13)
+
+    /// H8 test 13 (contract 4.2, D21, D38, G18): every `screens.off {screen:'coach'}` carries the native composer's
+    /// unsent words, trimmed (here the policy file takes 60's overlay chat away under a classic root: any reason, any
+    /// root). An answer with `took: true` empties the composer and `fpDraft.coach`; one without `took`, a refusal, a
+    /// thrown error and a timeout each keep them; an empty composer sends no `draft`; the page's own `dismiss coach` sends
+    /// no `screens.off` and hands nothing over.
+    func test26TheComposersWordsGoToThePageOnlyWhenItTookThem() async throws {
+        let home = makeHome()
+        let s = try await scene(allowed: false, hello: nil, bridge: makeBridge(home: home))
+        let b = try XCTUnwrap(s.binding)
+        b.pageLink.timeoutScale = 0.25   // a timeout in 0.5 s
+        var policy = Policy.defaults
+        s.bridge.environment.policy = { policy }
+        let draft = b.screens.coach.draft
+        var round = 0
+        /// A new document with the overlay chat live and `words` in the composer, linked; the page answers `screens.off`
+        /// as `how` (with `took` when `took`).
+        func linked(_ words: String, how: String = "ok", took: Bool = false) async throws {
+            round += 1
+            policy = .defaults
+            if round > 1 { try await load(s) }
+            try await hello(s, ["coach"], boot: "b\(round)")
+            XCTAssertEqual(b.link.liveScreens, ["coach"], "round \(round)")
+            draft.text = words
+            await setHow(s, "screens.off", how)
+            _ = await js(s, "window.__took = \(took); 0")
+        }
+        /// The policy file takes the chat away: the `screens.off` the page got, and how it ended.
+        func takeAway() async throws -> (Call?, String?) {
+            let before = b.pageLink.records.filter { $0.name == "screens.off" }.count
+            policy = Policy(screens: ["coach": .off])
+            s.bridge.policyChanged(screens: ["coach"])
+            try await expect("round \(round): the screens.off ended", within: 6) {
+                let offs = b.pageLink.records.filter { $0.name == "screens.off" }
+                return offs.count == before + 1 && offs.last?.outcome != nil
+            }
+            let sent = await calls(s, "screens.off").last
+            return (sent, b.pageLink.records.last { $0.name == "screens.off" }?.outcome)
+        }
+        try await linked("  The words I typed \n", took: true)
+        var (off, outcome) = try await takeAway()
+        XCTAssertEqual(off?.args["screen"] as? String, "coach")
+        XCTAssertEqual(off?.args["why"] as? String, "withdrawn")
+        XCTAssertEqual(off?.args["draft"] as? String, "The words I typed", "trimmed")
+        XCTAssertEqual(outcome, "done")
+        XCTAssertEqual(draft.text, "", "took: the composer empties")
+        XCTAssertNil(home.defaults.string(forKey: CoachComposerDraft.defaultsKey), "and fpDraft.coach goes")
+        for (how, words) in [("ok", "Answered without took"), ("refuse:busy", "Refused"), ("throw", "Thrown"), ("never", "Timed out")] {
+            try await linked(words, how: how)
+            (off, outcome) = try await takeAway()
+            XCTAssertEqual(off?.args["draft"] as? String, words, how)
+            XCTAssertEqual(draft.text, words, "\(how), \(outcome ?? "-"): the words stay native")
+            XCTAssertEqual(home.defaults.string(forKey: CoachComposerDraft.defaultsKey), words, how)
+        }
+        let outcomes = b.pageLink.records.filter { $0.name == "screens.off" }.compactMap(\.outcome)
+        XCTAssertEqual(outcomes.count, 5)
+        XCTAssertEqual(Array(outcomes.prefix(3)), ["done", "done", "refused busy"])
+        XCTAssertTrue(outcomes.count == 5 && outcomes[3].hasPrefix("failed script error"), "\(outcomes)")
+        XCTAssertEqual(outcomes.last, "failed timeout")
+        try await linked("  \n ", took: true)
+        (off, outcome) = try await takeAway()
+        XCTAssertNotNil(off)
+        XCTAssertNil(off?.args["draft"], "an empty composer: no draft")
+        // the page's own dismiss of the chat (D38): no screens.off, nothing handed over
+        try await linked("Mine to keep")
+        let offs = b.pageLink.records.filter { $0.name == "screens.off" }.count
+        _ = try await message(s, "dismiss", ["screen": "coach"]).get()
+        try await sleep(0.3)
+        XCTAssertEqual(b.pageLink.records.filter { $0.name == "screens.off" }.count, offs)
+        XCTAssertEqual(draft.text, "Mine to keep")
+    }
+
+    // MARK: 27. status {refresh} (H8 test 14)
+
+    /// H8 test 14 (contract 3.10, 10.3, D43): `status {refresh: true}` asks `environment.fetchPolicy` once and answers
+    /// once the fetch has ended, with what it changed acted on (a fetch that turns `tabs` off has fallen the scene back by
+    /// then, `policy`); a plain `status` and a refresh inside the minute fetch nothing; a fetch that turns `tabs` on again
+    /// changes nothing until the next launch (`needs: ["root"]`); a fetch that never ends is answered after the wait.
+    func test27StatusRefreshFetchesThePolicyOnceAMinuteAndAnswersOnceItEnded() async throws {
+        XCTAssertEqual(ShellBridge.refreshEvery, 60)
+        XCTAssertEqual(ShellBridge.refreshWait, 10)
+        final class Fetch {
+            var count = 0
+            var policy = Policy.defaults
+            var next = Policy(screens: ["tabs": .off])
+        }
+        let s = try await scene(first: "log")
+        let root = try XCTUnwrap(s.root)
+        let bridge = s.bridge
+        let f = Fetch()
+        bridge.environment.policy = { f.policy }
+        bridge.environment.fetchPolicy = { [weak bridge] done in
+            f.count += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak bridge] in   // a fetch takes a moment
+                MainActor.assumeIsolated {
+                    f.policy = f.next
+                    bridge?.policyChanged(screens: ["tabs"])
+                    done()
+                }
+            }
+        }
+        _ = try await message(s, "status", [:]).get()
+        XCTAssertEqual(f.count, 0, "a plain status fetches nothing")
+        var st = try await message(s, "status", ["refresh": true]).get()
+        XCTAssertEqual(f.count, 1)
+        XCTAssertEqual(root.fellBack?.why, .policy, "the fetch's off acted before the answer")
+        XCTAssertEqual((st["fellBack"] as? [String: Any])?["why"] as? String, "policy")
+        XCTAssertEqual(((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])?["off"] as? String, "policy")
+        st = try await message(s, "status", ["refresh": true]).get()
+        XCTAssertEqual(f.count, 1, "inside the minute: the status as it stands")
+        XCTAssertEqual((st["fellBack"] as? [String: Any])?["why"] as? String, "policy")
+
+        bridge.refreshEvery = 0
+        f.next = .defaults
+        st = try await message(s, "status", ["refresh": true]).get()
+        XCTAssertEqual(f.count, 2)
+        let bar = try XCTUnwrap((st["screens"] as? [String: Any])?["tabs"] as? [String: Any])
+        XCTAssertEqual(bar["off"] as? String, "needs")
+        XCTAssertEqual(bar["needs"] as? [String], ["root"], "on from the next launch")
+        XCTAssertTrue(root.isTabBarHidden, "the scene stays fallen back")
+
+        bridge.refreshWait = 0.5
+        bridge.environment.fetchPolicy = { _ in f.count += 1 }   // a fetch that never ends
+        let t0 = Date()
+        _ = try await message(s, "status", ["refresh": true]).get()
+        XCTAssertEqual(f.count, 3)
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(t0), 0.45, "answered after the wait")
     }
 }
 
