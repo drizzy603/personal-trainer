@@ -18,7 +18,8 @@
 //   FPScreens intents send once per nonce and act only where the page's own screen offers them now:
 //   keep and undo by id after the cap while the card offers them (a model older than the page answers
 //   stale), retry only on Try again, stop not in a turn's first half second; they forward the page's
-//   confirms and toasts (and answer stale after a reload); the share photo and drafts reach the
+//   confirms and toasts (answered on receipt and acted on the next task from build 61's page, contract
+//   4.2, so the cases wait a tick before reading; and stale after a reload); the share photo and drafts reach the
 //   composer, and a draft sent or changed is not offered again; setup shows Cancel and no Back; a tab
 //   switch dismisses, uncovers the page and drops the speech line; FP_NATIVE, kt_native_off (the About
 //   switch), screens.off, a refused present and a shell without the screen each bring back the web
@@ -544,12 +545,15 @@ serial('C3: keep and undo by id after the cap; the restore confirm is forwarded,
       r.noBackup = { answer: await FPScreens.call('coach.restorePrevious', {}), toasts: __fpShell.of('toast').slice(t1) };
       await FPScreens.call('coach.regenerate', {}); await __wait(10);
       const reset = __fpShell.of('confirm').slice(-1)[0];
-      r.reset = { reset, no: await FPScreens.call('confirm', { id: reset.id, yes: false }), still: hasCustomRoutine() };
+      // confirm and toast.undo answer on receipt and act on the next task (contract 4.2, D14): one tick before reading
+      const no = await FPScreens.call('confirm', { id: reset.id, yes: false }); await __wait(0);
+      r.reset = { reset, no, still: hasCustomRoutine() };
       // an Undo toast while the native chat is up: the shell shows it, toast.undo runs its function once
       let undone = 0;
       showUndoToast('Bench Press removed', () => { undone++; });
       const ut = __fpShell.of('toast').slice(-1)[0];
-      r.undoToast = { ut, first: await FPScreens.call('toast.undo', { id: ut.undo }), second: await FPScreens.call('toast.undo', { id: ut.undo }), undone };
+      const first = await FPScreens.call('toast.undo', { id: ut.undo }), second = await FPScreens.call('toast.undo', { id: ut.undo }); await __wait(0);
+      r.undoToast = { ut, first, second, undone };
       // the model switch: the toast too
       const switched = await FPScreens.call('coach.model', { model: 'claude-haiku-4-5-20251001' }); await __wait(20);   // the model is pushed at the next tick
       r.model = { answer: switched, now: coachModel, toast: __fpShell.of('toast').slice(-1)[0], header: __model().header.model, odd: await FPScreens.call('coach.model', { model: 'gpt-9' }) };
@@ -727,7 +731,8 @@ serial('C3: a shared photo and its comment reach the native composer; Build day 
       r.intake = { header: im.header, composer: im.composer, empty: im.empty, seed: im.messages[0].seed, back: await FPScreens.call('coach.back', {}) };
       await FPScreens.call('coach.cancelIntake', {}); await __wait(10);
       const cf = __fpShell.of('confirm').slice(-1)[0];
-      r.cancel = { title: cf.title, label: cf.confirm, tone: cf.tone, yes: await FPScreens.call('confirm', { id: cf.id, yes: true }), intake: intakeMode, msgs: coachMessages.length };
+      const yes = await FPScreens.call('confirm', { id: cf.id, yes: true }); await __wait(0);   // answered first, acted on the next task
+      r.cancel = { title: cf.title, label: cf.confirm, tone: cf.tone, yes, intake: intakeMode, msgs: coachMessages.length };
       r.notIntake = await FPScreens.call('coach.cancelIntake', {});
       // Back leaves the chat (dismiss), Open Settings goes to Settings
       await __open(); const d0 = __fpShell.of('dismiss').length;

@@ -656,8 +656,8 @@ serial('P2: covered in tabs mode is the Coach tab not web (contract 8.4): booted
       t0 = n('toast'); showToast('Saved');
       r.log = { covered: _fpCovered(), mode: _fpCoachMode(), fwd: n('toast') - t0, web: document.getElementById('toast').classList.contains('show') };
       switchTab('coach'); await w(20); r.back = _fpCovered();
-      // hello answers (no coachHome in this page's screens): the Coach tab is the web's
-      window.__fpShellHelloSilent = false; _fpHello();
+      // hello answers without coachHome (the policy has it off; this page names it, P7): the Coach tab is the web's
+      window.__fpShellOff = ['coachHome']; window.__fpShellHelloSilent = false; _fpHello();
       for (let i = 0; i < 100 && !_fp.hello; i++) await w(20);
       await w(60);
       r.after = { mode: _fpCoachMode(), covered: _fpCovered(), cov: _fp.covered, screens: _fp.hello.screens };
