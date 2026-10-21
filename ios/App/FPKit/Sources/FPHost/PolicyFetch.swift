@@ -9,9 +9,17 @@ import FPCore
 /// `policy.json` sits beside build.txt on GitHub Pages (`{"v":1, "store":{"facade","repair"}, "screens":{...}}`,
 /// read by `Policy`). The shell fetches it at launch (`start()`, from the scene's connection) and whenever the app
 /// comes to the foreground, at most every 15 minutes (`PolicyState.shouldFetch`, failures included), and keeps the
-/// last good copy across launches (UserDefaults, device only). A missing or bad file changes nothing. What a good
-/// file changes is posted as `FPPolicy.changed`: native screens follow it at once; the store reads `effective` at
-/// every document start (StoreAttach's hello), so it follows at the next one.
+/// last good copy across launches (device only). A missing or bad file changes nothing. What a good file changes is
+/// posted as `FPPolicy.changed`: native screens follow it at once; the store reads `effective` at every document start
+/// (StoreAttach's hello), so it follows at the next one.
+///
+/// Where the copy lives (build 61; contract 10.6, D44; 11-shell.md H6, G20): the whole `PolicyState` (the last good
+/// copy and the fetch stamps) is written atomically to `Application Support/FPShell/policy-state.json`, beside the
+/// shell's `breakers.json` and `switches.json`, and read first; UserDefaults `fp.policy` keeps a copy, read only when
+/// the file does not read. UserDefaults reaches its disk later, through cfprefsd, and came back stale after a kill and
+/// a quick reinstall on iOS 27; 61's tab root is decided at scene connect from this copy. Every save writes both, so a
+/// downgrade to 60 (which reads only `fp.policy`) still finds its copy. 61's first launch after 60 finds no file: it
+/// reads 60's copy there and writes the file at once.
 ///
 /// In a Debug build `-fpPolicyFile <path>` points the fetch at a local file (a path relative to the app's home
 /// folder, or absolute) and `-fpPolicyEvery <seconds>` changes the 15-minute limit, for tests/native-store.sh; the
@@ -27,6 +35,8 @@ public final class FPPolicy {
     /// native screens whose switch moved) and `store` (Bool: the store follows at the next document start).
     public static let changed = Notification.Name("FPPolicyChanged")
     static let stateKey = "fp.policy"
+    /// The copy's file in the shell's folder (`Application Support/FPShell`).
+    static let stateFileName = "policy-state.json"
     static let log = Logger(subsystem: "app.kt.trainer", category: "policy")
 
     public enum Source: Equatable, Sendable {
@@ -44,6 +54,9 @@ public final class FPPolicy {
     private var started = false
     private var fetching = false
     private let defaults: UserDefaults
+    /// The folder the copy's file lives in: `Application Support/FPShell` (tests pass their own).
+    let folder: URL
+    var stateFile: URL { folder.appendingPathComponent(Self.stateFileName) }
     private lazy var session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -53,9 +66,15 @@ public final class FPPolicy {
         return URLSession(configuration: c)
     }()
 
-    init(defaults: UserDefaults = .standard) {
+    /// `folder`: where the copy's file lives, `Application Support/FPShell` when nil (tests pass their own).
+    init(defaults: UserDefaults = .standard, folder: URL? = nil) {
         self.defaults = defaults
-        state = Self.load(defaults)
+        self.folder = folder ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FPShell", isDirectory: true)
+        let (loaded, from) = Self.load(file: self.folder.appendingPathComponent(Self.stateFileName), defaults: defaults)
+        state = loaded
+        // the first launch after 60 (no file yet, 60's copy in UserDefaults): from now on the file holds it
+        if from == .defaults { writeFile(Self.encoded(loaded)) }
     }
 
     /// The switches in force now.
@@ -143,17 +162,50 @@ public final class FPPolicy {
         return (try? e.encode(p)).map { String(decoding: $0, as: UTF8.self) }
     }
 
+    /// Both copies, on every save: UserDefaults `fp.policy` (build 60 reads only this one), then the file, atomically.
     private func save() {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .millisecondsSince1970
-        if let data = try? e.encode(state) { defaults.set(data, forKey: Self.stateKey) }
+        guard let data = Self.encoded(state) else { return }
+        defaults.set(data, forKey: Self.stateKey)
+        writeFile(data)
     }
 
-    private static func load(_ defaults: UserDefaults) -> PolicyState {
-        guard let data = defaults.data(forKey: stateKey) else { return PolicyState() }
+    /// The file, written atomically (a new file renamed over the old one, never a half-written one). A failed write
+    /// leaves the file there as it was (never deleted: a write refused before the first unlock must not take a good
+    /// copy away); the UserDefaults copy holds the state meanwhile.
+    private func writeFile(_ data: Data?) {
+        guard let data else { return }
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: stateFile, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            Self.log.error("policy: \(Self.stateFileName, privacy: .public) could not be written (UserDefaults keeps the copy)")
+        }
+    }
+
+    /// Where a launch's copy came from.
+    enum CopySource: Equatable {
+        case file
+        case defaults
+        case none
+    }
+
+    /// The file when it reads (a whole `PolicyState`), else the UserDefaults copy, else a fresh state.
+    static func load(file: URL, defaults: UserDefaults) -> (state: PolicyState, from: CopySource) {
+        if let data = try? Data(contentsOf: file), let s = decoded(data) { return (s, .file) }
+        if let data = defaults.data(forKey: stateKey), let s = decoded(data) { return (s, .defaults) }
+        return (PolicyState(), .none)
+    }
+
+    static func encoded(_ state: PolicyState) -> Data? {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .millisecondsSince1970
+        return try? e.encode(state)
+    }
+
+    static func decoded(_ data: Data) -> PolicyState? {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .millisecondsSince1970
-        return (try? d.decode(PolicyState.self, from: data)) ?? PolicyState()
+        return try? d.decode(PolicyState.self, from: data)
     }
 
     static func argument(_ name: String, in args: [String]) -> String? {
