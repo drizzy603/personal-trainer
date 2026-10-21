@@ -101,10 +101,15 @@ enum CoachHomeFixtures {
     }
 
     /// The fixture drawn in `room`: its own room keeps the file's tokens, another room takes that room's compiled
-    /// defaults (as `CoachFixtures.model(_:in:)` draws a chat fixture there). CoachHomeModel's fields are constants, so
-    /// the file is decoded again with the room, its paper and no tokens.
+    /// defaults (as `CoachFixtures.model(_:in:)` draws a chat fixture there).
     static func model(_ name: String, in room: Room) throws -> CoachHomeModel {
-        let json = try json(name)
+        try model(json(name), in: room)
+    }
+
+    /// A coach home model's JSON drawn in `room`, as `model(_:in:)` draws a fixture (CoachHomeRenderTests draws its
+    /// variants so too). CoachHomeModel's fields are constants, so the JSON is decoded again with the room, its paper
+    /// and no tokens.
+    static func model(_ json: JSONValue, in room: Room) throws -> CoachHomeModel {
         let own = try CoachHomeModel(json: json)
         guard own.room != room, case .object(var o) = json else { return own }
         o["room"] = .string(room.id)
@@ -115,6 +120,11 @@ enum CoachHomeFixtures {
 
     /// Every string the file holds, at any depth, as decoded (mended): what a render of it may draw (contract I10).
     static func strings(_ name: String) throws -> Set<String> {
+        strings(try json(name))
+    }
+
+    /// Every string a coach home model's JSON holds, at any depth.
+    static func strings(_ json: JSONValue) -> Set<String> {
         var out = Set<String>()
         func walk(_ v: JSONValue) {
             switch v {
@@ -124,7 +134,7 @@ enum CoachHomeFixtures {
             case .null, .bool, .number: break
             }
         }
-        walk(try json(name))
+        walk(json)
         return out
     }
 }
