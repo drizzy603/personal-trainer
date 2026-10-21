@@ -34,6 +34,11 @@ import FPCore
 ///   its own sections) and `model.<screen>.marker` (every model's decode and apply), a state byte flipped by `pwrite`
 ///   around each section, read at the next launch. `ShellSwitches.swift`: the shell's own device switches (the tab
 ///   bar's), `switches.json` read first and a UserDefaults copy.
+/// - ShellBridge's tab root (build 61, H7): `install(..., launch:)` decides the scene's root before the page loads
+///   (`ShellLaunch`, `ShellInstall`); `adopt(root:)` binds the RootTabController (the Coach tab's stack attached, the
+///   root's hooks to the page through weak captures); `selectTab` and `sheets` drive it; `tabs.select` and `tabs.bar`
+///   are restated once the link is idle, never resent; the TabsModel decodes inside `model tabs@`; `deepLink(_:)` is the
+///   one warm deep-link entry for both roots (the URL an argument of `_trovoOpen`).
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {
