@@ -13,8 +13,9 @@ import FPCore
 /// appears (CoachHomeStoreTests holds, in a Coach stack, that one coming back holding text says nothing); a tap
 /// anywhere in its drawn box focuses it; it draws in the room's face; a typed canary leaves no trace in UserDefaults or
 /// the app's files; the meta row publishes its bottom, follows the scroll and says 0 under the status bar; the help's
-/// two paragraphs are two lines; a wrapped headline keeps the CSS line pitch; CONNECT does not shrink under Reduce
-/// Motion; a 320 pt screen takes the narrow gutter and Lime's 41 pt headline.
+/// two paragraphs are two lines; a wrapped headline keeps the CSS line pitch; CONNECT does not shrink when pressed
+/// under the system's Reduce Motion and the starter link presses as the web's plain button does, 44 pt tall; a 320 pt
+/// screen takes the narrow gutter and Lime's 41 pt headline.
 ///
 /// How this host is driven (probed on iOS 27.0's simulator): SwiftUI vends its accessibility elements to a test only
 /// outside a scroll view (inside one it vends none without an accessibility client such as VoiceOver), so the walks
@@ -142,6 +143,10 @@ final class CoachHomeViewTests: XCTestCase {
         var onBottom: ((CGFloat) -> Void)?
         /// false: no hub at all (the store's ground before a model, N8), the window kept.
         var shown = true
+        /// The system's Reduce Motion as the environment carries it to the hub (nil: the simulator's own setting).
+        var systemReduceMotion: Bool?
+        /// What a press of each drawn button would draw (`HomePressKey`), as the hub publishes it.
+        var onPress: (([HomePress: HomePress.Look]) -> Void)?
 
         var body: some View {
             Group {
@@ -151,10 +156,16 @@ final class CoachHomeViewTests: XCTestCase {
                     Color.clear
                 }
             }
+            // `accessibilityReduceMotion` is read-only; SwiftUI's settable twin sets what it reads (CoachHomeStoreTests
+            // does the same)
+            .transformEnvironment(\._accessibilityReduceMotion) { [systemReduceMotion] on in
+                if let systemReduceMotion { on = systemReduceMotion }
+            }
             .safeAreaPadding(.top, CoachHomeViewTests.safeTop)
             .safeAreaPadding(.bottom, CoachHomeViewTests.safeBottom)
             .environment(\.dynamicTypeSize, size)
             .onPreferenceChange(HubHeaderBottomKey.self) { y in MainActor.assumeIsolated { onBottom?(y) } }
+            .onPreferenceChange(HomePressKey.self) { looks in MainActor.assumeIsolated { onPress?(looks) } }
         }
     }
 
@@ -987,12 +998,105 @@ final class CoachHomeViewTests: XCTestCase {
         }
     }
 
+    /// The press rules: CONNECT dims to .9 and shrinks to .985 (`.kt-cta:active`), under Reduce Motion it only dims;
+    /// the starter link, a plain button on the web, dims to .7 and shrinks to .97, under Reduce Motion it dims to .85
+    /// and keeps its size (`index.html:169, 1042-1043, 1067`). The next two tests hold that the screen's buttons follow
+    /// the system's setting, and that a pressed look draws what these rules say.
     func testCONNECTDoesNotShrinkUnderReduceMotion() {
         XCTAssertEqual(HomeCTAPress.scale(pressed: true, reduceMotion: true), 1, "Reduce Motion: no scale")
         XCTAssertEqual(HomeCTAPress.scale(pressed: true, reduceMotion: false), 0.985, "pressed: .985, as .kt-cta:active")
         XCTAssertEqual(HomeCTAPress.scale(pressed: false, reduceMotion: false), 1)
         XCTAssertEqual(HomeCTAPress.opacity(pressed: true), 0.9, "pressed: opacity .9, Reduce Motion or not")
         XCTAssertEqual(HomeCTAPress.opacity(pressed: false), 1)
+        XCTAssertEqual(HomeLinkPress.scale(pressed: true, reduceMotion: false), 0.97, "the link pressed: .97, a plain button's press-down")
+        XCTAssertEqual(HomeLinkPress.scale(pressed: true, reduceMotion: true), 1, "the link under Reduce Motion: no scale")
+        XCTAssertEqual(HomeLinkPress.scale(pressed: false, reduceMotion: false), 1)
+        XCTAssertEqual(HomeLinkPress.opacity(pressed: true, reduceMotion: false), 0.7, "the link pressed: opacity .7")
+        XCTAssertEqual(HomeLinkPress.opacity(pressed: true, reduceMotion: true), 0.85, "the link under Reduce Motion: opacity .85")
+        XCTAssertEqual(HomeLinkPress.opacity(pressed: false, reduceMotion: true), 1)
+        for on in [true, false] {
+            XCTAssertEqual(HomePress.cta.look(pressed: false, reduceMotion: on), HomePress.Look(scale: 1, opacity: 1), "CONNECT at rest")
+            XCTAssertEqual(HomePress.link.look(pressed: false, reduceMotion: on), HomePress.Look(scale: 1, opacity: 1), "the link at rest")
+        }
+    }
+
+    /// The connect screen as the tab draws it (the scroll view) and as the walks lay it out, under the system's Reduce
+    /// Motion on and off (the environment's value, set through SwiftUI's settable twin as the system sets it), in both
+    /// rooms: a press of CONNECT draws at its full size under Reduce Motion and at .985 without it, and the starter
+    /// link likewise at its full size and .97. Read through what each button's pressed look publishes (`HomePressKey`):
+    /// no finger can press a button in this host, and the pressed look reads Reduce Motion itself, as a press would.
+    func testTheConnectScreensButtonsFollowTheSystemsReduceMotion() throws {
+        for (roomName, room) in Self.rooms {
+            let m = try Self.model(Self.connectJSON(room: room))
+            for on in [true, false] {
+                for width in [nil, Self.screen.width] as [CGFloat?] {
+                    let what = "\(roomName), \(width == nil ? "the tab" : "the column"), Reduce Motion \(on ? "on" : "off")"
+                    var looks: [HomePress: HomePress.Look]?
+                    let tab = Hosted(Phone(model: m, host: Recorder().host(), unscrolledWidth: width, systemReduceMotion: on,
+                                           onPress: { looks = $0 }), size: Self.screen)
+                    tab.settle()
+                    tab.close()
+                    XCTAssertEqual(looks?[.cta], HomePress.Look(scale: on ? 1 : 0.985, opacity: 0.9), "\(what): a press of CONNECT (\(String(describing: looks)))")
+                    XCTAssertEqual(looks?[.link], HomePress.Look(scale: on ? 1 : 0.97, opacity: on ? 0.85 : 0.7), "\(what): a press of the starter link")
+                }
+            }
+        }
+        // the hub draws neither button
+        var hub: [HomePress: HomePress.Look]?
+        let tab = Hosted(Phone(model: try Self.model(Self.hubJSON()), host: Recorder().host(), systemReduceMotion: true, onPress: { hub = $0 }),
+                         size: Self.screen)
+        tab.close()
+        XCTAssertEqual(hub ?? [:], [:], "the hub has no CONNECT and no starter link")
+    }
+
+    /// A pressed look as drawn: a 200 pt black square on white, held pressed, under Reduce Motion on and off. Its side
+    /// (from its inked area, each pixel counted by its darkness over the square's own) is 200 times the scale the rule
+    /// gives, and its darkness at the middle the opacity: CONNECT 200 pt at .9 under Reduce Motion, 197 at .9 without;
+    /// the link 200 at .85 and 194 at .7 (an edge snapped to the pixel grid is off by half a point at most).
+    func testAPressedLookDrawsItsRule() throws {
+        let side: CGFloat = 200, canvas = CGSize(width: 240, height: 240)
+        for press in HomePress.allCases {
+            for on in [true, false] {
+                let what = "\(press), Reduce Motion \(on ? "on" : "off")"
+                let want = press.look(pressed: true, reduceMotion: on)
+                let view = ZStack {
+                    Color.white
+                    HomePressed(press, pressed: true) { Color.black.frame(width: side, height: side) }
+                }
+                .frame(width: canvas.width, height: canvas.height)
+                .transformEnvironment(\._accessibilityReduceMotion) { $0 = on }
+                let image = CoachRenderTests.render(view, size: canvas, phone: .light)
+                let c = try XCTUnwrap(image.cgImage, what)
+                let px = CoachRenderTests.bytes(c)
+                let k = CGFloat(c.width) / canvas.width   // pixels per point
+                func dark(_ x: Int, _ y: Int) -> Double { 1 - Double(px[(y * c.width + x) * 4]) / 255 }
+                let middle = dark(c.width / 2, c.height / 2)
+                var ink = 0.0
+                for y in 0..<c.height { for x in 0..<c.width { ink += dark(x, y) } }
+                let drawn = (ink / middle).squareRoot() / Double(k)
+                XCTAssertEqual(middle, want.opacity, accuracy: 0.01, "\(what): the opacity drawn")
+                XCTAssertEqual(drawn, Double(side * want.scale), accuracy: 0.6, "\(what): the side drawn (scale \(want.scale))")
+            }
+        }
+    }
+
+    /// The starter link keeps PressAreaButton's structure (PressAreaTests): its press shape is the outermost part of
+    /// the Button's label, around the reach, so it is pressed where the reach says, and the connect block builds the
+    /// link on it; one line between the web button's 8 px paddings plus the reach is 44 pt at every size.
+    func testTheStarterLinkIsPressedFortyFourPointsTall() throws {
+        let link = PressAreaTests.bodyType(HomeLinkButton(v: 11, action: {}) { Color.red.frame(width: 200, height: 22) })
+        let label = try XCTUnwrap(PressAreaTests.buttonLabel(in: link), link)
+        XCTAssertTrue(label.hasSuffix("_ContentShapeModifier<Rectangle>>"), "the press shape is the Button's label's, around the reach: \(link)")
+        let connect = try XCTUnwrap(try Self.model(Self.connectJSON()).connect)
+        let block = PressAreaTests.bodyType(HomeConnectBlock(connect: connect, host: Recorder().host()))
+        XCTAssertTrue(block.contains("HomeLinkButton<"), "the connect block's starter link is a HomeLinkButton: \(block)")
+        for (roomName, room) in Self.rooms {
+            for size in [DynamicTypeSize.large, .xLarge, .xxLarge] {
+                let t = RoomTheme.defaults(room, textSize: ChatType.textSize(size))
+                let drawn = HomeConnectBlock.linkFont(t).lineHeight + 2 * t.px(8)
+                XCTAssertGreaterThanOrEqual(drawn + 2 * HomeConnectBlock.linkReach(t), 44 - 0.001, "\(roomName) at \(size): pressed 44 pt tall")
+            }
+        }
     }
 
     /// A 320 pt screen (Display Zoom) takes the 16 px gutter and Lime's 41 px headline (`index.html:1580-1585`);

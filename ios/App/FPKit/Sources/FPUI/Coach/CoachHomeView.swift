@@ -645,7 +645,6 @@ struct HomeConnectBlock: View {
     let connect: CoachHomeModel.Connect
     let host: CoachHomeHost
     @Environment(\.roomTheme) private var t
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The key as typed: the only native copy (contract 5, K5).
     @State private var secret = ""
     /// The newest render's host (see HomeHostBox): what every press reads.
@@ -757,7 +756,8 @@ struct HomeConnectBlock: View {
 
     /// CONNECT (`.kt-cta`): the room's action colour (Lime radius 22, at least 80 tall; Heavyweight radius 12, at least
     /// 66), the label over the title on the left, the arrow tile on the right (hidden from VoiceOver); one button whose
-    /// label is the CTA's label and value its title.
+    /// label is the CTA's label and value its title. Pressed, it dims and shrinks, or under Reduce Motion only dims
+    /// (HomeCTAPress, which reads the system's setting itself).
     private var cta: some View {
         let paper = t.flavor == .paper
         let shape = RoundedRectangle(cornerRadius: t.px(paper ? 12 : 22), style: .circular)
@@ -786,23 +786,22 @@ struct HomeConnectBlock: View {
             .background(shape.fill(t.color(.accent)))
             .contentShape(shape)
         }
-        .buttonStyle(HomeCTAPress(reduceMotion: reduceMotion))
+        .buttonStyle(HomeCTAPress())
         .accessibilityLabel(Text(verbatim: CoachHomeSpeech.ctaLabel(connect)))
         .accessibilityValue(Text(verbatim: CoachHomeSpeech.ctaValue(connect)))
     }
 
     /// The starter link, only when the model has one (no programme yet): a hairline above it, centred, `homeLink` at
     /// 600; Heavyweight's `accentInk`, Lime's `text` underlined in `muted` (the room CSS: links are `text` in Lime,
-    /// `index.html:1679-1681`). Its press reaches 44 pt though it is drawn smaller.
+    /// `index.html:1679-1681`). Its press reaches 44 pt though it is drawn smaller (`linkReach`), and pressed it
+    /// draws as the web's plain button does (HomeLinkPress).
     private func starterLink(_ starter: CoachHomeModel.Connect.Starter) -> some View {
         let paper = t.flavor == .paper
-        let size = t.home(.homeLink)
-        let font = t.uiFont(.body, size, 600)
-        let reach = max(0, (t.px(44) - (font.lineHeight + 2 * t.px(8))) / 2)
+        let font = Self.linkFont(t)
         let ink: ColorToken = paper ? .accentInk : .text
         return VStack(spacing: 0) {
             Rectangle().fill(t.color(.border)).frame(height: 1)
-            PressAreaButton(h: 0, v: reach, action: { host.act(.starter) }) {
+            HomeLinkButton(v: Self.linkReach(t), action: { host.act(.starter) }) {
                 Text(verbatim: starter.label)
                     .font(Font(font))
                     .foregroundStyle(t.color(ink))
@@ -815,6 +814,41 @@ struct HomeConnectBlock: View {
             .accessibilityLabel(Text(verbatim: CoachHomeSpeech.starter(starter)))
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The starter link's face: `homeLink` at 600.
+    static func linkFont(_ t: RoomTheme) -> UIFont { t.uiFont(.body, t.home(.homeLink), 600) }
+
+    /// How far the starter link's press reaches above and below its drawn box (one line between the web button's
+    /// 8 px paddings), so it is pressed 44 pt tall.
+    static func linkReach(_ t: RoomTheme) -> CGFloat {
+        max(0, (t.px(44) - (linkFont(t).lineHeight + 2 * t.px(8))) / 2)
+    }
+}
+
+/// The starter link's button: PressAreaButton's structure (its reach and its press shape inside the Button's label,
+/// where SwiftUI reads a button's hit area, the layout given back outside it, so the link sits where it is drawn), with
+/// the web's plain-button press (HomeLinkPress) where PressAreaButton dims alone. The reach is the same above and below
+/// the drawn label, so the press's scale about the label's middle shrinks the drawn label about its own.
+struct HomeLinkButton<Label: View>: View {
+    let v: CGFloat
+    let action: () -> Void
+    let label: Label
+
+    init(v: CGFloat, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
+        self.v = v
+        self.action = action
+        self.label = label()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .padding(.vertical, v)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(HomeLinkPress())
+        .padding(.vertical, -v)
     }
 }
 
@@ -851,18 +885,96 @@ struct HomeFieldTapArea: UIViewRepresentable {
 }
 
 /// CONNECT's pressed state (`.kt-cta:active`): opacity .9 and a .985 scale over .15 s; under Reduce Motion the
-/// opacity alone.
+/// opacity alone. The pressed look reads Reduce Motion from the environment itself (HomePressed), so no caller can
+/// hand the style another setting than the system's.
 struct HomeCTAPress: ButtonStyle {
-    let reduceMotion: Bool
-
     static func scale(pressed: Bool, reduceMotion: Bool) -> CGFloat { pressed && !reduceMotion ? 0.985 : 1 }
     static func opacity(pressed: Bool) -> Double { pressed ? 0.9 : 1 }
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(Self.opacity(pressed: configuration.isPressed))
-            .scaleEffect(Self.scale(pressed: configuration.isPressed, reduceMotion: reduceMotion))
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+        HomePressed(.cta, pressed: configuration.isPressed) { configuration.label }
+    }
+}
+
+/// The starter link's pressed state: the web's plain `<button>` (its markup sets no class of its own), so the page's
+/// universal press (`button:active{opacity:.7}` and the press-down `button:active{transform:scale(.97)}`, the scale
+/// over `--t-tap` 120 ms on `--ease-settle`, `index.html:169, 1042-1043`); under Reduce Motion
+/// `button:active{transform:none;opacity:.85}` (1067). The pressed look reads Reduce Motion itself (HomePressed).
+struct HomeLinkPress: ButtonStyle {
+    static func scale(pressed: Bool, reduceMotion: Bool) -> CGFloat { pressed && !reduceMotion ? 0.97 : 1 }
+    static func opacity(pressed: Bool, reduceMotion: Bool) -> Double { pressed ? (reduceMotion ? 0.85 : 0.7) : 1 }
+
+    func makeBody(configuration: Configuration) -> some View {
+        HomePressed(.link, pressed: configuration.isPressed) { configuration.label }
+    }
+}
+
+/// The connect screen's drawn buttons, by how a press draws them: CONNECT (`.kt-cta:active`) and the starter link (the
+/// web's plain button).
+enum HomePress: Hashable, CaseIterable, Sendable {
+    case cta, link
+
+    /// What a press draws: the scale about the button's middle and the opacity.
+    struct Look: Equatable, Sendable {
+        var scale: CGFloat
+        var opacity: Double
+    }
+
+    func look(pressed: Bool, reduceMotion: Bool) -> Look {
+        switch self {
+        case .cta:
+            return Look(scale: HomeCTAPress.scale(pressed: pressed, reduceMotion: reduceMotion),
+                        opacity: HomeCTAPress.opacity(pressed: pressed))
+        case .link:
+            return Look(scale: HomeLinkPress.scale(pressed: pressed, reduceMotion: reduceMotion),
+                        opacity: HomeLinkPress.opacity(pressed: pressed, reduceMotion: reduceMotion))
+        }
+    }
+}
+
+/// What a press of each of the screen's drawn buttons draws under Reduce Motion as it reaches the button (the system's
+/// setting), published by each button's pressed look whether or not it is pressed: what a finger would see, readable
+/// where no finger can press (CoachHomeViewTests holds it in both rooms: CONNECT keeps its size under Reduce Motion).
+struct HomePressKey: PreferenceKey {
+    static let defaultValue: [HomePress: HomePress.Look] = [:]
+    static func reduce(value: inout [HomePress: HomePress.Look], nextValue: () -> [HomePress: HomePress.Look]) {
+        value.merge(nextValue()) { first, _ in first }
+    }
+}
+
+/// A drawn button's label as pressed or not, Reduce Motion read from the environment (the system's setting): CONNECT
+/// dims and shrinks together over .15 s (`.kt-cta{transition:transform .15s,opacity .15s}`); the starter link shrinks
+/// over 120 ms on the settle curve and dims at once (a plain button's transition is its transform's alone).
+struct HomePressed<Label: View>: View {
+    let press: HomePress
+    let pressed: Bool
+    let label: Label
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(_ press: HomePress, pressed: Bool, @ViewBuilder label: () -> Label) {
+        self.press = press
+        self.pressed = pressed
+        self.label = label()
+    }
+
+    var body: some View {
+        let now = press.look(pressed: pressed, reduceMotion: reduceMotion)
+        Group {
+            switch press {
+            case .cta:
+                label
+                    .opacity(now.opacity)
+                    .scaleEffect(now.scale)
+                    .animation(.easeOut(duration: 0.15), value: pressed)
+            case .link:
+                // the opacity outside the animation: it changes at once
+                label
+                    .scaleEffect(now.scale)
+                    .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.12), value: pressed)
+                    .opacity(now.opacity)
+            }
+        }
+        .preference(key: HomePressKey.self, value: [press: press.look(pressed: true, reduceMotion: reduceMotion)])
     }
 }
 
