@@ -33,6 +33,16 @@ import FPCore
 ///   for the pair). The launch reads and removes them with the screen markers.
 /// - **The device switches** the shell keeps itself (ShellSwitches, `FPShell/switches.json`: the tab bar's, contract
 ///   3.5) reach the gate as `deviceOff`; the native chat's stays the page's `kt_native_off`.
+/// - **The tab root** (build 61, contract 1.3, 2.2, 3.3-3.7, 4.3, 8, 9): `install(..., launch:)` decides the root before
+///   the page loads (a tab root iff SceneDelegate allows one and `tabs` passes its own checks, so the flag and the root
+///   agree), and `adopt(root:)` binds the RootTabController SceneDelegate built: the link negotiates on the tab root's
+///   rule, ScreenHost pushes the chat in the Coach tab's stack, and the root's hooks reach the page (`shell.covered`,
+///   `tabs.select` for the owner's taps, deep links and strays but never for a page selection, `tabs.bar` for the
+///   shell's own bar changes, the `tabs` section, strays counted). `selectTab` and `sheets` drive the root;
+///   `tabs.select` and `tabs.bar` are state, never replayed: after a failed one the current state goes once the link is
+///   idle, with a new seq or rev. Warm deep links go through `deepLink(_:)`, which selects first under a live tab root
+///   and hands the URL to `_trovoOpen` as an argument, never inside a script's source. Nothing here holds the root, its
+///   slots, the web controller or the web view strongly: a scene's teardown frees them.
 ///
 /// - **Settings > About** asks `status` (FPCore ScreenStatus: every screen of this binary, on or off and why, whether the
 ///   owner can try it again) and `reset` ("Try the native chat again": the screen's crash verdicts and breaker record go
@@ -77,8 +87,9 @@ public final class ShellBridge: NSObject {
         case badTab(String)
         /// `setSwitch` for a piece this binary keeps no switch for (any but `tabs`).
         case noSwitch(String)
-        /// `present tabs` (never presented), or `present coachHome` without a live tab root.
-        case notPresentable(String)
+        /// `present tabs` (never presented), or `present coachHome` without a live tab root; `why` words any other
+        /// reason (the interim before the native Coach tab is wired, contract 15.2).
+        case notPresentable(String, why: String? = nil)
         /// `present coach` under a live tab root while the Coach tab is not NATIVE.
         case notNative
 
@@ -103,7 +114,8 @@ public final class ShellBridge: NSObject {
             case .off: return "off: no live tab root"
             case .badTab(let t): return "bad-tab: \(t) is not one of " + ShellTabs.ids.joined(separator: ", ")
             case .noSwitch(let s): return "no-switch: this binary keeps no switch for \(s)"
-            case .notPresentable(let s):
+            case .notPresentable(let s, let why):
+                if let why { return "not-presentable: " + why }
                 return s == "tabs" ? "not-presentable: tabs is never presented" : "not-presentable: \(s) needs a live tab root"
             case .notNative: return "not-native: the Coach tab is not native"
             }
@@ -127,14 +139,29 @@ public final class ShellBridge: NSObject {
         var helloTimer: DispatchWorkItem?
         var documents = 0
         var bootDones = 0
+        /// SceneDelegate's launch values (nil: a controller made any other way, which never builds a tab root).
+        let launch: ShellLaunch?
+        /// `install`'s decision (contract 2.2): this scene's root is a tab root, and the flag carries `tabs`. Kept for the
+        /// scene; a fallback leaves it as it was (the link's `tabsRoot` says whether the root is still live).
+        let tabsRootDecided: Bool
+        /// The adopted RootTabController (iOS 26+; `RootTabController` cannot be a stored property's type here), weakly:
+        /// the window holds it, and a scene's teardown must free it with the web view (H7, maps/lessons.md:29).
+        weak var tabRoot: UIViewController?
+        /// A `tabs.select` or `tabs.bar` failed (contract 4.3, D12): the current selection or bar goes once the link is
+        /// idle, never the failed one again. Per document: a document start clears both (hello's reply carries both).
+        var restateSelect = false
+        var restateBar = false
 
-        init(webView: WKWebView, pageBuild: String?, link: LinkState, pageLink: PageLink, screens: ScreenHost, handler: DocumentHandler) {
+        init(webView: WKWebView, pageBuild: String?, link: LinkState, pageLink: PageLink, screens: ScreenHost, handler: DocumentHandler,
+             launch: ShellLaunch?, tabsRoot: Bool) {
             self.webView = webView
             self.pageBuild = pageBuild
             self.link = link
             self.pageLink = pageLink
             self.screens = screens
             self.handler = handler
+            self.launch = launch
+            tabsRootDecided = tabsRoot
         }
     }
 
@@ -245,10 +272,23 @@ public final class ShellBridge: NSObject {
 
     /// Binds to a new web view (`capacitorDidLoad`) and returns the screens its first document may present (ScreenGate
     /// for the page build being served), for the flag the App injects at document start. Call before the page loads.
+    /// No launch values: a classic root (build 60's call, kept until the App passes them, H9).
     @discardableResult
     public func install(webView: WKWebView, presenter: UIViewController, pageBuild: String?) -> [String] {
+        install(webView: webView, presenter: presenter, pageBuild: pageBuild, launch: nil).screens
+    }
+
+    /// Binds to a new web view (`capacitorDidLoad`, inside SceneDelegate's `loadViewIfNeeded`) and decides the scene's
+    /// root (contract 2.2): a tab root iff `scene` allows one and `tabs` passes its own checks for the page build being
+    /// served (the OS, the shell's switch, the policy, a crash verdict, the breaker, a decline), so the flag and the root
+    /// always agree. `screens` is the gate under that root, for the flag; the App adds `tabs` to the flag iff `tabsRoot`,
+    /// and SceneDelegate then builds that root and hands a tab root to `adopt(root:)`. Call before the page loads.
+    @discardableResult
+    public func install(webView: WKWebView, presenter: UIViewController, pageBuild: String?, launch scene: ShellLaunch?) -> ShellInstall {
         launch()
-        if let b = binding, b.webView === webView { return gate(page: pageBuild, book: b.link.book).on }
+        if let b = binding, b.webView === webView {
+            return ShellInstall(screens: gate(page: pageBuild, book: b.link.book, tabsRoot: b.tabsRootDecided).on, tabsRoot: b.tabsRootDecided)
+        }
         if let old = binding { detach(old, why: "a newer web view") }
         var link = LinkState(shell: shell, book: storedBook, foreground: UIApplication.shared.applicationState != .background)
         let now = Date()
@@ -279,17 +319,94 @@ public final class ShellBridge: NSObject {
             ucc.addUserScript(WKUserScript(source: s, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         #endif
-        let b = Binding(webView: webView, pageBuild: pageBuild, link: link, pageLink: pageLink, screens: screens, handler: handler)
+        // the root (contract 2.2): the tab root iff the scene allows one and the bar's own checks pass for this page build,
+        // read after this launch's markers reached the book (a `tabs@` verdict gives the classic root)
+        let own = ownChecks(page: pageBuild, book: link.book)
+        let tabsRoot = scene?.tabRootAllowed == true && own.on.contains("tabs")
+        let b = Binding(webView: webView, pageBuild: pageBuild, link: link, pageLink: pageLink, screens: screens, handler: handler,
+                        launch: scene, tabsRoot: tabsRoot)
         binding = b
         wire(b)
         apply(fx, b)
         if fx.contains(.bookChanged) == false { saveBook(b.link.book) }
-        let on = gate(page: pageBuild, book: b.link.book)
-        Self.log.info("shell: bound to the web view (page \(pageBuild ?? "?", privacy: .public), shell \(self.shell.shell, privacy: .public)); screens on: \(on.on.joined(separator: ","), privacy: .public)\(on.off.isEmpty ? "" : "; off: " + on.off.keys.sorted().map { "\($0) (\(Self.describe(on.off[$0]!)))" }.joined(separator: ", "), privacy: .public)")
+        let on = gate(page: pageBuild, book: b.link.book, tabsRoot: tabsRoot)
+        let root = tabsRoot ? "tab root (first \(scene?.first ?? "log"))"
+            : "classic root" + (scene?.tabRootAllowed == true ? " (tabs: \(own.off["tabs"].map(Self.describe) ?? "off"))" : "")
+        Self.log.info("shell: bound to the web view (page \(pageBuild ?? "?", privacy: .public), shell \(self.shell.shell, privacy: .public)), \(root, privacy: .public); screens on: \(on.on.joined(separator: ","), privacy: .public)\(on.off.isEmpty ? "" : "; off: " + on.off.keys.sorted().map { "\($0) (\(Self.describe(on.off[$0]!)))" }.joined(separator: ", "), privacy: .public)")
         #if DEBUG
         ShellProbe.shared?.installed(webView: webView)
         #endif
-        return on.on
+        return ShellInstall(screens: on.on, tabsRoot: tabsRoot)
+    }
+
+    /// Binds the tab root SceneDelegate built for this scene's web view (H9, inside the `tabs` section, before the page's
+    /// first hello): the link negotiates on the tab root's rule (`adoptTabRoot`), the chat goes in the Coach tab's stack
+    /// (ScreenHost's stack mode, its state read from the root through weak captures), and the root's hooks reach the page.
+    /// Only for the web view `install` bound with a tab-root decision: a classic decision's flag has no `tabs`, so the page
+    /// runs classic and a native bar over it would make two bars. Nothing here keeps the root alive.
+    @available(iOS 26.0, *)
+    public func adopt(root: RootTabController) {
+        guard let b = binding, let wv = b.webView, root.webView === wv else {
+            Self.log.fault("shell: a tab root for a web view the shell is not bound to: not adopted")
+            return
+        }
+        guard b.tabsRootDecided else {
+            Self.log.fault("shell: a tab root for a web view whose root was decided classic (its flag has no tabs): not adopted")
+            return
+        }
+        guard b.tabRoot == nil else {
+            if b.tabRoot !== root { Self.log.fault("shell: a second tab root for one web view: not adopted") }
+            return
+        }
+        b.link.adoptTabRoot()
+        guard b.link.tabsRoot else {
+            Self.log.fault("shell: the tab root came after the page linked (or after a fallback): not adopted")
+            return
+        }
+        b.tabRoot = root
+        b.screens.attachStack(root.coachSlot.nav, state: StackState(
+            selected: { [weak root] in root?.selected == "coach" },
+            native: { [weak root] in root?.coachMode == .native },
+            held: { [weak root] in root?.held ?? false },
+            releaseHold: { [weak root] in root?.releaseHold() }))
+        root.hooks = rootHooks(b, root)
+        Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public))")
+    }
+
+    /// The root's hooks (contract 8.1, 8.4, 10.2): each captures the bridge, the binding and the root weakly, as `wire`'s do.
+    @available(iOS 26.0, *)
+    private func rootHooks(_ b: Binding, _ root: RootTabController) -> RootTabController.Hooks {
+        var h = RootTabController.Hooks()
+        h.covered = { [weak self, weak b] on in
+            guard let self, let b else { return }
+            self.send(.shellCovered(on: on), b)
+        }
+        h.selected = { [weak self, weak b, weak root] tab, seq, source, again in
+            guard let self, let b else { return }
+            switch source {
+            case .tap, .deepLink, .stray:
+                // the page draws the tab when it runs this intent: VoiceOver hears the move once it has (or once it failed)
+                self.sendSelect(tab: tab, seq: seq, again: again, b) { [weak root] in root?.announceWeb(seq: seq) }
+            case .page, .initial, .fallback:
+                break   // no echo (contract 4.3, I3): the page asked, or nothing is linked yet
+            }
+        }
+        h.stray = { [weak self] tab in self?.noteStray(tab) }
+        h.barChanged = { [weak self, weak b] bar in
+            guard let self, let b else { return }
+            self.sendBar(bar, b)
+        }
+        h.section = { [weak self] entering in self?.section("tabs", entering: entering) }
+        h.coachShown = { [weak b] _ in b?.screens.selectionChanged() }
+        return h
+    }
+
+    /// The live tab root: adopted, and neither the link (a hello's decline, a trip, the policy) nor the root has fallen
+    /// back. Nil under a classic root.
+    @available(iOS 26.0, *)
+    private func liveRoot(_ b: Binding) -> RootTabController? {
+        guard b.link.tabsRoot, let root = b.tabRoot as? RootTabController, root.fellBack == nil else { return nil }
+        return root
     }
 
     /// A scene went (`sceneDidDisconnect`): its web view lets go now, its screens with it.
@@ -303,6 +420,11 @@ public final class ShellBridge: NSObject {
         b.helloTimer?.cancel()
         b.pageLink.setBoot(nil)
         b.screens.tearDown()
+        // a root that outlives its binding (a newer web view's scene) tells this bridge nothing more
+        if #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController { root.hooks = RootTabController.Hooks() }
+        b.tabRoot = nil
+        b.restateSelect = false
+        b.restateBar = false
         b.webView?.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
         storedBook = b.link.book
         if binding === b { binding = nil }
@@ -362,6 +484,11 @@ public final class ShellBridge: NSObject {
         let fx = b.link.documentStarted(pageBuild: b.pageBuild, at: Date())
         Self.log.info("shell: document #\(b.documents) started (page \(b.pageBuild ?? "?", privacy: .public))")
         apply(fx, b)
+        // per document (contract 3.4, 4.3): the page's sheets state starts closed (the bar shows again on a web tab; the
+        // page sends its baseline at _bootDone), and nothing failed is restated to the new document (hello carries both)
+        b.restateSelect = false
+        b.restateBar = false
+        if #available(iOS 26.0, *), let root = liveRoot(b) { root.resetSheets() }
         scheduleHelloDeadline(b)
         #if DEBUG
         ShellProbe.shared?.event("document", ["n": b.documents, "effects": fx.map(Self.describe)])
@@ -435,16 +562,29 @@ public final class ShellBridge: NSObject {
             ShellProbe.shared?.bootDone(page: page)
             #endif
         case .present(let s):
-            // build 61's pieces that no present brings up here: the bar is never presented, and the native Coach tab
-            // needs a live tab root (H7 and H8 build both; until then no root is a tab root)
+            // contract 3.1, 3.6, in this order: the bar is never presented; the native Coach tab needs a live tab root (and,
+            // until H10 wires N's hub, is refused under one too, contract 15.2: the page declares dismiss and shows its
+            // web Coach under the native bar); then build 60's checks, with the chat pushed only onto a NATIVE Coach tab
             if s == "tabs" || s == "coachHome" {
-                Self.log.error("shell: present \(s, privacy: .public) refused: not presentable")
-                done(.failure(Refusal.notPresentable(s)))
+                let refusal: Refusal
+                if s == "coachHome", hasLiveRoot(b) {
+                    refusal = .notPresentable(s, why: "the native Coach tab is not wired in this build yet")
+                } else {
+                    refusal = .notPresentable(s)
+                }
+                Self.log.error("shell: present \(s, privacy: .public) refused: \(String(describing: refusal), privacy: .public)")
+                done(.failure(refusal))
                 return
             }
             guard b.link.isLive(s) else {
                 Self.log.error("shell: present \(s, privacy: .public) refused: not on for this document")
                 done(.failure(Refusal.notLive(s)))
+                return
+            }
+            if s == "coach", let mode = liveCoachMode(b), mode != "native" {
+                // WAITING and WEB have no visible stack to push onto (contract 3.6, H-G9): the page draws its own chat
+                Self.log.error("shell: present coach refused: the Coach tab is \(mode, privacy: .public)")
+                done(.failure(Refusal.notNative))
                 return
             }
             guard b.screens.present(s) else {
@@ -454,7 +594,9 @@ public final class ShellBridge: NSObject {
             }
             done(.success([:]))
         case .dismiss(let s):
-            b.screens.dismiss(s)
+            // `tabs`: this document left tabs mode (contract 3.6), answered ok (under a live tab root the fallback it
+            // starts is H8's); `coachHome`: the Coach tab's WEB half of the declaration is H8's. Neither is ScreenHost's.
+            if s != "tabs" && s != "coachHome" { b.screens.dismiss(s) }
             done(.success([:]))
         case .model(let push):
             done(.success([:]))
@@ -488,9 +630,28 @@ public final class ShellBridge: NSObject {
             done(.success(status(b)))
         case .visibility(let v):
             done(.success(["counted": noteVisibility(v, at: now)]))
-        case .selectTab, .sheets:
-            // tabs mode needs a live tab root, which no scene builds yet (H7)
-            done(.failure(Refusal.off))
+        case .selectTab(let tab, let intent):
+            // contract 3.3: from the document's start, before hello; the funnel runs at once and the answer is the shell's
+            // selection after it (the asked tab unless a newer selection crossed it). No tabs.select goes back (I3).
+            guard #available(iOS 26.0, *), let root = liveRoot(b) else {
+                done(.failure(Refusal.off))
+                return
+            }
+            guard ShellTabs.isTab(tab) else {
+                done(.failure(Refusal.badTab(tab)))
+                return
+            }
+            let now = root.select(tab, source: .page(intent: intent))
+            done(.success(["tab": now.tab, "seq": now.seq]))
+        case .sheets(let open):
+            // contract 3.4: the bar hides at once for a web overlay (a native Coach tab keeps it) and its numbers are
+            // measured and answered in the same turn; before hello too
+            guard #available(iOS 26.0, *), let root = liveRoot(b) else {
+                done(.failure(Refusal.off))
+                return
+            }
+            let bar = root.setSheets(open: open)
+            done(.success(["bar": ["h": bar.h, "safe": bar.safe, "rev": bar.rev]]))
         case .setSwitch(let s, _):
             // ShellSwitches keeps the switch and the gate reads it (H6); the page's write of it, and the fallback an off
             // starts, come with H8
@@ -555,6 +716,18 @@ public final class ShellBridge: NSObject {
             Self.log.error("shell: a \(push.screen, privacy: .public) model (rev \(push.rev)) for no screen of this binary: dropped")
             return
         }
+        switch push.screen {
+        case "coachHome":
+            // until H10 wires N's hub (contract 15.2): unread and uncounted, so a page that names the native Coach tab
+            // shows its web Coach under the native bar and never trips anything for it
+            Self.log.info("shell: a coachHome model (rev \(push.rev)) dropped: the native Coach tab is not wired in this build yet")
+            return
+        case "tabs":
+            tabsModel(push, b, at: now)
+            return
+        default:
+            break
+        }
         let fx = modelSection(push.screen, b) { () -> [LinkEffect] in
             let decoded: CoachModel?
             do {
@@ -565,6 +738,30 @@ public final class ShellBridge: NSObject {
             }
             let (verdict, fx) = b.link.modelReceived(screen: push.screen, rev: push.rev, boot: decoded?.boot, decoded: decoded != nil, at: now)
             if verdict == .apply, let decoded { b.screens.update(push.screen, model: decoded) }
+            return fx
+        }
+        apply(fx, b)
+    }
+
+    /// A TabsModel (contract 3.7, 6.1), decoded and applied to the live root inside `model tabs@<page> shell <n>`: the
+    /// bar's tint, idle colour, titles, labels and style. One that does not decode counts against `tabs` (the link's
+    /// model breaker, `LinkState.modelReceived`); a stale or other-boot one is dropped.
+    private func tabsModel(_ push: ModelPush, _ b: Binding, at now: Date) {
+        let fx = modelSection(push.screen, b) { () -> [LinkEffect] in
+            let decoded: TabsModel?
+            do {
+                decoded = try TabsModel.decode(push.json)
+            } catch {
+                decoded = nil
+                Self.log.error("shell: tabs model rev \(push.rev) did not decode: \(String(describing: error), privacy: .public)")
+            }
+            let (verdict, fx) = b.link.modelReceived(screen: push.screen, rev: push.rev, boot: decoded?.boot, decoded: decoded != nil, at: now)
+            if verdict == .apply, let decoded {
+                if let r = decoded.rejected.first {
+                    Self.log.info("shell: tabs model rev \(push.rev): \(decoded.rejected.count) part(s) left out or replaced, first \(r, privacy: .public)")
+                }
+                if #available(iOS 26.0, *), let root = liveRoot(b) { root.apply(decoded) }
+            }
             return fx
         }
         apply(fx, b)
@@ -600,9 +797,118 @@ public final class ShellBridge: NSObject {
     }
 
     /// Every answered intent goes to the link (the breaker); one from a gone document or none linked counts for nothing.
+    /// After each outcome a failed `tabs.select` or `tabs.bar` is restated once the link is idle (contract 4.3).
     private func finished(_ intent: Intent, _ outcome: PageLink.Outcome, _ b: Binding) {
-        guard case .answered(let o) = outcome, let boot = b.link.link?.boot else { return }
-        apply(b.link.intentFinished(intent, boot: boot, outcome: o, at: Date()), b)
+        noteState(intent, outcome, b)
+        if case .answered(let o) = outcome, let boot = b.link.link?.boot {
+            apply(b.link.intentFinished(intent, boot: boot, outcome: o, at: Date()), b)
+        }
+        restateIfIdle(b)
+    }
+
+    // MARK: The tab root's state (contract 4.3, D12)
+
+    /// `tabs.select {tab, seq, again?}` for a run the page did not ask for (the owner's tap or re-tap, a deep link, a
+    /// stray); `answered` runs once the page answered or the intent failed (VoiceOver's screen change, contract 8.1 step 7).
+    private func sendSelect(tab: String, seq: Int, again: Bool, _ b: Binding, answered: (() -> Void)? = nil) {
+        send(.tabsSelect(tab: tab, seq: seq, again: again ? true : nil), b) { outcome in
+            if case .answered = outcome { answered?() }
+        }
+    }
+
+    /// `tabs.bar {h, safe, rev}`: the shell's own change of the bar (a selection back to a web tab with a sheet open, a
+    /// trait or safe-area change). `sheets` answers carry theirs.
+    private func sendBar(_ bar: BarMetrics, _ b: Binding) {
+        send(.tabsBar(bar), b)
+    }
+
+    /// State, not replay: a `tabs.select` or `tabs.bar` that failed (a timeout, an error) marks its state for a restate,
+    /// and an answer clears the mark (the page has the newest: outcomes come in the order the intents went). Gone and
+    /// unlinked outcomes change nothing: the next hello's reply carries the state.
+    private func noteState(_ intent: Intent, _ outcome: PageLink.Outcome, _ b: Binding) {
+        guard case .answered(let o) = outcome else { return }
+        let failed = o.countsAsFailure
+        switch intent {
+        case .tabsSelect: b.restateSelect = failed
+        case .tabsBar: b.restateBar = failed
+        default: break
+        }
+    }
+
+    /// Once the link is idle (nothing queued or in the page; after a held timeout that is once the confirming ping has
+    /// ended, since the link queues it before this runs), the current selection goes with a new seq and the current bar
+    /// with a new rev, once each. A restate that fails marks its state again, so a page that stays silent hears one per
+    /// timeout while LinkState's held timeouts and their ping count it toward the breaker (contract 4.4).
+    private func restateIfIdle(_ b: Binding) {
+        guard b.restateSelect || b.restateBar else { return }
+        guard b.pageLink.pending == 0, b.link.link != nil, b.pageLink.boot != nil else { return }
+        guard #available(iOS 26.0, *), let root = liveRoot(b) else {
+            // no live tab root any more (a fallback): the page has left tabs mode, nothing to restate
+            b.restateSelect = false
+            b.restateBar = false
+            return
+        }
+        if b.restateSelect {
+            b.restateSelect = false
+            let now = root.restate()
+            Self.log.info("shell: a tabs.select failed: the selection goes again (\(now.tab, privacy: .public), seq \(now.seq))")
+            sendSelect(tab: now.tab, seq: now.seq, again: false, b)
+        }
+        if b.restateBar {
+            b.restateBar = false
+            let bar = root.restateBar()
+            Self.log.info("shell: a tabs.bar failed: the bar goes again (h \(bar.h), safe \(bar.safe), rev \(bar.rev))")
+            sendBar(bar, b)
+        }
+    }
+
+    /// A stray (a selection set outside the funnel, redirected): About's counter, this launch's and in all (contract 10.5).
+    private func noteStray(_ tab: String) {
+        counters.strays.add(at: Date())
+        launchCounts.strays += 1
+        saveCounters()
+        Self.log.fault("shell: a tab selection outside the funnel (\(tab, privacy: .public)), counted (\(self.launchCounts.strays) this launch)")
+    }
+
+    /// Whether the scene's root is a live tab root (never below iOS 26).
+    private func hasLiveRoot(_ b: Binding) -> Bool {
+        if #available(iOS 26.0, *) { return liveRoot(b) != nil }
+        return false
+    }
+
+    /// The live tab root's Coach mode (`waiting`, `native`, `web`); nil under a classic or fallen-back root.
+    private func liveCoachMode(_ b: Binding) -> String? {
+        if #available(iOS 26.0, *), let root = liveRoot(b) { return root.coachMode.rawValue }
+        return nil
+    }
+
+    // MARK: Deep links (contract 9, D24)
+
+    /// What runs a warm deep link in the page: the URL is the function's argument, never part of its source.
+    static let trovoOpenSource = "var open = window._trovoOpen; if (typeof open !== 'function') { return false; } open(url); return true;"
+
+    /// The one entry for a warm `trovo://` URL, for either root (SceneDelegate's one `.trovoDeepLink` observer, H9). Under a
+    /// live tab root the shell selects first: `trovo://start` Log, `trovo://share` Coach (held when the Coach tab is
+    /// NATIVE, contract 8.1); then every URL goes to `window._trovoOpen(url)`, `share` included, so the page reads a shared
+    /// image at once, inside the hold. Under a classic or fallen-back root only `_trovoOpen`, as build 60. The URL stays
+    /// parked in UserDefaults (`pendingDeepLink`) for a page that is not up yet, which consumes it at boot.
+    public func deepLink(_ url: URL) {
+        guard let b = binding, let wv = b.webView else {
+            Self.log.info("shell: a deep link with no page bound: parked for the page's boot")
+            return
+        }
+        if #available(iOS 26.0, *), let root = liveRoot(b), url.scheme?.lowercased() == "trovo" {
+            switch url.host?.lowercased() {
+            case "start"?: root.select("log", source: .deepLink(share: false))
+            case "share"?: root.select("coach", source: .deepLink(share: true))
+            default: break
+            }
+        }
+        wv.callAsyncJavaScript(Self.trovoOpenSource, arguments: ["url": url.absoluteString], in: nil, in: .page) { result in
+            if case .failure(let e) = result {
+                Self.log.error("shell: _trovoOpen failed: \(String(describing: e), privacy: .public)")
+            }
+        }
     }
 
     /// The owner took a screen down: the page hears coach.back. If it stays on the screen (Back refused, the bridge
@@ -744,7 +1050,8 @@ public final class ShellBridge: NSObject {
         let page = b.link.pageBuild ?? b.pageBuild
         var launch = launchCounts
         launch.leftWindow = ShellWebView.leftWindowWhileActive
-        let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens, gate: gate(page: page, book: b.link.book),
+        let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens,
+                                     gate: gate(page: page, book: b.link.book, tabsRoot: b.link.tabsRoot),
                                      live: b.link.liveScreens, book: b.link.book, counters: counters, launch: launch)
         return (json.foundation as? [String: Any]) ?? [:]
     }
@@ -774,12 +1081,12 @@ public final class ShellBridge: NSObject {
 
     // MARK: Gate and book
 
-    func gate(page: String?, book: BreakerBook) -> (on: [String], off: [String: ScreenGate.Off]) {
+    /// `tabsRoot`: the scene's root is a tab root (install's decision for the flag; the link's live root afterwards).
+    func gate(page: String?, book: BreakerBook, tabsRoot: Bool = false) -> (on: [String], off: [String: ScreenGate.Off]) {
         // The device switch for the native chat (and the Coach tab) is the page's own (Settings > About, kt_native_off):
-        // a page with it on never presents. The shell's own are the tab bar's (ShellSwitches, contract 3.5). A classic
-        // root until H7 adopts a tab root.
+        // a page with it on never presents. The shell's own are the tab bar's (ShellSwitches, contract 3.5).
         ScreenGate.evaluate(binary: shell.screens, deviceOff: switches.deviceOff, policy: environment.policy(), book: book,
-                            shellBuild: shell.shell, pageBuild: page, os: osMajor())
+                            shellBuild: shell.shell, pageBuild: page, tabsRoot: tabsRoot, os: osMajor())
     }
 
     /// The pieces' own checks for a page build (ScreenGate.base, the OS and the shell's device switches included): what
@@ -873,9 +1180,52 @@ public final class ShellBridge: NSObject {
             "negotiated": b.link.link?.screens ?? [], "live": b.link.liveScreens, "pageBuild": b.link.pageBuild ?? NSNull(),
             "documents": b.documents, "bootDones": b.bootDones, "pending": b.pageLink.pending,
             "book": Self.bookJSON(b.link.book), "screens": b.screens.describe(), "markersFound": markersFound,
-            "leftWindow": ShellWebView.leftWindowWhileActive, "gate": gate(page: b.link.pageBuild ?? b.pageBuild, book: b.link.book).on,
-            "status": status(b),
+            "leftWindow": ShellWebView.leftWindowWhileActive,
+            "gate": gate(page: b.link.pageBuild ?? b.pageBuild, book: b.link.book, tabsRoot: b.link.tabsRoot).on,
+            "status": status(b), "root": describeRoot(b),
         ]
+    }
+
+    /// Contract 15.3's `root` block: the tab root's own `describe()` (a fallen-back one included: `kind` stays `tabs`), or
+    /// `{kind: "classic"}`.
+    private func describeRoot(_ b: Binding) -> [String: Any] {
+        if #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController { return root.describe() }
+        return ["kind": "classic"]
+    }
+}
+
+// MARK: - The root decision
+
+/// What SceneDelegate knows before the page loads (contract 2.2, 2.4; H9 sets it on the SuperoViewController, whose
+/// `capacitorDidLoad` hands it to `ShellBridge.install(..., launch:)`). A controller made any other way passes none and
+/// gets the classic root.
+public struct ShellLaunch: Sendable {
+    /// SceneDelegate builds a tab root if the gate leaves `tabs` on (false keeps the classic root whatever the gate says).
+    public var tabRootAllowed: Bool
+    /// The tab the first frame shows (`ShellTabs.firstTab`): the flag's `tabs.selected`.
+    public var first: String
+    /// The first frame's bar (`RootTabController.predicted(screen:)`, delta 14.1): the flag's `tabs.bar`, rev 0.
+    public var barGuess: (h: Int, safe: Int)
+
+    public init(tabRootAllowed: Bool, first: String, barGuess: (h: Int, safe: Int)) {
+        self.tabRootAllowed = tabRootAllowed
+        self.first = first
+        self.barGuess = barGuess
+    }
+
+    /// The flag's `tabs` for a tab root (contract 2.2): the first frame's tab and the bar guess.
+    public var flag: TabsFlag { TabsFlag(selected: first, h: barGuess.h, safe: barGuess.safe) }
+}
+
+/// What `install` decided for a web view: the screens its first document may present (the flag's `screens`) and whether
+/// the scene's root is a tab root (the flag then carries `tabs`, and SceneDelegate builds the RootTabController).
+public struct ShellInstall: Equatable, Sendable {
+    public var screens: [String]
+    public var tabsRoot: Bool
+
+    public init(screens: [String], tabsRoot: Bool) {
+        self.screens = screens
+        self.tabsRoot = tabsRoot
     }
 }
 

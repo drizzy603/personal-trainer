@@ -614,6 +614,15 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         return BarMetrics(h: n.h, safe: n.safe, rev: barRev)
     }
 
+    /// The bar's numbers now with a new rev, for the bridge's resend after a failed `tabs.bar` (contract 4.3, D12): the
+    /// page applies only a newer rev, and a restate is one.
+    public func restateBar() -> BarMetrics {
+        let n = measure()
+        lastBar = n
+        barRev += 1
+        return BarMetrics(h: n.h, safe: n.safe, rev: barRev)
+    }
+
     /// After the root's own change of the bar: `tabs.bar` when the numbers moved since `before`. The first measurement
     /// only sets the baseline (hello's answer carries it), and a fallen-back root tells nothing (the page has left tabs
     /// mode).
