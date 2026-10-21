@@ -87,7 +87,8 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         /// trait change that moves it. Not for `setSheets`, whose answer carries the numbers.
         public var barChanged: (BarMetrics) -> Void = { _ in }
         /// The `tabs` short section (contract 10.2): true as a funnel run, a bar hide or show, a mode change of the
-        /// selected Coach tab or the fallback begins, false when it is done (a show at its animation's end).
+        /// selected Coach tab or the fallback begins, false when it is done (a show when its animation is, `showSection`
+        /// at most).
         public var section: (Bool) -> Void = { _ in }
         /// Whether Coach is selected and not WEB, after every selection, mode change and hold that ends by its time
         /// (ScreenHost's `selectionChanged()` follows it: markers, the toast's anchor, ops waiting on the stack).
