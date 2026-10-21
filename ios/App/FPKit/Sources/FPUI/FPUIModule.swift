@@ -21,6 +21,14 @@ import FPCore
 ///   breaker book, crash markers, `ShellWebView`), `PageLink` (intents into the page), `ScreenHost` (screens over the
 ///   page `.overFullScreen`, the toast window), `SlideTransition.swift` (the slide and the edge pan), `ShellProbe`
 ///   (Debug: tests/native-shell.sh).
+/// - `Tabs/` (build 61, H4; iOS 26 and later): `RootTabController`, the tab root: the glass bar over Log, Progress, Coach
+///   and Settings, one web view moved between the slots by one funnel (`select`) and never out of the window, strays
+///   counted and redirected, the hold, the bar's state and numbers (`Tests/FPCoreTests/Fixtures/shell/bar.json`), the
+///   Coach tab's modes per scene and the fallback's UI half; `TabSlots` (the web slots, the Coach slot with its web area,
+///   its navigation controller and the WAITING ground); `TabBarLook` (the room on the bar and the Coach stack only).
+/// - ScreenHost's stack mode (build 61, H5): under a live tab root the chat is pushed in the Coach tab's navigation
+///   stack (`attachStack`, the root's answers as a `StackState`), never presented; the overlay stays for a classic root
+///   and after the fallback (`detachStack`).
 ///
 /// Later: CoachStore (C7).
 public enum FPUIModule {
