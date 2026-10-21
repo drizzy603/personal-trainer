@@ -18,7 +18,9 @@ import FPCore
 /// takes no focus, sets no interface style, carries the owner's key to the store once, makes the key field anew
 /// whenever the route leaves the connect screen (even when SwiftUI never draws that model), and, as the root of a
 /// navigation stack in a tab bar, takes models that land while the stack is out of the window and keeps the key field
-/// across pushes and pops, waiting on no navigation callback (H0's probe: UIKit's didShow comes late and twice).
+/// across pushes and pops, waiting on no navigation callback (H0's probe: UIKit's didShow comes late and twice). The
+/// root tests that read a render or wait for the hub to go are hosted under Reduce Motion, so none of them waits on the
+/// fade's clock; the fade tests stretch the fade and their bound by CI's slack.
 @MainActor
 final class CoachHomeStoreTests: XCTestCase {
     private var store: CoachHomeStore!
@@ -632,12 +634,13 @@ final class CoachHomeStoreTests: XCTestCase {
 
     /// With no model the root draws the first frame's ground, edge to edge (the status bar's band and the tab bar's
     /// included) and nothing else; once a model lands, the hub, in the model's own room: an image unlike the ground's,
-    /// with the model's room behind it even where the ground's room differs.
+    /// with the model's room behind it even where the ground's room differs. Hosted under Reduce Motion, so the hub is
+    /// drawn as soon as a layout pass takes the model and no render waits on a clock (the fade is the fade tests').
     func testTheRootDrawsTheGroundUntilAModelThenTheHubInTheModelsRoom() throws {
         for (roomName, room) in CoachHomeViewTests.rooms {
             let paper = room.isPaper ?? true
             let s = CoachHomeStore()
-            let tab = HostedRoot(RootPhone(store: s, room: room, paper: paper))
+            let tab = HostedRoot(RootPhone(store: s, room: room, paper: paper, reduceMotion: true))
             let ground = tab.image()
             let bg = CoachHomeRoot.ground(room: room, paper: paper)
             XCTAssertEqual(bg, RoomTheme.defaults(room).rgba(.bg), "\(roomName): the ground is the room's background")
@@ -649,7 +652,7 @@ final class CoachHomeStoreTests: XCTestCase {
             // the hub of the other room: the model's room draws, not the first frame's
             let other: Room = room == .heavyweight ? .lime : .heavyweight
             XCTAssertTrue(s.apply(try model(CoachHomeViewTests.hubJSON(room: other), rev: 1)))
-            tab.wait(0.5)
+            tab.settle()
             let hub = tab.image()
             XCTAssertNotNil(tab.find(UIScrollView.self), "\(roomName): the hub")
             XCTAssertGreaterThan(CoachRenderTests.difference(ground, hub), 0.05, "\(roomName): the hub draws over the ground")
@@ -661,17 +664,28 @@ final class CoachHomeStoreTests: XCTestCase {
         }
     }
 
-    /// The root wears the room, never the phone's setting: the ground and the hub draw the same under a light and a
-    /// dark phone.
+    /// The root wears the room, never the phone's setting: the ground and the connect screen draw the same under a
+    /// light and a dark phone, each window having drawn the connect screen (its key field, ink on the room's ground, an
+    /// image unlike the ground's), so two bare grounds can never pass for it. Hosted under Reduce Motion: the screen is
+    /// drawn as soon as a layout pass takes the model, and no render waits on a clock.
     func testTheRootWearsTheRoomWhateverThePhonesSetting() throws {
         for (roomName, room) in CoachHomeViewTests.rooms {
             let s = CoachHomeStore()
-            let light = HostedRoot(RootPhone(store: s, room: room, paper: room.isPaper ?? true), phone: .light)
-            let dark = HostedRoot(RootPhone(store: s, room: room, paper: room.isPaper ?? true), phone: .dark)
-            XCTAssertLessThan(CoachRenderTests.difference(light.image(), dark.image()), 0.001, "\(roomName): the ground")
+            let paper = room.isPaper ?? true
+            let light = HostedRoot(RootPhone(store: s, room: room, paper: paper, reduceMotion: true), phone: .light)
+            let dark = HostedRoot(RootPhone(store: s, room: room, paper: paper, reduceMotion: true), phone: .dark)
+            let ground = light.image()
+            XCTAssertLessThan(CoachRenderTests.difference(ground, dark.image()), 0.001, "\(roomName): the ground")
             s.apply(try model(CoachHomeViewTests.connectJSON(room: room), rev: 1))
-            light.wait(0.5)
-            dark.wait(0.5)
+            light.settle()
+            dark.settle()
+            let bg = RoomTheme.defaults(room).rgba(.bg)
+            for (phone, tab) in [("light", light), ("dark", dark)] {
+                XCTAssertNotNil(tab.find(UITextField.self), "\(roomName), a \(phone) phone: the connect screen's key field")
+                let drawn = tab.image()
+                XCTAssertGreaterThan(CoachRenderTests.inked(drawn, background: bg), 0.01, "\(roomName), a \(phone) phone: the connect screen is inked")
+                XCTAssertGreaterThan(CoachRenderTests.difference(ground, drawn), 0.05, "\(roomName), a \(phone) phone: drawn over the ground")
+            }
             XCTAssertLessThan(CoachRenderTests.difference(light.image(), dark.image()), 0.001, "\(roomName): the connect screen")
             light.close()
             dark.close()
@@ -680,19 +694,22 @@ final class CoachHomeStoreTests: XCTestCase {
 
     /// ScreenHost anchors its toast under the hub's meta row while the hub is on top: the root passes the row's
     /// `HubHeaderBottomKey` up, and the ground passes none (the anchor falls under the status bar, contract 8.3).
+    /// Hosted under Reduce Motion: the hub comes and goes as soon as a layout pass takes the change (no fade-out keeps
+    /// it publishing for a while), so nothing waits on a clock.
     func testTheRootPublishesHubHeaderBottomKeyOnlyWithAModel() throws {
         var seen: [CGFloat] = []
         let s = CoachHomeStore()
-        let tab = HostedRoot(RootPhone(store: s, room: .heavyweight, paper: true, onBottom: { seen.append($0) }))
+        let tab = HostedRoot(RootPhone(store: s, room: .heavyweight, paper: true, reduceMotion: true, onBottom: { seen.append($0) }))
         tab.wait(0.3)
         XCTAssertTrue(seen.allSatisfy { $0 == 0 }, "the ground publishes no bottom: \(seen)")
         s.apply(try model(rev: 1))
-        tab.wait(0.5)
+        tab.settle()
         let bottom = try XCTUnwrap(seen.last, "the hub publishes its meta row's bottom")
         XCTAssertGreaterThan(bottom, CoachHomeViewTests.safeTop + 44, "under the status bar, below the label and its padding")
         XCTAssertLessThan(bottom, CoachHomeViewTests.safeTop + 140, "at the top of the column")
         s.documentGone(keep: false)
-        tab.wait(0.5)
+        tab.settle()
+        XCTAssertNil(tab.find(UIScrollView.self), "the hub gone")
         XCTAssertEqual(seen.last, 0, "the hub gone: no bottom again (\(seen))")
         tab.close()
     }
@@ -834,13 +851,15 @@ final class CoachHomeStoreTests: XCTestCase {
     /// the store's hooks and nothing more while it is out (the root hands the hub the store's `connecting`), a refusal
     /// keeps the key in the field, a reload while the tab is NATIVE keeps the connect screen and its key into the next
     /// document's model, the hub's model takes the field away, and a document that goes while the tab is not NATIVE
-    /// leaves the ground.
+    /// leaves the ground. Hosted under Reduce Motion: the hub goes as soon as a layout pass takes the change (no
+    /// fade-out to wait for on a clock).
     func testTheRootCarriesTheKeyToTheStoreOnce() throws {
         let key = CoachHomeViewTests.canary()
         store.apply(try connect())
-        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true))
+        let tab = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true, reduceMotion: true))
         tab.wait(0.3)
-        XCTAssertEqual(keyField(), "empty", "the field appeared empty")
+        XCTAssertEqual(try XCTUnwrap(tab.find(UITextField.self), "the key field").text ?? "", "", "the field appeared empty")
+        XCTAssertEqual(keyField(), "empty", "and the store's flag says so")
         type(key, into: try XCTUnwrap(tab.find(UITextField.self)), then: { tab.settle() })
         XCTAssertEqual(keyField(), "typed", "the field's flag reached the store")
         try pressReturn(tab)
@@ -868,16 +887,37 @@ final class CoachHomeStoreTests: XCTestCase {
         answer("coachHome.setKey", Self.done)
         // the key saved: the page's next model is the hub, and the field goes
         XCTAssertTrue(store.apply(try model(boot: "b2", rev: 2)))
-        tab.wait(0.5)
+        tab.settle()
         XCTAssertNil(tab.find(UITextField.self), "no field on the hub")
         XCTAssertNotNil(tab.find(UIScrollView.self))
         XCTAssertEqual(keyField(), "empty")
         // the document goes while the tab is not NATIVE: the ground again
         store.documentGone(keep: false)
-        tab.wait(0.5)
+        tab.settle()
         XCTAssertNil(tab.find(UIScrollView.self), "the ground, no hub")
         XCTAssertEqual(asked.count, 2, "two presses answered, two keys sent: nothing resent")
         tab.close()
+    }
+
+    /// A key field that appears empty says so, and through the root the store's flag follows it: typed into, then the
+    /// root hosted anew on the same store (a new hosting controller: nothing of the old field's state comes along), the
+    /// new field holds nothing and the flag goes back to "empty". The store's model never changed, so only the new
+    /// field's report can put it back.
+    func testAFieldThatAppearsEmptyPutsTheFlagBackToEmpty() throws {
+        store.apply(try connect())
+        let first = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true, reduceMotion: true))
+        let field = try XCTUnwrap(first.find(UITextField.self), "the key field")
+        XCTAssertEqual(field.text ?? "", "", "the field appeared empty")
+        type(CoachHomeViewTests.canary(), into: field, then: { first.settle() })
+        XCTAssertEqual(keyField(), "typed")
+        first.close()
+        XCTAssertEqual(keyField(), "typed", "the old field went without a word: the flag still says typed")
+        let second = HostedRoot(RootPhone(store: store, room: .heavyweight, paper: true, reduceMotion: true))
+        XCTAssertEqual(try XCTUnwrap(second.find(UITextField.self), "the new root's key field").text ?? "", "", "a new field holds nothing")
+        XCTAssertEqual(keyField(), "empty", "and says so: the flag follows the field")
+        XCTAssertEqual(store.events.last, "the key field is empty")
+        XCTAssertEqual(asked, [])
+        second.close()
     }
 
     /// K5 holds whatever SwiftUI draws: the key field's text clears when the model's route leaves the connect screen,
