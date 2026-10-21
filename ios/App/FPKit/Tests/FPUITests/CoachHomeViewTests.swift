@@ -14,8 +14,9 @@ import FPCore
 /// anywhere in its drawn box focuses it; it draws in the room's face; a typed canary leaves no trace in UserDefaults or
 /// the app's files; the meta row publishes its bottom, follows the scroll and says 0 under the status bar; the help's
 /// two paragraphs are two lines; a wrapped headline keeps the CSS line pitch; CONNECT does not shrink when pressed
-/// under the system's Reduce Motion and the starter link presses as the web's plain button does, 44 pt tall; a 320 pt
-/// screen takes the narrow gutter and Lime's 41 pt headline.
+/// under the system's Reduce Motion and the starter link presses as the web's plain button does, 44 pt tall; with the
+/// app's Larger Text off the hub draws at the large size; a 320 pt screen takes the narrow gutter and Lime's 41 pt
+/// headline.
 ///
 /// How this host is driven (probed on iOS 27.0's simulator): SwiftUI vends its accessibility elements to a test only
 /// outside a scroll view (inside one it vends none without an accessibility client such as VoiceOver), so the walks
@@ -1151,6 +1152,45 @@ final class CoachHomeViewTests: XCTestCase {
             let height = greet + 15 + 2 * title * 0.92 + (face - title * 0.92) / 2
             XCTAssertEqual(headline.frame.minX, gutter, accuracy: 0.5, "\(size.width) pt: the gutter")
             XCTAssertEqual(headline.frame.height, height, accuracy: 1, "\(size.width) pt: a \(title) px headline")
+        }
+    }
+
+    /// The app's Larger Text toggle (`dynTypeOn`, the web's zoom): off, the hub draws at the large size whatever the
+    /// system's size, as the page does without its zoom; on, at the system's size kept within large...xxLarge (the web
+    /// zoom's 1, 1.12, 1.24). The theme `RoomTheme(home:system:)` makes, then the connect screen laid out at .xxLarge
+    /// with the toggle off: its headline and its key field as at the large size, and larger with it on.
+    func testLargerTextOffDrawsAtTheLargeSizeWhateverTheSystemsSize() throws {
+        for (roomName, room) in Self.rooms {
+            let on = try Self.model(Self.connectJSON(room: room))
+            let off = try Self.model(Self.connectJSON(room: room).replacingOccurrences(of: "\"dynTypeOn\":true", with: "\"dynTypeOn\":false"))
+            XCTAssertTrue(on.dynTypeOn, roomName)
+            XCTAssertFalse(off.dynTypeOn, "\(roomName): the toggle off")
+            for size in [DynamicTypeSize.small, .large, .xLarge, .xxLarge, .xxxLarge, .accessibility3] {
+                let t = RoomTheme(home: off, system: size)
+                XCTAssertEqual(t.textSize, .large, "\(roomName), off at \(size): the large size")
+                XCTAssertEqual(t.scale, 1, "\(roomName), off at \(size): no zoom")
+            }
+            let sizes: [(DynamicTypeSize, TextSize, CGFloat)] = [(.small, .large, 1), (.large, .large, 1), (.xLarge, .xLarge, 1.12),
+                                                                 (.xxLarge, .xxLarge, 1.24), (.accessibility3, .xxLarge, 1.24)]
+            for (size, clamped, scale) in sizes {
+                let t = RoomTheme(home: on, system: size)
+                XCTAssertEqual(t.textSize, clamped, "\(roomName), on at \(size)")
+                XCTAssertEqual(t.scale, scale, accuracy: 0.0001, "\(roomName), on at \(size): the web zoom's factor")
+            }
+            // laid out: the headline's height and the key field's face
+            func laid(_ m: CoachHomeModel, _ size: DynamicTypeSize) throws -> (headline: CGFloat, field: CGFloat) {
+                let column = Hosted(Phone(model: m, host: Recorder().host(), size: size, unscrolledWidth: Self.screen.width), size: Self.screen)
+                defer { column.close() }
+                let headline = try XCTUnwrap(column.elements.first { $0.traits.contains(.header) }, "\(roomName): the headline")
+                return (headline.frame.height, try XCTUnwrap(column.field?.font?.pointSize, "\(roomName): the key field"))
+            }
+            let large = try laid(off, .large)
+            let offBig = try laid(off, .xxLarge)
+            XCTAssertEqual(offBig.headline, large.headline, accuracy: 0.5, "\(roomName), off: .xxLarge draws the headline as large does")
+            XCTAssertEqual(offBig.field, 16, accuracy: 0.01, "\(roomName), off: the key field's face at the large size")
+            let onBig = try laid(on, .xxLarge)
+            XCTAssertGreaterThan(onBig.headline, large.headline + 10, "\(roomName), on: .xxLarge draws a larger headline")
+            XCTAssertEqual(onBig.field, 16 * 1.24, accuracy: 0.01, "\(roomName), on: the key field's face at .xxLarge")
         }
     }
 }
