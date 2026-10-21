@@ -492,7 +492,8 @@ public final class ShellBridge: NSObject {
             // tabs mode needs a live tab root, which no scene builds yet (H7)
             done(.failure(Refusal.off))
         case .setSwitch(let s, _):
-            // the shell's switch file comes with H6 and H8
+            // ShellSwitches keeps the switch and the gate reads it (H6); the page's write of it, and the fallback an off
+            // starts, come with H8
             done(.failure(Refusal.noSwitch(s)))
         }
         #if DEBUG
