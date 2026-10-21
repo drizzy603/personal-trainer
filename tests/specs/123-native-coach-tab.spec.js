@@ -20,7 +20,7 @@
 // - The take-over (3.2, I13): up naming both with Coach selected and a key: no present, both shown, the chat view, the
 //   models pushed, no selectTab; the same after a reload under the mock's own scene (up from it, no 3 s WEB); with Log
 //   selected the chat is dismissed; with no key the chat is dismissed and the connect route is the model's; with
-//   kt_native_off both are dismissed once each and the web Coach drawn.
+//   kt_native_off both are dismissed once each and the web Coach drawn; tabs in up is ignored, never dismissed.
 // - screens.off (4.2): coachHome needs; coach with a draft taken by the putBack rule (every case of the shared vectors,
 //   Fixtures/draft/putback.json, through the handler) and answered took; a draft off coach ignored; a numeric draft
 //   bad-args; the mock's composer cleared only after took.
@@ -399,6 +399,16 @@ serial('the take-over (3.2, I13): up naming the Coach tab and the chat with Coac
       && J(t.log) === J(HOME_ONLY)
       && t.home && t.home.route === 'connect' && J(t.screen.kids) === '["kt-fp-ph/coachHome"]' && !t.screen.key && !t.screen.hub,
       'no key: the chat dismissed, the connect route, only the placeholder (no key field): ' + J(t));
+  } finally { await app.close(); }
+  // up naming tabs too (a shell never does: the root is not presented): ignored, never dismissed, which would say the
+  // page left tabs mode and take the bar away from a page still in it
+  app = await pageBoot('tabs', { init: 'window.__fpShellUp = ["coachHome", "coach", "tabs"];' + PRE });
+  try {
+    await ready(app);
+    const t = await taken(app);
+    const s = await ev(app, () => ({ mode: _fp.tabs.mode, fellBack: __fpShell.state().scene.fellBack, dismiss: __fpShell.of('dismiss').map((d) => d.screen) }));
+    assert(t.shown.coachHome && t.shown.coach && J(t.log) === J(BOTH) && s.mode && s.fellBack === null && s.dismiss.length === 0,
+      'tabs in up: ignored, both taken over, still in tabs mode: ' + J([t.log, s]));
   } finally { await app.close(); }
   // the About switch off on this iPhone: the page cannot take the Coach tab over, so both are dismissed, the Coach
   // tab's dismiss is its declaration (sent once), and the page draws its web Coach
