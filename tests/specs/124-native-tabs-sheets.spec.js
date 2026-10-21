@@ -16,9 +16,10 @@
 //   seven openers that focus at once); released at 50 ms with no answer, at the answer when it comes sooner (10 ms, the
 //   mock's 16), at 50 ms when the shell is silent, at once on a refusal ('off' leaves tabs mode: #tabs shows, no
 //   dismiss tabs); its own call's answer only, never an older one's; the starter, showManualCopy's overlay and the
-//   static pages too; never an overlay put up while the state stays open, never #runner-root. The bar: an answer's h 0
-//   sets --fp-bar-h and leaves --fp-bar-up, closing brings 83 back, an older answer never undoes a newer one. Leaving
-//   tabs mode mid-hold releases at once and ends the announcing.
+//   static pages too, which have no fade of their own, so their computed opacity 0 is the hold's, as it is for a
+//   sheet's scrim under Reduce Motion (no fade there either); never an overlay put up while the state stays open, never
+//   #runner-root. The bar: an answer's h 0 sets --fp-bar-h and leaves --fp-bar-up, closing brings 83 back, an older
+//   answer never undoes a newer one. Leaving tabs mode mid-hold releases at once and ends the announcing.
 // - The baseline: exactly one sheets {open:false} at boot in tabs mode, none under no shell, coach61 or build 60's
 //   chat; a reload with a sheet open sends it again (the shell's state is per document); a dev.nav sheet is announced
 //   before hello's answer.
@@ -308,7 +309,7 @@ const HOLD_LOG = '(function () { window.__holdLog = []; new MutationObserver(fun
   + ' var n = m.target, on = n.classList.contains("fp-hold"), was = /(^|\\s)fp-hold(\\s|$)/.test(m.oldValue || "");'
   + ' if (on !== was) __holdLog.push([n.id || n.className, on, performance.now()]); }); })'
   + '.observe(document.documentElement, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true }); })();';
-serial('the hold (fp-hold): on before the opener\'s task ends, held at the next frame with its title focused (the seven that focus at once), released at 50 ms with no answer, at its own answer when it comes sooner (10 ms, the mock\'s 16; never an older call\'s), at 50 ms when the shell is silent, at once on a refusal (off leaves tabs mode, no dismiss tabs); the starter, showManualCopy and the static pages too; never on an overlay put up while open, never on #runner-root; the bar\'s h 0 and back, never undone by an older answer', async () => {
+serial('the hold (fp-hold): on before the opener\'s task ends, held at the next frame with its title focused (the seven that focus at once), released at 50 ms with no answer, at its own answer when it comes sooner (10 ms, the mock\'s 16; never an older call\'s), at 50 ms when the shell is silent, at once on a refusal (off leaves tabs mode, no dismiss tabs); the starter, showManualCopy and the static pages too, at computed opacity 0 with no fade of their own; never on an overlay put up while open, never on #runner-root; the bar\'s h 0 and back, never undone by an older answer', async () => {
   const app = await pageBoot('tabs', { clock: { time: Date.now() }, init: 'window.__fpShellSheetsDelay = 200;' });
   try {
     await helloIn(app);
@@ -382,14 +383,18 @@ serial('the hold (fp-hold): on before the opener\'s task ends, held at the next 
       assert(held.hold && held.rev === before.rev && !freed.hold && freed.rev > before.rev, 'a ' + d + ' ms answer: held until it, released at it: ' + J([held, freed]));
       await ev(app, () => closeThemeSheet()); await runFor(20);
     }
-    // the overlays outside _SHEETS_SEL are held too (on their root: the starter, showManualCopy's, the static pages)
+    // the overlays outside _SHEETS_SEL are held too (on their root: the starter, showManualCopy's, the static pages);
+    // none has a fade of its own, so its computed opacity 0 while held is the hold's alone, and 1 once released
     const OTHERS = ['#starterOverlay', '.kt-manual-copy', '#wf-view', '#pp-view'];
+    const seen = (sel) => ev(app, (sel) => { const n = document.querySelector(sel), cs = getComputedStyle(n);
+      return { hold: n.classList.contains('fp-hold'), opacity: cs.opacity, pe: cs.pointerEvents, own: n.getAnimations().length }; }, sel);
     for (let i = 0; i < OTHERS.length; i++) {
       await ev(app, (i) => [() => openStarterIntake(), () => showManualCopy('x'), () => openWorkflow(), () => openPrivacy()][i](), i);
-      const held = await ev(app, (sel) => document.querySelector(sel).classList.contains('fp-hold'), OTHERS[i]);
+      const held = await seen(OTHERS[i]);
       await runFor(16);
-      const freed = await ev(app, (sel) => document.querySelector(sel).classList.contains('fp-hold'), OTHERS[i]);
-      assert(held && !freed, OTHERS[i] + ': held as it opens, released at the answer: ' + J([held, freed]));
+      const freed = await seen(OTHERS[i]);
+      assert(held.hold && held.opacity === '0' && held.pe === 'none' && held.own === 0 && !freed.hold && freed.opacity === '1' && freed.pe !== 'none',
+        OTHERS[i] + ': held as it opens (unseen and untouchable with no fade of its own), released at the answer: ' + J([held, freed]));
       await ev(app, (i) => [() => closeStarterIntake(), () => document.querySelector('.kt-manual-copy').remove(), () => closeWorkflow(), () => closePrivacy()][i](), i);
       await runFor(20);
     }
@@ -474,6 +479,43 @@ serial('the hold (fp-hold): on before the opener\'s task ends, held at the next 
       'refused: the sheet was held and is released already, no time passing: ' + J([theme, after]));
     assert(!after.mode && after.why === 'off' && !after.cls && after.tabs !== 'none' && after.dismiss === 0 && after.sheet,
       'refused off: out of tabs mode (#tabs shows), no dismiss tabs, the sheet still up: ' + J(after));
+  } finally { await app.close(); }
+});
+
+// Under Reduce Motion a sheet's scrim has no fade (animation:none), so at the next frame only the hold's opacity keeps
+// it unseen while the bar is still up; the sheet inside keeps a short fade, paused at its start like any other.
+serial('the hold under Reduce Motion: a sheet\'s scrim has no fade there, and at the next frame the hold alone keeps it unseen and untouchable, its title focused; released at 50 ms it shows at once', async () => {
+  const app = await pageBoot('tabs', { clock: { time: Date.now() }, init: 'window.__fpShellSheetsDelay = 200;', page: { reducedMotion: 'reduce' } });
+  try {
+    await helloIn(app);
+    await settle(app, 300);
+    const t = await ev(app, () => Date.now());
+    await app.page.clock.pauseAt(t + 1000);
+    const runFor = (ms) => app.page.clock.runFor(ms);
+    await ev(app, () => {
+      if (currentTab !== 'log') switchTab('log');
+      window.__frame = null;
+      requestAnimationFrame(() => {
+        const ov = document.getElementById('routinesOverlay'), cs = getComputedStyle(ov), f = document.activeElement;
+        window.__frame = { reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, hold: ov.classList.contains('fp-hold'),
+          opacity: cs.opacity, pe: cs.pointerEvents, own: ov.getAnimations().length, focus: f ? f.id : null,
+          anims: ov.getAnimations({ subtree: true }).map((x) => [x.playState, x.currentTime]) };
+      });
+      openRoutines();
+    });
+    await runFor(16);
+    const frame = await ev(app, () => window.__frame);
+    assert(frame && frame.reduce && frame.hold && frame.own === 0 && frame.opacity === '0' && frame.pe === 'none' && frame.focus === 'rtTitle',
+      'Reduce Motion: at the next frame the scrim, with no fade of its own, is unseen and untouchable by the hold, its title focused: ' + J(frame));
+    assert(frame.anims.length > 0 && frame.anims.every((x) => x[0] === 'paused' && x[1] === 0), 'Reduce Motion: the sheet\'s short fade paused at its start: ' + J(frame.anims));
+    await runFor(44);   // 60 ms: released by the page's 50 ms, the answer (200 ms) still to come
+    const at60 = await ev(app, () => { const ov = document.getElementById('routinesOverlay'), cs = getComputedStyle(ov);
+      return { hold: ov.classList.contains('fp-hold'), opacity: cs.opacity, pe: cs.pointerEvents }; });
+    assert(!at60.hold && at60.opacity === '1' && at60.pe !== 'none', 'Reduce Motion: released at 50 ms, the scrim shows at once: ' + J(at60));
+    await ev(app, () => document.getElementById('routinesOverlay').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+    await runFor(400);
+    const end = await ev(app, () => ({ up: !!document.getElementById('routinesOverlay'), calls: __fpShell.of('sheets').map((a) => a.open), mode: _fp.tabs.mode }));
+    assert(!end.up && J(end.calls) === '[false,true,false]' && end.mode, 'Reduce Motion: the baseline, the sheet, its close: ' + J(end));
   } finally { await app.close(); }
 });
 
