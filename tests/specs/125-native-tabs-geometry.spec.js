@@ -17,7 +17,9 @@
 //   out of the accessibility tree and the page holds no tablist (spec 40's twin).
 // - Overlays pad from --fp-sheet-b / --fp-safe-b, never env(): one overlay of each of the ten paddings at zoom 1, 1.12
 //   and 1.25, for 83/34 and 83/0, the same in the hold, after the sheet's own answer, as env() moves and across a
-//   tabs.bar of h 0 and back; the exercise picker's header and openCFMovePicker's own sheet keep their paddings.
+//   tabs.bar of h 0 and back; the exercise picker's header and openCFMovePicker's own sheet keep their paddings. A
+//   source scan holds the page to those ten readers of env(safe-area-inset-bottom): a new one fails until the block
+//   has its line.
 // - Typing: a hardware keyboard (chat-typing without kb-open) keeps the composer 8 above the bar, the conversation as
 //   tall (spec 58's twin); with the keys up the column keeps classic's 8 above them, #app over the visual viewport
 //   (spec 117 M2's twin), and the composer goes back above the bar when they go down.
@@ -26,6 +28,8 @@
 // - Classic (none, coach61): the values classic computes today, #tabs shown, and every box equal to the one the same
 //   page draws with its NATIVE TAB BAR block cut out (contract 7.3: classic CSS byte for byte in effect).
 // Every native boot names its shell (the mark above): FP_SHELL_INERT runs skip this spec.
+const fs = require('fs');
+const path = require('path');
 const { boot, assert, run, CANONICAL_61 } = require('../lib/harness');
 
 // One case at a time: each starts its own browser.
@@ -339,6 +343,37 @@ serial('overlays pad from --fp-sheet-b and --fp-safe-b, never env() (P-D14): eac
       }
     } finally { await app.close(); }
   }
+});
+
+// Each place the page reads env(safe-area-inset-bottom) (comments aside) is one of the ten the block replaces: a CSS
+// rule by its selector, an inline padding by the function that builds it. A new one fails here by its place until it
+// has its line in the NATIVE TAB BAR block and its row in __OVERLAYS (contract 7.4: a new overlay follows the rule).
+const ENV_READERS = ['css .ex-modal-sheet', 'css .kt-close-sheet-inner', 'css .kt-sheet', 'js _buildRunnerSSPickerHTML',
+  'js _buildRunnerExEditHTML', 'js _buildRunnerExPickerHTML', 'js openStorageSheet', 'js openHealthSettings', 'js openCFMovePicker',
+  'js openNativeChatSheet'];
+serial('every env(safe-area-inset-bottom) the page reads is one of the ten paddings the NATIVE TAB BAR block replaces (a new reader fails here by its place)', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
+  // CSS comments out of the <style> blocks (blanked, so offsets and lines stay), whole-line // comments out of the rest
+  const noCss = src.replace(/<style[^>]*>[\s\S]*?<\/style>/g, (b) => b.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' ')));
+  const text = noCss.split('\n').map((l) => (/^\s*\/\//.test(l) ? '' : l)).join('\n');
+  const styles = [];
+  text.replace(/<style[^>]*>[\s\S]*?<\/style>/g, (b, at) => { styles.push([at, at + b.length]); return b; });
+  const found = [];
+  const re = /safe-area-inset-bottom/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const at = m.index, line = text.slice(0, at).split('\n').length;
+    if (styles.some(([a, b]) => at > a && at < b)) {
+      const open = text.lastIndexOf('{', at), close = text.lastIndexOf('}', open);
+      found.push(['css ' + text.slice(close + 1, open).trim().split(/\s*,\s*/).pop(), line]);
+    } else {
+      const f = [...text.slice(0, at).matchAll(/function\s+([A-Za-z0-9_$]+)\s*\(/g)].pop();
+      found.push(['js ' + (f ? f[1] : '?'), line]);
+    }
+  }
+  const got = found.map((x) => x[0]).sort(), want = ENV_READERS.slice().sort();
+  assert(J(got) === J(want), 'the page reads env(safe-area-inset-bottom) at exactly the ten places (new or gone: '
+    + J(found.filter((x) => want.indexOf(x[0]) < 0).concat(want.filter((w) => got.indexOf(w) < 0).map((w) => [w, 'gone']))) + '): ' + J(found));
 });
 
 // ── Typing in the web chat ───────────────────────────────────────────────────────────────────────────────────────────
