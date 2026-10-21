@@ -16,10 +16,12 @@ import FPCore
 /// ID or Home button: 01-contract-delta.md 14.1; Display Zoom was not measured, and takes the same 83).
 ///
 /// Every render draws exactly when its model has something to draw (a model with nothing draws the room's bare ground)
-/// and the phone's setting never changes it; the column scrolled to its end stops above the bar; every string a render
-/// draws is the model's at its place, and every string the model shows is drawn there (I10, read off the renders by
-/// Vision's text recognition: `DrawnText`; the avatar, a lone letter, by its tile). With FPUI_SHOTS set (xcodebuild
-/// passes TEST_RUNNER_FPUI_SHOTS) the renders are written there for the contact sheets (plan task N14):
+/// and the phone's setting never changes it; with the app's Larger Text on the column grows at each size and stops at
+/// .xxLarge (the web zoom's cap), with it off every size draws as .large; the column scrolled to its end stops above
+/// the bar; every string a render draws is the model's at its place, and every string the model shows is drawn there
+/// (I10, read off the renders by Vision's text recognition: `DrawnText`; the avatar, a lone letter, by its tile).
+/// With FPUI_SHOTS set (xcodebuild passes TEST_RUNNER_FPUI_SHOTS) the renders are written there for the contact
+/// sheets (plan task N14):
 ///
 ///     native/home/<fixture>/<room>-<light|dark>-<size>.png   the tab as the 390 × 844 phone shows it
 ///     native/home/<fixture>/<room>-full-<size>.png           the whole column, unscrolled, 390 wide
@@ -104,6 +106,13 @@ final class CoachHomeRenderTests: XCTestCase {
         return out.filter { !$0.isEmpty }
     }
 
+    /// The column's natural height at a size on a phone (the unscrolled column with the phone's safe areas).
+    static func columnHeight(_ m: CoachHomeModel, _ size: DynamicTypeSize, on screen: Screen) -> CGFloat {
+        let host = UIHostingController(rootView: Phone(model: m, size: size, screen: screen, unscrolled: true))
+        host.safeAreaRegions = []
+        return host.sizeThatFits(in: CGSize(width: screen.size.width, height: 20000)).height
+    }
+
     private var shots: URL? {
         ProcessInfo.processInfo.environment["FPUI_SHOTS"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
     }
@@ -123,7 +132,10 @@ final class CoachHomeRenderTests: XCTestCase {
     // MARK: The renders
 
     /// Every fixture and variant in both rooms, light and dark, three sizes, both phones: the tab as the phone shows
-    /// it, inked exactly when the model shows something, the same whatever the phone's setting.
+    /// it, inked exactly when the model shows something, the same whatever the phone's setting. Larger Text: with the
+    /// app's toggle on, a column that shows something grows at each size (.xLarge taller than .large, .xxLarge taller
+    /// still) and an accessibility size draws exactly as .xxLarge does (the web zoom's cap, 1.24); with it off every
+    /// size draws exactly as .large does.
     func testEveryFixtureRendersInBothRoomsAppearancesAndSizes() throws {
         let sources = try Self.sources()
         XCTAssertFalse(sources.isEmpty, "the coach home fixtures")
@@ -132,6 +144,8 @@ final class CoachHomeRenderTests: XCTestCase {
             for (roomName, _, model) in try Self.models(json) {
                 let shows = !Self.shown(model).isEmpty
                 for screen in Self.screens {
+                    var tabs: [UIImage] = []
+                    var heights: [CGFloat] = []
                     for (sizeName, size) in Self.sizes {
                         let what = "\(name) \(roomName) \(screen.name) \(sizeName)"
                         let light = CoachRenderTests.render(Phone(model: model, size: size, screen: screen), size: screen.size, phone: .light)
@@ -145,6 +159,8 @@ final class CoachHomeRenderTests: XCTestCase {
                         }
                         XCTAssertLessThan(CoachRenderTests.difference(light, dark), 0.001,
                                           "\(what): the hub wears its room whatever the phone's setting")
+                        tabs.append(light)
+                        heights.append(Self.columnHeight(model, size, on: screen))
                         try write(light, "\(name)/\(screen.folder)\(roomName)-light-\(sizeName).png")
                         try write(dark, "\(name)/\(screen.folder)\(roomName)-dark-\(sizeName).png")
                         if shots != nil {
@@ -153,6 +169,22 @@ final class CoachHomeRenderTests: XCTestCase {
                             try write(whole, "\(name)/\(screen.folder)\(roomName)-full-\(sizeName).png")
                         }
                         count += 1
+                    }
+                    // Larger Text: the web zoom's 1, 1.12, 1.24 with the toggle on, and no further; nothing with it off
+                    let what = "\(name) \(roomName) \(screen.name)"
+                    let capped = CoachRenderTests.render(Phone(model: model, size: .accessibility3, screen: screen), size: screen.size, phone: .light)
+                    XCTAssertLessThan(CoachRenderTests.difference(capped, tabs[2]), 0.001,
+                                      "\(what): an accessibility size draws as .xxLarge does (the web zoom's cap)")
+                    XCTAssertEqual(Self.columnHeight(model, .accessibility3, on: screen), heights[2], accuracy: 0.5,
+                                   "\(what): the column at an accessibility size is .xxLarge's (\(heights))")
+                    if !model.dynTypeOn {
+                        for (i, (sizeName, _)) in Self.sizes.enumerated().dropFirst() {
+                            XCTAssertLessThan(CoachRenderTests.difference(tabs[i], tabs[0]), 0.001, "\(what): Larger Text off, \(sizeName) draws as .large does")
+                            XCTAssertEqual(heights[i], heights[0], accuracy: 0.5, "\(what): Larger Text off, \(sizeName)'s column is .large's (\(heights))")
+                        }
+                    } else if shows {
+                        XCTAssertGreaterThan(heights[1], heights[0] + 1, "\(what): Larger Text on, .xLarge's column is taller than .large's (\(heights))")
+                        XCTAssertGreaterThan(heights[2], heights[1] + 1, "\(what): and .xxLarge's taller than .xLarge's (\(heights))")
                     }
                 }
             }
