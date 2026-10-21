@@ -20561,11 +20561,14 @@ function resetCustomRoutine(){
 
 function setApiKey(k){if(k)localStorage.setItem('kt_apikey',k.trim());else localStorage.removeItem('kt_apikey');}
 
+// The one invalid-key toast: the Coach tab's connect screen, Settings > AI Coach and the native connect screen
+// (coachHome.setKey) say the same.
+var _KEY_BAD='Invalid key — Anthropic keys start with sk-ant-';
 function saveApiKey(){
   var inp=document.getElementById('coach-key-input');
   if(!inp)return;
   var k=inp.value.trim();
-  if(!k||!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
+  if(!k||!k.startsWith('sk-ant-')){showToast(_KEY_BAD,'err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -22421,7 +22424,7 @@ function saveApiKeyFromSettings(){
   var el=document.getElementById('settingsApiKeyInput');
   if(!el||!el.value.trim()){showToast('Enter a key first');return;}
   var k=el.value.trim();
-  if(!k.startsWith('sk-ant-')){showToast('Invalid key — Anthropic keys start with sk-ant-','err');return;}
+  if(!k.startsWith('sk-ant-')){showToast(_KEY_BAD,'err');return;}
   setApiKey(k);
   showToast('API key saved');
   _pingApiKey(k);
@@ -25034,7 +25037,8 @@ function _coachModel(){
 
 // ── Intents: the shell calls window.FPScreens.call(name, args) ──
 // Answers {ok:true, ...} or {ok:false, error}: the page's own reasons (busy, stale, gone, idle, just-sent,
-// intake, not-intake, unknown-model, empty) are answers; unknown-intent, bad-args and exception are what
+// intake, not-intake, unknown-model, empty; build 61's off, nokey, invalid, has-programme, contract 4.5) are
+// answers; unknown-intent, bad-args and exception are what
 // the shell's breaker counts. Never resent by the shell; coach.send is idempotent by nonce anyway. An
 // intent acts only where the page's own screen would offer it now (the shell's model can be older).
 function _fpStr(v){ return typeof v==='string'; }
@@ -25169,6 +25173,74 @@ var _FP_INTENTS={
     _fpLog(a.screen+' off: '+(a.why || 'off')+(a.screen==='coach' && a.draft!=null ? (took ? ', its words taken' : ', its words left native') : ''), 'error');
     render();   // the web screen again, for the rest of the document
     return took ? {ok:true, took:true} : {ok:true};
+  },
+  // ── The native Coach tab's rows and connect screen (contract 4.1, 5) ──
+  // Argument checks first, then off whenever the page has not handed the Coach tab to the shell in this document, then
+  // each one's reasons in the contract's order. Each acts only where the page's own hub or connect screen
+  // (_coachHomeScreen) would offer it now, and answers once it has started: a confirm it asks is forwarded (the native
+  // Coach tab covers the page) and answered by the shell's confirm. Actions: never resent.
+  'coachHome.openChat':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    openCoachChat();   // the chat's present follows from _fpSync, its model first
+    return {ok:true};
+  },
+  // The connect screen's key (K1-K8): saveApiKey's rule without the DOM. Synchronous, so a second call finds the key
+  // saved (stale; busy never applies); a saved key is stale before an invalid one is checked, so a stale connect screen
+  // raises no toast. The secret reaches kt_apikey (setApiKey) and the ping's request header, nothing else: no log line,
+  // error text (the wrapper below logs e.message, so this catch answers itself with its own words), toast, model or
+  // other storage.
+  'coachHome.setKey':function(a){
+    try{
+      if(!_fpStr(a.secret)) return _FP_BAD;
+      if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+      if(getApiKey()) return {ok:false, error:'stale'};
+      var k=a.secret.trim();
+      if(!k || !k.startsWith('sk-ant-')){ showToast(_KEY_BAD, 'err'); return {ok:false, error:'invalid'}; }
+      setApiKey(k);
+      showToast('API key saved');
+      _pingApiKey(k);   // fire and forget: the answer never waits for the network
+      render();
+      return {ok:true};
+    }catch(e){ _fpLog('coachHome.setKey failed', 'error'); return {ok:false, error:'exception'}; }
+  },
+  // The three that ask first answer stale while the native Coach tab does not cover the page (a tab change crossed the
+  // tap, P-D10), so no web sheet opens over another tab.
+  'coachHome.disconnect':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    if(!_fpCovered()) return {ok:false, error:'stale'};
+    clearApiKey();   // yes: the key goes, "Key removed", and the model's route becomes connect
+    return {ok:true};
+  },
+  // The hub's Clear Chat History needs messages, and a key: with none the connect screen stands, so a tap on an older
+  // hub is stale.
+  'coachHome.clearChat':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!coachMessages.length) return {ok:false, error:'empty'};
+    if(!getApiKey() || !_fpCovered()) return {ok:false, error:'stale'};
+    _confirmClearChat();
+    return {ok:true};
+  },
+  // Build My Programme: the hub offers it only without a programme; never over setup already running. Over an existing
+  // chat it asks first; setup then presents the chat in setup mode (Cancel, no Back).
+  'coachHome.startIntake':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(!getApiKey()) return {ok:false, error:'nokey'};
+    if(hasCustomRoutine()) return {ok:false, error:'has-programme'};
+    if(intakeMode) return {ok:false, error:'intake'};
+    if(!_fpCovered()) return {ok:false, error:'stale'};
+    startRoutineIntake();   // not awaited: setup's first turn runs on
+    return {ok:true};
+  },
+  // The connect screen's starter link (only without a programme). The starter is a web overlay: the page selects Log
+  // through its own switchTab (selectTab, no echo) before it paints the overlay, which is announced (sheets).
+  'coachHome.openStarter':function(){
+    if(!_fp.shown.coachHome) return {ok:false, error:'off'};
+    if(hasCustomRoutine()) return {ok:false, error:'has-programme'};
+    switchTab('log');
+    openStarterIntake();
+    return {ok:true};
   }
 };
 // The flag and TrovoShell both (_fpPlugin): build 60's store half injects the flag with no TrovoShell yet (plan
