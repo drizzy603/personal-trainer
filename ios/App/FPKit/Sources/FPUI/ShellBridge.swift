@@ -43,10 +43,26 @@ import FPCore
 ///   idle, with a new seq or rev. Warm deep links go through `deepLink(_:)`, which selects first under a live tab root
 ///   and hands the URL to `_trovoOpen` as an argument, never inside a script's source. Nothing here holds the root, its
 ///   slots, the web controller or the web view strongly: a scene's teardown frees them.
+/// - **Hello under the tab root** (H8, contract 3.2): the reply carries `tabs {selected, seq, bar}` iff `tabs` is
+///   negotiated; a page build that leaves `tabs` out (or names `tabs` without `coachHome`) declines it, and so does a
+///   version refusal. The Coach tab's modes are the scene's (contract 1.4, I13): WEB at once when a reply leaves
+///   `coachHome` out, WAITING only before the scene's first declaration with a 3 s net after each hello's answer, a NATIVE
+///   tab named in `up` and taken over by the new document; `dismiss coachHome` (the declaration's WEB half) and
+///   `coachHome` going off turn it WEB, the chat popped without animation and the page uncovered while Coach is selected.
+/// - **The fallback** (contract 10.3, D7, I14), once per scene, on the link's `fellBack`: the root's half, ScreenHost out
+///   of the Coach tab's stack, `screens.off` for the pieces the tab root's rule had negotiated (`tabs` too unless the page
+///   itself asked with `dismiss tabs`), `shell.covered {on:false}` when the Coach tab covered the page, `selectTab` and
+///   `sheets` refused `off`, every later hello classic, and a document-start script deleting the flag's `tabs`. Its
+///   triggers: a hello without `tabs` (`page`, `refused`, `policy`), `dismiss tabs` (`page`), no hello (`no-hello`), a
+///   `tabs` trip (`failures`), the policy file (`policy`), the owner's `setSwitch` (`switch`).
+/// - **The composer's words** (contract 4.2, D21): every `screens.off {screen:'coach'}` carries the native composer's
+///   unsent words, which go from the native composer only once the page answers `took: true`.
 ///
 /// - **Settings > About** asks `status` (FPCore ScreenStatus: every screen of this binary, on or off and why, whether the
-///   owner can try it again) and `reset` ("Try the native chat again": the screen's crash verdicts and breaker record go
-///   through the link's book, for the next document). The counters the owner cannot see in os_log are kept across
+///   owner can try it again; the root, the fallback, the shell's switches and the policy file's last check), `status
+///   {refresh: true}` (a forced policy fetch first, at most once a minute), `setSwitch` (the tab bar's switch) and `reset`
+///   ("Try the native chat again": the screen's crash verdicts, breaker record and decline go through the link's book,
+///   for the next document). The counters the owner cannot see in os_log are kept across
 ///   launches (FPCore ShellCounters, UserDefaults `fp.shell.counters`): the web view leaving its window while the app is
 ///   active (ShellWebView), the page going hidden under a native screen while the app is in use (the page's
 ///   `visibility`), breaker trips and crash markers.
@@ -68,6 +84,13 @@ public final class ShellBridge: NSObject {
     public struct Environment {
         /// The policy file's switches in force (FPHost FPPolicy).
         public var policy: () -> Policy = { .defaults }
+        /// The policy file's state, for the status's last check (`policy {at, result}`, contract 10.5): FPHost FPPolicy's
+        /// `state`; nil when the host keeps none.
+        public var policyState: () -> PolicyState? = { nil }
+        /// A forced fetch of the policy file now, for `status {refresh: true}` (About's "Check the switches now", contract
+        /// 3.10, D43): FPHost `FPPolicy.shared.fetchIfDue(force: true, done:)`, in every configuration (H9). `done` once
+        /// the fetch has ended, after what it changed has reached `policyChanged` (FPPolicy posts `changed` first).
+        public var fetchPolicy: (_ done: @escaping () -> Void) -> Void = { done in done() }
         /// The page's bootDone, for the store breaker (FPHost StoreAttach).
         public var bootDone: (_ page: String, _ webView: WKWebView?) -> Void = { _, _ in }
         public init() {}
@@ -151,6 +174,11 @@ public final class ShellBridge: NSObject {
         /// idle, never the failed one again. Per document: a document start clears both (hello's reply carries both).
         var restateSelect = false
         var restateBar = false
+        /// The scene's fallback (contract 10.3, 10.5), at most once: why and when, for the status.
+        var fellBack: FellBack?
+        /// A WAITING Coach tab's net (contract 1.4, D17): it turns WEB 3 s after a hello's answer that negotiated
+        /// `coachHome` unless the page declared it (a `present` or `dismiss` of `coachHome`) first.
+        var coachNet: DispatchWorkItem?
 
         init(webView: WKWebView, pageBuild: String?, link: LinkState, pageLink: PageLink, screens: ScreenHost, handler: DocumentHandler,
              launch: ShellLaunch?, tabsRoot: Bool) {
@@ -190,6 +218,19 @@ public final class ShellBridge: NSObject {
     var appActive: () -> Bool = { UIApplication.shared.applicationState == .active }
     /// The system's major version, for the gate's iOS 26 floor of `tabs` (contract 2.2, D39; tests set their own).
     var osMajor: () -> Int = { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
+    /// Every link's hello deadline and failure limit (contract 2.3, 4.4; tests shorten the deadline).
+    let linkConfig: LinkState.Config
+    /// How long a WAITING Coach tab waits for the page's declaration after a hello's answer (contract 1.4: 3 s).
+    nonisolated static let coachNetSeconds: TimeInterval = 3
+    var coachNetSeconds = ShellBridge.coachNetSeconds
+    /// `status {refresh: true}` forces a policy fetch at most once in `refreshEvery` (a refresh inside it reads the status
+    /// as it stands) and answers once the fetch has ended or after `refreshWait`, whichever comes first (contract 3.10).
+    nonisolated static let refreshEvery: TimeInterval = 60
+    nonisolated static let refreshWait: TimeInterval = 10
+    var refreshEvery = ShellBridge.refreshEvery
+    var refreshWait = ShellBridge.refreshWait
+    /// When `status {refresh}` last forced a fetch.
+    private var lastRefresh: Date?
     #if DEBUG
     var debug = ShellDebug()
     /// The launch arguments the launch reads (tests set their own).
@@ -199,9 +240,12 @@ public final class ShellBridge: NSObject {
     public static var debugHooks: [String: ([String: Any]) -> Void] = [:]
     #endif
 
-    /// `binary`: the pieces this binary has (tests that model build 60 pass `["coach"]`).
-    init(defaults: UserDefaults = .standard, folder: URL? = nil, shellBuild: String? = nil, binary: [String] = ShellContract.binaryScreens) {
+    /// `binary`: the pieces this binary has (tests that model build 60 pass `["coach"]`); `linkConfig`: every link's
+    /// (tests pass a short hello deadline).
+    init(defaults: UserDefaults = .standard, folder: URL? = nil, shellBuild: String? = nil, binary: [String] = ShellContract.binaryScreens,
+         linkConfig: LinkState.Config = LinkState.Config()) {
         self.defaults = defaults
+        self.linkConfig = linkConfig
         let build = shellBuild ?? (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "0"
         shell = ShellContract(shell: build, screens: binary)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -290,7 +334,7 @@ public final class ShellBridge: NSObject {
             return ShellInstall(screens: gate(page: pageBuild, book: b.link.book, tabsRoot: b.tabsRootDecided).on, tabsRoot: b.tabsRootDecided)
         }
         if let old = binding { detach(old, why: "a newer web view") }
-        var link = LinkState(shell: shell, book: storedBook, foreground: UIApplication.shared.applicationState != .background)
+        var link = LinkState(shell: shell, config: linkConfig, book: storedBook, foreground: UIApplication.shared.applicationState != .background)
         let now = Date()
         var fx: [LinkEffect] = []
         if !foundMarkers.isEmpty {
@@ -418,6 +462,8 @@ public final class ShellBridge: NSObject {
 
     private func detach(_ b: Binding, why: String) {
         b.helloTimer?.cancel()
+        b.coachNet?.cancel()
+        b.coachNet = nil
         b.pageLink.setBoot(nil)
         b.screens.tearDown()
         // a root that outlives its binding (a newer web view's scene) tells this bridge nothing more
@@ -594,9 +640,18 @@ public final class ShellBridge: NSObject {
             }
             done(.success([:]))
         case .dismiss(let s):
-            // `tabs`: this document left tabs mode (contract 3.6), answered ok (under a live tab root the fallback it
-            // starts is H8's); `coachHome`: the Coach tab's WEB half of the declaration is H8's. Neither is ScreenHost's.
-            if s != "tabs" && s != "coachHome" { b.screens.dismiss(s) }
+            switch s {
+            case "tabs":
+                // this document left tabs mode (contract 2.3, 3.6, D32, I14): under a live tab root the scene falls back
+                // (`page`), the page build declines `tabs`, and the page hears `screens.off` for its live pieces but none
+                // for `tabs` (it knows); under any other root (classic, fallen back) it is answered and changes nothing
+                apply(b.link.fallBack(.page, pageAsked: true), b)
+            case "coachHome":
+                // the declaration's WEB half (contract 3.6): the page draws its own Coach in the Coach tab
+                coachTurnsWeb(b, why: "the page dismissed coachHome", popChat: true)
+            default:
+                b.screens.dismiss(s)
+            }
             done(.success([:]))
         case .model(let push):
             done(.success([:]))
@@ -614,10 +669,17 @@ public final class ShellBridge: NSObject {
             default: Self.pageLog.notice("\(line.text, privacy: .public)")
             }
             done(.success([:]))
-        case .status:
-            // `refresh` (About's "Check the switches now", contract 3.10) forces a policy fetch from H8 on; until then the
-            // status as it stands
-            done(.success(status(b)))
+        case .status(let refresh):
+            guard refresh else {
+                done(.success(status(b)))
+                break
+            }
+            // About's "Check the switches now" (contract 3.10, D43): a forced policy fetch (at most once a minute), whose
+            // changes act as any fetch's do (`policyChanged`: a `tabs` off falls back at once), then the status
+            refreshPolicy { [weak self, weak b] in
+                guard let self, let b else { return done(.failure(Refusal.notThisPage)) }
+                done(.success(self.status(b)))
+            }
         case .reset(let s):
             guard shell.screens.contains(s) else {
                 done(.failure(Refusal.badMessage("reset: this binary has no \(s) screen")))
@@ -652,33 +714,66 @@ public final class ShellBridge: NSObject {
             }
             let bar = root.setSheets(open: open)
             done(.success(["bar": ["h": bar.h, "safe": bar.safe, "rev": bar.rev]]))
-        case .setSwitch(let s, _):
-            // ShellSwitches keeps the switch and the gate reads it (H6); the page's write of it, and the fallback an off
-            // starts, come with H8
-            done(.failure(Refusal.noSwitch(s)))
+        case .setSwitch(let s, let on):
+            // the shell's own device switch (contract 3.5, D5): `tabs` alone in 61, under every root of a binary that has
+            // the bar (a classic root is where the owner turns it back on). Off falls back now under a live tab root and
+            // holds at every later launch (the gate's `deviceOff`); on acts from the next launch. Answered with the status.
+            guard ShellSwitches.pieces.contains(s), shell.screens.contains(s) else {
+                done(.failure(Refusal.noSwitch(s)))
+                return
+            }
+            if !switches.set(s, on: on) {
+                Self.log.error("shell: \(ShellSwitches.fileName, privacy: .public) could not be written (UserDefaults keeps the switch)")
+            }
+            Self.log.notice("shell: the owner turned \(s, privacy: .public) \(on ? "on: from the next launch" : "off", privacy: .public) (Settings > About)")
+            if !on { apply(b.link.fallBack(.switch), b) }
+            done(.success(status(b)))
         }
         #if DEBUG
         ShellProbe.shared?.pageMessage(method, message)
         #endif
     }
 
+    /// The page's hello (contract 3.2). The link negotiates from the pieces' own checks for the hello's page build and
+    /// applies the dependency rule for the root as this hello leaves it: under a live tab root a reply that leaves `tabs`
+    /// out falls the scene back first (the page's decline, a version refusal, the policy) and is negotiated on the classic
+    /// rule, so `coach` alone may come back (60's overlay at once), and the page build's declines are recorded (`tabs`
+    /// for a hello without it or a version refusal, `coachHome` for a hello naming `tabs` without it). The fallback runs
+    /// before the reply is formed, so `up` names only what still shows. Under a live tab root the reply carries `tabs
+    /// {selected, seq, bar}` and the Coach tab follows (contract 1.4, D17, I13): WEB at once when the reply leaves
+    /// `coachHome` out, whatever its mode; a WAITING tab (only before the scene's first declaration) starts its 3 s net; a
+    /// NATIVE tab is named in `up` and taken over by the new document (its declaration: no present, no timer); a WEB tab
+    /// stays WEB. After the answer, the resync.
     private func hello(_ h: HelloRequest, _ b: Binding, at now: Date) -> (reply: [String: Any], after: () -> Void) {
-        // the pieces' own checks for the hello's page build: the link applies the dependency rule for its root (3.2)
         let answer = b.link.hello(h, ownChecks: ownChecks(page: h.page, book: b.link.book), at: now)
-        let reply = answer.reply.takingOver(b.screens.shown)
-        let fx = answer.effects
-        apply(fx, b)
+        apply(answer.effects, b)
+        var reply = answer.reply.takingOver(shownForUp(b))
+        if #available(iOS 26.0, *), let root = liveRoot(b), reply.screens.contains("tabs") {
+            if !reply.screens.contains("coachHome") {
+                coachTurnsWeb(b, why: "the hello's answer leaves coachHome out")
+            } else if root.coachMode == .waiting {
+                startCoachNet(b)
+            }
+            reply.tabs = TabsReply(selected: root.selected, seq: root.seq, bar: root.barMetrics())
+        }
         // a screen still up that this document may not have goes down (the page never had it)
         for s in b.screens.shown where !reply.up.contains(s) {
             Self.log.info("shell: \(s, privacy: .public) is not this document's: down")
             b.screens.dismiss(s)
         }
         let linked = b.link.link
-        Self.log.notice("fp: hello page \(h.page, privacy: .public) boot \(h.boot ?? "-", privacy: .public): v\(reply.v) \(reply.screens.joined(separator: ","), privacy: .public)\(reply.up.isEmpty ? "" : " (up " + reply.up.joined(separator: ",") + ")", privacy: .public)\(reply.why.map { " refused: " + $0 } ?? "", privacy: .public)")
+        Self.log.notice("fp: hello page \(h.page, privacy: .public) boot \(h.boot ?? "-", privacy: .public): v\(reply.v) \(reply.screens.joined(separator: ","), privacy: .public)\(reply.up.isEmpty ? "" : " (up " + reply.up.joined(separator: ",") + ")", privacy: .public)\(reply.tabs.map { " tabs " + $0.selected + " seq \($0.seq)" } ?? "", privacy: .public)\(reply.why.map { " refused: " + $0 } ?? "", privacy: .public)")
         let up = reply.up
         let after: () -> Void = { [weak self, weak b] in
             guard let self, let b, let linked, b.link.link == linked else { return }
-            for s in up { self.resync(s, b) }
+            if self.hasLiveRoot(b) {
+                // contract 3.2: covered for the selected tab's mode (a WAITING or NATIVE Coach tab covers the page), the
+                // chat's snapshot when it is pushed; never `tabs.select` (the reply carries the selection)
+                if self.coachCovers(b) { self.send(.shellCovered(on: true), b) }
+                if up.contains("coach") { self.resync("coach", b, covered: false) }
+            } else {
+                for s in up { self.resync(s, b) }
+            }
             #if DEBUG
             if self.debug.smoke { self.smoke(b) }
             #endif
@@ -686,11 +781,20 @@ public final class ShellBridge: NSObject {
         return ((reply.json.foundation as? [String: Any]) ?? [:], after)
     }
 
-    /// A screen still up from the document before: the page has taken it over; it hears it is covered again and the
-    /// screen draws this document's model (a snapshot, decoded and applied inside its model marker, as a push is).
-    /// Nothing from the document before is sent again.
-    private func resync(_ screen: String, _ b: Binding) {
-        send(.shellCovered(on: true), b)
+    /// What a new document takes over (`up`, contract 3.2): the screens ScreenHost shows, and under a live tab root the
+    /// Coach tab while it is NATIVE (`coachHome`), in the binary's order.
+    private func shownForUp(_ b: Binding) -> [String] {
+        var shown = Set(b.screens.shown)
+        if #available(iOS 26.0, *), let root = liveRoot(b), root.coachMode == .native { shown.insert("coachHome") }
+        return shell.screens.filter(shown.contains) + shown.subtracting(shell.screens).sorted()
+    }
+
+    /// A screen still up from the document before: the page has taken it over; it hears it is covered again (60's overlay;
+    /// under a tab root the resync covers the page for the Coach tab's mode instead) and the screen draws this document's
+    /// model (a snapshot, decoded and applied inside its model marker, as a push is). Nothing from the document before is
+    /// sent again.
+    private func resync(_ screen: String, _ b: Binding, covered: Bool = true) {
+        if covered { send(.shellCovered(on: true), b) }
         guard screen == "coach" else { return }
         b.pageLink.send(.coachSnapshot) { [weak self, weak b] outcome in
             guard let self, let b else { return }
@@ -927,7 +1031,26 @@ public final class ShellBridge: NSObject {
 
     // MARK: Effects
 
+    /// The link's effects of one event, in order. A fallback's event runs whole inside one `tabs` short section (contract
+    /// 10.2, 10.3): the root's half first (`fellBack` opens the event), then the `screens.off` it brings, then
+    /// `shell.covered {on:false}` when the Coach tab had covered the page.
     private func apply(_ fx: [LinkEffect], _ b: Binding) {
+        guard !fx.isEmpty else { return }
+        if fx.contains(where: Self.isFallBack) {
+            section("tabs") { applyEvent(fx, b) }
+        } else {
+            applyEvent(fx, b)
+        }
+    }
+
+    private func applyEvent(_ fx: [LinkEffect], _ b: Binding) {
+        var uncover = false
+        // `coachHome` off under a live tab root (a trip, the policy, the chat's own off taking it along, contract 8.3,
+        // 10.1): the Coach tab turns WEB before the event's offs pop the chat, so the pop is made without animation. A
+        // fallback turns it WEB through the root's own half.
+        if !fx.contains(where: Self.isFallBack), fx.contains(where: { Self.isOff($0, "coachHome") }) {
+            coachTurnsWeb(b, why: "coachHome went off")
+        }
         for e in fx {
             switch e {
             case .linked(let l):
@@ -946,16 +1069,14 @@ public final class ShellBridge: NSObject {
                     saveCounters()
                 }
                 if b.screens.isUp(screen) { b.screens.dismiss(screen) }
-                if b.link.link != nil { send(.screensOff(screen: screen, why: reason.code), b) }
+                if b.link.link != nil { sendOff(screen, why: reason.code, b) }
             case .breakersReset(let page):
                 Self.log.info("shell: a new page build (\(page, privacy: .public)) starts the screens' breakers clean")
             case .bookChanged:
                 saveBook(b.link.book)
             case .fellBack(let why):
-                // no scene adopts a tab root before H7, so the link never falls one back yet. H8 runs the root's
-                // fallback here, first among the event's effects (the bar hidden, the web view shown, the chat popped
-                // without animation, the Coach tab dropped); the screenOffs after it only tell the page (10.3)
-                Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public))")
+                // first among the event's effects: the screenOffs after it find nothing native left and only tell the page
+                if fallBackRoot(why, b) { uncover = true }
             case .pingWhenIdle:
                 // a state intent's timeout is held (contract 4.4): the ping confirms it, at the end of the queue. An
                 // answer or a failure reaches the link through finished(); a ping that ends with neither (its document
@@ -968,13 +1089,136 @@ public final class ShellBridge: NSObject {
                 }
             }
         }
+        // after the event's screens.off (contract 10.3): the page the Coach tab covered is uncovered
+        if uncover { send(.shellCovered(on: false), b) }
+    }
+
+    nonisolated private static func isFallBack(_ e: LinkEffect) -> Bool {
+        if case .fellBack = e { return true }
+        return false
+    }
+
+    nonisolated private static func isOff(_ e: LinkEffect, _ screen: String) -> Bool {
+        if case .screenOff(let s, _) = e { return s == screen }
+        return false
+    }
+
+    /// `screens.off {screen, why, draft?}` (contract 4.2, D21). For `coach`, whatever the reason and the root, the native
+    /// composer's unsent words go along (`CoachStore.handOverDraft()`: trimmed, none when empty; a picked photo stays
+    /// native), and the composer empties only when the page answers `took: true`: it says so once it holds them durably
+    /// (`kt_coach_handover`, G18), and the native copy (`fpDraft.coach`) outlives a relaunch while the web composer does
+    /// not. An answer without `took`, a refusal, an error or a timeout leaves them for the next native chat.
+    private func sendOff(_ screen: String, why: String, _ b: Binding) {
+        guard screen == "coach" else { return send(.screensOff(screen: screen, why: why), b) }
+        let words = b.screens.coach.handOverDraft()
+        send(.screensOff(screen: screen, why: why, draft: words), b) { [weak b] outcome in
+            guard let b, let words else { return }
+            var took = false
+            if case .answered(.done(let reply)) = outcome { took = reply.value["took"]?.bool == true }
+            b.screens.coach.handedOver(words, taken: took)
+        }
+    }
+
+    // MARK: The fallback and the Coach tab's modes (contract 1.4, 3.6, 10.3)
+
+    /// Added at the scene's fallback, after the flag's script (contract 10.3, H-G3): the scene's later documents find no
+    /// `tabs` in `window.__FP_SHELL` and boot classic, never in tabs mode under no bar.
+    nonisolated static let dropTabsScript =
+        "(function () { try { var f = window.__FP_SHELL; if (f && typeof f === 'object') { delete f.tabs; } } catch (e) {} })();"
+
+    /// The tab root falls back (contract 10.3, D7), once per scene, on the link's `fellBack` (it opens its event, inside
+    /// the event's `tabs` section): the root's half (the bar hidden for good, the web view shown in its slot, the Coach
+    /// tab WEB, any hold dropped), ScreenHost leaves the Coach tab's stack (the chat popped without animation; a later
+    /// `present coach` is 60's overlay), a WAITING tab's net goes, nothing failed is restated, and a document-start script
+    /// deletes the flag's `tabs` for the scene's later documents. The link has turned off what the tab root's rule had
+    /// negotiated and refuses `tabs` and `coachHome` at every later hello of the scene; `selectTab` and `sheets` are
+    /// refused `off` from now on (`liveRoot`). Answers whether the page should hear `shell.covered {on:false}` after the
+    /// event's `screens.off`: the Coach tab had covered it (selected, WAITING or NATIVE) and a document is linked.
+    private func fallBackRoot(_ why: FellBackWhy, _ b: Binding) -> Bool {
+        guard b.fellBack == nil else { return false }
+        let at = Date()
+        b.fellBack = FellBack(why: why, at: at)
+        b.coachNet?.cancel()
+        b.coachNet = nil
+        var covered = false
+        if #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController {
+            covered = root.fellBack == nil && root.selected == "coach" && root.coachMode != .web
+            root.fallBack(why: why, at: at)
+        }
+        b.screens.detachStack()
+        b.restateSelect = false
+        b.restateBar = false
+        b.webView?.configuration.userContentController.addUserScript(WKUserScript(source: Self.dropTabsScript,
+                                                                                  injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public)): the page's own bar from now on, classic for the rest of the scene")
+        #if DEBUG
+        ShellProbe.shared?.event("fellBack", ["why": why.rawValue])
+        #endif
+        return covered && b.pageLink.boot != nil
+    }
+
+    /// The Coach tab turns WEB (contract 1.4, 3.6, 8.3): the web view shows in the Coach slot, and while Coach is selected
+    /// the root uncovers the page (`shell.covered {on:false}`) and VoiceOver hears it. It stays WEB until a `present
+    /// coachHome` (H10). A WAITING tab's net goes. `popChat`: a pushed chat comes off too, without animation (the stack
+    /// is hidden by then). Nothing under a classic or fallen-back root, or when the tab is WEB already.
+    private func coachTurnsWeb(_ b: Binding, why: String, popChat: Bool = false) {
+        b.coachNet?.cancel()
+        b.coachNet = nil
+        guard #available(iOS 26.0, *), let root = liveRoot(b), root.coachMode != .web else { return }
+        Self.log.info("shell: the Coach tab turns WEB (\(why, privacy: .public))")
+        root.setCoachMode(.web)
+        if popChat, b.screens.isUp("coach") { b.screens.dismiss("coach") }
+    }
+
+    /// A WAITING Coach tab (only before the scene's first declaration) waits after a hello's answer that negotiated
+    /// `coachHome` for the page's `present` or `dismiss` of it, then turns WEB (contract 1.4, D17): the timer decides only
+    /// when a page fails to declare. A later hello's answer starts it again; WAITING never comes back once it has gone.
+    private func startCoachNet(_ b: Binding) {
+        b.coachNet?.cancel()
+        let seconds = coachNetSeconds
+        let work = DispatchWorkItem { [weak self, weak b] in
+            MainActor.assumeIsolated {
+                guard let self, let b else { return }
+                b.coachNet = nil
+                guard self.liveCoachMode(b) == "waiting" else { return }
+                Self.log.error("shell: no declaration of coachHome within \(seconds) s of the hello's answer")
+                self.coachTurnsWeb(b, why: "no declaration in \(seconds) s")
+            }
+        }
+        b.coachNet = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Whether the live tab root's Coach tab covers the page now: Coach selected, WAITING or NATIVE (contract 8.4).
+    private func coachCovers(_ b: Binding) -> Bool {
+        if #available(iOS 26.0, *), let root = liveRoot(b) { return root.selected == "coach" && root.coachMode != .web }
+        return false
     }
 
     // MARK: The policy file (FPHost FPPolicy.changed, through the App)
 
+    /// What `status {refresh: true}` does before it answers (contract 3.10, D43): a forced policy fetch through
+    /// `environment.fetchPolicy`, at most once in `refreshEvery` (a refresh inside it reads the status as it stands);
+    /// `then` runs once the fetch has ended (what it changed has reached `policyChanged` by then) or after `refreshWait`,
+    /// whichever comes first.
+    private func refreshPolicy(_ then: @escaping () -> Void) {
+        let now = Date()
+        if let last = lastRefresh, now >= last, now.timeIntervalSince(last) < refreshEvery {
+            Self.log.info("shell: status refresh inside the minute: the switches as they stand")
+            return then()
+        }
+        lastRefresh = now
+        let once = AnswerOnce(then)
+        Self.log.notice("shell: status refresh: the policy file is fetched now")
+        environment.fetchPolicy { once.fire() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + refreshWait) { MainActor.assumeIsolated { once.fire() } }
+    }
+
     /// The policy file moved these screens' switches: one turned off goes down now, for the rest of the document (the
-    /// page shows its own); one turned on is back from the next document. `tabs` turned off under a live tab root falls
-    /// the root back at once (LinkState's withdraw: `fellBack(.policy)` first, then `screens.off` for the pieces).
+    /// page shows its own); one turned on is back from the next document (`tabs`: from the next launch). `tabs` turned
+    /// off under a live tab root falls the root back at once (LinkState's withdraw: `fellBack(.policy)` first, then
+    /// `screens.off` for the pieces); `coachHome` turned off turns the Coach tab WEB at once (the chat popped, covered
+    /// off while Coach is selected) and `coach` off takes `coachHome` with it under a live tab root (joint, contract 10.1).
     public func policyChanged(screens: [String]) {
         guard let b = binding else { return }
         let policy = environment.policy()
@@ -1045,15 +1289,22 @@ public final class ShellBridge: NSObject {
 
     // MARK: Settings > About
 
-    /// TrovoShell `status` (FPCore ScreenStatus): every screen of this binary for the page build being served, on or off
-    /// and why, whether this document shows it, and the counters (this launch's and in all).
+    /// TrovoShell `status` (FPCore ScreenStatus; contract 3.10, 10.5): every screen of this binary for the page build being
+    /// served, on or off and why (the gate on the root as it stands: after a fallback the bar's own reason, or `needs:
+    /// ["root"]` when its checks pass again, and `page` for a decline), whether this document shows it, and the counters
+    /// (this launch's and in all, the strays and `leftAny` among them); the root built at scene connect (a fallen-back tab
+    /// root stays `tabs`), the fallback (`{why, at}`), the shell's own switches and the policy file's last check.
     func status(_ b: Binding) -> [String: Any] {
         let page = b.link.pageBuild ?? b.pageBuild
         var launch = launchCounts
         launch.leftWindow = ShellWebView.leftWindowWhileActive
+        var own: [String: Bool] = [:]
+        for p in ShellSwitches.pieces where shell.screens.contains(p) { own[p] = switches.isOn(p) }
         let json = ScreenStatus.json(shell: shell.shell, page: page, binary: shell.screens,
                                      gate: gate(page: page, book: b.link.book, tabsRoot: b.link.tabsRoot),
-                                     live: b.link.liveScreens, book: b.link.book, counters: counters, launch: launch)
+                                     live: b.link.liveScreens, book: b.link.book, counters: counters, launch: launch,
+                                     root: b.tabsRootDecided ? .tabs : .classic, fellBack: b.fellBack, switches: own,
+                                     policy: environment.policyState())
         return (json.foundation as? [String: Any]) ?? [:]
     }
 
@@ -1216,6 +1467,23 @@ public struct ShellLaunch: Sendable {
 
     /// The flag's `tabs` for a tab root (contract 2.2): the first frame's tab and the bar guess.
     public var flag: TabsFlag { TabsFlag(selected: first, h: barGuess.h, safe: barGuess.safe) }
+}
+
+/// A callback run at most once, by whichever of its callers comes first (`status {refresh}`: the fetch's end or the
+/// wait's).
+@MainActor
+private final class AnswerOnce {
+    private var body: (() -> Void)?
+
+    init(_ body: @escaping () -> Void) {
+        self.body = body
+    }
+
+    func fire() {
+        let b = body
+        body = nil
+        b?()
+    }
 }
 
 /// What `install` decided for a web view: the screens its first document may present (the flag's `screens`) and whether
