@@ -1173,12 +1173,22 @@ final class ShellBridgeTabsTests: XCTestCase {
     /// H8 test 6 (contract 2.3, 3.6, 10.3, D32, I14): the page's `dismiss {screen:'tabs'}` under a live tab root falls
     /// the scene back within that one message (`page`: never two bars), declines `tabs` for the page build, and the page
     /// hears `screens.off` for its live `coach` and `coachHome` (`needs`) but none for `tabs`; sent again (the page's
-    /// failsafe), and under a classic root, it is answered and changes nothing.
+    /// failsafe), and under a classic root, it is answered and changes nothing. The whole event runs inside one `tabs`
+    /// section (contract 10.2, 10.3): each `screens.off` is queued while `section.tabs.marker` reads inside.
     func test19DismissTabsFallsBackDeclinesAndSendsNoScreensOffForTabs() async throws {
         let s = try await scene(first: "settings")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
+        let marker = s.bridge.folder.appendingPathComponent("section.tabs.marker")
+        var queuedIn: [UInt8] = []
+        let earlier = b.pageLink.onRecord
+        b.pageLink.onRecord = { r in
+            earlier?(r)
+            if r.name == "screens.off", !r.sent, r.outcome == nil { queuedIn.append((try? Data(contentsOf: marker))?.last ?? 0) }
+        }
         _ = try await message(s, "dismiss", ["screen": "tabs"]).get()
+        XCTAssertEqual(queuedIn, [SectionMarker.inside, SectionMarker.inside], "the offs go out inside the fallback's section")
+        XCTAssertEqual((try? Data(contentsOf: marker))?.last, SectionMarker.outside, "and it ended with the event")
         XCTAssertEqual(root.fellBack?.why, .page)
         XCTAssertTrue(root.isTabBarHidden, "hidden by the answer: never two bars (I14)")
         XCTAssertEqual(b.link.fellBackWhy, .page)
@@ -1411,6 +1421,32 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.screens.shown, ["coach"])
     }
 
+    /// A reload under the pushed chat whose new page leaves `tabs` out (an OTA page with `FP_TABS` false, contract 2.5,
+    /// 10.3): the scene falls back at the hello before the reply is formed, so the chat that went with the Coach tab's
+    /// stack is not named in `up` and is not resynced; the hello gets the classic rule (60's overlay chat on offer).
+    func test24bAReloadWhoseHelloLeavesTabsOutDropsThePushedChatBeforeTheReply() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        root.setHome(s.home)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        try await load(s)
+        let h = try await hello(s, ["coach"], boot: "b2")
+        XCTAssertEqual(h["screens"] as? [String], ["coach"], "the classic rule")
+        XCTAssertNil(h["up"], "the chat went with the stack: nothing to take over")
+        XCTAssertNil(h["tabs"])
+        XCTAssertEqual(root.fellBack?.why, .page)
+        XCTAssertEqual(root.coachSlot.nav.viewControllers.count, 1)
+        XCTAssertEqual(b.screens.shown, [])
+        XCTAssertFalse(b.screens.stackAttached)
+        try await sleep(0.3)
+        let resynced = await got(s).map(\.name)
+        XCTAssertEqual(resynced, [], "no snapshot, no covered: nothing of the chat is this document's")
+    }
+
     // MARK: 25. Status (H8 test 12)
 
     /// H8 test 12 (contract 3.10, 10.5): the status names the root built at scene connect (`tabs`, still after a
@@ -1597,6 +1633,39 @@ final class ShellBridgeTabsTests: XCTestCase {
         _ = try await message(s, "status", ["refresh": true]).get()
         XCTAssertEqual(f.count, 3)
         XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(t0), 0.45, "answered after the wait")
+    }
+
+    // MARK: 28. dismiss coachHome over the pushed chat
+
+    /// The declaration's WEB half on a NATIVE Coach tab with the chat pushed (contract 3.6, 8.3): `dismiss coachHome`
+    /// turns the tab WEB at once (the web view shown, the page uncovered) and the chat comes off with it, never as the
+    /// owner's Back (no `coach.back`) and with nothing sent but covered; the page's own `dismiss coach` that follows
+    /// finds it gone.
+    func test28DismissCoachHomeOnANativeTabTakesThePushedChatOffWithIt() async throws {
+        let s = try await scene(first: "coach")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        root.setHome(s.home)
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed") { root.coachSlot.nav.viewControllers.count == 2 }
+        try await expect("the link idle") { b.pageLink.pending == 0 && b.screens.describe()["busy"] as? Bool == false }
+        _ = await js(s, "window.__got = []; 0")
+        _ = try await message(s, "dismiss", ["screen": "coachHome"]).get()
+        XCTAssertEqual(root.coachMode, .web, "at once")
+        XCTAssertFalse(s.webView.isHidden)
+        try await expect("the chat popped before the page's own dismiss") {
+            root.coachSlot.nav.viewControllers.count == 1 && b.screens.shown.isEmpty
+        }
+        _ = try await message(s, "dismiss", ["screen": "coach"]).get()
+        try await sleep(0.3)
+        let names = await got(s).map(\.name)
+        XCTAssertEqual(names, ["shell.covered"], "covered off alone: no coach.back, no screens.off")
+        let covered = await calls(s, "shell.covered")
+        XCTAssertEqual(covered.map(\.on), [false])
+        XCTAssertEqual(b.screens.transitions, ["present coach", "dismiss coach"], "the shell's pop, once")
+        XCTAssertNil(root.fellBack)
+        XCTAssertTrue(b.link.isLive("tabs"))
     }
 }
 
