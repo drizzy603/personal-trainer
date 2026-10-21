@@ -73,6 +73,11 @@ final class CoachHomeModelTests: XCTestCase {
         XCTAssertEqual(m.tokens.size(.homeTitle), 70)
         XCTAssertEqual(m.tokens.size(.homeGreet), 15)
         XCTAssertEqual(m.tokens.sizes["homeBadge"], 8, "a newer page's size is kept for a newer view")
+        // every other hub size the file sends is Heavyweight's compiled one (Tools/coach-home-fixtures.js's table and
+        // Tokens.swift held in step; the group head and CTA label at 10 in this room)
+        for t in TypeToken.home where t != .homeTitle {
+            XCTAssertEqual(m.tokens.size(t), Tokens.heavyweight.size(t), "forward-compat \(t.rawValue)")
+        }
         // the connect block draws under the other route; its CTA is the page's
         let c = try XCTUnwrap(m.connect)
         XCTAssertEqual(c.cta, .init(label: "UPGRADE", title: "Unlock coaching"))
@@ -102,6 +107,9 @@ final class CoachHomeModelTests: XCTestCase {
         XCTAssertEqual(m.groups.first?.rows.first?.sub, "3 exchanges · Push day went well ")
         XCTAssertEqual(m.tokens.size(.homeTitle), 56)
         XCTAssertEqual(m.tokens.rejected, [])
+        for t in TypeToken.home {
+            XCTAssertEqual(m.tokens.size(t), Tokens.lime.size(t), "lone-surrogates \(t.rawValue): Lime's compiled size")
+        }
         for s in [m.hero.greet, m.hero.title, m.groups[0].rows[0].sub ?? ""] {
             XCTAssertEqual(JSONText.loneSurrogates(in: s), 0)
         }
