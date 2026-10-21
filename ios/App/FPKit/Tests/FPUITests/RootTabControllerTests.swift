@@ -1202,11 +1202,17 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertEqual(r.nav.viewControllers.first, r.home)
 
         let w = rig()
+        w.root.setCoachMode(.native)
+        XCTAssertEqual(w.root.coachMode, .waiting, "NATIVE needs a home")
         w.root.setCoachMode(.web)
         XCTAssertEqual(w.root.coachMode, .web, "WAITING turns WEB")
         w.root.setCoachMode(.waiting)
         XCTAssertEqual(w.root.coachMode, .web)
         XCTAssertTrue(w.covered.isEmpty, "Coach not selected: nothing to cover")
+        w.root.setHome(w.home)
+        XCTAssertEqual(w.root.coachMode, .native)
+        XCTAssertTrue(w.covered.isEmpty, "Coach not selected: nothing to cover")
+        XCTAssertEqual(w.shown, [false, false], "ScreenHost hears every mode change (Coach not shown)")
 
         // describe: every field of contract 15.3, at most 50 runs, one onFunnelRun per run
         r.clear()

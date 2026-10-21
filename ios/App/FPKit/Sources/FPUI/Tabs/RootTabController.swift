@@ -434,9 +434,11 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
 
     // MARK: The Coach tab
 
-    /// The Coach tab's mode (contract 1.4, I13): WAITING only ever leaves, and after the fallback the tab stays WEB. On
-    /// the selected tab editing ends first, the page is covered when the tab turns NATIVE and uncovered when it turns WEB,
-    /// the bar follows, and VoiceOver hears the new content; turning WEB drops any hold.
+    /// The Coach tab's mode (contract 1.4, I13): WAITING only ever leaves, NATIVE needs a home (`setHome`), and after the
+    /// fallback the tab stays WEB. On the selected tab editing ends first, the page is covered when the tab turns NATIVE
+    /// (from WEB or WAITING: `coachHome` presented while Coach is selected, contract 8.4, so the bridge sends no covered of
+    /// its own for it) and uncovered when it turns WEB, the bar follows, and VoiceOver hears the new content (the hub, or
+    /// the page); turning WEB drops any hold.
     public func setCoachMode(_ m: CoachMode) {
         guard m != coachMode else { return }
         guard m != .waiting else {
@@ -444,6 +446,10 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
             return
         }
         guard fellBack == nil else { return }
+        guard m != .native || coachSlot.home != nil else {
+            Self.log.error("tabs: the Coach tab turns NATIVE only on a home (setHome)")
+            return
+        }
         let shown = selected == "coach"
         if shown {
             hooks.section(true)
