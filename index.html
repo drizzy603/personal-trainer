@@ -24674,7 +24674,8 @@ function _fpHello(){
 // and declared with no present: this document's declaration, so the shell's NATIVE tab waits on no timer; its model
 // goes at the next pass), else dismissed. Then the chat, only on the Coach tab the shell shows, over a Coach tab this
 // page has taken, with a key: the page adopts the view the shell shows (a new document starts on the hub), else it is
-// dismissed (the shell pops it without animation).
+// dismissed (the shell pops it without animation). tabs is never up (the root is not presented), and a dismiss of it
+// would say this document left tabs mode, so the page never sends one from here.
 function _fpTakeOver(up){
   var P=_fpPlugin();
   var drop=function(s){
@@ -24687,7 +24688,7 @@ function _fpTakeOver(up){
       else { _fp.declared.coachHome='dismiss'; drop('coachHome'); }
     }
     up.forEach(function(s){
-      if(s==='coachHome') return;
+      if(s==='coachHome' || s==='tabs') return;
       if(s==='coach' && currentTab==='coach' && _fp.shown.coachHome && _fpLive(s) && !!getApiKey()){
         if(!intakeMode) coachView='chat';
         _fp.shown[s]=true;
