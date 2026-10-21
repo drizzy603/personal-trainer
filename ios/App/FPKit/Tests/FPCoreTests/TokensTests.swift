@@ -85,12 +85,14 @@ final class TokensTests: XCTestCase {
 
     /// The Coach tab's 16 hub sizes (contract 6.2's table, D33): per room, at the large text size, from the room
     /// CSS. The page sends the same values in CoachHomeModel's `tokens.type` (CoachHomeModelTests holds the
-    /// page-built files to them).
+    /// page-built files to them). Heavyweight's group head (CONVERSATION, PROGRAMME, ACCOUNT) and CTA label (CONNECT)
+    /// are 10, as the web computes them in that room (index.html 2045-2046, a later room rule than the 9 px of 1561
+    /// and 1545 that contract 6.2's table cites); Lime's stay 9, and the field label is 9 in both.
     func testHomeTypeScalePerRoom() {
         let expected: [TypeToken: (heavyweight: Double, lime: Double)] = [
             .homeMeta: (10, 10), .homeAvatar: (13, 13), .homeGreet: (15, 14), .homeTitle: (74, 56),
-            .homeTitleMin: (54, 43), .homeBody: (15, 14), .homeGroupHead: (9, 9), .homeRowTitle: (14, 14),
-            .homeRowSub: (11.5, 11.5), .homeFieldLabel: (9, 9), .homeField: (16, 16), .homeCtaLabel: (9, 9),
+            .homeTitleMin: (54, 43), .homeBody: (15, 14), .homeGroupHead: (10, 9), .homeRowTitle: (14, 14),
+            .homeRowSub: (11.5, 11.5), .homeFieldLabel: (9, 9), .homeField: (16, 16), .homeCtaLabel: (10, 9),
             .homeCtaTitle: (18, 18), .homeCtaArrow: (22, 22), .homeHelp: (12, 12), .homeLink: (14, 14),
         ]
         XCTAssertEqual(Set(expected.keys), Set(TypeToken.home), "the table names every home* token")
@@ -98,6 +100,8 @@ final class TokensTests: XCTestCase {
             XCTAssertEqual(Tokens.heavyweight.size(t), v.heavyweight, "heavyweight \(t.rawValue)")
             XCTAssertEqual(Tokens.lime.size(t), v.lime, "lime \(t.rawValue)")
             XCTAssertEqual(Tokens.defaults(for: .other("ocean"), paper: false).size(t), v.lime, "an unknown dark room: Lime's")
+            XCTAssertEqual(Tokens.defaults(for: .other("ocean"), paper: true).size(t), v.heavyweight,
+                           "an unknown paper room: Heavyweight's")
         }
         XCTAssertEqual(Tokens.heavyweight.size(.homeField), 16, "no editable field under 16 pt (spec 115)")
         XCTAssertLessThan(Tokens.heavyweight.size(.homeTitleMin), Tokens.heavyweight.size(.homeTitle))
