@@ -20,12 +20,17 @@ import FPCore
 /// How this host is driven (probed on iOS 27.0's simulator): SwiftUI vends its accessibility elements to a test only
 /// outside a scroll view (inside one it vends none without an accessibility client such as VoiceOver), so the walks
 /// lay the same column out unscrolled (`CoachHomeOptions.unscrolledWidth`), with the accessibility switches on for
-/// the class (below). UIKit's own accessibility is not loaded in a test host, so the secure field shows up in the walk
-/// as its `UITextField` (the platform view SwiftUI hands VoiceOver) with no label: the walks cannot hear the field's
-/// name, so `testTheKeyFieldIsLabelledWithTheFieldLabel` holds it in the view's source, and the app's own check (N15's
-/// coachtab scenario, where VoiceOver's runtime is loaded) hears it. A press goes through `accessibilityActivate()`,
-/// as the probe's `press` does; keys and Return reach SwiftUI's text field as UIKit delivers them, the field's
-/// editing-changed and primary actions sent to their targets (`UIControl.sendActions` does not reach them in this host).
+/// the class (below). UIKit's and SwiftUI's accessibility bundles are not loaded in a test host, so the secure field
+/// shows up in the walk as its `UITextField` (the platform view SwiftUI hands VoiceOver, with no node of its own) and
+/// no label: its label is computed only by SwiftUI's accessibility bundle (probed: loaded by hand into this process,
+/// the bundles answer `_accessibilityAXAttributedLabel` "Anthropic API Key" for the field, while `accessibilityLabel`
+/// stays nil), and loading them would change every later test in the run. So the walks cannot hear the field's name,
+/// and `testTheKeyFieldIsLabelledWithTheFieldLabel`, which holds it in the view's source, is for now the only check
+/// of it: no app scenario looks the field up by its label yet (N15's coachtab seeds a key, so the connect screen never
+/// shows; T20's connect focuses the top screen's first text input and presses CONNECT by its label). A press goes
+/// through `accessibilityActivate()`, as the probe's `press` does; keys and Return reach SwiftUI's text field as UIKit
+/// delivers them, the field's editing-changed and primary actions sent to their targets (`UIControl.sendActions` does
+/// not reach them in this host).
 @MainActor
 final class CoachHomeViewTests: XCTestCase {
     static let screen = CGSize(width: 390, height: 844)
@@ -316,7 +321,7 @@ final class CoachHomeViewTests: XCTestCase {
     /// contract's rules (no element named the avatar's letter, the field label's text on no element but the field, no
     /// two elements with one label). The field's own label is compared when the host reports one; this host reports
     /// none (see the class notes), and says so in the report rather than passing it in silence:
-    /// `testTheKeyFieldIsLabelledWithTheFieldLabel` holds that label.
+    /// `testTheKeyFieldIsLabelledWithTheFieldLabel` holds that label in the source, the only check of it for now.
     static func check(_ got: [AXElement], against m: CoachHomeModel, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
         let want = wanted(m)
         XCTAssertEqual(got.count, want.count, "\(what): \(got.count) elements, wanted \(want.count): \(got)", file: file, line: line)
@@ -603,9 +608,11 @@ final class CoachHomeViewTests: XCTestCase {
     }
 
     /// The key field's VoiceOver name is the field label (contract 6.2, T-G11): the SecureField's title and its
-    /// accessibility label both read `CoachHomeSpeech.field`, which is `connect.label`. Held in the view's source,
-    /// because the field reports no label to a test host (see the class notes); the app's check is N15's coachtab
-    /// scenario.
+    /// accessibility label both read `CoachHomeSpeech.field`, which is `connect.label`, and nothing in the field's
+    /// declaration or where the block places it labels it again or folds it into another element (the walks hold that
+    /// it stays an element of its own, in its place). Held in the view's source because the field reports no label to a
+    /// test host (see the class notes): for now the only check of its spoken name, until an app scenario finds the
+    /// field by its label where SwiftUI's accessibility runtime is loaded.
     func testTheKeyFieldIsLabelledWithTheFieldLabel() throws {
         let connect = try XCTUnwrap(try Self.model(Self.connectJSON()).connect)
         XCTAssertEqual(CoachHomeSpeech.field(connect), connect.label)
@@ -616,6 +623,20 @@ final class CoachHomeViewTests: XCTestCase {
         XCTAssertTrue(words.contains("SecureField(text: $secret, prompt:"), "a SecureField on the block's own state: \(words)")
         XCTAssertTrue(words.contains("{ Text(verbatim: CoachHomeSpeech.field(connect)) }"), "its title is the field label")
         XCTAssertTrue(words.contains(".accessibilityLabel(Text(verbatim: CoachHomeSpeech.field(connect)))"), "its accessibility label is the field label")
+        // no second label, no element made of it, no other accessibility name on it (the tap area under it is hidden)
+        XCTAssertEqual(words.components(separatedBy: ".accessibilityLabel(").count - 1, 1, "one accessibility label on the field: \(words)")
+        for other in [".accessibilityElement(", ".accessibilityRepresentation", ".accessibilityValue(", ".accessibilityInputLabels(",
+                      ".accessibilityChildren", ".accessibilityHint("] {
+            XCTAssertFalse(words.contains(other), "nothing else names the field (\(other)): \(words)")
+        }
+        XCTAssertEqual(words.components(separatedBy: ".accessibilityHidden(true)").count - 1, 1, "one hidden part: \(words)")
+        XCTAssertTrue(words.contains(".background(HomeFieldTapArea { focused = true }.accessibilityHidden(true))"),
+                      "and it is the tap area under the field, never the field: \(words)")
+        // the block places the field bare, between the visible label and CONNECT
+        let block = try XCTUnwrap(Self.declaration("struct HomeConnectBlock: View", in: source), "the connect block")
+        let body = try XCTUnwrap(Self.declaration("var body: some View", in: block), "the block's body")
+        let bodyWords = body.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        XCTAssertTrue(bodyWords.contains("fieldLabel field cta .padding(.top, t.px(14))"), "the field placed with no modifier of its own: \(bodyWords)")
         let label = try XCTUnwrap(Self.declaration("private var fieldLabel: some View", in: source), "the visible label's declaration")
         XCTAssertTrue(label.contains(".accessibilityHidden(true)"), "the visible label is hidden, so VoiceOver never reads it twice")
     }
