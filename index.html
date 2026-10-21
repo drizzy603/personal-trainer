@@ -21438,8 +21438,8 @@ function renderCoach(){
   getWkData();   // clamps currentWeek to the programme, as this paint always has (the chat header's WK reads it)
   // The native Coach tab (tabs mode): its hub, connect screen and chat are the shell's, so an element stands in #screen
   // (the resume check never reloads) and no key field or web hub sits behind it. Keyed on the wish, not on what is up:
-  // when the wish ends (kt_native_off, a refusal, a broken model, screens.off) this render draws the web Coach the shell
-  // is about to show, before _fpSync dismisses.
+  // when the wish ends (kt_native_off, a refusal, a broken model, screens.off) this render draws the web Coach the
+  // shell is about to show, before _fpSync dismisses.
   if(_fp.tabs.mode && _fpWant('coachHome')) return _fpPlaceholder('coachHome');
   var apiKey=getApiKey();
   // ── No API key: the connect screen (even during setup); the hub ─────────────
@@ -24759,7 +24759,8 @@ function _fpRefused(s, e){
   _fpLog(s+' not presented: '+((e && e.message) || e), 'error');
   render();
 }
-// A screen's model (contract 3.7): the chat's takes the next rev itself, the Coach tab's and the bar's take the caller's.
+// A screen's model (contract 3.7): the chat's takes the next rev itself, the Coach tab's and the bar's take the
+// caller's.
 function _fpModel(s, rev){ return s==='coach' ? _coachModel() : s==='coachHome' ? _coachHomeModel(rev) : s==='tabs' ? _tabsModel(rev) : null; }
 // Pushes the chat's model; false when the page could not build it (then the screen is off).
 function _fpPushNow(s){
@@ -24782,11 +24783,12 @@ function _fpPushModel(s, force){
   try{ Promise.resolve(P.model({screen:s, rev:m.rev, json:_nativeJSON(m)})).catch(function(){}); }catch(e){}
   return true;
 }
-// One deferred check per task, from _fpSync: the bar's model while tabs mode is live, the Coach tab's while the page has
-// handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred because applyTheme
-// repaints (_paintTheme renders) before it sets currentTheme: a check inside that paint would send the old room.
+// One deferred check per task, from _fpSync: the bar's model while tabs mode is live, the Coach tab's while the page
+// has handed it to the shell (whether or not Coach shows, so a tap opens on a current hub). Deferred because applyTheme
+// repaints (_paintTheme renders) before it sets currentTheme: a check inside that paint would send the old room. No
+// timer when neither can go (classic mode: build 60's chat and 61's classic root run as before).
 function _fpModelsSoon(){
-  if(_fp.modelsT) return;
+  if(_fp.modelsT || !(_fpTabsLive() || _fp.shown.coachHome)) return;
   _fp.modelsT=setTimeout(function(){
     _fp.modelsT=null;
     try{
@@ -24795,9 +24797,9 @@ function _fpModelsSoon(){
     }catch(e){ _fpLog('models: '+((e && e.message) || e), 'error'); }
   }, 0);
 }
-// The page could not build a screen's model (a page bug): the web screen for the rest of the document. The Coach tab's
-// dismiss is its declaration, sent by the render's pass (shown or not); a broken bar model leaves the bar to the shell's
-// own values.
+// The page could not build a screen's model (a page bug): the web screen for the rest of the document. The Coach
+// tab's dismiss is its declaration, sent by the render's pass (shown or not); a broken bar model leaves the bar to the
+// shell's own values.
 function _fpBroken(s, e){
   _fpLog(s+' model failed: '+((e && e.message) || e), 'error');
   _fp.off[s]='model';
@@ -24813,16 +24815,18 @@ function _fpPushSoon(){
 }
 // ── The handed-over words (contract 4.2, D21, I16; plan P-D15) ──
 // When the shell takes the native chat away (screens.off {screen:'coach', draft}) the page takes its composer's unsent
-// words into the web composer, by CoachStore's putBack rule, and stores the merged words in kt_coach_handover before it
-// answers took (the web composer lives in memory only; the shell drops its copy on took). The key is raw text and
-// device-only: in neither BACKUP_KEYS nor RAW_STRING_KEYS (no backup or restore carries it), in FP_BOOKKEEPING (Storage's
-// Put back never offers stale words), mirrored to the native copy as every kt_* write is. While it exists it follows the
-// web composer (render's draft capture, the page hidden); it goes once the composer is emptied, once its words are sent
-// from either composer, or once a native composer takes them back as the page's draft (coach.draftTaken). At boot the
-// web composer starts from it. So the words always sit in at least one durable place, and in one composer at a time.
-// CoachStore's putBack (FPUI/Coach/CoachStore.swift; the shared vectors Fixtures/draft/putback.json): the words, trimmed,
-// go into the composer: words empty after trimming leave it as it is, a composer empty after trimming becomes the words,
-// one that already holds them (a UTF-16 match) is left as it is, any other becomes the words, a line feed, then itself.
+// words into the web composer, by CoachStore's putBack rule, and stores the merged words in kt_coach_handover before
+// it answers took (the web composer lives in memory only; the shell drops its copy on took). The key is raw text and
+// device-only: in neither BACKUP_KEYS nor RAW_STRING_KEYS (no backup or restore carries it), in FP_BOOKKEEPING
+// (Storage's Put back never offers stale words), mirrored to the native copy as every kt_* write is. While it exists
+// it follows the web composer (render's draft capture, the page hidden); it goes once the composer is emptied, once
+// its words are sent from either composer, or once a native composer takes them back as the page's draft
+// (coach.draftTaken). At boot the web composer starts from it. So the words always sit in at least one durable place,
+// and in one composer at a time.
+// CoachStore's putBack (FPUI/Coach/CoachStore.swift; the shared vectors Fixtures/draft/putback.json): the words,
+// trimmed, go into the composer: words empty after trimming leave it as it is, a composer empty after trimming becomes
+// the words, one that already holds them (a UTF-16 match) is left as it is, any other becomes the words, a line feed,
+// then itself.
 function _fpPutBack(cur, words){
   cur=String(cur==null ? '' : cur);
   var w=String(words==null ? '' : words).trim();
@@ -25124,7 +25128,9 @@ var _FP_INTENTS={
       _fp.ho=null;
     }
     if(!_fp.draft || _fp.draft.nonce!==a.nonce) return {ok:false, error:'stale'};
-    if(_coachDraft && _coachDraft.v===_fp.draft.text) _coachDraft={ v:'', s:0, e:0, focus:false };   // taken: not the web composer's any more
+    // taken: not the web composer's any more (the handed-over words go out trimmed, and the box may hold them with a
+    // trailing line, so the two compare trimmed)
+    if(_coachDraft && String(_coachDraft.v || '').trim()===String(_fp.draft.text).trim()) _coachDraft={ v:'', s:0, e:0, focus:false };
     _fp.draft=null; _fpPushSoon(); return {ok:true};
   },
   // confirm and toast.undo answer on receipt and act on the next task (contract 4.2, D14): an answer means taken, never
@@ -25147,9 +25153,9 @@ var _FP_INTENTS={
   },
   // The shell took a screen away (its breaker, the policy, a fallback, a piece this one needs): the web screen for the
   // rest of the document, and nothing sent back. why may be needs beside LinkState's words; for tabs it is the
-  // fallback's word (the page leaves tabs mode). coachHome: the Coach tab is the web's (declared dismiss: the shell took
-  // it down). coach with draft: the native composer's unsent words, stored before the answer, which says took only once
-  // they are (the shell then drops its copy); a draft on any other screen is ignored.
+  // fallback's word (the page leaves tabs mode). coachHome: the Coach tab is the web's (declared dismiss: the shell
+  // took it down). coach with draft: the native composer's unsent words, stored before the answer, which says took
+  // only once they are (the shell then drops its copy); a draft on any other screen is ignored.
   'screens.off':function(a){
     if(!_fpStr(a.screen) || (a.why!=null && !_fpStr(a.why)) || (a.draft!=null && !_fpStr(a.draft))) return _FP_BAD;
     // the first reason stands for the document: the cascade after the page's own way out (dismiss tabs) or refusal
