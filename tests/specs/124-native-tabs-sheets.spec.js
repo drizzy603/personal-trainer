@@ -20,7 +20,9 @@
 //   static pages too, which have no fade of their own, so their computed opacity 0 is the hold's, as it is for a
 //   sheet's scrim under Reduce Motion (no fade there either); never an overlay put up while the state stays open, never
 //   #runner-root. The bar: an answer's h 0 sets --fp-bar-h and leaves --fp-bar-up, closing brings 83 back, an older
-//   answer never undoes a newer one. Leaving tabs mode mid-hold releases at once and ends the announcing.
+//   answer never undoes a newer one; a malformed answer (h, safe and rev not whole numbers, no bar, none at all) ends
+//   the hold as any answer does and changes nothing else (logged, the bar and its rev kept, tabs mode kept). Leaving
+//   tabs mode mid-hold releases at once and ends the announcing.
 // - The baseline: exactly one sheets {open:false} at boot in tabs mode, none under no shell, coach61 or build 60's
 //   chat; a reload with a sheet open sends it again (the shell's state is per document); a dev.nav sheet is announced
 //   under a shell that never answers hello, so before hello's answer by construction.
@@ -328,7 +330,7 @@ const HOLD_LOG = '(function () { window.__holdLog = []; new MutationObserver(fun
   + ' var n = m.target, on = n.classList.contains("fp-hold"), was = /(^|\\s)fp-hold(\\s|$)/.test(m.oldValue || "");'
   + ' if (on !== was) __holdLog.push([n.id || n.className, on, performance.now()]); }); })'
   + '.observe(document.documentElement, { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true }); })();';
-serial('the hold (fp-hold): on before the opener\'s task ends, held at the next frame with its title focused (the seven that focus at once), released at 50 ms with no answer, at its own answer when it comes sooner (10 ms, the mock\'s 16; never an older call\'s), at 50 ms when the shell is silent, at once on a refusal (off leaves tabs mode, no dismiss tabs); the starter, showManualCopy and the static pages too, at computed opacity 0 with no fade of their own; never on an overlay put up while open, never on #runner-root; the bar\'s h 0 and back, never undone by an older answer', async () => {
+serial('the hold (fp-hold): on before the opener\'s task ends, held at the next frame with its title focused (the seven that focus at once), released at 50 ms with no answer, at its own answer when it comes sooner (10 ms, the mock\'s 16; never an older call\'s), at 50 ms when the shell is silent, at once on a refusal (off leaves tabs mode, no dismiss tabs); the starter, showManualCopy and the static pages too, at computed opacity 0 with no fade of their own; never on an overlay put up while open, never on #runner-root; the bar\'s h 0 and back, never undone by an older answer; a malformed answer ends it and changes nothing else', async () => {
   const app = await pageBoot('tabs', { clock: { time: Date.now() }, init: 'window.__fpShellSheetsDelay = 200;' });
   try {
     await helloIn(app);
@@ -454,6 +456,36 @@ serial('the hold (fp-hold): on before the opener\'s task ends, held at the next 
       const later = await vars();
       assert(shown.h === '83px' && later.h === '83px' && later.rev === shown.rev, 'the open\'s late answer (an older rev) leaves the bar the close showed: ' + J([shown, later]));
       await ev(app, () => { delete window.__fpShellSheetsDelay; }); await runFor(20);
+    }
+    // a malformed answer (contract 7.1: the bar's h, safe and rev are whole numbers) ends the hold at its arrival as
+    // any answer does and changes nothing else: the bar and its rev stay, the page logs it, tabs mode stays (no
+    // dismiss tabs). Each bad bar carries a rev above any so far, so a bar let through would show; the mock still gets
+    // the call (its state and its own rev move on) and the page gets the bad answer 10 ms later instead of the mock's.
+    for (const bad of [{ bar: { h: '0', safe: 34, rev: 1001 } }, { bar: { h: 0, safe: -1, rev: 1002 } }, { bar: { h: 0, safe: 34, rev: 1003.5 } },
+      { ok: true }, null]) {
+      const before = await vars();
+      const n0 = await ev(app, (bad) => {
+        const T = Capacitor.Plugins.TrovoShell, real = T.sheets;
+        T.sheets = function (a) {
+          T.sheets = real;
+          Promise.resolve(real(a)).catch(() => {});
+          return new Promise((r) => setTimeout(() => r(bad), 10));
+        };
+        openThemeSheet();
+        return __fpShell.of('log').filter((l) => /^fp: sheets answer ignored: /.test(l.text)).length;
+      }, bad);
+      await runFor(9);
+      const held = await look('themeSheetOverlay');
+      await runFor(1);
+      const freed = await look('themeSheetOverlay');
+      const after = await vars();
+      const o = await ev(app, () => ({ mode: _fp.tabs.mode, logged: __fpShell.of('log').filter((l) => /^fp: sheets answer ignored: /.test(l.text)).length,
+        sent: __fpShell.of('sheets').slice(-1)[0], dismiss: __fpShell.of('dismiss').filter((a) => a && a.screen === 'tabs').length }));
+      assert(held.hold && !freed.hold && freed.up && J(after) === J(before) && o.mode && o.logged === n0 + 1 && J(o.sent) === '{"open":true}' && o.dismiss === 0,
+        'a malformed answer ' + J(bad) + ': the hold ends at it, the bar and its rev unchanged, logged, still tabs mode: ' + J([held, freed, before, after, o]));
+      await ev(app, () => closeThemeSheet()); await runFor(20);
+      const back = await vars();
+      assert(back.h === '83px' && back.rev > before.rev, 'after a malformed answer the next one applies (the close\'s, a newer rev): ' + J([before, back]));
     }
     // a refusal with another code: released at once (no time passes), logged, still tabs mode
     {
