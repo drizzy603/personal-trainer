@@ -884,8 +884,9 @@ public final class ShellBridge: NSObject {
 
     // MARK: Deep links (contract 9, D24)
 
-    /// What runs a warm deep link in the page: the URL is the function's argument, never part of its source.
-    static let trovoOpenSource = "var open = window._trovoOpen; if (typeof open !== 'function') { return false; } open(url); return true;"
+    /// What runs a warm deep link in the page (as build 60's `window._trovoOpen && window._trovoOpen(url)`): the URL is the
+    /// function's argument, never part of its source; it answers whether the page had the handler (never undefined).
+    static let trovoOpenSource = "var handler = window._trovoOpen; if (typeof handler !== 'function') { return false; } handler(url); return true;"
 
     /// The one entry for a warm `trovo://` URL, for either root (SceneDelegate's one `.trovoDeepLink` observer, H9). Under a
     /// live tab root the shell selects first: `trovo://start` Log, `trovo://share` Coach (held when the Coach tab is
