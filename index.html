@@ -120,6 +120,9 @@ function _fpTabsTest(){
     return t;
   }catch(e){ return null; }
 }
+// The glass bar's height on every iPhone the tab root runs on (iOS 26 and later, Face ID or Home button; contract delta
+// 14.1): --fp-bar-up and _fp.tabs.up until the shell has measured the bar shown (the CSS fallbacks say 83px too).
+var FP_BAR_UP=83;
 // The bar's numbers on <html> (contract 7.2), in CSS px = points / z (the Larger Text zoom), rounded to 0.01; the two
 // maxima are computed here, never with CSS max() (see the env()/min() trap noted at the tab bar's CSS). bar null
 // removes all five. up: the bar's height while shown (--fp-bar-up, never 0).
@@ -133,7 +136,7 @@ function _fpBarVars(bar, up, z){
   st.setProperty('--fp-safe-b', px(s));
   st.setProperty('--fp-sheet-b', px(Math.max(s, 16)));
   st.setProperty('--fp-clear', px(Math.max(h, s)));
-  st.setProperty('--fp-bar-up', px(up>0 ? up : 49+s));
+  st.setProperty('--fp-bar-up', px(up>0 ? up : FP_BAR_UP));
 }
 // On a pass: html.fp-tabs and the bar's prediction before the first paint, and the failsafe: no hello answer within
 // 16 s of visible time (hidden time does not count, as the shell's own deadline counts foreground time only) and the
@@ -147,7 +150,7 @@ function _fpBarVars(bar, up, z){
   try{ if(window.__fpTabsFailT){ clearInterval(window.__fpTabsFailT); window.__fpTabsFailT=null; } }catch(e){}
   var t=_fpTabsTest(); if(!t) return;
   var root=document.documentElement;
-  try{ root.classList.add('fp-tabs'); _fpBarVars(t.bar, t.bar.h>0 ? t.bar.h : 49+t.bar.safe, 1); }catch(e){ return; }
+  try{ root.classList.add('fp-tabs'); _fpBarVars(t.bar, t.bar.h>0 ? t.bar.h : FP_BAR_UP, 1); }catch(e){ return; }
   var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
   var vis=0, last=document.visibilityState==='visible' ? now() : null;
   var add=function(at){ if(last!==null) vis+=Math.min(1000, Math.max(0, at-last)); };
@@ -2180,6 +2183,37 @@ html.kt-chat body #toast{top:calc(var(--vv-top,0px) + var(--toast-head,max(env(s
    html.fp-tabs, which the head script sets before the first paint and the way out removes, so classic CSS stays
    byte for byte. The page's own bar goes (and leaves the VoiceOver tree with it). */
 html.fp-tabs #tabs{display:none!important;}
+/* The page under the native bar (contract 7.3, P-D2). Each clearance classic builds from --tab-h, --tab-gap and
+   --tab-bottom-clear is --fp-bar-up here: the bar's height while shown, in CSS px at the Larger Text zoom, never 0, so
+   a sheet that hides the bar re-lays out nothing. Inside calc() only, never with env(), max() or min() (the parser
+   trap noted at --tab-h); the fallback is the glass bar's 83pt on every iPhone (contract delta 14.1). Each surface
+   keeps its classic gap above the bar's top: #screen's scroll end 24 (classic 110, the dock's top 86 + 24). */
+html.fp-tabs #screen{padding-bottom:calc(var(--fp-bar-up,83px) + 24px);}
+/* The toast 8 above the bar, Heavyweight's 14. Both selectors are (1,1,1), the room's through :where(), so the
+   chat's rule and the sheet-open ones keep winning: under the chat's header, at the top over a .kt-sheet-overlay. */
+html.fp-tabs #toast{bottom:calc(var(--fp-bar-up,83px) + 8px);}
+html.fp-tabs:where([data-room="heavyweight"]) #toast{bottom:calc(var(--fp-bar-up,83px) + 14px);}
+/* The web chat's column (a Coach tab the page draws): its foot 8 above the bar, also while a hardware keyboard types
+   (the native bar never slides away); with the keys up they cover the bar and #app lies over the visual viewport, so
+   classic's 8 above the keys stays (written last: chat-typing is on whenever kb-open is). */
+html.fp-tabs.kt-chat #screen,html.fp-tabs.chat-typing.kt-chat #screen{padding-bottom:calc(var(--fp-bar-up,83px) + 8px);}
+html.fp-tabs.kb-open.kt-chat #screen{padding-bottom:var(--tab-gap);}
+/* The runner stays under the bar and is not announced (contract D8): its root ends at the bar's top (the strip keeps
+   its 14 inside it), and the seal below it is the bar's height (an inline height: !important). */
+html.fp-tabs #runner-root{bottom:var(--fp-bar-up,83px);}
+html.fp-tabs #runner-seal{height:var(--fp-bar-up,83px)!important;}
+/* Overlays pad from the shell's numbers, never env(safe-area-inset-bottom) (contract 7.4, D40, P-D14): under the tab
+   root env() is the bar's cover while the bar shows and reaches WebKit late when it hides, so a sheet padded with it
+   would open about 49 px too tall, then jump. --fp-sheet-b (max(safe, 16) / z) where classic reads max(env(), 16px),
+   --fp-safe-b where it reads env(..., 0px), each keeping its + 8, + 28 or + 16; !important beats the inline paddings.
+   Add a line here for every new overlay padded with env(). openCFMovePicker's .kt-sheet keeps its inline bottom 0
+   (it reads no env(): its list pads). The runner's Edit sheet and its superset picker draw one root into
+   #runner-ex-edit-sheet; its exercise picker draws two, the list padding itself. */
+html.fp-tabs .kt-sheet:not(#cfPickerOverlay>.kt-sheet),html.fp-tabs .ex-modal-sheet,html.fp-tabs .kt-close-sheet-inner{
+  padding-bottom:calc(var(--fp-sheet-b,34px) + 8px)!important;}
+html.fp-tabs #runner-ex-edit-sheet>div:only-child{padding-bottom:calc(var(--fp-safe-b,34px) + 28px)!important;}
+html.fp-tabs #runner-ex-picker-list{padding-bottom:calc(var(--fp-safe-b,34px) + 16px)!important;}
+html.fp-tabs #cfPickerList{padding-bottom:var(--fp-sheet-b,34px)!important;}
 /* END NATIVE TAB BAR */
 </style>
 </head>
@@ -2360,7 +2394,7 @@ try{
     var T=_fp.tabs;
     T.mode=true;
     T.bar={h:+t.bar.h||0, safe:+t.bar.safe||0};
-    T.up=T.bar.h>0 ? T.bar.h : 49+T.bar.safe;
+    T.up=T.bar.h>0 ? T.bar.h : FP_BAR_UP;
     root.classList.add('fp-tabs'); _fpBarApply();   // as the head set them before the first paint
     var saved=null;
     try{ saved=sessionStorage.getItem('fp_tab'); }catch(e){}
