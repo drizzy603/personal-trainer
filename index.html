@@ -7186,7 +7186,10 @@ function coachCardAction(label){
     if(act && act.type==='lift' && act.dayName){ openDeckRunner(act.dayName); return; }
   }
   if(/pace|run/.test(low)){ switchTab('log'); switchLogSub('run'); return; }
-  coachView='chat'; currentTab='coach'; render();
+  // Through the tab switch, as every other way into the chat: it lights the Coach tab, leaves COMPARE, closes the day
+  // sheet and releases the workout's wake lock (assigning currentTab skipped all four), and in tabs mode the shell
+  // hears the selection first, with the chat it is about to show (contract 3.3).
+  switchTab('coach',{intent:'chat'}); coachView='chat'; render();
   _coachAsk(l);
 }
 // Local-only fallback that never blocks the screen.
@@ -7346,8 +7349,8 @@ function handleCoachCardAsk(ev){
   if(!v) return;
   if(coachLoading) return;   // never start a second concurrent turn
   // Pipe the question into the Coach tab as a fresh user message (never through the composer: a
-  // draft there stays the owner's).
-  switchTab('coach');
+  // draft there stays the owner's). intent 'chat': a native Coach tab waits for the chat, never the hub first.
+  switchTab('coach',{intent:'chat'});
   coachView = 'chat';
   coachCardAskOpen = false;
   coachSend(v, {errNote:function(em){ return 'Coach didn\'t respond ('+em+'). Tap a chip or send the message again.'; }});
@@ -8019,7 +8022,7 @@ function startPlateauFix(){
     '. Propose ONE concrete programme change to break the '+pl[0].name+' plateau '+
     '(variation swap, intensity/rep-scheme change, or a deload) and apply it to my routine with your tools. '+
     'Briefly explain why, then make the edit.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   // The week's stamp goes with its question: one that waits for a reply in flight (in the composer)
   // is stamped when the owner sends it, and the card stays until then.
@@ -8074,7 +8077,7 @@ function startProgression(){
     pl.map(function(x){ return x.name+' '+x.sets+' sets @ '+fmtW(x.weight)+' (RPE '+x.rpe+')'; }).join('; ')+
     '. Propose a +'+_plateBarDisp()+' '+_uW()+' progression on each from this week on and apply it to my routine with your tools. '+
     'Briefly note why, then make the edits.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   _coachAsk(msg, {seed:_seedLabel, stamp:['kt_last_prog_week', currentWeek]});   // the stamp goes with its question
 }
@@ -8204,7 +8207,7 @@ function startRecoveryAdjust(){
   var msg='My readiness today is '+r.score+'/100'+(bits.length?' ('+bits.join(', ')+')':'')+
     '. Today is '+(act.dayName||'a training day')+'. Propose ONE adjustment — lighter loads (about 10% off, cap RPE 7) '+
     'or swapping today with an easier or rest day — and apply it to my routine with your tools. Briefly explain, then make the edit.';
-  switchTab('coach');
+  switchTab('coach',{intent:'chat'});
   openCoachChat();
   _coachAsk(msg, {seed:_seedLabel, stamp:['kt_readiness_adj_seen', todayISO()]});   // the stamp goes with its question
 }
@@ -9795,7 +9798,7 @@ async function checkPendingShare(){
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
     // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
     // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
-    switchTab('coach');
+    switchTab('coach',{intent:'chat'});
     coachView = 'chat';
     render();
     if(r.comment){
@@ -12420,7 +12423,7 @@ function _bdCommit(){
 }
 function _bdAskCoach(){
   var lbl=_dayLabel(_bdSlot||'Arms'); closeBuildDay();
-  switchTab('coach'); coachView='chat'; render();
+  switchTab('coach',{intent:'chat'}); coachView='chat'; render();
   // Drafted, not sent: the owner reads it and taps Send. Focus only for a desktop keyboard: on a
   // touch screen a scripted focus raises no keyboard (the box sat focused with no keys).
   setTimeout(function(){ var ta=coachPrefill('Build my '+lbl+' day: 4 or 5 exercises that fit my equipment and the rest of my programme, with loads from my history, progressing across the remaining weeks.'); if(ta && !_coarsePointer()) ta.focus(); }, 150);
@@ -13972,7 +13975,10 @@ function renderLog() {
     var _hasKey = !!getApiKey();
     // With a key, the AI's custom intake stays the headline; without one the
     // built-in starter plan is — nobody dead-ends on a key they don't have.
-    var _ctaAction = _hasKey ? "switchTab('coach');startRoutineIntake();" : "openStarterIntake();";
+    // intent 'intake': a native Coach tab waits for setup's chat, never the hub first (contract 3.3). Lime's rules read
+    // the text of the links' handlers below (switchTab('coach'), switchTab('settings'), openStarterIntake()), which
+    // stays exact; none reads this one.
+    var _ctaAction = _hasKey ? "switchTab('coach',{intent:'intake'});startRoutineIntake();" : "openStarterIntake();";
     var _ctaTitle  = _hasKey ? 'Meet your coach' : 'Build my starter plan';
     var _heroBody  = _hasKey
       ? 'Ten questions, two minutes. The Coach writes a 12-week plan around your gear, your schedule, your sports — then this tab runs it.'
@@ -16206,7 +16212,7 @@ function _buildWeekReviewMsg(){
 }
 function startWeeklyReview(){
   if(!getApiKey()){ openLocalWeekReview(); return; }
-  switchTab('coach'); openCoachChat();
+  switchTab('coach',{intent:'chat'}); openCoachChat();
   _coachAsk(_buildWeekReviewMsg(), {seed:'Weekly review', stamp:['kt_last_review_week', currentWeek]});   // the stamp goes with its question
 }
 function dismissWeeklyReview(){ lsSet('kt_last_review_week', currentWeek); render(); }
