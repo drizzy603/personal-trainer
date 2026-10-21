@@ -1,12 +1,13 @@
 // fp-spec: self-shelled
 // 124: build 61's overlays announced to the shell and held for its answer (plan task P5; contract 3.4, D8, P-5, T-G8).
 // - Every overlay kind is announced under the tab root: one sheets {open:true} as it opens and one {open:false} as the
-//   last one closes, for the 25 .kt-sheet-overlay openers, the three .kt-close-sheet ones, the three .ex-modal-bg ones,
-//   the runner's Edit sheet, the starter, showManualCopy, How it works, the privacy page, and a day sheet that render()
-//   closes when its last log is deleted; the runner itself is never announced (D8).
+//   last one closes, for every function a source scan finds putting an overlay up (each .kt-sheet-overlay,
+//   .kt-close-sheet and .ex-modal-bg opener, the runner's Edit sheet, the starter, showManualCopy: a new one fails by
+//   its name until it has its row here), How it works, the privacy page, and a day sheet that render() closes when its
+//   last log is deleted; the runner itself is never announced (D8).
 // - The rule, kind by kind: under no shell an overlay covers the page's own #tabs (elementFromPoint at the bar's
-//   centre lands inside it) exactly when, under tabs, it is announced; the runner sits under the bar and is neither. A
-//   source scan finds every overlay put up as a child of <body>, where the announcer's observer sees it.
+//   centre lands inside it) exactly when, under tabs, it is announced; the runner sits under the bar and is neither.
+//   The scan finds every overlay put up as a child of <body>, where the announcer's observer sees it.
 // - Coalescing: one call per task, and only on a net change: Begin workout (the overview's close is the one call: the
 //   runner is not announced), _runnerReplace through its confirm, a re-opened theme sheet, a close then an open and an
 //   open then a close in one task, the programme modal's starter link; a confirm over an open sheet sends nothing, and
@@ -63,7 +64,7 @@ const STORE_PLUGIN = '(function () { var P = window.Capacitor && window.Capacito
   + ' conflicts: function () { return Promise.resolve({ rows: [] }); } }; })();';
 
 // ── Every overlay kind ─────────────────────────────────────────────────────────────────────────────────────────────
-serial('every overlay kind is announced under the tab root: one {open:true} as it opens, one {open:false} as the last goes (25 sheet openers, 3 confirms, 3 modals, the runner\'s Edit sheet, the starter, showManualCopy, How it works, privacy, a day sheet render() closes); the runner never', async () => {
+serial('every overlay kind is announced under the tab root: one {open:true} as it opens, one {open:false} as the last goes (every opener the source scan finds: the sheets, the confirms, the modals, the runner\'s Edit sheet, the starter, showManualCopy; How it works, privacy, a day sheet render() closes); the runner never', async () => {
   const app = await pageBoot('tabs', { init: STORE_PLUGIN });
   try {
     await helloIn(app);
@@ -147,7 +148,17 @@ serial('every overlay kind is announced under the tab root: one {open:true} as i
       return { res, runner, mode: _fp.tabs.mode, logs: __fpShell.of('log').map((l) => l.text).filter((t) => /sheets/.test(t)) };
     });
     assert(out.mode && J(out.logs) === '[]', 'still in tabs mode after every kind, no sheets call refused or answered amiss: ' + J([out.mode, out.logs]));
-    assert(out.res.length === 37, 'every kind ran: ' + out.res.length);
+    // Every opener there is: the source scan names the function that puts up each overlay, and K opens each one, so a
+    // new sheet fails here by its name until it has a row in K. Besides those, K shows the two static pages, and the
+    // last row is the day sheet render() closes.
+    const ran = out.res.map((r) => r.name), EXTRA = ['openWorkflow', 'openPrivacy', 'a day sheet render() closes'];
+    const sites = SITES(PAGE()), opener = (x) => OPENED_BY[x.fn] || x.fn;
+    const missing = sites.filter((x) => ran.indexOf(opener(x)) < 0);
+    assert(!missing.length, 'every function that puts up an overlay is opened here; add a row to K for each of: '
+      + J(missing.map((x) => (x.fn || 'a site outside a named function') + ' (' + x.kind + ', index.html:' + x.line + ')')));
+    const stale = ran.filter((n) => EXTRA.indexOf(n) < 0 && !sites.some((x) => opener(x) === n));
+    assert(!stale.length && EXTRA.every((n) => ran.indexOf(n) >= 0) && ran.length === new Set(ran).size,
+      'each row of K opens an overlay the scan finds (or a static page), once: ' + J({ stale, ran }));
     for (const r of out.res) {
       // each puts up one overlay of its own, or shows a static page (How it works, privacy)
       assert(r.added === (['openWorkflow', 'openPrivacy'].indexOf(r.name) >= 0 ? 0 : 1), r.name + ' put up its overlay: ' + J(r));
@@ -206,19 +217,25 @@ async function KINDS(shell) {
   }
   return res;
 }
-// Every overlay is put up as a child of <body>: each site that makes one (by class, or the runner's Edit sheet and the
-// starter by id) appends it there within its function.
+// The source scan: each site that makes an overlay (by class, or the runner's Edit sheet and the starter by id), the
+// top-level function it sits in (fn: the last 'function name(' at a line's start with no top-level '}' line between
+// it and the site, else null), and whether that function appends the overlay to <body> after making it.
+function PAGE() { return fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8'); }
 function SITES(page) {
   const re = /(\w+)\.(?:className\s*=\s*'(kt-sheet-overlay|kt-close-sheet|ex-modal-bg|kt-manual-copy)(?: [\w-]+)*'|id\s*=\s*'(runner-ex-edit-modal|starterOverlay)')/g;
   const out = [];
   let m;
   while ((m = re.exec(page))) {
     const rest = page.slice(m.index), end = rest.search(/\n\}\n/);
-    out.push({ kind: m[2] || m[3], line: page.slice(0, m.index).split('\n').length,
+    const head = page.slice(0, m.index), at = head.lastIndexOf('\nfunction ');
+    const decl = at < 0 ? null : /^\nfunction\s+([\w$]+)\s*\(/.exec(head.slice(at));
+    out.push({ kind: m[2] || m[3], line: head.split('\n').length, fn: decl && !/\n\}\n/.test(head.slice(at)) ? decl[1] : null,
       appended: rest.slice(0, end < 0 ? rest.length : end).indexOf('document.body.appendChild(' + m[1] + ')') >= 0 });
   }
   return out;
 }
+// The opener an owner's path calls, where the function that makes the overlay is another: the starter's painter.
+const OPENED_BY = { _siPaint: 'openStarterIntake' };
 
 serial('the rule, kind by kind (contract 3.4): under no shell an overlay covers the page\'s own #tabs exactly when, under tabs, it is announced; the runner is neither (D8); every overlay is put up as a child of <body>', async () => {
   const seed = { kt_apikey: 'sk-ant-test' };
@@ -238,10 +255,12 @@ serial('the rule, kind by kind (contract 3.4): under no shell an overlay covers 
       assert(n.covers && !n.onTab && announced, n.name + ': covers the bar, announced: ' + J([n, t]));
     }
   }
-  const sites = SITES(fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8'));
-  const count = (k) => sites.filter((x) => x.kind === k).length;
-  assert(count('kt-sheet-overlay') === 25 && count('kt-close-sheet') === 3 && count('ex-modal-bg') === 3 && count('runner-ex-edit-modal') === 1
-    && count('starterOverlay') === 1 && count('kt-manual-copy') === 1, 'the overlay sites: ' + J(sites.map((x) => x.kind + '@' + x.line)));
+  // the scan finds each kind of site, each in a named function (the every-kind case opens every one of those, so a new
+  // overlay is named there, not counted here)
+  const sites = SITES(PAGE());
+  const kinds = ['kt-sheet-overlay', 'kt-close-sheet', 'ex-modal-bg', 'runner-ex-edit-modal', 'starterOverlay', 'kt-manual-copy'];
+  assert(kinds.every((k) => sites.some((x) => x.kind === k)) && sites.every((x) => x.fn),
+    'the overlay sites, each kind found and each in a named function: ' + J(sites.map((x) => x.kind + '@' + x.line + ' in ' + x.fn)));
   assert(sites.every((x) => x.appended), 'every overlay goes to document.body.appendChild: ' + J(sites.filter((x) => !x.appended)));
 });
 
