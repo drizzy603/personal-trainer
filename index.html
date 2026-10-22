@@ -9796,11 +9796,42 @@ function runnerSetRpe(val){
   var v = parseInt(val);
   if(!isNaN(v) && v >= 1 && v <= 10){ runnerRpe[ex.name] = v; _saveRunnerDraft(); }
 }
+// The shared photo and its comment (the share extension's), read by the deep link trovo://share at once, by the boot
+// at +2.5 s and by every return at +0.6 s. TrovoShare.getPendingShare deletes what it returns
+// (CapApp/TrovoSharePlugin.swift), so one reader at a time (_shareBusy, cleared in finally): a call while another
+// reads, or waits to, reads nothing. Under the shell's bridge the read first waits for hello's answer or failure, or
+// the page leaving tabs mode, at most 3 s of visible time (contract 9, D46): the chat it opens is then the one hello
+// negotiated (no web chat drawn before build 60's overlay covers it), and a hello that never answers strands nothing,
+// because coachPrefill keeps the comment for the native composer too while hello is out.
+var _shareBusy=false;
+// hello went to the shell (its flag and TrovoShell) and has neither answered nor failed.
+function _fpHelloOut(){
+  var P=_fpPlugin();
+  return !!(P && P.hello) && !_fp.hello && window.__fpTabsAnswered!==true;
+}
+// Resolves once hello is no longer out or the page has left tabs mode, or after ms of visible time (hidden time does
+// not count, and a late tick counts at most 1 s, so the wait only errs late); at once with nothing to wait for.
+function _fpAfterHello(ms){
+  return new Promise(function(res){
+    var out=function(){ return _fpHelloOut() && !_fp.tabs.left; };
+    if(!out()){ res(); return; }
+    var now=function(){ return (window.performance && performance.now) ? performance.now() : Date.now(); };
+    var vis=0, last=document.visibilityState==='visible' ? now() : null;
+    var t=setInterval(function(){
+      var at=now();
+      if(document.visibilityState==='visible'){ if(last!==null) vis+=Math.min(1000, Math.max(0, at-last)); last=at; } else last=null;
+      if(out() && vis<ms) return;
+      clearInterval(t); res();
+    }, 50);
+  });
+}
 async function checkPendingShare(){
   if(!isNativeIOS()) return;
   var TS = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TrovoShare;
-  if(!TS) return;
+  if(!TS || typeof TS.getPendingShare!=='function' || _shareBusy) return;
+  _shareBusy=true;
   try {
+    await _fpAfterHello(3000);
     var r = await TS.getPendingShare();
     if(!r || !r.imageBase64) return;
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
@@ -9812,7 +9843,7 @@ async function checkPendingShare(){
     if(r.comment){
       setTimeout(function(){ coachPrefill(r.comment); }, 200);
     }
-  } catch(e){}
+  } catch(e){} finally { _shareBusy=false; }
 }
 // The set that follows this rest: the same exercise, or a superset's first
 // half when the pair returns to it.
@@ -21068,6 +21099,10 @@ function _coachAsk(text, o){
 // composer's draft for the chat's next paint. Under the native chat it is the model's composer.draft
 // (with a nonce: the native composer takes it once, then coach.draftTaken). Returns the web box when it
 // went there, so the caller can focus it for a desktop keyboard.
+// While the native chat may still take the words they wait as its draft too, beside the web composer's copy: the chat
+// is negotiated and wants only a key (after Connect it opens with them), or hello is still out (a chat negotiated a
+// moment later opens with them, build 60's overlay included; contract 9, D46). coach.draftTaken or a send from either
+// composer spends them once; a document that never negotiates the chat keeps them in the web composer.
 function coachPrefill(text){
   var t0=String(text==null?'':text);
   if(_fpWant('coach')){
@@ -21075,6 +21110,7 @@ function coachPrefill(text){
     _coachDraft={ v:t0, s:t0.length, e:t0.length, focus:false };   // the web composer has it too, if the web chat comes back first
     return null;
   }
+  if((_fpLive('coach') && !getApiKey()) || (FP_NATIVE && _fpHelloOut())) _fp.draft={text:t0, nonce:'d'+(++_fp.seq)+'.'+_fpBoot};
   var ta=_fillComposer(text);
   if(ta) return ta;
   var t=String(text==null?'':text);
@@ -26244,12 +26280,19 @@ function runAutoBackupNow(){
     .catch(function(){ showToast('Backup failed — use Export session log','err'); render(); });
 }
 
-// Deep links (the widget's "Start →" is trovo://start). Warm start: the shell
-// calls window._trovoOpen; cold start: the page consumes the parked URL once.
+// Deep links (the widget's "Start →" is trovo://start; the share extension opens the app with trovo://share). Warm
+// start: the shell calls window._trovoOpen; cold start: the page consumes the parked URL once. Under the native tab bar
+// the shell selects the link's tab first (Log, Coach) and then calls _trovoOpen (a cold start's first frame is that
+// tab), so the page's own switchTab is a selectTab of the selected tab, which moves nothing (contract 9, D24).
 function _handleDeepLink(url){
   url=String(url||'');
   var TW=_plug('TrovoWidget');
   if(TW && TW.consumeDeepLink){ try{ TW.consumeDeepLink().catch(function(){}); }catch(e){} }
+  if(/^trovo:\/\/share/.test(url)){
+    // the shared photo now, not at the boot's +2.5 s or the return's +0.6 s (one reader at a time, after hello)
+    checkPendingShare();
+    return true;
+  }
   if(/^trovo:\/\/start/.test(url)){
     // "Start" means today's session, whatever kind it is: a run day opens
     // the run log, a sport day its tab. Only lift days (and a session in
