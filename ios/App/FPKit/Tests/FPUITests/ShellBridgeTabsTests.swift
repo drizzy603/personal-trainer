@@ -237,10 +237,12 @@ final class ShellBridgeTabsTests: XCTestCase {
         return try XCTUnwrap(answer["bar"] as? [String: Int], "sheets' answer carries the bar", file: file, line: line)
     }
 
-    /// Keeps the page's main thread busy for `ms` from now: the script goes to the page before anything asked after this
-    /// returns (a synchronous call, so it is sent at once).
-    private func busy(_ s: TabsScene, ms: Int) {
-        s.webView.evaluateJavaScript("(function () { var end = Date.now() + \(ms); while (Date.now() < end) {} })(); 0", completionHandler: nil)
+    /// Keeps the page's main thread busy until `end`, read on the clock the page and this process share, however late the
+    /// page starts the script: it goes to the page before anything asked after this returns (sent at once), so the calls
+    /// queued behind it run only once the page is free.
+    private func busy(_ s: TabsScene, until end: Date) {
+        let ms = Int((end.timeIntervalSince1970 * 1000).rounded())
+        s.webView.evaluateJavaScript("(function () { while (Date.now() < \(ms)) {} })(); 0", completionHandler: nil)
     }
 
     /// The refusal's words, or nil when the message was answered.
@@ -1071,22 +1073,36 @@ final class ShellBridgeTabsTests: XCTestCase {
 
     // MARK: 13. Busy, not broken
 
-    /// G17 as contract 4.4 (D41) settled it, I15: a page busy for 5.25 s while three taps queue (timeouts scaled to
-    /// 1.5 s): the three `tabs.select` time out and are held, the ping sent after them is answered once the page is free,
+    /// G17 as contract 4.4 (D41) settled it, I15: a page whose main thread is busy while three taps queue: the three
+    /// `tabs.select` time out (0.5 s each) and are held, the ping sent after them is answered once the page is free,
     /// nothing counts, nothing trips, and the restate leaves page and shell on the last tapped tab; the same page dead to
-    /// every call trips `tabs` (`failures`) once the ping fails, and the scene falls back.
+    /// every call trips `tabs` (`failures`) once the ping fails, and the scene falls back. No race of a fraction of a
+    /// second between the stall and PageLink's timers, whatever the machine's load: the stall ends at a time fixed before
+    /// it is sent, 2.5 s (25 s on CI) after the third timeout is due, however late the page starts it; and the ping, sent
+    /// in the turn the third timeout is recorded, gets a timeout that outlasts the rest of the stall by 3 s (30 s on CI).
     func test13ABusyPageNeverTripsTheBarAndADeadOneDoes() async throws {
         let s = try await scene(first: "settings")
         let root = try XCTUnwrap(s.root)
         let b = try XCTUnwrap(s.binding)
-        b.pageLink.timeoutScale = 0.75   // 2 s -> 1.5 s: the timeouts at 1.5, 3 and 4.5 s, the ping's at 6 s
-        busy(s, ms: 5250)
+        b.pageLink.timeoutScale = 0.25   // 2 s -> 0.5 s: the three timeouts due at 0.5, 1 and 1.5 s
+        let free = Date().addingTimeInterval(1.5 + 2.5 * Self.slack)
+        let earlier = b.pageLink.onRecord
+        var timedOut = 0
+        b.pageLink.onRecord = { [weak b] r in
+            earlier?(r)
+            guard let b, r.name == "tabs.select", r.outcome == "failed timeout" else { return }
+            timedOut += 1
+            // the third: the ping its hold asked for goes next, in this same call, and takes this scale (a ping's 2 s)
+            if timedOut == 3 { b.pageLink.timeoutScale = (max(0, free.timeIntervalSinceNow) + 3 * Self.slack) / 2 }
+        }
+        busy(s, until: free)
         tap(s, "progress")
         tap(s, "log")
         tap(s, "progress")
         try await expect("the three taps and the restate: \(b.pageLink.records.map { "\($0.name) \($0.outcome ?? "-")" })", within: 14) {
             b.pageLink.pending == 0 && b.pageLink.records.filter { $0.name == "tabs.select" }.count == 4
         }
+        b.pageLink.onRecord = earlier
         try await expect("the page got the restate") { await self.calls(s, "tabs.select").count == 4 }
         let sel = await calls(s, "tabs.select")
         XCTAssertEqual(sel.map(\.seq), [1, 2, 3, 4], "each once, then the restate")
