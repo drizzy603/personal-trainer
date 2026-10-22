@@ -174,6 +174,10 @@ public final class ShellBridge: NSObject {
         /// idle, never the failed one again. Per document: a document start clears both (hello's reply carries both).
         var restateSelect = false
         var restateBar = false
+        /// Restates of each sent since the page last answered one of that kind: at most `ShellBridge.restateLimit` go in
+        /// a row. Per document, as the flags.
+        var selectRestates = 0
+        var barRestates = 0
         /// The scene's fallback (contract 10.3, 10.5), at most once: why and when, for the status.
         var fellBack: FellBack?
         /// A WAITING Coach tab's net (contract 1.4, D17): it turns WEB 3 s after a hello's answer that negotiated
@@ -471,6 +475,8 @@ public final class ShellBridge: NSObject {
         b.tabRoot = nil
         b.restateSelect = false
         b.restateBar = false
+        b.selectRestates = 0
+        b.barRestates = 0
         b.webView?.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
         storedBook = b.link.book
         if binding === b { binding = nil }
@@ -534,6 +540,8 @@ public final class ShellBridge: NSObject {
         // page sends its baseline at _bootDone), and nothing failed is restated to the new document (hello carries both)
         b.restateSelect = false
         b.restateBar = false
+        b.selectRestates = 0
+        b.barRestates = 0
         if #available(iOS 26.0, *), let root = liveRoot(b) { root.resetSheets() }
         scheduleHelloDeadline(b)
         #if DEBUG
@@ -927,22 +935,34 @@ public final class ShellBridge: NSObject {
     }
 
     /// State, not replay: a `tabs.select` or `tabs.bar` that failed (a timeout, an error) marks its state for a restate,
-    /// and an answer clears the mark (the page has the newest: outcomes come in the order the intents went). Gone and
-    /// unlinked outcomes change nothing: the next hello's reply carries the state.
+    /// and an answer clears the mark (the page has the newest: outcomes come in the order the intents went) and starts
+    /// that kind's count of restates again. Gone and unlinked outcomes change nothing: the next hello's reply carries the
+    /// state.
     private func noteState(_ intent: Intent, _ outcome: PageLink.Outcome, _ b: Binding) {
         guard case .answered(let o) = outcome else { return }
         let failed = o.countsAsFailure
         switch intent {
-        case .tabsSelect: b.restateSelect = failed
-        case .tabsBar: b.restateBar = failed
+        case .tabsSelect:
+            b.restateSelect = failed
+            if !failed { b.selectRestates = 0 }
+        case .tabsBar:
+            b.restateBar = failed
+            if !failed { b.barRestates = 0 }
         default: break
         }
     }
 
+    /// Restates of one kind that go in a row before the shell waits for the page to answer one (contract 4.3, D12).
+    nonisolated static let restateLimit = 3
+
     /// Once the link is idle (nothing queued or in the page; after a held timeout that is once the confirming ping has
     /// ended, since the link queues it before this runs), the current selection goes with a new seq and the current bar
     /// with a new rev, once each. A restate that fails marks its state again, so a page that stays silent hears one per
-    /// timeout while LinkState's held timeouts and their ping count it toward the breaker (contract 4.4).
+    /// timeout while LinkState's held timeouts and their ping count it toward the breaker (contract 4.4): a dead page
+    /// trips at the first restate's ping. At most `restateLimit` restates of a kind go in a row: a page whose handler for
+    /// one never settles while it answers the rest, the ping included (each timeout held, then dropped uncounted), would
+    /// otherwise hear one and a ping every timeout for the rest of the document. The next answer of that kind (the owner's
+    /// next tap) or the next document (its hello's reply carries the state) starts the count again.
     private func restateIfIdle(_ b: Binding) {
         guard b.restateSelect || b.restateBar else { return }
         guard b.pageLink.pending == 0, b.link.link != nil, b.pageLink.boot != nil else { return }
@@ -954,15 +974,25 @@ public final class ShellBridge: NSObject {
         }
         if b.restateSelect {
             b.restateSelect = false
-            let now = root.restate()
-            Self.log.info("shell: a tabs.select failed: the selection goes again (\(now.tab, privacy: .public), seq \(now.seq))")
-            sendSelect(tab: now.tab, seq: now.seq, again: false, b)
+            if b.selectRestates < Self.restateLimit {
+                b.selectRestates += 1
+                let now = root.restate()
+                Self.log.info("shell: a tabs.select failed: the selection goes again (\(now.tab, privacy: .public), seq \(now.seq))")
+                sendSelect(tab: now.tab, seq: now.seq, again: false, b)
+            } else {
+                Self.log.error("shell: a tabs.select failed after \(Self.restateLimit) restates in a row: none more until the page answers one")
+            }
         }
         if b.restateBar {
             b.restateBar = false
-            let bar = root.restateBar()
-            Self.log.info("shell: a tabs.bar failed: the bar goes again (h \(bar.h), safe \(bar.safe), rev \(bar.rev))")
-            sendBar(bar, b)
+            if b.barRestates < Self.restateLimit {
+                b.barRestates += 1
+                let bar = root.restateBar()
+                Self.log.info("shell: a tabs.bar failed: the bar goes again (h \(bar.h), safe \(bar.safe), rev \(bar.rev))")
+                sendBar(bar, b)
+            } else {
+                Self.log.error("shell: a tabs.bar failed after \(Self.restateLimit) restates in a row: none more until the page answers one")
+            }
         }
     }
 
@@ -1148,6 +1178,8 @@ public final class ShellBridge: NSObject {
         b.screens.detachStack()
         b.restateSelect = false
         b.restateBar = false
+        b.selectRestates = 0
+        b.barRestates = 0
         b.webView?.configuration.userContentController.addUserScript(WKUserScript(source: Self.dropTabsScript,
                                                                                   injectionTime: .atDocumentStart, forMainFrameOnly: true))
         Self.log.error("shell: the tab root fell back (\(why.rawValue, privacy: .public)): the page's own bar from now on, classic for the rest of the scene")

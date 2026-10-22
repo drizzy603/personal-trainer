@@ -660,6 +660,84 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertTrue(b.link.isLive("tabs"))
     }
 
+    /// Contract 4.3, 4.4, D12: a page whose `tabs.select` never settles while the rest of it answers, the ping included,
+    /// hears at most three restates in a row (each timeout held, then dropped uncounted by its ping's answer), then none
+    /// until the page answers one; an answer starts the count again. The same for `tabs.bar`. Nothing trips: a page
+    /// broken this way keeps the bar, but no longer hears a `tabs.select` and a ping every timeout for the rest of the
+    /// document.
+    func test05bRestatesStopAfterThreeInARowThatNeverSettle() async throws {
+        let s = try await scene(first: "log")
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        b.pageLink.timeoutScale = 0.1   // 2 s -> 0.2 s: a cycle (a timeout and its ping) takes about 0.2 s
+        func records(_ name: String) -> [PageLink.Record] { b.pageLink.records.filter { $0.name == name } }
+        await setHow(s, "tabs.select", "never")
+        tap(s, "progress")
+        try await expect("the tap's tabs.select and three restates, each timeout with its ping answered: \(records("tabs.select").count)") {
+            records("ping").filter { $0.outcome == "done" }.count >= 4
+        }
+        try await sleep(1.2)   // six more cycles' worth: nothing more goes
+        XCTAssertEqual(records("tabs.select").map(\.outcome), Array(repeating: "failed timeout", count: 4), "the tap's and three restates")
+        XCTAssertEqual(records("ping").map(\.outcome), Array(repeating: "done", count: 4))
+        XCTAssertEqual(b.pageLink.pending, 0)
+        XCTAssertEqual(root.seq, 4, "a new seq for each restate, none since")
+        let sent = await calls(s, "tabs.select")
+        XCTAssertEqual(sent.map(\.seq), [1, 2, 3, 4])
+        XCTAssertEqual(failures(s, "tabs"), 0, "each held, dropped by its ping's answer")
+        XCTAssertTrue(b.link.isLive("tabs"))
+        XCTAssertNil(root.fellBack)
+
+        // the cap holds for a new failure too, until the page answers one; then the count starts again
+        tap(s, "settings")
+        try await expect("the tap's tabs.select and its ping") { records("ping").count == 5 && b.pageLink.pending == 0 }
+        try await sleep(0.6)
+        XCTAssertEqual(records("tabs.select").count, 5, "no restate: three in a row went unanswered")
+        await setHow(s, "tabs.select", "ok")
+        tap(s, "log")
+        try await expect("answered") { records("tabs.select").last?.outcome == "done" && b.pageLink.pending == 0 }
+        await setHow(s, "tabs.select", "never")
+        tap(s, "progress")
+        try await expect("three restates again: \(records("tabs.select").count)") {
+            records("ping").filter { $0.outcome == "done" }.count >= 9
+        }
+        try await sleep(1.2)
+        XCTAssertEqual(records("tabs.select").count, 10, "5, the answered one, then the tap's and three restates")
+        XCTAssertEqual(failures(s, "tabs"), 0)
+
+        // so does a new document (its hello's reply carries the state): three in a row again
+        try await load(s)
+        try await hello(s, Self.all, boot: "b2")
+        await setHow(s, "tabs.select", "never")
+        tap(s, "log")
+        try await expect("three restates in the new document: \(records("tabs.select").count)") {
+            records("ping").filter { $0.outcome == "done" }.count >= 13
+        }
+        try await sleep(1.2)
+        XCTAssertEqual(records("tabs.select").count, 14, "the tap's and three restates")
+        let fresh = await calls(s, "tabs.select")
+        XCTAssertEqual(fresh.map(\.tab), ["log", "log", "log", "log"])
+        XCTAssertEqual(failures(s, "tabs"), 0)
+
+        // tabs.bar: on a NATIVE Coach tab with a sheet open, back to Log hides the bar and says so
+        await setHow(s, "tabs.select", "ok")
+        root.setHome(s.home)
+        _ = try await message(s, "selectTab", ["tab": "coach"]).get()
+        _ = try await message(s, "sheets", ["open": true]).get()
+        try await expect("the link idle") { b.pageLink.pending == 0 }
+        await setHow(s, "tabs.bar", "never")
+        tap(s, "log")
+        try await expect("the bar's change and three restates: \(records("tabs.bar").count)") {
+            records("tabs.bar").count >= 4 && records("tabs.bar").allSatisfy { $0.outcome != nil } && b.pageLink.pending == 0
+        }
+        try await sleep(1.2)
+        XCTAssertEqual(records("tabs.bar").map(\.outcome), Array(repeating: "failed timeout", count: 4), "the change and three restates")
+        let revs = await calls(s, "tabs.bar").compactMap(\.rev)
+        XCTAssertEqual(revs.count, 4)
+        XCTAssertEqual(revs, (0..<4).map { (revs.first ?? 0) + $0 }, "a new rev for each restate")
+        XCTAssertEqual(failures(s, "tabs"), 0)
+        XCTAssertTrue(b.link.isLive("tabs"))
+    }
+
     // MARK: 6. TabsModel
 
     /// Contract 3.7, 6.1, 15.2: a TabsModel repaints the bar (tint, idle, titles, labels, style) inside `model tabs@`;
