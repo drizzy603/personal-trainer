@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import UIKit
 
 /// The shell's own device switches (build 61; contract 3.5, 10.1, D5; 11-shell.md H6): `tabs` in 61, the native tab bar
 /// (Settings > About > Native tab bar, through TrovoShell `setSwitch`). The root is built at scene connect, before the
@@ -8,7 +9,9 @@ import Foundation
 /// `Application Support/FPShell/switches.json` holds them (`{"tabs": false}`), written atomically; UserDefaults keeps a
 /// copy (`fp.shell.switches`), read only when the file does not read: UserDefaults reaches its disk later, through
 /// cfprefsd, and came back stale after a kill and a quick reinstall on iOS 27, as the breaker book's copy did
-/// (`breakers.json`). A piece no switch names is on; a piece of a later build is kept as read and written back.
+/// (`breakers.json`). Both are written on every change, the copy first, so a file that could not be written while the
+/// device was unlocked is removed: the next launch then reads the copy, never the file's older switch. A piece no switch
+/// names is on; a piece of a later build is kept as read and written back.
 ///
 /// Off acts at once (the scene falls back, H8) and at every launch after; on acts from the next launch. The Native Coach
 /// switch stays the page's `kt_native_off`: it acts inside the document and is never here. Build 60 ignores the file.
@@ -22,6 +25,12 @@ struct ShellSwitches {
     let defaults: UserDefaults
     /// The switches as stored, piece to on.
     private(set) var values: [String: Bool]
+    /// Writes the file: atomically (a new file renamed over the old one), protected until the first unlock (tests fail it).
+    var write: (Data, URL) throws -> Void = { data, url in
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+    /// Whether the device's protected data can be read and written now (tests set their own).
+    var protectedDataAvailable: () -> Bool = { MainActor.assumeIsolated { UIApplication.shared.isProtectedDataAvailable } }
 
     /// Reads the file, else the copy (a launch). `folder`: `Application Support/FPShell`, the bridge's.
     init(folder: URL, defaults: UserDefaults) {
@@ -38,8 +47,10 @@ struct ShellSwitches {
 
     /// Sets a piece's switch: in force at once for this launch, then the copy in UserDefaults, then the file, written
     /// atomically (a new file renamed over the old one, never a half-written file). false when the file could not be
-    /// written (the copy holds the switch; a file already there stays as it was, never deleted: a write refused before
-    /// the first unlock must not take a good file away).
+    /// written; the copy holds the switch. A file already there holds an older switch then: while the device is unlocked
+    /// (a full disk, an I/O error) it is removed, so the next launch reads the copy; while protected data is unavailable
+    /// it stays as it was (a write refused before the first unlock must not take a good file away, and the copy cannot be
+    /// read then either).
     @discardableResult
     mutating func set(_ piece: String, on: Bool) -> Bool {
         values[piece] = on
@@ -47,9 +58,10 @@ struct ShellSwitches {
         defaults.set(data, forKey: Self.defaultsKey)
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try write(data, url)
             return true
         } catch {
+            if protectedDataAvailable() { try? FileManager.default.removeItem(at: url) }
             return false
         }
     }

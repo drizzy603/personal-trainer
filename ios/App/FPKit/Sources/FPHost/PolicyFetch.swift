@@ -18,8 +18,9 @@ import FPCore
 /// shell's `breakers.json` and `switches.json`, and read first; UserDefaults `fp.policy` keeps a copy, read only when
 /// the file does not read. UserDefaults reaches its disk later, through cfprefsd, and came back stale after a kill and
 /// a quick reinstall on iOS 27; 61's tab root is decided at scene connect from this copy. Every save writes both, so a
-/// downgrade to 60 (which reads only `fp.policy`) still finds its copy. 61's first launch after 60 finds no file: it
-/// reads 60's copy there and writes the file at once.
+/// downgrade to 60 (which reads only `fp.policy`) still finds its copy; a file that could not be written while the device
+/// was unlocked is removed, so the next launch reads the newer `fp.policy`, never the file's older state. 61's first
+/// launch after 60 finds no file: it reads 60's copy there and writes the file at once.
 ///
 /// In a Debug build `-fpPolicyFile <path>` points the fetch at a local file (a path relative to the app's home
 /// folder, or absolute) and `-fpPolicyEvery <seconds>` changes the 15-minute limit, for tests/native-store.sh; the
@@ -59,6 +60,13 @@ public final class FPPolicy {
     /// The folder the copy's file lives in: `Application Support/FPShell` (tests pass their own).
     let folder: URL
     var stateFile: URL { folder.appendingPathComponent(Self.stateFileName) }
+    /// Writes the copy's file: atomically (a new file renamed over the old one), protected until the first unlock (tests
+    /// fail it).
+    var writeData: (Data, URL) throws -> Void = { data, url in
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+    /// Whether the device's protected data can be read and written now (tests set their own).
+    var protectedDataAvailable: () -> Bool = { MainActor.assumeIsolated { UIApplication.shared.isProtectedDataAvailable } }
     private lazy var session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -183,16 +191,23 @@ public final class FPPolicy {
         writeFile(data)
     }
 
-    /// The file, written atomically (a new file renamed over the old one, never a half-written one). A failed write
-    /// leaves the file there as it was (never deleted: a write refused before the first unlock must not take a good
-    /// copy away); the UserDefaults copy holds the state meanwhile.
+    /// The file, written atomically (a new file renamed over the old one, never a half-written one). After a failed
+    /// write the UserDefaults copy holds the state, and a file already there holds an older one: while the device is
+    /// unlocked (a full disk, an I/O error) it is removed, so the next launch reads the copy and writes the file from it;
+    /// while protected data is unavailable it stays as it was (a write refused before the first unlock must not take a
+    /// good copy away, and the UserDefaults copy cannot be read then either).
     private func writeFile(_ data: Data?) {
         guard let data else { return }
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: stateFile, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try writeData(data, stateFile)
         } catch {
-            Self.log.error("policy: \(Self.stateFileName, privacy: .public) could not be written (UserDefaults keeps the copy)")
+            if protectedDataAvailable() {
+                try? FileManager.default.removeItem(at: stateFile)
+                Self.log.error("policy: \(Self.stateFileName, privacy: .public) could not be written: the older file went, UserDefaults keeps the copy")
+            } else {
+                Self.log.error("policy: \(Self.stateFileName, privacy: .public) could not be written while protected data is unavailable (UserDefaults keeps the copy)")
+            }
         }
     }
 

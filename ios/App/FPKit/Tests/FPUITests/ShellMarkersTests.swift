@@ -288,5 +288,28 @@ final class ShellMarkersTests: XCTestCase {
         XCTAssertEqual(s.deviceOff, ["tabs"])
         XCTAssertEqual(ShellSwitches(folder: blocked, defaults: defaults).deviceOff, ["tabs"], "the next launch reads the copy")
     }
+
+    /// A write that fails over an older file while the device is unlocked (a full disk, an I/O error): the older file
+    /// goes, so the next launch reads the copy, which holds the newer switch, never the file's older one. Before the
+    /// first unlock (protected data unavailable) the file stays as it was: a write refused then must not take a good file
+    /// away, and the copy cannot be read then either.
+    func testAFailedWriteOverAnOlderFileLeavesTheNextLaunchToTheCopy() throws {
+        var s = ShellSwitches(folder: folder, defaults: defaults)
+        XCTAssertTrue(s.set("tabs", on: true))   // the file and the copy say on
+        s.write = { _, _ in throw CocoaError(.fileWriteOutOfSpace) }
+        s.protectedDataAvailable = { true }
+        XCTAssertFalse(s.set("tabs", on: false), "the file could not be written")
+        XCTAssertEqual(s.deviceOff, ["tabs"], "in force at once")
+        XCTAssertEqual(defaults.data(forKey: ShellSwitches.defaultsKey).flatMap(ShellSwitches.decode), ["tabs": false], "the copy holds it")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: switchFile.path), "the older file went")
+        XCTAssertEqual(ShellSwitches(folder: folder, defaults: defaults).deviceOff, ["tabs"], "the next launch reads the copy: off")
+
+        var t = ShellSwitches(folder: folder, defaults: defaults)
+        XCTAssertTrue(t.set("tabs", on: false))   // the file and the copy say off
+        t.write = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        t.protectedDataAvailable = { false }
+        XCTAssertFalse(t.set("tabs", on: true))
+        XCTAssertEqual(try text("switches.json"), #"{"tabs":false}"#, "before the first unlock the file stays as it was")
+    }
 }
 #endif

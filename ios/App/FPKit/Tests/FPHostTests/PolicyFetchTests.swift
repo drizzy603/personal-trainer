@@ -239,6 +239,36 @@ final class PolicyFetchTests: XCTestCase {
         XCTAssertFalse(next.effective.screenOn("tabs"))
     }
 
+    /// A save whose file cannot be written while the device is unlocked (a full disk, an I/O error): the older file goes,
+    /// so the next launch reads `fp.policy`, which holds the newer state (and writes the file from it), never the file's
+    /// older copy. Before the first unlock (protected data unavailable) the file stays as it was.
+    func testAFailedSaveOverAnOlderFileLeavesTheNextLaunchToTheCopy() throws {
+        try write(#"{"v":1}"#)
+        let p = started()   // the file and the copy: tabs on
+        XCTAssertTrue(p.effective.screenOn("tabs"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: stateFile.path))
+        p.writeData = { _, _ in throw CocoaError(.fileWriteOutOfSpace) }
+        p.protectedDataAvailable = { true }
+        try write(#"{"v":1,"screens":{"tabs":"off"}}"#)
+        p.fetchIfDue(force: true)
+        XCTAssertFalse(p.effective.screenOn("tabs"), "in force for this launch")
+        XCTAssertFalse(try XCTUnwrap(FPPolicy.decoded(try XCTUnwrap(defaults.data(forKey: FPPolicy.stateKey)))).effective.screenOn("tabs"),
+                       "the copy holds it")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stateFile.path), "the older file went")
+        let next = FPPolicy(defaults: defaults, folder: shell)
+        XCTAssertFalse(next.effective.screenOn("tabs"), "the next launch reads the copy: off")
+        XCTAssertEqual(FPPolicy.decoded(try Data(contentsOf: stateFile))?.effective, next.effective, "and writes the file from it")
+
+        next.start(arguments: ["App", "-fpPolicyFile", file.path, "-fpPolicyEvery", "0"])   // the file and the copy: tabs off
+        next.writeData = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        next.protectedDataAvailable = { false }
+        try write(#"{"v":1}"#)
+        next.fetchIfDue(force: true)
+        XCTAssertTrue(next.effective.screenOn("tabs"))
+        XCTAssertEqual(FPPolicy.decoded(try Data(contentsOf: stateFile))?.effective.screenOn("tabs"), false,
+                       "before the first unlock the file stays as it was")
+    }
+
     /// `fetchIfDue(force:done:)` for ShellBridge's `status {refresh: true}` (contract 3.10; 11-shell.md H8): `done` runs
     /// once the fetch has ended, after its `changed` (so the bridge's `policyChanged` has run when the status is read);
     /// at once when no fetch is made (not due; `-fpOffline`); for a fetch that changes nothing too.
