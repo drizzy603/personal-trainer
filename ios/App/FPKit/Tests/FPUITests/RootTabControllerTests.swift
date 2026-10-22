@@ -898,6 +898,43 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertTrue(r.posts.isEmpty, "nothing changed under VoiceOver but the bar")
     }
 
+    /// I5 at the fallback (contract 8.5, 10.3): a native field focused on the selected Coach tab's stack (the connect
+    /// screen's key field, a hub field, a field of the pushed chat) resigns before the stack hides, as it does when the
+    /// tab turns WEB: no first responder stays in a hidden view, so no keys stay up over the page and nothing typed goes
+    /// into a hidden field. On a web tab nothing hides, and a field in the web view keeps its focus.
+    func test08bTheFallbackEndsEditingBeforeTheStackHides() throws {
+        for pushed in [false, true] {
+            let what = pushed ? "a field of the pushed screen" : "a field of the home"
+            let r = rig(first: "coach", mode: .native)
+            var host = r.home
+            if pushed {
+                host = UIViewController()
+                r.nav.pushViewController(host, animated: false)
+                r.root.view.layoutIfNeeded()
+            }
+            let field = UITextField(frame: CGRect(x: 20, y: 120, width: 200, height: 44))
+            host.view.addSubview(field)
+            XCTAssertTrue(field.becomeFirstResponder() && field.isFirstResponder, "\(what) takes focus")
+            r.root.fallBack(why: .policy, at: Date())
+            XCTAssertTrue(r.nav.view.isHidden, "\(what): the stack hidden")
+            XCTAssertFalse(field.isFirstResponder, "\(what): resigned")
+            assertNoHiddenFocus(r, "\(what), after the fallback")
+            _ = outsideOverTurns(r.webView)
+            assertNoHiddenFocus(r, "\(what), three turns later")
+            field.removeFromSuperview()
+        }
+
+        let w = rig(first: "settings", mode: .native)
+        let field = UITextField(frame: CGRect(x: 20, y: 120, width: 200, height: 44))
+        w.webView.addSubview(field)
+        XCTAssertTrue(field.becomeFirstResponder() && field.isFirstResponder, "a web field takes focus")
+        w.root.fallBack(why: .switch, at: Date())
+        XCTAssertTrue(field.isFirstResponder, "a web tab: nothing hides, the page keeps its focus")
+        assertNoHiddenFocus(w, "a web tab, after the fallback")
+        field.resignFirstResponder()
+        field.removeFromSuperview()
+    }
+
     // MARK: 9. VoiceOver and the other routes in
 
     func test09RoutesIn() throws {

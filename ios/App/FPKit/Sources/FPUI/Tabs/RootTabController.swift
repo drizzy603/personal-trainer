@@ -669,8 +669,11 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
 
     /// The UI half of the fallback (contract 10.3), once: the bar hidden for good without animation, any hold dropped, a
     /// WAITING or NATIVE Coach tab turned WEB for the rest of the scene with the web view shown where it is; from then on
-    /// `select` moves nothing. The bridge does the rest (H8): ScreenHost's `detachStack()`, the cascade, `shell.covered
-    /// {on:false}`. VoiceOver hears the web view when it replaced the selected Coach tab's stack.
+    /// `select` moves nothing. When the selected Coach tab's stack hides, editing ends first, as when the tab turns WEB
+    /// (contract 8.5, I5): a native field focused there (the connect screen's key field, a hub field, the pushed chat's)
+    /// resigns, so no first responder stays in the hidden stack and no keys stay up over the page. The bridge does the rest
+    /// (H8): ScreenHost's `detachStack()`, the cascade, `shell.covered {on:false}`. VoiceOver hears the web view when it
+    /// replaced the selected Coach tab's stack.
     public func fallBack(why: FellBackWhy, at: Date) {
         guard fellBack == nil else { return }
         hooks.section(true)
@@ -678,6 +681,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         endHold(post: false)
         announce = nil
         let stackShown = selected == "coach" && coachMode != .web
+        if stackShown { endEditing() }
         coachMode = .web
         applyWebVisibility()
         inBarChange = true
