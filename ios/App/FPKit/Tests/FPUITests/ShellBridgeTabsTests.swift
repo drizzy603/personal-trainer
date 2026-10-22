@@ -1027,6 +1027,48 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(s.posts.count, 4)
     }
 
+    /// Contract 8.1 step 7, I17, D45: a tap whose `tabs.select` no page answers is still heard once a page has drawn the
+    /// tab. Before the hello (a cold launch, a reload) the intent goes nowhere: the hello's answer carries the selection
+    /// and VoiceOver hears the web view once the page has run that answer. One whose document goes before it answers is
+    /// heard after the new document's hello the same way. One the page answers after the scene fell back (the fallback
+    /// changes no selection) is heard at that answer. Each once, none at the tap.
+    func test12bVoiceOverHearsATabNoPageAnsweredOnceAPageHasDrawnIt() async throws {
+        let s = try await scene(first: "log", hello: nil)
+        let root = try XCTUnwrap(s.root)
+        let b = try XCTUnwrap(s.binding)
+        tap(s, "progress")
+        try await sleep(0.3)
+        XCTAssertEqual(s.posts, [], "no page has drawn Progress")
+        XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.select" }.map(\.outcome), ["not linked"])
+        let h = try await hello(s)
+        XCTAssertEqual((h["tabs"] as? [String: Any])?["selected"] as? String, "progress", "the answer carries the tap")
+        try await expect("the web view once the page has the answer: \(s.posts)") { s.posts == ["web"] }
+        try await sleep(0.3)
+        XCTAssertEqual(s.posts, ["web"], "once")
+
+        // a tabs.select in flight when its document goes (a reload): heard after the next hello
+        await setHow(s, "tabs.select", "never")
+        tap(s, "settings")
+        try await sleep(0.2)
+        try await load(s)
+        XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.select" }.last?.outcome, "gone")
+        XCTAssertEqual(s.posts, ["web"], "nothing when the document goes")
+        try await hello(s, Self.all, boot: "b2")
+        try await expect("the web view after the new document's hello: \(s.posts)") { s.posts == ["web", "web"] }
+        try await sleep(0.3)
+        XCTAssertEqual(s.posts.count, 2, "once")
+
+        // a tabs.select the page answers after the scene fell back
+        await setHow(s, "tabs.select", "late:500")
+        tap(s, "log")
+        _ = try await message(s, "setSwitch", ["screen": "tabs", "on": false]).get()
+        XCTAssertEqual(root.fellBack?.why, .switch)
+        XCTAssertEqual(s.posts.count, 2, "the page has not drawn Log yet")
+        try await expect("the web view once the page answered: \(s.posts)") { s.posts == ["web", "web", "web"] }
+        try await sleep(0.3)
+        XCTAssertEqual(s.posts.count, 3, "once")
+    }
+
     // MARK: 13. Busy, not broken
 
     /// G17 as contract 4.4 (D41) settled it, I15: a page busy for 5.25 s while three taps queue (timeouts scaled to

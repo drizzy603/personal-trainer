@@ -1052,6 +1052,37 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertEqual(g.posts.count, 2)
     }
 
+    /// Contract 8.1 step 7, D45, I17: the newest move into a web tab that VoiceOver has not heard is `pendingWebAnnounce`
+    /// (the bridge posts it after a hello for a run whose `tabs.select` no document answered); one that the scene's
+    /// fallback overtakes is still heard once the page has drawn the tab (the fallback changes no selection), and once.
+    func test09bAnUnheardWebMoveIsPendingAndSurvivesTheFallback() throws {
+        let r = rig(mode: .native)
+        XCTAssertNil(r.root.pendingWebAnnounce, "the first frame waits for nobody")
+        r.tap("progress")
+        let s = r.root.seq
+        XCTAssertEqual(r.root.pendingWebAnnounce, s)
+        r.root.announceWeb(seq: s)
+        XCTAssertNil(r.root.pendingWebAnnounce, "heard")
+        r.tap("settings")
+        r.tap("coach")
+        XCTAssertNil(r.root.pendingWebAnnounce, "a NATIVE Coach tab is heard at once: nothing waits")
+        r.root.select("log", source: .page(intent: nil))
+        XCTAssertNil(r.root.pendingWebAnnounce, "a page run is heard at its end")
+
+        r.clear()
+        r.tap("progress")
+        let p = r.root.seq
+        r.root.fallBack(why: .failures, at: Date())
+        XCTAssertTrue(r.posts.isEmpty, "the page has not drawn Progress yet")
+        XCTAssertEqual(r.root.pendingWebAnnounce, p, "still waiting after the fallback")
+        r.root.announceWeb(seq: p)
+        XCTAssertEqual(r.posts.count, 1, "heard once the page has drawn it")
+        XCTAssertTrue(r.posts.first === r.webView)
+        r.root.announceWeb(seq: p)
+        XCTAssertEqual(r.posts.count, 1, "once")
+        XCTAssertNil(r.root.pendingWebAnnounce)
+    }
+
     // MARK: 10. The status bar
 
     func test10StatusBar() throws {

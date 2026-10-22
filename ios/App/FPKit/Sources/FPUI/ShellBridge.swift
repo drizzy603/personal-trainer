@@ -779,6 +779,7 @@ public final class ShellBridge: NSObject {
                 // chat's snapshot when it is pushed; never `tabs.select` (the reply carries the selection)
                 if self.coachCovers(b) { self.send(.shellCovered(on: true), b) }
                 if up.contains("coach") { self.resync("coach", b, covered: false) }
+                if #available(iOS 26.0, *) { self.announceAfterHello(b) }
             } else {
                 for s in up { self.resync(s, b) }
             }
@@ -787,6 +788,24 @@ public final class ShellBridge: NSObject {
             #endif
         }
         return ((reply.json.foundation as? [String: Any]) ?? [:], after)
+    }
+
+    /// VoiceOver for a move into a web tab whose `tabs.select` no document answered (contract 8.1 step 7, I17, D45): sent
+    /// before this hello linked its document, it ended unlinked (a tap at a cold launch or during a reload) or gone with
+    /// its document. This hello's answer carries the selection, and the page draws that tab as it runs the answer, which
+    /// Capacitor hands to the page on a later turn of the main queue: a script sent after that turn runs after it, so its
+    /// completion is when the page has drawn the tab. A newer move by then is heard on its own (`announceWeb(seq:)` posts
+    /// only for the newest).
+    @available(iOS 26.0, *)
+    private func announceAfterHello(_ b: Binding) {
+        guard let root = liveRoot(b), let seq = root.pendingWebAnnounce, let wv = b.webView else { return }
+        DispatchQueue.main.async { [weak wv, weak root] in
+            MainActor.assumeIsolated {
+                wv?.evaluateJavaScript("0") { _, _ in
+                    MainActor.assumeIsolated { root?.announceWeb(seq: seq) }
+                }
+            }
+        }
     }
 
     /// What a new document takes over (`up`, contract 3.2): the screens ScreenHost shows, and under a live tab root the
@@ -922,6 +941,7 @@ public final class ShellBridge: NSObject {
 
     /// `tabs.select {tab, seq, again?}` for a run the page did not ask for (the owner's tap or re-tap, a deep link, a
     /// stray); `answered` runs once the page answered or the intent failed (VoiceOver's screen change, contract 8.1 step 7).
+    /// One that reached no page (unlinked, or its document went) is heard after the next hello (`announceAfterHello`).
     private func sendSelect(tab: String, seq: Int, again: Bool, _ b: Binding, answered: (() -> Void)? = nil) {
         send(.tabsSelect(tab: tab, seq: seq, again: again ? true : nil), b) { outcome in
             if case .answered = outcome { answered?() }

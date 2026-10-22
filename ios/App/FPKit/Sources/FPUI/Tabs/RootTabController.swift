@@ -387,13 +387,20 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         return (selected, seq)
     }
 
+    /// The seq of the newest move into a web destination that VoiceOver has not heard yet, nil when none waits: a move
+    /// whose `tabs.select` no document answered (sent before a hello, or its document went) is heard once the next
+    /// hello's answer, which carries the selection, has reached the page (the bridge, contract 8.1 step 7).
+    public var pendingWebAnnounce: Int? { announce?.seq }
+
     /// VoiceOver's screen change for a run into a web destination (contract 8.1 step 7, I17): posted with the web view
-    /// once the page has drawn that tab (the bridge calls it when the run's `tabs.select` is answered or has failed; a
-    /// page run calls it at its end), only while that run is the newest move and its tab is still a web destination.
+    /// once the page has drawn that tab (the bridge calls it when the run's `tabs.select` is answered or has failed, or
+    /// after the hello that carried it; a page run calls it at its end), only while that run is the newest move and its
+    /// tab is still a web destination. After the fallback too: it changes no selection, and the page still draws the tab
+    /// its `tabs.select` went for (sent before the fallback's `screens.off`).
     public func announceWeb(seq s: Int) {
         guard let a = announce, a.seq == s else { return }
         announce = nil
-        guard fellBack == nil, selected == a.tab, !(a.tab == "coach" && coachMode != .web), webView.window != nil else { return }
+        guard selected == a.tab, !(a.tab == "coach" && coachMode != .web), webView.window != nil else { return }
         postScreenChanged(webView)
     }
 
@@ -673,13 +680,13 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     /// (contract 8.5, I5): a native field focused there (the connect screen's key field, a hub field, the pushed chat's)
     /// resigns, so no first responder stays in the hidden stack and no keys stay up over the page. The bridge does the rest
     /// (H8): ScreenHost's `detachStack()`, the cascade, `shell.covered {on:false}`. VoiceOver hears the web view when it
-    /// replaced the selected Coach tab's stack.
+    /// replaced the selected Coach tab's stack; a move into a web tab that VoiceOver has not heard yet stays pending and
+    /// is heard once the page has drawn it (`announceWeb(seq:)`).
     public func fallBack(why: FellBackWhy, at: Date) {
         guard fellBack == nil else { return }
         hooks.section(true)
         fellBack = (why, at)
         endHold(post: false)
-        announce = nil
         let stackShown = selected == "coach" && coachMode != .web
         if stackShown { endEditing() }
         coachMode = .web
