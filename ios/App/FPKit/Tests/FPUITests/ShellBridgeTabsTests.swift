@@ -738,6 +738,18 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(revs, (0..<4).map { (revs.first ?? 0) + $0 }, "a new rev for each restate")
         XCTAssertEqual(failures(s, "tabs"), 0)
         XCTAssertTrue(b.link.isLive("tabs"))
+        // an answered tabs.bar (back on the NATIVE Coach tab the bar shows again) starts the count again
+        await setHow(s, "tabs.bar", "ok")
+        tap(s, "coach")
+        try await expect("the bar's change answered") { records("tabs.bar").last?.outcome == "done" && b.pageLink.pending == 0 }
+        await setHow(s, "tabs.bar", "never")
+        tap(s, "log")
+        try await expect("three bar restates again: \(records("tabs.bar").count)") {
+            records("tabs.bar").count >= 9 && records("tabs.bar").allSatisfy { $0.outcome != nil } && b.pageLink.pending == 0
+        }
+        try await sleep(1.2)
+        XCTAssertEqual(records("tabs.bar").count, 9, "4, the answered one, then the change and three restates")
+        XCTAssertEqual(failures(s, "tabs"), 0)
     }
 
     // MARK: 6. TabsModel
@@ -1044,6 +1056,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.select" }.map(\.outcome), ["not linked"])
         let h = try await hello(s)
         XCTAssertEqual((h["tabs"] as? [String: Any])?["selected"] as? String, "progress", "the answer carries the tap")
+        XCTAssertEqual(s.posts, [], "not with the answer: once the page has run it")
         try await expect("the web view once the page has the answer: \(s.posts)") { s.posts == ["web"] }
         try await sleep(0.3)
         XCTAssertEqual(s.posts, ["web"], "once")
@@ -1056,6 +1069,7 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(b.pageLink.records.filter { $0.name == "tabs.select" }.last?.outcome, "gone")
         XCTAssertEqual(s.posts, ["web"], "nothing when the document goes")
         try await hello(s, Self.all, boot: "b2")
+        XCTAssertEqual(s.posts, ["web"], "not with the answer")
         try await expect("the web view after the new document's hello: \(s.posts)") { s.posts == ["web", "web"] }
         try await sleep(0.3)
         XCTAssertEqual(s.posts.count, 2, "once")
