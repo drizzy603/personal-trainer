@@ -26,6 +26,9 @@
 //   chat; no programmatic focus while covered; the page's models are FPCore's golden fixtures. The
 //   shell's flag without TrovoShell (build 60's store half, before task C5) is inert: no FPScreens, no
 //   hello, the web chat.
+// - Build 61 (plan task P8): the intents sweep also calls the nine intents contract 4.1 adds (listed
+//   here until intents.json carries them) and allows contract 4.5's reasons; under build 60's shell
+//   every coachHome.* answers off and changes nothing, and tabs.* without arguments are bad-args.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -1195,28 +1198,61 @@ serial('C5: a hello answer naming the chat still up (a reload under it): the pag
   } finally { await inert.close(); }
 });
 
-serial('C3: every intent of contract v1 (FPCore intents.json) is known, and refuses missing arguments; no shell, no bridge', async () => {
-  const intents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
+// The nine intents build 61 adds (contract 4.1), with their arguments as the contract lists them. H1 appends them to
+// intents.json after screens.off; until it does the sweep calls them from here (P13 then asks intents.json for 31).
+const INTENTS_61 = [
+  { name: 'tabs.select', args: { tab: 'string', seq: 'int', again: 'bool?' } },
+  { name: 'tabs.bar', args: { h: 'int', safe: 'int', rev: 'int' } },
+  { name: 'coachHome.snapshot', args: {} },
+  { name: 'coachHome.openChat', args: {} },
+  { name: 'coachHome.setKey', args: { secret: 'string' } },
+  { name: 'coachHome.disconnect', args: {} },
+  { name: 'coachHome.clearChat', args: {} },
+  { name: 'coachHome.startIntake', args: {} },
+  { name: 'coachHome.openStarter', args: {} },
+];
+// The reasons a page may answer (contract 4.5): v1's own, then build 61's off, nokey, invalid and has-programme.
+const REASONS = ['busy', 'stale', 'gone', 'idle', 'just-sent', 'intake', 'not-intake', 'unknown-model', 'empty', 'off', 'nokey', 'invalid',
+  'has-programme'];
+
+serial('C3: every intent of contract v1 (FPCore intents.json) and the nine build 61 adds is known, refuses missing arguments and answers only the contract\'s reasons; under build 60\'s shell every coachHome.* answers off and changes nothing; no shell, no bridge', async () => {
+  const listed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'intents.json'), 'utf8')).intents;
+  const intents = listed.concat(INTENTS_61.filter((n) => !listed.some((i) => i.name === n.name)));
   const app = await shellBoot('coach');
   try {
     const out = await app.page.evaluate(async ({ IN_PAGE, intents }) => {
       eval(IN_PAGE);
       await __wait(30); await __open();
+      // what a coachHome.* must leave as it found it: the key, the messages, the tab, the chat's view and setup, no
+      // starter or sheet, nothing asked, said, presented or dismissed through the shell
+      const state = () => JSON.stringify({ key: localStorage.getItem('kt_apikey'), msgs: localStorage.getItem('kt_coach_msgs'), n: coachMessages.length,
+        tab: currentTab, view: coachView, intake: !!intakeMode, starter: !!document.getElementById('starterOverlay'),
+        sheets: document.querySelectorAll('.kt-close-sheet').length, asks: __fpShell.of('confirm').length, toasts: __fpShell.of('toast').length,
+        shows: __fpShell.of('present').length + __fpShell.of('dismiss').length, selects: __fpShell.of('selectTab').length });
       const r = [];
+      let settled = false;
       for (const it of intents) {
+        const home = /^coachHome\./.test(it.name);
+        if (home && !settled) { await __wait(60); settled = true; }   // what the intents before started has landed
         const required = Object.keys(it.args).filter((k) => !/\?$/.test(it.args[k]));
+        const before = home ? state() : null;
         const a = await FPScreens.call(it.name, {});
-        r.push({ name: it.name, required, ok: a.ok, error: a.error || null });
         await __wait(5);
+        r.push({ name: it.name, required, ok: a.ok, error: a.error || null, changed: home && state() !== before });
       }
-      return r;
+      return { r, starter: !!document.getElementById('starterOverlay') };
     }, { IN_PAGE, intents });
-    for (const x of out) {
+    for (const x of out.r) {
       assert(x.error !== 'unknown-intent', x.name + ': the page knows it');
       if (x.required.length) assert(x.ok === false && x.error === 'bad-args', x.name + ': missing ' + x.required.join(', ') + ' is bad-args: ' + JSON.stringify(x));
-      else assert(x.error === null || ['idle', 'busy', 'not-intake', 'intake', 'stale', 'gone'].indexOf(x.error) >= 0, x.name + ': answers ok or with the page\'s reason: ' + JSON.stringify(x));
+      else assert(x.error === null || REASONS.indexOf(x.error) >= 0, x.name + ': answers ok or with the page\'s reason: ' + JSON.stringify(x));
+      // a web 61 page on a build 60 binary: no native Coach tab in this document
+      if (/^coachHome\./.test(x.name) && !x.required.length) assert(x.ok === false && x.error === 'off', x.name + ': off under build 60\'s shell: ' + JSON.stringify(x));
+      if (/^coachHome\./.test(x.name)) assert(!x.changed, x.name + ': changes nothing: ' + JSON.stringify(x));
     }
-    assert(out.length === intents.length && intents.length >= 22, 'every intent was called: ' + out.length);
+    assert(INTENTS_61.every((n) => out.r.some((x) => x.name === n.name)), 'the nine intents build 61 adds were called');
+    assert(!out.starter, 'no #starterOverlay after the loop');
+    assert(out.r.length === intents.length && listed.length >= 22, 'every intent was called: ' + out.r.length);
     assert(app.errors.length === 0, 'no page errors: ' + app.errors.join('|'));
   } finally { await app.close(); }
   // no shell (every shell up to 59, the PWA): no flag, no plugin, no bridge, the web chat
