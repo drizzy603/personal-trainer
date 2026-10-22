@@ -33,6 +33,17 @@
 // - confirm and toast.undo answer before their action runs (D14); a spent id answers stale.
 // - Setup keeps its answers: the setup chat has Cancel and no Back, a tab change dismisses it with setup kept and the
 //   Coach tab's model saying resume, and Coach presents it again; the intake error says "top left".
+// - The Coach tab's actions (P8; contract 4.1, 4.5, 5; T11 c, d): setKey carries a canary key (sk-ant-test- and 16
+//   random characters, K8) into kt_apikey, trimmed, and nowhere else: no TrovoShell call, model, console line, _fpLog
+//   line, watch context, sessionStorage, _fp, other storage key or DOM, and under STORE=shadow the native store never
+//   saw kt_apikey; "API key saved" forwarded; the answer before the ping's fetch (held 3 s). A forced failure answers
+//   exception and nothing carries any part of the canary. setKey refuses in order: bad-args, off, stale (no toast),
+//   invalid (the err toast forwarded); a second call right after a good one is stale. Every coachHome.* answers off
+//   where the native Coach tab is not in use (tabsWeb, coach61, build 60's coach, kt_native_off, screens.off
+//   coachHome) and changes nothing. disconnect, clearChat and startIntake forward their confirms and act on yes (setup
+//   presented with Cancel and no Back); nokey, empty, intake; stale on Log, where no web sheet opens. openChat
+//   presents the chat, its model first; has-programme; openStarter selects Log before it paints the starter, which is
+//   announced.
 const fs = require('fs');
 const path = require('path');
 const { boot, assert, run } = require('../lib/harness');
@@ -721,5 +732,348 @@ serial('setup keeps its answers (8.3): the setup chat has Cancel and no Back; a 
     const b = out.back;
     assert(b.answer.ok && b.tab === 'coach' && J(b.pd) === '["present coach"]' && b.modelFirst && b.intake && b.header.cancel === true,
       'Coach: setup presented again: ' + J(b));
+  } finally { await app.close(); }
+});
+
+// ── The Coach tab's actions: coachHome.* and the API key (plan task P8; contract 4.1, 4.5, 5; T11 c, d) ─────────────
+const crypto = require('crypto');
+// A canary key (K8): sk-ant-test- and 16 random characters, never a real key. Its pieces, any of which is a leak: the
+// whole canary, Settings' masked form of it, and every 8 characters in a row of its random part (long enough that the
+// page's own text cannot hold one by chance).
+const ALNUM = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const canary = () => 'sk-ant-test-' + Array.from({ length: 16 }, () => ALNUM[crypto.randomInt(ALNUM.length)]).join('');
+const pieces = (c) => {
+  const r = c.slice(12), out = [c, c.slice(0, 8) + '•'.repeat(16)];
+  for (let i = 0; i + 8 <= r.length; i++) out.push(r.slice(i, i + 8));
+  return out;
+};
+const TWO = JSON.stringify([{ role: 'user', content: 'How was my week?', at: Date.now() - 90000 },
+  { role: 'assistant', content: 'A strong one.', at: Date.now() - 80000 }]);
+// In the page: __leaks(P, logs) names each place that holds one of the pieces P: every TrovoShell call (logs, toasts,
+// models, presents), what the mock sent the page and heard back, every model, the _fpLog lines, the watch's context,
+// sessionStorage, _fp, every localStorage key but kt_apikey, the DOM, and under STORE=shadow everything the native
+// store mock holds or heard (__storeText). __state(): what an intent answering a refusal leaves as it was.
+// __offSweep(): on the Coach tab, every coachHome.* with good arguments and setKey's bad ones, then setKey with a key
+// saved.
+const P8 = `(() => {
+  window.__storeText = () => JSON.stringify([__ktMock.log, __ktMock.posts, __ktMock.postResults, __ktMock.rows(), __ktMock.journal(),
+    __ktMock.snaps().map((n) => __ktMock.readSnap(n)), __ktMock.conflicts()]);
+  window.__leaks = (P, logs) => {
+    const ls = {}, ss = {};
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k !== 'kt_apikey') ls[k] = localStorage.getItem(k); }
+    for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); ss[k] = sessionStorage.getItem(k); }
+    const at = { calls: JSON.stringify(__fpShell.calls), sent: JSON.stringify(__fpShell.sent), models: JSON.stringify(__fpShell.models()),
+      fpLog: JSON.stringify(logs), watch: JSON.stringify(window.__mock ? __mock.updateContext : null), sessionStorage: JSON.stringify(ss),
+      fp: JSON.stringify(_fp), localStorage: JSON.stringify(ls), dom: document.documentElement.outerHTML };
+    if (window.__ktMock) at.store = __storeText();
+    return Object.keys(at).filter((k) => P.some((p) => at[k].indexOf(p) >= 0));
+  };
+  window.__logs = () => {
+    const logs = [], fl = window._fpLog;
+    window._fpLog = function (t) { logs.push(String(t)); return fl.apply(this, arguments); };
+    return logs;
+  };
+  window.__state = () => JSON.stringify({ key: localStorage.getItem('kt_apikey'), msgs: localStorage.getItem('kt_coach_msgs'),
+    n: coachMessages.length, tab: currentTab, view: coachView, intake: !!intakeMode, starter: !!document.getElementById('starterOverlay'),
+    sheets: document.querySelectorAll('.kt-close-sheet').length, asks: __fpShell.of('confirm').length, toasts: __fpShell.of('toast').length,
+    selects: __fpShell.of('selectTab').length, shows: __fpShell.of('present').length + __fpShell.of('dismiss').length });
+  window.__offSweep = async () => {
+    switchTab('coach'); await __w(40);
+    const before = __state(), r = [];
+    const go = async (n, a) => {
+      const x = await FPScreens.call('coachHome.' + n, a || {});
+      r.push(n + (a ? ' ' + JSON.stringify(a) : '') + ': ' + (x.ok ? 'ok' : x.error));
+    };
+    await go('setKey', { secret: 5 }); await go('setKey', {}); await go('setKey', { secret: 'sk-xyz' }); await go('setKey', { secret: 'sk-ant-test-off' });
+    for (const n of ['openChat', 'disconnect', 'clearChat', 'startIntake', 'openStarter', 'snapshot']) await go(n);
+    await __w(40);
+    const changed = __state() !== before;
+    localStorage.setItem('kt_apikey', 'sk-ant-test'); render(); await __w(20);
+    await go('setKey', { secret: 'sk-xyz' });
+    return { r, changed, shown: !!_fp.shown.coachHome, mode: _fpCoachMode() };
+  };
+})();`;
+const OFF_SWEEP = ['setKey {"secret":5}: bad-args', 'setKey {}: bad-args', 'setKey {"secret":"sk-xyz"}: off', 'setKey {"secret":"sk-ant-test-off"}: off',
+  'openChat: off', 'disconnect: off', 'clearChat: off', 'startIntake: off', 'openStarter: off', 'snapshot: off', 'setKey {"secret":"sk-xyz"}: off'];
+// The one invalid-key text: the web connect screen, Settings and setKey (_KEY_BAD).
+const BAD_TEXT = 'Invalid key — Anthropic keys start with sk-ant-';
+
+serial('coachHome.setKey carries the key once (contract 5, K1-K8): a canary typed with blanks around it is saved trimmed in kt_apikey and is nowhere else (no TrovoShell call, model, console line, _fpLog line, watch context, sessionStorage, _fp, other storage key or DOM; under STORE=shadow the native store never saw kt_apikey); "API key saved" forwarded, the route hub; the answer comes before the ping\'s fetch, held 3 s; a forced failure answers exception and nothing carries any part of the canary', async () => {
+  const C = canary(), P = pieces(C), lines = [];
+  let app = await pageBoot('tabs', { init: P8, seed: { kt_apikey: '' } });
+  app.page.on('console', (m) => lines.push(m.text()));
+  try {
+    await ready(app);
+    const out = await ev(app, async ({ C, P }) => {
+      const logs = __logs();
+      switchTab('coach'); await __w(40);
+      const r = { before: { covered: _fpCovered(), route: __last('coachHome').route, key: localStorage.getItem('kt_apikey') } };
+      const st = window.__ktStoreState && __ktStoreState.mode === 'shadow' ? __ktStoreState : null, pass0 = st ? st.passthrough : 0;
+      // the ping's request is held 3 s: the answer comes before it ends
+      const order = [];
+      r.ping = [];
+      window.fetch = (url, o) => {
+        order.push('fetch');
+        r.ping.push({ api: String(url) === _coachApiURL(), key: !!(o && o.headers && o.headers['x-api-key'] === C) });
+        return new Promise((res) => setTimeout(() => { order.push('fetched'); res(new Response('{}', { status: 200 })); }, 3000));
+      };
+      const n = __n();
+      const a = await FPScreens.call('coachHome.setKey', { secret: '  ' + C + '\n' });
+      order.push('answer');
+      r.answer = a; r.order = order.slice();
+      await __w(60);
+      r.after = { saved: localStorage.getItem('kt_apikey') === C, toasts: __fpShell.calls.slice(n).filter((c) => c[0] === 'toast').map((c) => c[1]),
+        route: __last('coachHome').route,
+        store: st ? { passthrough: st.passthrough - pass0, count: __ktMock.count('passthrough'), named: __storeText().indexOf('kt_apikey') >= 0 } : null };
+      r.leaks = __leaks(P, logs);
+      return r;
+    }, { C, P });
+    assert(out.before.covered && out.before.route === 'connect' && out.before.key === '', 'the native connect screen covers the page: ' + J(out.before));
+    assert(J(out.answer) === '{"ok":true}' && J(out.order) === '["fetch","answer"]',
+      'answered at once, the ping sent and still out (held 3 s): ' + J([out.answer, out.order]));
+    assert(out.ping.length === 1 && out.ping[0].api && out.ping[0].key, 'one ping, to the coach API, with the trimmed key in its header: ' + J(out.ping));
+    assert(out.after.saved && J(out.after.toasts) === J([{ text: 'API key saved', style: 'ok' }]) && out.after.route === 'hub',
+      'saved trimmed, "API key saved" forwarded, the route hub: ' + J(out.after));
+    assert(J(out.leaks) === '[]', 'the canary is nowhere but kt_apikey: ' + J(out.leaks));
+    assert(!lines.some((l) => P.some((p) => l.indexOf(p) >= 0)), 'no console line carries it (' + lines.length + ' lines)');
+    if (app.store) {
+      assert(out.after.store && out.after.store.passthrough === 1 && out.after.store.count === 0 && !out.after.store.named,
+        'STORE=shadow: the facade kept the key in WebKit alone, and the native store never saw kt_apikey: ' + J(out.after.store));
+    }
+  } finally { await app.close(); }
+  // the write fails with an error whose text carries the value: no answer, toast, log line or storage passes it on
+  const FAIL = 'Storage.prototype.setItem = (function (set) { return function (k, v) { if (k === "kt_apikey") {'
+    + ' throw new DOMException("full: " + v, "QuotaExceededError"); } return set.apply(this, arguments); }; })(Storage.prototype.setItem);';
+  const C2 = canary(), P2 = pieces(C2), lines2 = [];
+  app = await pageBoot('tabs', { init: P8 + FAIL, seed: { kt_apikey: '' } });
+  app.page.on('console', (m) => lines2.push(m.text()));
+  try {
+    await ready(app);
+    const out = await ev(app, async ({ C, P }) => {
+      const logs = __logs();
+      switchTab('coach'); await __w(40);
+      const n = __n();
+      const a = await FPScreens.call('coachHome.setKey', { secret: C });
+      await __w(60);
+      return { answer: a, key: localStorage.getItem('kt_apikey'), route: __last('coachHome').route, logs: logs.slice(),
+        heard: __fpShell.calls.slice(n).filter((c) => c[0] === 'log' || c[0] === 'toast').map((c) => c[0] + ' ' + c[1].text), leaks: __leaks(P, logs) };
+    }, { C: C2, P: P2 });
+    assert(J(out.answer) === '{"ok":false,"error":"exception"}' && out.key === '' && out.route === 'connect',
+      'a failed write answers exception and saves nothing: ' + J([out.answer, out.key, out.route]));
+    assert(J(out.logs) === '["coachHome.setKey failed"]' && J(out.heard) === '["log fp: coachHome.setKey failed"]',
+      'one log line, in the handler\'s own words, and no toast: ' + J([out.logs, out.heard]));
+    assert(J(out.leaks) === '[]' && !lines2.some((l) => P2.some((p) => l.indexOf(p) >= 0)),
+      'no error text, log line, toast or storage carries any part of the canary: ' + J(out.leaks));
+  } finally { await app.close(); }
+});
+
+serial('coachHome.setKey refuses in the contract\'s order: bad-args, off, stale (a key is saved: no toast), invalid (\'sk-xyz\' and blanks: the err toast forwarded, nothing saved); a good one is saved trimmed and a second one right after it is stale; once screens.off takes the Coach tab down every coachHome.* answers off', async () => {
+  const app = await pageBoot('tabs', { init: P8 });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      window.fetch = () => new Promise(() => {});   // the ping stays out: only the handler's own toasts
+      switchTab('coach'); await __w(40);
+      const r = {}, toasts = (i) => __fpShell.of('toast').slice(i);
+      const key = (s) => FPScreens.call('coachHome.setKey', s === undefined ? {} : { secret: s });
+      let t = __fpShell.of('toast').length;
+      r.stale = [await key('sk-xyz'), await key('sk-ant-test-other')];
+      await __w(40);
+      r.staleAfter = { key: localStorage.getItem('kt_apikey'), toasts: toasts(t) };
+      localStorage.removeItem('kt_apikey'); render(); await __w(40);
+      t = __fpShell.of('toast').length;
+      r.invalid = [await key('sk-xyz'), await key('   '), await key(5), await key()];
+      await __w(40);
+      r.invalidAfter = { key: localStorage.getItem('kt_apikey'), toasts: toasts(t), route: __last('coachHome').route };
+      t = __fpShell.of('toast').length;
+      r.both = await Promise.all([key('  sk-ant-test-first  '), key('sk-ant-test-second')]);
+      await __w(60);
+      r.saved = { key: localStorage.getItem('kt_apikey'), toasts: toasts(t), route: __last('coachHome').route };
+      // the shell takes the Coach tab down: off from then on, with no key saved too
+      localStorage.removeItem('kt_apikey'); render(); await __w(40);
+      r.down = await FPScreens.call('screens.off', { screen: 'coachHome', why: 'needs' });
+      await __w(40);
+      r.off = await __offSweep();
+      return r;
+    });
+    const no = (e) => ({ ok: false, error: e });
+    const BAD = { text: BAD_TEXT, style: 'err' };
+    assert(J(out.stale) === J([no('stale'), no('stale')]) && out.staleAfter.key === KEY && J(out.staleAfter.toasts) === '[]',
+      'a key saved: stale before invalid, no toast, the key kept: ' + J([out.stale, out.staleAfter]));
+    assert(J(out.invalid) === J([no('invalid'), no('invalid'), no('bad-args'), no('bad-args')]) && out.invalidAfter.key === null
+      && J(out.invalidAfter.toasts) === J([BAD, BAD]) && out.invalidAfter.route === 'connect',
+      'no key: invalid with the page\'s err toast forwarded, bad-args for a non-string, nothing saved: ' + J([out.invalid, out.invalidAfter]));
+    assert(J(out.both) === J([{ ok: true }, no('stale')]) && out.saved.key === 'sk-ant-test-first' && J(out.saved.toasts) === J([{ text: 'API key saved', style: 'ok' }])
+      && out.saved.route === 'hub', 'saved trimmed; the second call right after it is stale and says nothing: ' + J([out.both, out.saved]));
+    assert(J(out.down) === '{"ok":true}' && J(out.off.r) === J(OFF_SWEEP) && !out.off.changed && !out.off.shown && out.off.mode === 'web',
+      'after screens.off coachHome every coachHome.* is off and changes nothing: ' + J(out.off));
+  } finally { await app.close(); }
+});
+
+serial('every coachHome.* answers off where the native Coach tab is not in use in this document (tabsWeb, coach61, build 60\'s coach, tabs with kt_native_off), bad-args first, and changes nothing: no key saved, no message cleared, no setup, no starter, no tab change, nothing asked; the web connect screen and Settings say an invalid key as setKey does', async () => {
+  for (const [shell, seed, mode] of [['tabsWeb', {}, 'web'], ['coach61', {}, null], ['coach', {}, null], ['tabs', { kt_native_off: '1' }, 'web']]) {
+    const app = await pageBoot(shell, { init: P8, seed: Object.assign({ kt_apikey: '', kt_routine: '', kt_coach_msgs: TWO }, seed) });
+    try {
+      await ready(app);
+      const out = await ev(app, () => __offSweep());
+      assert(J(out.r) === J(OFF_SWEEP) && !out.changed && !out.shown && out.mode === mode, shell + J(seed) + ': off, and nothing changed: ' + J(out));
+      if (shell !== 'tabsWeb') continue;
+      // one text: the web Coach tab's connect screen and Settings > AI Coach refuse a key with setKey's words
+      const said = await ev(app, async () => {
+        localStorage.removeItem('kt_apikey'); render(); await __w(20);
+        const toast = () => document.getElementById('toast').textContent;
+        document.getElementById('coach-key-input').value = 'sk-xyz'; saveApiKey();
+        const coach = toast();
+        switchTab('settings'); await __w(20);
+        document.getElementById('settingsApiKeyInput').value = 'sk-xyz'; saveApiKeyFromSettings();
+        return [_KEY_BAD, coach, toast(), localStorage.getItem('kt_apikey')];
+      });
+      assert(J(said) === J([BAD_TEXT, BAD_TEXT, BAD_TEXT, null]), 'the connect screen and Settings say the one invalid-key text: ' + J(said));
+    } finally { await app.close(); }
+  }
+});
+
+serial('disconnect, clearChat and startIntake ask first (their confirms forwarded) and act on yes: Key removed and the connect route, the chat cleared, setup presented with Cancel and no Back; nokey, empty, intake, each before stale; stale on Log, where no web sheet opens; clearChat with no key is stale (the connect screen offers no Clear Chat History)', async () => {
+  const app = await pageBoot('tabs', { init: P8, seed: { kt_coach_msgs: TWO, kt_routine: '' } });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      const r = {}, call = async (n, a) => { const x = await FPScreens.call(n, a || {}); return x.ok ? 'ok' : x.error; };
+      const onLog = async (names) => {
+        await __fpShell.tap('log'); await __w(40);
+        const s = __state(), covered = _fpCovered(), answers = [];
+        for (const n of names) answers.push(await call('coachHome.' + n));
+        await __w(40);
+        const same = __state() === s;
+        await __fpShell.tap('coach'); await __w(40);
+        return { covered, answers, same };
+      };
+      // asks through the shell: the answer, the titles asked, and the one confirm's id
+      const ask = async (n) => {
+        const i = __fpShell.of('confirm').length, a = await call('coachHome.' + n);
+        await __w(20);
+        const c = __fpShell.of('confirm').slice(i);
+        return { a, asked: c.map((x) => x.title), id: c.length === 1 ? c[0].id : null };
+      };
+      const reply = async (id, yes) => { const a = await call('confirm', { id, yes }); await __w(60); return a; };
+      const said = (i) => __fpShell.of('toast').slice(i).map((x) => x.text);
+      // Log: the native Coach tab does not cover the page; the three answer stale, ask nothing and open no sheet
+      r.log = await onLog(['disconnect', 'clearChat', 'startIntake']);
+      // clearChat: no leaves the chat; yes clears it
+      let q = await ask('clearChat');
+      let s = __state();
+      r.clearNo = { q: { a: q.a, asked: q.asked }, reply: await reply(q.id, false) };
+      r.clearNo.same = __state() === s;
+      q = await ask('clearChat');
+      let t = __fpShell.of('toast').length;
+      r.clear = { q: { a: q.a, asked: q.asked }, reply: await reply(q.id, true) };
+      Object.assign(r.clear, { n: coachMessages.length, stored: localStorage.getItem('kt_coach_msgs'), toasts: said(t),
+        rows: __last('coachHome').groups.map((g) => g.rows.map((x) => x.do).join(' ')), again: await call('coachHome.clearChat') });
+      r.clearLog = await onLog(['clearChat']);   // empty before stale
+      // disconnect: yes removes the key; then nokey, on Log too (nokey before stale)
+      q = await ask('disconnect');
+      t = __fpShell.of('toast').length;
+      r.disc = { q: { a: q.a, asked: q.asked }, reply: await reply(q.id, true) };
+      Object.assign(r.disc, { key: localStorage.getItem('kt_apikey'), toasts: said(t), route: __last('coachHome').route,
+        again: [await call('coachHome.disconnect'), await call('coachHome.startIntake')] });
+      r.discLog = await onLog(['disconnect', 'startIntake']);
+      // no key with a message: the connect screen has no Clear Chat History
+      _pushCoach({ role: 'user', content: 'Still there?' }); render(); await __w(20);
+      r.clearNoKey = await call('coachHome.clearChat');
+      // startIntake over that message: asks first; yes starts setup, which presents the chat in setup mode
+      r.setKey = await call('coachHome.setKey', { secret: 'sk-ant-test-again' });
+      await __w(40);
+      q = await ask('startIntake');
+      const n = __n();
+      r.intake = { q: { a: q.a, asked: q.asked, tone: __fpShell.of('confirm').slice(-1)[0].tone }, reply: await reply(q.id, true) };
+      await __idle();
+      const d = __decl(n).filter((x) => / coach$/.test(x)), p = d.indexOf('present coach'), m = __last('coach');
+      Object.assign(r.intake, { intake: !!intakeMode, pd: d.filter((x) => !/^model/.test(x)), modelFirst: p > 0 && d.slice(0, p).indexOf('model coach') >= 0,
+        header: { back: m.header.back, cancel: m.header.cancel }, mIntake: m.intake, again: await call('coachHome.startIntake') });
+      r.intakeLog = await onLog(['startIntake']);   // intake before stale
+      return r;
+    });
+    assert(!out.log.covered && J(out.log.answers) === '["stale","stale","stale"]' && out.log.same,
+      'on Log: stale, nothing asked, no web sheet, nothing changed: ' + J(out.log));
+    assert(out.clearNo.q.a === 'ok' && J(out.clearNo.q.asked) === '["Clear chat history?"]' && out.clearNo.reply === 'ok' && out.clearNo.same,
+      'clearChat forwards its confirm; no changes nothing: ' + J(out.clearNo));
+    const c = out.clear;
+    assert(c.q.a === 'ok' && J(c.q.asked) === '["Clear chat history?"]' && c.reply === 'ok' && c.n === 0 && c.stored === null
+      && J(c.toasts) === '["Chat history cleared"]' && J(c.rows) === '["openChat","startIntake","disconnect"]' && c.again === 'empty',
+      'clearChat on yes: cleared, the toast forwarded, the hub without the row; then empty: ' + J(c));
+    assert(J(out.clearLog.answers) === '["empty"]' && out.clearLog.same, 'empty before stale: ' + J(out.clearLog));
+    const k = out.disc;
+    assert(k.q.a === 'ok' && J(k.q.asked) === '["Disconnect API key?"]' && k.reply === 'ok' && k.key === null && J(k.toasts) === '["Key removed"]'
+      && k.route === 'connect' && J(k.again) === '["nokey","nokey"]', 'disconnect on yes: Key removed, the connect route; then nokey: ' + J(k));
+    assert(J(out.discLog.answers) === '["nokey","nokey"]' && out.discLog.same, 'nokey before stale: ' + J(out.discLog));
+    assert(out.clearNoKey === 'stale', 'clearChat with no key is stale: ' + J(out.clearNoKey));
+    const i = out.intake;
+    assert(out.setKey === 'ok' && i.q.a === 'ok' && J(i.q.asked) === '["Start programme setup?"]' && i.q.tone === 'accent' && i.reply === 'ok',
+      'startIntake asks first over the chat: ' + J([out.setKey, i.q, i.reply]));
+    assert(i.intake && J(i.pd) === '["present coach"]' && i.modelFirst && i.mIntake && i.header.cancel === true && i.header.back === false && i.again === 'intake',
+      'setup presents the chat with Cancel and no Back, its model first; then intake: ' + J(i));
+    assert(J(out.intakeLog.answers) === '["intake"]' && out.intakeLog.same, 'intake before stale: ' + J(out.intakeLog));
+  } finally { await app.close(); }
+});
+
+serial('openChat presents the chat, its model first (nokey without a key); with a programme startIntake and openStarter answer has-programme (nokey first), and openStarter neither selects Log nor paints the starter', async () => {
+  const app = await pageBoot('tabs', { init: P8 });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      const call = async (n) => { const x = await FPScreens.call('coachHome.' + n, {}); return x.ok ? 'ok' : x.error; };
+      switchTab('coach'); await __w(40);
+      let s = __state();
+      const r = { has: [await call('startIntake'), await call('openStarter')] };
+      await __w(40);
+      r.hasSame = __state() === s;
+      localStorage.removeItem('kt_apikey'); render(); await __w(40);
+      s = __state();
+      r.nokey = [await call('startIntake'), await call('openChat')];
+      await __w(40);
+      r.nokeySame = __state() === s;
+      localStorage.setItem('kt_apikey', 'sk-ant-test'); render(); await __w(40);
+      const n = __n();
+      r.open = { a: await call('openChat') };
+      await __w(40);
+      const d = __decl(n).filter((x) => / coach$/.test(x)), p = d.indexOf('present coach');
+      Object.assign(r.open, { pd: d.filter((x) => !/^model/.test(x)), modelFirst: p > 0 && d.slice(0, p).indexOf('model coach') >= 0, shown: !!_fp.shown.coach,
+        view: coachView, screen: __screen().kids });
+      return r;
+    });
+    assert(J(out.has) === '["has-programme","has-programme"]' && out.hasSame, 'a programme: has-programme, nothing changed: ' + J(out));
+    assert(J(out.nokey) === '["nokey","nokey"]' && out.nokeySame, 'no key: nokey (before has-programme), nothing presented: ' + J(out));
+    assert(out.open.a === 'ok' && J(out.open.pd) === '["present coach"]' && out.open.modelFirst && out.open.shown && out.open.view === 'chat'
+      && J(out.open.screen) === '["kt-fp-ph/coachHome"]', 'openChat: the chat presented, its model first: ' + J(out.open));
+  } finally { await app.close(); }
+});
+
+serial('openStarter: one selectTab {tab:\'log\'}, sent before the local switch and before the starter is painted (T9 f); then the starter up on Log, announced (sheets {open:true}), the page no longer covered', async () => {
+  const app = await pageBoot('tabs', { init: P8, seed: { kt_apikey: '', kt_routine: '' } });
+  try {
+    await ready(app);
+    const out = await ev(app, async () => {
+      switchTab('coach'); await __w(40);
+      const home = __last('coachHome'), r = { route: home.route, link: !!(home.connect && home.connect.starter), covered: _fpCovered() };
+      // the starter's paint, as the page appends it: how many selectTab calls had gone by then, and the page's tab
+      const s0 = __fpShell.of('selectTab').length, c0 = __fpShell.calls.length, seen = [], ap = document.body.appendChild;
+      document.body.appendChild = function (el) {
+        if (el && el.id === 'starterOverlay') seen.push({ selects: __fpShell.of('selectTab').length - s0, tab: currentTab });
+        return ap.apply(this, arguments);
+      };
+      r.a = await FPScreens.call('coachHome.openStarter', {});
+      await __w(80);
+      delete document.body.appendChild;
+      const after = __fpShell.calls.slice(c0);
+      Object.assign(r, { seen, selects: after.filter((c) => c[0] === 'selectTab').map((c) => ({ args: c[1], from: c[2].currentTab })),
+        sheets: after.filter((c) => c[0] === 'sheets').map((c) => c[1]), overlay: !!document.getElementById('starterOverlay'), tab: currentTab,
+        coveredAfter: _fpCovered() });
+      return r;
+    });
+    assert(out.route === 'connect' && out.link && out.covered, 'the native connect screen offers the starter: ' + J(out));
+    assert(J(out.a) === '{"ok":true}' && J(out.selects) === J([{ args: { tab: 'log' }, from: 'coach' }]),
+      'one selectTab {tab:"log"}, sent before the local switch: ' + J(out));
+    assert(J(out.seen) === J([{ selects: 1, tab: 'log' }]), 'the starter painted after the selectTab, on Log: ' + J(out.seen));
+    assert(out.overlay && J(out.sheets) === '[{"open":true}]' && out.tab === 'log' && !out.coveredAfter, 'the starter up and announced: ' + J(out));
   } finally { await app.close(); }
 });
