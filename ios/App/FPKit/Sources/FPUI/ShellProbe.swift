@@ -413,7 +413,8 @@ final class ShellProbe {
             event("send", ["length": text.count, "nonce": nonce, "sent": sent])
             next()
         case "type":
-            event("type", typeKeys(step["text"] as? String ?? "", b))
+            event("type", Self.typeKeys(step["text"] as? String ?? "", into: b?.screens.firstTextInput(),
+                                        chatUp: b?.screens.isUp("coach") == true, composer: b?.screens.coach))
             next()
         case "composerSend":
             // the composer's Send on what it holds (the chat's button calls the same)
@@ -755,33 +756,34 @@ final class ShellProbe {
         return "composer"
     }
 
-    /// `type {text}` (contract 5 K4, D47): keys into the top screen's first text input through UIKit's text input, as the
-    /// keyboard types, while it holds them. The key field never takes them any other way (an error event, nothing typed,
-    /// no draft written); the composer, when it does not hold them, gets them in its own draft (its words are no
-    /// secret). The event carries the text's length, never the text.
-    private func typeKeys(_ text: String, _ b: ShellBridge.Binding?) -> [String: Any] {
-        let field = b?.screens.firstTextInput()
+    /// `type {text}` (contract 5 K4, D47) into `field`, the top screen's first text input: keys through UIKit's text input,
+    /// as the keyboard types, while it holds them. The key field never takes them any other way (an error event, nothing
+    /// typed, no draft written); the composer, when it does not hold them, gets them in its own draft while the chat is
+    /// up (`chatUp`; its words are no secret, `composer` the chat's store). The event's fields: the text's length, the
+    /// input's kind, `via` (`keys`, `draft`) or `error`; never the text.
+    static func typeKeys(_ text: String, into field: UIView?, chatUp: Bool, composer: CoachStore?) -> [String: Any] {
         var o: [String: Any] = ["length": text.count]
         if let field {
-            o["kind"] = Self.inputKind(field)
+            let kind = inputKind(field)
+            o["kind"] = kind
             if field.isFirstResponder, let input = field as? UIKeyInput {
                 input.insertText(text)
                 o["via"] = "keys"
                 return o
             }
-            if Self.inputKind(field) == "key" {
+            if kind == "key" {
                 o["error"] = "the key field does not hold the keys: nothing typed"
                 return o
             }
-        } else if b?.screens.isUp("coach") != true {
+        } else if !chatUp {
             o["error"] = "no text input on the top screen: nothing typed"
             return o
         }
-        guard let store = b?.screens.coach else {
+        guard let composer else {
             o["error"] = "no binding: nothing typed"
             return o
         }
-        store.draft.text += text
+        composer.draft.text += text
         o["kind"] = "composer"
         o["via"] = "draft"
         return o

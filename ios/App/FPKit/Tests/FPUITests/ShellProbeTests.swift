@@ -131,6 +131,69 @@ final class ShellProbeTests: XCTestCase {
         XCTAssertEqual(r.runs.map(\.source), [.tap])
     }
 
+    /// `type {text}` (contract 5 K4, D47; the H11 review): into the key field only while it holds the keys, through UIKit's
+    /// text input; otherwise an error event that types nothing and writes no draft (a canary typed at the connect screen
+    /// must never land in `fpDraft.coach`); the composer not holding the keys gets the words in its own draft while the
+    /// chat is up; no event carries any part of the text.
+    func testTypeIntoTheKeyFieldOnlyWhileItHoldsTheKeysAndNeverIntoADraft() throws {
+        let canary = "sk-ant-test-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let key = UITextField(frame: CGRect(x: 20, y: 100, width: 300, height: 44))
+        key.isSecureTextEntry = true
+        window.addSubview(key)
+        let store = CoachStore(draft: CoachComposerDraft(defaults: nil))
+        func leaks(_ o: [String: Any]) -> String? {
+            let line = String(decoding: try! JSONSerialization.data(withJSONObject: ShellProbe.jsonSafe(o)), as: UTF8.self)
+            for start in 0...(canary.count - 6) {
+                let piece = String(canary.dropFirst(start).prefix(6))
+                if line.contains(piece) { return line }
+            }
+            return nil
+        }
+
+        // the key field without the keys: an error, nothing typed, no draft, whatever the chat
+        for chatUp in [false, true] {
+            let refused = ShellProbe.typeKeys(canary, into: key, chatUp: chatUp, composer: store)
+            XCTAssertEqual(refused["error"] as? String, "the key field does not hold the keys: nothing typed")
+            XCTAssertNil(refused["via"])
+            XCTAssertEqual(refused["kind"] as? String, "key")
+            XCTAssertEqual(refused["length"] as? Int, canary.count)
+            XCTAssertEqual(key.text ?? "", "", "nothing typed into the field")
+            XCTAssertEqual(store.draft.text, "", "no draft written (it would be saved as fpDraft.coach)")
+            XCTAssertNil(leaks(refused))
+        }
+
+        // holding the keys: typed through UIKit's text input, and only the length said
+        XCTAssertTrue(key.becomeFirstResponder(), "the field takes the keys (the scenario's nativeFocus)")
+        defer { key.resignFirstResponder() }
+        let typed = ShellProbe.typeKeys(canary, into: key, chatUp: false, composer: store)
+        XCTAssertEqual(typed["via"] as? String, "keys")
+        XCTAssertEqual(typed["kind"] as? String, "key")
+        XCTAssertEqual(typed["length"] as? Int, canary.count)
+        XCTAssertNil(typed["error"])
+        XCTAssertEqual(key.text, canary, "typed as the keyboard types")
+        XCTAssertEqual(store.draft.text, "")
+        XCTAssertNil(leaks(typed))
+        key.resignFirstResponder()
+
+        // the composer without the keys: its own draft while the chat is up (its words are no secret); with no input and
+        // no chat up, nothing
+        let composer = UITextView(frame: CGRect(x: 20, y: 200, width: 300, height: 80))
+        window.addSubview(composer)
+        let drafted = ShellProbe.typeKeys("Bench felt heavy", into: composer, chatUp: true, composer: store)
+        XCTAssertEqual(drafted["via"] as? String, "draft")
+        XCTAssertEqual(drafted["kind"] as? String, "composer")
+        XCTAssertEqual(store.draft.text, "Bench felt heavy")
+        XCTAssertNil(drafted["text"])
+        let none = ShellProbe.typeKeys("more", into: nil, chatUp: false, composer: store)
+        XCTAssertEqual(none["error"] as? String, "no text input on the top screen: nothing typed")
+        XCTAssertEqual(store.draft.text, "Bench felt heavy")
+        XCTAssertEqual(ShellProbe.typeKeys("x", into: nil, chatUp: true, composer: nil)["error"] as? String, "no binding: nothing typed")
+    }
+
     /// The state's `input` (contract 5 K1, K4; 15.3; delta 14.10): the key field is the secure input, the composer any
     /// other; it says whether the input holds the keys and text and the label VoiceOver reads, and never any part of the
     /// text, whatever the field holds.
