@@ -44,7 +44,9 @@ import FPCore
 /// {url}`, `share {comment?, jpeg?}` and `sceneCycle` (the App's hooks of those names: a URL opened through the App
 /// delegate now, or when the scene next enters the foreground; a shared photo and comment written to the App Group as
 /// the share extension writes them, `jpeg` naming a file beside the steps or none for one drawn in the app; the scene's
-/// connection replayed, which ends the phase). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach
+/// connection replayed, which ends the phase), `sceneDestroy` (UIKit's own request to destroy the scene's session, as
+/// StoreProbe's: refused on an iPhone, `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in 3
+/// s, `sceneDestroyNoAnswer`, the phase ends). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach
 /// tab's stack as on 60's overlay.
 ///
 /// Reports: every event carries `t` (ms since the probe started), `wall` (epoch ms) and `appState`. `state` holds the
@@ -54,12 +56,14 @@ import FPCore
 /// `{kind: composer|key, focused, hasText, inWindow, a11yOn, a11yLabel}`, never its text; `a11yLabel` is the label
 /// VoiceOver reads (delta 14.10), read while the accessibility runtime is on (`a11yOn`: after a press or a `state
 /// {a11y: true}`) with UIKit's and SwiftUI's accessibility bundles loaded (only they name a SwiftUI text field), else
-/// null. The page's messages are `page` events with the shell's receipt time (`recvT` in the probe's ms, `recvWall` in
-/// epoch ms), a refused one `pageRefused`; a model event names its screen and decodes only `coach`. The shell's own:
-/// `funnel` (every run of the tab root's funnel; the runs before the root was adopted once, `atAdopt`), `screenChanged`
-/// (VoiceOver's screen change the root posts, with its selection and seq then), `trovoOpen` (a deep link's `_trovoOpen`
-/// returned), `ping` (a confirming ping and its outcome), `fellBack`, `document`, `intent` (PageLink's records: names,
-/// keys and outcomes, never arguments). No event carries a typed text or an intent's argument.
+/// null. After a `sceneCycle` every state says whether the web view, the root and the window it replaced are still
+/// alive (`replaced`): a teardown must let them go. The page's messages are `page` events with the shell's receipt time
+/// (`recvT` in the probe's ms, `recvWall` in epoch ms), a refused one `pageRefused`; a model event names its screen and
+/// decodes only `coach`. The shell's own: `funnel` (every run of the tab root's funnel; the runs before the root was
+/// adopted once, `atAdopt`), `screenChanged` (VoiceOver's screen change the root posts, with its selection and seq
+/// then), `trovoOpen` (a deep link's `_trovoOpen` returned), `ping` (a confirming ping and its outcome), `fellBack`,
+/// `document`, `intent` (PageLink's records: names, keys and outcomes, never arguments). No event carries a typed text
+/// or an intent's argument.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?
@@ -78,6 +82,14 @@ final class ShellProbe {
     private var lastConfirm: String?
     /// Where `hideWeb` took the web view from, for `showWeb`.
     private var hiddenWeb: (superview: UIView, index: Int, frame: CGRect)?
+    /// What the last `sceneCycle` replaced (the page's web view, the tab root, the window), weakly: every later state
+    /// says which are still alive (a scene's teardown must let them all go).
+    private weak var replacedWeb: WKWebView?
+    private weak var replacedRoot: UIViewController?
+    private weak var replacedWindow: UIWindow?
+    private var cycled = false
+    /// `sceneDestroy`'s request in flight: its refusal or its 3 s timeout, whichever comes first, decides and moves on.
+    private var sceneAsk = 0
 
     /// Scripts the shell adds at document start while probing: the page's visibilitychange events, counted from the
     /// document's start.
@@ -482,6 +494,36 @@ final class ShellProbe {
             next()
         case "sceneCycle":
             sceneCycle(step, next: next, endPhase: endPhase)
+        case "sceneDestroy":
+            // The real request (as StoreProbe's): UIKit refuses it for an app without multiple scenes on an iPhone (the
+            // refusal came about 1 s after the request on a loaded machine), and the phase goes on at the refusal; a
+            // scene UIKit let go would say nothing here, so with no answer in 3 s the phase ends.
+            guard let scene = b?.webView?.window?.windowScene else {
+                event("sceneDestroy", ["error": "no scene"])
+                return next()
+            }
+            event("sceneDestroy", ["session": scene.session.persistentIdentifier])
+            sceneAsk += 1
+            let ask = sceneAsk
+            UIApplication.shared.requestSceneSessionDestruction(scene.session, options: nil) { [weak self] e in
+                let text = "\(e)"
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self, self.sceneAsk == ask else { return }
+                        self.sceneAsk += 1
+                        self.event("sceneDestroyRefused", ["error": text])
+                        next()
+                    }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                MainActor.assumeIsolated {
+                    guard self.sceneAsk == ask else { return }
+                    self.sceneAsk += 1
+                    self.event("sceneDestroyNoAnswer", ["ms": 3000])
+                    endPhase()
+                }
+            }
         case "hook":
             let name = step["name"] as? String ?? ""
             if name == "sceneCycle" { return sceneCycle(step, next: next, endPhase: endPhase) }
@@ -513,18 +555,21 @@ final class ShellProbe {
     /// gate decides). The event names the new root's kind and whether the bridge is bound to a new web view in a new
     /// window; the phase ends there, and the next runs once the new page has sent bootDone.
     private func sceneCycle(_ step: [String: Any], next: @escaping () -> Void, endPhase: @escaping () -> Void) {
-        // the old page and window, held weakly: the replay must be free to let them go
-        let oldWeb: () -> WKWebView? = { [weak w = bridge.binding?.webView] in w }
-        let oldWindow: () -> UIWindow? = { [weak w = bridge.binding?.webView?.window] in w }
+        // the old page, root and window, held weakly: the replay must be free to let them go
+        replacedWeb = bridge.binding?.webView
+        replacedRoot = bridge.binding?.tabRoot
+        replacedWindow = bridge.binding?.webView?.window
         let r = runHook("sceneCycle", step)
         guard r["error"] == nil else {
             event("sceneCycle", r)
             return next()
         }
+        cycled = true
         var o = r
         let web = bridge.binding?.webView
-        o["newWebView"] = web != nil && web !== oldWeb()
-        o["newWindow"] = web?.window != nil && web?.window !== oldWindow()
+        o["newWebView"] = web != nil && web !== replacedWeb
+        o["newWindow"] = web?.window != nil && web?.window !== replacedWindow
+        o["oldWindowAlive"] = replacedWindow != nil
         event("sceneCycle", o)
         endPhase()
     }
@@ -1012,6 +1057,8 @@ final class ShellProbe {
             self.event("state", ["label": label, "page": page, "shell": self.bridge.describe(), "keyboard": self.keyboard,
                                  "firstResponder": responder, "webResponder": Self.contentView(wv)?.isFirstResponder ?? false,
                                  "webScrollY": Double((wv?.scrollView.contentOffset.y ?? 0) + inset), "input": input,
+                                 "replaced": self.cycled ? ["webView": self.replacedWeb != nil, "root": self.replacedRoot != nil,
+                                                            "window": self.replacedWindow != nil] as [String: Any] : NSNull(),
                                  "keyWindow": String(describing: UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first.map { type(of: $0) })])
             done()
         }
