@@ -820,6 +820,8 @@ final class RootTabControllerTests: XCTestCase {
         for (look, style, tint) in [(Self.lime, UIUserInterfaceStyle.dark, "#f4f4f1"), (Self.heavy, .light, "#0a43f5")] {
             let r = rig(first: "coach", mode: .native, look: look)
             if look.paper { heavyRig = r }
+            XCTAssertEqual(r.root.firstRoom, look.room.id, "\(look.room.id): the room the root was built with")
+            XCTAssertEqual(r.root.describe()["firstRoom"] as? String, look.room.id, "\(look.room.id): describe() says it")
             XCTAssertEqual(r.root.tabBar.overrideUserInterfaceStyle, style, "\(look.room.id): the bar's style, set explicitly")
             XCTAssertEqual(r.nav.overrideUserInterfaceStyle, style, "\(look.room.id): the stack's style")
             XCTAssertEqual(css(r.root.tabBar.tintColor), tint, "\(look.room.id): tint")
@@ -855,6 +857,11 @@ final class RootTabControllerTests: XCTestCase {
         }
         XCTAssertEqual(css(r.root.tabBar.tintColor), "#112233")
         XCTAssertEqual(css(r.root.tabBar.unselectedItemTintColor), "#445566")
+        r.root.apply(Self.lime)
+        XCTAssertEqual(r.root.tabBar.overrideUserInterfaceStyle, .dark, "a page's model in the other room")
+        XCTAssertEqual(r.root.describe()["firstRoom"] as? String, "heavyweight", "the first frame's room stays what it was")
+        r.root.apply(model)
+        r.root.view.layoutIfNeeded()
 
         // the items keep UIKit's own traits (contract 6.1, I17): the root sets none on an item, and UIKit's selection, which
         // its accessibility reads as `.selected`, follows the funnel on both copies UIKit draws. The traits themselves are

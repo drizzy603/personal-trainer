@@ -144,6 +144,9 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     public let webView: WKWebView
     public var hooks: Hooks
     public private(set) var look: TabsModel
+    /// The room the root was built with: the first frame's, before any TabsModel (contract 6.1: SceneDelegate's Debug
+    /// `-devTheme`, else the owner's room as the store holds it, else Heavyweight), as the page's room id.
+    public let firstRoom: String
     /// The slots in the bar's order (contract 1.2): three WebSlotControllers and the CoachSlotController.
     let slots: [UIViewController]
     let coachSlot: CoachSlotController
@@ -201,6 +204,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
         self.web = web
         self.webView = webView
         self.look = look
+        firstRoom = look.room.id
         self.hooks = hooks
         let coach = CoachSlotController(background: TabBarLook.background(look), paper: look.paper)
         coachSlot = coach
@@ -783,6 +787,7 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
                 ?? NSNull(),
             "selected": selected,
             "seq": seq,
+            "firstRoom": firstRoom,
             "web": [
                 "slot": webSlot,
                 "inWindow": webView.window != nil,

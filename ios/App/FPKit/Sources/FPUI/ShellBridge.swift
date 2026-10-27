@@ -418,7 +418,7 @@ public final class ShellBridge: NSObject {
             held: { [weak root] in root?.held ?? false },
             releaseHold: { [weak root] in root?.releaseHold() }))
         root.hooks = rootHooks(b, root)
-        Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public))")
+        Self.log.info("shell: the tab root is adopted (\(root.selected, privacy: .public) selected, Coach \(root.coachMode.rawValue, privacy: .public), room \(root.firstRoom, privacy: .public))")
     }
 
     /// The root's hooks (contract 8.1, 8.4, 10.2): each captures the bridge, the binding and the root weakly, as `wire`'s do.
