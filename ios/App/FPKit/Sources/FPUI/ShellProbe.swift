@@ -29,24 +29,30 @@ import FPCore
 /// does not hold them, `via: draft`), `composerSend {nonce}` (Send on what the composer holds), `draft {text}` (the
 /// composer's words set), `press {label}` / `press {ledger: undo|keep}` / `press {label, where: overlay|hub}` (a
 /// control of the chat, of the toast window or of the native Coach tab's hub or connect screen, by its accessible name,
-/// or the newest PLAN CHANGES card's button), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
+/// or the newest PLAN CHANGES card's button; on the hub an error event when the hub is not on screen: Coach not selected
+/// or not NATIVE, held blank, covered by the pushed chat, or out of its window; when no control has the name; or when
+/// the activation returns false), `waitCoach {until, ms}` (the chat idle, a reply, a card, none, a confirm,
 /// a toast, up, down), `resign` (the native input gives the keys back), `scroll {to: top|end}` (the conversation
 /// scrolled; every state reports where it is), `hideWeb` / `showWeb` (the web view out of its window and back: the
 /// fault Settings > About counts), `done`.
 ///
-/// The tab root (build 61; contract 15.3 as delta 14.2 changed it): `tapTab {tab}` (the bar item's control sent
-/// `.touchUpInside`: the item of the bar whose accessibility label is TabsModel's `a11y`, then the first control under
-/// the bar that draws its title; UIKit's tap path through `shouldSelect`, never `accessibilityActivate()` and never
-/// `selectedIndex`; not found, or no funnel run of source `tap` after it, is an error event), `retapTab` (the same on
-/// the selected tab, expecting `again`), `stray {tab}` (`selectedIndex` set directly: the root counts and redirects it,
-/// I2's fault injector), `waitTab {tab, ms}` (until the root's selection is `tab`), `navPop` (the Coach stack's
-/// finished interactive pop through the latch, as the edge pan's end makes it), `openURL {url}`, `openURLOnActive
-/// {url}`, `share {comment?, jpeg?}` and `sceneCycle` (the App's hooks of those names: a URL opened through the App
-/// delegate now, or when the scene next enters the foreground; a shared photo and comment written to the App Group as
-/// the share extension writes them, `jpeg` naming a file beside the steps or none for one drawn in the app; the scene's
-/// connection replayed, which ends the phase), `sceneDestroy` (UIKit's own request to destroy the scene's session, as
-/// StoreProbe's: refused on an iPhone, `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in 3
-/// s, `sceneDestroyNoAnswer`, the phase ends). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach
+/// The tab root (build 61; contract 15.3 as delta 14.2 changed it): `tapTab {tab}` (a finger's tap on the bar item:
+/// the item of the bar whose accessibility label is TabsModel's `a11y`, the controls under the bar that draw its title,
+/// and the one of them a finger at their centre lands in, by the root window's hit test, sent `.touchUpInside`: UIKit's
+/// tap path through `shouldSelect`, never `accessibilityActivate()` and never `selectedIndex`; not found, a bar a sheet
+/// or the fallback hid, a finger there that would land outside the bar, or no funnel run of source `tap` after it, is an
+/// error event, and nothing is tapped; the keyboard's own window is not asked), `retapTab` (the same on the selected
+/// tab, expecting `again`), `stray {tab}` (`selectedIndex` set directly: the root counts and redirects it, I2's fault
+/// injector), `waitTab {tab, ms}` (until the root's selection is `tab`), `navPop` (the Coach stack's finished
+/// interactive pop through the latch, as the edge pan's end makes it), `openURL {url}`, `openURLOnActive {url}`, `share
+/// {comment?, jpeg?, legacy?}` and `sceneCycle` (the App's hooks of those names: a URL opened through the App delegate
+/// now, or when the scene next enters the foreground; a shared photo and comment written to the App Group as the share
+/// extension writes them, `jpeg` naming a file beside the steps or none for one drawn in the app, an error event in a
+/// build without the group's container unless `legacy` asks for the old base64 slot; the scene's connection replayed,
+/// which ends the phase), `sceneDestroy` (UIKit's own request to destroy the scene's session, as StoreProbe's: refused
+/// for this app, one scene on an iPhone, `sceneDestroyRefused`, and the phase goes on at the refusal; with no answer in
+/// 3 s, `sceneDestroyNoAnswer`, the phase ends and the states that follow say whether what the scene held went; a
+/// refusal after that is logged too, `late`). `back`, `edgeBack` and `waitCoach` act on the pushed chat in the Coach
 /// tab's stack as on 60's overlay.
 ///
 /// Reports: every event carries `t` (ms since the probe started), `wall` (epoch ms) and `appState`. `state` holds the
@@ -56,14 +62,21 @@ import FPCore
 /// `{kind: composer|key, focused, hasText, inWindow, a11yOn, a11yLabel}`, never its text; `a11yLabel` is the label
 /// VoiceOver reads (delta 14.10), read while the accessibility runtime is on (`a11yOn`: after a press or a `state
 /// {a11y: true}`) with UIKit's and SwiftUI's accessibility bundles loaded (only they name a SwiftUI text field), else
-/// null. After a `sceneCycle` every state says whether the web view, the root and the window it replaced are still
-/// alive (`replaced`): a teardown must let them go. The page's messages are `page` events with the shell's receipt time
-/// (`recvT` in the probe's ms, `recvWall` in epoch ms), a refused one `pageRefused`; a model event names its screen and
-/// decodes only `coach`. The shell's own: `funnel` (every run of the tab root's funnel; the runs before the root was
-/// adopted once, `atAdopt`), `screenChanged` (VoiceOver's screen change the root posts, with its selection and seq
-/// then), `trovoOpen` (a deep link's `_trovoOpen` returned), `ping` (a confirming ping and its outcome), `fellBack`,
-/// `document`, `intent` (PageLink's records: names, keys and outcomes, never arguments). No event carries a typed text
-/// or an intent's argument.
+/// null. After a `sceneCycle`, or a `sceneDestroy` UIKit did not refuse, every state says whether the web view, the root
+/// and the window it replaced are still alive (`replaced {by, webView, root, window}`): a teardown must let them go (the
+/// `sceneCycle` event itself, logged in the replay's own turn, says only whether the bridge holds a new web view in a new
+/// window). The page's messages are `page` events at their answer, with the shell's receipt time (`recvT` in the
+/// probe's ms, `recvWall` in epoch ms), a refused one `pageRefused`; a model event names its screen and decodes only
+/// `coach`. The shell's own: `funnel` (every run of the tab root's funnel; the runs before the root was adopted once,
+/// `atAdopt`), `screenChanged` (a VoiceOver screen change: `by: root`, the tab root's, with `seq` the funnel run whose
+/// step 7 it is, joined to that run's `funnel` event, or null for the Coach tab's mode or the fallback, which no run
+/// made, and `why`: `run`, `hold`, `mode`, `fallback`; `by: screens`, ScreenHost's own, a screen up or down or the
+/// stack's new top; each with the root's `rootSeq`, selection and Coach mode then), `trovoOpen` (a deep link's
+/// `_trovoOpen` returned), `ping` (a confirming ping and its outcome), `fellBack`, `document`, `intent` (PageLink's
+/// records: names, keys and outcomes, never arguments). No event carries the text of a `type`, `send` or `draft` step,
+/// the key field's text or an intent's argument (contract 5 K4, D47); the composer's own words, no secret (K4), are
+/// where build 60's tools read them: the chat store's `draft` in the state's `shell.screens` and a coach model's
+/// `draft`.
 @MainActor
 final class ShellProbe {
     static var shared: ShellProbe?

@@ -7,11 +7,14 @@ import FPCore
 @testable import FPUI
 
 /// ShellProbe's parts that need no running probe (11-shell.md H11; contract 15.3 as delta 14.2 and 14.10 changed it), on
-/// a real window: `tapTab`'s control (the bar item labelled with TabsModel's `a11y`, then the control that draws its
-/// title), whose `.touchUpInside` runs the funnel once from a tap and, on the selected tab, says `again`; the text
-/// input's report (its kind, whether it holds the keys and text, the label VoiceOver reads, never its text); `axFindAll`
-/// (each element once, its first `axFind`'s); and the page-state script's tabs-mode fields. The steps themselves run in
-/// the app (H11's scratch steps file, T15's self-test).
+/// a real window: `tapTab`'s control (the bar item labelled with TabsModel's `a11y`, then the controls that draw its
+/// title, then the one a finger at their centre lands in), whose `.touchUpInside` runs the funnel once from a tap and, on
+/// the selected tab, says `again`, and none while no finger could tap the bar (hidden, covered); the hub a `press
+/// {where: hub}` may press (only while the owner sees it); `type`'s rule (keys only into a field that holds them, never
+/// a draft for the key field, never the text in the event); the text input's report (its kind, whether it holds the
+/// keys and text, the label VoiceOver reads, never its text); `axFindAll` (each element once, its first `axFind`'s);
+/// and the page-state script's tabs-mode fields. The steps themselves run through the bridge in ShellBridgeTabsTests
+/// (the tests' probe) and in the app (H11's scratch steps file, T15's self-test).
 @MainActor
 final class ShellProbeTests: XCTestCase {
     override func setUp() async throws {
