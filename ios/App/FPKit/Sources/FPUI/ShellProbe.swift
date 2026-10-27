@@ -844,9 +844,9 @@ final class ShellProbe {
     /// - `{ledger: "undo"|"keep"}`: the newest PLAN CHANGES card's Undo, or its Keep changes (or Got it);
     /// - `{label, where: "overlay"}`: a button of the forwarded confirm in the toast window (its confirm or cancel label);
     /// - `{label, where: "hub"}`: a control of the native Coach tab's hub or connect screen (contract 6.2: a row by its
-    ///   title, the CTA by its label, the starter link by its label), through its accessibility element only; none named
-    ///   so is an error event.
+    ///   title, the CTA by its label, the starter link by its label), through its accessibility element only (`pressHub`).
     private func press(_ step: [String: Any], _ b: ShellBridge.Binding?, done: @escaping ([String: Any]) -> Void) {
+        if step["where"] as? String == "hub" { return pressHub(step, b, done: done) }
         if !Self.accessibilityOn {
             // the first press: SwiftUI builds its elements once the runtime is on
             Self.enableAccessibility()
@@ -856,18 +856,6 @@ final class ShellProbe {
             return
         }
         guard let screens = b?.screens else { return done(["pressed": false, "why": "no binding"]) }
-        if step["where"] as? String == "hub" {
-            let label = step["label"] as? String ?? ""
-            guard let hub = hubView(b) else {
-                return done(["pressed": false, "where": "hub", "matches": 0, "why": "no hub: the Coach tab is not NATIVE"])
-            }
-            let found = Self.axFindAll(label, in: hub)
-            guard let el = found.first else {
-                return done(["pressed": false, "where": "hub", "matches": 0, "why": "no control named \(label)"])
-            }
-            return done(["pressed": el.accessibilityActivate(), "via": "accessibility", "where": "hub", "matches": found.count,
-                         "control": label])
-        }
         if step["where"] as? String == "overlay" {
             let label = step["label"] as? String ?? ""
             guard let c = screens.overlay.confirm else { return done(["pressed": false, "why": "no confirm open"]) }
@@ -923,14 +911,62 @@ final class ShellProbe {
         return b?.screens.hostView("coach")
     }
 
-    /// The native Coach tab's home while the tab is NATIVE (`press {where: "hub"}`): ScreenHost's `coachHome` host (H10),
-    /// else the home the root's Coach stack holds at its bottom.
-    private func hubView(_ b: ShellBridge.Binding?) -> UIView? {
-        if let v = b?.screens.hostView("coachHome") { return v }
-        if #available(iOS 26.0, *), let root = b?.tabRoot as? RootTabController, root.coachMode == .native {
-            return root.coachSlot.home?.viewIfLoaded
+    /// `press {label, where: "hub"}`: the hub's control of that accessibility label, activated through its element, only
+    /// while the owner sees the hub (`hubCheck`). Every failure is an error event that presses nothing: no hub on screen
+    /// (said before the accessibility runtime is turned on), no control of that name, an activation that returns false.
+    /// `why` repeats `error` (the chat's presses say `why`).
+    private func pressHub(_ step: [String: Any], _ b: ShellBridge.Binding?, done: @escaping ([String: Any]) -> Void) {
+        let label = step["label"] as? String ?? ""
+        func failed(_ words: String, matches: Int = 0) {
+            done(["pressed": false, "where": "hub", "matches": matches, "control": label, "error": words, "why": words])
         }
-        return nil
+        let target = hubTarget(b)
+        guard let hub = target.view else { return failed(target.why ?? "no hub") }
+        if !Self.accessibilityOn {
+            // the first press: SwiftUI builds its elements once the runtime is on; the hub is checked again after
+            Self.enableAccessibility()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated { self.pressHub(step, b, done: done) }
+            }
+            return
+        }
+        let found = Self.axFindAll(label, in: hub)
+        guard let el = found.first else { return failed("no control named \(label)") }
+        guard el.accessibilityActivate() else { return failed("activation returned false", matches: found.count) }
+        done(["pressed": true, "via": "accessibility", "where": "hub", "matches": found.count, "control": label])
+    }
+
+    /// The hub `press {where: "hub"}` may press, or why none: the binding's tab root through `hubCheck`, with ScreenHost's
+    /// `coachHome` host (H10) as the hub when there is one, else the home the root's Coach stack holds at its bottom.
+    private func hubTarget(_ b: ShellBridge.Binding?) -> (view: UIView?, why: String?) {
+        guard let b else { return (nil, "no binding") }
+        guard #available(iOS 26.0, *), let root = b.tabRoot as? RootTabController else {
+            return (nil, "no hub: no tab root (the scene's root is classic)")
+        }
+        return Self.hubCheck(root, hosted: b.screens.hostView("coachHome"))
+    }
+
+    /// Whether the owner sees the native Coach tab's hub, the one `hosted` (ScreenHost's `coachHome` host, H10) or else the
+    /// home at the bottom of the Coach stack: the tab NATIVE and selected, not held blank for a push on its way, the hub
+    /// the stack's top (not covered by the pushed chat), in a window and shown. A press anywhere else would send what the
+    /// owner cannot.
+    @available(iOS 26.0, *)
+    static func hubCheck(_ root: RootTabController, hosted: UIView?) -> (view: UIView?, why: String?) {
+        guard root.fellBack == nil else { return (nil, "no hub: the tab root fell back") }
+        guard root.coachMode == .native else { return (nil, "no hub: the Coach tab is \(root.coachMode.rawValue), not native") }
+        guard root.selected == "coach" else { return (nil, "the hub is not on screen: \(root.selected) is selected") }
+        guard !root.held else { return (nil, "the hub is not on screen: the Coach tab is held blank for a push") }
+        guard let hub = hosted ?? root.coachSlot.home?.viewIfLoaded else { return (nil, "no hub view") }
+        guard let top = root.coachSlot.nav.topViewController?.viewIfLoaded, hub === top || hub.isDescendant(of: top) else {
+            return (nil, "the hub is covered: the chat is pushed over it")
+        }
+        var v: UIView? = hub
+        while let x = v {
+            if x.isHidden || x.alpha < 0.01 { return (nil, "the hub is not on screen: hidden") }
+            v = x.superview
+        }
+        guard hub.window != nil else { return (nil, "the hub is not on screen: out of its window") }
+        return (hub, nil)
     }
 
     private static var accessibilityOn = false

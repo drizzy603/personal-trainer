@@ -131,6 +131,44 @@ final class ShellProbeTests: XCTestCase {
         XCTAssertEqual(r.runs.map(\.source), [.tap])
     }
 
+    /// `press {where: hub}` presses only a hub the owner sees (the H11 review, uikit lens): the Coach tab NATIVE and
+    /// selected, not held blank, the hub the stack's top (not under the pushed chat), shown. Each other case says why.
+    func testTheHubIsPressedOnlyWhileTheOwnerSeesIt() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the tab root exists only on iOS 26 and later (D39)") }
+        let r = RootRig(first: "log", look: TabsModel.defaults(for: .heavyweight))
+        defer { r.letGo() }
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "no hub: the Coach tab is waiting, not native")
+        r.root.setHome(r.home)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: log is selected")
+        r.tap("coach")
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil).view === r.home.view, "the hub, on screen")
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: r.home.view).view === r.home.view, "H10's host: the same view")
+
+        // held blank for a push on its way
+        r.tap("log")
+        r.root.holdBudget = 30
+        r.root.select("coach", source: .page(intent: "chat"))
+        XCTAssertTrue(r.root.held)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: the Coach tab is held blank for a push")
+        r.root.releaseHold()
+
+        // the chat pushed over it
+        r.nav.pushViewController(UIViewController(), animated: false)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is covered: the chat is pushed over it")
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: r.home.view).why, "the hub is covered: the chat is pushed over it")
+        r.nav.popViewController(animated: false)
+        XCTAssertTrue(ShellProbe.hubCheck(r.root, hosted: nil).view === r.home.view, "the chat popped: the hub again")
+
+        // hidden, then the tab turned WEB, then the fallback
+        r.home.view.isHidden = true
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "the hub is not on screen: hidden")
+        r.home.view.isHidden = false
+        r.root.setCoachMode(.web)
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "no hub: the Coach tab is web, not native")
+        r.root.fallBack(why: .page, at: Date())
+        XCTAssertEqual(ShellProbe.hubCheck(r.root, hosted: nil).why, "no hub: the tab root fell back")
+    }
+
     /// `type {text}` (contract 5 K4, D47; the H11 review): into the key field only while it holds the keys, through UIKit's
     /// text input; otherwise an error event that types nothing and writes no draft (a canary typed at the connect screen
     /// must never land in `fpDraft.coach`); the composer not holding the keys gets the words in its own draft while the

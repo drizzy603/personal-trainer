@@ -1951,6 +1951,35 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.selected, "progress")
         XCTAssertEqual(root.funnelRuns.last?.source, .tap)
     }
+
+    /// `press {label, where: hub}` through the probe's own step (11-shell.md H11; the H11 review): with no hub on screen it
+    /// is an error event (`error`, `why` in the same words) that presses nothing, said before the accessibility runtime
+    /// is touched: the Coach tab not NATIVE, not selected, and the chat pushed over the hub.
+    func test33TheProbesHubPressIsAnErrorUnlessTheOwnerSeesTheHub() async throws {
+        let (bridge, probe, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        let root = try XCTUnwrap(s.root)
+        let press: [String: Any] = ["op": "press", "label": "Open the chat", "where": "hub"]
+        func check(_ words: String, file: StaticString = #filePath, line: UInt = #line) {
+            let e = heard.last("press")
+            XCTAssertEqual(e?["pressed"] as? Bool, false, file: file, line: line)
+            XCTAssertEqual(e?["error"] as? String, words, file: file, line: line)
+            XCTAssertEqual(e?["why"] as? String, words, file: file, line: line)
+            XCTAssertEqual(e?["where"] as? String, "hub", file: file, line: line)
+            XCTAssertEqual(e?["control"] as? String, "Open the chat", file: file, line: line)
+        }
+        await runSteps(probe, [press])
+        check("no hub: the Coach tab is waiting, not native")
+        root.setHome(s.home)
+        await runSteps(probe, [press])
+        check("the hub is not on screen: log is selected")
+        tap(s, "coach")
+        _ = try await message(s, "model", ["screen": "coach", "rev": 1, "json": try coachModelJSON(rev: 1)]).get()
+        _ = try await message(s, "present", ["screen": "coach"]).get()
+        try await expect("the chat pushed", within: 10) { root.coachSlot.nav.viewControllers.count == 2 }
+        await runSteps(probe, [press])
+        check("the hub is covered: the chat is pushed over it")
+    }
     #endif
 }
 
