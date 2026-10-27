@@ -9837,7 +9837,10 @@ async function checkPendingShare(){
     pendingImage = {data: r.imageBase64, mediaType: 'image/jpeg', previewUrl: 'data:image/jpeg;base64,'+r.imageBase64};
     // Through the tab switch: it leaves COMPARE and closes the day sheet (either sat over the
     // chat, with its Delete buttons mid-screen) and lights the Coach tab. Then the chat itself.
-    switchTab('coach',{intent:'chat'});
+    // The switch's own paint (the Coach tab opens on its hub) presents and dismisses nothing, so a
+    // native chat already up stays up and takes the photo with its next model.
+    _fp.taking=true;
+    try { switchTab('coach',{intent:'chat'}); } finally { _fp.taking=false; }
     coachView = 'chat';
     render();
     if(r.comment){
