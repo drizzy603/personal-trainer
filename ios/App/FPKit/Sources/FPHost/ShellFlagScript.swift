@@ -30,8 +30,10 @@ public enum ShellFlagScript {
             self.api = api
         }
 
+        #if DEBUG
         /// `-devNav <route>`, `-devTheme <room>` and `-fpApiBase <origin>` as separate words; a missing or empty value,
-        /// or one that is the next option, is none.
+        /// or one that is the next option, is none. Debug builds only (contract 12 "Release": no Debug launch argument
+        /// in a Release binary, where nothing reads these and an unused function is not stripped).
         public init(arguments a: [String]) {
             func value(_ name: String) -> String? {
                 guard let i = a.firstIndex(of: name), i + 1 < a.count else { return nil }
@@ -40,6 +42,7 @@ public enum ShellFlagScript {
             }
             self.init(nav: value("-devNav"), theme: value("-devTheme"), api: value("-fpApiBase"))
         }
+        #endif
     }
 
     /// `binary`: the native screens compiled into this binary (FPCore `ShellContract.binaryScreens`), on or off, so the
