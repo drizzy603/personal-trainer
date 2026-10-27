@@ -73,6 +73,11 @@ final class CoachHomeModelTests: XCTestCase {
         XCTAssertEqual(m.tokens.size(.homeTitle), 70)
         XCTAssertEqual(m.tokens.size(.homeGreet), 15)
         XCTAssertEqual(m.tokens.sizes["homeBadge"], 8, "a newer page's size is kept for a newer view")
+        // every other hub size the file sends is Heavyweight's compiled one (Tools/coach-home-fixtures.js's table and
+        // Tokens.swift held in step; the group head and CTA label at 10 in this room)
+        for t in TypeToken.home where t != .homeTitle {
+            XCTAssertEqual(m.tokens.size(t), Tokens.heavyweight.size(t), "forward-compat \(t.rawValue)")
+        }
         // the connect block draws under the other route; its CTA is the page's
         let c = try XCTUnwrap(m.connect)
         XCTAssertEqual(c.cta, .init(label: "UPGRADE", title: "Unlock coaching"))
@@ -102,6 +107,9 @@ final class CoachHomeModelTests: XCTestCase {
         XCTAssertEqual(m.groups.first?.rows.first?.sub, "3 exchanges · Push day went well ")
         XCTAssertEqual(m.tokens.size(.homeTitle), 56)
         XCTAssertEqual(m.tokens.rejected, [])
+        for t in TypeToken.home {
+            XCTAssertEqual(m.tokens.size(t), Tokens.lime.size(t), "lone-surrogates \(t.rawValue): Lime's compiled size")
+        }
         for s in [m.hero.greet, m.hero.title, m.groups[0].rows[0].sub ?? ""] {
             XCTAssertEqual(JSONText.loneSurrogates(in: s), 0)
         }
@@ -203,5 +211,59 @@ final class CoachHomeModelTests: XCTestCase {
         // GitHub's shared Macs are several times slower and stall at random (CoachModelTests' slack)
         let slack: Double = ProcessInfo.processInfo.environment["CI"] == nil ? 1 : 10
         XCTAssertLessThan(each, 0.016 * slack, "a hub model decodes well inside a frame on the Mac (\(each) s)")
+    }
+
+    // MARK: The intent map (N6)
+
+    /// A canary shaped like a key (`sk-ant-test-` and 24 random letters), never a real one (contract 5 K8).
+    private func canary() -> String {
+        "sk-ant-test-" + String((0..<24).map { _ in "abcdefghijklmnopqrstuvwxyz".randomElement()! })
+    }
+
+    /// Each row action sends `coachHome.<do>` with no arguments; the piece is `coachHome`.
+    func testRowActionsMapToTheirIntents() {
+        let names: [CoachHomeModel.Row.Action: String] = [
+            .openChat: "coachHome.openChat", .startIntake: "coachHome.startIntake",
+            .clearChat: "coachHome.clearChat", .disconnect: "coachHome.disconnect",
+        ]
+        XCTAssertEqual(Set(names.keys), Set(CoachHomeModel.Row.Action.allCases))
+        for (action, name) in names {
+            XCTAssertEqual(action.intent.name, name)
+            XCTAssertEqual(action.intent.name, "coachHome." + action.rawValue, "do maps to coachHome.<do>")
+            XCTAssertEqual(action.intent.arguments, [:])
+            XCTAssertEqual(action.intent.screen, "coachHome")
+            XCTAssertNotNil(IntentSignature.named(name), "\(name) is in intents.json's list")
+        }
+    }
+
+    /// The CTA builds `coachHome.setKey` whose only argument is `secret`; the starter link `coachHome.openStarter`.
+    func testConnectMapsToSetKeyAndOpenStarter() throws {
+        let c = try XCTUnwrap(try decode(["v": 1, "connect": ["starter": [:]]]).connect)
+        let key = canary()
+        let set = c.setKey(secret: key)
+        XCTAssertEqual(set.name, "coachHome.setKey")
+        XCTAssertEqual(set.arguments, ["secret": .string(key)], "the argument is named secret, never key")
+        XCTAssertEqual(set.screen, "coachHome")
+        XCTAssertEqual(try Intent(name: set.name, arguments: set.arguments), set, "round-trips")
+        XCTAssertEqual(c.openStarter.name, "coachHome.openStarter")
+        XCTAssertEqual(c.openStarter.arguments, [:])
+        XCTAssertEqual(c.openStarter.screen, "coachHome")
+    }
+
+    /// Where N builds the setKey intent, its printed forms hold no 6-character piece of the key (H1's redaction).
+    func testTheMapsSetKeyNeverPrintsTheKey() throws {
+        let c = try XCTUnwrap(try decode(["v": 1, "connect": [:]]).connect)
+        let key = canary()
+        let set = c.setKey(secret: key)
+        var dumped = ""
+        dump(set, to: &dumped)
+        let printed = ["\(set)", String(describing: set), String(reflecting: set), dumped]
+        let chars = Array(key)
+        for p in printed {
+            for i in 0...(chars.count - 6) {
+                let piece = String(chars[i..<(i + 6)])
+                XCTAssertFalse(p.contains(piece), "a printed form holds '\(piece)'")
+            }
+        }
     }
 }

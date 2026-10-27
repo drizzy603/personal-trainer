@@ -356,12 +356,15 @@ public struct Tokens: Equatable, Sendable {
     /// The hub's sizes at the large text size, from the room CSS (contract 6.2's table; index.html at 91708ae):
     /// meta 1505 (Heavyweight's face 1922), avatar 683, greet 1914 / 1515, the headline clamp 1905 / 1516, body
     /// 1915 / 1522, group head 1561, rows 1563-1564, field label 1549, the field's inline 16 px 21107, the CTA
-    /// 1545-1547, help and link inline 21116 / 21119. The headline's viewport factor (17 % / 13.25 %), Lime's
-    /// 41 pt headline at <= 360 pt and its 16 pt gutter there are view geometry, not tokens.
+    /// 1545-1547, help and link inline 21116 / 21119. Heavyweight's group head and CTA label are 10, not 1561's and
+    /// 1545's 9: a later top-level rule of the room, 2045-2046 (`.settings-group-hd`, `.kt-cta-label` 10 px), which
+    /// contract 6.2's table left out; its field label stays 9 (no rule of the room sizes `.field label`). The
+    /// headline's viewport factor (17 % / 13.25 %), Lime's 41 pt headline at <= 360 pt and its 16 pt gutter there are
+    /// view geometry, not tokens.
     private static let homeScaleHeavyweight: [String: Double] = [
         TypeToken.homeMeta: 10, .homeAvatar: 13, .homeGreet: 15, .homeTitle: 74, .homeTitleMin: 54, .homeBody: 15,
-        .homeGroupHead: 9, .homeRowTitle: 14, .homeRowSub: 11.5, .homeFieldLabel: 9, .homeField: 16,
-        .homeCtaLabel: 9, .homeCtaTitle: 18, .homeCtaArrow: 22, .homeHelp: 12, .homeLink: 14,
+        .homeGroupHead: 10, .homeRowTitle: 14, .homeRowSub: 11.5, .homeFieldLabel: 9, .homeField: 16,
+        .homeCtaLabel: 10, .homeCtaTitle: 18, .homeCtaArrow: 22, .homeHelp: 12, .homeLink: 14,
     ].reduce(into: [:]) { $0[$1.key.rawValue] = $1.value }
 
     private static let homeScaleLime: [String: Double] = [

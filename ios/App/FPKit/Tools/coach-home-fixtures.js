@@ -52,10 +52,11 @@ function palette(room) {
   out.earnedInk = t['earned-ink'] || t['accent-ink'];
   return out;
 }
-// The hub's sizes at the large text size (contract 6.2; Tokens.swift's homeScale tables).
+// The hub's sizes at the large text size (contract 6.2; Tokens.swift's homeScale tables). Heavyweight's group head
+// and CTA label are 10 (index.html 2045-2046, the room's later rule over 1561 and 1545's 9 px), Lime's 9.
 const HOME = {
-  heavyweight: { homeMeta: 10, homeAvatar: 13, homeGreet: 15, homeTitle: 74, homeTitleMin: 54, homeBody: 15, homeGroupHead: 9,
-    homeRowTitle: 14, homeRowSub: 11.5, homeFieldLabel: 9, homeField: 16, homeCtaLabel: 9, homeCtaTitle: 18, homeCtaArrow: 22,
+  heavyweight: { homeMeta: 10, homeAvatar: 13, homeGreet: 15, homeTitle: 74, homeTitleMin: 54, homeBody: 15, homeGroupHead: 10,
+    homeRowTitle: 14, homeRowSub: 11.5, homeFieldLabel: 9, homeField: 16, homeCtaLabel: 10, homeCtaTitle: 18, homeCtaArrow: 22,
     homeHelp: 12, homeLink: 14 },
   dark: { homeMeta: 10, homeAvatar: 13, homeGreet: 14, homeTitle: 56, homeTitleMin: 43, homeBody: 14, homeGroupHead: 9,
     homeRowTitle: 14, homeRowSub: 11.5, homeFieldLabel: 9, homeField: 16, homeCtaLabel: 9, homeCtaTitle: 18, homeCtaArrow: 22,

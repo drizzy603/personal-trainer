@@ -228,3 +228,27 @@ public struct CoachHomeModel: Equatable, Sendable {
         }
     }
 }
+
+// MARK: The intent map (contract 6.2: `do` maps to `coachHome.<do>`, the CTA to `coachHome.setKey`, the starter
+// link to `coachHome.openStarter`). The intent cases, their signatures and their printed forms are Intent.swift's.
+
+extension CoachHomeModel.Row.Action {
+    /// The intent a row of this action sends: `coachHome.<do>`, with no arguments.
+    public var intent: Intent {
+        switch self {
+        case .openChat: return .coachHomeOpenChat
+        case .startIntake: return .coachHomeStartIntake
+        case .clearChat: return .coachHomeClearChat
+        case .disconnect: return .coachHomeDisconnect
+        }
+    }
+}
+
+extension CoachHomeModel.Connect {
+    /// The CTA's intent: `coachHome.setKey {secret}`. The key lives only in the field and in this intent, which
+    /// prints `secret` as `•••` (contract 5 K3, K4).
+    public func setKey(secret: String) -> Intent { .coachHomeSetKey(secret: secret) }
+
+    /// The starter link's intent: `coachHome.openStarter`.
+    public var openStarter: Intent { .coachHomeOpenStarter }
+}
