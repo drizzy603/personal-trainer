@@ -15,7 +15,7 @@
 // - The builders have no side effects: around every call, storage (and under STORE=shadow the store facade's and the
 //   mock store's counters), the Coach and tab globals, the messages, _fp and the screen are unchanged; rev is the
 //   caller's and boot the document's.
-// - tokens.type is the chat's sizes plus the 16 home* sizes of the per-room table (contract 6.2), in a copy:
+// - tokens.type is the chat's sizes plus the 16 home* sizes of the per-room table (contract 6.2, delta 14.9), in a copy:
 //   _COACH_TOKENS.type and every CoachModel (built now, and Fixtures/coach) hold none; connect.help is the two
 //   paragraphs joined by one "\n".
 // - The preview cuts in whole characters: a 65th character that is an emoji stays whole in the model and the HTML,
@@ -45,11 +45,12 @@ function serial(name, fn) {
 const J = (x) => JSON.stringify(x);
 const FIXTURES = path.join(__dirname, '..', '..', 'ios', 'App', 'FPKit', 'Tests', 'FPCoreTests', 'Fixtures');
 const HAND_MADE = ['forward-compat.json', 'lone-surrogates.json', 'minimal.json'];
-// Contract 6.2's table: the hub's sizes per room (Heavyweight, Lime).
+// Contract 6.2's table as delta 14.9 settles it: the hub's sizes per room (Heavyweight, Lime). Heavyweight's group head
+// and CTA label are 10 (the room's own font-size:10px rule), Lime's 9.
 const HOME = {
   homeMeta: [10, 10], homeAvatar: [13, 13], homeGreet: [15, 14], homeTitle: [74, 56], homeTitleMin: [54, 43], homeBody: [15, 14],
-  homeGroupHead: [9, 9], homeRowTitle: [14, 14], homeRowSub: [11.5, 11.5], homeFieldLabel: [9, 9], homeField: [16, 16],
-  homeCtaLabel: [9, 9], homeCtaTitle: [18, 18], homeCtaArrow: [22, 22], homeHelp: [12, 12], homeLink: [14, 14],
+  homeGroupHead: [10, 9], homeRowTitle: [14, 14], homeRowSub: [11.5, 11.5], homeFieldLabel: [9, 9], homeField: [16, 16],
+  homeCtaLabel: [10, 9], homeCtaTitle: [18, 18], homeCtaArrow: [22, 22], homeHelp: [12, 12], homeLink: [14, 14],
 };
 const ON = { openChat: 'openCoachChat()', startIntake: 'startRoutineIntake()', clearChat: '_confirmClearChat()', disconnect: 'clearApiKey()' };
 const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;

@@ -21328,12 +21328,12 @@ function _coachDayMeta(){
 // boot is this document's, rev the caller's (a push takes ++_fp.rev; the golden dump fixes both, contract 3.7).
 // The hub's type sizes (contract 6.2, D33): 16 flat home* sizes per room, at the large text size, from the room CSS.
 // CoachHomeModel's tokens.type carries them beside the chat's sizes, in a copy: _COACH_TOKENS and every CoachModel stay
-// as they are. FPCore compiles the same values (Tokens.swift); spec 126 holds the page to the contract's table. Two of
-// them are not today's Heavyweight CSS, which draws the group heads and the CTA label at 10 px (the room's
-// font-size:10px rule): they change with the contract and FPCore, together.
+// as they are. FPCore compiles the same values (Tokens.swift), and spec 126 holds each one to the computed font-size of
+// the web element that draws it, in both rooms. Heavyweight's group heads and CTA label are 10, from the room's later
+// font-size:10px rule over the shared 9 px ones (contract delta 14.9); Lime's are 9.
 var _COACH_HOME_TYPE={
-  heavyweight:{homeMeta:10, homeAvatar:13, homeGreet:15, homeTitle:74, homeTitleMin:54, homeBody:15, homeGroupHead:9,
-    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
+  heavyweight:{homeMeta:10, homeAvatar:13, homeGreet:15, homeTitle:74, homeTitleMin:54, homeBody:15, homeGroupHead:10,
+    homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:10, homeCtaTitle:18, homeCtaArrow:22,
     homeHelp:12, homeLink:14},
   dark:{homeMeta:10, homeAvatar:13, homeGreet:14, homeTitle:56, homeTitleMin:43, homeBody:14, homeGroupHead:9,
     homeRowTitle:14, homeRowSub:11.5, homeFieldLabel:9, homeField:16, homeCtaLabel:9, homeCtaTitle:18, homeCtaArrow:22,
