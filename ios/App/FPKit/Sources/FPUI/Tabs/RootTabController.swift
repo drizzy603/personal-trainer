@@ -694,12 +694,30 @@ public final class RootTabController: UITabBarController, UITabBarControllerDele
     /// on a phone in light mode drew light glass with black items and its selected item all but unreadable, and
     /// Heavyweight on a phone in dark mode dark glass. The container never holds the web view or a slot (checked each time),
     /// so their traits, the web keyboards and the page's `prefers-color-scheme` stay the phone's. Again at every layout
-    /// pass, in case UIKit hosts the bar anew.
+    /// pass, in case UIKit hosts the bar anew; a container painted here that holds the web view or a slot by then, or no
+    /// longer holds the bar, gets back the style it had.
     private func paintBarContainer() {
-        guard let c = barContainer, c !== tabBar, !webView.isDescendant(of: c),
-              !slots.contains(where: { $0.viewIfLoaded?.isDescendant(of: c) == true }) else { return }
+        let c = barContainer
+        if let p = paintedContainer, p !== c || !mayPaint(p) {
+            p.overrideUserInterfaceStyle = styleBeforePaint
+            paintedContainer = nil
+        }
+        guard let c, mayPaint(c) else { return }
+        if paintedContainer !== c {
+            paintedContainer = c
+            styleBeforePaint = c.overrideUserInterfaceStyle
+        }
         let style = TabBarLook.style(look)
         if c.overrideUserInterfaceStyle != style { c.overrideUserInterfaceStyle = style }
+    }
+
+    /// The container painted with the room's style, and the style it had before.
+    private weak var paintedContainer: UIView?
+    private var styleBeforePaint: UIUserInterfaceStyle = .unspecified
+
+    /// A container the room's style may go on: not the bar itself, and holding neither the web view nor a slot.
+    private func mayPaint(_ c: UIView) -> Bool {
+        c !== tabBar && !webView.isDescendant(of: c) && !slots.contains(where: { $0.viewIfLoaded?.isDescendant(of: c) == true })
     }
 
     // MARK: The fallback

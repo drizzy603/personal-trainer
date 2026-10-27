@@ -815,6 +815,42 @@ final class RootTabControllerTests: XCTestCase {
         XCTAssertEqual(unlike, 1, "one room is unlike the phone's appearance")
     }
 
+    /// The room's style never stays on a container that holds a slot or the web view (contract 6.1: their traits, the web
+    /// keyboards and the page's `prefers-color-scheme` are the phone's): a layout pass that finds one under the container
+    /// it painted (UIKit hosting the bar anew) gives the container back the style it had, and once it holds none again
+    /// the next pass paints it with the room.
+    func test07cTheContainerGivesItsStyleBackOnceItHoldsASlotOrTheWebView() throws {
+        let r = rig(first: "progress", mode: .native, look: Self.lime)
+        let container = try XCTUnwrap(r.root.barContainer)
+        try XCTSkipIf(container === r.root.tabBar, "the bar sits directly under the root's view here: no container is painted")
+        XCTAssertEqual(container.overrideUserInterfaceStyle, .dark, "painted with the room")
+        let phone = r.window.traitCollection.userInterfaceStyle
+        func layout() {
+            r.root.view.setNeedsLayout()
+            r.root.view.layoutIfNeeded()
+        }
+
+        let slot = r.slot("settings")
+        container.addSubview(slot.view)
+        layout()
+        XCTAssertEqual(container.overrideUserInterfaceStyle, .unspecified, "a slot under it: the style it had")
+        XCTAssertEqual(slot.view.traitCollection.userInterfaceStyle, phone, "the slot keeps the phone's style")
+        slot.view.removeFromSuperview()
+        layout()
+        XCTAssertEqual(container.overrideUserInterfaceStyle, .dark, "none under it: the room again")
+
+        container.addSubview(r.webView)
+        layout()
+        XCTAssertEqual(container.overrideUserInterfaceStyle, .unspecified, "the web view under it: the style it had")
+        XCTAssertEqual(r.webView.traitCollection.userInterfaceStyle, phone, "the web view keeps the phone's style")
+        r.root.select("log", source: .page(intent: nil))
+        layout()
+        XCTAssertTrue(r.web.parent === r.slot("log"), "the funnel placed the page in Log's slot")
+        XCTAssertFalse(r.webView.isDescendant(of: container))
+        XCTAssertEqual(container.overrideUserInterfaceStyle, .dark, "the web view back in a slot: the room again")
+        checkInWindow(r, "the page back through the funnel")
+    }
+
     func test07Room() throws {
         var heavyRig: RootRig?
         for (look, style, tint) in [(Self.lime, UIUserInterfaceStyle.dark, "#f4f4f1"), (Self.heavy, .light, "#0a43f5")] {
