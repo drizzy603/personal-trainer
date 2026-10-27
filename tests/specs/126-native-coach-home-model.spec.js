@@ -15,9 +15,16 @@
 // - The builders have no side effects: around every call, storage (and under STORE=shadow the store facade's and the
 //   mock store's counters), the Coach and tab globals, the messages, _fp and the screen are unchanged; rev is the
 //   caller's and boot the document's.
-// - tokens.type is the chat's sizes plus the 16 home* sizes of the per-room table (contract 6.2, delta 14.9), in a copy:
-//   _COACH_TOKENS.type and every CoachModel (built now, and Fixtures/coach) hold none; connect.help is the two
+// - tokens.type is the chat's sizes plus the 16 home* sizes of the per-room table (contract 6.2, delta 14.9), in a
+//   copy: _COACH_TOKENS.type and every CoachModel (built now, and Fixtures/coach) hold none; connect.help is the two
 //   paragraphs joined by one "\n".
+// - Each home* size is what the web draws (delta 14.9): in both rooms, at the large text size, with no shell and under
+//   the native bar, the computed font-size of every element that draws it on the connect screen (with its starter
+//   link) and on the hub (every row): the meta label and avatar, the greeting, the body, the group heads, the rows'
+//   titles and subs, the key field's label and the field, the CTA's label, title and arrow, the help, the starter
+//   link; the headline's clamp max at a 600 px viewport and Heavyweight's min at 300 px. Lime's min is the min of the
+//   clamp() that draws its headline (shown to draw it at 400 and 600 px): no width computes it, since <= 360 px draws
+//   the narrow screen's 41 px (view geometry) and wider screens are over 47 px.
 // - The preview cuts in whole characters: a 65th character that is an emoji stays whole in the model and the HTML,
 //   with no lone surrogate in either; ASCII is cut where the old 65-unit slice cut it.
 // - Escaping (plan P-D4): a name and a block name holding a quote, & and markup draw as text (no <b> element) equal to
@@ -51,6 +58,14 @@ const HOME = {
   homeMeta: [10, 10], homeAvatar: [13, 13], homeGreet: [15, 14], homeTitle: [74, 56], homeTitleMin: [54, 43], homeBody: [15, 14],
   homeGroupHead: [10, 9], homeRowTitle: [14, 14], homeRowSub: [11.5, 11.5], homeFieldLabel: [9, 9], homeField: [16, 16],
   homeCtaLabel: [10, 9], homeCtaTitle: [18, 18], homeCtaArrow: [22, 22], homeHelp: [12, 12], homeLink: [14, 14],
+};
+// The web element that draws each home* size but the headline's two (delta 14.9's map), under #screen.
+const SIZE_OF = {
+  homeMeta: '.kt-meta-label', homeAvatar: '.kt-meta-ava', homeGreet: '.kt-hero-greet', homeBody: '.kt-hero-body',
+  homeGroupHead: '.settings-group-hd', homeRowTitle: '.settings-row-title', homeRowSub: '.settings-row-sub',
+  homeFieldLabel: '.field label', homeField: '#coach-key-input', homeCtaLabel: '.kt-cta-label',
+  homeCtaTitle: '.kt-cta-title', homeCtaArrow: '.kt-cta-arrow', homeHelp: '.kt-cta + p',
+  homeLink: 'button[onclick="openStarterIntake()"]',
 };
 const ON = { openChat: 'openCoachChat()', startIntake: 'startRoutineIntake()', clearChat: '_confirmClearChat()', disconnect: 'clearApiKey()' };
 const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
@@ -352,6 +367,84 @@ serial('tokens.type is the chat\'s plus the home* table, in a copy; whole-charac
     assert(out.saved.indexOf('SECRETVALUE') < 0 && out.saved.indexOf('sk-ant-') < 0 && out.saved.indexOf('•') < 0, 'a saved key never reaches the model');
     assert(out.typed.indexOf('SECRET') < 0 && out.typed.indexOf('•') < 0 && out.typed.split('sk-ant-').length === 2 && out.typed.indexOf('"placeholder":"sk-ant-..."') > 0, 'a typed key never reaches the model; sk-ant- only in the placeholder');
   } finally { await app.close(); }
+});
+
+// The native hub draws the model's sizes, so each must be the size the web draws (delta 14.9: the contract's table had
+// Heavyweight's group head and CTA label at the shared rules' 9 px, where the room's own rule draws 10). Read on the
+// connect screen with its starter link and the hub with every row, in each room, at 390 px and, for the headline, at
+// 600, 400 and 300 px; once with no shell and once under the native bar.
+serial('each home* size is the computed font-size of the web element that draws it, in both rooms', async () => {
+  const states = [SCENARIOS['coachHome/connect-starter'], SCENARIOS['coachHome/hub-programme']];
+  for (const shell of ['none', 'tabsWeb']) {
+    const S = shell + ': ';
+    const app = await boot({ native: true, shell, page: { timezoneId: 'UTC' }, init: CLOCK_INIT, seed: DUMP_SEED });
+    try {
+      const at = {};
+      for (const w of [390, 600, 400, 300]) {
+        await app.page.setViewportSize({ width: w, height: 844 });
+        at[w] = await app.page.evaluate(async ({ HELPERS, SIZE_OF, states }) => {
+          eval(HELPERS);
+          const px = (el) => parseFloat(getComputedStyle(el).fontSize);
+          const out = {};
+          for (const room of ['heavyweight', 'dark']) {
+            const r = { sizes: {}, title: [], rooms: [], zoom: [], clamp: [] };
+            for (const s of states) {
+              __state(Object.assign({}, s, { room }));
+              _paintTheme(room);   // the room's CSS hangs off data-room; __state set currentTheme, which the model reads
+              await new Promise((done) => setTimeout(done, 0));   // the page's own observers (the field floor) have run
+              const m = __home(0), h = document.querySelector('#screen .kt-hero-headline');
+              r.type = m.tokens.type;
+              r.rooms.push([currentTab, m.route, m.room, document.documentElement.getAttribute('data-room')]);
+              r.zoom.push(document.documentElement.style.zoom);
+              for (const k of Object.keys(SIZE_OF)) r.sizes[k] = (r.sizes[k] || []).concat([...document.querySelectorAll('#screen ' + SIZE_OF[k])].map(px));
+              r.title.push(px(h));
+              // the clamp() that sizes the headline: the last top-level rule that matches it with one (the room's own
+              // rule follows the shared ones, with a higher specificity); Node checks that it draws the headline
+              let c = null;
+              for (const sheet of document.styleSheets) {
+                let rules = [];
+                try { rules = sheet.cssRules; } catch (e) {}
+                for (const x of rules) {
+                  if (x.type !== 1 || !/^clamp\(/.test(x.style.fontSize)) continue;
+                  let on = false;
+                  try { on = h.matches(x.selectorText); } catch (e) {}
+                  if (on) c = x.style.fontSize;
+                }
+              }
+              r.clamp.push(c);
+            }
+            out[room] = r;
+          }
+          __state({});
+          _paintTheme(currentTheme);
+          out.impure = __impure;
+          return out;
+        }, { HELPERS, SIZE_OF, states });
+        assert(at[w].impure.length === 0, S + w + ' px: the builder has no side effects: ' + at[w].impure.join(' | '));
+      }
+      for (const room of ['heavyweight', 'dark']) {
+        const R = S + room + ': ', base = at[390][room], t = base.type, bad = [];
+        assert(J(base.rooms) === J([['coach', 'connect', room, room], ['coach', 'hub', room, room]]), R + 'the connect screen and the hub on the Coach tab, the model and the CSS in the room ' + J(base.rooms));
+        assert(base.zoom.every((z) => z === ''), R + 'the large text size: no Dynamic Type zoom ' + J(base.zoom));
+        for (const k of Object.keys(SIZE_OF)) {
+          const got = base.sizes[k];
+          if (!got.length || !got.every((v) => v === t[k])) bad.push(k + ' is ' + t[k] + ' in the model, ' + J(got) + ' px on screen (' + SIZE_OF[k] + ')');
+        }
+        // the headline: the clamp() found draws it (its max at 600 px, its preferred size at 400 px), the model's
+        // homeTitle is the clamp's max as drawn and homeTitleMin its min; Heavyweight draws the min at 300 px
+        const hi = at[600][room].title, mid = at[400][room].title, lo = at[300][room].title;
+        const clamps = [390, 600, 400, 300].flatMap((w) => at[w][room].clamp);
+        const c = /^clamp\(([\d.]+)px, ([\d.]+)vw, ([\d.]+)px\)$/.exec(clamps[0] || '');
+        assert(c && clamps.every((x) => x === clamps[0]), R + 'one clamp() sizes the headline at every width ' + J(clamps));
+        const [min, vw, max] = c.slice(1).map(Number), pref = Math.min(max, Math.max(min, vw * 4));
+        assert(hi.every((v) => v === max) && mid.every((v) => Math.abs(v - pref) < 0.01), R + clamps[0] + ' draws the headline: ' + J({ 600: hi, 400: mid }));
+        if (!hi.every((v) => v === t.homeTitle)) bad.push('homeTitle is ' + t.homeTitle + ' in the model, ' + J(hi) + ' px on screen at 600 px');
+        if (t.homeTitleMin !== min) bad.push('homeTitleMin is ' + t.homeTitleMin + ' in the model, ' + min + ' px in ' + clamps[0]);
+        if (room === 'heavyweight' && !lo.every((v) => v === t.homeTitleMin)) bad.push('homeTitleMin is ' + t.homeTitleMin + ' in the model, ' + J(lo) + ' px on screen at 300 px');
+        assert(bad.length === 0, R + 'the model\'s sizes are the web\'s: ' + bad.join('; '));
+      }
+    } finally { await app.close(); }
+  }
 });
 
 serial('the tabs model: the web bar\'s colours and labels per room; its room follows currentTheme and a dev.theme room', async () => {
