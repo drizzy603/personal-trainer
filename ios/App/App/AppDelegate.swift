@@ -173,12 +173,14 @@ extension AppDelegate {
             return ["url": url.absoluteString, "armed": true]
         }
         ShellBridge.debugHooks["share"] = { step in writeProbeShare(step) }
+        // the replay's own turn may still hold the old page: whether it went is for the states that follow (ShellProbe's
+        // `replaced`) and the store's status, never counted here
         ShellBridge.debugHooks["sceneCycle"] = { _ in
             guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
                 return ["error": "no window scene"]
             }
             guard let root = replay(scene) else { return ["error": "the scene's delegate cannot replay a connection"] }
-            return ["root": root, "alive": StoreAttach.shared.pagesAlive]
+            return ["root": root]
         }
     }
 

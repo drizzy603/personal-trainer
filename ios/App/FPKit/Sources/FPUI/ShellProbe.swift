@@ -82,14 +82,35 @@ final class ShellProbe {
     private var lastConfirm: String?
     /// Where `hideWeb` took the web view from, for `showWeb`.
     private var hiddenWeb: (superview: UIView, index: Int, frame: CGRect)?
-    /// What the last `sceneCycle` replaced (the page's web view, the tab root, the window), weakly: every later state
-    /// says which are still alive (a scene's teardown must let them all go).
-    private weak var replacedWeb: WKWebView?
-    private weak var replacedRoot: UIViewController?
-    private weak var replacedWindow: UIWindow?
-    private var cycled = false
-    /// `sceneDestroy`'s request in flight: its refusal or its 3 s timeout, whichever comes first, decides and moves on.
-    private var sceneAsk = 0
+
+    /// What a scene's teardown let go of (the page's web view, the root, the window), held weakly: every later state says
+    /// which are still alive (a teardown must let them all go). `by` the step that asked for the teardown.
+    @MainActor
+    private final class Replaced {
+        let by: String
+        weak var web: WKWebView?
+        weak var root: UIViewController?
+        weak var window: UIWindow?
+        init(by: String, _ b: ShellBridge.Binding?) {
+            self.by = by
+            web = b?.webView
+            window = b?.webView?.window
+            root = b?.tabRoot ?? b?.webView?.window?.rootViewController
+        }
+        var report: [String: Any] { ["by": by, "webView": web != nil, "root": root != nil, "window": window != nil] }
+    }
+    /// The newest `sceneCycle`'s, or a `sceneDestroy` UIKit has not refused.
+    private var replaced: Replaced?
+
+    /// UIKit's request to destroy the session of `window`'s scene (`sceneDestroy`; tests set their own): the session's id,
+    /// nil when the window has no scene; `refused` with UIKit's error when it refuses.
+    static var destroySession: @MainActor (_ window: UIWindow?, _ refused: @escaping (Error) -> Void) -> String? = { window, refused in
+        guard let scene = window?.windowScene else { return nil }
+        UIApplication.shared.requestSceneSessionDestruction(scene.session, options: nil) { refused($0) }
+        return scene.session.persistentIdentifier
+    }
+    /// How long `sceneDestroy` waits for UIKit's refusal before it takes the request as granted (tests shorten it).
+    static var destroyWait: TimeInterval = 3
 
     /// The tests' probe (`init(bridge:sink:)`): every event goes here, as the log line's object, instead of a file.
     private var sink: (([String: Any]) -> Void)?
@@ -531,35 +552,7 @@ final class ShellProbe {
         case "sceneCycle":
             sceneCycle(step, next: next, endPhase: endPhase)
         case "sceneDestroy":
-            // The real request (as StoreProbe's): UIKit refuses it for an app without multiple scenes on an iPhone (the
-            // refusal came about 1 s after the request on a loaded machine), and the phase goes on at the refusal; a
-            // scene UIKit let go would say nothing here, so with no answer in 3 s the phase ends.
-            guard let scene = b?.webView?.window?.windowScene else {
-                event("sceneDestroy", ["error": "no scene"])
-                return next()
-            }
-            event("sceneDestroy", ["session": scene.session.persistentIdentifier])
-            sceneAsk += 1
-            let ask = sceneAsk
-            UIApplication.shared.requestSceneSessionDestruction(scene.session, options: nil) { [weak self] e in
-                let text = "\(e)"
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        guard let self, self.sceneAsk == ask else { return }
-                        self.sceneAsk += 1
-                        self.event("sceneDestroyRefused", ["error": text])
-                        next()
-                    }
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                MainActor.assumeIsolated {
-                    guard self.sceneAsk == ask else { return }
-                    self.sceneAsk += 1
-                    self.event("sceneDestroyNoAnswer", ["ms": 3000])
-                    endPhase()
-                }
-            }
+            sceneDestroy(b, next: next, endPhase: endPhase)
         case "hook":
             let name = step["name"] as? String ?? ""
             if name == "sceneCycle" { return sceneCycle(step, next: next, endPhase: endPhase) }
@@ -590,25 +583,67 @@ final class ShellProbe {
     /// `sceneCycle` (contract 15.3): the App's replay of the scene's connection, the closure StoreProbe's `sceneCycle` runs
     /// (SceneDelegate's teardown, then its connection on the same window scene: a new window, a new page, the root the
     /// gate decides). The event names the new root's kind and whether the bridge is bound to a new web view in a new
-    /// window; the phase ends there, and the next runs once the new page has sent bootDone.
+    /// window; whether the old ones went is for the states that follow (`replaced`), never read in the replay's own turn,
+    /// where UIKit may still hold them. The phase ends there, and the next runs once the new page has sent bootDone.
     private func sceneCycle(_ step: [String: Any], next: @escaping () -> Void, endPhase: @escaping () -> Void) {
         // the old page, root and window, held weakly: the replay must be free to let them go
-        replacedWeb = bridge.binding?.webView
-        replacedRoot = bridge.binding?.tabRoot
-        replacedWindow = bridge.binding?.webView?.window
+        let old = Replaced(by: "sceneCycle", bridge.binding)
         let r = runHook("sceneCycle", step)
         guard r["error"] == nil else {
             event("sceneCycle", r)
             return next()
         }
-        cycled = true
+        replaced = old
         var o = r
         let web = bridge.binding?.webView
-        o["newWebView"] = web != nil && web !== replacedWeb
-        o["newWindow"] = web?.window != nil && web?.window !== replacedWindow
-        o["oldWindowAlive"] = replacedWindow != nil
+        o["newWebView"] = web != nil && web !== old.web
+        o["newWindow"] = web?.window != nil && web?.window !== old.window
         event("sceneCycle", o)
         endPhase()
+    }
+
+    /// `sceneDestroy`: UIKit's own request to destroy the scene's session (as StoreProbe's), through `destroySession`.
+    /// UIKit refuses it for this app (one scene, an iPhone; the refusal came about 1 s after the request on a loaded
+    /// machine): `sceneDestroyRefused`, nothing replaced, and the phase goes on. A scene UIKit lets go says nothing here,
+    /// so with no answer in `destroyWait` the request counts as granted: `sceneDestroyNoAnswer`, the phase ends (the next
+    /// runs on the page of the scene that connects next), and every later state says whether the page, the root and the
+    /// window the scene held went (`replaced`, by `sceneDestroy`). A refusal after that is logged too (`late`), and
+    /// `replaced` goes back to what it was.
+    private func sceneDestroy(_ b: ShellBridge.Binding?, next: @escaping () -> Void, endPhase: @escaping () -> Void) {
+        final class Ask { var refused = false, timedOut = false }
+        let ask = Ask()
+        let before = replaced
+        let asked = Replaced(by: "sceneDestroy", b)
+        guard let session = Self.destroySession(b?.webView?.window, { [weak self] e in
+            let text = "\(e)"
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, !ask.refused else { return }
+                    ask.refused = true
+                    if self.replaced === asked { self.replaced = before }
+                    if ask.timedOut {
+                        self.event("sceneDestroyRefused", ["error": text, "late": true])
+                    } else {
+                        self.event("sceneDestroyRefused", ["error": text])
+                        next()
+                    }
+                }
+            }
+        }) else {
+            event("sceneDestroy", ["error": "no scene"])
+            return next()
+        }
+        replaced = asked
+        event("sceneDestroy", ["session": session])
+        let wait = Self.destroyWait
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+            MainActor.assumeIsolated {
+                guard !ask.refused else { return }
+                ask.timedOut = true
+                self.event("sceneDestroyNoAnswer", ["ms": Int(wait * 1000)])
+                endPhase()
+            }
+        }
     }
 
     // MARK: The tab root (build 61)
@@ -1160,8 +1195,7 @@ final class ShellProbe {
             self.event("state", ["label": label, "page": page, "shell": self.bridge.describe(), "keyboard": self.keyboard,
                                  "firstResponder": responder, "webResponder": Self.contentView(wv)?.isFirstResponder ?? false,
                                  "webScrollY": Double((wv?.scrollView.contentOffset.y ?? 0) + inset), "input": input,
-                                 "replaced": self.cycled ? ["webView": self.replacedWeb != nil, "root": self.replacedRoot != nil,
-                                                            "window": self.replacedWindow != nil] as [String: Any] : NSNull(),
+                                 "replaced": self.replaced?.report ?? NSNull(),
                                  "keyWindow": String(describing: UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first.map { type(of: $0) })])
             done()
         }

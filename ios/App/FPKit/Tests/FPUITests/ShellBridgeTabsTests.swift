@@ -1952,6 +1952,58 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(root.funnelRuns.last?.source, .tap)
     }
 
+    /// `sceneDestroy` (20-order section 9 item 35; the H11 review): UIKit refuses it for this app, so nothing was replaced
+    /// and the phase goes on; a request with no answer within the wait counts as granted: the phase ends and every state
+    /// that follows says whether the web view, the root and the window the scene held are still alive (`replaced`, by
+    /// `sceneDestroy`), as after a `sceneCycle`; a refusal after the wait is logged (`late`) and takes that back.
+    func test32TheProbesSceneDestroyHoldsWhatTheSceneHeldUnlessUIKitRefuses() async throws {
+        let (bridge, probe, heard) = probed()
+        let request = ShellProbe.destroySession, wait = ShellProbe.destroyWait
+        defer {
+            ShellProbe.destroySession = request
+            ShellProbe.destroyWait = wait
+        }
+        ShellProbe.destroyWait = 0.3
+        _ = try await scene(first: "log", bridge: bridge)
+        struct Refused: Error, CustomStringConvertible {
+            var description: String { "The current device does not support multiple scenes." }
+        }
+
+        ShellProbe.destroySession = { window, refused in
+            XCTAssertNotNil(window, "the page's window")
+            refused(Refused())
+            return "S1"
+        }
+        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "refused"]])
+        XCTAssertEqual(heard.last("sceneDestroy")?["session"] as? String, "S1")
+        XCTAssertEqual(heard.last("sceneDestroyRefused")?["error"] as? String, "The current device does not support multiple scenes.")
+        XCTAssertNil(heard.last("sceneDestroyRefused")?["late"])
+        XCTAssertNil(heard.last("sceneDestroyNoAnswer"))
+        XCTAssertEqual(heard.last("state")?["label"] as? String, "refused", "the phase went on")
+        XCTAssertTrue(heard.last("state")?["replaced"] is NSNull, "refused: nothing was replaced")
+
+        final class Later { var refuse: ((Error) -> Void)? }
+        let later = Later()
+        ShellProbe.destroySession = { _, refused in
+            later.refuse = refused
+            return "S2"
+        }
+        await runSteps(probe, [["op": "sceneDestroy"], ["op": "state", "label": "not run: the phase ended"]])
+        XCTAssertEqual(heard.last("sceneDestroyNoAnswer")?["ms"] as? Int, 300)
+        XCTAssertFalse(heard.all("state").contains { $0["label"] as? String == "not run: the phase ended" })
+        await runSteps(probe, [["op": "state", "label": "granted"]])
+        let granted = try XCTUnwrap(heard.last("state")?["replaced"] as? [String: Any], "what the scene held, reported")
+        XCTAssertEqual(granted["by"] as? String, "sceneDestroy")
+        XCTAssertEqual(granted["webView"] as? Bool, true, "this test still holds the scene: alive")
+        XCTAssertEqual(granted["root"] as? Bool, true)
+        XCTAssertEqual(granted["window"] as? Bool, true)
+
+        later.refuse?(Refused())
+        try await expect("the late refusal logged") { heard.last("sceneDestroyRefused")?["late"] as? Bool == true }
+        await runSteps(probe, [["op": "state", "label": "taken back"]])
+        XCTAssertTrue(heard.last("state")?["replaced"] is NSNull, "refused after all: nothing replaced")
+    }
+
     /// `press {label, where: hub}` through the probe's own step (11-shell.md H11; the H11 review): with no hub on screen it
     /// is an error event (`error`, `why` in the same words) that presses nothing, said before the accessibility runtime
     /// is touched: the Coach tab not NATIVE, not selected, and the chat pushed over the hub.
