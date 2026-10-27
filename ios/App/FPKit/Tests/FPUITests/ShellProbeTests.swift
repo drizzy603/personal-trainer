@@ -139,7 +139,7 @@ final class ShellProbeTests: XCTestCase {
     func testThePageStateScriptReadsTheTabsModeFields() async throws {
         let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let html = """
-            <!doctype html><html class="fp-tabs" style="--fp-bar-h:83px;--fp-safe-b:34px;--fp-clear:107px;--fp-bar-up:83px;\
+            <!doctype html><html class="fp-tabs" style="--fp-bar-h:66px;--fp-safe-b:34px;--fp-clear:107px;--fp-bar-up:83px;\
             --fp-sheet-b:42px;zoom:1.12"><body><nav id="tabs" style="display:none"></nav>
             <div id="screen"><div class="kt-fp-ph" data-fp-screen="coachHome"></div></div>
             <div class="kt-sheet-overlay fp-hold"></div>
@@ -168,7 +168,7 @@ final class ShellProbeTests: XCTestCase {
         XCTAssertEqual(s["fpTabsClass"] as? Bool, true)
         XCTAssertEqual(s["tabsDisplay"] as? String, "none")
         let vars = try XCTUnwrap(s["vars"] as? [String: Any])
-        XCTAssertEqual((vars["barH"] as? NSNumber)?.doubleValue, 83)
+        XCTAssertEqual((vars["barH"] as? NSNumber)?.doubleValue, 66, "each variable read from its own (all differ here)")
         XCTAssertEqual((vars["safeB"] as? NSNumber)?.doubleValue, 34)
         XCTAssertEqual((vars["clear"] as? NSNumber)?.doubleValue, 107)
         XCTAssertEqual((vars["barUp"] as? NSNumber)?.doubleValue, 83)
