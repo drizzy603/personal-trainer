@@ -668,15 +668,20 @@ public final class ShellBridge: NSObject {
         }
         let now = Date()
         #if DEBUG
-        // the probe hears every message the shell handled, with the moment it came in (contract 15.3), once it is answered
-        // (a refusal apart, as `pageRefused`)
-        var refusal: Error?
+        // the probe hears every message the shell handled, with the moment it came in (contract 15.3), at its answer: a
+        // message answered later (`status {refresh}`, after the forced fetch) when that answer goes, and a refusal as
+        // `pageRefused` whenever it comes, so `page` events are the messages the shell took
+        var heard = false
         let answer = done
         let done: (Result<[String: Any], Error>) -> Void = { r in
-            if case .failure(let e) = r { refusal = e }
+            if !heard {
+                heard = true
+                var refused: Error?
+                if case .failure(let e) = r { refused = e }
+                ShellProbe.shared?.pageMessage(method, message, received: now, refused: refused)
+            }
             answer(r)
         }
-        defer { ShellProbe.shared?.pageMessage(method, message, received: now, refused: refusal) }
         #endif
         switch message {
         case .hello(let h):

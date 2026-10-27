@@ -1889,6 +1889,38 @@ final class ShellBridgeTabsTests: XCTestCase {
         XCTAssertEqual(pushed["selected"] as? String, "coach")
     }
 
+    /// Contract 15.3 (the H11 review): a page message is logged at its answer, with the moment it came in. `status
+    /// {refresh}` is answered after the forced fetch: its `page` event comes then, never when the handler returned; and
+    /// one whose binding went during the fetch is answered with a refusal, logged as `pageRefused`, never as taken.
+    func test30TheProbeLogsAPageMessageAtItsAnswer() async throws {
+        let (bridge, _, heard) = probed()
+        let s = try await scene(first: "log", bridge: bridge)
+        XCTAssertNotNil(heard.all("page").first { $0["method"] as? String == "hello" }, "the hello, at its answer")
+        final class Fetch { var dropBinding = false }
+        let f = Fetch()
+        bridge.environment.fetchPolicy = { [weak s] done in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {   // a fetch takes a moment
+                MainActor.assumeIsolated {
+                    if f.dropBinding, let s { s.bridge.sceneDisconnected(webView: s.webView) }
+                    done()
+                }
+            }
+        }
+        _ = try await message(s, "status", ["refresh": true]).get()
+        let taken = try XCTUnwrap(heard.all("page").last { $0["method"] as? String == "status" })
+        XCTAssertEqual(taken["refresh"] as? Bool, true)
+        let waited = (taken["t"] as? Int ?? 0) - (taken["recvT"] as? Int ?? 0)
+        XCTAssertGreaterThanOrEqual(waited, 350, "logged at the answer, after the forced fetch (\(waited) ms after it came in)")
+
+        bridge.refreshEvery = 0
+        f.dropBinding = true
+        let r = await message(s, "status", ["refresh": true])
+        guard case .failure = r else { return XCTFail("answered though the binding went: \(r)") }
+        let statuses = heard.events.filter { $0["method"] as? String == "status" }
+        XCTAssertEqual(statuses.map { $0["ev"] as? String }, ["page", "pageRefused"], "the refusal logged as refused, once")
+        XCTAssertNotNil(statuses.last?["refused"] as? String)
+    }
+
     /// `tapTab` through the probe's own step (the H11 review, uikit lens): a bar a web sheet hid is tapped by no one, so the
     /// step is an error event and nothing moves; shown again, the same step taps Progress through UIKit's path.
     func test31TheProbesTapTabTapsOnlyABarAFingerCanReach() async throws {
